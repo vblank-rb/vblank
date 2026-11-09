@@ -3,9 +3,8 @@
 module VBlank
   class Builder
     # The control-flow verbs: the game loop and timed triggers (game_loop,
-    # wait_vblank, repeat, every, after), stopping (halt, debug_halt), and the
-    # low-level comparison verbs (if_eq/if_ne/…). A concern of {Builder}, mixed in
-    # so these stay flat DSL verbs.
+    # wait_vblank, repeat, every, after) and stopping (halt, debug_halt). A concern of
+    # {Builder}, mixed in so these stay flat DSL verbs.
     #
     # The hooks the Condition and Branch handles call back into
     # (record_conditional, record_else) are the builder's public seam and live in
@@ -348,33 +347,39 @@ module VBlank
         @pass_jobs[name || routine] = job
       end
 
-      # --- Low-level comparison verbs ---
-      # Compare a variable against an immediate or another variable; the block runs
-      # only when the condition is true. A plain `if a > b` is
-      # the friendlier form — these are the asm-tier escape hatch.
-
-      # Maps DSL condition → the IR comparison operator, for building the `if`
-      # node's condition (a binop over the variable and the operand).
+      # Maps a comparison's name to the IR operator, for building an `if` node's condition (a
+      # binop over the variable and the operand). The library's own code compares this way
+      # (#emit_conditional); a game writes `if score > 5`.
       COND_TO_OP = {
         eq: :==, ne: :!=, gt: :>, lt: :<, ge: :>=, le: :<=,
       }.freeze
 
-      # if_eq, if_ne, if_gt, if_lt, if_ge, if_le. Written out as source rather than made from
-      # a block: a method made from a block carries the block's surroundings with it, and Ruby
-      # will not let another Ractor call one — so a game building from a Ractor could not use
-      # a verb defined that way. See {IR::Node.operands}, which says the same thing at length.
-      %i[eq ne gt lt ge le].each do |cond|
-        class_eval <<~VERB, __FILE__, __LINE__ + 1
-          def if_#{cond}(var_name, operand, &block)
-            emit_conditional(:#{cond}, var_name, operand, &block)
+      # The low-level tests a game once wrote beside `if`, and the operator each stands for. Each
+      # is kept private so that the refusal reaches a line in a game block, where it needs no
+      # receiver, and says the plain `if` to write instead.
+      LOW_LEVEL_TEST_OPERATORS = { if_eq: :==, if_ne: :!=, if_gt: :>, if_lt: :<, if_ge: :>=, if_le: :<=,
+                                   if_gte: :>=, if_lte: :<= }.freeze
+
+      # Written out as source rather than made from a block: a method made from a block carries
+      # the block's surroundings with it, and Ruby will not let another Ractor call one. See
+      # {IR::Node.operands}, which says the same thing at length.
+      LOW_LEVEL_TEST_OPERATORS.each_key do |word|
+        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
+          def #{word}(var_name = nil, operand = nil, *, &)
+            raise DSL::PlainRuby::Refused, low_level_test_message(:#{word}, var_name, operand)
           end
-        VERB
+          private :#{word}
+        REFUSAL
       end
 
-      alias_method :if_gte, :if_ge
-      alias_method :if_lte, :if_le
-
       private
+
+      # The refusal for `if_gt :score, 5`, naming `if score > 5`.
+      def low_level_test_message(word, var_name, operand)
+        sides = [var_name, operand].map { |side| DSL::ChangingWord.as_source_text(side) || "..." }
+        DSL::ChangingWord.low_level_test_refusal(word, "if #{sides.join(" #{LOW_LEVEL_TEST_OPERATORS.fetch(word)} ")}",
+                                                 at: Messages::AuthorSource.at_author_line)
+      end
 
       # The job `each_pass :name` made, for `each_pass :name` with no block.
       def pass_job_named(name)

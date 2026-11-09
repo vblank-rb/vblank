@@ -64,9 +64,7 @@ class TestTimers < Minitest::Test
         wait_vblank
         frame += 1
         instance_exec(marks, &body)
-        if_ge :frame, frames do
-          halt
-        end
+        halt if frame >= frames
       end
     end
   end
@@ -154,9 +152,7 @@ class TestTimers < Minitest::Test
         frame += 1
         every(2) { a += 1 } # 2,4,6,8,10 -> 5
         every(5) { b += 1 } # 5,10 -> 2
-        if_ge :frame, 10 do
-          halt
-        end
+        halt if frame >= 10
       end
     end
     assert_equal 5, i[:a]

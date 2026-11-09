@@ -162,8 +162,6 @@ module VBlank
         negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
         approach: works, approach!: works,
         list: works,
-        if_eq: works, if_ne: works, if_gt: works, if_lt: works, if_ge: works, if_le: works,
-        if_gte: works, if_lte: works,
         func: works("`fast:` means nothing on a PlayStation, which runs all of its code alike."),
         call: works,
         scene: works("see `func` for `fast:`."),
@@ -179,8 +177,6 @@ module VBlank
                     "ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more " \
                     "than 1 are not made yet."),
         pressed: works("see `held`."),
-        if_held: works("see `held`."),
-        if_pressed: works("see `held`."),
         most_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),
         mark: works,

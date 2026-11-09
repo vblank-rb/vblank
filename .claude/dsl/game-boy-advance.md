@@ -28,8 +28,6 @@ and a test fails when the two differ.
 - `entry` — works: raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`).
 - `held` — works: the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. `:x` and `:y` are refused: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
 - `pressed` — works: see `held`.
-- `if_held` — works: see `held`.
-- `if_pressed` — works: see `held`.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Advance has one controller.
@@ -50,9 +48,8 @@ These work as their group files say:
 `layer`, `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`,
 `save_data`, `clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`,
 `sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
-`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `if_eq`, `if_ne`, `if_gt`,
-`if_lt`, `if_ge`, `if_le`, `if_gte`, `if_lte`, `func`, `call`, `scene`, `case_var`,
-`most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `enable_sound`,
-`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`,
-`hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
+`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
+`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
+`enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`,
+`stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
 `sound_effects`, `sample`, `instrument`.

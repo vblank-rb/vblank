@@ -94,9 +94,6 @@ class TestValueCoercion < Minitest::Test
       decrease! :y, 3
       draw_rect_at :x, :y, 4, 4, :white
       blit :ball, :x, :y
-      if_gt :x, :y do
-        store! :y, 0
-      end
       halt
     end
 
@@ -110,7 +107,6 @@ class TestValueCoercion < Minitest::Test
       y -= 3
       draw_rect_at x, y, 4, 4, :white
       blit :ball, x, y
-      y = 0 if x > y
       halt
     end
 

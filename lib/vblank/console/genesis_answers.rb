@@ -196,8 +196,6 @@ module VBlank
         negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
         approach: works, approach!: works,
         list: works,
-        if_eq: works, if_ne: works, if_gt: works, if_lt: works, if_ge: works, if_le: works,
-        if_gte: works, if_lte: works,
         func: works("`fast:` means nothing on a Genesis, which runs all of its code alike."),
         call: works,
         scene: works("see `func` for `fast:`."),
@@ -213,8 +211,6 @@ module VBlank
                     "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` or more " \
                     "is refused, and `players:` more than 1 is refused too: this build reads the first pad only."),
         pressed: works("see `held`."),
-        if_held: works("see `held`."),
-        if_pressed: works("see `held`."),
         most_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),

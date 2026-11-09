@@ -100,9 +100,9 @@ class TestViewer < Minitest::Test
       spin = var :spin, fraction ? 0.0 : 0
       game_loop do
         turns.each_with_index do |(kind, direction, degrees), k|
-          if_eq(:passes, k) do
+          by = worked_out ? spin : degrees
+          if passes == k
             spin.store!(degrees)
-            by = worked_out ? spin : degrees
             kind == :turn ? eye.turn(direction, by: by) : eye.roll(direction, by: by)
           end
         end

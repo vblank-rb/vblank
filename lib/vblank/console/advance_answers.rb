@@ -90,8 +90,6 @@ module VBlank
         negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
         approach: works, approach!: works,
         list: works,
-        if_eq: works, if_ne: works, if_gt: works, if_lt: works, if_ge: works, if_le: works,
-        if_gte: works, if_lte: works,
         func: works, call: works, scene: works, case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
@@ -103,7 +101,7 @@ module VBlank
                     "`:x` and `:y` are refused: it has no X or Y button. " \
                     "`player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. " \
                     "`player: :any` reads that one controller."),
-        pressed: works("see `held`."), if_held: works("see `held`."), if_pressed: works("see `held`."),
+        pressed: works("see `held`."),
         most_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),

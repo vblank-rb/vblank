@@ -31,6 +31,12 @@ module VBlank
           "`hp = 5`, `hp += 1`, `hp -= 1`.#{at}"
       end
 
+      # A low-level test (`if_gt :score, 5`), and +plain_if+, the plain Ruby `if` that does the same.
+      def low_level_test_refusal(word, plain_if, at: "")
+        "A game does not need `#{word}`. To fix this, write `#{plain_if}` and put the block's lines " \
+          "under it, with `end` after them.#{at}"
+      end
+
       # ...and that advice, for a word whose new-number form is an operator: `hp + 1`. The two
       # sides are named the way the author would write them, and a side with no name to give — an
       # expression worked out on the spot — leaves the advice out rather than describing itself.

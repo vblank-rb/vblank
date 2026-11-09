@@ -136,10 +136,10 @@ module VBlank
               draw_text "LOAD YOUR COPY OF THE GAME", :center, middle - 24, :gray
               draw_text "LOAD ROM", :center, middle, %i[gray white], showing: line == 0
               draw_text "SETTINGS", :center, middle + 12, %i[gray white], showing: line == 1
-              if_pressed(:down) { line.store!(1 - line) }
-              if_pressed(:up) { line.store!(1 - line) }
+              pressed(:down).record_branch { line.store!(1 - line) }
+              pressed(:up).record_branch { line.store!(1 - line) }
               %i[a start].each do |button|
-                if_pressed(button) do
+                pressed(button).record_branch do
                   choice.store!(line + 1)
                   halt
                 end

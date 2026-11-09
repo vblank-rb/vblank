@@ -353,6 +353,18 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("A game does not need `when_true`") { game_loop { held(:a).when_true { wait_vblank } } }
   end
 
+  # The low-level tests a game once wrote beside `if` are refused naming the `if` to write.
+  def test_a_low_level_test_is_refused_naming_the_plain_if
+    assert_refused("write `if score > 5`") { game_loop { score = var(:score, 0); if_gt(:score, 5) { score -= 1 } } }
+    assert_refused("write `if lives <= 0`") { game_loop { if_lte(:lives, 0) { wait_vblank } } }
+    assert_refused("write `if state == 2`") { game_loop { if_eq(:state, 2) { wait_vblank } } }
+    assert_refused("write `if y >= floor`") { game_loop { if_gte(:y, :floor) { wait_vblank } } }
+    assert_refused("write `if held(:a)`") { game_loop { if_held(:a) { wait_vblank } } }
+    assert_refused("write `if pressed(:start, player: 2)`") do
+      game_loop { if_pressed(:start, player: 2) { wait_vblank } }
+    end
+  end
+
   def test_a_game_made_by_eval_with_no_file_is_refused
     block = eval("proc { game_loop { wait_vblank } }") # rubocop:disable Security/Eval
     error = assert_raises(Refused) { VBlank::DSL::PlainRuby.game_block(block) }

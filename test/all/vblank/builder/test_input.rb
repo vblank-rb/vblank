@@ -88,12 +88,10 @@ end
 class TestInput < Minitest::Test
   include InputGames
 
-  def test_if_held_unknown_button_raises
+  def test_an_unknown_button_raises
     assert_raises(ArgumentError) do
       build do
-        if_held :turbo do
-          halt
-        end
+        halt if held(:turbo)
       end
     end
   end
@@ -114,7 +112,7 @@ class TestInput < Minitest::Test
   # `:any` is not a button, so the list a typo is answered with does not offer it, and a test
   # cannot hold it — holding "any button" says nothing about which.
   def test_unknown_button_message_does_not_offer_any
-    message = assert_raises(ArgumentError) { build { if_held(:turbo) { halt } } }.message
+    message = assert_raises(ArgumentError) { build { halt if held(:turbo) } }.message
 
     refute_match(/:any/, message)
     assert_raises(VBlank::IR::Backends::Reference::ProgramError) do

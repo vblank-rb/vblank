@@ -345,15 +345,11 @@ class TestInspector < Minitest::Test
       scene :title do
         clear_screen :black
         draw_text "HI", 100, 76, :white
-        if_pressed :start do
-          state = 1
-        end
+        state = 1 if pressed(:start)
       end
       scene :playing do
         clear_screen :blue
-        if_held :up do
-          player_y -= 2
-        end
+        player_y -= 2 if held(:up)
         player_y += 1
         clamp! :player_y, 0, 136
         draw_rect_at 8, :player_y, 4, 24, :white

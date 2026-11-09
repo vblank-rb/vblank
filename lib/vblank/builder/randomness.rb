@@ -69,7 +69,7 @@ module VBlank
       #   scene :title do
       #     draw_text "PRESS START", 76, 100, :gray
       #     randomize                              # keep stirring while we wait
-      #     if_pressed(:start) { call :new_game }  # start from wherever it landed
+      #     call :new_game if pressed(:start)      # start from wherever it landed
       #   end
       def randomize
         mark_rng_used

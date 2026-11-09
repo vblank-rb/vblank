@@ -82,12 +82,12 @@ module VBlank
     include PictureGroups # picture_groups (a scene's sprite pictures by room, only some of them up at a time)
     include Sprites    # sprite (software + hardware, facing/frames/clip animation, hitboxes)
     include SpriteImport # sprite art adapters (sheets, Aseprite) feeding the sprite builder
-    include Input      # if_held, if_pressed, held, pressed
+    include Input      # held, pressed, players_connected, rumble
     include LocalView  # drawing_for_local_player (what only this machine's person sees, in a networked match)
     include Drawing    # screen, pixel, fill_rect, clear_screen, dma_fill_rect, draw_rect_at
     include Places     # place, viewer, draw_place (a first-person view of a place made of flat faces)
     include Variables  # set/var, add, sub, negate/flip, copy, abs, negate_abs, clamp, variables
-    include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt, if_eq..if_le
+    include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt
     include Scenes     # func, call, scene, case_var, dump_func
     include Collision  # box (overlaps? lives on the shape — Box/Sprite via Bounds)
     include Tiled      # tiles, background (tiled-graphics surface; hardware lowering to follow)

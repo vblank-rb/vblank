@@ -102,9 +102,7 @@ class TestScenesCartridge < Minitest::Test
       scene :title do
         clear_screen :black
         draw_text "PRESS START", 64, 100, :white
-        if_pressed :start do
-          state = 1
-        end
+        state = 1 if pressed(:start)
       end
 
       scene :playing do

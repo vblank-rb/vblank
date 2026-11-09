@@ -24,43 +24,37 @@ class TestInputCartridge < Minitest::Test
   end
 
   # ========================================================================
-  # if_held
+  # held
   # ========================================================================
 
-  def test_if_held_builds_without_error
+  def test_held_builds_without_error
     rom = build do
       screen :bitmap
       player_y = 80
       game_loop do
-        if_held :up do
-          player_y -= 2
-        end
+        player_y -= 2 if held(:up)
       end
     end
 
     assert_operator rom.size, :>, 0
   end
 
-  def test_if_held_all_buttons
+  def test_held_all_buttons
     # Every button should be accepted without error
     %i[a b select start right left up down r l].each do |btn|
       rom = build do
         x = var :x, 0
-        if_held btn do
-          x = 1
-        end
+        x = 1 if held(btn)
         halt
       end
       assert_operator rom.size, :>, 0, "button #{btn} should work"
     end
   end
 
-  def test_if_held_emits_conditional_branch
+  def test_held_emits_conditional_branch
     rom = build do
       y = var :y, 0
-      if_held :up do
-        y = 1
-      end
+      y = 1 if held(:up)
       halt
     end
 
@@ -70,12 +64,10 @@ class TestInputCartridge < Minitest::Test
     assert has_bne, "expected BNE (skip block if button not pressed)"
   end
 
-  def test_if_held_branch_skips_correct_distance
+  def test_held_branch_skips_correct_distance
     rom = build do
       x = var :x, 0
-      if_held :a do
-        x = 42
-      end
+      x = 42 if held(:a)
       halt
     end
 
@@ -95,34 +87,30 @@ class TestInputCartridge < Minitest::Test
   end
 
   # ========================================================================
-  # if_pressed (edge detection)
+  # pressed (edge detection)
   # ========================================================================
 
-  def test_if_pressed_builds_without_error
+  def test_pressed_builds_without_error
     rom = build do
       state = 0
       screen :bitmap
       game_loop do
-        if_pressed :start do
-          state = 1
-        end
+        state = 1 if pressed(:start)
       end
     end
 
     assert_operator rom.size, :>, 0
   end
 
-  def test_if_pressed_emits_beq
+  def test_pressed_emits_beq
     rom = build do
       state = var :state, 0
-      if_pressed :start do
-        state = 1
-      end
+      state = 1 if pressed(:start)
       halt
     end
 
     insts = instructions(rom)
-    # if_pressed uses BEQ to skip (Z=1 means not newly pressed)
+    # A press test uses BEQ to skip (Z=1 means not newly pressed)
     has_beq = insts.any? { |i| branch?(i) && cond(i) == 0x0 }
     assert has_beq, "expected BEQ (skip block if button not newly pressed)"
   end
@@ -195,15 +183,9 @@ class TestInputCartridge < Minitest::Test
       screen :bitmap
       player_y = 80
       game_loop do
-        if_held :up do
-          player_y -= 2
-        end
-        if_held :down do
-          player_y += 2
-        end
-        if_pressed :start do
-          player_y = 80
-        end
+        player_y -= 2 if held(:up)
+        player_y += 2 if held(:down)
+        player_y = 80 if pressed(:start)
       end
     end
 

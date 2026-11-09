@@ -104,19 +104,17 @@ class TestBuilderIR < Minitest::Test
 
   def test_control_flow_builds_a_nested_ir_tree
     got = tree do
-      store! :x, 0
+      x = var :x, 0
       func :bump do
         increase! :x, 1
       end
       game_loop do
         wait_vblank
-        if_gt :x, 5 do        # condition becomes a binop over var + operand
+        if x > 5              # condition becomes a binop over var + operand
           store! :x, 0
         end
         call :bump
-        if_held :up do        # condition becomes a held(:up) read
-          increase! :x, 10
-        end
+        increase! :x, 10 if held(:up) # condition becomes a held(:up) read
       end
     end
 
@@ -163,8 +161,8 @@ class TestBuilderIR < Minitest::Test
     ), got
   end
 
-  def test_if_pressed_builds_a_pressed_condition
-    got = tree { if_pressed(:start) { store! :go, 1 } }
+  def test_a_press_test_builds_a_pressed_condition
+    got = tree { store!(:go, 1) if pressed(:start) }
     assert_same_shape program(if_(pressed(:start), set(:go, 1))), got
   end
 
@@ -178,9 +176,7 @@ class TestBuilderIR < Minitest::Test
       end
       game_loop do
         call :bump
-        if_ge :x, 3 do
-          halt
-        end
+        halt if x >= 3
       end
     end
     assert_equal 3, game_player.run(got)[:x]
@@ -238,7 +234,7 @@ class TestBuilderIR < Minitest::Test
       game_loop do
         wait_vblank
         call :award
-        if_ge :score, 2 do
+        if score >= 2
           stop_music
           halt
         end

@@ -135,7 +135,7 @@ class TestTiledText < Minitest::Test
       game_loop do
         wait_vblank            # composites the score's current digit
         score += 1
-        if_eq(:score, 6) { halt } # after this frame's present showed 6-1... see below
+        halt if score == 6     # after this frame's present showed 6-1... see below
       end
     end
     b.finalize_program

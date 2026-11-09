@@ -456,8 +456,8 @@ module VBlank
           if i == digits - 1 || leading_zeros
             draw_glyph(digit, col_x, y, color, font) # the ones column always shows
           else
-            if_ne(digit, 0) { store!(started, 1) }
-            if_eq(started, 1) { draw_glyph(digit, col_x, y, color, font) }
+            emit_conditional(:ne, digit, 0) { store!(started, 1) }
+            emit_conditional(:eq, started, 1) { draw_glyph(digit, col_x, y, color, font) }
           end
         end
         nil

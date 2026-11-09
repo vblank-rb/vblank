@@ -31,8 +31,8 @@ module VBlank
           # words of OTHERWISE.
           SAID = Ractor.make_shareable({
                                          raw: ["raw instructions for the console's processor (`entry`)",
-                                               "Do the same with the framework's own words, such as `set!`, " \
-                                               "`pixel` and `if_held`, which every build understands."],
+                                               "Do the same with plain Ruby and the framework's own words, " \
+                                               "such as `pixel` and `held`, which every build understands."],
                                          read_scanline: ["a reading of which line the console's screen is drawing",
                                                          "Work it out from the frame count instead, which every " \
                                                          "build keeps."]

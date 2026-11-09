@@ -2,35 +2,19 @@
 
 module VBlank
   class Builder
-    # The input verbs: gate a block on a button — if_held / if_pressed — or turn a
-    # button into a {Condition} — held / pressed — to branch with `if` and
-    # join with `&&` / `||`. Button names are validated against the shared IR
-    # vocabulary. A concern of {Builder}, mixed in so these stay flat DSL verbs.
+    # The input verbs: turn a button into a {Condition} — held / pressed — to branch
+    # with `if` and join with `&&` / `||`. Button names are validated against the shared
+    # IR vocabulary. A concern of {Builder}, mixed in so these stay flat DSL verbs.
     module Input
-      # Run the block only while a button is held down.
-      #
-      # @param button [Symbol] :up, :down, :left, :right, :a, :b, :start, :select, :l, :r
-      # @param player [Integer, Symbol] whose controller: 1 to IR::Buttons::MOST_PLAYERS, or :any for
-      #   every connected player
-      def if_held(button, player: 1, &block)
-        check_button!(button)
-        check_player!(player)
-        push_container(Build.if_(Build.held(button, player: player))) do
-          run_block(&block)
-        end
-      end
-
-      # Run the block when a button is first pressed (edge-detected): down this
-      # frame, up the previous one.
-      #
-      # @param button [Symbol] button name
-      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
-      def if_pressed(button, player: 1, &block)
-        check_button!(button)
-        check_player!(player)
-        push_container(Build.if_(Build.pressed(button, player: player))) do
-          run_block(&block)
-        end
+      # The words a game once gated a block on a button with, kept private so that the refusal
+      # reaches a line in a game block, where it needs no receiver, and names the `if` to write.
+      %i[held pressed].each do |test|
+        class_eval <<~REFUSAL, __FILE__, __LINE__ + 1
+          def if_#{test}(button = nil, player: 1, **, &)
+            raise DSL::PlainRuby::Refused, button_test_message(:#{test}, button, player)
+          end
+          private :if_#{test}
+        REFUSAL
       end
 
       # A {Condition} that holds while a button is down — branch on it with
@@ -153,13 +137,19 @@ module VBlank
                              "player from 1 to #{most}, or set the most players in `players:` to #{player} or more."
       end
 
+      # The refusal for `if_held :a` (+test+ is :held or :pressed), naming `if held(:a)`.
+      def button_test_message(test, button, player)
+        on = player == 1 ? "" : ", player: #{player.inspect}"
+        DSL::ChangingWord.low_level_test_refusal(:"if_#{test}", "if #{test}(#{button.inspect}#{on})",
+                                                 at: Messages::AuthorSource.at_author_line)
+      end
+
       # held/pressed hand back a Condition and take no block. A block here means a
       # game test written with a block — the block would attach to held/pressed and be silently
       # ignored — so name the fix instead of losing the code.
       def reject_block!(verb, button)
         raise ArgumentError,
-              "#{verb}(:#{button}) takes no block. To run code, write `if #{verb}(:#{button})`. " \
-              "Or use the block form: if_#{verb} :#{button} do ... end."
+              "#{verb}(:#{button}) takes no block. To run code, write `if #{verb}(:#{button})`."
       end
     end
   end
