@@ -317,10 +317,12 @@ module VBlank
     #
     #   pack[:walls][i] = copy.byte(0x400 + i)   # one byte, the low 8 bits of what is given
     #   pack[:walls][i]                           # one byte back, 0 to 255
+    #   pack[:homes][wall] = cell                 # on a slot of halves or words, one whole number
     #   pack[:walls].byte_size                    # how many bytes it holds
     #
     # A write outside the slot is not made: a place written in the program is refused, and one
-    # worked out as the routine runs is a fault the build stops on.
+    # worked out as the routine runs is a fault the build stops on. A read at a place written in
+    # the program is refused the same way.
     class SlotBytes
       # +number+ is the slot's place in the pack's order, 0 first, which a fault names it by.
       def initialize(builder, list, slot, start, number:, faults:)
@@ -337,18 +339,29 @@ module VBlank
 
       def byte_size = @slot.byte_size
 
-      # Byte +index+ of the slot, 0 to 255.
-      def [](index) = @list[place(index)] & 0xFF
+      # Item +index+ of the slot. A slot of numbers wider than a byte reads number +index+, put
+      # together from its bytes in the slot's layout and below zero where a slot of halves is
+      # signed; any other slot reads byte +index+, 0 to 255. A word is four bytes, the whole of a
+      # game's number, so it reads as one whether the slot is signed or not: above 2147483647 it
+      # reads below zero, as any game number does.
+      def [](index)
+        refuse_item_outside_slot!(index) if index.is_a?(Integer)
+        return @list[place(index)] & 0xFF unless wide_numbers?
 
-      # Byte +index+ of the slot set to the low 8 bits of +value+.
+        number = slot_bytes_lowest_first.each_with_index.map do |offset, step|
+          (@list[place(number_byte(index, offset))] & 0xFF) << (8 * step)
+        end.reduce(:|)
+        @slot.signed && @slot.item_bytes == 2 ? (number ^ 0x8000) - 0x8000 : number
+      end
+
+      # Item +index+ of the slot set to +value+. A slot of numbers wider than a byte takes number
+      # +index+, written over its bytes in the slot's layout; any other slot takes the low 8 bits
+      # into byte +index+. A copy's formats write bytes, from #place, whatever the slot holds.
       def []=(index, value)
+        return write_number(index, value) if wide_numbers?
         return write_fixed_place(index, value) if index.is_a?(Integer)
 
-        if index >= 0 && index < byte_size
-          @list[place(index)] = value
-        else
-          @faults.emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, index, @number)
-        end
+        write_or_emit_fault(index, byte_size, index) { @list[place(index)] = value }
       end
 
       # Where byte +index+ of the slot is in the pack's list.
@@ -356,11 +369,58 @@ module VBlank
 
       private
 
-      def write_fixed_place(index, value)
-        unless index.between?(0, byte_size - 1)
-          raise ArgumentError, "Slot :#{@slot.name} holds bytes 0 to #{byte_size - 1}. There is no byte #{index}."
+      # A numbers slot of halves or words: the routine writes and reads a number at a time.
+      def wide_numbers? = @slot.shape == :numbers && @slot.item_bytes > 1
+
+      # Where in a number its bytes are kept, as offsets from the number's first byte, the offset
+      # of its lowest byte first: on a layout that keeps the high byte first (the Genesis's), the
+      # lowest is the last of the number's bytes.
+      def slot_bytes_lowest_first
+        offsets = (0...@slot.item_bytes).to_a
+        @slot.format.high_byte_first ? offsets.reverse : offsets
+      end
+
+      # Byte +offset+ of number +index+, counted from the slot's first byte.
+      def number_byte(index, offset) = (index * @slot.item_bytes) + offset
+
+      def write_number(index, value)
+        if index.is_a?(Integer)
+          refuse_item_outside_slot!(index)
+          return write_number_bytes(index, value)
         end
 
+        write_or_emit_fault(index, @slot.count, index * @slot.item_bytes) { write_number_bytes(index, value) }
+      end
+
+      def write_number_bytes(index, value)
+        slot_bytes_lowest_first.each_with_index do |offset, step|
+          @list[place(number_byte(index, offset))] = step.zero? ? value : value >> (8 * step)
+        end
+      end
+
+      # The write the block makes, when +index+ is 0 or more and below +items+ (the slot's bytes, or
+      # its numbers) as the routine runs; otherwise the fault that stops the build, naming +byte+,
+      # the first byte the write reached.
+      def write_or_emit_fault(index, items, byte)
+        if index >= 0 && index < items
+          yield
+        else
+          @faults.emit_fault(Unpacking::Fault::WRITE_OUTSIDE_SLOT, byte, @number)
+        end
+      end
+
+      # A place written in the program, past the slot: a number on a slot of halves or words, a byte
+      # on any other.
+      def refuse_item_outside_slot!(index)
+        items, kind = wide_numbers? ? [@slot.count, "number"] : [byte_size, "byte"]
+        return if index.between?(0, items - 1)
+
+        raise ArgumentError, "Slot :#{@slot.name} holds #{kind}s 0 to #{items - 1}. There is no #{kind} #{index}. " \
+                             "To fix this, use a #{kind} from 0 to #{items - 1}, or make the slot's count: bigger."
+      end
+
+      def write_fixed_place(index, value)
+        refuse_item_outside_slot!(index)
         @list[@start + index] = value
       end
     end

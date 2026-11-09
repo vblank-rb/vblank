@@ -297,6 +297,102 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # An unpacking routine writes a slot of numbers a number at a time, at the slot's width and in its
+  # layout's byte order, and reads one back the same way, below zero where the slot is signed. The
+  # game reads what it wrote through a table of the slot, which reads the layout as the console does.
+  private def numbers_written(folder, width:, signed:, numbers:, platform: :gba)
+    from = copy_of(folder, ([0] * 16).pack("C*"), platform: platform)
+    count = numbers.length + 1
+    b = Builder.new
+    b.instance_eval do
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :written, count: count, width: width, signed: signed, layout: platform
+        slots.fill_from_copy do |_copy, filled|
+          numbers.each_with_index { |number, at| filled[:written][at] = number }
+          filled[:written][numbers.length] = filled[:written][1] - 1
+        end
+      end
+      written = table :written, pack[:written]
+      reads = Array.new(count) { |at| var(:"read_#{at}", 0) }
+      game_loop do
+        wait_vblank
+        reads.each_with_index { |read, at| read.store!(written[at]) }
+      end
+    end
+    b.finalize_program
+    player = game_player.run(b.program, frames: 2)
+    Array.new(count) { |at| player[:"read_#{at}"] }
+  end
+
+  def test_an_unpacking_writes_a_slot_of_halves_a_number_at_a_time
+    Dir.mktmpdir do |folder|
+      assert_equal [300, -2, 32_767, -3], numbers_written(folder, width: :half, signed: true, numbers: [300, -2, 32_767])
+    end
+  end
+
+  def test_an_unpacking_writes_a_genesis_slot_of_halves_high_byte_first
+    Dir.mktmpdir do |folder|
+      assert_equal [0x1234, 0xFFFF, 0xFFFE],
+                   numbers_written(folder, width: :half, signed: false, numbers: [0x1234, 0xFFFF], platform: :genesis)
+    end
+  end
+
+  def test_an_unpacking_writes_a_slot_of_words_a_number_at_a_time
+    Dir.mktmpdir do |folder|
+      assert_equal [70_000, -5, -6], numbers_written(folder, width: :word, signed: true, numbers: [70_000, -5])
+    end
+  end
+
+  def test_an_unpacking_writes_a_genesis_slot_of_words_high_byte_first
+    Dir.mktmpdir do |folder|
+      assert_equal [0x01020304, 0x00ABCDEF, 0x00ABCDEE],
+                   numbers_written(folder, width: :word, signed: false, numbers: [0x01020304, 0x00ABCDEF], platform: :genesis)
+    end
+  end
+
+  # A number whose place the routine works out as it runs, in a loop, goes to the same place.
+  def test_an_unpacking_writes_halves_at_places_it_works_out
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, ([0] * 16).pack("C*"))
+      b = Builder.new
+      b.instance_eval do
+        pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :homes, count: 3, width: :half, signed: false
+          slots.fill_from_copy { |_copy, filled| repeat(3) { |at| filled[:homes][at] = (at * 1000) + 7 } }
+        end
+        homes = table :homes, pack[:homes]
+        last = var :last, 0
+        game_loop do
+          wait_vblank
+          last.store!(homes[2])
+        end
+      end
+      b.finalize_program
+
+      assert_equal 2007, game_player.run(b.program, frames: 2)[:last]
+    end
+  end
+
+  # A number written or read past a slot of halves, at a place written in the routine, is refused
+  # as the line runs, naming the numbers the slot holds.
+  def test_a_number_past_a_slot_of_halves_is_refused
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, ([0] * 16).pack("C*"))
+      [->(filled) { filled[:homes][3] = 1 }, ->(filled) { filled[:homes][0] = filled[:homes][3] }].each do |line|
+        refused = assert_raises(ArgumentError) do
+          Builder.new.instance_eval do
+            data_pack(from: from, version: "1") do |slots|
+              slots.numbers :homes, count: 3, width: :half, signed: false
+              slots.fill_from_copy { |_copy, filled| line.call(filled) }
+            end
+          end
+        end
+
+        assert_match "numbers 0 to 2", refused.message
+      end
+    end
+  end
+
   # The slot says whether its numbers can be below zero; the bytes never decide it. 0xF6 is -10 in
   # a slot of signed bytes, so the marker stands ten pixels left of 100.
   def test_a_table_from_a_slot_of_signed_numbers_reads_them_below_zero

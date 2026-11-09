@@ -50,8 +50,17 @@ from that copy. The game's code says each piece's shape and size; it never depen
     is `test/genesis_packing_answers.rb`, written from the 68000 routines. A computer original (`:pc`) has
     none built in.
   - `pack[:walls][i] = value` writes one byte (the low 8 bits); `pack[:walls][i]` reads one back;
-    `pack[:walls].byte_size`. `copy.count_written n` counts what a loop of the routine's own wrote, so the
-    progress bar moves and the routine waits for a frame every 256 bytes, as a format does.
+    `pack[:walls].byte_size`. **On a slot of numbers `width: :half` or `:word`, `i` is a number, not a
+    byte**: `pack[:homes][wall] = cell` writes number `wall` over its two or four bytes, in the slot's
+    layout's byte order (low byte first on `:gba`, high byte first on `:genesis`), and `pack[:homes][wall]`
+    reads it back, below zero where a slot of halves is `signed: true`. A word is a whole game number,
+    so one above 2147483647 reads below zero even in a slot `signed: false`. A number past the slot's
+    count, at a place written in the routine, is refused at the line, for a read or a write; a write at a
+    place worked out as the routine runs stops the build, and a read there is not checked. A copy's formats
+    (`copy_bytes`, `unpack_*`, `start:`) still write bytes. `copy.count_written n` counts what a loop of the
+    routine's own wrote, in bytes (a half is 2), so the progress bar moves and the routine waits for a
+    frame every 256 bytes, as a format does. A slot write does not count itself. Worked example:
+    `test/all/vblank/builder/test_data_packs.rb` (`numbers_written`).
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
     verbs, each place counted from that file's start. A fixed place outside the file is refused.
 
