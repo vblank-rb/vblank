@@ -64,9 +64,9 @@ module VBlank
     # a player's machine, where nothing but the shipped game runs. It is built into a program of
     # its own (#unpacking_program; Original::Unpacking says why one of its own, and what a shell
     # build must still add to play it there). Built all-in-one, that program is played to its end
-    # here on the interpreter (#unpack_on_interpreter), and the pack is made from what it wrote;
-    # every other backend plays the same program and is held to the interpreter's pack byte for
-    # byte. Either way the game holds handles and reads the pack, as above.
+    # here, built as Ruby (#play_unpacking), and the pack is made from what it wrote; every backend
+    # plays the same program and is held to the interpreter's pack byte for byte. Either way the
+    # game holds handles and reads the pack, as above.
     #
     # A game with no `data_pack` has no pack, and builds the same bytes as it did before there was one.
     module DataPacks
@@ -539,30 +539,39 @@ module VBlank
 
       # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
       def unpacked_slot_bytes(unpacking, cache)
-        return unpack_on_interpreter(unpacking) if cache.nil?
+        return play_unpacking(unpacking) if cache.nil?
 
-        Original::PackCache.new(cache).slot_bytes(unpacking) { unpack_on_interpreter(unpacking) }
+        Original::PackCache.new(cache).slot_bytes(unpacking) { play_unpacking(unpacking) }
       end
 
-      # Each slot's bytes as +unpacking+ writes them on the interpreter, the answer key every other
-      # backend is held to. The first fault the routine met (a block not packed the way it declares, a
+      # Each slot's bytes as +unpacking+ writes them. It is played built as Ruby, as a shell plays it
+      # on a player's machine (Original::Unpacking#run_as_ruby): the interpreter is plain and slow on
+      # purpose, many times slower on a port's loops. The interpreter stays the answer key:
+      # every run of the tests holds the Ruby lowering to it frame by frame, unpackings among them
+      # (test/copy_reader_tests.rb, the packing tests), and it plays a routine the Ruby runtime
+      # cannot play yet. The first fault the routine met (a block not packed the way it declares, a
       # read past the copy's end, a write past a slot) stops the build here, as a slot past the
       # copy's end does.
-      def unpack_on_interpreter(unpacking)
+      def play_unpacking(unpacking)
         most_frames = most_unpacking_frames(unpacking)
         ran = begin
+          unpacking.run_as_ruby(frames: most_frames)
+        rescue IR::Backends::Ruby::RuntimeGap
           unpacking.run_on(IR::Backends::Reference.new, frames: most_frames, max_steps: most_unpacking_steps_a_frame(unpacking))
-        rescue IR::ProgramError => e
-          raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
         end
+        refuse_faulted_or_unfinished_unpacking!(unpacking, ran, most_frames)
+        unpacking.slot_bytes_in(ran)
+      rescue IR::ProgramError => e
+        raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
+      end
+
+      def refuse_faulted_or_unfinished_unpacking!(unpacking, ran, most_frames)
         fault = unpacking.fault_in(ran)
         raise fault.error(unpacking.slots, unpacking.copy_size, unpacking.format_words) if fault
         unless unpacking.finished_in?(ran)
           raise ArgumentError, "The data pack's unpacking routine did not get to its end in #{most_frames} frames. " \
                                "A routine must end. Look for a loop in `slots.fill_from_copy` that never stops."
         end
-
-        unpacking.slot_bytes_in(ran)
       end
 
       # A slot's at: given by release must name every release the build can unpack, and no name

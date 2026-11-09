@@ -480,6 +480,34 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR. A routine copying 256 KB a byte
+  # at a time in a loop of its own, as a port's decoder works, takes the interpreter longer than
+  # the bound; played as Ruby it takes a small part of it, which leaves room for a busy machine.
+  # The pack is the copy, byte for byte.
+  LOOPED_COPY_BYTES = 256 << 10
+  MOST_UNPACKING_SECONDS = 2
+
+  def test_an_all_in_one_unpacking_of_a_quarter_megabyte_takes_under_two_seconds
+    Dir.mktmpdir do |folder|
+      bytes = Random.new(3).bytes(LOOPED_COPY_BYTES)
+      builder = Builder.new
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      builder.data_pack(from: copy_of(folder, bytes), version: "1") do |slots|
+        slots.pixels :art, count: LOOPED_COPY_BYTES
+        slots.fill_from_copy do |copy, filled|
+          repeat(LOOPED_COPY_BYTES) do |at|
+            filled[:art][at] = copy.byte(at)
+            copy.count_written 1
+          end
+        end
+      end
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+      assert_equal bytes, VBlank::Original::Pack.from_bytes(builder.made_data_pack_file).bytes_of(:art)
+      assert_operator took, :<, MOST_UNPACKING_SECONDS, "the unpacking took #{took.round(1)} s"
+    end
+  end
+
   # The slot says whether its numbers can be below zero; the bytes never decide it. 0xF6 is -10 in
   # a slot of signed bytes, so the marker stands ten pixels left of 100.
   def test_a_table_from_a_slot_of_signed_numbers_reads_them_below_zero

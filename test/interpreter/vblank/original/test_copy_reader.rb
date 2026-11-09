@@ -4,8 +4,8 @@ require "test_helper"
 require "copy_reader_tests"
 
 # A port's unpacking routine on the interpreter (CopyReaderTests), and what the build refuses as it
-# plays the routine there to make its pack (Builder::DataPacks#unpack_on_interpreter), which only
-# the interpreter answers.
+# plays the routine to make its pack (Builder::DataPacks#play_unpacking). The build plays it the
+# same way on every run, so these are asked once, here.
 class TestCopyReaderOnInterpreter < Minitest::Test
   include CopyReaderTests
 

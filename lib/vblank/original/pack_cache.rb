@@ -6,10 +6,9 @@ require "fileutils"
 module VBlank
   module Original
     # WHAT A PORT'S UNPACKING ROUTINE WROTE, CACHED BETWEEN BUILDS. Built all-in-one, the routine
-    # runs on the interpreter as the game is built (Builder::DataPacks#unpack_on_interpreter), which
-    # for a big port is most of a minute every build, though neither the player's copy nor the
-    # routine changed. A game that names a folder caches each slot's bytes there and a later build
-    # hits:
+    # runs as the game is built (Builder::DataPacks#play_unpacking), which for a big port is a long
+    # wait every build, though neither the player's copy nor the routine changed. A game that names
+    # a folder caches each slot's bytes there and a later build hits:
     #
     #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
     #
