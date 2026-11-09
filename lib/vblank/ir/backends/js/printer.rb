@@ -11,22 +11,14 @@ module VBlank
         #
         # The tree has no operators in it — every number a game keeps goes through a runtime
         # function (runtime/rg_int32.js) — so nothing here has to know JavaScript's precedence, or
-        # that its numbers are 64-bit floats. What it does have to know is the one thing C has that
-        # JavaScript does not: a routine that STOPS PART WAY to wait for the next frame.
+        # that its numbers are 64-bit floats.
         #
-        # WAITING FOR A FRAME. In C, rg_wait_vblank hands the frame to the driver and comes back
-        # when the next one starts, from however deep in the game's routines it was called. A
-        # browser cannot stop a script like that: a page that never gives control back never shows
-        # a picture. So every routine that can reach a wait — itself, or through a routine it calls
-        # — is written as a generator (`function*`), the wait as `yield`, and a call to one as
-        # `yield*`. The driver then plays the game by asking the generator for its next frame, as
-        # often as it likes, and the browser keeps control between frames. A routine that never
-        # waits stays a plain function, which keeps the many small routines of a game cheap.
-        #
-        # The routines the runtime calls for an answer (a bend's offset, a see-through amount, a
-        # timer's tick) must answer at once, so they are plain functions whatever they reach; a
-        # routine of the game's that could wait is run to its end from them (rg_run_now), and
-        # waiting there is a fault.
+        # WAITING FOR A FRAME. A browser cannot stop a script part way: a page that never gives
+        # control back never shows a picture. Every routine that can reach a wait is resumable
+        # (Native::Resumable): it gives back 1 when it stops for a frame and carries on from its own
+        # counter when called again, so the driver plays the game by calling rg_game_main once a
+        # frame, and the browser keeps control between frames, with the place the game has reached
+        # kept in its globals, which a save state can write.
         class Printer
           C = Native::C
           INDENT = "  "
@@ -46,12 +38,8 @@ module VBlank
           PACKING = Ractor.make_shareable({ "Int8Array" => "c*", "Uint8Array" => "C*", "Int16Array" => "s<*",
                                             "Uint16Array" => "S<*", "Int32Array" => "l<*" })
 
-          # The runtime's wait for the next frame, and its call of a routine picked from an array.
-          WAIT = "rg_wait_vblank"
+          # The runtime's call of a routine picked from an array.
           CALL_ROUTINE = "rg_call_routine"
-          # The routine the driver plays the game through: always a generator, so the driver has
-          # one way to play every game, whether it waits for frames or not.
-          MAIN = "rg_game_main"
 
           # +data+ is where a big table's numbers go: :inline, in the file as base64, or :separate, in
           # a data file of their own (#data_file), which the runtime fetches and hands to
@@ -67,10 +55,7 @@ module VBlank
 
           # The whole file: +items+ is the top level, in the order it is to appear.
           def print_file(items)
-            @functions = items.grep(C::Function).to_h { |function| [function.name.text, function] }
-            @tables = items.grep(C::FunctionTable).to_h { |table| [table.name.text, table.functions.map(&:text)] }
             @lists = items.grep(C::ListStorage).to_set { |list| list.name.text }
-            @waiting = waiting_functions
             items.each { |item| print_top(item) }
             print_data_fill unless @fills.empty?
             @out
@@ -90,48 +75,6 @@ module VBlank
 
           private
 
-          # --- which routines can wait for a frame ---
-
-          # Every routine that can reach a wait, found by following calls until nothing more
-          # joins. A routine in an array with one that waits waits too, since a call through the
-          # array cannot tell which it reaches; and the driver's own routine always is one.
-          def waiting_functions
-            waiting = Set[MAIN]
-            loop do
-              grown = @functions.each_key.select { |name| !waiting.include?(name) && reaches_wait?(@functions[name].body, waiting) }
-              grown += @tables.values.select { |names| names.any? { |name| waiting.include?(name) } }.flatten
-                             .reject { |name| waiting.include?(name) }
-              break if grown.empty?
-
-              waiting.merge(grown)
-            end
-            waiting
-          end
-
-          def reaches_wait?(statements, waiting)
-            statements.any? do |statement|
-              case statement
-              when C::Eval then call_waits?(statement.call, waiting)
-              when C::If then reaches_wait?(statement.body, waiting) || reaches_wait?(statement.otherwise, waiting)
-              when C::While, C::Block then reaches_wait?(statement.body, waiting)
-              else false
-              end
-            end
-          end
-
-          # Whether a call, written as a statement, can wait: the wait itself, a routine that waits,
-          # or a routine picked from an array that holds one.
-          def call_waits?(call, waiting)
-            name = call.function.text
-            return true if name == WAIT
-            return Array(table_of(call)).any? { |routine| waiting.include?(routine) } if name == CALL_ROUTINE
-
-            @functions.key?(name) && !@functions[name].exported && waiting.include?(name)
-          end
-
-          # The routines an array call (rg_call_routine(table[which])) picks among.
-          def table_of(call) = @tables[call.args.first.array.text]
-
           # --- the top level ---
 
           def print_top(item)
@@ -148,14 +91,8 @@ module VBlank
             end
           end
 
-          # A routine the driver or the runtime calls by name (+exported+) is one of the runtime's
-          # questions to the game: the driver's own routine waits like any, and the rest answer at
-          # once.
           def print_function(item)
-            name = item.name.text
-            @answering = item.exported && name != MAIN
-            star = @waiting.include?(name) && !@answering ? "*" : ""
-            line(0, "function#{star} #{name}() {")
+            line(0, "function #{item.name.text}() {")
             statements(1, item.body)
             line(0, "}")
             line(0, "")
@@ -241,32 +178,49 @@ module VBlank
             when C::Return then line(depth, "return;")
             when C::Block then print_block_statement(depth, "{", item.body)
             when C::Comment then comment(depth, item.text)
+            when C::Steps then print_steps(depth, item)
+            when C::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)}; continue;")
+            when C::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)}; return 1;")
+            when C::Finish then line(depth, "#{item.counter.text} = 0; return 0;")
+            when C::Resume then line(depth, "if (#{routine_call(item.call)}) return 1;")
+            when C::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
           end
 
-          # A call written as a statement: the place a routine can wait.
-          def print_eval(depth, call)
-            name = call.function.text
-            if name == WAIT
-              line(depth, @answering ? "rg_wait_vblank_while_answering();" : "rg_wait_vblank(); yield 0;")
-            elsif name == CALL_ROUTINE
-              picked = expression(call.args.first)
-              line(depth, routine_call(picked, Array(table_of(call)).any? { |routine| @waiting.include?(routine) }))
-            elsif @functions.key?(name) && !@functions[name].exported
-              line(depth, routine_call("#{name}", @waiting.include?(name)))
-            else
-              line(depth, "#{expression(call)};")
-            end
+          # A call written as a statement. One picked from an array is the array's routine, called.
+          def print_eval(depth, call) = line(depth, "#{routine_call(call)};")
+
+          def routine_call(call)
+            return "#{expression(call.args.first)}()" if call.function.text == CALL_ROUTINE
+
+            expression(call)
           end
 
-          # A call of one of the game's routines: delegated to when it can wait, run to its end
-          # here when this routine answers the runtime and cannot wait itself.
-          def routine_call(callee, waits)
-            return "#{callee}();" unless waits
-            return "rg_run_now(#{callee}());" if @answering
+          # A resumable routine run from its start for an answer (C::RunToEnd), in a block of its own:
+          # the counters and locals it can reach kept, the counters set to 0, and all put back after.
+          def print_run_to_end(depth, item)
+            kept = item.counters + item.locals.map(&:name)
+            line(depth, "{")
+            kept.each_with_index { |name, k| line(depth + 1, "const rg_kept_#{k} = #{name.text};") }
+            item.counters.each { |counter| line(depth + 1, "#{counter.text} = 0;") }
+            line(depth + 1, "if (#{routine_call(item.call)}) rg_wait_vblank_while_answering();")
+            kept.each_with_index { |name, k| line(depth + 1, "#{name.text} = rg_kept_#{k};") }
+            line(depth, "}")
+          end
 
-            "yield* #{callee}();"
+          # A resumable routine's steps (Native::Resumable): a loop round a switch on its counter,
+          # each step going on with `continue` and leaving the routine with 1 or 0.
+          def print_steps(depth, item)
+            line(depth, "for (;;) {")
+            line(depth + 1, "switch (#{item.counter.text}) {")
+            item.steps.each_with_index do |step, number|
+              line(depth + 1, "case #{integer(number)}:")
+              statements(depth + 2, step)
+            end
+            line(depth + 1, "default: #{item.counter.text} = 0; return 0;")
+            line(depth + 1, "}")
+            line(depth, "}")
           end
 
           def print_if(depth, item)

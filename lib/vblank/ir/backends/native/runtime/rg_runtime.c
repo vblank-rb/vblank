@@ -50,9 +50,14 @@ void rg_players_read(int32_t count, const uint32_t *masks) {
 void rg_players_held_from_power_on(int32_t count, const uint32_t *masks) { hold_players(count, masks); }
 
 /* The frame the game drew has ended, whoever is driving and whether or not the run stops here. */
-void rg_wait_vblank(void) {
-  rg_screen_frame_ended();
-  rg_active_driver->wait_vblank();
+void rg_wait_vblank(void) { rg_screen_frame_ended(); }
+
+void rg_play_frames(void) {
+  while (rg_game_main()) rg_active_driver->wait_vblank();
+}
+
+void rg_wait_vblank_while_answering(void) {
+  rg_fault("the game waited for the screen while working out an answer the picture or a timer asked for");
 }
 
 /* --- timers (Reference @timers) --- */

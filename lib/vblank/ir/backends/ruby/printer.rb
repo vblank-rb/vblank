@@ -149,8 +149,44 @@ module VBlank
             when C::Return then line(depth, "return")
             when C::Block then statements(depth, item.body) # a Ruby method's locals are its own already
             when C::Comment then comment(depth, item.text)
+            when C::Steps then print_steps(depth, item)
+            when C::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
+                              line(depth, "next")
+            when C::Pause then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
+                               line(depth, "return 1")
+            when C::Finish then line(depth, "#{expression(item.counter)} = 0")
+                                line(depth, "return 0")
+            when C::Resume then line(depth, "return 1 if #{expression(item.call)} == 1")
+            when C::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
+          end
+
+          # A resumable routine run from its start for an answer (C::RunToEnd): the counters and locals
+          # it can reach kept in Ruby locals, the counters set to 0, and all put back after.
+          def print_run_to_end(depth, item)
+            kept = item.counters + item.locals.map(&:name)
+            kept.each_with_index { |name, k| line(depth, "rg_kept_#{k} = #{expression(name)}") }
+            item.counters.each { |counter| line(depth, "#{expression(counter)} = 0") }
+            line(depth, "rg_wait_vblank_while_answering if #{expression(item.call)} == 1")
+            kept.each_with_index { |name, k| line(depth, "#{expression(name)} = rg_kept_#{k}") }
+          end
+
+          # A resumable routine's steps (Native::Resumable): a loop round a case on its counter, each
+          # step going on to the next with `next`, and leaving the method with 1 or 0.
+          def print_steps(depth, item)
+            line(depth, "while true")
+            line(depth + 1, "case #{expression(item.counter)}")
+            item.steps.each_with_index do |step, number|
+              line(depth + 1, "when #{integer(number)}")
+              statements(depth + 2, step)
+            end
+            # A counter no step has (none the game writes) ends the routine, as the C does.
+            line(depth + 1, "else")
+            line(depth + 2, "#{expression(item.counter)} = 0")
+            line(depth + 2, "return 0")
+            line(depth + 1, "end")
+            line(depth, "end")
           end
 
           def print_if(depth, item)

@@ -109,10 +109,22 @@ def rg_match_seed = @rg_match_seed || 0
 
 # --- frames ---
 
-# The frame the game drew has ended, whoever is driving and whether or not the run stops here.
+# The frame the game drew has ended, whoever is driving and whether or not the run stops here. The
+# game then hands the frame back (its routines are resumable, Native::Resumable), and the driver
+# takes the frame between calls of rg_game_main (#rg_play_frames).
 def rg_wait_vblank
   rg_screen_frame_ended
-  rg_driver_wait_vblank
+end
+
+# Plays the game a frame at a time: rg_game_main carries on from where it stopped and hands back 1
+# while it waits for a frame, and the driver takes each frame between.
+def rg_play_frames
+  rg_driver_wait_vblank while rg_game_main == 1
+end
+
+# A routine the runtime asked for an answer cannot wait for a frame: the answer is wanted now.
+def rg_wait_vblank_while_answering
+  rg_fault("the game waited for the screen while working out an answer the picture or a timer asked for")
 end
 
 # What every driver does as a frame begins, after deciding to play it, in the interpreter's order

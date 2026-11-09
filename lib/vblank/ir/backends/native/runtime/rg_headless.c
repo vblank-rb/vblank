@@ -356,6 +356,6 @@ int rg_headless_main(int argc, char **argv) {
     }
   }
   rg_active_driver = &headless;
-  rg_game_main();
+  rg_play_frames();
   finish();
 }

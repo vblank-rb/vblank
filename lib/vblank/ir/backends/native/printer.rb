@@ -46,7 +46,7 @@ module VBlank
             when C::ConstGlobal then print_const_global(item)
             # Zeros until the start file fills it: a static array with no initializer.
             when C::StartFileArray then line(0, "static #{item.type} #{item.name.text}[#{[item.count, 1].max}];")
-            when C::Prototype then line(0, "#{linkage(item)}void #{item.name.text}(void);")
+            when C::Prototype then line(0, "#{linkage(item)}#{returned(item)} #{item.name.text}(void);")
             when C::Function then print_function(item)
             when C::FunctionTable then print_function_table(item)
             when C::ListStorage then print_list_storage(item)
@@ -57,8 +57,12 @@ module VBlank
 
           def linkage(item) = item.exported ? "" : "static "
 
+          # What a routine gives back: a resumable one 1 while it waits for a frame and 0 when done
+          # (Resumable), any other nothing.
+          def returned(item) = item.resumable ? "int32_t" : "void"
+
           def print_function(item)
-            line(0, "#{linkage(item)}void #{item.name.text}(void) {")
+            line(0, "#{linkage(item)}#{returned(item)} #{item.name.text}(void) {")
             statements(1, item.body)
             line(0, "}")
             line(0, "")
@@ -109,7 +113,7 @@ module VBlank
           end
 
           def print_function_table(item)
-            line(0, "static void (*const #{item.name.text}[#{item.functions.size}])(void) = {")
+            line(0, "static #{returned(item)} (*const #{item.name.text}[#{item.functions.size}])(void) = {")
             item.functions.each { |function| line(1, "#{function.text},") }
             line(0, "};")
           end
@@ -136,8 +140,53 @@ module VBlank
             when C::Return then line(depth, "return;")
             when C::Block then print_block(depth, item)
             when C::Comment then comment(depth, item.text)
+            when C::Steps then print_steps(depth, item)
+            when C::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)};")
+                              line(depth, "continue;")
+            when C::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)};")
+                               line(depth, "return 1;")
+            when C::Finish then line(depth, "#{item.counter.text} = 0;")
+                                line(depth, "return 0;")
+            when C::Resume then line(depth, "if (#{resumable_call(item.call)}) return 1;")
+            when C::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
+          end
+
+          # A resumable routine's steps (Resumable): a loop round a switch on its counter, each step
+          # going on with `continue` and leaving the routine with 1 or 0. A counter no step has (none
+          # the game writes) ends the routine.
+          def print_steps(depth, item)
+            line(depth, "for (;;) {")
+            line(depth + 1, "switch (#{item.counter.text}) {")
+            item.steps.each_with_index do |step, number|
+              line(depth + 1, "case #{integer(number)}:")
+              statements(depth + 2, step)
+            end
+            line(depth + 1, "default:")
+            line(depth + 2, "#{item.counter.text} = 0;")
+            line(depth + 2, "return 0;")
+            line(depth + 1, "}")
+            line(depth, "}")
+          end
+
+          # A resumable routine run from its start for an answer (C::RunToEnd), in a block of its own:
+          # the counters and locals it can reach kept, the counters set to 0, and all put back after.
+          def print_run_to_end(depth, item)
+            kept = item.counters.map { |name| ["int32_t", name] } + item.locals.map { |local| [local.type, local.name] }
+            line(depth, "{")
+            kept.each_with_index { |(type, name), k| line(depth + 1, "#{type} rg_kept_#{k} = #{name.text};") }
+            item.counters.each { |counter| line(depth + 1, "#{counter.text} = 0;") }
+            line(depth + 1, "if (#{resumable_call(item.call)}) rg_wait_vblank_while_answering();")
+            kept.each_with_index { |(_, name), k| line(depth + 1, "#{name.text} = rg_kept_#{k};") }
+            line(depth, "}")
+          end
+
+          # A call of a resumable routine, or of one picked from an array of them, for its answer.
+          def resumable_call(call)
+            return "(#{expression(call.args.first)})()" if call.function.text == Resumable::CALL_ROUTINE
+
+            expression(call)
           end
 
           def print_if(depth, item)

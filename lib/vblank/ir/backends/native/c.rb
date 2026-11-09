@@ -73,6 +73,34 @@ module VBlank
           # { ... }, so a loop's own locals stay its own.
           Block = Data.define(:body)
 
+          # --- a routine that can stop for a frame and carry on (Resumable) ---
+
+          # The body of a resumable routine: +steps+, each a list of statements, run from the one
+          # numbered by the routine's +counter+ (a Name, a global of the routine's own). Every step
+          # ends in a Goto, a Pause or a Finish, so no step runs on into the next.
+          Steps = Data.define(:counter, :steps)
+
+          # Carry on at step +step+ of the routine whose counter is +counter+.
+          Goto = Data.define(:counter, :step)
+
+          # Stop for the frame: the routine carries on at step +step+ when it is called again, and
+          # hands back 1, waiting.
+          Pause = Data.define(:counter, :step)
+
+          # The routine is done: its counter back to step 0 for the next call, and it hands back 0.
+          Finish = Data.define(:counter)
+
+          # A call of a resumable routine (+call+): when it hands back 1, waiting, this routine
+          # stops too and hands back 1, and is called again at the step this stands first in.
+          Resume = Data.define(:call)
+
+          # A call of a resumable routine from one that answers the runtime and cannot wait: run from
+          # its start to its end now, and a wait there is a fault (rg_wait_vblank_while_answering).
+          # The +counters+ (Names) and +locals+ (the C::Locals made globals) of every resumable routine the call can reach are kept before
+          # it, the counters set to 0 so each runs from its start, and all put back after it, so a game
+          # stopped inside one of them carries on from where it stopped.
+          RunToEnd = Data.define(:call, :counters, :locals)
+
           # A comment on a line of its own: where in the game a piece of C came from.
           Comment = Data.define(:text)
 
@@ -110,22 +138,27 @@ module VBlank
           StartFileArray = Data.define(:name, :type, :count)
 
           # A routine taking nothing and giving nothing back. +exported+ is for the few the
-          # runtime calls by name; the rest are private to the generated file.
-          Function = Data.define(:name, :body, :exported) do
-            def initialize(name:, body:, exported: false)
+          # runtime calls by name; the rest are private to the generated file. A +resumable+ one
+          # gives back 1 when it stopped for a frame and 0 when it is done (Resumable).
+          Function = Data.define(:name, :body, :exported, :resumable) do
+            def initialize(name:, body:, exported: false, resumable: false)
               super
             end
           end
 
           # Declares a routine before its body, so routines can call each other in any order.
-          Prototype = Data.define(:name, :exported) do
-            def initialize(name:, exported: false)
+          Prototype = Data.define(:name, :exported, :resumable) do
+            def initialize(name:, exported: false, resumable: false)
               super
             end
           end
 
-          # An array of routines, for calling one by its number.
-          FunctionTable = Data.define(:name, :functions)
+          # An array of routines, for calling one by its number; resumable ones where any is.
+          FunctionTable = Data.define(:name, :functions, :resumable) do
+            def initialize(name:, functions:, resumable: false)
+              super
+            end
+          end
 
           # A game's list (see runtime/rg_list.h): +items+ is the array behind it, +capacity+
           # long, each slot +width+ bytes; +label+ is the game's name for it, for messages.

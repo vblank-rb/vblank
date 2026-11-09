@@ -1871,7 +1871,7 @@ int main(int argc, char **argv) {
 #endif
   read_computer_clock();
   rg_active_driver = &sdl;
-  rg_game_main();
+  rg_play_frames();
   /* A game with no game loop ends; its last picture stays up like a halt's. */
   sdl_halt();
   return 0;

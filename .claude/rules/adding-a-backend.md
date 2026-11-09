@@ -280,11 +280,12 @@ Each of these is what Reference does; check the line before relying on it.
   reads -56 (`Reference::ListValue#wrap_to_width`).
 - **A frame can end anywhere.** `wait_vblank` may sit deep inside a routine, in a loop, in a
   scene called from a scene: the runtime has to take a frame from the middle of a call and come
-  back to it (Reference's `advance_frame` runs synchronously inside `exec_wait_vblank`; Native's
-  `rg_wait_vblank` hands the frame to its driver and returns). A browser cannot block, so the
-  JavaScript lowering writes every routine that can reach a wait as a generator, the wait as
-  `yield` and a call to one as `yield*`, and its driver plays the game a frame at a time
-  (`JS::Printer` says how; a routine that never waits stays a plain function).
+  back to it (Reference's `advance_frame` runs synchronously inside `exec_wait_vblank`). The C,
+  JavaScript and Ruby lowerings make every routine that can reach a wait resumable
+  (`Native::Resumable`): cut into numbered steps, its step and locals in globals of its own, a wait
+  giving back 1 up the chain to a driver that calls `rg_game_main` once a frame. So between frames
+  the place the game has reached is in its globals, which a save state writes; a routine that never
+  waits stays as it was.
 - **`halt` never returns.**
 
 ## Joining the test runs

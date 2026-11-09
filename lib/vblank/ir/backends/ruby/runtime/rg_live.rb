@@ -22,7 +22,7 @@ def rg_live_main(player, match_seed = nil, local_player = nil)
   @rg_match_seed = match_seed
   @rg_local_player = local_player
   stopped_by = catch(:rg_live_stop) do
-    rg_game_main
+    rg_play_frames
     nil
   end
   stopped_by == :player ? nil : rg_screen_shown

@@ -13,7 +13,8 @@ module VBlank
         # being written first.
         #
         # What the generated file holds, top to bottom: the game's variables, every routine, the
-        # program itself as rg_game_main (the runtime calls it once, at power-on), and
+        # program itself as rg_game_main (the runtime calls it once a frame from power-on, and it
+        # carries on from where it stopped: Resumable), and
         # rg_game_dump_state, which a test build uses to print where every variable and list stands.
         class Lowering
           include Picture
@@ -267,7 +268,12 @@ module VBlank
           # The routines are written first, the ones the picture asks the game through among
           # them, because writing them is what finds the art they draw with; the art then goes
           # above them in the file.
-          def top_level
+          #
+          # Every routine that can wait for a frame is then made resumable (Resumable), so the place
+          # the game has reached is in its globals between frames, in every language it is printed in.
+          def top_level = Resumable.new(top_level_items).items
+
+          def top_level_items
             routines = @called.map { |name| C::Function.new(name: routine(name), body: body_of(@funcs.fetch(name))) }
             answers = [see_through_amounts, bend_offsets, work_out_bends, shade_span, shade_amount, timer_ticks,
                        sprites_over_picture_routine]

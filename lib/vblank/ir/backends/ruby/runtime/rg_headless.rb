@@ -105,7 +105,7 @@ def rg_headless_main(argv)
   # or "jit none". Said once, before the first frame, by the Ruby that runs the game, which is not
   # the one that started it: that one's settings set nothing for this one's.
   $stdout.write("jit #{defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? 'yjit' : 'none'}\n")
-  rg_game_main
+  rg_play_frames
   rg_headless_finish
 end
 

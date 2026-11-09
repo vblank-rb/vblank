@@ -15,9 +15,11 @@
 
 /* --- what the game provides --- */
 
-/* The whole program, from power-on. The runtime calls it once. A game with a game loop never
- * comes back from it; the runtime ends the run from inside rg_wait_vblank or rg_halt. */
-void rg_game_main(void);
+/* The whole program, from power-on, a frame at a time: it carries on from where it stopped and
+ * gives back 1 when it stops for a frame, 0 when the game is done. Every routine that waits is
+ * written so (Native::Resumable), so between frames the place the game has reached is in its
+ * globals. The driver calls it through rg_play_frames. */
+int32_t rg_game_main(void);
 
 /* Hands every variable the game keeps to rg_dump_variable, by its Ruby name, and then every
  * list to rg_dump_list — a pool's fields among them, since a pool is kept as lists. */
@@ -35,10 +37,18 @@ void rg_game_timer_ticks(void);
 
 /* --- what the runtime provides --- */
 
-/* The end of a frame: the picture is shown, the buttons are read, and the game waits for the
- * next frame. The console calls this moment the vertical blank, which is where the name comes
- * from. A run that has played all the frames it was asked for ends here. */
+/* The end of a frame the game drew. The game then stops for the frame and the driver shows it,
+ * reads the buttons and waits for the next. The console calls this moment the vertical blank,
+ * which is where the name comes from. */
 void rg_wait_vblank(void);
+
+/* Plays the game a frame at a time from power-on: rg_game_main, and the driver's frame between
+ * each call, until the game is done. A run that has played all the frames it was asked for ends in
+ * the driver's frame. */
+void rg_play_frames(void);
+
+/* A routine the runtime asked for an answer waited for a frame, which it cannot: a fault. */
+void rg_wait_vblank_while_answering(void);
 
 /* The game stopped on purpose (`halt`). Never comes back. */
 _Noreturn void rg_halt(void);
