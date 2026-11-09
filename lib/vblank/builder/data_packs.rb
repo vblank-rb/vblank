@@ -97,7 +97,7 @@ module VBlank
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
-        slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, copy.sha1, cache) : copied
+        slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, cache) : copied
         @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
         @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
@@ -430,30 +430,29 @@ module VBlank
                              "tiles of #{side}x#{side} pixels. Make the picture #{places.across * side}x#{places.down * side}."
       end
 
-      # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy's
-      # +bytes+ as a table, the pack's bytes as one list, each of +slots+ copied as it is or filled
-      # by +routine+, the game's `slots.fill_from_copy` block, run as game code on a builder of its
-      # own. A pack with no routine has one too, which only copies: it is what a shell runs for any pack.
+      # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy
+      # read from the file the program is handed as it starts, the pack's bytes as one list, each of
+      # +slots+ copied as it is or filled by +routine+, the game's `slots.fill_from_copy` block, run
+      # as game code on a builder of its own. A pack with no routine has one too, which only copies:
+      # it is what a shell runs for any pack. The program holds none of the copy however it is built.
       #
-      # With the pack left out there are no +bytes+: the program is built for a copy of the size
-      # of +release+ (an Original::Release), the one it unpacks, and reads the copy from the file it is handed as
-      # it starts, so it holds none of the copy either. That program is what a shell plays on the
-      # player's machine, so it is built for the game's console, and shows how far it has got
-      # (#define_unpacking_progress). +reading+ (a CopyReading) says which packed formats the copy
+      # Built all-in-one, +bytes+ is the copy the build read: the program is built for a copy of
+      # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
+      # With the pack left out there are no +bytes+: the program is built for a copy of the size of
+      # +release+ (an Original::Release), the one it unpacks. That program is what a shell plays on
+      # the player's machine, so it shows how far it has got (#define_unpacking_progress). Both are
+      # built for the game's console. +reading+ (a CopyReading) says which packed formats the copy
       # offers the routine.
       def unpacking_program(bytes, slots, routine, reading, release:)
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
-          copy = if bytes
-                   maker.table(Original::Unpacking::COPY, bytes.bytes, width: :byte, signed: false)
-                 else
-                   declare_copy_table_from_start_file(maker, slots, release.size)
-                 end
+          copy_size = bytes ? bytes.bytesize : release.size
+          copy_table = declare_copy_table_from_start_file(maker, slots, copy_size)
           list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
-          reader = Original::CopyReader.new(maker, copy: copy, pack: list, faults: faults, formats: reading.formats,
+          reader = Original::CopyReader.new(maker, copy: copy_table, pack: list, faults: faults, formats: reading.formats,
                                                    platform: reading.platform, release: release, before_wait: progress)
           define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
           places = Original::Unpacking.places_of(slots)
@@ -472,8 +471,8 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: bytes ? bytes.bytesize : release.size,
-                                  format_words: reader.format_words)
+          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: copy_size,
+                                  format_words: reader.format_words, copy_bytes: bytes&.b)
         end
       end
 
@@ -539,10 +538,10 @@ module VBlank
       end
 
       # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
-      def unpacked_slot_bytes(unpacking, copy_sha1, cache)
+      def unpacked_slot_bytes(unpacking, cache)
         return unpack_on_interpreter(unpacking) if cache.nil?
 
-        Original::PackCache.new(cache).slot_bytes(unpacking, copy_sha1) { unpack_on_interpreter(unpacking) }
+        Original::PackCache.new(cache).slot_bytes(unpacking) { unpack_on_interpreter(unpacking) }
       end
 
       # Each slot's bytes as +unpacking+ writes them on the interpreter, the answer key every other
@@ -552,8 +551,7 @@ module VBlank
       def unpack_on_interpreter(unpacking)
         most_frames = most_unpacking_frames(unpacking)
         ran = begin
-          IR::Backends::Reference.new.run(unpacking.program, frames: most_frames,
-                                                             max_steps: most_unpacking_steps_a_frame(unpacking))
+          unpacking.run_on(IR::Backends::Reference.new, frames: most_frames, max_steps: most_unpacking_steps_a_frame(unpacking))
         rescue IR::ProgramError => e
           raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
         end

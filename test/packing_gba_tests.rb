@@ -16,7 +16,7 @@ module PackingGBATests
   def test_the_routine_unpacks_an_lz77_block_and_an_rle_block_into_one_pack
     Dir.mktmpdir do |folder|
       unpacking = unpacked_pack(VBlank::Builder.new, folder).unpacking
-      played = game_player.run(unpacking.program, frames: 8)
+      played = unpacking.run_on(game_player, frames: 8)
 
       assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") },
                    unpacking.slot_bytes_in(played))
@@ -41,7 +41,7 @@ module PackingGBATests
         end
       end.unpacking
 
-      assert_equal({ by_lz77: raw, by_rle: raw }, unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 8)))
+      assert_equal({ by_lz77: raw, by_rle: raw }, unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 8)))
     end
   end
 end

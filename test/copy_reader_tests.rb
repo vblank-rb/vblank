@@ -42,7 +42,7 @@ module CopyReaderTests
   # file's start, the places in DATA.MU1 read out of INDEX.MU1 as the routine runs.
   def test_a_routine_reads_each_file_of_a_copy_that_is_several_files
     unpacking = VBlank::Builder.new.data_pack(from: folder_original, version: "1") { |slots| folder_slots(slots) }.unpacking
-    played = game_player.run(unpacking.program, frames: 8)
+    played = unpacking.run_on(game_player, frames: 8)
 
     assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") }, unpacking.slot_bytes_in(played))
   end
@@ -55,7 +55,7 @@ module CopyReaderTests
         slots.numbers :runs, count: 10, width: :byte, signed: false
         slots.fill_from_copy { |copy, pack| copy.unpack_pair_runs at: 1, into: pack[:runs], times: 2 }
       end.unpacking
-      played = game_player.run(unpacking.program, frames: 4)
+      played = unpacking.run_on(game_player, frames: 4)
 
       assert_equal({ runs: ([7] * 6 + [9] * 4).pack("C*") }, unpacking.slot_bytes_in(played))
       assert_equal 10, unpacking.bytes_done_in(played)
@@ -68,10 +68,10 @@ module CopyReaderTests
       unpacking = unpacked_pack(VBlank::Builder.new, folder).unpacking
 
       assert_equal 32 + 64 + HEIGHTS.length, unpacking.byte_size
-      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
+      early = unpacking.bytes_done_in(unpacking.run_on(game_player, frames: 1))
       assert_operator early, :>, 0, "a frame in, some of the pack is unpacked"
       assert_operator early, :<, unpacking.byte_size, "...and not all of it, since each block waits for a frame"
-      assert_equal unpacking.byte_size, unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 8))
+      assert_equal unpacking.byte_size, unpacking.bytes_done_in(unpacking.run_on(game_player, frames: 8))
     end
   end
 
@@ -86,10 +86,10 @@ module CopyReaderTests
         slots.fill_from_copy { |copy, pack| copy.unpack_lz77 at: 0, into: pack[:big] }
       end.unpacking
 
-      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
+      early = unpacking.bytes_done_in(unpacking.run_on(game_player, frames: 1))
       assert_operator early, :>, 0, "a frame in, some of the block is unpacked"
       assert_operator early, :<, raw.bytesize, "...and not all of it"
-      assert_equal raw.bytesize, unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 10))
+      assert_equal raw.bytesize, unpacking.bytes_done_in(unpacking.run_on(game_player, frames: 10))
     end
   end
 
@@ -105,7 +105,7 @@ module CopyReaderTests
       end.unpacking
 
       assert_equal [SPEEDS[1], SPEEDS[3], SPEEDS[5], SPEEDS[7]].reverse.pack("C*"),
-                   unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:backwards]
+                   unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4))[:backwards]
     end
   end
 
@@ -133,7 +133,7 @@ module CopyReaderTests
       unpacking = made_pack.unpacking
 
       assert_equal SPEEDS.map { |speed| (speed * 2) & 0xFF }.pack("C*"),
-                   unpacking.slot_bytes_in(game_player.run(unpacking.program, frames: 4))[:doubled]
+                   unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4))[:doubled]
     end
   end
 
@@ -170,10 +170,10 @@ module CopyReaderTests
       end
       unpacking = made_pack.unpacking
 
-      early = unpacking.bytes_done_in(game_player.run(unpacking.program, frames: 1))
+      early = unpacking.bytes_done_in(unpacking.run_on(game_player, frames: 1))
       assert_operator early, :>, 0, "a frame in, some of the runs are counted"
       assert_operator early, :<, OWN_FORMAT_BYTES.bytesize, "...and not all of them, since the routine waits for a frame"
-      played = game_player.run(unpacking.program, frames: 20)
+      played = unpacking.run_on(game_player, frames: 20)
       assert_equal({ runs: OWN_FORMAT_BYTES }, unpacking.slot_bytes_in(played))
       assert_equal OWN_FORMAT_BYTES.bytesize, unpacking.bytes_done_in(played)
     end

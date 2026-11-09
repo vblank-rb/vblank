@@ -13,17 +13,19 @@ module VBlank
     #
     #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
     #
-    # THE KEY is everything the bytes are made from: the unpacking program, which holds the copy's
-    # bytes, the routine and the slots, written out as IR::Dump writes a program, so a change to any
-    # of them misses; the copy's SHA-1 besides; the library, every file under its lib by its place
-    # there and its contents, since the interpreter that runs the routine is part of it (so a
-    # checkout and a worktree of it share entries); and the Ruby. The folder must be one git
-    # ignores, since what is cached is the original's data.
+    # THE KEY is everything the bytes are made from: the unpacking program, which holds the routine,
+    # the slots and the copy's size, written out as IR::Dump writes a program, so a change to any of
+    # them misses; a digest of the copy's bytes themselves, worked out here rather than taken from
+    # what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
+    # so a copy of many megabytes adds nothing to the key's text); the library, every file under its
+    # lib by its place there and its contents, since the interpreter that runs the routine is part
+    # of it (so a checkout and a worktree of it share entries); and the Ruby. The folder must be one
+    # git ignores, since what is cached is the original's data.
     #
     # Each change to the library misses once and writes a new entry, so entries are pruned: one no
     # build has read for EXPIRE_DAYS goes when the next is stored, and so does a half-written one
-    # left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each miss
-    # and each store the same bytes: an entry is written under a name of its own and then renamed,
+    # left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each
+    # miss and each store the same bytes: an entry is written under a name of its own and then renamed,
     # so neither reads half of one, and an entry that cannot be read is made again. A PackCache
     # holds nothing that changes, so it is made for each build.
     class PackCache
@@ -36,10 +38,10 @@ module VBlank
         @folder = File.expand_path(folder)
       end
 
-      # Each slot's bytes for +unpacking+ (an Original::Unpacking) of the copy whose SHA-1 is
-      # +copy_sha1+: the cached entry on a hit, else the block's, which is then stored.
-      def slot_bytes(unpacking, copy_sha1)
-        path = File.join(@folder, "#{key(unpacking, copy_sha1)}#{ENTRY_EXTENSION}")
+      # Each slot's bytes for +unpacking+ (an Original::Unpacking, holding the copy it reads): the
+      # cached entry on a hit, else the block's, which is then stored.
+      def slot_bytes(unpacking)
+        path = File.join(@folder, "#{key(unpacking)}#{ENTRY_EXTENSION}")
         cached = read(path)
         return cached if cached
 
@@ -50,9 +52,10 @@ module VBlank
 
       private
 
-      def key(unpacking, copy_sha1)
+      def key(unpacking)
         digest = Digest::SHA256.new
-        digest << library_digest << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0" << copy_sha1 << "\0"
+        digest << library_digest << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
+        digest << Digest::SHA256.hexdigest(unpacking.copy_bytes) << "\0"
         digest << IR::Dump.source(unpacking.program)
         digest.hexdigest
       end

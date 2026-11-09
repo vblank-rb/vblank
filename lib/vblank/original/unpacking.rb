@@ -17,26 +17,41 @@ module VBlank
     # table, a byte list, loops, routines, `wait_vblank`, `halt`), so every run plays it as it plays
     # any game, checked against the interpreter, and nothing new is asked of a backend.
     #
-    # BUILT WITH THE PACK LEFT OUT. Built all-in-one, the copy is a table of constants made from
-    # the copy's file as the game is built. A build that leaves the pack out (`pack_at_start:`,
-    # Builder::DataPacks) has no copy and must not hold the original's bytes, so its program is
-    # built for a copy of a known size (`pack.unpacking(release:)`, which holds the release's size) and COPY
-    # is read from the file it is handed as it starts (IR::StartFile): the player's copy. Played to
-    # its `halt` on any computer's runtime handed that file, BYTES read back after it is the pack.
+    # THE COPY IS A FILE THE PROGRAM IS HANDED AS IT STARTS (IR::StartFile), however it is built,
+    # so the program holds none of the original's bytes: a copy of tens of megabytes held as a
+    # table, one Ruby number a byte, and written out again as text for the pack cache's key, would
+    # cost many times its size. Built all-in-one, the build hands it the copy it read (#run_on). A
+    # build that leaves the pack out (`pack_at_start:`, Builder::DataPacks) has no copy, so its
+    # program is built for a copy of a known size (`pack.unpacking(release:)`, which holds the
+    # release's size), and a shell hands it the player's. Played to its `halt` on any computer's
+    # runtime handed that file, BYTES read back after it is the pack.
     # The routine itself does not change for any of that. What a shell must still add is playing it
     # inside the shipped game before the game, and keeping the pack it wrote.
     #
-    # WHAT IS IN IT. The copy is a table of bytes (COPY). The pack is one list of bytes (BYTES),
-    # every slot in it one after another in the pack's order (#places), as the pack file keeps them.
+    # WHAT IS IN IT. The copy is a table of bytes (COPY), read from the file. The pack is one list of
+    # bytes (BYTES), every slot in it one after another in the pack's order (#places), as the pack
+    # file keeps them.
     # The slots copied as they are (`at:`) are copied first, then the routine runs, then FINISHED is
     # set and the program halts. The building blocks (CopyReader, Packing::BlockKit) add what they
     # write to BYTES_DONE as they go and wait for the next frame every so often, so a shell can show
     # how far the unpacking has got. The first thing that goes wrong (Fault) is kept in the FAULT_
     # variables and nothing after it overwrites it. +format_words+ are what a person calls each
     # format the copy offered, in the order a fault numbers them.
-    Unpacking = Data.define(:program, :slots, :copy_size, :format_words)
+    #
+    # +copy_bytes+ is the copy where the build read one (an all-in-one build), handed to the program
+    # as its file whenever it is played (#run_on); nil for a shell's, which is handed the player's.
+    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes)
 
     class Unpacking
+      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil) = super
+
+      # A run of the program on +player+ (the interpreter, or any computer runtime's player), handed
+      # the copy the build read where it read one. +options+ are the player's `run`'s.
+      def run_on(player, **options)
+        player = player.hand_file(copy_bytes) if copy_bytes
+        player.run(program, **options)
+      end
+
       COPY = Messages::MadeNames.make(:unpacking_part, part: :copy)
       BYTES = Messages::MadeNames.make(:unpacking_part, part: :bytes)
       BYTES_DONE = Messages::MadeNames.make(:unpacking_part, part: :bytes_done)

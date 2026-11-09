@@ -314,10 +314,15 @@ module PackAtStartTests
      ["the bigger game", big_game_program(folder, options: VBlank::Cartridge::Options.new),
       big_game_program(folder, options: PACK_AT_START), [*(0...BIG_TILES).map(&tile), COPY.bytes.first(FILLER_BYTES)]],
      ["the game of unpacked slots", game_program(reads_heights), game_program(reads_heights, options: PACK_AT_START),
-      [tile.call(0), tile.call(1), HEIGHTS]],
-     ["the unpacking", heights.call(VBlank::Builder.new).unpacking.program,
-      heights.call(VBlank::Builder.new(options: PACK_AT_START)).unpacking(release: made_up_release).program,
-      COPY.bytes.each_slice(64).to_a]]
+      [tile.call(0), tile.call(1), HEIGHTS]]]
+  end
+
+  # The unpacking reads the copy as a file however it is built, so neither build of it holds the
+  # copy's bytes: [the all-in-one build's program, the left-out build's].
+  private def unpackings_searched(folder)
+    heights = ->(builder) { unpacked_pack(builder, folder) }
+    [heights.call(VBlank::Builder.new).unpacking.program,
+     heights.call(VBlank::Builder.new(options: PACK_AT_START)).unpacking(release: made_up_release).program]
   end
 
   # Each program as the block writes it out (as C, JavaScript or Ruby) holds every needle when
@@ -327,6 +332,12 @@ module PackAtStartTests
   private def assert_written_without_the_originals_bytes(ways:, &write)
     Dir.mktmpdir do |folder|
       found = ways_holding_needles(programs_searched(folder), &write)
+      unpackings_searched(folder).each do |unpacking|
+        runs = number_runs_in(write.call(unpacking))
+        COPY.bytes.each_slice(64).each do |needle|
+          assert_empty ways_holding(runs, needle), "the unpacking holds the copy's bytes #{needle.first(8)}..."
+        end
+      end
       assert_equal ways.sort, found.uniq.sort, "the all-in-one builds hold the original's bytes in every way an array is written"
     end
   end

@@ -457,6 +457,29 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # AN ALL-IN-ONE BUILD'S UNPACKING READS THE COPY AS A FILE, as a shell's does, so the program holds
+  # none of the copy, and nor does the text the pack cache's key is made from: a copy of a megabyte
+  # leaves the program's text far below its size. Held as a table, the text was several times the
+  # copy, so a sixteenth of it is a bound only a program without the copy can keep. The pack is
+  # still the one the copy makes.
+  BIG_COPY_BYTES = 1 << 20
+
+  def test_an_all_in_one_unpacking_holds_none_of_the_copy
+    Dir.mktmpdir do |folder|
+      bytes = Random.new(7).bytes(BIG_COPY_BYTES)
+      builder = Builder.new
+      pack = builder.data_pack(from: copy_of(folder, bytes), version: "1") do |slots|
+        slots.numbers :tail, count: 16, width: :byte, signed: false
+        slots.fill_from_copy { |copy, filled| copy.copy_bytes at: BIG_COPY_BYTES - 16, count: 16, into: filled[:tail] }
+      end
+
+      assert_operator VBlank::IR::Dump.source(pack.unpacking.program).bytesize, :<, BIG_COPY_BYTES / 16,
+                      "the program as text is a small part of the copy's size"
+      assert_equal bytes.byteslice(BIG_COPY_BYTES - 16, 16),
+                   VBlank::Original::Pack.from_bytes(builder.made_data_pack_file).bytes_of(:tail)
+    end
+  end
+
   # The slot says whether its numbers can be below zero; the bytes never decide it. 0xF6 is -10 in
   # a slot of signed bytes, so the marker stands ten pixels left of 100.
   def test_a_table_from_a_slot_of_signed_numbers_reads_them_below_zero

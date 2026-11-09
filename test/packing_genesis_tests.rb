@@ -62,7 +62,7 @@ module PackingGenesisTests
         bytes.unpack_nemesis at: xored_at, into: pack[:art], start: 96
       end
     end
-    played = game_player.run(unpacking.program, frames: 20)
+    played = unpacking.run_on(game_player, frames: 20)
 
     assert_equal GENESIS_TILES * 2,
                  GenesisPackingAnswers.nemesis_tiles(copy, 0) + GenesisPackingAnswers.nemesis_tiles(copy, xored_at),
@@ -74,7 +74,7 @@ module PackingGenesisTests
   # Each cell is a word, high byte first, as a Genesis keeps one.
   def test_unpack_enigma_gives_back_the_cells
     unpacking = genesis_unpacking(FILLER + MAP + FILLER) { |slots| map_slots(slots) }
-    played = game_player.run(unpacking.program, frames: 20)
+    played = unpacking.run_on(game_player, frames: 20)
 
     assert_equal 0x2010, MAP_CELLS[0], "the counting word with the base added"
     assert_equal 0x3055, MAP_CELLS[5], "a spelt cell flipped top to bottom"

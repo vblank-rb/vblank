@@ -71,6 +71,21 @@ class TestPackCache < Minitest::Test
     end
   end
 
+  # The key is made from the copy's bytes themselves, so a different copy makes its pack again even
+  # where it says it has the SHA-1 of the copy kept before.
+  def test_a_different_copy_makes_the_pack_again_whatever_its_sha1_says
+    Dir.mktmpdir do |folder|
+      cache = File.join(folder, "packs")
+      program = halting_program
+      kept = VBlank::Original::PackCache.new(cache)
+      first = kept.slot_bytes(UnpackingOfCopy.new(program: program, copy_bytes: "one copy")) { { walls: "first" } }
+      second = kept.slot_bytes(UnpackingOfCopy.new(program: program, copy_bytes: "another copy")) { { walls: "second" } }
+
+      assert_equal [{ walls: "first" }, { walls: "second" }], [first, second]
+      assert_equal 2, kept_entries(cache).size
+    end
+  end
+
   def test_an_entry_that_cannot_be_read_is_made_again
     Dir.mktmpdir do |folder|
       cache = File.join(folder, "packs")
@@ -104,9 +119,9 @@ class TestPackCache < Minitest::Test
   def test_builds_on_threads_that_miss_together_keep_one_entry_and_say_nothing
     Dir.mktmpdir do |folder|
       cache = VBlank::Original::PackCache.new(folder)
-      unpacking = Data.define(:program).new(program: halting_program)
+      program = halting_program
       said = warnings_from do
-        COPIES_TRIED.times { |copy| store_on_threads_at_once(cache, unpacking, "copy-#{copy}") }
+        COPIES_TRIED.times { |copy| store_on_threads_at_once(cache, UnpackingOfCopy.new(program: program, copy_bytes: "copy-#{copy}")) }
       end
 
       assert_empty said
@@ -117,13 +132,16 @@ class TestPackCache < Minitest::Test
   COPIES_TRIED = 10
   THREADS_STORING = 8
 
+  # What the cache asks of an unpacking: its program and the copy it reads.
+  UnpackingOfCopy = Data.define(:program, :copy_bytes)
+
   # THREADS_STORING builds of one copy on threads, every one missing before any stores.
-  private def store_on_threads_at_once(cache, unpacking, copy_sha1)
+  private def store_on_threads_at_once(cache, unpacking)
     missed = Queue.new
     go = Queue.new
     threads = Array.new(THREADS_STORING) do
       Thread.new do
-        cache.slot_bytes(unpacking, copy_sha1) do
+        cache.slot_bytes(unpacking) do
           missed << true
           go.pop
           { walls: "\1".b * 65_536 }
