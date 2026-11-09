@@ -55,6 +55,11 @@ module VBlank
       # Each glyph keeps its own width, so an alphabet that was drawn proportionally
       # stays proportional. Give a block or +glyphs:+, not both.
       #
+      # A glyph may be a run of a data pack's pixels instead, with the font's +height:+, for an
+      # alphabet that is the original's (PictureFonts#declare_font_of_pack_pixels):
+      #
+      #   font :lettering, glyphs: { "A" => pack[:font].pixels(0, 70) }, height: 10
+      #
       # OR A FONT OF THE GAME'S OWN PICTURES, in all their colours: a score in the game's
       # numerals, words in letters lifted off a cartridge. `pictures:` maps each character to a
       # picture declared with `image` — from art, a file, or a data pack's slots:
@@ -80,9 +85,18 @@ module VBlank
       # @param pictures [Hash{String=>Symbol}, nil] char → a declared picture's name
       # @param strip [Symbol, nil] a declared picture to cut, one piece per character of +characters+
       # @param characters [String, nil] the characters of +strip+, left to right
+      # @param height [Integer, nil] how tall each letter is, for glyphs: given as a data pack's pixels
       # @return [Symbol] the font name
       def font(name, on: "#", spacing: nil, fold: nil, glyphs: nil, blank: 0, pictures: nil, strip: nil,
-               characters: nil, &block)
+               characters: nil, height: nil, &block)
+        if glyphs.is_a?(Hash) && glyphs.values.any?(DSL::PackSlot)
+          raise ArgumentError, "font :#{name} takes a block or glyphs:, not both. Give one of them." if block
+          return declare_font_of_pack_pixels(name, glyphs, height: height, blank: blank, spacing: spacing || 1, fold: fold)
+        end
+        unless height.nil?
+          raise ArgumentError, "font :#{name} was given height:, which only a font of a data pack's pixels takes. " \
+                               "To fix this, leave height: out."
+        end
         if pictures || strip
           if block || glyphs || fold
             raise ArgumentError, "font :#{name} is made of pictures, so it takes no glyphs:, fold: or block. " \
@@ -172,6 +186,9 @@ module VBlank
         if picture_font?(font)
           return draw_text_in_pictures(text, x, y, color, font: font, within: within, showing: showing)
         end
+        if lettering_font?(font)
+          return draw_text_in_lettering(text, x, y, color, font: font, within: within, showing: showing)
+        end
 
         refuse_missing_color!("draw_text", color)
         colors = text_colors!(color, showing)
@@ -235,6 +252,10 @@ module VBlank
           return draw_number_in_pictures(value, x, y, color, font: font, digits: digits, within: within,
                                                              leading_zeros: leading_zeros)
         end
+        if lettering_font?(font)
+          return draw_number_in_lettering(value, x, y, color, font: font, digits: digits, within: within,
+                                                              leading_zeros: leading_zeros)
+        end
 
         refuse_missing_color!("draw_number", color)
         chosen = IR::FontTable.of(@program).get(font)
@@ -283,7 +304,7 @@ module VBlank
       private
 
       # The font a name means: a font of the game's own pictures, else a font of glyphs.
-      def font_named(name) = @picture_fonts[name] || IR::FontTable.of(@program).get(name)
+      def font_named(name) = @picture_fonts[name] || @lettering_fonts[name]&.metrics || IR::FontTable.of(@program).get(name)
 
       def refuse_missing_color!(verb, color)
         return unless color.nil?

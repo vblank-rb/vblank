@@ -457,6 +457,75 @@ class TestDataPacks < Minitest::Test
     end
   end
 
+  # A FONT WHOSE LETTERS ARE PIXELS OF THE PACK, as a computer game keeps its alphabet: each letter
+  # its own run of bytes in a slot of pixels, row by row, lit where the byte is not nought, and drawn
+  # in the colour draw_text asks. "A" is three pixels by two, "B" two by two; between them the
+  # font's one pixel of spacing.
+  LETTER_BYTES = [0, 5, 0, 7, 0, 9, 3, 0, 0, 4].freeze
+
+  private def lettering_game(folder, options: VBlank::Cartridge::Options.new, glyphs: nil, height: 2)
+    from = copy_of(folder, LETTER_BYTES.pack("C*"))
+    b = Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: 0, count: LETTER_BYTES.length }
+      glyphs ||= { "A" => pack[:letters].pixels(0, 6), "B" => pack[:letters].pixels(6, 4) }
+      font :lettering, glyphs: glyphs.respond_to?(:call) ? glyphs.call(pack) : glyphs, height: height
+      game_loop do
+        clear_screen :blue
+        draw_text "AB", 10, 10, :red, font: :lettering
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_font_from_pixels_of_the_pack_draws_its_lit_pixels_in_the_colour_asked
+    Dir.mktmpdir do |folder|
+      screen = game_player.run(lettering_game(folder), frames: 2).screen
+      drawn = Array.new(2) { |y| Array.new(7) { |x| screen.pixel(10 + x, 10 + y) } }
+
+      red, blue = %i[red blue].map { |name| Color.resolve(name) }
+      assert_equal [[blue, red, blue, blue, red, blue, blue], [red, blue, red, blue, blue, red, blue]], drawn
+    end
+  end
+
+  def test_a_font_from_pixels_of_the_pack_needs_a_height_its_letters_divide_by
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) { lettering_game(folder, height: 4) }
+
+      assert_match "height: 4", refused.message
+      assert_match "\"A\"", refused.message
+    end
+  end
+
+  # With the pack left out, a number that changes draws each digit as a picture of the pack, so it
+  # needs all ten digits; this font has none.
+  def test_a_changing_number_in_a_font_of_the_pack_left_out_without_its_digits_is_refused
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, LETTER_BYTES.pack("C*"))
+      refused = assert_raises(ArgumentError) do
+        Builder.new(options: READS_PACK_AT_START).instance_eval do
+          pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: 0, count: LETTER_BYTES.length }
+          font :lettering, glyphs: { "A" => pack[:letters].pixels(0, 6) }, height: 2
+          score = var :score, 0
+          draw_number score, 10, 10, :red, font: :lettering
+        end
+      end
+
+      assert_match "font :lettering", refused.message
+      assert_match "0 to 9", refused.message
+    end
+  end
+
+  def test_a_font_from_pixels_of_the_pack_without_a_height_is_refused
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) { lettering_game(folder, glyphs: ->(pack) { { "A" => pack[:letters] } }, height: nil) }
+
+      assert_match "height:", refused.message
+    end
+  end
+
   # AN ALL-IN-ONE BUILD'S UNPACKING READS THE COPY AS A FILE, as a shell's does, so the program holds
   # none of the copy, and nor does the text the pack cache's key is made from: a copy of a megabyte
   # leaves the program's text far below its size. Held as a table, the text was several times the

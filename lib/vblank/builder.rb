@@ -196,6 +196,7 @@ module VBlank
       @glyph_images = {}       # [font, char, color] → a cached glyph image name (one 8x8 sprite tile per glyph)
       @picture_fonts = {}      # font name → Graphics::PictureFont, a font of the game's own pictures
       @pack_picture_options = {} # picture name → the image options of a picture made from a data pack's tiles
+      @lettering_fonts = {}    # font name → PictureFonts::Lettering, a font of a pack's pixels with the pack left out
       @verb_owns_text = nil    # the verb drawing its own text right now (a menu's rows), rather than the author placing it
       @animations = []         # flipbook sprites, whose pose is advanced on a beat after every wait_vblank
       @pool_animations = []    # ...and posed pools, which step every instance on their own beat

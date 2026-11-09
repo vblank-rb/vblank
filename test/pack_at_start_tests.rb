@@ -458,6 +458,52 @@ module PackAtStartTests
     end
   end
 
+  # A FONT OF THE PACK'S PIXELS with the pack left out: each letter a run of the sprite bytes, lit
+  # where a byte is not nought, written in one colour, in a pair picked by a test that changes every
+  # pass, placed in the middle, and as a number.
+  LETTERING_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:letters, at: SPRITES_AT, count: 120)])
+
+  private def lettering_pack_file
+    VBlank::Original::Pack.holding(LETTERING_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
+  end
+
+  private def lettering_game(folder, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
+      letters = pack[:letters]
+      font :lettering, glyphs: { "A" => letters.pixels(0, 30), "B" => letters.pixels(30, 24), "1" => letters.pixels(54, 36),
+                                 "2" => letters.pixels(90, 30) }, height: 6
+      pass = var :pass, 0
+      game_loop do
+        clear_screen :blue
+        draw_text "AB", 10, 10, :red, font: :lettering
+        draw_text "BA", 10, 30, %i[green white], showing: (pass % 2) == 1, font: :lettering
+        draw_text "ABBA", :center, 50, :yellow, font: :lettering
+        draw_number 21, 10, 70, :white, digits: 3, font: :lettering
+        pass.store!(pass + 1)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_font_of_the_packs_pixels_is_drawn_as_the_all_in_one_build_draws_it
+    Dir.mktmpdir do |folder|
+      whole = lettering_game(folder)
+      left_out = lettering_game(folder, options: PACK_AT_START)
+
+      [1, 2, 3].each do |frames|
+        shown = game_player.run(whole, frames: frames).screen.to_a
+        assert_operator shown.flatten.uniq.length, :>, 3, "the all-in-one build writes in several colours"
+        assert_equal shown, game_player.hand_file(lettering_pack_file).run(left_out, frames: frames).screen.to_a,
+                     "after #{frames} frames the game handed its pack shows what the all-in-one build shows"
+      end
+    end
+  end
+
   def test_a_game_handed_its_pack_as_it_starts_plays_as_its_all_in_one_build
     Dir.mktmpdir do |folder|
       left_out = pack_at_start_game(folder)

@@ -16,6 +16,11 @@ module VBlank
       DIGIT_COLUMN = :__picture_digit_column
       DIGIT_ROW = :__picture_digit_row
 
+      # A font of a pack's pixels with the pack left out (#declare_lettering_font): its letters'
+      # slices by character, the byte that is not lit, and its widths and spacing as a font of
+      # pictures (+metrics+).
+      Lettering = Data.define(:slices, :blank, :metrics)
+
       private
 
       # Whether +name+ is a font of the game's own pictures.
@@ -71,7 +76,7 @@ module VBlank
       # One name is one font, of whichever kind: a second `font :hud` is a mistake, and what it
       # would draw with is the first one, which reads as the art being wrong.
       def refuse_font_name_taken!(name)
-        return unless picture_font?(name) || IR::FontTable.of(@program).declared?(name)
+        return unless picture_font?(name) || lettering_font?(name) || IR::FontTable.of(@program).declared?(name)
 
         raise ArgumentError,
               "font :#{name} is declared twice. Each font needs its own name. To fix this, rename one of them."
@@ -133,6 +138,146 @@ module VBlank
         tiles.with(tile_index: tiles.tile_index + (left / side), across: width / side)
       end
 
+      # A FONT OF A DATA PACK'S PIXELS: an alphabet as a computer game keeps it, each letter a run
+      # of a slot of pixels, one byte a pixel, row by row, +height+ rows, lit where the byte is not
+      # +blank+, and written in the colour draw_text asks, as a font of glyphs is.
+      #
+      #   font :lettering, glyphs: { "A" => pack[:font].pixels(0, 70), ... }, height: 10
+      #
+      # Each letter is as wide as its pixels over the height, so the font is proportional. Where the
+      # build reads the pack (every cartridge, and a computer build all-in-one), the letters are read
+      # here and the font IS a font of glyphs given as rows, so it draws, measures and places alike on
+      # every console. Where the build leaves the pack out, nothing knows which pixels are lit until the
+      # game starts, so each letter becomes a picture of the slot's pixels in one colour, a picture for
+      # each colour the game writes in (#picture_font_of_lettering), and words are drawn as a font of
+      # pictures is. That build cannot draw a list of character codes in it, nor take fold:.
+      def declare_font_of_pack_pixels(name, glyphs, height:, blank:, spacing:, fold:)
+        refuse_font_name_taken!(name)
+        refuse_unfit_pack_glyphs!(name, glyphs, height, blank)
+        if pack_left_out?
+          declare_lettering_font(name, glyphs, height: height, blank: blank, spacing: spacing, fold: fold)
+        else
+          declare_glyph_font_of_pack_bytes(name, glyphs, height: height, blank: blank, spacing: spacing, fold: fold)
+        end
+        name
+      end
+
+      # The font with the pack read: each letter's bytes as rows, a font of glyphs.
+      def declare_glyph_font_of_pack_bytes(name, glyphs, height:, blank:, spacing:, fold:)
+        definition = Graphics::Font::Definition.new(name)
+        glyphs.each do |char, slice|
+          bytes = @data_pack_contents.bytes_of(slice.layout.name).byteslice(slice.first_pixel, slice.count).bytes
+          definition.picture(char, bytes.each_slice(slice.count / height).to_a, blank: blank)
+        end
+        declare_font(name, definition.to_font(spacing: spacing, fold: fold))
+      end
+
+      # The font with the pack left out: kept as a Lettering until the game writes in a colour.
+      def declare_lettering_font(name, glyphs, height:, blank:, spacing:, fold:)
+        unless fold.nil?
+          raise ArgumentError, "font :#{name} reads its letters from the pack as the game starts. " \
+                               "Such a font cannot fold one case into another. To fix this, give a letter for each case."
+        end
+
+        sizes = glyphs.transform_values { |slice| [slice.count / height, height] }
+        # The widths only: a Lettering has no pictures until a colour is asked for.
+        metrics = Graphics::PictureFont.new(pictures: glyphs.transform_values { nil }, sizes: sizes, spacing: spacing)
+        @lettering_fonts[name] = Lettering.new(slices: glyphs, blank: blank, metrics: metrics)
+      end
+
+      def lettering_font?(name) = @lettering_fonts.key?(name)
+
+      def refuse_unfit_pack_glyphs!(name, glyphs, height, blank)
+        unless height.is_a?(Integer) && height.positive?
+          raise ArgumentError, "font :#{name} takes its letters from a data pack's pixels, and needs height:, how many " \
+                               "rows each letter is. To fix this, add height:, like `height: 10`."
+        end
+        unless blank.is_a?(Integer) && blank.between?(0, 255)
+          raise ArgumentError, "font :#{name} takes its letters from a data pack's pixels, so blank: is a byte, 0 to 255. " \
+                               "Got #{blank.inspect}."
+        end
+        glyphs.each do |char, slice|
+          unless char.is_a?(String) && char.length == 1 && slice.is_a?(DSL::PackSlot) && slice.shape == :pixels
+            raise ArgumentError, "font :#{name} takes glyphs: as each character and a run of a slot of pixels, like " \
+                                 "`\"A\" => pack[:font].pixels(0, 70)`. Got #{char.inspect} => #{slice.inspect}."
+          end
+          refuse_slot_from_elsewhere!(slice, "font :#{name}'s letter #{char.inspect}")
+          next if (slice.count % height).zero?
+
+          raise ArgumentError, "font :#{name}: the letter #{char.inspect} is #{slice.count} pixels, and that is not " \
+                               "rows of height: #{height}. To fix this, give each letter a whole number of rows."
+        end
+      end
+
+      # The font of pictures that writes font +name+ (a Lettering) in +color+: a picture of each
+      # letter's pixels with every lit byte that colour, declared the first time the game writes in
+      # it. Its name is the font's own with the colour, so each colour is one set of pictures however
+      # often it is used.
+      def picture_font_of_lettering(name, color)
+        value = Graphics::Color.resolve(color)
+        colored = :"__#{name}_in_#{value.to_s(16)}"
+        return colored if picture_font?(colored)
+
+        lettering = @lettering_fonts.fetch(name)
+        pictures = lettering.slices.each_with_index.to_h do |(char, slice), k|
+          picture = :"#{colored}_#{k}"
+          define_picture_of_pack_pixels(picture, width: lettering.metrics.glyph_width(char), height: lettering.metrics.height, places: slice,
+                                                 colors: Array.new(DataPacks::MOST_PIXEL_PLACES, value), see_through: lettering.blank)
+          [char, picture]
+        end
+        declare_picture_font(colored, pictures: pictures, strip: nil, characters: nil, spacing: lettering.metrics.spacing)
+      end
+
+      # draw_text in a font of a pack's pixels with the pack left out: each letter's picture in the
+      # colour asked, or in a pair of colours, each letter picking between its two pictures by the
+      # test, as a font of glyphs picks its colour.
+      def draw_text_in_lettering(text, x, y, color, font:, within:, showing:)
+        refuse_missing_color!("draw_text", color)
+        colors = text_colors!(color, showing)
+        metrics = @lettering_fonts.fetch(font).metrics
+        refuse_missing_characters!(text, metrics, font)
+        x = column_for(x, metrics.text_width(text), within, "draw_text")
+        fonts = colors.map { |each_color| @picture_fonts.fetch(picture_font_of_lettering(font, each_color)) }
+        return draw_pictures_of(text, x, y, fonts.first) if fonts.length == 1
+
+        pose = glyph_color_pose(showing)
+        tiled = Text::TILE_HARDWARE_MODES.include?(@screen_mode)
+        require_hud_declared_once!("draw_text") if tiled
+        metrics.each_glyph_x(text) do |char, dx|
+          pair = fonts.map { |each_font| each_font.picture(char) }
+          if tiled
+            hud_glyph_object(poses: pair, pose: pose.copy, x: x + dx, y: y)
+          else
+            record(Build.blit_pose(pair, pose.copy, Build.int(x + dx), Build.int(y)))
+          end
+        end
+        nil
+      end
+
+      # draw_number in a font of a pack's pixels with the pack left out: the number drawn in the font
+      # of pictures of its colour. A number that changes draws each digit as one of ten pictures in the
+      # same place, so it needs all ten, of one width: a font of glyphs given as rows does not, so the
+      # refusal says why this build differs.
+      def draw_number_in_lettering(value, x, y, color, font:, digits:, within:, leading_zeros:)
+        refuse_missing_color!("draw_number", color)
+        refuse_unfit_lettering_numerals!(font) unless DSL::Value.fixed_number(value)
+        draw_number_in_pictures(value, x, y, nil, font: picture_font_of_lettering(font, color), digits: digits,
+                                                  within: within, leading_zeros: leading_zeros)
+      end
+
+      def refuse_unfit_lettering_numerals!(font)
+        metrics = @lettering_fonts.fetch(font).metrics
+        missing = metrics.missing_characters("0123456789")
+        widths = ("0".."9").map { |digit| metrics.glyph_width(digit) }.uniq
+        return if missing.empty? && widths.one?
+
+        raise ArgumentError,
+              "draw_number: font :#{font} reads its letters from the pack as the game starts. " \
+              "In such a font, a number that changes needs the digits 0 to 9, all one width. " \
+              "#{missing.empty? ? 'Its digits differ in width.' : "It has no #{missing.map(&:inspect).join(', ')}."} " \
+              "To fix this, give the font all ten digits at one width, or draw a fixed number."
+      end
+
       # A picture font's pictures have their own colours, so a colour given beside it would be
       # ignored, and a game that gave one expects to see it.
       def refuse_color_for_picture_font!(verb, font, color, showing)
@@ -144,10 +289,11 @@ module VBlank
       end
 
       def refuse_list_in_picture_font!(font)
-        return unless picture_font?(font)
+        return unless picture_font?(font) || lettering_font?(font)
 
         raise ArgumentError,
-              "draw_text cannot draw a list of character codes in font :#{font}, because its letters are pictures. " \
+              "draw_text cannot draw a list of character codes in font :#{font}, because its letters are pictures" \
+              "#{' until the game reads its pack' if lettering_font?(font)}. " \
               "To fix this, draw the words as a String, or use a font of glyphs."
       end
 
