@@ -69,6 +69,17 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal declared, moved
   end
 
+  # The answer key: shapes drawn at spots just inside and just past each edge of the view, and at the
+  # near limit, are the same picture as the shapes declared where they stand (PlaceGames.shapes_at_edges):
+  # the test that passes over a shape out of view passes over none that shows.
+  def test_shapes_at_the_edges_of_the_view_are_drawn_as_the_same_shapes_declared_there
+    moved = pixels_of(PlaceGames.shapes_at_edges(moved: true))
+    declared = pixels_of(PlaceGames.shapes_at_edges(moved: false))
+
+    assert_operator declared.count { |color| color != BLACK }, :>, 20, "the slivers of the declared shapes in view are drawn"
+    assert_empty declared.each_index.reject { |k| declared[k] == moved[k] }.map { |k| [k % 240, k / 240] }, "pixels that differ"
+  end
+
   # The answer key: a lit place declared from data, as a level file gives it, is the same picture as
   # the place declared by point and face calls with the same numbers.
   def test_a_place_declared_by_data_is_drawn_as_the_same_place_declared_by_calls

@@ -583,6 +583,72 @@ module PlaceGames
     builder.program
   end
 
+  # THE ANSWER KEY FOR A SHAPE AT THE EDGE OF THE VIEW. A shape drawn at a spot (`at:`) is first
+  # tested as a ball round its points and passed over when wholly out of view; the test must never
+  # pass over a shape that shows a pixel. So eight-sided shapes, a point SHAPE_REACH from the middle
+  # along each arrow either way, stand at EDGE_SPOTS, each just inside, at or just past an edge of
+  # the view, or at the near limit, by that reach: the nearest one comes to showing. Its points
+  # touch the ball round them on every arrow, so the test has no room to spare there. With +moved+
+  # one shape is declared round its own middle and drawn at each spot; without, each is a place of
+  # its own declared where it stands, drawn as it was declared, which no test passes over. The
+  # numbers are sums of fractions held exactly, so both ways turn every point to the same bits, and
+  # the pictures must be the same.
+  SHAPE_REACH = 0.25
+  EDGE_AHEAD = 3.0
+
+  # A view 90 degrees across on the Advance's screen: at EDGE_AHEAD wholes ahead the screen's side
+  # edges are EDGE_AHEAD wholes either side, and its top and bottom two thirds of that.
+  def self.edge_spots
+    across = EDGE_AHEAD
+    up = EDGE_AHEAD * 160 / 240
+    # Halves, quarters and so on, which a fraction holds exactly.
+    nears = [1.0 / 128, 1.0 / 512, -1.0 / 512, -3.0 / 64]
+    offsets = [-1.0 / 64, -1.0 / 256, 0.0, 1.0 / 256, 3.0 / 64]
+    sides = offsets.flat_map do |offset|
+      reach = SHAPE_REACH + offset
+      [[across + reach, 0.5, EDGE_AHEAD], [-across - reach, -0.5, EDGE_AHEAD],
+       [0.5, up + reach, EDGE_AHEAD], [-0.5, -up - reach, EDGE_AHEAD]]
+    end
+    sides + nears.map { |offset| [0.0, 0.0, VBlank::Builder::Places::NEAR - SHAPE_REACH + offset] }
+  end
+  EDGE_SPOTS = Ractor.make_shareable(edge_spots)
+
+  # The points: right, left, up, down, ahead, behind; and the eight faces, one round each corner
+  # of the space.
+  EDGE_SHAPE_POINTS = Ractor.make_shareable([[SHAPE_REACH, 0.0, 0.0], [-SHAPE_REACH, 0.0, 0.0], [0.0, SHAPE_REACH, 0.0],
+                                             [0.0, -SHAPE_REACH, 0.0], [0.0, 0.0, SHAPE_REACH], [0.0, 0.0, -SHAPE_REACH]])
+  EDGE_SHAPE_FACES = Ractor.make_shareable([0, 1].product([2, 3], [4, 5]))
+
+  def self.shapes_at_edges(moved:)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      shape = lambda do |name, middle|
+        place name do
+          points = EDGE_SHAPE_POINTS.map { |corner| point(*corner.zip(middle).map(&:sum)) }
+          EDGE_SHAPE_FACES.each do |face_corners|
+            face(*face_corners.map { |k| points[k] }, picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8]])
+          end
+        end
+      end
+      if moved
+        shape.call(:shape, [0.0, 0.0, 0.0])
+      else
+        EDGE_SPOTS.each_with_index { |spot, k| shape.call(:"shape#{k}", spot) }
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        EDGE_SPOTS.each_with_index do |spot, k|
+          moved ? draw_place(:shape, seen_by: eye, at: spot, both_sides: true) : draw_place(:"shape#{k}", seen_by: eye, both_sides: true)
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The points +spots+ ([x, y, z] each) of a place, each asked where it lands on the screen of a
   # viewer at the middle facing ahead, the answers kept in variables x0, y0 and behind0 onwards.
   def self.screen_spots(spots)

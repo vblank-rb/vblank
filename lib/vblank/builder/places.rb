@@ -156,8 +156,9 @@ module VBlank
         view = place_view(DSL::Fraction.scale(near, DSL::Fraction::DEFAULT_BITS), view_angle, both_sides, perspective,
                           lit: lit && !shape.shading.nil?)
         drawn = faces ? drawing.listed_statements(faces.name) : [Build.call(drawing.routine)]
-        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view, stance),
-                                *place_clip(drawing, view, window_nodes), drawing.count_statement, *drawn,
+        drawn = [*place_clip(drawing, view, window_nodes), drawing.count_statement, *drawn]
+        drawn = place_in_view_test(drawing, shape, drawn) if stance
+        record(Build.draw_place(name, seen_by.name, *place_handover(drawing, seen_by, view, stance), *drawn,
                                 perspective: perspective, near: view.near, view_angle: view_angle,
                                 both_sides: both_sides == true, faces: faces&.name, window: window_nodes))
       end
@@ -413,6 +414,17 @@ module VBlank
         declare_place_routine(drawing.point_routine, drawing.point_statements)
         declare_place_routine(drawing.corner_routine, drawing.corner_statements)
         declare_place_routine(drawing.count_routine, drawing.drawing_count_statements)
+      end
+
+      # +drawn+, the statements drawing a shape at a spot, held behind the test of whether any of
+      # the shape can show (IR::PlaceDrawing, A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE), whose
+      # routine is declared the first time the game draws the shape at a spot.
+      def place_in_view_test(drawing, shape, drawn)
+        unless @place_routines&.key?(drawing.in_view_routine)
+          drawing.in_view_variables.each { |variable| ensure_var(variable) }
+          declare_place_routine(drawing.in_view_routine, drawing.in_view_statements(IR::PlaceDrawing::Reach.around(shape.points)))
+        end
+        [Build.call(drawing.in_view_routine), Build.if_(Build.var_ref(drawing.in_view_var), *drawn)]
       end
 
       # The routine that works out where one point lands, declared the first time a game asks, so

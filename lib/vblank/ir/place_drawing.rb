@@ -243,6 +243,97 @@ module VBlank
 
       def stance_routine = name(:stance)
 
+      # A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE. A game draws its robots round the player,
+      # and at any moment most of them are behind the viewer or beside the view, where every one of
+      # their points would be turned and every face found out of view, one by one, to draw nothing.
+      # So a shape drawn at a spot is first tested as a ball holding all its points (Reach): its
+      # middle turned to the viewer as a point is, then held against the near limit and the four
+      # planes through the viewer and the view's edges. A ball wholly behind the near limit, or
+      # wholly past one of those planes, holds no point that lands in view, and no corner the cut
+      # makes either (a corner the cut makes lies between two points, so inside the ball). The old
+      # first-person games did the same before turning a model's points.
+      #
+      # THE TEST ONLY EVER LETS A SHAPE THROUGH WHEN IN DOUBT. A plane's test is the ball's middle
+      # measured from the plane, against the radius measured the same way. The viewer's arrows are
+      # taken as given (A SHAPE DRAWN WHERE THE GAME PUTS IT), and may not be of length one, so the
+      # radius is stretched by each arrow's length, read as its three parts added without their
+      # signs, which is never shorter. The planes stand REACH_MARGIN sixteenths of a pixel outside
+      # the lines a face is told past by (OUTCODE_EDGES), for the rounding of a point's landing.
+      # So a shape it passes over draws nothing, and the picture is the same as drawing it.
+      #
+      # +middle+ is three fractions with sixteen bits, +radius+ one, holding every point.
+      Reach = Data.define(:middle, :radius) do
+        # The ball round +points+ (each [x, y, z], fractions with sixteen bits): its middle halfway
+        # between the furthest points along each axis, its radius rounded up and a little more, for
+        # the rounding in the products that turn the middle.
+        def self.around(points)
+          middle = 3.times.map { |axis| (points.map { |point| point[axis] }.minmax.sum / 2.0).round }
+          furthest = points.map { |point| Math.sqrt(point.zip(middle).sum { |at, mid| (at - mid)**2 }) }.max
+          new(middle: middle, radius: furthest.ceil + REACH_SPARE)
+        end
+      end
+
+      # How much the radius is made bigger than the furthest point, in 65536ths of a whole (the
+      # smallest step of a fraction): more than the products that turn the middle can lose.
+      REACH_SPARE = 16
+
+      # How far outside each view edge's line the reach test's plane stands, in sixteenths of a pixel.
+      REACH_MARGIN = 32
+
+      def in_view_routine = name(:in_view_test)
+      def in_view_var = name(:in_view)
+
+      # The variables the reach test keeps its work in: whether the shape is in view, and the
+      # radius stretched by each of the viewer's arrows.
+      def in_view_variables = [in_view_var, *ARROWS.map { |arrow| name(:"reach_#{arrow}") }]
+
+      # The reach test (A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE): the in-view variable set
+      # to 1 when the ball +reach+ may show any of the shape, from the viewer the stance left in the
+      # viewer variables and the view handed over.
+      def in_view_statements(reach)
+        offsets = AXES.each_with_index.map do |axis, k|
+          Build.set(name(:"d#{axis}"), Build.binop(:-, reach.middle[k], Build.var_ref(viewer_var(axis))))
+        end
+        turned = %i[at_x at_y at_z].zip(ARROWS).map { |part, arrow| Build.set(name(part), along(arrow)) }
+        stretched = ARROWS.map do |arrow|
+          length = AXES.map { |axis| Build.absolute(Build.var_ref(viewer_var(:"#{arrow}_#{axis}"))) }
+                       .reduce { |sum, part| Build.binop(:+, sum, part) }
+          Build.set(name(:"reach_#{arrow}"), Build.mul_fix(reach.radius, length, 16))
+        end
+        # The near limit less the radius, rather than the middle plus it: the limit is small, so
+        # this cannot pass the most a number holds where the middle is far ahead and the shape big.
+        in_front = Build.binop(:>=, var(:at_z), Build.binop(:-, Build.var_ref(view_var(:near)), var(:reach_ahead)))
+        within = REACH_PLANE_SIGNS.keys.reverse.reduce(Build.set(in_view_var, 1)) { |inner, side| Build.if_(reach_plane_condition(side), inner) }
+        [*offsets, *turned, *stretched, Build.set(in_view_var, 0), Build.if_(in_front, within)]
+      end
+
+      # The four planes through the viewer and an edge of the view, each by the edge's side and which
+      # way a point past it lies along the viewer's right or up arrow: +1 right or above, -1 left or
+      # below.
+      REACH_PLANE_SIGNS = { right: 1, left: -1, top: 1, bottom: -1 }.freeze
+
+      # Is some of the ball on the view's side of the plane through the view's +side+ edge? A point
+      # lands past the edge when how far along the viewer's right (or up) arrow it is, times the focal
+      # length, is more than how far ahead it is times the edge's distance from the view's middle
+      # (sixteenths, the margin added). The ball's middle is held to that, less the radius stretched
+      # along both arrows.
+      def reach_plane_condition(side)
+        edge = OUTCODE_EDGES.find { |outcode_edge| outcode_edge.side == side }
+        sign = REACH_PLANE_SIGNS.fetch(side)
+        part, arrow, middle = edge.axis == :x ? %i[at_x right middle_x] : %i[at_y up middle_y]
+        line = Build.binop(:+, Build.binop(:*, Build.var_ref(view_var(side)), SUBPIXEL), edge.sixteenths)
+        middle = Build.var_ref(view_var(middle))
+        # Rows count down the screen, so the top edge is the one a point above the middle reaches.
+        outward = edge.axis == :x ? sign : -sign
+        edge_distance = Build.binop(:+, outward.positive? ? Build.binop(:-, line, middle) : Build.binop(:-, middle, line), REACH_MARGIN)
+        focal = Build.var_ref(view_var(:focal))
+        sideways = Build.mul_fix(var(part), focal, 16)
+        sideways = Build.binop(:-, 0, sideways) if sign.negative?
+        past = Build.binop(:-, sideways, Build.mul_fix(var(:at_z), edge_distance, 16))
+        spread = Build.binop(:+, Build.mul_fix(var(:"reach_#{arrow}"), focal, 16), Build.mul_fix(var(:reach_ahead), edge_distance, 16))
+        Build.binop(:<=, past, spread)
+      end
+
       # The stance routine: the viewer, handed over as it is, moved into the shape's own arrows from
       # the stance in the stance variables. A routine of its own, made once for the place, so each
       # drawing of a turned shape costs a call rather than eighteen products written out again.

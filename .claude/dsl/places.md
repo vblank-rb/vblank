@@ -165,9 +165,13 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   Advance**: the viewer is moved into the shape's own arrows once a drawing (a routine of 18
   products, about 900 cycles; three subtractions for `at:` alone), and the shape's points are turned
   afresh (a square's four, about 3000 cycles); nothing more for each point than a fixed place's first
-  drawing costs. Worked examples in `test/place_games.rb`: `PlaceGames.moved_shapes`, one shape drawn
-  at two stances that change every pass, and `PlaceGames.stance_against_declared`, a moved shape
-  against the same shape declared where it stands.
+  drawing costs. A shape whose spot puts it wholly out of view (behind the viewer, nearer than
+  `near:`, or past an edge of the view) is passed over before any point is turned: the ball round
+  its points is tested once, about the cost of turning one point, so robots round the player cost
+  only for the ones in view. The picture is the same as drawing it. Worked examples in
+  `test/place_games.rb`: `PlaceGames.moved_shapes`, one shape drawn at two stances that change every
+  pass, `PlaceGames.stance_against_declared`, a moved shape against the same shape declared where it
+  stands, and `PlaceGames.shapes_at_edges`, shapes at the edges of the view against the same declared.
 
   A game of rooms draws each room with its own call, far rooms first: the box round a doorway's
   `screen_spot`s is the window of the room beyond (any corner behind: the whole screen; all behind: not
