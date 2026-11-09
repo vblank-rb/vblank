@@ -21,6 +21,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     VBlank reads no one original's format.
 
   Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
+  A computer game's numbers (`platform: :pc`) are low byte first, as DOS and Windows games keep them,
+  unless the line names its byte order: `byte_order: :high_first` (or `:low_first`). A line naming both a
+  console's layout and a byte order is refused, since the layout already says it.
 
 - `image :walls, width: 64 * 106, height: 64, colors: WALL_COLOURS, places: pack[:walls], see_through: 255`
   — **a picture of up to 256 colours from a slot of pixels.** `places:` is the whole slot, or
@@ -171,8 +174,9 @@ Each console's layout is numbers in its hardware file (`Console::GBCHardware::OR
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them
 (`IR::FormatReading`, and `rg_start_file_fill_picture` in the C, JavaScript and Ruby runtimes, which reads
 a slot of pixels, one byte each in any layout, the same way). A
-`:pc` original keeps its data in no console's layout, so each of its slots names the layout its
-unpacking routine writes (`layout: :gba`); a slot without one is refused. On the Color, a tile drawn by
+`:pc` original keeps its data in no console's layout: its numbers are low byte first unless a slot names
+its `byte_order:`, its pictures are slots of pixels, and a slot of colours or tiles names the console layout
+its unpacking routine writes (`layout: :gba`); one without is refused. On the Color, a tile drawn by
 place from a list of four colours or fewer goes into the cartridge place for place, so a Color
 original's tiles are its own bytes there. Worked example: `test/all/vblank/builder/test_data_pack_layouts.rb`.
 

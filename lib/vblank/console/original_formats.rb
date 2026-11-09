@@ -51,6 +51,9 @@ module VBlank
     FIFTEEN_BIT_COLORS = ColorFormat.new(high_byte_first: false,
                                          red_at: 0, green_at: 5, blue_at: 10, channel_bits: 5)
     LOW_BYTE_FIRST_NUMBERS = NumberFormat.new(high_byte_first: false)
-    [LOW_HALF_FIRST_TILES, TWO_PLANE_TILES, FIFTEEN_BIT_COLORS, LOW_BYTE_FIRST_NUMBERS].each { |format| Ractor.make_shareable(format) }
+    HIGH_BYTE_FIRST_NUMBERS = NumberFormat.new(high_byte_first: true)
+    [LOW_HALF_FIRST_TILES, TWO_PLANE_TILES, FIFTEEN_BIT_COLORS, LOW_BYTE_FIRST_NUMBERS, HIGH_BYTE_FIRST_NUMBERS].each do |format|
+      Ractor.make_shareable(format)
+    end
   end
 end

@@ -18,7 +18,9 @@ module VBlank
     # hardware file, named by its kit (Console::Kit#original_formats), and one reader reads any of
     # them (IR::FormatReading). +format+ is the layout the slot is read in: a Console::ColorFormat,
     # TileFormat or NumberFormat. An original from a computer (COMPUTER) keeps its data in no
-    # console's layout, so each of its slots names the layout its port's unpacking routine writes.
+    # console's layout: its numbers are low byte first unless a slot names its byte order, its
+    # pictures are slots of pixels, and a slot of colours or tiles names the console layout its
+    # port's unpacking routine writes.
     #
     # Where the bytes are (+at+) marks a slot as copied out of the copy as the bytes are there. A
     # slot whose bytes are packed in the copy, or spread over it, has no +at+ (nil): the game's
@@ -73,7 +75,13 @@ module VBlank
         new(name: name.to_sym, shape: :pixels, at: at, count: count, width: nil, signed: nil, format: nil)
       end
 
-      def self.numbers(name, count:, width:, signed:, at: nil, layout: DEFAULT_LAYOUT)
+      # Number layouts by byte order: :low_first, as DOS and Windows games keep them, or :high_first.
+      BYTE_ORDERS = { low_first: Console::LOW_BYTE_FIRST_NUMBERS, high_first: Console::HIGH_BYTE_FIRST_NUMBERS }.freeze
+
+      # +count+ numbers +width+ wide, in the number layout of +layout+ (a console's name), or in the
+      # byte order +byte_order+ names; a computer game's (+layout+ COMPUTER) are low byte first
+      # unless the slot names its byte order.
+      def self.numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil)
         unless IR::Build::ELEMENT_BYTES.key?(width)
           raise ArgumentError, "Slot :#{name} was given width: #{width.inspect}. A slot of numbers must be :byte, :half " \
                                "or :word wide."
@@ -84,14 +92,32 @@ module VBlank
         end
 
         new(name: name.to_sym, shape: :numbers, at: at, count: count, width: width, signed: signed,
-            format: formats_of(name, layout).numbers)
+            format: number_format_of(name, layout, byte_order))
+      end
+
+      def self.number_format_of(name, layout, byte_order)
+        if byte_order
+          unless layout.nil? || layout == COMPUTER
+            raise ArgumentError, "Slot :#{name} names layout: :#{layout} and byte_order:. A console's layout already says its " \
+                                 "byte order. To fix this, give only one of them."
+          end
+
+          return BYTE_ORDERS.fetch(byte_order) do
+            raise ArgumentError, "Slot :#{name} was given byte_order: #{byte_order.inspect}. A byte order is :low_first or " \
+                                 ":high_first."
+          end
+        end
+        return BYTE_ORDERS.fetch(:low_first) if layout == COMPUTER
+
+        formats_of(name, layout || DEFAULT_LAYOUT).numbers
       end
 
       # The layouts of the console named +layout+ (Console::OriginalFormats).
       def self.formats_of(name, layout)
         if layout == COMPUTER
-          raise ArgumentError, "Slot :#{name} is from a computer game's original, which keeps its data in no console's " \
-                               "layout. Name the layout the slot holds, like `layout: :gba`."
+          raise ArgumentError, "Slot :#{name} is from a computer game's original, which keeps its colours and tiles in no " \
+                               "console's layout. Keep its pictures as a slot of pixels, or name the console layout the " \
+                               "unpacking routine writes, like `layout: :gba`."
         end
 
         kit = Console.for(layout)
@@ -112,7 +138,7 @@ module VBlank
         raise ArgumentError, "Slot :#{name} holds tiles in the #{Console.for(layout).title}'s layout, which keeps tiles " \
                              "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{options}."
       end
-      private_class_method :formats_of, :tile_format_of
+      private_class_method :formats_of, :tile_format_of, :number_format_of
 
       def initialize(name:, shape:, at:, count:, width:, signed:, format:)
         unless (at.nil? || place?(at) || release_places?(at)) && count.is_a?(Integer) && count.positive?

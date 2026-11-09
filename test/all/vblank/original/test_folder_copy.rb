@@ -79,7 +79,7 @@ class TestFolderCopy < Minitest::Test
   def test_a_routine_that_reads_a_file_the_release_does_not_hold_is_refused_naming_the_files_it_holds
     refused = assert_raises(ArgumentError) do
       VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
-        slots.numbers :one, count: 1, width: :byte, signed: false, layout: :gba
+        slots.numbers :one, count: 1, width: :byte, signed: false
         slots.fill_from_copy { |copy, pack| copy.file("MAPS.MU1").copy_bytes at: 0, count: 1, into: pack[:one] }
       end
     end
@@ -91,7 +91,7 @@ class TestFolderCopy < Minitest::Test
   def test_a_read_written_past_the_end_of_a_file_is_refused
     refused = assert_raises(ArgumentError) do
       VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
-        slots.numbers :one, count: 4, width: :byte, signed: false, layout: :gba
+        slots.numbers :one, count: 4, width: :byte, signed: false
         slots.fill_from_copy { |copy, pack| copy.file("INDEX.MU1").copy_bytes at: 16, count: 4, into: pack[:one] }
       end
     end

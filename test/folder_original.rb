@@ -50,7 +50,7 @@ module FolderOriginal
   def folder_slots(slots)
     slots.colors :palette, count: 16, layout: :gba
     slots.tiles :walls, count: 2, layout: :gba, colors: 16
-    slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false, layout: :gba
+    slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
     slots.fill_from_copy do |copy, pack, release|
       index = copy.file("INDEX.#{release}")
       data = copy.file("DATA.#{release}")

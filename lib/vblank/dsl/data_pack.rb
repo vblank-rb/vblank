@@ -19,10 +19,13 @@ module VBlank
     # #fill_from_copy (see Builder::DataPacks for how and where it runs).
     #
     # Each slot is kept in the layout of the console the original is for (+platform+, the
-    # original's Original::Game#platform), unless it names another with +layout+, as a slot of an
-    # original from a computer must:
+    # original's Original::Game#platform), unless it names another with +layout+. An original from a
+    # computer has no console's layout: its numbers are low byte first unless a slot names its
+    # +byte_order+, and a slot of colours or tiles names the layout its routine writes:
     #
     #   slots.tiles :walls, at: 0x4000, count: 64, colors: 4    # a Super Nintendo's tiles of four colours
+    #   slots.numbers :sizes, count: 9, width: :half, signed: false   # a computer game's, low byte first
+    #   slots.numbers :sizes, count: 9, width: :half, signed: false, byte_order: :high_first
     #   slots.colors :palette, count: 16, layout: :gba          # a computer game's, as its routine writes them
     class PackSlots
       def initialize(platform:)
@@ -43,9 +46,11 @@ module VBlank
       end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
-      # below zero.
-      def numbers(name, count:, width:, signed:, at: nil, layout: nil)
-        add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed, layout: layout || @platform))
+      # below zero. +byte_order+ (:low_first or :high_first) names how they are kept in place of a
+      # console's layout.
+      def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil)
+        add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
+                                         layout: layout || (@platform unless byte_order), byte_order: byte_order))
       end
 
       # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
