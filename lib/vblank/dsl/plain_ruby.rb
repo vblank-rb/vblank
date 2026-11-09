@@ -233,6 +233,7 @@ module VBlank
           when Prism::CallNode then call_text(node)
           when Prism::LocalVariableWriteNode then guarded_write_text(node, write_text(node))
           when Prism::LocalVariableOperatorWriteNode then guarded_write_text(node, change_text(node))
+          when Prism::LocalVariableReadNode then unknown_block_read_text(node)
           when Prism::MultiWriteNode then multi_write_text(node)
           when Prism::InstanceVariableOrWriteNode then instance_variable_or_text(node)
           when Prism::LocalVariableOrWriteNode then logic_write_text(node, "join_either")
@@ -410,19 +411,42 @@ module VBlank
         # variable: its first line sets it there, so a method called on every pass starts it
         # afresh, and a change from the block makes it one holding the number it has then. While
         # setting up it stays Ruby's, so `names.each { count += 1 }` over a Ruby list counts in Ruby.
+        #
+        # That number is decided before a promotion is: the name may be the game variable its own
+        # line made by now, and a promoted write under a test decided while building would only
+        # give the name a working-out of it, so a pool's `each` would add once whatever it holds.
         def guarded_write_text(node, written)
+          return unknown_block_write_text(node) if @names.changed_from_unknown_block?(node)
           return under_open_tests(@block_tests) { write_or_change_text(node) } if promoted_in_block?(node)
-          return written unless @names.changed_from_unknown_block?(node)
 
-          name = @names.variable_name_of(node)
+          written
+        end
+
+        # A read of a number changed from a block only running can place, made from inside such a
+        # block. A method made from a block may test the name before it changes it (`x += 1 if
+        # shown == 0; shown = x`), so while game code is recorded the read makes it the game
+        # variable too, or the test would be decided once, while building, from the number it held.
+        def unknown_block_read_text(node)
+          return copied_text(node) unless @names.read_from_unknown_block?(node)
+
+          "(#{variable_while_recording_text(node)})"
+        end
+
+        def unknown_block_write_text(node)
           if @names.first_write?(node)
             prefix = between(node.location.start_offset, node.value.location.start_offset)
-            return "#{prefix}#{WRITES}.start_variable_while_recording(self, (#{value_text(node.value)}), :#{name}, " \
-                   "#{RECORDING_TEST_SOURCE})"
+            return "#{prefix}#{WRITES}.start_variable_while_recording(self, (#{value_text(node.value)}), " \
+                   ":#{@names.variable_name_of(node)}, #{RECORDING_TEST_SOURCE})"
           end
 
-          "(#{node.name} = #{WRITES}.variable_while_recording(self, #{node.name}, :#{name}, #{RECORDING_TEST_SOURCE}); " \
-            "#{variable_write_text(node)})"
+          tests = promoted_in_block?(node) ? @block_tests : []
+          "(#{variable_while_recording_text(node)}; #{under_open_tests(tests) { variable_write_text(node) }})"
+        end
+
+        # The name made the game variable it is to be, if game code is being recorded as this runs.
+        def variable_while_recording_text(node)
+          "#{node.name} = #{WRITES}.variable_while_recording(self, #{node.name}, :#{@names.variable_name_of(node)}, " \
+            "#{RECORDING_TEST_SOURCE})"
         end
 
         # The Ruby a rewritten line asks with: true where the builder records game code as the line

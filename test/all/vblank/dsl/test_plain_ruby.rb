@@ -2380,6 +2380,87 @@ class TestPlainRuby < Minitest::Test
     assert_equal 0, played(frames: 2, &game)[:seen]
   end
 
+  # A lambda runs where it is called. Called under a test the game makes, the number it changes
+  # follows the test, as Ruby's would: one on the pass the test holds, none on the next.
+  def test_a_number_a_lambda_changes_called_under_a_game_test_follows_the_test
+    game = proc do
+      def counted(a)
+        n = 0
+        bump = -> { n += 1 }
+        bump.call if a > 3
+        n
+      end
+      hp = 5
+      seen = 0
+      game_loop do
+        seen = counted(hp)
+        hp -= 3
+      end
+    end
+
+    assert_equal 1, played(frames: 1, &game)[:seen]
+    assert_equal 0, played(frames: 2, &game)[:seen]
+  end
+
+  # A method made from a block counts as one made with `def` does: the count starts again on each
+  # call, and a pool's `each` under a game test adds one a thing.
+  def test_a_number_counted_in_a_method_made_from_a_block_follows_the_test
+    player = played do
+      sparks = pool :sparks, x: 0, capacity: 3
+      sparks.spawn(x: 1)
+      sparks.spawn(x: 2)
+      go = 1
+      shown = 0
+      define_singleton_method(:count_sparks) do
+        t = 0
+        if go == 1
+          sparks.each { t += 1 }
+        end
+        shown = t
+      end
+      game_loop { count_sparks }
+    end
+
+    assert_equal 2, player[:shown]
+  end
+
+  # The same count in a lambda kept in a name and called from the game loop.
+  def test_a_number_counted_in_a_lambda_the_game_loop_calls_follows_the_test
+    player = played do
+      sparks = pool :sparks, x: 0, capacity: 3
+      sparks.spawn(x: 1)
+      sparks.spawn(x: 2)
+      go = 1
+      shown = 0
+      count_sparks = lambda do
+        t = 0
+        if go == 1
+          sparks.each { t += 1 }
+        end
+        shown = t
+      end
+      game_loop { count_sparks.call }
+    end
+
+    assert_equal 2, player[:shown]
+  end
+
+  # A fraction a method made from a block starts and changes under a game test stays a fraction.
+  def test_a_fraction_changed_in_a_method_made_from_a_block_follows_the_test
+    game = proc do
+      shown = 0.0
+      define_singleton_method(:step_once) do
+        x = 0.5
+        x += 1 if shown == 0
+        shown = x
+      end
+      game_loop { step_once }
+    end
+
+    assert_in_delta 1.5, played(frames: 1, &game)[:shown], 0.01
+    assert_in_delta 0.5, played(frames: 2, &game)[:shown], 0.01
+  end
+
   # The body runs once before the test is asked, whatever the test is.
   def test_a_number_changed_in_a_begin_while_on_a_game_test_goes_round_as_ruby_does
     game = proc do

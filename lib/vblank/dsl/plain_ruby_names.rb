@@ -72,9 +72,10 @@ module VBlank
           end
 
           # A number changed from a block that may be a pool's `each`, which only running it can
-          # tell from a Ruby list's: see Rewriter#guarded_write_text.
+          # tell from a Ruby list's: see Rewriter#guarded_write_text. A name only read here (one of a
+          # block around, or Ruby's own) has no write to decide by.
           def changed_from_unknown_block?
-            !variable? && starts_as_number? && @writes.drop(1).any?(&:from_unknown_block)
+            !@writes.empty? && !variable? && starts_as_number? && @writes.drop(1).any?(&:from_unknown_block)
           end
 
           # A number or a yes or no written out. A name started as nil is often filled in later
@@ -180,6 +181,7 @@ module VBlank
           @promoted_writes = {}.compare_by_identity
           @first_writes_in_game_code = {}.compare_by_identity
           @reads_in_game_code = {}.compare_by_identity
+          @reads_from_unknown_block = {}.compare_by_identity
           @changes_by_name = {}
           @names_used = Hash.new(0)
           @iterating_in_game_code = false
@@ -276,6 +278,12 @@ module VBlank
         # Is this write's name a number changed from a block only running can place?
         def changed_from_unknown_block?(write) = @locals_by_node[write]&.changed_from_unknown_block? || false
 
+        # Is this a read of such a name, from inside a block only running can place? Read there
+        # before the block's own write, the name must already be the game variable it will be.
+        def read_from_unknown_block?(read)
+          @reads_from_unknown_block.key?(read) && (@locals_by_node[read]&.changed_from_unknown_block? || false)
+        end
+
         # Is this write's name a game variable?
         def variable_write?(write) = @locals_by_node[write]&.variable? || false
 
@@ -348,7 +356,8 @@ module VBlank
         # A block inside a side runs while building, on that side, so a name of the scope around it
         # that it changes is changed on that side: +blocks+ counts the blocks gone into, and a write
         # whose depth reaches past them is one. A method or a lambda runs when it is called, which
-        # may be anywhere, so its writes are not.
+        # may be anywhere, so its writes are not: a lambda's change to a name around it comes from a
+        # block only running can place, and is decided as it runs (#from_unknown_block?).
         def plain_writes_in(node, blocks = 0)
           return plain_writes_in_children(node, blocks + 1) if node.is_a?(Prism::BlockNode)
           return [] if OWN_SCOPES.any? { |kind| node.is_a?(kind) }
@@ -396,6 +405,7 @@ module VBlank
             local = scopes[-1 - node.depth]&.[](node.name)
             local&.reads&.push(node)
             @reads_in_game_code[node] = true if in_game_code
+            @reads_from_unknown_block[node] = true if from_unknown_block?(node, scopes)
             @locals_by_node[node] = local if local
           else read_children(node, scopes, in_game_code)
           end

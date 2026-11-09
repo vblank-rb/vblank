@@ -210,7 +210,7 @@ module VBlank
           return value if outer.any?(&:game?) && !(Steps.variable?(value) && handed?(value))
           return value unless number_kept?(value)
 
-          own = test.hidden_variable(:promoted, like: value.is_a?(Value) ? value : nil)
+          own = test.hidden_variable(:promoted, like: value.is_a?(Value) || value.is_a?(Float) ? value : nil)
           own.mark_boolean! if [true, false].include?(value) || value.is_a?(Condition) || (value.is_a?(Value) && value.boolean?)
           own.unwritten = value.nil?
           own.start_truth_as_nil! if may_stay_nil && value.nil?

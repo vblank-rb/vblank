@@ -1065,12 +1065,14 @@ module VBlank
 
     # A variable of its own for a number the author never named: a value picked between two,
     # or a number kept (see PlainRuby::Steps). Nothing reads it before something has set it. +why+
-    # is which line of Diagnostics::HiddenVariables tells the author about it.
+    # is which line of Diagnostics::HiddenVariables tells the author about it. +like+ is a Value or
+    # a Ruby Float to take the kind of number from: holding a fraction, it gives the same bits.
     def hidden_variable(why, like: nil)
       @hidden_variables += 1
       name = :"#{Build::KEPT_VARIABLE_PREFIX}#{@hidden_variables}"
       ensure_var(name)
-      @fraction_vars[name] = like.fraction_bits if like&.fraction?
+      bits = like.is_a?(Float) ? DSL::Fraction.bits_of(like) : (like.fraction_bits if like&.fraction?)
+      @fraction_vars[name] = bits if bits
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
       value_handle_for(name)
     end
