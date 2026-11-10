@@ -99,22 +99,37 @@ class TestJSPageStates < Minitest::Test
     refute_includes shown.fetch("headings"), "Load"
   end
 
-# A shell's parts run one after another and would write one set of slots, so none offers states.
-def test_a_shell_part_has_no_save_or_load_and_no_quick_keys
-  code = VBlank::Cartridge::GameCode.for("TICKING")
-  kept = "js 'kept:' + localStorage.getItem(#{"vblank-state:TICKING:#{code}:0".to_json})"
-  lines = played_page(["play 3", *key("F5"), "play 1", kept, *key("F1"), shown_menu], ticking_game,
-                      html: page_with_menu(states: false))
+  # A shell's parts run one after another and would write one set of slots, so none offers states.
+  def test_a_shell_part_has_no_save_or_load_and_no_quick_keys
+    lines = played_page(["play 3", *key("F5"), "play 1", kept_quick_state, *key("F1"), shown_menu], ticking_game,
+                        html: page_with_menu(states: false))
 
-  assert_includes lines, "js kept:null"
-  refute_includes menu_after(lines).fetch("headings"), "Save"
-end
+    assert_includes lines, "js kept:null"
+    refute_includes menu_after(lines).fetch("headings"), "Save"
+  end
 
-def test_a_game_with_no_menu_has_no_states
+  # F5 while the game is paused with P is done at once: one frame plays, as a step does, to the boundary
+  # where a state is taken, and the game stays paused.
+  def test_a_state_asked_for_while_paused_is_done_at_once_and_the_game_stays_paused
+    lines = played(["play 3", *key("KeyP"), *key("F5"), kept_quick_state])
+    held = pictures_in(played(["play 3", *key("KeyP"), *key("F5"), "play 5", "picture one"])).first
+    stepped = pictures_in(played(["play 3", *key("KeyP"), *key("KeyN"), "picture one"])).first
+
+    assert(lines.any? { |line| line.start_with?("js kept:{") }, "a state is kept at once")
+    assert_same_picture stepped, held, "paused, one frame after the state was asked for"
+  end
+
+  def test_a_game_with_no_menu_has_no_states
     html = page_with_menu.gsub("menu: true", "menu: false")
-    lines = played_page(["play 3", *key("F5"), "play 1", "js 'kept:' + localStorage.getItem(#{"vblank-state:TICKING:#{VBlank::Cartridge::GameCode.for("TICKING")}:0".to_json})", shown_menu], ticking_game, html: html)
+    lines = played_page(["play 3", *key("F5"), "play 1", kept_quick_state, shown_menu], ticking_game, html: html)
 
     assert_includes lines, "js kept:null"
     assert_includes lines, "js null"
+  end
+
+  # What the page's storage holds for the quick state, as a word: "kept:null" for nothing.
+  private def kept_quick_state
+    code = VBlank::Cartridge::GameCode.for("TICKING")
+    "js 'kept:' + localStorage.getItem(#{"vblank-state:TICKING:#{code}:0".to_json})"
   end
 end

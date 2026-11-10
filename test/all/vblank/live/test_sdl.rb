@@ -137,6 +137,26 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # F5 while paused is done at once: the pause lets the game play one frame, as a step does, so the game
+  # reaches the frame boundary where a state is taken, and then holds again. The request is left for the
+  # game to take there.
+  def test_f5_while_paused_lets_one_frame_play_so_the_state_is_taken_at_once
+    name = "vblank-test-states #{Process.pid}"
+    window = open_window(state_folder_name: name)
+    press_key(SDL::PAUSE)
+    press_key(62)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    push_event([SDL::EVENT_QUIT].pack("L"))
+
+    assert window.hold_while_paused
+    refute window.stop?, "the request should have let one frame play before the pause held again"
+    assert_equal VBlank::Live::WindowMenu::StateRequest.new(action: :save, slot: 0), window.take_state_request
+    assert window.hold_while_paused, "the pause should hold again after the frame"
+  ensure
+    FileUtils.rm_rf(window.folder_for(name)) if window
+    window&.close
+  end
+
   # Tab fast forwards for as long as it is held, as it does in the desktop build.
   def test_tab_fast_forwards_while_it_is_held
     window = open_window
@@ -441,10 +461,11 @@ class TestSDL < Minitest::Test
   private
 
   # A window one picture big, or the size a settings file says when it is given one.
-  def open_window(menu: true, settings_file: nil)
+  def open_window(menu: true, settings_file: nil, state_folder_name: nil)
     flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
 
-    SDL.new(title: "TEST", scale: (1 unless settings_file), menu: menu, settings_file: settings_file)
+    SDL.new(title: "TEST", scale: (1 unless settings_file), menu: menu, settings_file: settings_file,
+            state_folder_name: state_folder_name)
   end
 
   # SDL told a key went down, or came up, as a keyboard would tell it.

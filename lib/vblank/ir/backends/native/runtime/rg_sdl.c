@@ -1606,8 +1606,13 @@ static void silence_speaker(bool silent) {
   speaker_emptied_on_purpose = 1;
 }
 
-/* A step asked for while paused, with the menu closed, used up by asking. */
-static bool consume_step_outside_menu(void) { return !rg_window_menu_is_open() && rg_window_consume_step(); }
+/* A step asked for while paused, with the menu closed, used up by asking. A save or load asked for
+ * counts as one: the game plays a frame, to the boundary where a state is taken (the request stays until
+ * serve_state_request takes it there), and the pause holds again. */
+static bool consume_step_outside_menu(void) {
+  if (rg_window_menu_is_open()) return false;
+  return rg_window_consume_step() || rg_window_state_request_pending();
+}
 
 /* A PAUSE, or the menu open: the game, its sound and its clock stop where they are and the picture
  * stays up, while the window goes on answering the menu, the hotkeys and the player's mouse. A step

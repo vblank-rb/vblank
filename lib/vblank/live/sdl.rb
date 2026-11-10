@@ -640,9 +640,11 @@ module VBlank
 
       def held? = @paused || @menu.open?
 
-      # Whether a step was asked for while paused, and the step cleared, as the desktop build does.
+      # Whether a step was asked for while paused, and the step cleared, as the desktop build does. A save
+      # or load asked for while paused counts as one: the game plays a frame, to the boundary where a state
+      # is taken (the request stays until the game takes it there), and the pause holds again.
       def consume_step
-        asked = @step && @paused && !@menu.open?
+        asked = (@step || @menu.state_request_pending?) && @paused && !@menu.open?
         @step = false
         asked
       end

@@ -708,6 +708,14 @@ class TestNativeDesktop < Minitest::Test
     loaded = play_window(exe, dir, [*["0"] * 25, *to_load], frames: 50, options: options)
     assert_match(/Loaded slot 2/, loaded.said)
 
+# F5 while paused is done at once, with no resume: the pause lets one frame play (as a step does) to the
+    # boundary where a state is taken, and holds again.
+    FileUtils.rm_f(quick_file)
+    held = play_window(exe, dir, ["0", "0", "0 hotkey:pause", "0 key:F5", "0", "0", "0"], frames: 12, options: options)
+    assert_match(/Saved to the quick slot/, held.said)
+    assert_path_exists quick_file
+    assert_operator held.variables[:frames], :<=, 5, "the game stayed paused after the state was taken"
+
     File.write(File.join(folder, "#{start}state-3"), "vblank-state 1\nbuild gba 0123456789abcdef\n")
     refused = play_window(exe, dir, [*["0"] * 3, "0 hotkey:menu", *["0 key:Right"] * 6, *["0 key:Down"] * 4, "0 key:Return"], frames: 30,
                                     options: options)

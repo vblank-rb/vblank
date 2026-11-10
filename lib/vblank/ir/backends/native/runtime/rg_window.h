@@ -225,6 +225,8 @@ typedef struct {
 void rg_window_ask_state(int saving, int slot);
 /* Whether one was asked for, and which; asking uses it up. */
 int rg_window_take_state_request(rg_state_request *request);
+/* Whether one is asked for and not yet taken. */
+int rg_window_state_request_pending(void);
 
 /* --- hotkeys --- */
 

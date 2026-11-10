@@ -430,6 +430,8 @@ void rg_window_ask_state(int saving, int slot) {
   state_request.slot = slot;
 }
 
+int rg_window_state_request_pending(void) { return state_asked; }
+
 int rg_window_take_state_request(rg_state_request *request) {
   if (!state_asked) return 0;
   state_asked = 0;

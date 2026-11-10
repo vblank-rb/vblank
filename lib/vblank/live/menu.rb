@@ -57,6 +57,9 @@ module VBlank
         request
       end
 
+      # Whether a save or load has been asked for and not yet taken.
+      def state_request_pending? = !@state_request.nil?
+
       # A save or load asked for by a key (F5, F9) rather than a line of the menu.
       def ask_state(action, slot)
         @state_request = WindowMenu::StateRequest.new(action: action, slot: slot)
