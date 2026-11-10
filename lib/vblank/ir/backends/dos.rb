@@ -13,6 +13,7 @@ module VBlank
   end
 end
 
+require_relative "dos/x86"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
 require_relative "dos/checked_run"
