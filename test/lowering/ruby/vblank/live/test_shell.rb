@@ -186,6 +186,75 @@ class TestShell < Minitest::Test
     end
   end
 
+  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES (a port rendering music before it writes a
+  # byte) plays away from the window, so the window keeps showing frames the whole time, and the
+  # pack it makes is still the all-in-one build's byte for byte. Played on the window, as it was, the
+  # routine showed a frame only when it waited for one, and this one waits for none as it works.
+  BUSY_STEPS = 6_000_000
+
+  private def busy_port(from)
+    busy_steps = BUSY_STEPS
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          busy = 0
+          busy += 1 while busy < busy_steps
+          copy.unpack_rle at: RLE_AT, into: into[:heights]
+        end
+      end
+      heights = table :heights, pack[:heights]
+      game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
+    end
+  end
+
+  def test_the_window_keeps_showing_frames_while_the_unpacking_works_between_writes
+    Dir.mktmpdir do |folder|
+      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder)), err: nil))
+      device = Headless.new(frames: 100_000)
+      pack = shell.pack_from_copy("made_up.gba", COPY, device)
+
+      assert_equal Dir.mktmpdir { |other| busy_port(original(other)).data_pack_file }, pack
+      assert_operator device.pictures.size, :>=, 10, "the window showed a frame only now and then as the unpacking worked"
+    end
+  end
+
+  # An unpacking that finds the wrong format where its routine reads is refused in a player's words,
+  # from the unpacking's own Ractor as from the window.
+  def test_an_unpacking_that_goes_wrong_is_refused
+    Dir.mktmpdir do |folder|
+      from = original_nowhere(folder)
+      wrong = VBlank.game("MADE UP", consoles: %i[gba]) do
+        screen :bitmap
+        pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+          slots.fill_from_copy { |copy, into| copy.unpack_lz77 at: RLE_AT, into: into[:heights] }
+        end
+        heights = table :heights, pack[:heights]
+        game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
+      end
+      shell = Shell.from(VBlank::Original::Shell.build(wrong, err: nil))
+      refused = assert_raises(Shell::Refused) { shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: 400)) }
+
+      assert_match "made_up.gba", refused.message
+    end
+  end
+
+  # The window closed part way: the shell keeps no pack, and gives up at once rather than waiting
+  # for the unpacking to finish its work.
+  def test_a_window_closed_while_the_unpacking_works_keeps_no_pack
+    Dir.mktmpdir do |folder|
+      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder)), err: nil))
+      began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      pack = shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: 2))
+
+      assert_nil pack
+      assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - began, :<, 0.5, "the window waited for the unpacking"
+    end
+  end
+
   # A Ruby with none of the settings that would let it find this library or its gems, in SDL's
   # window that shows nothing (as test_ruby_script.rb plays a script).
   ALONE = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBYOPT" => nil, "RUBYLIB" => nil,

@@ -261,7 +261,9 @@ have a `sha1` and a `size`. Played (`Live::Shell`), it plays the game from `data
 (the desktop build's folder for the game, named from the title and the releases' SHA-1s) when that file
 passes the game's start-file check. Otherwise LOAD ROM asks for a file, refuses one that is no release
 the game reads (`Original::Releases`, the words a build machine uses too), unpacks it with its
-release's unpacking, writes the pack — byte for byte the all-in-one build's — and plays the game. A
+release's unpacking, writes the pack — byte for byte the all-in-one build's — and plays the game. Played
+as Ruby, the unpacking runs in a Ractor of its own (`Live::BackgroundUnpacking`), so the window keeps
+showing its bar however long the routine works between writes; closing the window then keeps no pack. A
 pack for another `version:` fails the check, so the menu asks again. SETTINGS opens the window's menu.
 The web page (`--format web --shell`) and the desktop program (`--format native --shell`, a folder) do
 the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every

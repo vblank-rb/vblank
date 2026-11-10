@@ -16,7 +16,8 @@ module VBlank
     # +choose_copy+ for a file, or a folder for an original whose releases are several files
     # (#pack_from_folder); one that is not a release the game reads is refused in words handed
     # to +refused+, and the menu plays again. A release the game reads is unpacked by its unpacking,
-    # played as fast as the machine goes, which draws its own progress bar; the pack is written to
+    # played as fast as the machine goes in a Ractor of its own (BackgroundUnpacking), which draws its
+    # own progress bar while the window shows it; the pack is written to
     # the folder and handed to the game. SETTINGS calls +open_settings+ (the window opens its menu),
     # and the menu plays again.
     class Shell
@@ -102,19 +103,20 @@ module VBlank
 
       # The pack the unpacking of the release whose SHA-1 is +sha1+ makes from +bytes+, a copy
       # checked already and called +named+; nil when the device stopped it before its end.
+      #
+      # The unpacking plays in a Ractor of its own (BackgroundUnpacking), so the window keeps
+      # showing frames however long the routine works between them.
       def unpack(named, sha1, bytes, device)
-        unpacking = IR::Backends::Ruby::LiveGame.new(@unpackings.fetch(@facts.release_with_sha1(sha1).unpacking)).hand_file(bytes)
+        unpacking = BackgroundUnpacking.new(@unpackings.fetch(@facts.release_with_sha1(sha1).unpacking), bytes, @facts.unpacking)
         rate = Session.new(game: unpacking, uncapped: true, keep_last_picture: false).play(device)
         return nil unless rate.stopped_itself?
 
-        state = unpacking.state
-        names = @facts.unpacking
-        fault = state.vars.fetch(names.fault_kind)
-        unless state.vars.fetch(names.finished) == 1 && fault.zero?
-          raise Refused, Original::ShellFacts.unpacking_stopped_message(named, fault)
+        outcome = unpacking.outcome
+        unless outcome.finished == 1 && outcome.fault_kind.zero?
+          raise Refused, Original::ShellFacts.unpacking_stopped_message(named, outcome.fault_kind)
         end
 
-        @facts.pack_for(sha1, state.lists.fetch(names.bytes).map { |item| item & 0xFF }.pack("C*"))
+        @facts.pack_for(sha1, outcome.bytes)
       end
 
       # The pack kept in +folder_path+ when it passes the check, else nil; a file there that does

@@ -147,7 +147,7 @@ module VBlank
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.
         SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/original/shell_facts.rb
-                         vblank/live/shell.rb].freeze
+                         vblank/live/background_unpacking.rb vblank/live/shell.rb].freeze
         SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.

@@ -25,6 +25,7 @@ require_relative "live/state_slots"    # The places a game's save states are kep
 require_relative "live/save_file"      # The file a game's save memory is kept in between runs
 require_relative "live/settings_file"  # Where those settings are kept, the same file as the desktop build's
 require_relative "live/console_bios"   # The player's Game Boy Advance BIOS, found as the desktop build finds it
+require_relative "live/background_unpacking" # A shell's unpacking played in a Ractor, away from the window
 require_relative "live/shell"          # A port with no data: its menu, its unpacking and its kept pack
 require_relative "live/shell_check"    # A port's shell played against its all-in-one build
 require_relative "live/sdl"            # A window for a person: SDL3 through Fiddle, loaded when asked for
