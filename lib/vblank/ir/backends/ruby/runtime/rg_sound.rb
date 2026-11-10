@@ -435,91 +435,89 @@ end
 
 # "sound": the part of a sample a frame carried, the slide clock, the waveform a tune last put in
 # the wave voice, and which speaker each voice plays from.
-RgSoundPlace = Data.define(:sample_carry, :slide_clock, :loaded_waveform, :first_square_side, :second_square_side, :wave_side,
+RgSoundFields = Data.define(:sample_carry, :slide_clock, :loaded_waveform, :first_square_side, :second_square_side, :wave_side,
                            :noise_side)
 
 # "sound.squares", one a square voice: its wave, the eighth it is in and how far through, its slide,
 # then its loudness (now, the samples a step holds, the samples left, whether it swells).
-RgSquarePlace = Data.define(:wave_ticks, :eighths_high, :eighth, :eighth_progress, :slide, :slide_left, :slid_ticks,
+RgSquareFields = Data.define(:wave_ticks, :eighths_high, :eighth, :eighth_progress, :slide, :slide_left, :slid_ticks,
                             :volume, :hold_samples, :samples_left, :swells)
 
 # "sound.noise": a step's ticks, the bits in its row, the row, which way it stands and stood when
 # last heard, how far through a step and to the next hand-over, then its loudness.
-RgNoisePlace = Data.define(:step_ticks, :bits, :row, :high, :heard_high, :row_progress, :hand_progress,
+RgNoiseFields = Data.define(:step_ticks, :bits, :row, :high, :heard_high, :row_progress, :hand_progress,
                            :volume, :hold_samples, :samples_left, :swells)
 
-def rg_refuse_damaged_sound(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
-
-# A loudness as a place's last four members.
+# A loudness as a record's last four members.
 def rg_loudness_members(fading)
   { volume: fading.volume, hold_samples: fading.hold_samples, samples_left: fading.left, swells: rg_state_flag(fading.up) }
 end
 
-def rg_loudness_from(place)
-  rg_refuse_damaged_sound("a voice is louder than a voice can be") unless place.volume.between?(0, RG_VOLUMES - 1)
+def rg_loudness_from(fields)
+  rg_state_refuse_damaged("a voice is louder than a voice can be") unless fields.volume.between?(0, RG_VOLUMES - 1)
   fading = RgFading.new(0, 0)
-  fading.volume = place.volume
-  fading.hold_samples = place.hold_samples
-  fading.left = place.samples_left
-  fading.up = place.swells != 0
+  fading.volume = fields.volume
+  fading.hold_samples = fields.hold_samples
+  fading.left = fields.samples_left
+  fading.up = fields.swells != 0
   fading
 end
 
 # The console voices' fields, then each sound feature's (rg_hook_visit_sound_state).
 def rg_sound_visit_state
-  rg_visit_sound_place
-  rg_visit_square_places
-  rg_visit_wave_place
-  rg_visit_noise_place
+  rg_visit_sound_fields
+  rg_visit_square_fields
+  rg_visit_wave_fields
+  rg_visit_noise_fields
   rg_hook_visit_sound_state
 end
 
-def rg_visit_sound_place
-  place = rg_state_record("sound", RgSoundPlace.new(@rg_sample_carry, @rg_slide_clock, @rg_loaded_waveform, *@rg_sides[1..]))
-  unless place.sample_carry.between?(0, RG_CONSOLE_TICKS_A_SECOND - 1) && place.slide_clock.between?(0, RG_SLIDE_TICK_SAMPLES - 1) &&
-         place.loaded_waveform.between?(-1, @rg_game_waveforms[0] - 1)
-    rg_refuse_damaged_sound("the sound is somewhere it cannot be")
+def rg_visit_sound_fields
+  fields = rg_state_record("sound", RgSoundFields.new(@rg_sample_carry, @rg_slide_clock, @rg_loaded_waveform, *@rg_sides[1..]))
+  unless fields.sample_carry.between?(0, RG_CONSOLE_TICKS_A_SECOND - 1) && fields.slide_clock.between?(0, RG_SLIDE_TICK_SAMPLES - 1) &&
+         fields.loaded_waveform.between?(-1, @rg_game_waveforms[0] - 1)
+    rg_state_refuse_damaged("the sound is somewhere it cannot be")
   end
-  sides = [place.first_square_side, place.second_square_side, place.wave_side, place.noise_side]
+  sides = [fields.first_square_side, fields.second_square_side, fields.wave_side, fields.noise_side]
   unless sides.all? { |side| [0, RG_PAN_LEFT, RG_PAN_RIGHT].include?(side) }
-    rg_refuse_damaged_sound("a voice plays from a speaker there is not")
+    rg_state_refuse_damaged("a voice plays from a speaker there is not")
   end
-  @rg_sample_carry = place.sample_carry
-  @rg_slide_clock = place.slide_clock
-  @rg_loaded_waveform = place.loaded_waveform
+  @rg_sample_carry = fields.sample_carry
+  @rg_slide_clock = fields.slide_clock
+  @rg_loaded_waveform = fields.loaded_waveform
   @rg_sides = [0, *sides]
 end
 
-def rg_visit_square_places
-  places = @rg_squares.map do |s|
-    RgSquarePlace.new(wave_ticks: s.wave_ticks, eighths_high: s.eighths_high, eighth: s.eighth, eighth_progress: s.eighth_progress,
+def rg_visit_square_fields
+  square_fields = @rg_squares.map do |s|
+    RgSquareFields.new(wave_ticks: s.wave_ticks, eighths_high: s.eighths_high, eighth: s.eighth, eighth_progress: s.eighth_progress,
                       slide: s.slide, slide_left: s.slide_left, slid_ticks: s.slid_ticks, **rg_loudness_members(s.loudness))
   end
-  rg_state_records("sound.squares", places, RgSquarePlace, RG_SQUARE_VOICES).each_with_index do |place, i|
-    unless place.eighth.between?(0, 7) && place.wave_ticks >= 0 && place.slid_ticks >= 0
-      rg_refuse_damaged_sound("a square voice is part way through a wave it cannot be")
+  rg_state_records("sound.squares", square_fields, RgSquareFields, RG_SQUARE_VOICES).each_with_index do |fields, i|
+    unless fields.eighth.between?(0, 7) && fields.wave_ticks >= 0 && fields.slid_ticks >= 0
+      rg_state_refuse_damaged("a square voice is part way through a wave it cannot be")
     end
     square = @rg_squares[i]
-    square.wave_ticks = place.wave_ticks
-    square.eighths_high = place.eighths_high
-    square.eighth = place.eighth
-    square.eighth_progress = place.eighth_progress
-    square.slide = place.slide
-    square.slide_left = place.slide_left
-    square.slid_ticks = place.slid_ticks
-    square.loudness = rg_loudness_from(place)
+    square.wave_ticks = fields.wave_ticks
+    square.eighths_high = fields.eighths_high
+    square.eighth = fields.eighth
+    square.eighth_progress = fields.eighth_progress
+    square.slide = fields.slide
+    square.slide_left = fields.slide_left
+    square.slid_ticks = fields.slid_ticks
+    square.loudness = rg_loudness_from(fields)
   end
 end
 
 # "sound.wave": the voice's 32 steps, whether it is on, its wave's ticks, its quarters, their sum,
 # the step it is on and how far through.
-def rg_visit_wave_place
+def rg_visit_wave_fields
   wave = @rg_wave
   numbers = rg_state_numbers("sound.wave", [*wave.steps, rg_state_flag(wave.switched_on), wave.wave_ticks, wave.quarters,
                                             wave.cut_sum, wave.step, wave.step_progress])
   switched_on, wave_ticks, quarters, cut_sum, step, step_progress = numbers[RG_WAVE_STEPS..]
   unless step.between?(0, RG_WAVE_STEPS - 1) && wave_ticks >= 0
-    rg_refuse_damaged_sound("the wave voice is on a step it does not have")
+    rg_state_refuse_damaged("the wave voice is on a step it does not have")
   end
   wave.steps = numbers[0, RG_WAVE_STEPS]
   wave.switched_on = switched_on != 0
@@ -530,22 +528,22 @@ def rg_visit_wave_place
   wave.step_progress = step_progress
 end
 
-def rg_visit_noise_place
+def rg_visit_noise_fields
   hiss = @rg_hiss
-  place = rg_state_record("sound.noise", RgNoisePlace.new(
+  fields = rg_state_record("sound.noise", RgNoiseFields.new(
                                            step_ticks: hiss.step_ticks, bits: hiss.bits, row: hiss.row, high: hiss.high,
                                            heard_high: hiss.heard_high, row_progress: hiss.row_progress,
                                            hand_progress: hiss.hand_progress, **rg_loudness_members(hiss.loudness)
                                          ))
-  unless place.step_ticks >= 0 && (place.step_ticks.zero? || place.bits.between?(2, 31)) && place.row.between?(0, 0xFFFF_FFFF)
-    rg_refuse_damaged_sound("the noise voice holds a row of bits it cannot")
+  unless fields.step_ticks >= 0 && (fields.step_ticks.zero? || fields.bits.between?(2, 31)) && fields.row.between?(0, 0xFFFF_FFFF)
+    rg_state_refuse_damaged("the noise voice holds a row of bits it cannot")
   end
-  hiss.step_ticks = place.step_ticks
-  hiss.bits = place.bits
-  hiss.row = place.row
-  hiss.high = place.high
-  hiss.heard_high = place.heard_high
-  hiss.row_progress = place.row_progress
-  hiss.hand_progress = place.hand_progress
-  hiss.loudness = rg_loudness_from(place)
+  hiss.step_ticks = fields.step_ticks
+  hiss.bits = fields.bits
+  hiss.row = fields.row
+  hiss.high = fields.high
+  hiss.heard_high = fields.heard_high
+  hiss.row_progress = fields.row_progress
+  hiss.hand_progress = fields.hand_progress
+  hiss.loudness = rg_loudness_from(fields)
 end

@@ -67,6 +67,16 @@ static void *room_for(size_t bytes) {
   return room;
 }
 
+_Noreturn void rg_state_refuse_damaged(const char *what) {
+  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
+}
+
+int64_t *rg_state_room(int64_t count) {
+  int64_t *room = malloc(sizeof(int64_t) * (size_t)(count > 0 ? count : 1));
+  if (!room) rg_fault("There is no room to read or write the state.");
+  return room;
+}
+
 /* Whether +text+ is nothing but spaces from here to its end. */
 static int only_spaces(const char *text) {
   while (*text == ' ') text++;
@@ -164,7 +174,7 @@ const char *rg_state_header_problem(const char *text) {
 }
 
 /* Each refused in plain words when it is not this build's. Gives back where the image starts. */
-static const char *refuse_other_build(const char *text) {
+static const char *image_after_header(const char *text) {
   const char *rest = NULL;
   const char *problem = header_problem(text, &rest);
   if (problem) rg_fault("%s", problem);
@@ -173,13 +183,13 @@ static const char *refuse_other_build(const char *text) {
 
 void rg_state_read(const char *text) {
   forget_image();
-  text = refuse_other_build(text);
+  text = image_after_header(text);
   for (const char *line = text; *line;) {
     const char *end = strchr(line, '\n');
     if (!end) end = line + strlen(line);
     if (end > line && !read_line(line, end)) {
       forget_image();
-      rg_fault("This state is damaged: a line is not a name, a tab, a count and numbers. Load a state that this game wrote.");
+      rg_state_refuse_damaged("a line is not a name, a tab, a count and numbers");
     }
     line = *end ? end + 1 : end;
   }

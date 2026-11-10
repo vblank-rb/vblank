@@ -61,6 +61,6 @@ static void rg_pixelation_visit_state(void) {
   int64_t numbers[] = {block, read_block};
   rg_state_numbers("pixelation", numbers, 2);
   if (numbers[0] < 1 || numbers[1] < 1)
-    rg_fault("This state is damaged: its blocks are smaller than a pixel. Load a state that this game wrote.");
+    rg_state_refuse_damaged("its blocks are smaller than a pixel");
   block = (int32_t)numbers[0], read_block = (int32_t)numbers[1];
 }

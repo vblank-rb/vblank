@@ -26,7 +26,7 @@ end
 # Reads an image from +text+ into the game and its runtime. One that names a field this build does
 # not keep, lacks one it does, or holds a different count stops the game saying which.
 def rg_state_read(text)
-  @rg_state_image = rg_state_parse(rg_state_refuse_other_build(text.lines))
+  @rg_state_image = rg_state_parse(rg_state_image_after_header(text.lines))
   @rg_state_taken = {}
   rg_state_visit_all
   @rg_state_image.each_key do |name|
@@ -42,7 +42,7 @@ end
 # build), or nil when its first two lines are this build's. Nothing is changed either way, so a
 # window can ask before it reads.
 def rg_state_header_problem(text)
-  rg_state_refuse_other_build(text.lines)
+  rg_state_image_after_header(text.lines)
   nil
 rescue RgFault => e
   e.message
@@ -61,10 +61,13 @@ end
 
 RG_STATE_SHORTEST_RUN = 4 # The shortest run of one number written as "times*number"
 
+# Stops the game saying the image is damaged, and what is wrong with it.
+def rg_state_refuse_damaged(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
+
 # The file's two first lines (Computer::StateFile): its version, then the build that wrote it, each
-# refused in plain words when it is not this build's (rg_state.c's refuse_other_build). Gives back
+# refused in plain words when it is not this build's (rg_state.c's image_after_header). Gives back
 # the image's lines.
-def rg_state_refuse_other_build(lines)
+def rg_state_image_after_header(lines)
   version = lines[0]&.chomp&.match(/\Avblank-state (\d+)\z/)
   rg_fault('This is not a save state: it does not start with "vblank-state". Load a state that this game wrote.') unless version
   if version[1].to_i != RG_STATE_VERSION
@@ -93,7 +96,7 @@ def rg_state_parse(lines)
     name, rest = line.split("\t", 2)
     numbers = rest && rg_state_parse_numbers(rest.split)
     if numbers.nil? || image.key?(name)
-      rg_fault("This state is damaged: a line is not a name, a tab, a count and numbers. Load a state that this game wrote.")
+      rg_state_refuse_damaged("a line is not a name, a tab, a count and numbers")
     end
     image[name] = numbers
   end

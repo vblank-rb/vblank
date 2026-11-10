@@ -63,7 +63,7 @@ def rg_pixelation_shown_row(y) = y - (y % @rg_read_block)
 def rg_pixelation_visit_state
   numbers = rg_state_numbers("pixelation", [@rg_block, @rg_read_block])
   if numbers.any? { |size| size < 1 }
-    rg_fault("This state is damaged: its blocks are smaller than a pixel. Load a state that this game wrote.")
+    rg_state_refuse_damaged("its blocks are smaller than a pixel")
   end
   @rg_block, @rg_read_block = numbers
 end

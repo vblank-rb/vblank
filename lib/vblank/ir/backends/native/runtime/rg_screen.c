@@ -1035,7 +1035,7 @@ static void visit_cells8(const char *name, uint8_t *cells, int32_t count) {
 static int64_t page_number(const uint16_t *page) { return page == first_page ? 0 : page == second_page ? 1 : 2; }
 
 static uint16_t *page_from_number(int64_t number) {
-  if (number < 0 || number > 2) rg_fault("This state is damaged: the screen names a page it does not have. Load a state that this game wrote.");
+  if (number < 0 || number > 2) rg_state_refuse_damaged("the screen names a page it does not have");
   return number == 0 ? first_page : number == 1 ? second_page : scenery;
 }
 
@@ -1070,7 +1070,7 @@ static void visit_areas(void) {
   }
   rg_state_numbers("screen.areas", values, 1 + AREA_NUMBERS * (AREAS_DEEP + 1));
   if (values[0] < 0 || values[0] > AREAS_DEEP)
-    rg_fault("This state is damaged: the screen holds more areas than it can. Load a state that this game wrote.");
+    rg_state_refuse_damaged("the screen holds more areas than it can");
   areas_deep = (int32_t)values[0];
   for (int32_t i = 0; i <= AREAS_DEEP; i++) {
     const int64_t *at = values + 1 + AREA_NUMBERS * i;

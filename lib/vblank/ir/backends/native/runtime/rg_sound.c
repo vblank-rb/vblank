@@ -544,20 +544,21 @@ void rg_sound_print_moment(void) { rg_hook_moment_printed(); }
 
 /* --- the state image --- */
 
-static _Noreturn void refuse_damaged_sound(const char *what) {
-  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
-}
-
 /* A loudness as four numbers: now, samples it holds a step, samples left, and whether it swells. */
-enum { LOUDNESS_NUMBERS = 4, SQUARE_STATE_NUMBERS = 7 + LOUDNESS_NUMBERS, WAVE_STATE_NUMBERS = WAVE_STEPS + 6,
-       NOISE_STATE_NUMBERS = 7 + LOUDNESS_NUMBERS, SOUND_STATE_NUMBERS = 3 + RG_NOISE_VOICE };
+/* Where a square's and the noise voice's loudness starts among their numbers, which end with it. */
+enum { LOUDNESS_NUMBERS = 4, SQUARE_LOUDNESS_AT = 7, NOISE_LOUDNESS_AT = 7,
+       SQUARE_STATE_NUMBERS = SQUARE_LOUDNESS_AT + LOUDNESS_NUMBERS, WAVE_STATE_NUMBERS = WAVE_STEPS + 6,
+       NOISE_STATE_NUMBERS = NOISE_LOUDNESS_AT + LOUDNESS_NUMBERS, SOUND_STATE_NUMBERS = 3 + RG_NOISE_VOICE };
+
+/* The highest eighth of a square's wave, and the fewest and most bits the noise's row can hold. */
+enum { EIGHTH_HIGHEST = 7, NOISE_BITS_FEWEST = 2, NOISE_BITS_MOST = 31 };
 
 static void put_loudness(int64_t *at, const fading_volume *fading) {
   at[0] = fading->volume, at[1] = fading->hold_samples, at[2] = fading->left, at[3] = fading->up;
 }
 
 static fading_volume loudness_from(const int64_t *at) {
-  if (at[0] < 0 || at[0] >= VOLUMES) refuse_damaged_sound("a voice is louder than a voice can be");
+  if (at[0] < 0 || at[0] >= VOLUMES) rg_state_refuse_damaged("a voice is louder than a voice can be");
   return (fading_volume){(int32_t)at[0], (int32_t)at[1], (int32_t)at[2], at[3] != 0};
 }
 
@@ -569,11 +570,11 @@ void rg_sound_visit_state(void) {
   rg_state_numbers("sound", general, SOUND_STATE_NUMBERS);
   if (general[0] < 0 || general[0] >= RG_CONSOLE_TICKS_A_SECOND || general[1] < 0 || general[1] >= SLIDE_TICK_SAMPLES ||
       general[2] < -1 || general[2] >= rg_game_waveforms[0])
-    refuse_damaged_sound("the sound is somewhere it cannot be");
+    rg_state_refuse_damaged("the sound is somewhere it cannot be");
   sample_carry = (uint64_t)general[0], slide_clock = (int32_t)general[1], loaded_waveform = (int32_t)general[2];
   for (int32_t voice = 1; voice <= RG_NOISE_VOICE; voice++) {
     if (general[2 + voice] != 0 && general[2 + voice] != PAN_LEFT && general[2 + voice] != PAN_RIGHT)
-      refuse_damaged_sound("a voice plays from a speaker there is not");
+      rg_state_refuse_damaged("a voice plays from a speaker there is not");
     sides[voice] = (int32_t)general[2 + voice];
   }
 
@@ -583,13 +584,13 @@ void rg_sound_visit_state(void) {
     int64_t *at = square_numbers + i * SQUARE_STATE_NUMBERS;
     at[0] = s->wave_ticks, at[1] = s->eighths_high, at[2] = s->eighth, at[3] = s->eighth_progress, at[4] = s->slide;
     at[5] = s->slide_left, at[6] = s->slid_ticks;
-    put_loudness(at + 7, &s->loudness);
+    put_loudness(at + SQUARE_LOUDNESS_AT, &s->loudness);
   }
   rg_state_numbers("sound.squares", square_numbers, RG_SQUARE_VOICES * SQUARE_STATE_NUMBERS);
   for (int32_t i = 0; i < RG_SQUARE_VOICES; i++) {
     const int64_t *at = square_numbers + i * SQUARE_STATE_NUMBERS;
-    if (at[2] < 0 || at[2] > 7 || at[0] < 0 || at[6] < 0) refuse_damaged_sound("a square voice is part way through a wave it cannot be");
-    squares[i] = (square_voice){(int32_t)at[0], (int32_t)at[1], loudness_from(at + 7), (int32_t)at[2], at[3], (int32_t)at[4],
+    if (at[2] < 0 || at[2] > EIGHTH_HIGHEST || at[0] < 0 || at[6] < 0) rg_state_refuse_damaged("a square voice is part way through a wave it cannot be");
+    squares[i] = (square_voice){(int32_t)at[0], (int32_t)at[1], loudness_from(at + SQUARE_LOUDNESS_AT), (int32_t)at[2], at[3], (int32_t)at[4],
                                 (int32_t)at[5], (int32_t)at[6]};
   }
 
@@ -599,20 +600,20 @@ void rg_sound_visit_state(void) {
   rest[0] = wave.switched_on, rest[1] = wave.wave_ticks, rest[2] = wave.quarters, rest[3] = wave.cut_sum, rest[4] = wave.step;
   rest[5] = wave.step_progress;
   rg_state_numbers("sound.wave", wave_numbers, WAVE_STATE_NUMBERS);
-  if (rest[4] < 0 || rest[4] >= WAVE_STEPS || rest[1] < 0) refuse_damaged_sound("the wave voice is on a step it does not have");
+  if (rest[4] < 0 || rest[4] >= WAVE_STEPS || rest[1] < 0) rg_state_refuse_damaged("the wave voice is on a step it does not have");
   for (int32_t i = 0; i < WAVE_STEPS; i++) wave.steps[i] = (int32_t)wave_numbers[i];
   wave.switched_on = rest[0] != 0, wave.wave_ticks = (int32_t)rest[1], wave.quarters = (int32_t)rest[2];
   wave.cut_sum = (int32_t)rest[3], wave.step = (int32_t)rest[4], wave.step_progress = rest[5];
 
   int64_t noise_numbers[NOISE_STATE_NUMBERS] = {hiss.step_ticks, hiss.bits,         hiss.row,         hiss.high,
                                                 hiss.heard_high, hiss.row_progress, hiss.hand_progress};
-  put_loudness(noise_numbers + 7, &hiss.loudness);
+  put_loudness(noise_numbers + NOISE_LOUDNESS_AT, &hiss.loudness);
   rg_state_numbers("sound.noise", noise_numbers, NOISE_STATE_NUMBERS);
-  if (noise_numbers[0] < 0 || (noise_numbers[0] != 0 && (noise_numbers[1] < 2 || noise_numbers[1] > 31)) || noise_numbers[2] < 0 ||
+  if (noise_numbers[0] < 0 || (noise_numbers[0] != 0 && (noise_numbers[1] < NOISE_BITS_FEWEST || noise_numbers[1] > NOISE_BITS_MOST)) || noise_numbers[2] < 0 ||
       noise_numbers[2] > UINT32_MAX)
-    refuse_damaged_sound("the noise voice holds a row of bits it cannot");
+    rg_state_refuse_damaged("the noise voice holds a row of bits it cannot");
   hiss = (noise_voice){(int32_t)noise_numbers[0], (int32_t)noise_numbers[1], (uint32_t)noise_numbers[2], (int32_t)noise_numbers[3],
-                       (int32_t)noise_numbers[4], loudness_from(noise_numbers + 7), noise_numbers[5], noise_numbers[6]};
+                       (int32_t)noise_numbers[4], loudness_from(noise_numbers + NOISE_LOUDNESS_AT), noise_numbers[5], noise_numbers[6]};
 
   rg_hook_visit_sound_state();
 }

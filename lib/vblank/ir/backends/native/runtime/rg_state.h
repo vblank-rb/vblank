@@ -44,6 +44,14 @@ int rg_state_reading(void);
 
 /* --- what a part calls for each field it keeps --- */
 
+/* Stops the game saying the image is damaged: "This state is damaged: <what>. Load a state that this
+ * game wrote." */
+_Noreturn void rg_state_refuse_damaged(const char *what);
+
+/* Room for +count+ numbers of a field (never none, so a field of none still has an address), or stops the
+ * game saying there is no room. The caller frees it. */
+int64_t *rg_state_room(int64_t count);
+
 /* A field of one number the build wrote as a global: written, or given back from the image. */
 int32_t rg_state_number(const char *name, int32_t value);
 

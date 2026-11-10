@@ -1082,7 +1082,7 @@ end
 
 def rg_page_from_number(number)
   unless number.between?(0, 2)
-    rg_fault("This state is damaged: the screen names a page it does not have. Load a state that this game wrote.")
+    rg_state_refuse_damaged("the screen names a page it does not have")
   end
   [@rg_first_page, @rg_second_page, @rg_scenery][number]
 end
@@ -1107,7 +1107,7 @@ def rg_visit_areas
   end
   rg_state_numbers("screen.areas", values)
   unless values[0].between?(0, RG_AREAS_DEEP)
-    rg_fault("This state is damaged: the screen holds more areas than it can. Load a state that this game wrote.")
+    rg_state_refuse_damaged("the screen holds more areas than it can")
   end
   areas = (0..values[0]).map do |i|
     in_force, left, top, right, bottom = values[1 + (RG_AREA_NUMBERS * i), RG_AREA_NUMBERS]

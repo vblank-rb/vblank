@@ -281,7 +281,7 @@ end
 RG_TINT_MODES = %i[none toward color].freeze # The tint's way, by its number in the state image
 
 # "fades" (Computer::StateFields says what each holds).
-RgFadesPlace = Data.define(:fade_white, :fade_steps, :tint_mode, :tint_white, :tint_color, :tint_steps, :tint_by_display,
+RgFadesFields = Data.define(:fade_white, :fade_steps, :tint_mode, :tint_white, :tint_color, :tint_steps, :tint_by_display,
                            :placed_in_force, :placed_layer_place, :placed_toward_white, :placed_steps,
                            :fade_side, :area_left, :area_top, :area_right, :area_bottom)
 
@@ -289,7 +289,7 @@ RgFadesPlace = Data.define(:fade_white, :fade_steps, :tint_mode, :tint_white, :t
 def rg_fades_visit_state
   placed = @rg_placed_fade
   left, top, right, bottom = @rg_fade_area
-  place = rg_state_record("fades", RgFadesPlace.new(
+  fields = rg_state_record("fades", RgFadesFields.new(
                                      fade_white: @rg_fade_white, fade_steps: @rg_fade_steps, tint_mode: RG_TINT_MODES.index(@rg_tint_mode),
                                      tint_white: @rg_tint_white, tint_color: @rg_tint_color, tint_steps: @rg_tint_steps,
                                      tint_by_display: rg_state_flag(@rg_tint_by_display),
@@ -297,20 +297,20 @@ def rg_fades_visit_state
                                      placed_toward_white: placed.toward_white, placed_steps: placed.steps,
                                      fade_side: @rg_fade_side, area_left: left, area_top: top, area_right: right, area_bottom: bottom
                                    ))
-  unless place.tint_mode.between?(0, RG_TINT_MODES.length - 1)
-    rg_fault("This state is damaged: the screen names a tint it does not have. Load a state that this game wrote.")
+  unless fields.tint_mode.between?(0, RG_TINT_MODES.length - 1)
+    rg_state_refuse_damaged("the screen names a tint it does not have")
   end
-  @rg_fade_white = place.fade_white
-  @rg_fade_steps = place.fade_steps
-  @rg_tint_mode = RG_TINT_MODES[place.tint_mode]
-  @rg_tint_white = place.tint_white
-  @rg_tint_color = place.tint_color
-  @rg_tint_steps = place.tint_steps
-  @rg_tint_by_display = place.tint_by_display != 0
-  @rg_placed_fade = RgPlacedFade.new(place.placed_in_force != 0, place.placed_layer_place, place.placed_toward_white,
-                                     place.placed_steps)
-  @rg_fade_side = place.fade_side
-  @rg_fade_area = [place.area_left, place.area_top, place.area_right, place.area_bottom]
+  @rg_fade_white = fields.fade_white
+  @rg_fade_steps = fields.fade_steps
+  @rg_tint_mode = RG_TINT_MODES[fields.tint_mode]
+  @rg_tint_white = fields.tint_white
+  @rg_tint_color = fields.tint_color
+  @rg_tint_steps = fields.tint_steps
+  @rg_tint_by_display = fields.tint_by_display != 0
+  @rg_placed_fade = RgPlacedFade.new(fields.placed_in_force != 0, fields.placed_layer_place, fields.placed_toward_white,
+                                     fields.placed_steps)
+  @rg_fade_side = fields.fade_side
+  @rg_fade_area = [fields.area_left, fields.area_top, fields.area_right, fields.area_bottom]
   @rg_fade_filter_stale = true
 end
 

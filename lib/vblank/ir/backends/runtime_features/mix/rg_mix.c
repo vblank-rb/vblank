@@ -516,14 +516,13 @@ static void rg_mix_visit_sound_state(void) {
     int32_t *fields = (int32_t *)&voices[i];
     for (int32_t k = 0; k < MIX_VOICE_NUMBERS; k++) fields[k] = (int32_t)numbers[i * MIX_VOICE_NUMBERS + k];
     if (voices[i].sounding && (voices[i].recording < 0 || voices[i].recording >= rg_game_recordings[0] || voices[i].position < 0))
-      rg_fault("This state is damaged: the mixer plays a recording the game does not have. Load a state that this game wrote.");
+      rg_state_refuse_damaged("the mixer plays a recording the game does not have");
   }
 
   int32_t samples = MIXES ? SLICE_SAMPLES : 0;
   if (!slice) slice = calloc((size_t)(samples ? samples : 1), sizeof *slice);
   if (!slice) rg_fault("no memory for a slice of %d samples", (int)samples);
-  int64_t *newest = malloc((size_t)(samples ? samples : 1) * sizeof *newest);
-  if (!newest) rg_fault("There is no room to read or write the state.");
+  int64_t *newest = rg_state_room(samples);
   for (int32_t at = 0; at < samples; at++) newest[at] = slice[at];
   rg_state_numbers("mix.slice", newest, samples);
   for (int32_t at = 0; at < samples; at++) slice[at] = (int32_t)newest[at];

@@ -874,17 +874,6 @@ enum {
 enum { HELD_TILE_NUMBERS = 4 };            /* background, column, row, tile */
 enum { MOST_SCENERY_PUT_UP = 1 << 28 };    /* remember_put_up's limit */
 
-static _Noreturn void refuse_damaged_scenery(const char *what) {
-  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
-}
-
-/* Room for +count+ numbers of a field, never none. */
-static int64_t *scenery_state_room(int64_t count) {
-  int64_t *room = malloc((size_t)(count ? count : 1) * sizeof *room);
-  if (!room) rg_fault("There is no room to read or write the state.");
-  return room;
-}
-
 /* How many cells a copy of map +which+ of entry +of+ holds. */
 static int64_t map_copy_cell_count(int32_t of, int32_t which) {
   const int32_t *map = map_entry(of, which);
@@ -920,7 +909,7 @@ static void read_background_state(int32_t background, const int64_t *n) {
   int64_t which = n[STATE_MAP_WHICH], of = n[STATE_MAP_OF];
   if (n[STATE_HAS_OWN_CELLS] && (of < 0 || of >= backgrounds || which < 0 ||
                                  (which > 0 && which >= background_field((int32_t)of, RG_BG_SHOWABLE_MAPS))))
-    refuse_damaged_scenery("a background holds a map it does not have");
+    rg_state_refuse_damaged("a background holds a map it does not have");
   free(cells_now[background].cells);
   cells_now[background] = (background_cells){(int32_t)which, (int32_t)of, NULL};
   scrolls[background] = (background_scroll){(int32_t)n[3], (int32_t)n[4]};
@@ -945,18 +934,18 @@ static void rg_tiled_visit_state(void) {
   int64_t counts[] = {any_from_corner, corners_expired, shown_count, held_tile_count};
   rg_state_numbers("tiled", counts, 4);
   if (counts[2] < 0 || counts[2] >= MOST_SCENERY_PUT_UP || counts[3] < 0 || counts[3] > RG_HELD_TILES_ROOM)
-    refuse_damaged_scenery("the scenery holds more than it can");
+    rg_state_refuse_damaged("the scenery holds more than it can");
   any_from_corner = counts[0] != 0;
   corners_expired = counts[1] != 0;
 
   /* The list of scenery up is emptied and put up again entry by entry, which grows its room to fit. */
-  int64_t *shown = scenery_state_room(counts[2]);
+  int64_t *shown = rg_state_room(counts[2]);
   if (!reading)
     for (int32_t i = 0; i < shown_count; i++) shown[i] = shown_backgrounds[i];
   rg_state_numbers("tiled.shown", shown, (int32_t)counts[2]);
   shown_count = 0;
   for (int64_t i = 0; i < counts[2]; i++) {
-    if (shown[i] < 0 || shown[i] >= backgrounds) refuse_damaged_scenery("the scenery up names a background the game does not have");
+    if (shown[i] < 0 || shown[i] >= backgrounds) rg_state_refuse_damaged("the scenery up names a background the game does not have");
     remember_put_up((int32_t)shown[i]);
   }
   free(shown);
@@ -971,11 +960,11 @@ static void rg_tiled_visit_state(void) {
   held_tile_count = (int32_t)counts[3];
   for (int32_t i = 0; i < held_tile_count; i++) {
     const int64_t *change = held + HELD_TILE_NUMBERS * i;
-    if (change[0] < 0 || change[0] >= backgrounds) refuse_damaged_scenery("a tile change waits for a background the game does not have");
+    if (change[0] < 0 || change[0] >= backgrounds) rg_state_refuse_damaged("a tile change waits for a background the game does not have");
     held_tiles[i] = (held_tile){(int32_t)change[0], (int32_t)change[1], (int32_t)change[2], (int32_t)change[3]};
   }
 
-  int64_t *per_background = scenery_state_room((int64_t)backgrounds * BACKGROUND_STATE_NUMBERS);
+  int64_t *per_background = rg_state_room((int64_t)backgrounds * BACKGROUND_STATE_NUMBERS);
   if (!reading)
     for (int32_t bg = 0; bg < backgrounds; bg++) background_state_numbers(bg, per_background + bg * BACKGROUND_STATE_NUMBERS);
   rg_state_numbers("tiled.backgrounds", per_background, backgrounds * BACKGROUND_STATE_NUMBERS);
@@ -988,10 +977,10 @@ static void rg_tiled_visit_state(void) {
     own_cells += own_copy_cell_count(numbers);
     if (numbers[STATE_BENDS_KEPT]) bent_lines += RG_SCREEN_HEIGHT;
   }
-  if (own_cells > INT32_MAX) refuse_damaged_scenery("the backgrounds hold more cells than they can");
+  if (own_cells > INT32_MAX) rg_state_refuse_damaged("the backgrounds hold more cells than they can");
 
   /* Every own copy, one after another, then each given back to its background on reading. */
-  int64_t *cells = scenery_state_room(own_cells), at = 0;
+  int64_t *cells = rg_state_room(own_cells), at = 0;
   for (int32_t bg = 0; bg < backgrounds; bg++) {
     int64_t count = own_copy_cell_count(per_background + bg * BACKGROUND_STATE_NUMBERS);
     if (!reading)
@@ -1012,7 +1001,7 @@ static void rg_tiled_visit_state(void) {
   free(cells);
 
   /* Each bend worked out, a screen's lines at a time, the same way. */
-  int64_t *lines = scenery_state_room(bent_lines);
+  int64_t *lines = rg_state_room(bent_lines);
   at = 0;
   for (int32_t bg = 0; bg < backgrounds; bg++) {
     if (!per_background[bg * BACKGROUND_STATE_NUMBERS + STATE_BENDS_KEPT]) continue;

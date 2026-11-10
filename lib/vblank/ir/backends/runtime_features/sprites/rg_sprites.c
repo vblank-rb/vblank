@@ -540,27 +540,18 @@ static const uint16_t *rg_sprites_front_layer(void) { return over_picture_up ? o
  * level, its turn (turned, angle, size, whether it resizes), and how many slices a crowded line
  * leaves out of it, which follow in the field after, a line and a piece each. */
 enum {
-  PLACED_STATE_NUMBERS = 10, PLACED_SPRITE = 0, PLACED_IMAGE = 1, PLACED_CUT_COUNT = 9,
+  PLACED_STATE_NUMBERS = 10, PLACED_SPRITE = 0, PLACED_IMAGE = 1, PLACED_X = 2, PLACED_Y = 3, PLACED_LEVEL = 4,
+  PLACED_TURNED = 5, PLACED_ANGLE = 6, PLACED_SIZE = 7, PLACED_RESIZES = 8, PLACED_CUT_COUNT = 9,
   CUT_NUMBERS = 2,          /* the line, and the piece */
   DRAWN_PLACE_NUMBERS = 3,  /* whether drawn, and where */
 };
-
-static _Noreturn void refuse_damaged_sprites(const char *what) {
-  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
-}
-
-static int64_t *sprites_state_room(int64_t count) {
-  int64_t *room = malloc((size_t)(count ? count : 1) * sizeof *room);
-  if (!room) rg_fault("There is no room to read or write the state.");
-  return room;
-}
 
 /* The +count+ sprites at +placed+ as field +name+, and the slices left out of them as +cuts_name+.
  * Read back, their slices are added to left_out after any already there, so the two lists of
  * sprites each keep their own. */
 static void visit_placed_objects(const char *name, const char *cuts_name, placed_object *placed, int32_t count) {
   int reading = rg_state_reading();
-  int64_t *numbers = sprites_state_room((int64_t)count * PLACED_STATE_NUMBERS);
+  int64_t *numbers = rg_state_room((int64_t)count * PLACED_STATE_NUMBERS);
   for (int32_t i = 0; !reading && i < count; i++) {
     const placed_object *p = &placed[i];
     int64_t kept[PLACED_STATE_NUMBERS] = {p->sprite, p->image, p->x, p->y, p->level, p->turned, p->angle, p->size, p->resizes,
@@ -574,12 +565,12 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
     const int64_t *n = numbers + (int64_t)i * PLACED_STATE_NUMBERS;
     if (n[PLACED_SPRITE] < 0 || n[PLACED_SPRITE] >= RG_MAX_SPRITES || n[PLACED_IMAGE] < 0 ||
         n[PLACED_IMAGE] >= rg_game_picture_sizes[RG_SIZE_IMAGES] || n[PLACED_CUT_COUNT] < 0)
-      refuse_damaged_sprites("a sprite names a sprite or a picture the game does not have");
+      rg_state_refuse_damaged("a sprite names a sprite or a picture the game does not have");
     cut_total += n[PLACED_CUT_COUNT];
   }
-  if (cut_total > MAX_LEFT_OUT - (reading ? left_out_count : 0)) refuse_damaged_sprites("more slices of sprites are left out than can be");
+  if (cut_total > MAX_LEFT_OUT - (reading ? left_out_count : 0)) rg_state_refuse_damaged("more slices of sprites are left out than can be");
 
-  int64_t *cuts = sprites_state_room(cut_total * CUT_NUMBERS), at = 0;
+  int64_t *cuts = rg_state_room(cut_total * CUT_NUMBERS), at = 0;
   for (int32_t i = 0; !reading && i < count; i++)
     for (int32_t j = placed[i].cut_from; j < placed[i].cut_from + placed[i].cut_count; j++, at += CUT_NUMBERS) {
       cuts[at] = left_out[j].line;
@@ -590,8 +581,9 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
   at = 0;
   for (int32_t i = 0; reading && i < count; i++) {
     const int64_t *n = numbers + (int64_t)i * PLACED_STATE_NUMBERS;
-    placed[i] = (placed_object){(int32_t)n[0], (int32_t)n[1], (int32_t)n[2], (int32_t)n[3], (int32_t)n[4], (int32_t)n[5],
-                                (int32_t)n[6], (int32_t)n[7], (int32_t)n[8], left_out_count, (int32_t)n[PLACED_CUT_COUNT]};
+    placed[i] = (placed_object){(int32_t)n[PLACED_SPRITE], (int32_t)n[PLACED_IMAGE], (int32_t)n[PLACED_X], (int32_t)n[PLACED_Y],
+                                (int32_t)n[PLACED_LEVEL], (int32_t)n[PLACED_TURNED], (int32_t)n[PLACED_ANGLE],
+                                (int32_t)n[PLACED_SIZE], (int32_t)n[PLACED_RESIZES], left_out_count, (int32_t)n[PLACED_CUT_COUNT]};
     for (int64_t k = 0; k < n[PLACED_CUT_COUNT]; k++, at += CUT_NUMBERS)
       left_out[left_out_count++] = (left_out_piece){(int32_t)cuts[at], (int32_t)cuts[at + 1]};
   }
@@ -607,7 +599,7 @@ static void rg_sprites_visit_state(void) {
   int64_t counts[] = {drawing_count, sprite_layer_count, over_picture_up};
   rg_state_numbers("sprites", counts, 3);
   if (counts[0] < 0 || counts[0] > RG_MAX_SPRITES || counts[1] < 0 || counts[1] > RG_MAX_SPRITES)
-    refuse_damaged_sprites("more sprites are on screen than there is room for");
+    rg_state_refuse_damaged("more sprites are on screen than there is room for");
   drawing_count = (int32_t)counts[0];
   sprite_layer_count = (int32_t)counts[1];
   over_picture_up = counts[2] != 0;
@@ -616,7 +608,7 @@ static void rg_sprites_visit_state(void) {
   visit_placed_objects("sprites.drawing", "sprites.drawing.cuts", drawing, drawing_count);
   visit_placed_objects("sprites.kept", "sprites.kept.cuts", sprite_layer, sprite_layer_count);
 
-  int64_t *places = sprites_state_room(RG_MAX_SPRITES * DRAWN_PLACE_NUMBERS);
+  int64_t *places = rg_state_room(RG_MAX_SPRITES * DRAWN_PLACE_NUMBERS);
   for (int32_t i = 0; i < RG_MAX_SPRITES; i++) {
     int32_t drawn = last_drawn[i].drawn;
     places[DRAWN_PLACE_NUMBERS * i] = drawn;
@@ -629,7 +621,7 @@ static void rg_sprites_visit_state(void) {
                                   (int32_t)places[DRAWN_PLACE_NUMBERS * i + 2]};
   free(places);
 
-  int64_t *front = sprites_state_room(CELLS);
+  int64_t *front = rg_state_room(CELLS);
   for (int32_t at = 0; at < CELLS; at++) front[at] = over_picture_up ? over_picture[at] : RG_NOTHING_IN_FRONT;
   rg_state_numbers("sprites.over_picture", front, CELLS);
   for (int32_t at = 0; at < CELLS; at++) over_picture[at] = (uint16_t)front[at];

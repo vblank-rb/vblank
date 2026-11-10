@@ -784,39 +784,37 @@ RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
 
 # "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
 # far into the tune, the volume its notes were set at, and how many notes and voices are held.
-RgMusicPlace = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
+RgMusicFields = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
                            :held_voices)
 
 # "music.parts", one a part of the playing tune: whether it walks its notes after the first time
 # through, and which comes next. The rest of a part is the song's, read again from it.
-RgPartPlace = Data.define(:after_first, :next_note)
-
-def rg_refuse_damaged_music(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
+RgPartFields = Data.define(:after_first, :next_note)
 
 # rg_hook_visit_sound_state (rg_music.c's rg_music_visit_sound_state).
 def rg_music_visit_sound_state
-  place = rg_state_record("music", RgMusicPlace.new(
+  fields = rg_state_record("music", RgMusicFields.new(
                                      wanted: @rg_wanted, playing: @rg_playing, ended: @rg_ended, stops: @rg_stops,
                                      stops_seen: @rg_stops_seen, held: rg_state_flag(@rg_music_held),
                                      song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
                                      held_voices: @rg_holder_order.length
                                    ))
   songs = (-1...rg_song_count)
-  unless [place.wanted, place.playing, place.ended].all? { |song| songs.cover?(song) } &&
-         place.held_notes.between?(0, RG_PARTS_MOST) && place.held_voices.between?(0, RG_NOISE_VOICE)
-    rg_refuse_damaged_music("the music holds more than it can")
+  unless [fields.wanted, fields.playing, fields.ended].all? { |song| songs.cover?(song) } &&
+         fields.held_notes.between?(0, RG_PARTS_MOST) && fields.held_voices.between?(0, RG_NOISE_VOICE)
+    rg_state_refuse_damaged("the music holds more than it can")
   end
-  @rg_wanted = place.wanted
-  @rg_playing = place.playing
-  @rg_ended = place.ended
-  @rg_stops = place.stops
-  @rg_stops_seen = place.stops_seen
-  @rg_music_held = place.held != 0
-  @rg_song_frame = place.song_frame
-  @rg_level = place.level
+  @rg_wanted = fields.wanted
+  @rg_playing = fields.playing
+  @rg_ended = fields.ended
+  @rg_stops = fields.stops
+  @rg_stops_seen = fields.stops_seen
+  @rg_music_held = fields.held != 0
+  @rg_song_frame = fields.song_frame
+  @rg_level = fields.level
   rg_visit_part_walks
-  rg_visit_held_notes(place.held_notes)
-  rg_visit_music_voices(place.held_voices)
+  rg_visit_held_notes(fields.held_notes)
+  rg_visit_music_voices(fields.held_voices)
   rg_visit_effects
 end
 
@@ -824,24 +822,24 @@ def rg_visit_part_walks
   if rg_state_reading
     @rg_song = @rg_playing >= 0 ? rg_song_numbers(@rg_playing) : 0
     @rg_part_count = @rg_playing >= 0 ? @rg_game_music[@rg_song + 4] : 0
-    rg_refuse_damaged_music("the song has more parts than a song can") if @rg_part_count > RG_PARTS_MOST
+    rg_state_refuse_damaged("the song has more parts than a song can") if @rg_part_count > RG_PARTS_MOST
   end
   squares_met = [0]
   written = @rg_song + RG_NUMBERS_PER_SONG
-  places = Array.new(rg_state_reading ? 0 : @rg_part_count) do |i|
+  part_fields = Array.new(rg_state_reading ? 0 : @rg_part_count) do |i|
     first, written = rg_read_part(@rg_playing, written, false, squares_met)
     part = @rg_parts[i]
-    RgPartPlace.new(after_first: rg_state_flag(part.notes != first.notes || part.count != first.count), next_note: part.next_note)
+    RgPartFields.new(after_first: rg_state_flag(part.notes != first.notes || part.count != first.count), next_note: part.next_note)
   end
-  places = rg_state_records("music.parts", places, RgPartPlace, @rg_part_count)
+  part_fields = rg_state_records("music.parts", part_fields, RgPartFields, @rg_part_count)
   return unless rg_state_reading
 
   squares_met = [0]
   written = @rg_song + RG_NUMBERS_PER_SONG
-  places.each_with_index do |place, i|
-    walk, written = rg_read_part(@rg_playing, written, place.after_first != 0, squares_met)
-    rg_refuse_damaged_music("a part of the song is past its last note") unless place.next_note.between?(0, walk.count)
-    walk.next_note = place.next_note
+  part_fields.each_with_index do |fields, i|
+    walk, written = rg_read_part(@rg_playing, written, fields.after_first != 0, squares_met)
+    rg_state_refuse_damaged("a part of the song is past its last note") unless fields.next_note.between?(0, walk.count)
+    walk.next_note = fields.next_note
     @rg_parts[i] = walk
   end
 end
@@ -850,7 +848,7 @@ def rg_visit_held_notes(count)
   @rg_holding = rg_state_records("music.holding", @rg_holding, RgHeldNote, count)
   return if @rg_holding.all? { |note| note.voice.between?(0, RG_NOISE_VOICE) }
 
-  rg_refuse_damaged_music("a held note is on a voice there is not")
+  rg_state_refuse_damaged("a held note is on a voice there is not")
 end
 
 # Each voice's wobble, swell and shapes, who holds it, and the voices in the order first held.
@@ -889,7 +887,7 @@ def rg_visit_music_voices(holder_count)
   @rg_holder_order = numbers[at + RG_NOISE_VOICE, holder_count]
   return if @rg_holder_order.all? { |voice| voice.between?(1, RG_NOISE_VOICE) }
 
-  rg_refuse_damaged_music("a voice is held that there is not")
+  rg_state_refuse_damaged("a voice is held that there is not")
 end
 
 def rg_visit_effects

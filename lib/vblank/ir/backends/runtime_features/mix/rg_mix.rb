@@ -408,12 +408,15 @@ def rg_mix_visit_sound_state
   @rg_mix_slices_made, @rg_mix_peak, @rg_mix_drop_count, @rg_mix_drops_music, @rg_mix_tickets = counts
   @rg_slices_printed = @rg_mix_slices_made # the writer's run printed the newest already
 
+  if rg_mix_voice_count > RG_MIX_VOICES_MOST
+    rg_fault("the mixer has #{rg_mix_voice_count} voices, and the most is #{RG_MIX_VOICES_MOST}")
+  end
   numbers = rg_state_numbers("mix.voices", @rg_mix_voices.first(rg_mix_voice_count).flat_map(&:state_numbers))
   numbers.each_slice(RG_MIX_VOICE_NUMBERS).with_index do |n, i|
     voice = RgMixVoice.new
     voice.state_numbers = n
     if voice.sounding && (!voice.recording.between?(0, @rg_game_recordings[0] - 1) || voice.position.negative?)
-      rg_fault("This state is damaged: the mixer plays a recording the game does not have. Load a state that this game wrote.")
+      rg_state_refuse_damaged("the mixer plays a recording the game does not have")
     end
     @rg_mix_voices[i] = voice
   end

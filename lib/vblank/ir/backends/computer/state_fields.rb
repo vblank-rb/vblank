@@ -16,12 +16,12 @@ module VBlank
         # decides: :save_size (a byte of save memory each), :screen_cells (a pixel of the screen each),
         # :three_screens (three numbers a pixel), :run_pixels (a pixel of every run the game paints
         # into each), :runs (one a run), or a count the field before it holds (:scenery_put_up,
-        # :held_tiles, four a change), the game's backgrounds (:backgrounds, 21 each), or what those
+        # :held_tiles, four a change), the game's backgrounds (:backgrounds, BACKGROUND_NUMBERS each), or what those
         # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each), and the sprites
-        # (:sprites_drawn and :sprites_kept, ten each; :sprite_cuts, two a slice; :sprite_places,
-        # three for each sprite there is room for), and the sound (:mix_voices, 22 a voice of the
+        # (:sprites_drawn and :sprites_kept, PLACED_SPRITE_NUMBERS each; :sprite_cuts, two a slice; :sprite_places,
+        # three for each sprite there is room for), and the sound (:mix_voices, MIX_VOICE_NUMBERS a voice of the
         # mixer; :slice_samples, a slice's samples; :song_parts, two a part of the playing tune;
-        # :held_notes, six a note; :sound_effects, 25 an effect).
+        # :held_notes, six a note; :sound_effects, EFFECT_NUMBERS an effect).
         # +with_save_memory+ marks a field only a game that reaches save memory keeps, and +feature+
         # one only a game that takes in that runtime feature keeps
         # (RuntimeFeatures; each visits its own through the visit_state hook, in the order the
@@ -42,6 +42,28 @@ module VBlank
           TIMER_NUMBERS = 5 # started, running, its rate, its frames a second, how far it has ticked
           AREAS_DEEP = 64 # the most `inside` areas open at once
           MOST_SEE_THROUGH = 16 # the most see-through layers a screen has
+
+          # How many numbers a runtime writes for one of each thing below: the runtimes' layouts.
+          BACKGROUND_NUMBERS = 21 # one background in "tiled.backgrounds"
+          PLACED_SPRITE_NUMBERS = 10 # one sprite in "sprites.drawing" and "sprites.kept"
+          LOUDNESS_NUMBERS = 4 # a voice's loudness: now, samples a step holds, samples left, swelling
+          SOUND_NUMBERS = 3 + 4 # the sound's carry, slide clock and waveform, and a speaker for each of four voices
+          SQUARE_VOICES = 2 # the square voices
+          SQUARE_NUMBERS = 7 + LOUDNESS_NUMBERS # one square voice
+          WAVE_NUMBERS = 32 + 6 # the wave voice's 32 steps, and six more
+          NOISE_NUMBERS = 7 + LOUDNESS_NUMBERS # the noise voice
+          MIX_NUMBERS = 5 # the mixer's own counts
+          MIX_VOICE_NUMBERS = 22 # one voice of the mixer
+          MUSIC_NUMBERS = 10 # the music's own counts
+          WOBBLE_VOICES = 3 # the voices that wobble: the squares and the wave
+          WOBBLE_NUMBERS = 6 # one voice's wobble
+          SWELL_VOICES = 4 # the voices that swell: every voice
+          SWELL_NUMBERS = 7 # one voice's swell
+          SHAPE_NUMBERS = 3 # one square voice's shape
+          HOLDER_NUMBERS = 4 + 4 # who holds each of four voices, then the voices in the order first held
+          MUSIC_VOICE_NUMBERS = (WOBBLE_VOICES * WOBBLE_NUMBERS) + (SWELL_VOICES * SWELL_NUMBERS) +
+                                (SQUARE_VOICES * SHAPE_NUMBERS) + HOLDER_NUMBERS # every voice's wobble, swell, shape and holder
+          EFFECT_NUMBERS = 5 + 20 # one sound effect: five counts, and a cursor for each of 20 parts at most
 
           FIELDS = [
             Field.new(name: "runtime.buttons.held", count: MOST_PLAYERS),
@@ -106,24 +128,24 @@ module VBlank
             # Whether each sprite was last drawn straight onto the picture, and where.
             Field.new(name: "sprites.drawn_places", count: :sprite_places, feature: :sprites),
             Field.new(name: "sprites.over_picture", count: :screen_cells, feature: :sprites),
-            # THE SOUND, after the screen: the part of a sample a frame carried, the slide clock, the
+            # The sound, after the screen: the part of a sample a frame carried, the slide clock, the
             # waveform a tune last put in the wave voice, and which speaker each voice plays from.
-            Field.new(name: "sound", count: 7),
+            Field.new(name: "sound", count: SOUND_NUMBERS),
             # Each square voice: its wave's ticks, eighths high, the eighth it is in and how far
             # through, its slide, the slide's ticks left and where it has slid to, then its loudness
             # (now, samples a step holds, samples left, swelling).
-            Field.new(name: "sound.squares", count: 22),
+            Field.new(name: "sound.squares", count: SQUARE_VOICES * SQUARE_NUMBERS),
             # The wave voice's 32 steps, whether it is on, its wave's ticks, its quarters, their sum,
             # the step it is on and how far through.
-            Field.new(name: "sound.wave", count: 38),
+            Field.new(name: "sound.wave", count: WAVE_NUMBERS),
             # The noise voice: a step's ticks, the bits in its row, the row, which way it stands and
             # stood when last heard, how far through a step and to the next hand-over, then its
             # loudness.
-            Field.new(name: "sound.noise", count: 11),
+            Field.new(name: "sound.noise", count: NOISE_NUMBERS),
             # The mixer: slices made, the most voices at once, plays dropped and the most the music
-            # held then, and sounds the game has started; then each voice's 22 numbers, and the
+            # held then, and sounds the game has started; then each voice's MIX_VOICE_NUMBERS, and the
             # newest slice.
-            Field.new(name: "mix", count: 5, feature: :mix),
+            Field.new(name: "mix", count: MIX_NUMBERS, feature: :mix),
             Field.new(name: "mix.voices", count: :mix_voices, feature: :mix),
             Field.new(name: "mix.slice", count: :slice_samples, feature: :mix),
             # The music: the tune wanted, playing and ended, stops asked and seen, held, how far into
@@ -131,10 +153,10 @@ module VBlank
             # been held; each part's walk (after its first time through, and its next note); each
             # held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
             # and shapes and who holds it; and each sound effect's place.
-            Field.new(name: "music", count: 10, feature: :music),
+            Field.new(name: "music", count: MUSIC_NUMBERS, feature: :music),
             Field.new(name: "music.parts", count: :song_parts, feature: :music),
             Field.new(name: "music.holding", count: :held_notes, feature: :music),
-            Field.new(name: "music.voices", count: 18 + 28 + 6 + 8, feature: :music),
+            Field.new(name: "music.voices", count: MUSIC_VOICE_NUMBERS, feature: :music),
             Field.new(name: "music.effects", count: :sound_effects, feature: :music)
           ].freeze
 

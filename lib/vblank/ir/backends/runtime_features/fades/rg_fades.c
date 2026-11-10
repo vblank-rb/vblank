@@ -273,7 +273,7 @@ static void rg_fades_visit_state(void) {
   };
   rg_state_numbers("fades", numbers, (int32_t)(sizeof numbers / sizeof numbers[0]));
   if (numbers[2] < 0 || numbers[2] > (int64_t)TINT_COLOR)
-    rg_fault("This state is damaged: the screen names a tint it does not have. Load a state that this game wrote.");
+    rg_state_refuse_damaged("the screen names a tint it does not have");
   fade_white = (int32_t)numbers[0], fade_steps = (int32_t)numbers[1], tint_mode = (tint_modes)numbers[2];
   tint_white = (int32_t)numbers[3], tint_color = (int32_t)numbers[4], tint_steps = (int32_t)numbers[5];
   tint_by_display = (int32_t)numbers[6];

@@ -1016,14 +1016,16 @@ static void rg_music_moment_printed(void) { printf("music_playing %d\n", (int)pl
  * are held and voices have been held. Each part of the playing tune in "music.parts": whether it is
  * walking its notes after the first time through, and which comes next; the rest of a part is the
  * song's, worked out again from it. */
+/* Where each number sits among the "music" field's. */
 enum {
-  MUSIC_STATE_NUMBERS = 10, PART_STATE_NUMBERS = 2, HELD_NOTE_NUMBERS = 6, WOBBLE_NUMBERS = 6, SWELL_NUMBERS = 7,
-  SHAPE_NUMBERS = 3, EFFECT_STATE_NUMBERS = 5 + PARTS_MOST,
+  MUSIC_AT_WANTED, MUSIC_AT_PLAYING, MUSIC_AT_ENDED, MUSIC_AT_STOPS, MUSIC_AT_STOPS_SEEN, MUSIC_AT_HELD,
+  MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_STATE_NUMBERS,
 };
 
-static _Noreturn void refuse_damaged_music(const char *what) {
-  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
-}
+enum {
+   PART_STATE_NUMBERS = 2, HELD_NOTE_NUMBERS = 6, WOBBLE_NUMBERS = 6, SWELL_NUMBERS = 7,
+  SHAPE_NUMBERS = 3, EFFECT_STATE_NUMBERS = 5 + PARTS_MOST,
+};
 
 /* rg_hook_visit_sound_state: the tune wanted and playing and where in it, each part's walk, the
  * notes held under the music volume, each voice's wobble, swell and shapes, who holds each voice,
@@ -1034,18 +1036,18 @@ static void rg_music_visit_sound_state(void) {
   int64_t general[MUSIC_STATE_NUMBERS] = {wanted,     playing, ended, stops,         stops_seen,
                                           music_held, song_frame, level, holding_count, holder_count};
   rg_state_numbers("music", general, MUSIC_STATE_NUMBERS);
-  if (general[0] < -1 || general[0] >= SONG_COUNT || general[1] < -1 || general[1] >= SONG_COUNT || general[2] < -1 ||
-      general[2] >= SONG_COUNT || general[8] < 0 || general[8] > PARTS_MOST || general[9] < 0 || general[9] > RG_NOISE_VOICE)
-    refuse_damaged_music("the music holds more than it can");
-  wanted = (int32_t)general[0], playing = (int32_t)general[1], ended = (int32_t)general[2], stops = (int32_t)general[3];
-  stops_seen = (int32_t)general[4], music_held = general[5] != 0, song_frame = (int32_t)general[6], level = (int32_t)general[7];
-  holding_count = (int32_t)general[8], holder_count = (int32_t)general[9];
+  if (general[MUSIC_AT_WANTED] < -1 || general[MUSIC_AT_WANTED] >= SONG_COUNT || general[MUSIC_AT_PLAYING] < -1 || general[MUSIC_AT_PLAYING] >= SONG_COUNT || general[MUSIC_AT_ENDED] < -1 ||
+      general[MUSIC_AT_ENDED] >= SONG_COUNT || general[MUSIC_AT_HOLDING_COUNT] < 0 || general[MUSIC_AT_HOLDING_COUNT] > PARTS_MOST || general[MUSIC_AT_HOLDER_COUNT] < 0 || general[MUSIC_AT_HOLDER_COUNT] > RG_NOISE_VOICE)
+    rg_state_refuse_damaged("the music holds more than it can");
+  wanted = (int32_t)general[MUSIC_AT_WANTED], playing = (int32_t)general[MUSIC_AT_PLAYING], ended = (int32_t)general[MUSIC_AT_ENDED], stops = (int32_t)general[MUSIC_AT_STOPS];
+  stops_seen = (int32_t)general[MUSIC_AT_STOPS_SEEN], music_held = general[MUSIC_AT_HELD] != 0, song_frame = (int32_t)general[MUSIC_AT_SONG_FRAME], level = (int32_t)general[MUSIC_AT_LEVEL];
+  holding_count = (int32_t)general[MUSIC_AT_HOLDING_COUNT], holder_count = (int32_t)general[MUSIC_AT_HOLDER_COUNT];
 
   /* The playing tune's parts, read again from the song, each from where the image says. */
   if (reading) {
     song = playing >= 0 ? song_numbers(playing) : NULL;
     part_count = playing >= 0 ? song[4] : 0;
-    if (part_count > PARTS_MOST) refuse_damaged_music("the song has more parts than a song can");
+    if (part_count > PARTS_MOST) rg_state_refuse_damaged("the song has more parts than a song can");
   }
   int64_t walks[PARTS_MOST * PART_STATE_NUMBERS];
   const int32_t *written = song ? song + NUMBERS_PER_SONG : NULL;
@@ -1060,7 +1062,7 @@ static void rg_music_visit_sound_state(void) {
   for (int32_t i = 0; reading && i < part_count; i++) {
     written = read_part(playing, written, walks[i * PART_STATE_NUMBERS] != 0, &squares_met, &parts[i]);
     int64_t next = walks[i * PART_STATE_NUMBERS + 1];
-    if (next < 0 || next > parts[i].count) refuse_damaged_music("a part of the song is past its last note");
+    if (next < 0 || next > parts[i].count) rg_state_refuse_damaged("a part of the song is past its last note");
     parts[i].next = (int32_t)next;
   }
 
@@ -1073,7 +1075,7 @@ static void rg_music_visit_sound_state(void) {
   rg_state_numbers("music.holding", held, holding_count * HELD_NOTE_NUMBERS);
   for (int32_t i = 0; reading && i < holding_count; i++) {
     const int64_t *n = held + i * HELD_NOTE_NUMBERS;
-    if (n[0] < 0 || n[0] > RG_NOISE_VOICE) refuse_damaged_music("a held note is on a voice there is not");
+    if (n[0] < 0 || n[0] > RG_NOISE_VOICE) rg_state_refuse_damaged("a held note is on a voice there is not");
     holding[i] = (held_note){(int32_t)n[0], (int32_t)n[1], (int32_t)n[2], (int32_t)n[3], (int32_t)n[4], (int32_t)n[5]};
   }
 
@@ -1104,13 +1106,12 @@ static void rg_music_visit_sound_state(void) {
     shapes[v] = (shape_walk){(int32_t)at[0], (int32_t)at[1], (int32_t)at[2]};
   for (int32_t v = 1; v <= RG_NOISE_VOICE; v++) holders[v] = (int32_t)at[v - 1];
   for (int32_t i = 0; i < holder_count; i++) {
-    if (at[RG_NOISE_VOICE + i] < 1 || at[RG_NOISE_VOICE + i] > RG_NOISE_VOICE) refuse_damaged_music("a voice is held that there is not");
+    if (at[RG_NOISE_VOICE + i] < 1 || at[RG_NOISE_VOICE + i] > RG_NOISE_VOICE) rg_state_refuse_damaged("a voice is held that there is not");
     holder_order[i] = (int32_t)at[RG_NOISE_VOICE + i];
   }
 
   refuse_too_many_effects();
-  int64_t *effects = malloc((size_t)(EFFECT_COUNT ? EFFECT_COUNT : 1) * EFFECT_STATE_NUMBERS * sizeof *effects);
-  if (!effects) rg_fault("There is no room to read or write the state.");
+  int64_t *effects = rg_state_room((int64_t)EFFECT_COUNT * EFFECT_STATE_NUMBERS);
   for (int32_t e = 0; e < EFFECT_COUNT; e++) {
     int64_t *n = effects + (int64_t)e * EFFECT_STATE_NUMBERS;
     n[0] = effect_asked[e], n[1] = effect_asked_now[e], n[2] = effect_stopping[e], n[3] = effect_running[e], n[4] = effect_frame[e];
