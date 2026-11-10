@@ -235,6 +235,79 @@ module StateImageTests
     assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: features))
   end
 
+  # A GAME OF THE RARER SCENERY: a wall told now and then to draw with other colours, whose cells
+  # the game changes held together (`held: true`), under a status bar that moves now and then and
+  # covers the ship for a while. Each pass waits five frames, so the state, taken in the middle of
+  # one, holds what the pass set before it.
+  private def rare_scenery_game
+    tile = Minitest::Test::SOLID_TILE
+    halves = Array.new(64) { |i| (i % 8) < 4 ? :red : :green }
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :tiled
+      image :bars, width: 8, height: 8, data: halves, colors: %i[transparent red green]
+      image :plain, width: 8, height: 8, data: Array.new(64, :green), colors: %i[transparent red green]
+      colors :shimmer, %i[transparent yellow white]
+      colors :dusk, %i[transparent blue white]
+      image(:green_t, "#" => :green) { tile }
+      image(:white_t, "#" => :white) { tile }
+      tiles :wall, "#" => :bars, "." => :plain
+      tiles :bar_tiles, "#" => :green_t, "o" => :white_t
+      rays = background :rays, tiles: :wall, map: Array.new(32) { "#" * 32 }, held: true
+      bar = status_bar :score, tiles: :bar_tiles, map: ["#" * 32, "o" * 32], top: screen_height - 16
+      ship = sprite :white_t, at: [100, screen_height - 20]
+      n = var :n, 0
+      game_loop do
+        n += 1
+        ship.x = (n * 3) % 200
+        rays.draw_with %i[shimmer dusk], showing: n % 3 if n % 5 == 2
+        rays.set_tile n % 30, (n / 30) % 20, "." if n % 2 == 1
+        rays.set_tile n % 30, (n / 30) % 20, "#" if n % 2 == 0
+        bar.move_to screen_height - 16 - (n % 24) if n % 8 == 3
+        bar.covers_sprites = true if n % 16 == 4
+        bar.covers_sprites = false if n % 16 == 12
+        repeat(5) { wait_vblank }
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # A BACKGROUND THAT TURNS now and then, on a screen that turns its scenery. The game hands its
+  # turn over again every frame, so this shows the turned picture comes back, not that the state's
+  # copy of the turn is needed.
+  private def turned_scenery_game
+    tile = Minitest::Test::SOLID_TILE
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :rotozoom
+      image(:red_t, "#" => :red) { tile }
+      image(:white_t, "#" => :white) { tile }
+      tiles :t, "#" => :red_t, "." => :white_t
+      board = background :board, tiles: :t, map: Array.new(32) { |row| Array.new(32) { |col| (row + col).odd? ? "#" : "." }.join }
+      n = var :n, 0
+      game_loop do
+        n += 1
+        board.rotate(n * 7) if n % 6 == 1
+        repeat(5) { wait_vblank }
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_recoloured_held_and_status_bar_scenery_comes_back_from_the_state
+    programs = [rare_scenery_game]
+    programs << turned_scenery_game if game_console == :gba
+    programs.each do |program|
+      unbroken, state = unbroken_with_state(program)
+
+      assert_operator unbroken.map(&:last).uniq.length, :>, 5, "the game's picture moves"
+      assert_plays_on_from(state, program, unbroken)
+      other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+    end
+  end
+
   # A GAME OF SPRITES THE FRAMEWORK DRAWS over scenery: a row of a dozen that crowds one line of
   # the screen, which a console that draws only so many on a line leaves some of out, a ship, and a
   # badge whose picture the game paints from a list. Each pass places them once and then waits seven
