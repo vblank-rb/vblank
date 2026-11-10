@@ -136,6 +136,37 @@ class TestJSShell < Minitest::Test
     end
   end
 
+  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES plays in a worker, so the page keeps getting
+  # its frames the whole time, and the pack it keeps is still the all-in-one build's. Played in the
+  # page, as it was, the page could do nothing else until the routine waited for a frame, and this
+  # one waits for none as it works.
+  BUSY_STEPS = 60_000_000 # ShellTests#busy_port's: enough to keep the game as JavaScript at work for many frames
+
+  def test_the_page_keeps_getting_frames_while_the_unpacking_works_between_writes
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "busy.html")
+      JS.new.build_shell_page(busy_port(original_nowhere(folder), steps: BUSY_STEPS), path, console: :gba, err: nil)
+      out = played_page([*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", "work", "settle"],
+                        html: File.read(path, encoding: Encoding::UTF_8), browser: ["idb:#{File.join(folder, 'idb.json')}"])
+      frames = out.grep(/\Aworked /).first[/frames=(\d+)/, 1].to_i
+
+      assert_operator frames, :>=, 10, "the page had #{frames} frames as the unpacking worked"
+      assert_equal Dir.mktmpdir { |other| busy_port(original(other), steps: 1).data_pack_file }, kept_pack(folder)
+    end
+  end
+
+  # A browser that refuses the page a worker (a content security policy can) still unpacks: in the
+  # page, as before there was a worker.
+  def test_a_browser_that_refuses_a_worker_unpacks_in_the_page
+    Dir.mktmpdir do |folder|
+      out = played_page([*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play],
+                        html: shell_page_html(folder), browser: ["idb:#{File.join(folder, 'idb.json')}", "refuse-worker"])
+
+      assert_nil said(out)
+      assert_equal all_in_one_pack, kept_pack(folder)
+    end
+  end
+
   def test_the_page_holds_none_of_the_originals_bytes
     Dir.mktmpdir do |folder|
       assert_holds_none_of original_pieces, shell_page_html(folder), "the web page"

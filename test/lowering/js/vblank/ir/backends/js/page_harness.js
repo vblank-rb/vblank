@@ -55,7 +55,12 @@
  *                       folder at PATH where the page asked for a folder
  *   cancel-pick         ...or closed without a file
  *   picker              prints "picker" and how many times the page opened the file picker
- *   settle              lets the page's promises run on for a while with no frame
+ *   settle              lets the page's promises run on for a while with no frame, any worker the
+ *                       page started first running until the page ends it
+ *   work                gives the page a frame every few milliseconds of real time for as long as a
+ *                       worker it started is running (three frames at the least), and prints "worked"
+ *                       and how many frames the page asked the browser for meanwhile (frames=): a
+ *                       page that is busy the whole time asks for one or two
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
  *   state               prints "state" and what the browser holds now: the sound device
@@ -300,6 +305,48 @@ URL.revokeObjectURL = () => {};
 class AudioWorkletProcessor {
   constructor() { this.port = { onmessage: null }; }
 }
+
+/* A WEB WORKER: the code at a Blob's address run on a thread of its own (node's worker_threads),
+ * with the names a worker's code finds in a browser put in front of it: self, postMessage and
+ * onmessage. It has no window and no document, as a browser's has none. Each one the page has
+ * started and not ended is in +workers+. */
+const workers = new Set();
+const WORKER_NAMES = `
+const { parentPort } = require("worker_threads");
+const self = globalThis;
+self.postMessage = (data, transfer) => parentPort.postMessage(data, transfer);
+parentPort.on("message", (data) => { if (self.onmessage) self.onmessage({ data }); });
+`;
+class Worker {
+  constructor(url) {
+    const code = blob_texts.get(url);
+    if (code === undefined) throw new Error(`no worker's code at ${url}`);
+    this.thread = new (require("worker_threads").Worker)(WORKER_NAMES + code, { eval: true });
+    /* A browser hands the page nothing from a worker it has ended, even what was already on its way. */
+    this.thread.on("message", (data) => { if (workers.has(this) && this.onmessage) this.onmessage({ data }); });
+    this.thread.on("error", (error) => {
+      if (workers.has(this) && this.onerror) this.onerror({ message: String(error && error.stack || error) });
+    });
+    workers.add(this);
+  }
+  postMessage(data, transfer) { this.thread.postMessage(data, transfer); }
+  terminate() {
+    workers.delete(this);
+    this.thread.terminate();
+  }
+}
+
+const real_ms = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/* Waits, in real time, for the page to end every worker it started; a worker left running a minute
+ * is a fault in the page. */
+async function workers_ended() {
+  const gives_up = Date.now() + 60000;
+  while (workers.size > 0) {
+    if (Date.now() > gives_up) throw new Error("page_harness: a worker the page started is still running a minute on");
+    await real_ms(2);
+  }
+}
 class AudioContext {
   constructor(options = {}) {
     this.state = "running";
@@ -352,6 +399,8 @@ const browser = {
   AudioContext,
   AudioWorkletNode,
   Blob,
+  /* Started with "refuse-worker", the browser refuses to start one, as a content security policy can. */
+  Worker: flags.includes("refuse-worker") ? class { constructor() { throw new Error("the page's content security policy refuses it"); } } : Worker,
   navigator: { getGamepads: () => pads.slice() },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
@@ -542,14 +591,38 @@ async function steps() {
     }
     else if (step === "cancel-pick") tell(pickers.shift(), "cancel");
     else if (step === "picker") printed.push(`picker ${picks_asked}`);
-    else if (step === "settle") for (let i = 0; i < 20; i++) await settle();
+    else if (step === "settle") {
+      await workers_ended();
+      for (let i = 0; i < 20; i++) await settle();
+    }
+    else if (step === "work") {
+      const before = asked.frames;
+      for (let frames = 0; frames < 3 || workers.size > 0; frames++) {
+        play(1);
+        await real_ms(2);
+      }
+      printed.push(`worked frames=${asked.frames - before}`);
+    }
     else if (step === "text") printed.push(text(what));
     else if (step === "state") printed.push(state());
     else if (step) throw new Error(`page_harness: no step called ${step}`);
     await settle();
   }
   if (ids.has("said") && !element("said").hidden) printed.push(`said ${element("said").textContent}`);
-  fs.writeSync(1, `${printed.join("\n")}\n`);
+  write_whole(`${printed.join("\n")}\n`);
+}
+
+/* Everything printed, written whole: one write to a pipe may take only part of a long text (a
+ * picture is a great many numbers), or none while the reader is behind. */
+function write_whole(text) {
+  const bytes = Buffer.from(text);
+  for (let at = 0; at < bytes.length;) {
+    try {
+      at += fs.writeSync(1, bytes, at);
+    } catch (error) {
+      if (error.code !== "EAGAIN") throw error;
+    }
+  }
 }
 
 main().catch((error) => {

@@ -264,7 +264,8 @@ the game reads (`Original::Releases`, the words a build machine uses too), unpac
 release's unpacking, writes the pack — byte for byte the all-in-one build's — and plays the game. Played
 as Ruby, the unpacking runs in a Ractor of its own (`Live::BackgroundUnpacking`), so the window keeps
 showing its bar however long the routine works between writes; closing the window then keeps no pack.
-The desktop program does the same with a thread of its own (`play_part_on_thread`, `rg_sdl.c`). A
+The desktop program does the same with a thread of its own (`play_part_on_thread`, `rg_sdl.c`), and
+the web page with a worker (`rg_shell_unpack_in_worker`, `rg_shell.js`). A
 pack for another `version:` fails the check, so the menu asks again. SETTINGS opens the window's menu.
 The web page (`--format web --shell`) and the desktop program (`--format native --shell`, a folder) do
 the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every
