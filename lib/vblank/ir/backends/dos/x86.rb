@@ -55,8 +55,8 @@ module VBlank
 
           # The arithmetic every one of these shares: the opcode of `op r/m, reg` (the `op reg, r/m` form is
           # one more) and the digit that picks it in the group of instructions that take a number (81h, 83h).
-          ARITHMETIC = { add: [0x01, 0], or: [0x09, 1], adc: [0x11, 2], sbb: [0x19, 3], and: [0x21, 4],
-                         sub: [0x29, 5], xor: [0x31, 6], cmp: [0x39, 7] }.freeze
+          ARITHMETIC = Ractor.make_shareable({ add: [0x01, 0], or: [0x09, 1], adc: [0x11, 2], sbb: [0x19, 3],
+                                               and: [0x21, 4], sub: [0x29, 5], xor: [0x31, 6], cmp: [0x39, 7] })
 
           # The conditions, as the low four bits of a conditional jump's opcode (Intel's manual, Jcc).
           CONDITIONS = { o: 0, no: 1, b: 2, ae: 3, e: 4, ne: 5, be: 6, a: 7, s: 8, ns: 9, p: 10, np: 11,
@@ -161,8 +161,16 @@ module VBlank
 
           # --- arithmetic ---
 
+          # Must stay shareable: a method made from a plain block cannot be called from a Ractor other
+          # than the one that made it, and tests build games in Ractors. So each block below is made
+          # shareable before it becomes a method (it captures only the frozen name and numbers).
+          def self.instruction(name, &body)
+            define_method(name, &Ractor.make_shareable(body))
+          end
+          private_class_method :instruction
+
           ARITHMETIC.each_key do |name|
-            define_method(name) { |destination, source| arithmetic(name, destination, source) }
+            instruction(name) { |destination, source| arithmetic(name, destination, source) }
           end
 
           def test(destination, source)
@@ -190,7 +198,7 @@ module VBlank
 
           # shl, shr, sar, rol, ror by a count in CL, or a number.
           SHIFTS.each do |name, digit|
-            define_method(name) do |operand, count|
+            instruction(name) do |operand, count|
               if count == :cl
                 emit_modrm(opcode_for(operand, 0xD2, 0xD3), nil, digit, operand)
               else
@@ -202,8 +210,8 @@ module VBlank
 
           # setcc register: 1 in the byte register when the condition holds, else 0.
           CONDITIONS.each do |name, code|
-            define_method(:"set#{name}") { |register| emit_modrm([0x0F, 0x90 + code], nil, 0, register, size: 8) }
-            define_method(:"j#{name}") { |label| jump_near([0x0F, 0x80 + code], label) }
+            instruction(:"set#{name}") { |register| emit_modrm([0x0F, 0x90 + code], nil, 0, register, size: 8) }
+            instruction(:"j#{name}") { |label| jump_near([0x0F, 0x80 + code], label) }
           end
 
           # --- flow ---
@@ -395,8 +403,8 @@ module VBlank
           end
 
           # The rm values of 16-bit addressing, by [base, index].
-          ADDRESSING = { %i[bx si] => 0, %i[bx di] => 1, %i[bp si] => 2, %i[bp di] => 3, [:si, nil] => 4,
-                         [:di, nil] => 5, [:bp, nil] => 6, [:bx, nil] => 7 }.freeze
+          ADDRESSING = Ractor.make_shareable({ %i[bx si] => 0, %i[bx di] => 1, %i[bp si] => 2, %i[bp di] => 3,
+                                               [:si, nil] => 4, [:di, nil] => 5, [:bp, nil] => 6, [:bx, nil] => 7 })
 
           def emit_memory(field, memory)
             return emit([(field << 3) | 6].pack("C")) && word(memory.disp) if memory.base.nil?
