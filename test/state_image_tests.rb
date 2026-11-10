@@ -364,10 +364,11 @@ module StateImageTests
     assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled sprites]))
   end
 
-  # A GAME THAT SOUNDS: a song on all four voices coming round, its volume turned down and faded,
-  # a beep that fades on the second voice, a hit on the noise voice, and, on a console that mixes
-  # recordings, a recording that loops and one that plays once. Mid-note, mid-fade and mid-recording
-  # at the state.
+  # A GAME THAT SOUNDS: a song on all four voices coming round, a part on each speaker, its volume
+  # turned down, faded and turned again, a sound effect over it, a beep that fades on the second
+  # voice, a hit on the noise voice, the game's own waveform on the wave voice, and, on a console
+  # that mixes recordings, a recording that loops and one that plays once. Mid-note, mid-effect and
+  # mid-recording at the state, and changed again after it.
   private def sounding_game
     mixes = VBlank::Console.described(game_console).recordings_at_once.positive?
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
@@ -377,10 +378,15 @@ module StateImageTests
       song :tune do
         tempo 150
         voice(:melody) { duty :half; note :A4, :quarter; note :C5, :eighth; rest :eighth; note :E5, :quarter, slide_up: { every: 2, shift: 7 } }
-        voice(:bass) { duty :eighth; volume 8; note :A3, :half; note :E3, :half }
+        voice(:bass) { duty :eighth; volume 8; note :A3, :half; note :E3, :half, pan: :right }
         voice(:pad, plays: :wave) { note :A3, :half; note :C4, :half }
         voice(:drums, plays: :noise) { note :C3, :quarter; rest :quarter; note :C5, :quarter, pan: :left; rest :quarter }
       end
+      score = VBlank::Audio::Score
+      hit = score.new(tempo: 150, priority: 68, parts: [score::Part.new(volume: 12, notes: [
+                                                         score::Note.new(at: 0, key: :E5, length: 20), score::Note.new(at: 20, key: :G5, length: 20)
+                                                       ])])
+      effects = sound_effects :sfx, { hit: hit }
       if mixes
         boom = sample :boom, pcm: [0, 60, 0, -60] * 900, rate: 8000
         hum = sample :hum, pcm: [0, 30, 50, 30, 0, -30, -50, -30] * 50, rate: 16_000
@@ -395,7 +401,11 @@ module StateImageTests
         noise :explosion if n % 31 == 12
         music_volume 50 if n == 20
         fade_music_out frames: 30 if n == 30
+        music_volume 70 if n == 38
+        effects.play :hit if n % 37 == 36
+        wave :triangle, :A4 if n == 44
         fade_music_in frames: 30 if n == 70
+        music_volume 40 if n == 90
         if mixes
           hum.play(loop: true) if n == 8
           boom.play if n % 29 == 25
@@ -409,16 +419,23 @@ module StateImageTests
 
   # The sound a run makes: each speaker's samples, the mixer's slices and the sound log, as it
   # plays +frames+ frames.
-  private def sound_heard(run, program, frames:)
-    run.recording_sound.run(program, frames: frames)
-    { left: run.sound, right: run.sound_right, mixed: run.mixed_sound }
+  # The log is each frame's entries from the frame after +from+ on: a run read from a state logs what
+  # its own start-up did before the state came in, which the state then replaces.
+  private def sound_heard(run, program, frames:, from: 0)
+    logged = {}
+    run.recording_sound.each_vblank { |frame| logged[frame] = run.audio.length }.run(program, frames: frames)
+    { left: run.sound, right: run.sound_right, mixed: run.mixed_sound, log: run.audio.drop(logged.fetch(from, 0)) }
   end
 
   def test_music_and_sound_under_way_come_back_from_the_state
     program = sounding_game
     unbroken_run = state_run.writing_state_after(STATE_AFTER)
-    unbroken = sound_heard(unbroken_run, program, frames: STATE_AFTER + FRAMES_ON)
-    refute unbroken[:left].all?(&:zero?), "the game makes sound"
+    unbroken = sound_heard(unbroken_run, program, frames: STATE_AFTER + FRAMES_ON, from: STATE_AFTER)
+    SPEAKERS.each { |side| refute unbroken[side].all?(&:zero?), "the game makes sound on the #{side}" }
+    mixes = VBlank::Console.described(game_console).recordings_at_once.positive?
+    refute unbroken[:mixed].flatten.all?(&:zero?), "the mixer sounds" if mixes
+    assert_runtime_fields(unbroken_run.state,
+                          VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: mixes ? %i[mix music] : %i[music]))
 
     [state_run, *other_runs].each do |reader|
       resumed = sound_heard(reader.starting_from_state(unbroken_run.state), program, frames: FRAMES_ON)
@@ -429,6 +446,8 @@ module StateImageTests
         assert_nil first, "the #{side} speaker after the state differs from the unbroken run's first at sample #{first} of #{heard.length}"
       end
       assert_equal unbroken[:mixed].last(resumed[:mixed].length), resumed[:mixed], "the mixer after the state differs"
+      refute_empty unbroken[:log], "the game logs sound after the state"
+      assert_equal unbroken[:log], resumed[:log].last(unbroken[:log].length), "the sound log after the state differs"
     end
   end
 
