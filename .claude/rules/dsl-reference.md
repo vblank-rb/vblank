@@ -59,5 +59,5 @@ number the game keeps works too.
 
 **Each console**: what every verb does there, and what it refuses.
 
-- `game-boy-advance.md`, `game-boy-color.md`, `super-nintendo.md`, `sega-genesis.md`, `playstation.md`.
+- `game-boy-advance.md`, `game-boy-color.md`, `super-nintendo.md`, `sega-genesis.md`, `playstation.md`, `dos.md`.
 - `escape-hatch.md` — `entry`: raw ARM instructions.

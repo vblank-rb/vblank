@@ -6,8 +6,8 @@ require "test_helper"
 # block runs, and each console's build gets the picture the game chose for it: on every run, the
 # game built for that run's console, checked against the interpreter.
 class TestBuiltFor < Minitest::Test
-  FIVE = %i[gba gbc snes genesis ps1].freeze
-  COLOR_FOR = { gba: :red, gbc: :green, snes: :blue, genesis: :white, ps1: :yellow }.freeze
+  FIVE = %i[gba gbc snes genesis ps1 dos].freeze
+  COLOR_FOR = { gba: :red, gbc: :green, snes: :blue, genesis: :white, ps1: :yellow, dos: :cyan }.freeze
 
   private def game
     VBlank.game "WHICH", consoles: FIVE do

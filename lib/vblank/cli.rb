@@ -359,10 +359,11 @@ module VBlank
         -o, --output PATH        Where to write what is built. PATH is one file,
                                  so a game for two consoles needs --console too.
         --format FORMAT          game, ir, native, ruby or web. Default: game.
-        --console NAME           #{CONSOLE_CHOICES}: build that console's
-                                 cartridge alone. Default: one for each console
-                                 the game names. With --format native, web or
-                                 ruby: the console to make the game as.
+        --console NAME           #{CONSOLE_CHOICES}:
+                                 build that console's cartridge alone.
+                                 Default: one for each console the game
+                                 names. With --format native, web or ruby:
+                                 the console to make the game as.
                                  Default: the first one the game names.
         --variant NAME           The chip on the cartridge, such as superfx
                                  for a Super Nintendo cartridge with a Super
