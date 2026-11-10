@@ -179,6 +179,51 @@ module StateImageTests
     end
   end
 
+  # A GAME OF SCENERY DRAWN FROM TILES: a field scrolled only now and then, shown from its second
+  # map since frame 25 and changed a cell at a time since, so after the state the picture shows a
+  # scroll, a map and cells the game set before it. On the Advance a second background is held to a
+  # box that moves now and then, in front of the field, and bent row by row.
+  private def scenery_game
+    tile = Minitest::Test::SOLID_TILE
+    boxed = game_console == :gba
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :tiled
+      image(:red_t, "#" => :red) { tile }
+      image(:blue_t, "#" => :blue) { tile }
+      image(:white_t, "#" => :white) { tile }
+      tiles :set, "#" => :red_t, "." => :blue_t, "o" => :white_t
+      checks = Array.new(32) { |row| Array.new(32) { |col| (row + col).odd? ? "#" : "." }.join }
+      stripes = Array.new(32) { |row| (row.even? ? "o" : ".") * 32 }
+      field = background :field, tiles: :set, map: { checks: checks, stripes: stripes }
+      sky = background :sky, tiles: :set, map: Array.new(32) { "o#" * 16 } if boxed
+      n = var :n, 0
+      sky.scroll_each_row { |row| (row + n) % 16 } if boxed
+      x = var :x, 0
+      game_loop do
+        n += 1
+        x += rand(1..5)
+        field.scroll_to x, n * 2 if n % 9 == 4
+        field.show_map 1 if n == 25
+        field.set_tile n % 32, (n / 32) % 32, "o" if n % 3 == 0
+        sky.show_only_inside n % 100, 10, 60, 40 if boxed && n % 11 == 5
+        wait_vblank
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_scenery_scrolled_and_changed_comes_back_from_the_state
+    program = scenery_game
+    unbroken, state = unbroken_with_state(program)
+
+    assert_operator unbroken.map(&:last).uniq.length, :>, 20, "the game's picture moves"
+    assert_plays_on_from(state, program, unbroken)
+    other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled]))
+  end
+
   def test_a_run_read_from_a_state_plays_on_as_the_unbroken_run
     program = state_game
     unbroken, state = unbroken_with_state(program)

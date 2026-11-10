@@ -15,8 +15,11 @@ module VBlank
         # +count+ is how many numbers the field holds, or a Symbol for a count the game or its console
         # decides: :save_size (a byte of save memory each), :screen_cells (a pixel of the screen each),
         # :three_screens (three numbers a pixel), :run_pixels (a pixel of every run the game paints
-        # into each) or :runs (one a run). +with_save_memory+ marks a field only a game that reaches save
-        # memory keeps, and +feature+ one only a game that takes in that runtime feature keeps
+        # into each), :runs (one a run), or a count the field before it holds (:scenery_put_up,
+        # :held_tiles, four a change), the game's backgrounds (:backgrounds, 21 each), or what those
+        # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each).
+        # +with_save_memory+ marks a field only a game that reaches save memory keeps, and +feature+
+        # one only a game that takes in that runtime feature keeps
         # (RuntimeFeatures; each visits its own through the visit_state hook, in the order the
         # features are joined).
         #
@@ -75,7 +78,18 @@ module VBlank
             # where the fade reaches (the whole screen, inside or outside) and its rectangle.
             Field.new(name: "fades", count: 16, feature: :fades),
             # The size of the blocks things are painted in, and of those a painted screen is read in.
-            Field.new(name: "pixelation", count: 2, feature: :pixelation)
+            Field.new(name: "pixelation", count: 2, feature: :pixelation),
+            # Whether backgrounds are shown from their corners this pass and whether that pass has
+            # ended, how many times scenery has been put up, and how many tile changes wait.
+            Field.new(name: "tiled", count: 4, feature: :tiled),
+            Field.new(name: "tiled.shown", count: :scenery_put_up, feature: :tiled), # each background put up, in order
+            Field.new(name: "tiled.held", count: :held_tiles, feature: :tiled), # background, column, row, tile
+            # For each background, what its name keeps: whether it has its own cells, the map they copy
+            # and the background whose map it is, the scroll, shown from its corner, the colours
+            # named, the box, the turn, the status bar's place, covering the sprites, and bends kept.
+            Field.new(name: "tiled.backgrounds", count: :backgrounds, feature: :tiled),
+            Field.new(name: "tiled.cells", count: :own_cells, feature: :tiled), # each own copy of a map, in turn
+            Field.new(name: "tiled.bends", count: :bent_lines, feature: :tiled) # a screen's lines for each bend worked out
           ].freeze
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches

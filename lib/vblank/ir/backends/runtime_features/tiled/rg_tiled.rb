@@ -948,3 +948,116 @@ def rg_tiled_scene_take_down(brings_scenery)
   rg_stamp_in_stack_order(-1)
   true
 end
+
+# --- the state image ---
+
+# How many numbers "tiled.backgrounds" holds for each background, and where in them its own cells,
+# their map and its bends are (rg_tiled.c's BACKGROUND_STATE_NUMBERS and STATE_ slots).
+RG_BACKGROUND_STATE_NUMBERS = 21
+RG_STATE_HAS_OWN_CELLS = 0
+RG_STATE_MAP_WHICH = 1
+RG_STATE_MAP_OF = 2
+RG_STATE_BENDS_KEPT = 20
+RG_HELD_TILE_NUMBERS = 4           # background, column, row, tile
+RG_MOST_SCENERY_PUT_UP = 1 << 28   # rg_tiled.c's remember_put_up's limit
+RG_HELD_TILES_ROOM = 1024          # rg_tiled.h's
+
+def rg_refuse_damaged_scenery(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
+
+# How many cells a copy of map +which+ of entry +of+ holds.
+def rg_map_copy_cell_count(of, which)
+  map = rg_map_entry(of, which)
+  @rg_game_maps[map + RG_MAP_COLS] * @rg_game_maps[map + RG_MAP_ROWS]
+end
+
+# A background's numbers, as "tiled.backgrounds" holds them (rg_tiled.c's background_state_numbers).
+def rg_background_state_numbers(background)
+  which, cells, of = @rg_cells_now[background]
+  box = @rg_boxes[background]
+  turn = @rg_turns[background]
+  [
+    rg_state_flag(!cells.nil?), which, of, *@rg_scrolls[background], rg_state_flag(@rg_from_corner[background]),
+    @rg_colors_told[background], rg_state_flag(!box.nil?), *(box || [0, 0, 0, 0]),
+    rg_state_flag(turn.turned), turn.angle, turn.size, turn.pivot_x, turn.pivot_y,
+    @rg_bar_tops[background], rg_state_flag(@rg_bar_placed[background]), rg_state_flag(@rg_bar_covers[background]),
+    rg_state_flag(!@rg_bend_lines[background].nil?)
+  ]
+end
+
+# A background's numbers read from the image, all but its cells and its bends.
+def rg_read_background_state(background, numbers)
+  has_own = numbers[RG_STATE_HAS_OWN_CELLS]
+  which = numbers[RG_STATE_MAP_WHICH]
+  of = numbers[RG_STATE_MAP_OF]
+  if has_own != 0 && (!of.between?(0, @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS] - 1) || which.negative? ||
+                      (which.positive? && which >= rg_background_field(of, RG_BG_SHOWABLE_MAPS)))
+    rg_refuse_damaged_scenery("a background holds a map it does not have")
+  end
+  @rg_cells_now[background] = [which, nil, of]
+  @rg_scrolls[background] = numbers[3, 2]
+  @rg_from_corner[background] = numbers[5] != 0
+  @rg_colors_told[background] = numbers[6]
+  @rg_boxes[background] = numbers[7] != 0 ? numbers[8, 4] : nil
+  @rg_turns[background] = RgTurn.new(numbers[12] != 0, *numbers[13, 4])
+  @rg_bar_tops[background] = numbers[17]
+  @rg_bar_placed[background] = numbers[18] != 0
+  @rg_bar_covers[background] = numbers[19] != 0
+end
+
+# rg_hook_visit_state (rg_tiled.c's rg_tiled_visit_state): the scenery up and the changes waiting,
+# then what each background's name keeps, the cells of its own copy, and the lines of its bends.
+def rg_tiled_visit_state
+  backgrounds = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]
+  counts = rg_state_numbers("tiled", [rg_state_flag(@rg_any_from_corner), rg_state_flag(@rg_corners_expired),
+                                      @rg_shown_backgrounds.length, @rg_held_tiles.length])
+  unless counts[2].between?(0, RG_MOST_SCENERY_PUT_UP - 1) && counts[3].between?(0, RG_HELD_TILES_ROOM)
+    rg_refuse_damaged_scenery("the scenery holds more than it can")
+  end
+  @rg_any_from_corner = counts[0] != 0
+  @rg_corners_expired = counts[1] != 0
+
+  shown = rg_state_numbers("tiled.shown", rg_state_reading ? Array.new(counts[2], 0) : @rg_shown_backgrounds.dup)
+  unless shown.all? { |bg| bg.between?(0, backgrounds - 1) }
+    rg_refuse_damaged_scenery("the scenery up names a background the game does not have")
+  end
+  @rg_shown_backgrounds = shown
+
+  held = rg_state_numbers("tiled.held",
+                          rg_state_reading ? Array.new(RG_HELD_TILE_NUMBERS * counts[3], 0) : @rg_held_tiles.flatten)
+  @rg_held_tiles = held.each_slice(RG_HELD_TILE_NUMBERS).to_a
+  unless @rg_held_tiles.all? { |bg, *| bg.between?(0, backgrounds - 1) }
+    rg_refuse_damaged_scenery("a tile change waits for a background the game does not have")
+  end
+
+  per_background = rg_state_numbers("tiled.backgrounds",
+                                    if rg_state_reading
+                                      Array.new(backgrounds * RG_BACKGROUND_STATE_NUMBERS, 0)
+                                    else
+                                      Array.new(backgrounds) { |bg| rg_background_state_numbers(bg) }.flatten
+                                    end).each_slice(RG_BACKGROUND_STATE_NUMBERS).to_a
+  per_background.each_with_index { |numbers, bg| rg_read_background_state(bg, numbers) } if rg_state_reading
+
+  owners = per_background.each_index.select { |bg| per_background[bg][RG_STATE_HAS_OWN_CELLS] != 0 }
+  sizes = owners.map do |bg|
+    rg_map_copy_cell_count(per_background[bg][RG_STATE_MAP_OF], per_background[bg][RG_STATE_MAP_WHICH])
+  end
+  cells = rg_state_numbers("tiled.cells",
+                           rg_state_reading ? Array.new(sizes.sum, 0) : owners.flat_map { |bg| @rg_cells_now[bg][1] })
+  if rg_state_reading
+    owners.zip(sizes).each do |bg, size|
+      @rg_cells_now[bg][1] = cells.shift(size).map { |cell| rg_to_half(cell) }
+    end
+  end
+
+  bent_backgrounds = per_background.each_index.select { |bg| per_background[bg][RG_STATE_BENDS_KEPT] != 0 }
+  lines = rg_state_numbers("tiled.bends",
+                           if rg_state_reading
+                             Array.new(bent_backgrounds.length * RG_SCREEN_HEIGHT, 0)
+                           else
+                             bent_backgrounds.flat_map { |bg| @rg_bend_lines[bg] }
+                           end)
+  return unless rg_state_reading
+
+  @rg_bend_lines = Array.new(RG_MAX_BACKGROUNDS)
+  bent_backgrounds.each { |bg| @rg_bend_lines[bg] = lines.shift(RG_SCREEN_HEIGHT) }
+end

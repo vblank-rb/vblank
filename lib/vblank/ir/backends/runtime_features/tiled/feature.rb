@@ -6,5 +6,5 @@ VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :tiled,
   needed_by: %i[background],
   hooks: %i[setup screen_crossed frame_ended repaint_requested rebuild_checked repaint_began paint_level
-            repaint_ending stamp_scenery scenery_up layer_holds_scenery scene_take_down]
+            repaint_ending stamp_scenery scenery_up layer_holds_scenery scene_take_down visit_state]
 )
