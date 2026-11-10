@@ -1,5 +1,5 @@
 diff --git a/dosbox_pure_libretro.cpp b/dosbox_pure_libretro.cpp
-index ec99bf3..5014174 100644
+index ec99bf3..bc1df79 100644
 --- a/dosbox_pure_libretro.cpp
 +++ b/dosbox_pure_libretro.cpp
 @@ -3830,8 +3830,36 @@ void retro_deinit(void)
@@ -41,7 +41,7 @@ index ec99bf3..5014174 100644
  void retro_cheat_reset(void) { }
  void retro_cheat_set(unsigned index, bool enabled, const char *code) { (void)index; (void)enabled; (void)code; }
  bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) { return false; }
-@@ -4071,3 +4099,78 @@ unsigned DBP_Build_GL_Program(int vertex_shader_srcs_count, const char** vertex_
+@@ -4071,3 +4099,82 @@ unsigned DBP_Build_GL_Program(int vertex_shader_srcs_count, const char** vertex_
  	}
  	return prog;
  }
@@ -120,3 +120,7 @@ index ec99bf3..5014174 100644
 +	pthread_mutex_unlock(&vblank_lock);
 +	return held;
 +}
++// retro_run starts emulating the next frame on the emulation thread before it returns, so memory read after it
++// races with the machine. This waits for that frame to finish, and the thread then stays parked until the next
++// retro_run: what is read is the machine between two frames.
++VBLANK_EXPORT void vblank_finish_frame(void) { DBP_ThreadControl(TCM_FINISH_FRAME); }

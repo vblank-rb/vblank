@@ -55,9 +55,17 @@ module RubyDOSEmulator
 
     attr_reader :frames, :sample_rate, :fps
 
+    # THE START GATE: a byte at 0040:00F2, in the 16 bytes the PC keeps free for programs to talk to each
+    # other. A program started as `GAME.EXE HOLD` is meant to set it and wait for it to be cleared, so a
+    # reader can see its first pass from the start: DOSBox runs the program during its own start-up, and
+    # without the gate the first passes are over before a test can look. #release_gate lets it go.
+    START_GATE_AT = 0x4F2
+
     # +program+ is the path of an .EXE or a .COM; its folder is drive C: (a copy of it, so a program
-    # that saves a file never changes what is on disk; read it back with #drive_file).
-    def initialize(program)
+    # that saves a file never changes what is on disk; read it back with #drive_file). With +hold+ the
+    # program is started with the word HOLD after its name (see START_GATE_AT).
+    def initialize(program, hold: false)
+      @hold = hold
       @dir = Dir.mktmpdir("ruby-dos-emulator")
       @drive = File.join(@dir, "c")
       FileUtils.mkdir_p(@drive)
@@ -83,12 +91,23 @@ module RubyDOSEmulator
       @held = codes
     end
 
-    # Plays one frame: one picture's time, about a seventieth of a second in mode 13h.
+    # Plays one frame: one picture's time, about a seventieth of a second in mode 13h. The machine is left
+    # parked between two frames (see the probe patch's vblank_finish_frame), so everything read after it is
+    # what the program has done by then, whatever the host's speed. #picture is the frame before that one:
+    # DOSBox hands over a frame's picture a frame after it emulates it, so read the screen from
+    # #chained_pixels and #palette to see what the memory holds now.
     def run_frame
       @call[:retro_run].call
+      @call[:vblank_finish_frame].call
       @frames += 1
       self
     end
+
+    # Whether the program has reached its gate and is waiting there (see START_GATE_AT).
+    def gate_closed? = peek(START_GATE_AT, 1).getbyte(0) == 1
+
+    # Lets a program held at its start go on.
+    def release_gate = poke(START_GATE_AT, "\0")
 
     # --- the picture ---
 
@@ -106,6 +125,9 @@ module RubyDOSEmulator
 
     # +count+ bytes of the PC's first megabyte, from linear address +address+ (segment * 16 + offset).
     def peek(address, count) = live(SYSTEM_RAM, 0x10_0000)[address, count]
+
+    # Writes +bytes+ into the PC's first megabyte at linear address +address+, as a program's own store would.
+    def poke(address, bytes) = (live(SYSTEM_RAM, 0x10_0000)[address, bytes.bytesize] = bytes)
 
     # The video card's memory as DOSBox keeps it: four planes interleaved (byte 4n + plane). A mode
     # that is unchained (Mode X) reads that as it is. Mode 13h is chained, and DOSBox spreads its
@@ -184,6 +206,7 @@ module RubyDOSEmulator
       retro_get_system_av_info: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
       retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
       retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T],
+      vblank_finish_frame: [[], Fiddle::TYPE_VOID],
       vblank_set_directory: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
       vblank_key_event: [[Fiddle::TYPE_INT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
       vblank_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOIDP],
@@ -243,7 +266,7 @@ module RubyDOSEmulator
         @echo off
         mount c "#{@drive}"
         c:
-        #{program}
+        #{program}#{' HOLD' if @hold}
       CONF
     end
 
