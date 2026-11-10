@@ -29,13 +29,15 @@ module RubyDOSEmulator
   #
   #   curl -L ARCHIVE | tar xz --strip-components=1
   #   patch -p1 -i ruby-dos-emulator/core/dosbox-vblank-probe.patch
-  #   make -j4
+  #   make -j4 CPUFLAGS=-Wl,--version-script=ruby-dos-emulator/core/dosbox-exports.map
   #
   # VBLANK_DOS_CORE points the gem at a core built some other way.
   module CoreBuild
     REVISION = "1.0-preview6"
     ARCHIVE = "https://codeload.github.com/schellingb/dosbox-pure/tar.gz/#{REVISION}".freeze
     PATCH = File.expand_path("../../core/dosbox-vblank-probe.patch", __dir__)
+    # The only symbols the core exports (see the file), which lets the system unload it again.
+    EXPORTS = File.expand_path("../../core/dosbox-exports.map", __dir__)
 
     # Why a core could not be made, in words for the person installing.
     class CannotBuild < StandardError; end
@@ -68,7 +70,7 @@ module RubyDOSEmulator
         FileUtils.mkdir_p(source)
         run.call("tar", "xzf", archive, "-C", source, "--strip-components=1")
         run.call("patch", "--quiet", "-d", source, "-p1", "-i", PATCH)
-        run.call("make", "-C", source, "-j#{Etc.nprocessors}")
+        run.call("make", "-C", source, "-j#{Etc.nprocessors}", "CPUFLAGS=-Wl,--version-script=#{EXPORTS}")
         move_into_place(library_in(source), target)
       end
     end

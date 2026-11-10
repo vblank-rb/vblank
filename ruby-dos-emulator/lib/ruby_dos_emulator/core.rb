@@ -176,6 +176,7 @@ module RubyDOSEmulator
 
       @call[:retro_unload_game].call
       @call[:retro_deinit].call
+      @handle.close # the library unloads, and its 42 MB of static memory with it (core/dosbox-exports.map says why)
       @call = nil
       FileUtils.rm_rf(@dir)
     end
@@ -221,7 +222,6 @@ module RubyDOSEmulator
     def load_library
       copy = CoreCopy.make
       @handle = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
-      @handle.disable_close # the library stays mapped anyway (see CoreCopy), so it is never asked to close
       copy.delete
       @call = FUNCTIONS.to_h do |name, (args, result)|
         [name, Fiddle::Function.new(@handle[name.to_s], args, result)]

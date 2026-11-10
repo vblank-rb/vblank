@@ -41,6 +41,7 @@ DOSBox Pure is GPL-2.0, and `core/LICENSE.md` says what that covers here. This g
 testing, and VBlank never ships it: it is not in VBlank's gemspec.
 
 The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a copy of
-the library of its own and never reuses one (see `CoreCopy`): a machine cannot be started again in a
-library that has run one. The library stays mapped after `destroy`, so a process that opens many
-machines grows by about 40 MB each. A test run that opens many puts them in several processes.
+the library of its own (see `CoreCopy`), and `destroy` unloads it again, which frees its 42 MB of static
+memory. That needs the core to export only libretro's functions and the probe's
+(`core/dosbox-exports.map`): without it the system never unloads the library, and a process that opens many
+machines grows by 40 MB for each.

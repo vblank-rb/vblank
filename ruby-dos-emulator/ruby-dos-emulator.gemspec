@@ -18,7 +18,7 @@ Gem::Specification.new do |spec|
   spec.license     = "MIT" # our binding code; DOSBox Pure is built separately, under GPL-2.0
   spec.required_ruby_version = ">= 4.0"
 
-  spec.files = Dir["lib/**/*.rb", "core/*.patch", "core/LICENSE.md", "Rakefile", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "core/*.patch", "core/*.map", "core/LICENSE.md", "Rakefile", "README.md"]
   spec.require_paths = ["lib"]
   spec.add_dependency "fiddle"
   spec.metadata["rubygems_mfa_required"] = "true"
