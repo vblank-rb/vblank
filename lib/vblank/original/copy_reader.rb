@@ -37,11 +37,12 @@ module VBlank
 
       # +formats+ are the formats the copy offers, in the order a fault numbers them; +platform+ is
       # the original's, which a refusal names; +release+ (a Release) is the one unpacked, whose files
-      # #file finds. +before_wait+ is BlockKitInternals'.
-      def initialize(builder, copy:, pack:, faults:, formats:, platform:, release: nil, before_wait: nil)
+      # #file finds. +before_wait+ and +slot_bytes_done+ are BlockKitInternals'.
+      def initialize(builder, copy:, pack:, faults:, formats:, platform:, release: nil, before_wait: nil, slot_bytes_done: nil)
         @builder = builder
         @release = release
-        @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait)
+        @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait,
+                                                             slot_bytes_done: slot_bytes_done)
         @kit = Packing::BlockKit.new(@internals)
         @formats = formats
         @platform = platform
@@ -79,11 +80,15 @@ module VBlank
         end
       end
 
-      # For a decoder the game writes itself: +count+ more bytes written. They are added to the
-      # count of bytes done, and every PROGRESS_BYTES counted the routine waits for the next frame,
-      # as the formats do. +count+ may be worked out as the routine runs.
-      def count_written(count)
-        @internals.count_written(count)
+      # For a decoder the game writes itself: +count+ more bytes written, to the slot +into+ (a slot
+      # of `pack`). They are added to the count of bytes done, and every PROGRESS_BYTES counted the
+      # routine waits for the next frame, as the formats do. +count+ may be worked out as the routine
+      # runs. +into+ may be left out unless a slot of the pack names its cost, when a shell's bar
+      # needs to know whose work it was.
+      def count_written(count, into: nil)
+        refuse_count_without_slot! if into.nil? && @internals.counts_each_slot?
+        refuse_unless_slot!(into, "count_written") if into
+        @internals.count_written(count, into ? into.number : 0)
         nil
       end
 
@@ -220,6 +225,11 @@ module VBlank
 
         takes = (PLACE_SETTINGS + format.format_settings.keys).map { |name| "#{name}:" }.join(", ")
         raise ArgumentError, "`copy.#{verb}` was given #{unknown.map { |name| "#{name}:" }.join(', ')}. It takes #{takes}."
+      end
+
+      def refuse_count_without_slot!
+        raise ArgumentError, "`copy.count_written` names no slot. A slot of this data pack has a cost:, so the " \
+                             "progress bar counts the bytes of each slot. Add the slot: `copy.count_written 256, into: pack[:music]`."
       end
 
       def refuse_unless_slot!(into, verb)

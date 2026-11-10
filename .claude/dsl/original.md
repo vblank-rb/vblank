@@ -27,6 +27,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     works in a shell. A recording given as `pcm:` bytes beside it stays as it was. Worked example:
     `test/pack_sound_tests.rb`.
 
+  Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
+  (a whole number, 1 or more; 1 when not named). It changes only the shell's progress bar (below):
+  a slot's share of the bar is its bytes times its cost, so a slot the routine renders slowly moves the
+  bar as slowly as the routine works. A slot the routine fills moves the bar only by what
+  `copy.count_written ..., into:` counts for it. A pack where every slot costs 1 shows the bar by
+  bytes, as before.
+
   Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
   A computer game's numbers (`platform: :pc`) are low byte first, as DOS and Windows games keep them,
   unless the line names its byte order: `byte_order: :high_first` (or `:low_first`). A line naming both a
@@ -88,7 +95,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     place worked out as the routine runs stops the build, and a read there is not checked. A copy's formats
     (`copy_bytes`, `unpack_*`, `start:`) still write bytes. `copy.count_written n` counts what a loop of the
     routine's own wrote, in bytes (a half is 2), so the progress bar moves and the routine waits for a
-    frame every 256 bytes, as a format does. A slot write does not count itself. Worked example:
+    frame every 256 bytes, as a format does. A slot write does not count itself. Where a slot of the
+    pack names its `cost:`, the count must name the slot it went to,
+    `copy.count_written 256, into: pack[:music]`; a count with no `into:` is then refused. Worked example:
     `test/all/vblank/builder/test_data_packs.rb` (`numbers_written`).
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
     verbs, each place counted from that file's start. A fixed place outside the file is refused.
@@ -224,7 +233,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
   `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.
-  Built so, it draws a progress bar as it goes (game code, so every runtime shows it).
+  Built so, it draws a progress bar as it goes (game code, so every runtime shows it), by bytes, or by
+  work where a slot names its `cost:`. Worked example: `test/pack_at_start_tests.rb` (`bar_widths`).
 - `game.data_pack_file` (a `Cartridge::Game`, `settings:`, `console:`) — the pack file the all-in-one
   build makes from the copy, its bytes: what a build with its pack left out is handed, and what a
   shell must make, byte for byte.

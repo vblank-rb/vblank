@@ -29,7 +29,12 @@ module VBlank
     #
     # +width+ and +signed+ are a slot of numbers' alone, and nil for any other shape. A slot of pixels
     # is a byte a pixel in any layout, so its +format+ is nil.
-    Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format)
+    #
+    # +cost+ is how much work one of the slot's bytes takes to unpack, against a plain copy's 1: a
+    # slot the routine renders or decompresses slowly names more, so a shell's bar gives it its
+    # share of the time rather than of the bytes (Builder::DataPacks#define_unpacking_progress). It
+    # changes nothing in the pack.
+    Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format, :cost)
 
     class Slot
       TILE_SIDE = IR::FormatReading::TILE_SIDE
@@ -56,32 +61,32 @@ module VBlank
       })
 
       # +count+ colours, in the colour layout of +layout+ (a console's name).
-      def self.colors(name, count:, at: nil, layout: DEFAULT_LAYOUT)
+      def self.colors(name, count:, at: nil, layout: DEFAULT_LAYOUT, cost: 1)
         new(name: name.to_sym, shape: :colors, at: at, count: count, width: nil, signed: nil,
-            format: formats_of(name, layout).colors)
+            format: formats_of(name, layout).colors, cost: cost)
       end
 
       # +count+ tiles of 8x8 pixels in +colors+ colours, in the tile layout of +layout+. +colors+ may
       # be left out where the console keeps one kind of tile.
-      def self.tiles(name, count:, at: nil, layout: DEFAULT_LAYOUT, colors: nil)
+      def self.tiles(name, count:, at: nil, layout: DEFAULT_LAYOUT, colors: nil, cost: 1)
         new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil,
-            format: tile_format_of(name, layout, colors))
+            format: tile_format_of(name, layout, colors), cost: cost)
       end
 
       # +count+ pixels, each one byte, a place 0 to 255 in a list of colours the game gives: a picture
       # of up to 256 colours row by row, as a computer game keeps its art. A byte is a byte in every
       # layout, so the slot names none; how the original lays its art out is the game's to undo in
       # its unpacking routine, which writes the slot row by row.
-      def self.pixels(name, count:, at: nil) = of_bytes(:pixels, name, count, at)
+      def self.pixels(name, count:, at: nil, cost: 1) = of_bytes(:pixels, name, count, at, cost)
 
       # +count+ samples of a recorded sound, one byte each, 8-bit signed (-128 to 127), for a
       # recording's `pcm:` (`sample :bang, pcm: pack[:bang], rate: 7000`). The rate is the game's to
       # name, since a sound's speed is not part of its bytes. A byte is a byte in every layout.
-      def self.samples(name, count:, at: nil) = of_bytes(:samples, name, count, at)
+      def self.samples(name, count:, at: nil, cost: 1) = of_bytes(:samples, name, count, at, cost)
 
       # A slot of one-byte items that no layout changes: pixels or samples.
-      def self.of_bytes(shape, name, count, at)
-        new(name: name.to_sym, shape: shape, at: at, count: count, width: nil, signed: nil, format: nil)
+      def self.of_bytes(shape, name, count, at, cost)
+        new(name: name.to_sym, shape: shape, at: at, count: count, width: nil, signed: nil, format: nil, cost: cost)
       end
       private_class_method :of_bytes
 
@@ -91,7 +96,7 @@ module VBlank
       # +count+ numbers +width+ wide, in the number layout of +layout+ (a console's name), or in the
       # byte order +byte_order+ names; a computer game's (+layout+ COMPUTER) are low byte first
       # unless the slot names its byte order.
-      def self.numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil)
+      def self.numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1)
         unless IR::Build::ELEMENT_BYTES.key?(width)
           raise ArgumentError, "Slot :#{name} was given width: #{width.inspect}. A slot of numbers must be :byte, :half " \
                                "or :word wide."
@@ -102,7 +107,7 @@ module VBlank
         end
 
         new(name: name.to_sym, shape: :numbers, at: at, count: count, width: width, signed: signed,
-            format: number_format_of(name, layout, byte_order))
+            format: number_format_of(name, layout, byte_order), cost: cost)
       end
 
       def self.number_format_of(name, layout, byte_order)
@@ -150,7 +155,7 @@ module VBlank
       end
       private_class_method :formats_of, :tile_format_of, :number_format_of
 
-      def initialize(name:, shape:, at:, count:, width:, signed:, format:)
+      def initialize(name:, shape:, at:, count:, width:, signed:, format:, cost: 1)
         unless (at.nil? || place?(at) || release_places?(at)) && count.is_a?(Integer) && count.positive?
           raise ArgumentError, "Slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. " \
                                "at: must be a place in the copy, 0 or more. " \
@@ -158,9 +163,16 @@ module VBlank
                                "Leave at: out for a slot the unpacking routine fills. " \
                                "count: must be 1 or more."
         end
+        unless cost.is_a?(Integer) && cost.positive?
+          raise ArgumentError, "Slot :#{name} was given cost: #{cost.inspect}. cost: must be a whole number, 1 or more. " \
+                               "It tells how much work one byte of the slot is, and a plain copy is 1."
+        end
 
         super
       end
+
+      # Whether the slot names a cost other than a plain copy's.
+      def costly? = cost != 1
 
       # Whether the place is given release by release.
       def places_by_release? = at.is_a?(Hash)

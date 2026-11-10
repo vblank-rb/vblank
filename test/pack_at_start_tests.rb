@@ -626,6 +626,99 @@ module PackAtStartTests
     unpacked_pack(VBlank::Builder.new(options: PACK_AT_START), folder).unpacking(release: made_up_release)
   end
 
+  # THE BAR A SHELL SHOWS AS IT UNPACKS, measured off the screen: a pack of a slot copied as it is
+  # (the whole made-up copy, 512 bytes) and a slot the routine fills, 1024 bytes, counted 256 at a
+  # time. +cost+ is how many times the work of a plain copy each byte of the second costs, or nil to
+  # name none. Gives back the bar's width on each frame it moved, in order.
+  private def bar_widths(folder, cost:)
+    from = original(folder)
+    cost_option = cost ? { cost: cost } : {}
+    unpacking = VBlank::Builder.new(options: PACK_AT_START).data_pack(from: from, version: "1") do |slots|
+      slots.numbers :plain, at: 0, count: COPY_SIZE, width: :byte, signed: false
+      slots.numbers :rendered, count: 1024, width: :byte, signed: false, **cost_option
+      slots.fill_from_copy do |copy, pack|
+        4.times do |quarter|
+          256.times { |at| pack[:rendered][(quarter * 256) + at] = copy.byte(at) ^ quarter }
+          copy.count_written 256, into: pack[:rendered]
+        end
+      end
+    end.unpacking(release: made_up_release)
+    run = game_player.hand_file(COPY)
+    widths = []
+    run.each_vblank { widths << bar_width(run.screen) }.run(unpacking.program, frames: 12)
+    widths.chunk_while { |a, b| a == b }.map(&:first).reject(&:zero?)
+  end
+
+  # Builder::DataPacks's bar: a gray strip in from each side, in the middle of the screen, white as
+  # far as the unpacking has got. Measured until it is full, where gray is gone.
+  private def bar_width(screen)
+    side = VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE
+    height = VBlank::Builder::DataPacks::PROGRESS_BAR_HEIGHT
+    row = ((VBlank::Console.described(game_console).screen_height - height) / 2) + (height / 2)
+    gray = screen.pixel(side + bar_across - 1, row)
+    (0...bar_across).count { |x| screen.pixel(side + x, row) != gray }
+  end
+
+  private def bar_across
+    VBlank::Console.described(game_console).screen_width - (2 * VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE)
+  end
+
+  # With no cost named the bar is the bytes written of the pack's bytes: the copied slot is a
+  # third of them, so the bar is a third of the way when it is done. The bar divides by whole bytes
+  # a pixel, rounded down, so it runs a little ahead of the exact share.
+  def test_the_unpacking_bar_measures_bytes_when_no_slot_names_a_cost
+    Dir.mktmpdir do |folder|
+      shown = bar_widths(folder, cost: nil)
+
+      assert_operator shown.length, :>=, 3, "the bar moves a step at a time: #{shown.inspect}"
+      [256, 512, 768].each_with_index do |done, i|
+        assert_in_delta bar_across * done / 1536.0, shown[i], 6, "the bar after #{done} of 1536 bytes"
+      end
+    end
+  end
+
+  # A slot that costs four times as much work a byte takes four times its share of the bar: the
+  # copied slot is 512 parts of the work and the costly one 4 x 1024, so the bar reaches a ninth
+  # of the way when the copy is done, and a quarter of the costly slot moves it two ninths further.
+  def test_the_unpacking_bar_measures_work_when_a_slot_names_its_cost
+    Dir.mktmpdir do |folder|
+      shown = bar_widths(folder, cost: 4)
+      work = 512 + (4 * 1024)
+
+      assert_operator shown.length, :>=, 3, "the bar moves a step at a time: #{shown.inspect}"
+      [256, 512, 512 + (4 * 256)].each_with_index do |done, i|
+        assert_in_delta bar_across * done / work.to_f, shown[i], 1.5, "the bar after #{done} of #{work} parts of the work"
+      end
+    end
+  end
+
+  def test_a_slot_cost_that_is_not_a_whole_number_of_one_or_more_is_refused
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) do
+        VBlank::Builder.new(options: PACK_AT_START).data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :rendered, count: 16, width: :byte, signed: false, cost: 0
+        end
+      end
+
+      assert_match "cost:", refused.message
+    end
+  end
+
+  # Where a slot names its cost the bar counts slot by slot, so a count of bytes written must say
+  # which slot they went to.
+  def test_a_count_written_with_no_slot_is_refused_where_a_slot_names_its_cost
+    Dir.mktmpdir do |folder|
+      refused = assert_raises(ArgumentError) do
+        VBlank::Builder.new(options: PACK_AT_START).data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :rendered, count: 16, width: :byte, signed: false, cost: 4
+          slots.fill_from_copy { |copy, _pack| copy.count_written 16 }
+        end.unpacking(release: made_up_release)
+      end
+
+      assert_match "into: pack[", refused.message
+    end
+  end
+
   def test_the_unpacking_built_with_no_copy_unpacks_the_copy_it_is_handed
     Dir.mktmpdir do |folder|
       unpacking = unpacking_without_copy(folder)

@@ -452,9 +452,14 @@ module VBlank
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
+          slot_bytes_done = (maker.list(Original::Unpacking::SLOT_BYTES_DONE, capacity: slots.length, full_of: 0) if slots.any?(&:costly?))
           reader = Original::CopyReader.new(maker, copy: copy_table, pack: list, faults: faults, formats: reading.formats,
-                                                   platform: reading.platform, release: release, before_wait: progress)
-          define_unpacking_progress(maker, reader.bytes_done, finished, slots.sum(&:byte_size)) if progress
+                                                   platform: reading.platform, release: release, before_wait: progress,
+                                                   slot_bytes_done: slot_bytes_done)
+          if progress
+            done = slot_bytes_done ? UnpackingWork.new(slots, slot_bytes_done) : UnpackingBytes.new(slots, reader.bytes_done)
+            define_unpacking_progress(maker, done, finished)
+          end
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|
             [slot.name, Original::SlotBytes.new(maker, list, slot, places[slot.name], number: number, faults: faults)]
@@ -488,21 +493,50 @@ module VBlank
       PROGRESS_BAR_HEIGHT = 8
 
       # THE PROGRESS BAR a shell shows while it unpacks: a routine on +maker+, called before every
-      # wait for the next frame (Original::CopyReader), drawing a bar as far along as +done+ is of
-      # +total+ bytes, and the whole bar once +finished+ is 1. Game code, so every runtime draws it,
-      # and the interpreter is its answer key. The division is by a number worked out here, so a
-      # pack of many megabytes never makes a number too big for 32 bits.
-      def define_unpacking_progress(maker, done, finished, total)
+      # wait for the next frame (Original::CopyReader), drawing a bar as far along as +done+ (an
+      # UnpackingBytes or UnpackingWork) says, and the whole bar once +finished+ is 1. Game code, so
+      # every runtime draws it, and the interpreter is its answer key.
+      def define_unpacking_progress(maker, done, finished)
         across = maker.screen_width - (2 * PROGRESS_BAR_SIDE)
         top = (maker.screen_height - PROGRESS_BAR_HEIGHT) / 2
-        bytes_a_pixel = [total / across, 1].max
         maker.screen :bitmap
         maker.func(Original::Unpacking::PROGRESS) do
           maker.clear_screen :black
           maker.draw_text "UNPACKING", :center, top - 16, :white
           maker.fill_rect PROGRESS_BAR_SIDE, top, across, PROGRESS_BAR_HEIGHT, :gray
-          shown = ((done / bytes_a_pixel) + (finished * across)).clamp(0, across)
+          shown = (done.pixels_shown(across) + (finished * across)).clamp(0, across)
           maker.draw_rect_at PROGRESS_BAR_SIDE, top, shown, PROGRESS_BAR_HEIGHT, :white
+        end
+      end
+
+      # HOW FAR THE BAR IS, BY BYTES: the bytes written so far (+done+, the routine's count) of all
+      # the +slots+ hold, for a pack whose slots name no cost. The division is by a number worked
+      # out here, so a pack of many megabytes never makes a number too big for 32 bits.
+      UnpackingBytes = Data.define(:slots, :done) do
+        def pixels_shown(across) = done / [slots.sum(&:byte_size) / across, 1].max
+      end
+
+      # HOW FAR THE BAR IS, BY WORK: each slot holds a share of the bar as its bytes times its cost
+      # are of the whole pack's (Original::Slot#cost), and fills its share as its own bytes are
+      # written (+slot_bytes_done+, the routine's list of them by slot). So a slot a routine renders
+      # slowly moves the bar slowly and a quick copy quickly, and the bar keeps one pace. A slot's
+      # bytes are shifted down before they are multiplied, by as little as keeps the product inside
+      # 32 bits, so a slot of many megabytes works the same way.
+      UnpackingWork = Data.define(:slots, :slot_bytes_done) do
+        def pixels_shown(across)
+          work = slots.sum { |slot| slot.byte_size * slot.cost }
+          slots.each_with_index.filter_map do |slot, number|
+            share = across * slot.byte_size * slot.cost / work
+            next if share.zero?
+
+            shift = (0..31).find { |bits| (slot.byte_size >> bits) * share <= IR::Int32::MAX }
+            # Held to the slot's size before it is multiplied, so a routine that counts more than
+            # the slot holds fills its share and never wraps the product below zero.
+            whole = slot.byte_size >> shift
+            written = (shift.zero? ? slot_bytes_done[number] : slot_bytes_done[number] >> shift).clamp(0, whole)
+            (written * share) / whole
+          # Must fold with +, not Array#sum: sum starts from Ruby's 0, and the parts are game values.
+          end.inject { |total, part| total + part } || 0
         end
       end
 

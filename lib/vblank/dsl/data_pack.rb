@@ -38,28 +38,35 @@ module VBlank
       attr_reader :list, :routine
 
       # +count+ colours, two bytes each.
-      def colors(name, count:, at: nil, layout: nil) = add(Original::Slot.colors(name, at: at, count: count, layout: layout || @platform))
+      #
+      # Every slot below takes +cost+: how many times the work of a plain copy one of its bytes takes
+      # to unpack, 1 unless the routine works hard for it (`cost: 40` for a slot it renders sound
+      # into). A shell's bar then moves by the work done rather than the bytes written
+      # (Original::Slot#cost).
+      def colors(name, count:, at: nil, layout: nil, cost: 1)
+        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @platform, cost: cost))
+      end
 
       # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
-      def tiles(name, count:, at: nil, colors: nil, layout: nil)
-        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform))
+      def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1)
+        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform, cost: cost))
       end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
       # below zero. +byte_order+ (:low_first or :high_first) names how they are kept in place of a
       # console's layout.
-      def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil)
+      def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1)
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
-                                         layout: layout || (@platform unless byte_order), byte_order: byte_order))
+                                         layout: layout || (@platform unless byte_order), byte_order: byte_order, cost: cost))
       end
 
       # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
       # `places:` (`image ..., colors: [...], places: pack[:art], see_through: 255`).
-      def pixels(name, count:, at: nil) = add(Original::Slot.pixels(name, at: at, count: count))
+      def pixels(name, count:, at: nil, cost: 1) = add(Original::Slot.pixels(name, at: at, count: count, cost: cost))
 
       # +count+ samples of recorded sound, one byte each, 8-bit signed, for a recording's `pcm:`
       # (`sample :bang, pcm: pack[:bang], rate: 7000`, or `pack[:sounds].samples(first, count)`).
-      def samples(name, count:, at: nil) = add(Original::Slot.samples(name, at: at, count: count))
+      def samples(name, count:, at: nil, cost: 1) = add(Original::Slot.samples(name, at: at, count: count, cost: cost))
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it

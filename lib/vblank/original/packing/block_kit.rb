@@ -85,9 +85,9 @@ module VBlank
         # format whose size is known only at its end mark.
         def room = @internals.routine_variable(:ends) - @internals.routine_variable(:out)
 
-        def finished = @internals.routine_variable(:finished) == 1
+        def finished = @internals.routine_variable(:block_finished) == 1
 
-        def finish! = @internals.routine_variable(:finished).store!(1)
+        def finish! = @internals.routine_variable(:block_finished).store!(1)
 
         def emit_wrong_format_fault
           @internals.emit_fault(Unpacking::Fault::WRONG_FORMAT, from, @internals.routine_variable(:format_number))
@@ -105,18 +105,31 @@ module VBlank
 
         # +before_wait+ names a routine called before each wait for the next frame (a shell's
         # progress bar, Builder::DataPacks#define_unpacking_progress), or is nil for none.
-        def initialize(builder, copy:, pack:, faults:, before_wait: nil)
+        # +slot_bytes_done+ is a list of the bytes written to each slot, by the slot's number, for a
+        # pack whose slots name their costs, or nil for one that names none.
+        def initialize(builder, copy:, pack:, faults:, before_wait: nil, slot_bytes_done: nil)
           @builder = builder
           @copy = copy
           @pack = pack
           @faults = faults
           @before_wait = before_wait
           @done = builder.var(Unpacking::BYTES_DONE, 0)
+          @slot_bytes_done = slot_bytes_done
           @variables = {}
         end
 
         # How many bytes have been written so far, a variable of the routine's.
         def bytes_done = @done
+
+        # Whether the bytes written are counted slot by slot too.
+        def counts_each_slot? = !@slot_bytes_done.nil?
+
+        # +count+ more bytes written, to the slot numbered +slot_number+ (a number, or a variable the
+        # routine set).
+        def add_done(count, slot_number)
+          @done.increase!(count)
+          @slot_bytes_done[slot_number] += count if @slot_bytes_done
+        end
 
         # A variable the blocks share, made the first time it is asked for.
         def routine_variable(what)
@@ -129,10 +142,11 @@ module VBlank
 
         def emit_fault(kind, at, detail) = @faults.emit_fault(kind, at, detail)
 
-        # +count+ more bytes written by a decoder of the game's own (CopyReader#count_written).
-        def count_written(count)
+        # +count+ more bytes written to the slot numbered +slot_number+ by a decoder of the game's own
+        # (CopyReader#count_written).
+        def count_written(count, slot_number)
           unwaited = routine_variable(:unwaited)
-          @done.increase!(count)
+          add_done(count, slot_number)
           unwaited.increase!(count)
           if unwaited >= PROGRESS_BYTES
             unwaited.store!(0)
@@ -157,12 +171,12 @@ module VBlank
           routine_variable(:out).store!(to)
           routine_variable(:mark).store!(to)
           routine_variable(:goal).store!(-1)
-          routine_variable(:finished).store!(0)
+          routine_variable(:block_finished).store!(0)
         end
 
         # The end of a block's routine: what is left counted as done.
         def emit_block_end
-          @done.increase!(routine_variable(:out) - routine_variable(:mark))
+          add_done(routine_variable(:out) - routine_variable(:mark), routine_variable(:slot_number))
         end
 
         # A wait for the next frame, with the routine to call before it.
@@ -177,7 +191,7 @@ module VBlank
           out = routine_variable(:out)
           mark = routine_variable(:mark)
           if out - mark >= PROGRESS_BYTES
-            @done.increase!(out - mark)
+            add_done(out - mark, routine_variable(:slot_number))
             mark.store!(out)
             emit_wait
           end
