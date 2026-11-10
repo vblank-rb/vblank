@@ -22,6 +22,7 @@ require_relative "live/window_menu"    # The window's menu written once: lines, 
 require_relative "live/menu"           # How the menu behaves and draws, with no window of its own
 require_relative "live/settings"       # What the window keeps for a player
 require_relative "live/state_slots"    # The places a game's save states are kept in, a file each
+require_relative "live/save_file"      # The file a game's save memory is kept in between runs
 require_relative "live/settings_file"  # Where those settings are kept, the same file as the desktop build's
 require_relative "live/console_bios"   # The player's Game Boy Advance BIOS, found as the desktop build finds it
 require_relative "live/shell"          # A port with no data: its menu, its unpacking and its kept pack

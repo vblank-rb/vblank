@@ -1462,7 +1462,8 @@ module VBlank
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."
       recording = VBlank::Live::Recording.new(window, frame_seconds: console.frame_seconds) if options[:record_sound]
       session.play(recording || window).tap { say_match_summary(network) if network }
-    rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
+    rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
+           VBlank::Live::SaveFile::NotThisGamesSave => e
       raise Thor::Error, e.message
     rescue *MATCH_FAILURES => e
       raise Thor::Error, e.message

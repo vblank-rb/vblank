@@ -19,6 +19,48 @@ def rg_save_setup
   @rg_save_bytes = nil   # made a fresh chip's the first time anything asks
   @rg_save_power_left = -1 # steps before the power goes off; -1 while no cut is waiting
   @rg_save_wiping = -1   # where the block still being wiped starts; -1 while none is
+  @rg_save_unwritten = false # something was saved that no file holds yet
+  @rg_save_frames_quiet = 0 # frame ends since the game last saved anything
+  @rg_save_frames_unwritten = 0 # frame ends since the first thing no file holds was saved
+end
+
+# WHEN A FILE IS WRITTEN (rg_save.c's rg_save_file_is_due says the same). A game saves a piece a frame over
+# several frames, and a file written after every piece would be written several times for one save, so
+# the file is due once QUIET_FRAMES frames have gone by with nothing saved. A game that never stops saving
+# gets its file about once a second all the same, so a crash never costs more than that.
+RG_SAVE_QUIET_FRAMES = 2
+RG_SAVE_MOST_FRAMES_UNWRITTEN = 60
+
+# The save memory changed: a write, a wipe, or a state read back. The file the memory is kept in no
+# longer holds it.
+def rg_save_changed
+  @rg_save_unwritten = true
+  @rg_save_frames_quiet = 0
+end
+
+def rg_save_unwritten? = @rg_save_unwritten
+
+# Asked once at the end of each frame: whether the file is due now.
+def rg_save_file_is_due?
+  return false unless @rg_save_unwritten
+
+  @rg_save_frames_quiet += 1
+  @rg_save_frames_unwritten += 1
+  return false if @rg_save_frames_quiet != RG_SAVE_QUIET_FRAMES && @rg_save_frames_unwritten < RG_SAVE_MOST_FRAMES_UNWRITTEN
+
+  @rg_save_frames_unwritten = 0
+  true
+end
+
+# The file now holds the memory as it stands.
+def rg_save_file_written
+  @rg_save_unwritten = false
+  @rg_save_frames_unwritten = 0
+end
+
+# The memory as the file holds it, read as the game starts: not a change the file lacks.
+def rg_save_load_from_file(bytes)
+  rg_save_bytes.replace(bytes.bytes)
 end
 
 def rg_save_size = @rg_game_save_memory[0]
@@ -124,6 +166,7 @@ def rg_save_write(at, value, width)
       rg_save_refuse_write_needing_wipe(at + i, byte)
     end
     bytes[at + i] = byte
+    rg_save_changed
   end
 end
 
@@ -143,11 +186,13 @@ def rg_save_erase(at, wait)
   bytes = rg_save_bytes
   if @rg_save_power_left == 1
     bytes.fill(fresh, start, block / 2)
+    rg_save_changed
     @rg_save_power_left = 0
     rg_halt
   end
   @rg_save_power_left -= 2 if @rg_save_power_left > 0
   bytes.fill(fresh, start, block)
+  rg_save_changed
   @rg_save_wiping = start if wait == 0
 end
 
@@ -161,6 +206,8 @@ def rg_save_visit_state
   rg_state_numbers("save.memory", numbers)
   bytes.replace(numbers.map { |byte| byte & 0xFF })
   @rg_save_wiping = rg_state_number("save.wiping", @rg_save_wiping)
+  # Read back, the memory differs from the file it came from, so the file is due to be written again.
+  rg_save_changed if rg_state_reading
 end
 
 # TURN THE POWER OFF part way through a save, for a test: once +steps+ more steps are taken the

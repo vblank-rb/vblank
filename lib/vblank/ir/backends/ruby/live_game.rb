@@ -57,6 +57,16 @@ module VBlank
           rescue @game.class::RgFault => e
             raise IR::ProgramError, e.message
           end
+          # THE GAME'S SAVE MEMORY, for whoever keeps it in a file (Live::Session): how many bytes it has
+          # (none for a game with no save), the bytes as a String, and a file's bytes put in as the game starts.
+          # +save_file_due?+ is asked once a frame, and +save_file_written+ says the file holds it now.
+          def save_size = @game.rg_live_save_size
+          def save_bytes = @game.rg_live_save_bytes
+          def load_save(bytes) = @game.rg_live_load_save(bytes)
+          def save_file_due? = @game.rg_save_file_is_due?
+          def save_unwritten? = @game.rg_save_unwritten?
+          def save_file_written = @game.rg_save_file_written
+
           # A short number (a CRC-32) standing for the whole of the game's state as it is now: every
           # variable and list it keeps, written out the way the windowless run prints them. Machines
           # that run the same game on the same buttons have the same number on the same pass.

@@ -218,6 +218,7 @@ module VBlank
           raise
         end
         @states = states_in(state_folder_name) if menu && state_folder_name
+        @save_file = save_file_in(state_folder_name) if state_folder_name
         @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height], controls: @player_settings,
                          scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
         @settings = @menu.settings # as the window last made them so
@@ -227,10 +228,19 @@ module VBlank
       # --- save states (Session says when they are taken) ---
 
       # The states' places in the folder called +name+, or nil when the computer will not make it.
+      private def save_file_in(name)
+        folder = pref_folder(name)
+        SaveFile.new(folder: folder) if folder
+      end
+
       private def states_in(name)
         folder = pref_folder(name)
         StateSlots.new(folder: folder) if folder
       end
+
+      # The file the game's save memory is kept in, in the folder the states are kept in; nil with no
+      # folder (a match with other players).
+      attr_reader :save_file
 
       # Starts offering save states, kept in the folder called +name+ (StateSlots.folder_name), as a shell's
       # window does once its game plays; false when the computer will not make the folder.

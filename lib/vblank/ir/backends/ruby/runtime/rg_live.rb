@@ -79,6 +79,12 @@ end
 def rg_driver_halt = throw(:rg_live_stop)
 def rg_driver_fault(message) = raise(RgFault, message)
 
+# THE SAVE MEMORY, for whoever keeps it in a file (Live::Session): its size, its bytes as a String, and
+# the file's bytes put into it as the game starts.
+def rg_live_save_size = rg_save_size
+def rg_live_save_bytes = rg_save_bytes.pack("C*")
+def rg_live_load_save(bytes) = rg_save_load_from_file(bytes)
+
 # A short number standing for the game's whole state, for machines in a match to compare. The game
 # prints its state through rg_game_dump_state, a line a variable and a line a list, exactly as the
 # windowless run does, and the number is the CRC-32 of those lines. The same text is written by the

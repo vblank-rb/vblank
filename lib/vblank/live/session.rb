@@ -88,6 +88,7 @@ module VBlank
       # the play with IR::ProgramError, in the words the interpreter would use.
       def play(device)
         begin_play(device)
+        read_save_file
         @network&.begin_match
         watch_game_for_device
         stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
@@ -96,6 +97,7 @@ module VBlank
         keep_showing(stopped_on) if stopped_on && @keep_last_picture
         rate
       ensure
+        write_save_file_if_unwritten
         @network&.leave
       end
 
@@ -132,6 +134,7 @@ module VBlank
         speed = @uncapped ? 1 : @device.fast_forward_speed(@passes + 1)
         record_pass_time(speed)
         collect_garbage_after_setup if @collect_garbage && @passes.zero?
+        write_save_file if @save_file && @game.save_file_due?
         if speed > 1
           play_fast_forward(pixels, speed)
         else
@@ -170,6 +173,32 @@ module VBlank
       def state_refused(words) = @device.state_refused(words)
 
       private
+
+      # THE GAME'S SAVE MEMORY, KEPT IN A FILE between runs when the device has one (SDL, a window with a
+      # folder for the game: #save_file) and the game has save memory. The file's bytes go in as the game
+      # starts, so a file that is not the size of the save stops the play before it begins, saying so. A
+      # change is written soon after (Ruby's rg_save_file_is_due?) and the rest as the play ends.
+      def read_save_file
+        @save_file = (@device.save_file if @device.respond_to?(:save_file))
+        @save_file = nil if @game.save_size.zero?
+        return unless @save_file
+
+        bytes = @save_file.read(@game.save_size)
+        @game.load_save(bytes) if bytes
+      end
+
+      def write_save_file
+        @save_file.write(@game.save_bytes)
+        @game.save_file_written
+      rescue SaveFile::CannotWrite => e
+        # Said once; tried again when the file is next due.
+        @device.notice(e.message) unless @save_failure_said
+        @save_failure_said = true
+      end
+
+      def write_save_file_if_unwritten
+        write_save_file if @save_file && @game.save_unwritten?
+      end
 
       # Every connected player's buttons for the pass that starts, this machine's +held+ among them.
       def exchange_buttons(held)
