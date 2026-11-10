@@ -16,7 +16,7 @@ class TestJSPage < Minitest::Test
 
     assert_match(/<canvas id="screen" width="240" height="160"/, page)
     assert_match(/<title>PAGE &lt;&amp;&gt;<\/title>/, page, "the title is said as text, not as markup")
-    assert_match(/function\* rg_game_main\(\)/, page)
+    assert_match(/function rg_game_main\(\)/, page)
     assert_match(/function createGame\(host\)/, page)
     refute_match(/<script src=/, page)
   end

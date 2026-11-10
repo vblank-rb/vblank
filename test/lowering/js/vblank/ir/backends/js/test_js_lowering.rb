@@ -19,9 +19,10 @@ class TestJSLowering < Minitest::Test
     builder.program
   end
 
-  # A routine that can reach a wait for the screen is a generator, and is delegated to where it is
-  # called; one that never waits stays a plain function, called plainly.
-  def test_only_a_routine_that_can_wait_is_a_generator
+  # A routine that can reach a wait for the screen is made resumable: it keeps the step it stopped
+  # at in a global of its own, and a call to it hands a stop back up the chain. One that never waits
+  # stays a plain function, called plainly.
+  def test_only_a_routine_that_can_wait_is_resumable
     source = JS.new.lower(program_of(manual: true) do
       screen :bitmap
       steps = 0
@@ -37,10 +38,10 @@ class TestJSLowering < Minitest::Test
       end
     end)
 
-    assert_match(/^function f_draw\(\)/, source)
-    assert_match(/^function\* f_pause\(\)/, source)
-    assert_match(/^function\* f_walk\(\)/, source, "a routine that calls one that waits waits too")
-    assert_match(/yield\* f_walk\(\);/, source)
+    refute_match(/^let f_draw_step\b/, source)
+    assert_match(/^let f_pause_step\b/, source)
+    assert_match(/^let f_walk_step\b/, source, "a routine that calls one that waits waits too")
+    assert_match(/if \(f_walk\(\)\) return 1;/, source)
     assert_match(/^\s+f_draw\(\);/, source)
   end
 
@@ -83,7 +84,7 @@ class TestJSLowering < Minitest::Test
     end
     source = JS.new.lower(program)
 
-    assert_match(/^function\* f_quick\(\)/, source, "both can be picked, so both are generators")
+    assert_match(/^let f_quick_step\b/, source, "both can be picked, so both are resumable")
     played = game_player.run(program, frames: 3)
     assert_equal 41, played[:count], "one quick pass, then the slow one on every frame to the fourth"
   end
