@@ -24,6 +24,7 @@ static void visit_all(void) {
   rg_game_visit_state();
   rg_runtime_visit_state();
   rg_save_visit_state();
+  rg_screen_visit_state();
 }
 
 static int reading;
@@ -84,12 +85,24 @@ static int read_line(const char *line, const char *end) {
     if (at != tab + 1 && count >= 0 && count <= INT32_MAX && !field_read_already(copy)) {
       int64_t *values = room_for(sizeof(int64_t) * (size_t)count);
       int32_t got = 0;
-      for (; got < count; got++) {
+      int run_well_formed = 1;
+      while (got < count) {
         char *from = at;
-        values[got] = strtoll(from, &at, 10);
+        int64_t number = strtoll(from, &at, 10);
         if (at == from) break;
+        int64_t times = 1;
+        if (*at == '*') { /* a run: "times*number" */
+          times = number;
+          from = at + 1;
+          number = strtoll(from, &at, 10);
+          if (at == from || *from == ' ' || times < 1 || times > count - got) {
+            run_well_formed = 0;
+            break;
+          }
+        }
+        for (int64_t i = 0; i < times; i++) values[got++] = number;
       }
-      if (got == count && only_spaces(at)) {
+      if (run_well_formed && got == count && only_spaces(at)) {
         read_field *grown = realloc(fields, sizeof(read_field) * (size_t)(field_count + 1));
         if (!grown) rg_fault("There is no room to read the state.");
         fields = grown;
@@ -141,9 +154,20 @@ static read_field *field_named(const char *name, int32_t count) {
 
 /* --- the fields --- */
 
+/* A run of RG_STATE_SHORTEST_RUN or more of one number is written "times*number" (rg_state.h). */
 static void write_field(const char *name, const int64_t *values, int32_t count) {
   fprintf(writing_to, "%s\t%d", name, (int)count);
-  for (int32_t i = 0; i < count; i++) fprintf(writing_to, " %" PRId64, values[i]);
+  for (int32_t i = 0; i < count;) {
+    int32_t run = 1;
+    while (i + run < count && values[i + run] == values[i]) run++;
+    if (run >= RG_STATE_SHORTEST_RUN) {
+      fprintf(writing_to, " %d*%" PRId64, (int)run, values[i]);
+      i += run;
+    } else {
+      fprintf(writing_to, " %" PRId64, values[i]);
+      i++;
+    }
+  }
   fputc('\n', writing_to);
 }
 

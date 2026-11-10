@@ -12,8 +12,10 @@ module VBlank
         # that runtime writes that is not here, or that is here and it does not write: the three
         # cannot drift apart, and an image written by one reads on the others.
         #
-        # +count+ is how many numbers the field holds, or :save_size for as many as the game has
-        # bytes of save memory. +with_save_memory+ marks a field only a game that reaches save
+        # +count+ is how many numbers the field holds, or a Symbol for a count the game or its console
+        # decides: :save_size (a byte of save memory each), :screen_cells (a pixel of the screen each),
+        # :three_screens (three numbers a pixel), :run_pixels (a pixel of every run the game paints
+        # into each) or :runs (one a run). +with_save_memory+ marks a field only a game that reaches save
         # memory keeps.
         module StateFields
           Field = Data.define(:name, :count, :with_save_memory) do
@@ -25,6 +27,8 @@ module VBlank
           MOST_PLAYERS = IR::Buttons::MOST_PLAYERS
           MOST_TIMERS = 32
           TIMER_NUMBERS = 5 # started, running, its rate, its frames a second, how far it has ticked
+          AREAS_DEEP = 64 # the most `inside` areas open at once
+          MOST_SEE_THROUGH = 16 # the most see-through layers a screen has
 
           FIELDS = [
             Field.new(name: "runtime.buttons.held", count: MOST_PLAYERS),
@@ -37,7 +41,28 @@ module VBlank
             Field.new(name: "runtime.clock", count: 7),
             Field.new(name: "runtime.motor", count: 3), # frames left, the pattern, whether it runs
             Field.new(name: "save.memory", count: :save_size, with_save_memory: true),
-            Field.new(name: "save.wiping", count: 1, with_save_memory: true)
+            Field.new(name: "save.wiping", count: 1, with_save_memory: true),
+            # The pages drawn into, shown and painted (first, second, or 2 the scenery), whether the
+            # display is held, a frame begun, the kind of screen, a rebuild owed and skipped, the picture
+            # touched, the backdrop, the scene shown, the scenery kept, a sprite being painted, the
+            # pass's end placing writes, scenery taken down, the window's corner, and a mixed cell's
+            # two shares.
+            Field.new(name: "screen", count: 19),
+            Field.new(name: "screen.page.first", count: :screen_cells),
+            Field.new(name: "screen.page.second", count: :screen_cells),
+            Field.new(name: "screen.scenery", count: :screen_cells),
+            Field.new(name: "screen.without_sprites", count: :screen_cells),
+            # Whether each cell is a mix, then what was painted, then what was under it.
+            Field.new(name: "screen.mixes.picture", count: :three_screens),
+            Field.new(name: "screen.mixes.scenery", count: :three_screens),
+            # How many areas are open, then the area in force and each one around it: in force, left,
+            # top, right, bottom.
+            Field.new(name: "screen.areas", count: 1 + (5 * (AREAS_DEEP + 1))),
+            # Each see-through layer's shares kept for an owed rebuild, then those last told: kept, and
+            # the two shares.
+            Field.new(name: "screen.shares", count: 2 * 3 * MOST_SEE_THROUGH),
+            Field.new(name: "screen.runs.places", count: :run_pixels),
+            Field.new(name: "screen.runs.painted", count: :runs)
           ].freeze
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches

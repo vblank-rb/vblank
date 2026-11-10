@@ -14,6 +14,7 @@
 #include "rg_screen.h"
 #include "rg_runtime.h"
 #include "rg_int32.h"
+#include "rg_state.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -652,8 +653,15 @@ static void read_tile_places(const rg_list *list, int32_t which, int32_t planes,
   }
 }
 
+/* Which runs' images have been painted from their places (paint_run_images), by run: an image of a
+ * run never painted is drawn as the game was built with it. Made the first time one is painted. */
+static uint8_t *runs_painted;
+
 /* Every image that is a painted picture's run made again from its places, each in its own colors. */
 static void paint_run_images(int32_t run) {
+  if (!runs_painted) runs_painted = calloc((size_t)rg_game_picture_sizes[RG_SIZE_RUNS] + 1, 1);
+  if (!runs_painted) rg_fault("no memory for the tiles the game paints");
+  runs_painted[run] = 1;
   const int32_t *fields = run_fields(run);
   const uint8_t *places = places_of(run);
   int32_t area = fields[RG_RUN_WIDTH] * fields[RG_RUN_HEIGHT];
@@ -988,6 +996,173 @@ const uint16_t *rg_screen_shown(void) {
   }
   keep_console_colors();
   return shown;
+}
+
+/* --- the screen's half of the state image (rg_state.h, Computer::StateFields) ---
+ *
+ * What the screen keeps from one frame to the next: both pages and which is which, the scenery kept
+ * to put back under sprites, the picture with no sprites on it, what each mixed cell was mixed from,
+ * the window and the areas drawing is held to, the shares kept for see-through layers, what the game
+ * painted into its runs, and the small numbers that say where the screen stands. What is worked out
+ * again on every read (the picture as shown) or held only while one thing is painted (a fade or mix
+ * on the way in, a layer a feature paints into) is not kept: a frame boundary is never inside a
+ * paint. */
+
+static int64_t *allocate_state_values(int32_t count) {
+  int64_t *values = malloc(sizeof(int64_t) * (size_t)(count > 0 ? count : 1));
+  if (!values) rg_fault("there is no room for the state of the screen");
+  return values;
+}
+
+static void visit_cells16(const char *name, uint16_t *cells, int32_t count) {
+  int64_t *values = allocate_state_values(count);
+  for (int32_t i = 0; i < count; i++) values[i] = cells[i];
+  rg_state_numbers(name, values, count);
+  for (int32_t i = 0; i < count; i++) cells[i] = (uint16_t)values[i];
+  free(values);
+}
+
+static void visit_cells8(const char *name, uint8_t *cells, int32_t count) {
+  int64_t *values = allocate_state_values(count);
+  for (int32_t i = 0; i < count; i++) values[i] = cells[i];
+  rg_state_numbers(name, values, count);
+  for (int32_t i = 0; i < count; i++) cells[i] = (uint8_t)values[i];
+  free(values);
+}
+
+/* A page as a number, and back: the first, the second, or the scenery kept apart. */
+static int64_t page_number(const uint16_t *page) { return page == first_page ? 0 : page == second_page ? 1 : 2; }
+
+static uint16_t *page_from_number(int64_t number) {
+  if (number < 0 || number > 2) rg_fault("This state is damaged: the screen names a page it does not have. Load a state that this game wrote.");
+  return number == 0 ? first_page : number == 1 ? second_page : scenery;
+}
+
+static void visit_mixes(const char *name, mixed_sides *mixes) {
+  int64_t *values = allocate_state_values(3 * CELLS);
+  for (int32_t i = 0; i < CELLS; i++) {
+    values[i] = mixes->is_mixed[i];
+    values[CELLS + i] = mixes->tops[i];
+    values[2 * CELLS + i] = mixes->unders[i];
+  }
+  rg_state_numbers(name, values, 3 * CELLS);
+  for (int32_t i = 0; i < CELLS; i++) {
+    mixes->is_mixed[i] = (uint8_t)values[i];
+    mixes->tops[i] = (uint16_t)values[CELLS + i];
+    mixes->unders[i] = (uint16_t)values[2 * CELLS + i];
+  }
+  free(values);
+}
+
+/* How many areas are open around the one in force, then that one, then each open around it; the
+ * slots past those open are written as noughts. */
+static void visit_areas(void) {
+  enum { AREA_NUMBERS = 5 };
+  int64_t values[1 + AREA_NUMBERS * (AREAS_DEEP + 1)] = {0};
+  drawing_area *all[AREAS_DEEP + 1];
+  all[0] = &area;
+  for (int32_t i = 0; i < AREAS_DEEP; i++) all[i + 1] = &outer_areas[i];
+  values[0] = areas_deep;
+  for (int32_t i = 0; i <= areas_deep; i++) {
+    int64_t *at = values + 1 + AREA_NUMBERS * i;
+    at[0] = all[i]->in_force, at[1] = all[i]->left, at[2] = all[i]->top, at[3] = all[i]->right, at[4] = all[i]->bottom;
+  }
+  rg_state_numbers("screen.areas", values, 1 + AREA_NUMBERS * (AREAS_DEEP + 1));
+  if (values[0] < 0 || values[0] > AREAS_DEEP)
+    rg_fault("This state is damaged: the screen holds more areas than it can. Load a state that this game wrote.");
+  areas_deep = (int32_t)values[0];
+  for (int32_t i = 0; i <= AREAS_DEEP; i++) {
+    const int64_t *at = values + 1 + AREA_NUMBERS * i;
+    *all[i] = (drawing_area){(int32_t)at[0], at[1], at[2], at[3], at[4]};
+  }
+}
+
+/* Each see-through layer's shares kept for the owed rebuild, then those last told: whether kept,
+ * and the two shares, noughts where none are kept (forget_kept_shares leaves the old ones behind). */
+static void visit_kept_shares(void) {
+  enum { SHARE_NUMBERS = 3 };
+  int64_t values[2 * SHARE_NUMBERS * RG_MAX_SEE_THROUGH] = {0};
+  kept_shares *all[2] = {owed_shares, told_shares};
+  for (int32_t side = 0; side < 2; side++)
+    for (int32_t layer = 0; layer < RG_MAX_SEE_THROUGH; layer++) {
+      int64_t *at = values + SHARE_NUMBERS * (side * RG_MAX_SEE_THROUGH + layer);
+      if (all[side][layer].kept) at[0] = 1, at[1] = all[side][layer].at.painted, at[2] = all[side][layer].at.under;
+    }
+  rg_state_numbers("screen.shares", values, 2 * SHARE_NUMBERS * RG_MAX_SEE_THROUGH);
+  for (int32_t side = 0; side < 2; side++)
+    for (int32_t layer = 0; layer < RG_MAX_SEE_THROUGH; layer++) {
+      const int64_t *at = values + SHARE_NUMBERS * (side * RG_MAX_SEE_THROUGH + layer);
+      all[side][layer] = (kept_shares){(int32_t)at[0], {(int32_t)at[1], (int32_t)at[2]}};
+    }
+}
+
+/* What the game painted into its runs, and which runs' images were painted from them: on reading,
+ * those images are painted again from the places read. */
+static void visit_runs(void) {
+  int32_t runs = rg_game_picture_sizes[RG_SIZE_RUNS];
+  int32_t places = rg_game_picture_sizes[RG_SIZE_RUN_PIXELS];
+  if (!painted_places) painted_places = calloc((size_t)places + 1, 1);
+  if (!runs_painted) runs_painted = calloc((size_t)runs + 1, 1);
+  if (!painted_places || !runs_painted) rg_fault("no memory for the tiles the game paints");
+  visit_cells8("screen.runs.places", painted_places, places);
+  visit_cells8("screen.runs.painted", runs_painted, runs);
+  if (!rg_state_reading()) return;
+  for (int32_t run = 0; run < runs; run++) {
+    if (runs_painted[run]) {
+      paint_run_images(run);
+      continue;
+    }
+    /* Not painted where the state was written: its images go back to as the game was built. */
+    const int32_t *fields = run_fields(run);
+    for (int32_t i = 0; painted_images && i < fields[RG_RUN_IMAGES]; i++) {
+      int32_t image = rg_game_run_images[(fields[RG_RUN_FIRST_IMAGE] + i) * RG_RUN_IMAGE_FIELDS];
+      free(painted_images[image]);
+      painted_images[image] = NULL;
+    }
+  }
+}
+
+void rg_screen_visit_state(void) {
+  int64_t numbers[] = {
+    page_number(pixels), page_number(viewed), page_number(target), held, frames_begun, kind, owed, rebuild_skipped,
+    picture_touched, backdrop, current_scene, scenery_kept, painting_sprite, placing_at_pass_end, scenery_taken_down,
+    camera_x, camera_y, mixed_cells_by.painted, mixed_cells_by.under,
+  };
+  rg_state_numbers("screen", numbers, (int32_t)(sizeof numbers / sizeof numbers[0]));
+  pixels = page_from_number(numbers[0]), viewed = page_from_number(numbers[1]), target = page_from_number(numbers[2]);
+  held = (int32_t)numbers[3], frames_begun = (int32_t)numbers[4], kind = (int32_t)numbers[5], owed = (int32_t)numbers[6];
+  rebuild_skipped = (int32_t)numbers[7], picture_touched = (int32_t)numbers[8], backdrop = (int32_t)numbers[9];
+  current_scene = (int32_t)numbers[10], scenery_kept = (int32_t)numbers[11], painting_sprite = (int32_t)numbers[12];
+  placing_at_pass_end = (int32_t)numbers[13], scenery_taken_down = (int32_t)numbers[14];
+  camera_x = (int32_t)numbers[15], camera_y = (int32_t)numbers[16];
+  mixed_cells_by = (shares){(int32_t)numbers[17], (int32_t)numbers[18]};
+  visit_cells16("screen.page.first", first_page, CELLS);
+  visit_cells16("screen.page.second", second_page, CELLS);
+  visit_cells16("screen.scenery", scenery, CELLS);
+  visit_cells16("screen.without_sprites", picture_without_sprites, CELLS);
+  visit_mixes("screen.mixes.picture", &picture_mixes);
+  visit_mixes("screen.mixes.scenery", &scenery_mixes);
+  visit_areas();
+  visit_kept_shares();
+  visit_runs();
+}
+
+void rg_patch_visit_state(const char *name, int32_t buffer, int32_t width, int32_t height) {
+  int32_t cells = width * height;
+  int32_t **patch = saved_patch(buffer);
+  int64_t *values = allocate_state_values(cells + 1);
+  values[0] = *patch != NULL;
+  for (int32_t i = 0; i < cells; i++) values[i + 1] = *patch ? (*patch)[i] : NO_CELL;
+  rg_state_numbers(name, values, cells + 1);
+  if (!values[0]) { /* never saved where the state was written, whatever this run did before reading it */
+    free(*patch);
+    *patch = NULL;
+  } else {
+    if (!*patch) *patch = malloc((size_t)cells * sizeof **patch);
+    if (!*patch) rg_fault("no memory left for the picture saved under a sprite");
+    for (int32_t i = 0; i < cells; i++) (*patch)[i] = (int32_t)values[i + 1];
+  }
+  free(values);
 }
 
 /* The game's runtime features and the hooks they take, written by the build beside game.c

@@ -178,6 +178,7 @@ def rg_screen_setup
   # pixels as places in its colors, place 0 see-through; and the images painted from them.
   @rg_painted_places = nil
   @rg_painted_images = nil
+  @rg_runs_painted = nil
   rg_hook_setup # the state of the game's runtime features (RuntimeFeatures)
 end
 
@@ -676,8 +677,14 @@ def rg_tiles_copy(run, list)
   rg_paint_run_images(run)
 end
 
+# Which runs' images have been painted from their places, 1 or 0 by run (rg_screen.c's runs_painted).
+def rg_runs_painted
+  @rg_runs_painted ||= Array.new(@rg_game_picture_sizes[RG_SIZE_RUNS] + 1, 0)
+end
+
 # Every image that is a painted picture's run made again from its places, each in its own colors.
 def rg_paint_run_images(run)
+  rg_runs_painted[run] = 1
   places = rg_painted_places
   first = rg_run_field(run, RG_RUN_PLACES)
   area = rg_run_field(run, RG_RUN_WIDTH) * rg_run_field(run, RG_RUN_HEIGHT)
@@ -1060,4 +1067,122 @@ def rg_screen_shown_plain(shown, viewed)
     end
   end
   shown
+end
+
+# --- the screen's half of the state image (rg_screen.c's rg_screen_visit_state) ---
+
+# A flag kept as true or false, or as a number, written as 1 or 0.
+def rg_state_flag(value) = value == true || (value.is_a?(Integer) && value != 0) ? 1 : 0
+
+def rg_page_number(page)
+  return 0 if page.equal?(@rg_first_page)
+
+  page.equal?(@rg_second_page) ? 1 : 2
+end
+
+def rg_page_from_number(number)
+  unless number.between?(0, 2)
+    rg_fault("This state is damaged: the screen names a page it does not have. Load a state that this game wrote.")
+  end
+  [@rg_first_page, @rg_second_page, @rg_scenery][number]
+end
+
+def rg_visit_mixes(name, mixes)
+  values = rg_state_numbers(name, [*mixes.is_mixed, *mixes.tops, *mixes.unders])
+  mixes.is_mixed.replace(values[0, RG_SCREEN_CELLS])
+  mixes.tops.replace(values[RG_SCREEN_CELLS, RG_SCREEN_CELLS])
+  mixes.unders.replace(values[2 * RG_SCREEN_CELLS, RG_SCREEN_CELLS])
+end
+
+# How many areas are open around the one in force, then that one, then each open around it, the
+# outermost first; the slots past those open are noughts.
+RG_AREA_NUMBERS = 5  # In force, left, top, right, bottom
+RG_SHARE_NUMBERS = 3 # Kept, what is painted, what is under it
+
+def rg_visit_areas
+  values = Array.new(1 + (RG_AREA_NUMBERS * (RG_AREAS_DEEP + 1)), 0)
+  values[0] = @rg_outer_areas.length
+  [@rg_area, *@rg_outer_areas].each_with_index do |area, i|
+    values[1 + (RG_AREA_NUMBERS * i), RG_AREA_NUMBERS] = [rg_state_flag(area.in_force), area.left, area.top, area.right, area.bottom]
+  end
+  rg_state_numbers("screen.areas", values)
+  unless values[0].between?(0, RG_AREAS_DEEP)
+    rg_fault("This state is damaged: the screen holds more areas than it can. Load a state that this game wrote.")
+  end
+  areas = (0..values[0]).map do |i|
+    in_force, left, top, right, bottom = values[1 + (RG_AREA_NUMBERS * i), RG_AREA_NUMBERS]
+    RgArea.new(in_force != 0, left, top, right, bottom)
+  end
+  @rg_area = areas.first
+  @rg_outer_areas = areas.drop(1)
+end
+
+# Each see-through layer's shares kept for the owed rebuild, then those last told: kept, and the two
+# shares (nil here is not kept).
+def rg_visit_kept_shares
+  sides = [@rg_pending_shares, @rg_told_shares]
+  values = sides.flat_map do |side|
+    side.flat_map { |shares| shares ? [1, *shares] : [0, 0, 0] }
+  end
+  rg_state_numbers("screen.shares", values)
+  sides.each_with_index do |side, s|
+    RG_MAX_SEE_THROUGH.times do |layer|
+      kept, painted, under = values[RG_SHARE_NUMBERS * ((s * RG_MAX_SEE_THROUGH) + layer), RG_SHARE_NUMBERS]
+      side[layer] = kept != 0 ? [painted, under] : nil
+    end
+  end
+end
+
+# What the game painted into its runs, and which runs' images were painted from them: on reading,
+# those images are painted again from the places read, and any other run's go back to as built.
+def rg_visit_runs
+  runs = @rg_game_picture_sizes[RG_SIZE_RUNS]
+  places = rg_painted_places
+  count = @rg_game_picture_sizes[RG_SIZE_RUN_PIXELS]
+  places[0, count] = rg_state_numbers("screen.runs.places", places.first(count))
+  painted = rg_state_numbers("screen.runs.painted", rg_runs_painted.first(runs))
+  return unless rg_state_reading
+
+  runs.times do |run|
+    next rg_paint_run_images(run) if painted[run] != 0
+
+    rg_run_field(run, RG_RUN_IMAGES).times do |i|
+      @rg_painted_images[@rg_game_run_images[(rg_run_field(run, RG_RUN_FIRST_IMAGE) + i) * RG_RUN_IMAGE_FIELDS]] = nil if @rg_painted_images
+    end
+  end
+end
+
+def rg_screen_visit_state
+  numbers = [
+    rg_page_number(@rg_pixels), rg_page_number(@rg_viewed), rg_page_number(@rg_target), @rg_screen_held,
+    rg_state_flag(@rg_frames_begun), @rg_kind, rg_state_flag(@rg_rebuild_pending), rg_state_flag(@rg_rebuild_skipped),
+    rg_state_flag(@rg_picture_touched), @rg_backdrop, @rg_scene, rg_state_flag(@rg_scenery_kept),
+    rg_state_flag(@rg_painting_sprite), rg_state_flag(@rg_placing_at_pass_end), rg_state_flag(@rg_scenery_taken_down),
+    @rg_camera_x, @rg_camera_y, *@rg_mixed_cells_by
+  ]
+  rg_state_numbers("screen", numbers)
+  @rg_pixels, @rg_viewed, @rg_target = numbers[0, 3].map { |number| rg_page_from_number(number) }
+  @rg_screen_held = numbers[3]
+  @rg_frames_begun, @rg_rebuild_pending, @rg_rebuild_skipped, @rg_picture_touched = numbers.values_at(4, 6, 7, 8).map { |n| n != 0 }
+  @rg_kind, @rg_backdrop, @rg_scene = numbers.values_at(5, 9, 10)
+  @rg_scenery_kept, @rg_painting_sprite, @rg_placing_at_pass_end, @rg_scenery_taken_down = numbers[11, 4].map { |n| n != 0 }
+  @rg_camera_x, @rg_camera_y = numbers[15, 2]
+  @rg_mixed_cells_by = numbers[17, 2]
+  rg_state_numbers("screen.page.first", @rg_first_page)
+  rg_state_numbers("screen.page.second", @rg_second_page)
+  rg_state_numbers("screen.scenery", @rg_scenery)
+  rg_state_numbers("screen.without_sprites", @rg_picture_without_sprites)
+  rg_visit_mixes("screen.mixes.picture", @rg_picture_mixes)
+  rg_visit_mixes("screen.mixes.scenery", @rg_scenery_mixes)
+  rg_visit_areas
+  rg_visit_kept_shares
+  rg_visit_runs
+end
+
+# A patch of picture kept under a sprite: whether it was saved, then its cells (rg_state.h).
+def rg_patch_visit_state(name, buffer, width, height)
+  cells = width * height
+  patch = @rg_saved_patches[buffer]
+  values = rg_state_numbers(name, patch ? [1, *patch.first(cells)] : [0, *Array.new(cells, RG_NO_CELL)])
+  @rg_saved_patches[buffer] = values[0] != 0 ? values.drop(1) : nil
 end

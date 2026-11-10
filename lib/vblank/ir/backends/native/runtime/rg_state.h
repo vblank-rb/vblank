@@ -3,11 +3,13 @@
  * name, and read back into the same build so the game plays on from there.
  *
  * The image is one line a field: its name, a tab, how many numbers it holds, and the numbers, all
- * as decimal whole numbers. A field is the game's own (a variable, a list, a routine's place, all
- * written by the build in rg_game_visit_state) or the runtime's (the buttons, the timers, the
- * clock, the motor, the save memory, each part visiting its own). The runtime's fields are the
- * ones Computer::StateFields lists, in its order; the JavaScript and Ruby runtimes visit the same,
- * so an image written by one reads on the others.
+ * as decimal whole numbers. A run of RG_STATE_SHORTEST_RUN or more of one number is written as one word,
+ * "times*number" ("38400*0" is a blank page), since a picture is most of the image and mostly runs.
+ * A field is the game's own (a variable, a list, a routine's place, a patch of picture kept under a
+ * sprite, all written by the build in rg_game_visit_state) or the runtime's (the buttons, the
+ * timers, the clock, the motor, the save memory, the screen, each part visiting its own). The
+ * runtime's fields are the ones Computer::StateFields lists, in its order; the JavaScript and Ruby
+ * runtimes visit the same, so an image written by one reads on the others.
  *
  * EACH FIELD IS NAMED ONCE AND USED BOTH WAYS. A part hands a field to a visit call; writing the
  * image prints it, reading the image stores what the image holds under that name into it. So
@@ -22,6 +24,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "rg_list.h"
+
+enum { RG_STATE_SHORTEST_RUN = 4 }; /* the shortest run of one number written as "times*number" */
 
 /* Writes the whole state to +out+. */
 void rg_state_write(FILE *out);
@@ -50,5 +54,10 @@ void rg_game_visit_state(void);
 /* Each runtime part's own fields, in Computer::StateFields's order. */
 void rg_runtime_visit_state(void);
 void rg_save_visit_state(void);
+void rg_screen_visit_state(void);
+
+/* A patch of picture kept under a sprite (rg_patch_save), +width+ by +height+: whether it was
+ * saved, then its cells. The build visits each patch the game declares. */
+void rg_patch_visit_state(const char *name, int32_t buffer, int32_t width, int32_t height);
 
 #endif

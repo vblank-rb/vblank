@@ -10,8 +10,8 @@ require "test_helper"
 # (#other_runs): between them every pair of the three, both ways.
 #
 # The answer key is the same build's unbroken run, not the interpreter: a run read from a state
-# starts at a pass the interpreter never reached by itself. Until the screen's and the sound's
-# halves of the state are in, these games paint their whole picture every pass and make no sound.
+# starts at a pass the interpreter never reached by itself. Until the sound's half of the state is
+# in, these games make no sound.
 module StateImageTests
   STATE_AFTER = 40  # the frame the state is written after
   FRAMES_ON = 120   # how many frames the run read from it plays on
@@ -79,16 +79,52 @@ module StateImageTests
     [frames_seen(run, program, frames: STATE_AFTER + FRAMES_ON), run.state]
   end
 
-  # Every frame's numbers are compared, and its picture from the first frame the game paints after
-  # the state came in. The picture is not in the state yet, so until the game paints again it shows
-  # what the run's own first pass painted.
+  # Every frame's numbers and picture, from the first frame after the state came in.
   private def assert_plays_on_from(state, program, unbroken, reader: state_run, from: STATE_AFTER, frames: FRAMES_ON)
     resumed = frames_seen(reader.starting_from_state(state), program, frames: frames, from: from)
-    painted = resumed.index { |_, picture| picture != resumed.first.last }
-    refute_nil painted, "the game paints again after the state comes in"
     resumed.each_with_index do |(vars, picture), k|
       assert_equal unbroken[from + k].first, vars, "frame #{from + k + 1}'s numbers read from the state differ from the unbroken run's"
-      assert_equal unbroken[from + k].last, picture, "frame #{from + k + 1}'s picture differs from the unbroken run's" if k >= painted
+      assert_equal unbroken[from + k].last, picture, "frame #{from + k + 1}'s picture differs from the unbroken run's"
+    end
+  end
+
+  # A GAME WHOSE PICTURE IS ITS HISTORY: it never clears, so each pass's square stays on the page it
+  # was drawn on, and only the state's copy of the pages can bring the picture back. On a tear-free
+  # screen the squares fall on the two pages turn about. The window onto the picture moves too, a
+  # square is drawn held inside an area that a frame ends within, and a sprite walks over the
+  # squares, putting back the patch it covered each time it moves.
+  private def kept_picture_game(tear_free:)
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :bitmap, tear_free: tear_free
+      image(:block, "#" => :green) { "####\n####\n####\n####" }
+      x = var :x, 0
+      walker = sprite :block, at: [0, 30]
+      game_loop do
+        x += rand(1..9)
+        x = 0 if x > 220
+        draw_rect_at x, (x * 7) % 140, 3, 3, :white
+        draw_rect_at (x * 5) % 220, 31, 2, 2, :yellow
+        walker.x = (x * 3) % 220
+        camera x % 5, 0
+        inside(0, 0, 120, 80) do
+          draw_rect_at x, x % 70, 2, 2, :red
+          wait_vblank
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  [false, true].each do |tear_free|
+    define_method(:"test_a_kept_picture_comes_back_from_the_state#{"_on_two_pages" if tear_free}") do
+      program = kept_picture_game(tear_free: tear_free)
+      unbroken, state = unbroken_with_state(program)
+
+      assert_operator unbroken.map(&:last).uniq.length, :>, 20, "the game's picture moves"
+      assert_plays_on_from(state, program, unbroken)
+      other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
     end
   end
 
@@ -116,7 +152,7 @@ module StateImageTests
 
   def test_the_runtimes_fields_are_the_ones_every_runtime_keeps
     _, state = unbroken_with_state(state_game)
-    runtime = state.lines.map { |line| line.split("\t").first }.reject { |name| name.start_with?("game.", "list.") }
+    runtime = runtime_field_names(state)
 
     assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: true).map(&:name), runtime
     counts = state.lines.to_h { |line| [line.split("\t").first, line.split("\t").last.split.first.to_i] }
@@ -157,9 +193,14 @@ module StateImageTests
   def test_a_game_with_no_save_memory_keeps_no_save_fields
     run = state_run.writing_state_after(2)
     run.run(counting_game, frames: 3)
-    runtime = run.state.lines.map { |line| line.split("\t").first }.reject { |name| name.start_with?("game.", "list.") }
+    runtime = runtime_field_names(run.state)
 
     assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false).map(&:name), runtime
+  end
+
+  # The names of the fields the runtime visits by hand, leaving out the ones the build writes.
+  private def runtime_field_names(state)
+    state.lines.map { |line| line.split("\t").first }.reject { |name| name.start_with?("game.", "list.", "patch.") }
   end
 
   def test_a_state_of_another_game_is_refused_naming_what_it_lacks

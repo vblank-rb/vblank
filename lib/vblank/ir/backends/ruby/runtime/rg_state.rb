@@ -1,7 +1,8 @@
 # THE STATE IMAGE: everything a game and its runtime keep between two frames, written as text by
 # name, and read back into the same build so the game plays on from there. This is
 # native/runtime/rg_state.h in Ruby, line for line, and the text is the same: one line a field, its
-# name, a tab, how many numbers it holds, and the numbers, all as decimal whole numbers. So an image
+# name, a tab, how many numbers it holds, and the numbers, all as decimal whole numbers, a run of one
+# number as one word "times*number". So an image
 # written by the C or the JavaScript runtime reads here, and the other way round.
 #
 # EACH FIELD IS NAMED ONCE AND USED BOTH WAYS. A part hands a field to rg_state_numbers (or the
@@ -44,7 +45,10 @@ def rg_state_visit_all
   rg_game_visit_state
   rg_runtime_visit_state
   rg_save_visit_state
+  rg_screen_visit_state
 end
+
+RG_STATE_SHORTEST_RUN = 4 # The shortest run of one number written as "times*number"
 
 # The image's lines as name => numbers.
 def rg_state_parse(text)
@@ -53,14 +57,42 @@ def rg_state_parse(text)
     next if line.empty?
 
     name, rest = line.split("\t", 2)
-    numbers = rest&.split
-    unless numbers && numbers.all? { |word| word.match?(/\A-?\d+\z/) } && numbers.first.to_i == numbers.length - 1 &&
-           !image.key?(name)
+    numbers = rest && rg_state_parse_numbers(rest.split)
+    if numbers.nil? || image.key?(name)
       rg_fault("This state is damaged: a line is not a name, a tab, a count and numbers. Load a state that this game wrote.")
     end
-    image[name] = numbers.drop(1).map(&:to_i)
+    image[name] = numbers
   end
   image
+end
+
+# The numbers a line's words after its name hold: the count, then each number or run of one number
+# ("times*number"). Nil for words that are not that, or that hold more or fewer than the count.
+def rg_state_parse_numbers(words)
+  return nil unless words.first&.match?(/\A\d+\z/)
+
+  count = words.first.to_i
+  numbers = []
+  words.drop(1).each do |word|
+    if (run = word.match(/\A(\d+)\*(-?\d+)\z/))
+      times = run[1].to_i
+      return nil if times < 1 || numbers.length + times > count
+
+      numbers.fill(run[2].to_i, numbers.length, times)
+    elsif word.match?(/\A-?\d+\z/)
+      numbers << word.to_i
+    else
+      return nil
+    end
+  end
+  numbers.length == count ? numbers : nil
+end
+
+# A field's numbers as the words of its line: a run of RG_STATE_SHORTEST_RUN or more of one number as one.
+def rg_state_words(values)
+  values.chunk_while { |a, b| a == b }.flat_map do |run|
+    run.length >= RG_STATE_SHORTEST_RUN ? ["#{run.length}*#{run.first}"] : run.map(&:to_s)
+  end
 end
 
 # The image's numbers for field +name+, which this game keeps +count+ of.
@@ -81,7 +113,7 @@ def rg_state_numbers(name, values)
   if @rg_state_image
     values.replace(rg_state_field_named(name, values.length))
   else
-    @rg_state_lines << "#{name}\t#{values.length}#{values.map { |value| " #{value}" }.join}\n"
+    @rg_state_lines << "#{name}\t#{[values.length, *rg_state_words(values)].join(" ")}\n"
   end
   values
 end

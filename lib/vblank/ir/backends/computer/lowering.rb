@@ -269,9 +269,10 @@ module VBlank
           # list, found among the finished top level, so a global added anywhere in the lowering, a
           # routine's place and locals among them (Resumable), is in the image without being named
           # here. A global is a field of one number, "game." and its name; a list is "list." and the
-          # game's name for it.
+          # game's name for it. Then each patch of picture the game keeps under a sprite, "patch." and
+          # its name, which the runtime keeps but only the build knows the size of.
           def visit_state(items)
-            items.flat_map do |item|
+            fields = items.flat_map do |item|
               case item
               when Statements::Global
                 [Statements::Assign.new(item.name, call("rg_state_number", Statements::Text.new("game.#{item.name.text}"), item.name))]
@@ -279,6 +280,10 @@ module VBlank
                 [eval_call("rg_state_list", Statements::Text.new("list.#{item.label}"), Statements::AddressOf.new(item.name))]
               else []
               end
+            end
+            fields + @patches.map do |name, buffer|
+              eval_call("rg_patch_visit_state", Statements::Text.new("patch.#{name}"), Statements::Int.new(@patch_numbers.fetch(name)),
+                        Statements::Int.new(buffer.width), Statements::Int.new(buffer.height))
             end
           end
 
