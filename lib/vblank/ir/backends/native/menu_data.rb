@@ -22,9 +22,11 @@ module VBlank
 
           module_function
 
-          # The C text. +menu+ false is a game that has no menu.
-          def source(menu: true)
-            [header, headings, sizes_and_colors, "const int rg_game_has_menu = #{menu ? 1 : 0};\n", *[1, 2].map { |density| atlas(density) },
+          # The C text. +menu+ false is a game that has no menu. +states+ false is a window that keeps no
+          # save states (a shell's parts, which run one after another): it has no Save or Load heading.
+          def source(menu: true, states: true)
+            [header, headings(states), sizes_and_colors, "const int rg_game_has_menu = #{menu ? 1 : 0};\n" \
+                                                          "const int rg_game_has_states = #{menu && states ? 1 : 0};\n", *[1, 2].map { |density| atlas(density) },
              "const rg_menu_atlas rg_menu_atlases[2] = {#{[1, 2].map { |density| atlas_entry(density) }.join(', ')}};\n"].join("\n")
           end
 
@@ -38,11 +40,12 @@ module VBlank
             C
           end
 
-          def headings
-            lines = Live::WindowMenu::HEADINGS.each_with_index.map do |heading, index|
+          def headings(states)
+            shown = states ? Live::WindowMenu::HEADINGS : Live::WindowMenu::HEADINGS.reject(&:states?)
+            lines = shown.each_with_index.map do |heading, index|
               "static const rg_menu_line heading_#{index}[] = {\n#{heading.lines.map { |line| "  #{line_entry(line)},\n" }.join}};\n"
             end
-            entries = Live::WindowMenu::HEADINGS.each_with_index.map do |heading, index|
+            entries = shown.each_with_index.map do |heading, index|
               "{#{c_string(heading.name)}, heading_#{index}, #{heading.lines.size}}"
             end
             scales = Live::WindowMenu::SCALES
@@ -55,7 +58,8 @@ module VBlank
             fields = [c_string(line.label), enum_name(line.kind), line.does ? enum_name(line.does) : "RG_MENU_NOTHING",
                       line.setting ? enum_name(line.setting) : "RG_MENU_NO_SETTING", line.range&.min || 0, line.range&.max || 0,
                       line.step || 0, line.written ? enum_name(line.written) : "RG_MENU_NOT_WRITTEN",
-                      line.shortcut ? c_string(line.shortcut) : "NULL", line.line_before ? 1 : 0, line.place]
+                      line.shortcut ? c_string(line.shortcut) : "NULL", line.line_before ? 1 : 0, line.place,
+                      line.request&.action == :save ? 1 : 0]
             "{#{fields.join(', ')}}"
           end
 

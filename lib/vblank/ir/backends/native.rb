@@ -153,7 +153,10 @@ module VBlank
           shell.parts.each do |part|
             game_part = part.role == :game
             file = game_part ? File.join(path, File.basename(path)) : File.join(path, ShellData::PARTS_FOLDER, ShellData.part_name(part))
-            compile_desktop(part.program, "#{file}#{ending}", title: game.title, code: game.identifying_code, menu: part.window_menu, cartridge: nil, target: target,
+            # A shell's parts run one after another, so no part keeps save states: they would be one set of
+            # slots written by several programs.
+            compile_desktop(part.program, "#{file}#{ending}", title: game.title, code: game.identifying_code,
+                                                               menu: part.window_menu, states: false, cartridge: nil, target: target,
                                                                strip: strip, shell: (shell if game_part), progress: progress,
                                                                part_name: game_part ? "game" : ShellData.part_name(part))
             FileUtils.chmod(0o755, "#{file}#{ending}")
@@ -188,8 +191,9 @@ module VBlank
         # +program+ compiled with the runtime and SDL into the executable +path+. The console's
         # start-up is played only where +cartridge+ holds the start of the game's cartridge to read it
         # from. +shell+ (an Original::Shell) makes the program a shell's game. +progress+ is told the two
-        # steps, each with +part_name+ beside it where a shell builds several programs.
-        def compile_desktop(program, path, title:, code:, menu:, cartridge:, target:, strip:, shell: nil,
+        # steps, each with +part_name+ beside it where a shell builds several programs. +states+ false
+        # leaves Save and Load out of the window's menu, and F5 and F9, as a shell's parts have them.
+        def compile_desktop(program, path, title:, code:, menu:, cartridge:, target:, strip:, shell: nil, states: true,
                             progress: Messages::Progress.silent, part_name: nil)
           progress.step("Writing C")
           progress.show_detail(part_name) if part_name
@@ -209,7 +213,7 @@ module VBlank
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
             end
-            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu))
+            File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu, states: states))
             File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             progress.step("Compiling C")

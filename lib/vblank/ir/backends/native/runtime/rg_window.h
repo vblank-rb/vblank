@@ -216,11 +216,15 @@ void rg_window_set_notice(const char *text);
 void rg_window_set_state_slot_text(int slot, const char *text);
 const char *rg_window_state_slot_text(int slot);
 
-/* A save or load asked for from the menu or by F5 and F9: held until the window does it between two
- * frames, the one time a state can be taken. */
+/* A save or load asked for from the menu or by F5 and F9 (Live::WindowMenu::StateRequest): held until
+ * the window does it between two frames, the one time a state can be taken. */
+typedef struct {
+  int saving;
+  int slot;
+} rg_state_request;
 void rg_window_ask_state(int saving, int slot);
 /* Whether one was asked for, and which; asking uses it up. */
-int rg_window_take_state_request(int *saving, int *slot);
+int rg_window_take_state_request(rg_state_request *request);
 
 /* --- hotkeys --- */
 

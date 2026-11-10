@@ -95,6 +95,18 @@ class TestNativeWindowMenu < Minitest::Test
   end
 
 
+  # A shell's parts keep no states, so their window has no Save or Load, and no F5 or F9.
+  def test_a_window_with_no_states_has_no_save_or_load_heading
+    with, without = [true, false].map { |states| Native::MenuData.source(states: states) }
+
+    assert_includes with, '"Save"'
+    refute_includes without, '"Save"'
+    refute_includes without, '"Load"'
+    assert_includes without, "rg_game_has_states = 0"
+    assert_includes with, "rg_game_has_states = 1"
+  end
+
+
   private
 
   # Plays +walk+ through both copies, drawing after each step, and fails at the first line that

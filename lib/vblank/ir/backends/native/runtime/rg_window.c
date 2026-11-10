@@ -411,7 +411,8 @@ int rg_window_pad_button(int button) { return is_button(button) ? now.pad[button
 /* --- save states --- */
 
 static char state_slot_text[RG_WINDOW_STATE_SLOTS][32];
-static int state_asked, state_asked_saving, state_asked_slot;
+static int state_asked;
+static rg_state_request state_request;
 
 void rg_window_set_state_slot_text(int slot, const char *text) {
   if (slot < 0 || slot >= RG_WINDOW_STATE_SLOTS) return;
@@ -425,15 +426,14 @@ const char *rg_window_state_slot_text(int slot) {
 
 void rg_window_ask_state(int saving, int slot) {
   state_asked = 1;
-  state_asked_saving = saving;
-  state_asked_slot = slot;
+  state_request.saving = saving;
+  state_request.slot = slot;
 }
 
-int rg_window_take_state_request(int *saving, int *slot) {
+int rg_window_take_state_request(rg_state_request *request) {
   if (!state_asked) return 0;
   state_asked = 0;
-  *saving = state_asked_saving;
-  *slot = state_asked_slot;
+  *request = state_request;
   return 1;
 }
 

@@ -694,18 +694,21 @@ class TestNativeDesktop < Minitest::Test
     plain = play_window(exe, dir, [], frames: 40, options: options)
     quick = play_window(exe, dir, [*["0"] * 9, "0 key:F5", *["0"] * 9, "0 key:F9"], frames: 40, options: options)
 
-    assert_path_exists File.join(folder, "state-quick")
+    quick_file = Dir.glob(File.join(folder, "*state-quick")).first
+    assert quick_file, "the quick state is a file beside the save"
+    start = File.basename(quick_file).delete_suffix("state-quick")
+    assert_equal "#{VBlank::Cartridge::GameCode.for('WINDOWED')}-", start, "named with the game's code, so games sharing a folder keep apart"
     assert_operator quick.variables[:frames], :<, plain.variables[:frames] - 5, "the count went back to where F5 was pressed"
     assert_match(/Loaded the quick slot/, quick.said)
     to_save = ["0", "0 hotkey:menu", *["0 key:Right"] * 5, "0 key:Down", "0 key:Down", "0 key:Down", "0 key:Return"]
     play_window(exe, dir, [*to_save, *["0"] * 6], frames: 40, options: options)
-    assert_path_exists File.join(folder, "state-2")
+    assert_path_exists File.join(folder, "#{start}state-2")
 
     to_load = ["0", "0 hotkey:menu", *["0 key:Right"] * 6, "0 key:Down", "0 key:Down", "0 key:Down", "0 key:Return"]
     loaded = play_window(exe, dir, [*["0"] * 25, *to_load], frames: 50, options: options)
     assert_match(/Loaded slot 2/, loaded.said)
 
-    File.write(File.join(folder, "state-3"), "vblank-state 1\nbuild gba 0123456789abcdef\n")
+    File.write(File.join(folder, "#{start}state-3"), "vblank-state 1\nbuild gba 0123456789abcdef\n")
     refused = play_window(exe, dir, [*["0"] * 3, "0 hotkey:menu", *["0 key:Right"] * 6, *["0 key:Down"] * 4, "0 key:Return"], frames: 30,
                                     options: options)
     assert_match(/another build/, refused.said)

@@ -31,17 +31,13 @@ extern "C" {
 
 /* --- what the menu holds, from the library (rg_window_menu_data.c) --- */
 
-typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK, RG_MENU_BUTTON, RG_MENU_HOTKEY, RG_MENU_SLOT } rg_menu_kind;
+typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK, RG_MENU_BUTTON, RG_MENU_HOTKEY, RG_MENU_STATE } rg_menu_kind;
 typedef enum {
   RG_MENU_NOTHING,
   RG_MENU_RESUME,
   RG_MENU_QUIT,
   RG_MENU_RESET_KEYS,
-  RG_MENU_RESET_HOTKEYS,
-  RG_MENU_QUICK_SAVE,
-  RG_MENU_QUICK_LOAD,
-  RG_MENU_SAVE_STATE,
-  RG_MENU_LOAD_STATE
+  RG_MENU_RESET_HOTKEYS
 } rg_menu_does;
 /* The settings a line shows, each one of rg_window.c's. */
 typedef enum {
@@ -59,7 +55,8 @@ typedef enum { RG_MENU_NOT_WRITTEN, RG_MENU_TIMES, RG_MENU_PERCENT, RG_MENU_WIND
 /* A line under a heading. +shortcut+ is the key that does the same outside the menu, written dim
  * at its right, or NULL; +line_before+ draws a line across the box above it; +place+ is which
  * console button or hotkey an RG_MENU_BUTTON or RG_MENU_HOTKEY line changes, or which slot a
- * RG_MENU_SLOT line saves to or loads from. */
+ * RG_MENU_STATE line saves to or loads from (0 is the quick one); +saves+ is whether that line saves, and
+ * not loads. */
 typedef struct {
   const char *label;
   rg_menu_kind kind;
@@ -70,6 +67,7 @@ typedef struct {
   const char *shortcut;
   int line_before;
   int place;
+  int saves;
 } rg_menu_line;
 
 typedef struct {
@@ -97,6 +95,8 @@ extern const rg_menu_colors rg_menu_color;
 extern const int rg_menu_scale_least, rg_menu_scale_most;
 /* Whether the game has a menu at all: a game that sets menu: false has none. */
 extern const int rg_game_has_menu;
+/* Whether the window keeps save states, and so has Save and Load in its menu and F5 and F9. */
+extern const int rg_game_has_states;
 
 /* --- working it --- */
 

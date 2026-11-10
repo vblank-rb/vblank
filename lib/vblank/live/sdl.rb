@@ -99,6 +99,13 @@ module VBlank
       FAST_FORWARD = Settings.starting_key(:fast_forward) # Tab, held
       MENU = Settings.starting_key(:menu) # F1
       GRAVE = 53 # The key above Tab, which opens the menu too while no console button has it
+
+      # The keys that save and load the quick state, by the names the menu writes them with
+      # (WindowMenu::QUICK_SAVE_KEY, QUICK_LOAD_KEY), as SDL numbers them. An unknown name raises, so the
+      # menu cannot name a key this window does not take.
+      SCANCODES_BY_KEY_NAME = Ractor.make_shareable({ "F5" => 62, "F9" => 66 })
+      QUICK_KEYS = Ractor.make_shareable({ SCANCODES_BY_KEY_NAME.fetch(WindowMenu::QUICK_SAVE_KEY) => :save,
+                                           SCANCODES_BY_KEY_NAME.fetch(WindowMenu::QUICK_LOAD_KEY) => :load })
       KEY_CODES = Ractor.make_shareable({ up: 82, down: 81, left: 80, right: 79, enter: 40 })
 
       # A GAMEPAD'S BUTTONS, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
@@ -229,8 +236,10 @@ module VBlank
       def take_state_request = @menu.take_state_request
 
       def state_saved(slot, text)
-        done = @states.write(slot, text)
-        notice(done == true ? "Saved #{slot_words(slot)}" : done)
+        @states.write(slot, text)
+        notice("Saved #{slot_words(slot)}")
+      rescue StateSlots::CannotWrite => e
+        notice(e.message)
       end
 
       def state_to_load(slot)
@@ -930,8 +939,6 @@ module VBlank
 
       def slot_words(slot) = slot == WindowMenu::QUICK_SLOT ? "the quick slot" : "slot #{slot}"
 
-      # F5 and F9 save and load the quick state, as in an emulator.
-      QUICK_KEYS = Ractor.make_shareable({ 62 => :save, 66 => :load })
 
       def raise_failed!(what)
         raise Failed, "SDL cannot #{what}: #{@sdl.SDL_GetError}."

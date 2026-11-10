@@ -490,6 +490,9 @@ static void read_save_file(void) {
 /* The folder the states are kept in, with its closing slash, or NULL for a game with no menu or
  * where the folder cannot be made (and then the menu has no Save or Load, and F5 and F9 do nothing). */
 static char *state_folder;
+/* What starts the name of each state file: nothing in the game's own folder, and the game's code with
+ * --save-file, since that folder may be shared with another game's save and states. */
+static char state_file_start[16];
 
 /* The folder a game's states go in is named for the game's title, as the save's is, and then its
  * code, which keeps two games of one title from writing over each other's states and stays the
@@ -503,8 +506,9 @@ static void name_state_folder(char *name, size_t room) {
 /* Where the states are kept: beside the file --save-file asked for, or else in the game's folder
  * among the files the operating system keeps for each program and each person. */
 static void choose_state_folder(const char *save_file_asked) {
-  if (!rg_game_has_menu) return;
+  if (!rg_game_has_menu || !rg_game_has_states) return;
   if (save_file_asked) {
+    snprintf(state_file_start, sizeof state_file_start, "%s-", RG_GAME_CODE);
     const char *slash = strrchr(save_file_asked, '/');
     const char *backslash = strrchr(save_file_asked, '\\');
     if (backslash && (!slash || backslash > slash)) slash = backslash;
@@ -522,11 +526,11 @@ static void choose_state_folder(const char *save_file_asked) {
 
 /* The file of slot +slot+ (0 is the quick one), in +path+, or nothing when there is no folder. */
 static void state_path(int slot, char *path, size_t room) {
-  if (slot == 0) snprintf(path, room, "%sstate-quick", state_folder);
-  else snprintf(path, room, "%sstate-%d", state_folder, slot);
+  if (slot == 0) snprintf(path, room, "%s%sstate-quick", state_folder, state_file_start);
+  else snprintf(path, room, "%s%sstate-%d", state_folder, state_file_start, slot);
 }
 
-/* What each slot says in the menu: when its file was written, by the computer's clock, or empty. */
+/* What each slot shows in the menu: when its file was written, by the computer's clock, or empty. */
 static void show_state_slots(void) {
   if (!state_folder) return;
   for (int slot = 0; slot < RG_WINDOW_STATE_SLOTS; slot++) {
@@ -540,7 +544,8 @@ static void show_state_slots(void) {
   }
 }
 
-static void say_about_state(const char *format, int slot) {
+/* Tells the player how a save or load went: on the error stream, and in the menu's notice. */
+static void show_state_result(const char *format, int slot) {
   char words[256], place[32];
   if (slot == 0) snprintf(place, sizeof place, "the quick slot");
   else snprintf(place, sizeof place, "slot %d", slot);
@@ -556,27 +561,29 @@ static void save_state_to(int slot) {
   state_path(slot, path, sizeof path);
   snprintf(writing, sizeof writing, "%s.writing", path);
   FILE *out = fopen(writing, "wb");
-  if (!out) {
+  int written = 0;
+  if (out) {
+    rg_state_write(out);
+    written = fclose(out) == 0 && SDL_RenamePath(writing, path);
+  }
+  if (written) {
+    show_state_result("Saved to %s", slot);
+  } else {
     fprintf(stderr, "%s cannot write the state to %s\n", rg_game_title, path);
     rg_window_set_notice("The state cannot be written. The folder for it cannot be written to.");
-    return;
   }
-  rg_state_write(out);
-  int written = fclose(out) == 0 && SDL_RenamePath(writing, path);
-  if (!written) rg_window_set_notice("The state cannot be written. The folder for it cannot be written to.");
-  else say_about_state("Saved to %s", slot);
   show_state_slots();
 }
 
 /* The state in the file of +slot+ put back into the game, unless the slot has none or its state is
- * another build's, which is said in plain words and leaves the game as it is. */
+ * another build's, which is told in plain words and leaves the game as it is. */
 static void load_state_from(int slot) {
   char path[1024];
   state_path(slot, path, sizeof path);
   size_t size = 0;
   void *loaded = SDL_GetPathInfo(path, NULL) ? SDL_LoadFile(path, &size) : NULL;
   if (!loaded) {
-    say_about_state("There is no state in %s", slot);
+    show_state_result("There is no state in %s", slot);
     return;
   }
   char *text = malloc(size + 1);
@@ -593,7 +600,7 @@ static void load_state_from(int slot) {
     rg_window_set_notice(problem);
   } else {
     rg_state_read(text);
-    say_about_state("Loaded %s", slot);
+    show_state_result("Loaded %s", slot);
   }
   free(text);
 }
@@ -602,11 +609,11 @@ static void load_state_from(int slot) {
  * state can be taken or put back (the windowless run does the same, in rg_headless.c), so it is
  * done at the top of the frame boundary, before the frame's sound is made. */
 static void serve_state_request(void) {
-  int saving, slot;
-  if (!rg_window_take_state_request(&saving, &slot)) return;
+  rg_state_request request;
+  if (!rg_window_take_state_request(&request)) return;
   if (!state_folder) return;
-  if (saving) save_state_to(slot);
-  else load_state_from(slot);
+  if (request.saving) save_state_to(request.slot);
+  else load_state_from(request.slot);
 }
 
 /* --- the settings file (rg_window.h says what is in it and how it is read) --- */

@@ -123,10 +123,6 @@ static void enter(const rg_menu_line *line) {
       rg_window_reset_pad();
     }
     if (line->does == RG_MENU_RESET_HOTKEYS) rg_window_reset_hotkeys();
-    if (line->does == RG_MENU_QUICK_SAVE || line->does == RG_MENU_QUICK_LOAD) {
-      rg_window_ask_state(line->does == RG_MENU_QUICK_SAVE, 0);
-      menu_open = 0;
-    }
     break;
   case RG_MENU_BUTTON:
     rg_window_capture_for_button(line->place);
@@ -134,8 +130,8 @@ static void enter(const rg_menu_line *line) {
   case RG_MENU_HOTKEY:
     rg_window_capture_key_for_hotkey(line->place);
     break;
-  case RG_MENU_SLOT:
-    rg_window_ask_state(line->does == RG_MENU_SAVE_STATE, line->place);
+  case RG_MENU_STATE:
+    rg_window_ask_state(line->saves, line->place);
     menu_open = 0;
     break;
   case RG_MENU_SLIDER:
@@ -272,6 +268,11 @@ static int draw_bar(int width) {
   return bar;
 }
 
+/* What a state line shows at its right: its key, or when its slot's state was taken. */
+static const char *state_line_words(const rg_menu_line *line) {
+  return line->shortcut ? line->shortcut : rg_window_state_slot_text(line->place);
+}
+
 /* How much room the right of a line takes: a slider, a shortcut, or a check mark. */
 static int right_width(const rg_menu_line *line) {
   switch (line->kind) {
@@ -285,8 +286,8 @@ static int right_width(const rg_menu_line *line) {
     control_text(line, text, sizeof text);
     return width_of(text);
   }
-  case RG_MENU_SLOT:
-    return width_of(rg_window_state_slot_text(line->place));
+  case RG_MENU_STATE:
+    return width_of(state_line_words(line));
   case RG_MENU_ACTION:
     break;
   }
@@ -346,8 +347,8 @@ static void draw_line(const rg_menu_line *line, int x, int y, int inner, int row
     add_words_in_row(text, right - width_of(text), y, row_height, capture_place(line) >= 0 ? rg_menu_color.fast : rg_menu_color.dim);
     break;
   }
-  case RG_MENU_SLOT: {
-    const char *text = rg_window_state_slot_text(line->place);
+  case RG_MENU_STATE: {
+    const char *text = state_line_words(line);
     add_words_in_row(text, right - width_of(text), y, row_height, rg_menu_color.dim);
     break;
   }

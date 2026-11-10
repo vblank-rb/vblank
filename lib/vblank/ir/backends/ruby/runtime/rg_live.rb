@@ -33,7 +33,7 @@ end
 # once the frame boundary has passed, and the buttons the player answers are read for the pass
 # that starts.
 def rg_driver_wait_vblank
-  rg_live_state_at_boundary
+  rg_live_serve_state_request
   rg_live_mix_match_seed
   left, right = rg_sound_render_frame
   rg_frame_begins
@@ -48,7 +48,7 @@ end
 # begins. That is the one moment every routine is stopped at its wait, so a state written now is the
 # game whole, and one read back puts the game where it was. A state this build cannot read is
 # refused before anything changes, in the words the runtime gives, and the game plays on.
-def rg_live_state_at_boundary
+def rg_live_serve_state_request
   request = @rg_live.take_state_request
   return if request.nil?
 

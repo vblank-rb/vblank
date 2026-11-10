@@ -22,6 +22,9 @@ module VBlank
       STARTING = Settings.new(fast_forward_speed: 4, scale: 3, fullscreen: false, volume: 100, muted: false,
                               frame_rate: true)
 
+      # A save or load: +action+ is :save or :load, and +slot+ is QUICK_SLOT or one of STATE_SLOTS.
+      StateRequest = Data.define(:action, :slot)
+
       # A heading on the bar and the lines under it. A heading of states is one a window offers
       # only where states can be kept: not in a match with other players.
       Heading = Data.define(:name, :lines) do
@@ -36,31 +39,32 @@ module VBlank
       # - :check holds +setting+ on or off, switched with Enter.
       # - :button and :hotkey show what number +place+ among the console's buttons or the window's
       #   hotkeys is on now, and Enter waits for the next key or gamepad button pressed to change it.
-      # - :slot is one of the ten places a state is kept: Enter does what +does+ names
-      #   (:save_state, :load_state) with the state in slot +place+ (1 to 10). It shows at its right
-      #   whether the slot holds a state, and when it was taken.
+      # - :state saves or loads a state: Enter asks for the StateRequest in +request+ (its action and its
+      #   slot, which is also +place+: 0 for the quick state, 1 to 10 for the others). A line with a
+      #   +shortcut+ shows that at its right; one without shows whether the slot holds a state, and when
+      #   it was taken.
       # +shortcut+ is the key that does the same outside the menu, written dim at the right.
       # +line_before+ draws a line across the box above it, to set it apart.
-      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before, :place) do
+      Line = Data.define(:label, :kind, :does, :setting, :range, :step, :written, :shortcut, :line_before, :place, :request) do
         def self.action(label, does, shortcut: nil, line_before: false)
-          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before, 0)
+          new(label, :action, does, nil, nil, nil, nil, shortcut, line_before, 0, nil)
         end
 
         def self.slider(label, setting, range, step, written)
-          new(label, :slider, nil, setting, range, step, written, nil, false, 0)
+          new(label, :slider, nil, setting, range, step, written, nil, false, 0, nil)
         end
 
-        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false, 0)
-        def self.button(label, place) = new(label, :button, nil, nil, nil, nil, nil, nil, false, place)
-        def self.hotkey(label, place) = new(label, :hotkey, nil, nil, nil, nil, nil, nil, false, place)
-        def self.slot(label, does, place) = new(label, :slot, does, nil, nil, nil, nil, nil, false, place)
+        def self.check(label, setting, shortcut: nil) = new(label, :check, nil, setting, nil, nil, nil, shortcut, false, 0, nil)
+        def self.button(label, place) = new(label, :button, nil, nil, nil, nil, nil, nil, false, place, nil)
+        def self.hotkey(label, place) = new(label, :hotkey, nil, nil, nil, nil, nil, nil, false, place, nil)
+
+        def self.state(label, action, slot, shortcut: nil)
+          new(label, :state, nil, nil, nil, nil, nil, shortcut, false, slot, StateRequest.new(action: action, slot: slot))
+        end
 
         # Whether the line saves or loads a state.
-        def state? = kind == :slot || STATE_DOES.include?(does)
+        def state? = kind == :state
       end
-
-      # What an action line can do with the states (Line#state?).
-      STATE_DOES = %i[quick_save quick_load].freeze
 
       # The places a state can be kept besides the quick one: 1 to 10. The quick one is place 0.
       STATE_SLOTS = (1..10)
@@ -90,10 +94,10 @@ module VBlank
                              Line.action("Reset", :reset_keys, line_before: true)]),
         Heading.new("Hotkeys", [*HOTKEY_NAMES.each_with_index.map { |name, place| Line.hotkey(name, place) },
                                 Line.action("Reset", :reset_hotkeys, line_before: true)]),
-        Heading.new("Save", [Line.action("Quick Save", :quick_save, shortcut: QUICK_SAVE_KEY),
-                             *STATE_SLOTS.map { |slot| Line.slot("Slot #{slot}", :save_state, slot) }]),
-        Heading.new("Load", [Line.action("Quick Load", :quick_load, shortcut: QUICK_LOAD_KEY),
-                             *STATE_SLOTS.map { |slot| Line.slot("Slot #{slot}", :load_state, slot) }])
+        Heading.new("Save", [Line.state("Quick Save", :save, QUICK_SLOT, shortcut: QUICK_SAVE_KEY),
+                             *STATE_SLOTS.map { |slot| Line.state("Slot #{slot}", :save, slot) }]),
+        Heading.new("Load", [Line.state("Quick Load", :load, QUICK_SLOT, shortcut: QUICK_LOAD_KEY),
+                             *STATE_SLOTS.map { |slot| Line.state("Slot #{slot}", :load, slot) }])
       ])
 
       # THE KEYS, by name; each frontend knows which of its own keys and buttons each name is. F1
@@ -126,9 +130,6 @@ module VBlank
       # (Graphics::MenuFont) as +letters+ gives, in +color+.
       Box = Data.define(:x, :y, :width, :height, :radius, :color)
       Words = Data.define(:text, :color, :letters)
-
-      # A save or load the player asked for: +action+ is :save or :load, and +slot+ is QUICK_SLOT or one of STATE_SLOTS.
-      StateRequest = Data.define(:action, :slot)
     end
   end
 end

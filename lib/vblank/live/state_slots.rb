@@ -24,6 +24,9 @@ module VBlank
       # What the menu says for a slot that holds nothing.
       EMPTY = "Empty"
 
+      # A state that cannot be written, in words for the player.
+      class CannotWrite < StandardError; end
+
       def initialize(folder:)
         @folder = folder
       end
@@ -38,16 +41,15 @@ module VBlank
       end
 
       # Keeps +text+ (a state) in +slot+: written to a new file beside it, which then takes its
-      # place, so a state that cannot be written leaves the one before whole. Gives true, or
-      # the words for why not.
+      # place, so a state that cannot be written leaves the one before whole. Raises CannotWrite, in
+      # words for the player, when the file cannot be written.
       def write(slot, text)
         path = path_of(slot)
         writing = "#{path}.writing"
         File.binwrite(writing, text)
         File.rename(writing, path)
-        true
       rescue SystemCallError => e
-        "The state cannot be written to #{path} (#{e.message})."
+        raise CannotWrite, "The state cannot be written to #{path} (#{e.message})."
       end
 
       # The state in +slot+, or nil when it holds none.

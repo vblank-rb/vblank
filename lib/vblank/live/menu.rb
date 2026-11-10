@@ -153,20 +153,18 @@ module VBlank
         when :check then @settings = @settings.with(line.setting => !@settings.setting(line.setting))
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
-        when :slot then ask_state_and_close(line.does == :save_state ? :save : :load, line.place)
+        when :state then ask_state_and_close(line.request)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
           @controls.reset_keys if line.does == :reset_keys
           @controls.reset_hotkeys if line.does == :reset_hotkeys
-          ask_state_and_close(:save, WindowMenu::QUICK_SLOT) if line.does == :quick_save
-          ask_state_and_close(:load, WindowMenu::QUICK_SLOT) if line.does == :quick_load
         end
       end
 
       # A save or load chosen from a line: asked for, and the menu closes so the game goes on.
-      def ask_state_and_close(action, slot)
-        ask_state(action, slot)
+      def ask_state_and_close(request)
+        @state_request = request
         @open = false
       end
 
@@ -242,10 +240,13 @@ module VBlank
         when :slider then size(:slider)
         when :check then size(:check)
         when :button, :hotkey then width_of(@controls.text_for(line))
-        when :slot then width_of(@states.text_for(line.place))
+        when :state then width_of(state_line_words(line))
         else line.shortcut ? width_of(line.shortcut) : 0
         end
       end
+
+      # What a state line shows at its right: its key, or when its slot's state was taken.
+      def state_line_words(line) = line.shortcut || @states.text_for(line.place)
 
       def draw_line(line, x, y, inner, row)
         add_words_in_row(line.label, x, y, row, :text)
@@ -257,8 +258,8 @@ module VBlank
         when :button, :hotkey
           text = @controls.text_for(line)
           add_words_in_row(text, right - width_of(text), y, row, line.place == @controls.capture_place(line.kind) ? :fast : :dim)
-        when :slot
-          text = @states.text_for(line.place)
+        when :state
+          text = state_line_words(line)
           add_words_in_row(text, right - width_of(text), y, row, :dim)
         end
       end

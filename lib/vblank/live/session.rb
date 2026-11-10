@@ -150,7 +150,9 @@ module VBlank
 
       # SAVE STATES, which only a device with a person at it asks for (SDL's menu and keys). The game
       # asks at the top of each frame boundary, the one place a state can be taken or put back (the
-      # runtime's rg_live_state_at_boundary), and these hand the question to the device.
+      # runtime's rg_live_serve_state_request), and these hand the question to the device. Only a device
+      # that has asked (#take_state_request gave a request) is handed the other four, so a device
+      # that never asks needs none of them.
       #
       # What the device asked to save or load (a WindowMenu::StateRequest), once, or nil.
       def take_state_request = (@device.take_state_request if @device.respond_to?(:take_state_request))
@@ -166,7 +168,6 @@ module VBlank
 
       # The game cannot use the state, in these words.
       def state_refused(words) = @device.state_refused(words)
-
 
       private
 

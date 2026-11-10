@@ -13,8 +13,8 @@ class TestJSPageStates < Minitest::Test
 
   JS = VBlank::IR::Backends::JS
 
-  private def page_with_menu(game = ticking_game, more: "")
-    factory, = JS.new.factory_and_data_file(game.program, title: game.title, menu: game.menu?, code: game.identifying_code)
+  private def page_with_menu(game = ticking_game, more: "", states: true)
+    factory, = JS.new.factory_and_data_file(game.program, title: game.title, menu: game.menu?, code: game.identifying_code, states: states)
     <<~HTML
       <!doctype html>
       <canvas id="one" width="240" height="160"></canvas>
@@ -99,7 +99,18 @@ class TestJSPageStates < Minitest::Test
     refute_includes shown.fetch("headings"), "Load"
   end
 
-  def test_a_game_with_no_menu_has_no_states
+# A shell's parts run one after another and would write one set of slots, so none offers states.
+def test_a_shell_part_has_no_save_or_load_and_no_quick_keys
+  code = VBlank::Cartridge::GameCode.for("TICKING")
+  kept = "js 'kept:' + localStorage.getItem(#{"vblank-state:TICKING:#{code}:0".to_json})"
+  lines = played_page(["play 3", *key("F5"), "play 1", kept, *key("F1"), shown_menu], ticking_game,
+                      html: page_with_menu(states: false))
+
+  assert_includes lines, "js kept:null"
+  refute_includes menu_after(lines).fetch("headings"), "Save"
+end
+
+def test_a_game_with_no_menu_has_no_states
     html = page_with_menu.gsub("menu: true", "menu: false")
     lines = played_page(["play 3", *key("F5"), "play 1", "js 'kept:' + localStorage.getItem(#{"vblank-state:TICKING:#{VBlank::Cartridge::GameCode.for("TICKING")}:0".to_json})", shown_menu], ticking_game, html: html)
 
