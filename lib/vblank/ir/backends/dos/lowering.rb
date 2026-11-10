@@ -17,10 +17,10 @@ module VBlank
         # instruction on a game's number whose answer Int32 gives otherwise.
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
-        # its conditions and halting, and a painted screen of one page with a cleared screen, pixels and
-        # rectangles, in a palette of the colours the game names. Everything else is refused by name until it
-        # is made (NOT_LOWERED_YET), and what a PC cannot do at all is refused in the words its answers have
-        # (Console::Answers#refusals).
+        # its conditions and halting, and a painted screen of one page with a cleared screen, pixels,
+        # rectangles and pictures (`blit`), in a palette of the colours the game names. Everything else is
+        # refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at all is refused in
+        # the words its answers have (Console::Answers#refusals).
         class Lowering
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
@@ -32,7 +32,7 @@ module VBlank
           # #value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at
+            draw_rect_at blit
           ] + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = %i[int var_ref binop neg].freeze
@@ -71,15 +71,24 @@ module VBlank
           # drawn in (15-bit colours, entry 0 black), and what starts as something other than nought.
           attr_reader :variables, :palette, :starts
 
+          # The pictures the game draws, as the bytes of the art segment (each picture's width and height, then a
+          # palette entry a pixel), and whether there are any.
+          attr_reader :art
+
+          def pictures? = !@art_places.empty?
+
           def initialize(program, memory:, cache: BuildCache.for(DOS, program))
             @program = program
             @memory = memory
+            @cache = cache
             @plan = cache.plan
             @variables = {}
             @locals = {}
             @starts = []
             @labels = 0
             @routine = MAIN
+            @art = "".b
+            @art_places = {}
           end
 
           # Writes the game's code, as the routine MAIN, into +asm+ (an X86).
@@ -88,6 +97,7 @@ module VBlank
             refuse_what_cannot_be_made!
             reserve_variables
             @palette = palette_of(@program)
+            keep_pictures
             keep_loop_running
             @asm.label(MAIN)
             @program.children.each { |node| statement(node) }
@@ -129,11 +139,42 @@ module VBlank
           def palette_of(program)
             colors = program.walk.select { |node| PAINTING_KINDS.include?(node.kind) }
                             .map { |node| Graphics::Color.resolve(node.color) }.uniq - [0]
-            if colors.size > CONSOLE.list_colors - 1
-              raise LoweringError, "This game paints with #{colors.size} colours. DOS shows #{CONSOLE.list_colors} at once, " \
-                                   "one of them black. To fix this, use fewer colours."
+            colors |= drawn_pictures.flat_map { |name| picture_colors(name) } - [0]
+            if colors.size >= TRANSPARENT_ENTRY
+              raise LoweringError, "This game paints with #{colors.size} colours besides black. DOS shows " \
+                                   "#{TRANSPARENT_ENTRY - 1} at once. To fix this, use fewer colours."
             end
             [0, *colors]
+          end
+
+          # The palette entry that means "nothing here" in a picture, so no colour is given it.
+          TRANSPARENT_ENTRY = Runtime::TRANSPARENT
+
+          def drawn_pictures = @program.walk.select { |node| node.kind == :blit }.map(&:name).uniq
+
+          def picture_node(name)
+            @pictures_declared ||= @program.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, node] }
+            @pictures_declared.fetch(name) { raise LoweringError, "the picture #{name.inspect} is drawn and never declared" }
+          end
+
+          def picture_image(name) = (@images ||= {})[name] ||= @cache.image(picture_node(name))
+
+          # The 15-bit colours a picture draws, not counting what it leaves transparent.
+          def picture_colors(name)
+            image = picture_image(name)
+            (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map { |at| image.color_at(at) }.uniq
+          end
+
+          # Each picture the game draws, made into its bytes of the art segment once its palette is known.
+          def keep_pictures
+            drawn_pictures.each do |name|
+              image = picture_image(name)
+              @art_places[name] = @art.bytesize
+              @art << [image.width, image.height].pack("v2")
+              @art << (0...(image.width * image.height)).map do |at|
+                image.drawn_at?(at) ? palette_entry(image.color_at(at)) : Runtime::TRANSPARENT
+              end.pack("C*")
+            end
           end
 
           def palette_entry(color) = @palette.index(Graphics::Color.resolve(color))
@@ -179,6 +220,7 @@ module VBlank
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
+            when :blit then emit_blit(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -320,6 +362,13 @@ module VBlank
             emit_values_into(%i[eax ecx edx ebx], [node.x, node.y, node.w, node.h].map { |edge| value_node(edge) })
             @asm.mov(:si, palette_entry(node.color))
             @asm.call("rt_fill_rect")
+          end
+
+          # Reference#exec_blit: the picture at x and y, from its place in the art segment.
+          def emit_blit(node)
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            @asm.mov(:si, @art_places.fetch(node.name))
+            @asm.call("rt_blit")
           end
 
           def value_node(operand) = operand.is_a?(Integer) ? Build.int(operand) : operand

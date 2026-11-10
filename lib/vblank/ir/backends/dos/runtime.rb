@@ -104,12 +104,16 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:)
+          def emit(asm, memory, palette:, starts:, pictures:)
             emit_start(asm, memory, palette, starts)
             emit_frame(asm, memory)
             emit_number_routines(asm)
             emit_drawing_routines(asm)
+            emit_blit_routine(asm) if pictures
           end
+
+          # What a picture's pixel holds where nothing is drawn: a palette entry the build never gives a colour.
+          TRANSPARENT = 255
 
           def emit_start(asm, memory, palette, starts)
             ica = Diagnostics::DOSMemory
@@ -346,6 +350,71 @@ module VBlank
             asm.dec(:ebx)
             asm.jne("rt_fill_rect_row")
             asm.label("rt_fill_rect_done")
+            asm.ret
+          end
+
+          # A PICTURE, drawn at x in EAX and y in ECX from the picture at offset SI of the art segment: its width
+          # and its height (a word each), then a byte for each pixel, a row at a time, each a palette entry or
+          # TRANSPARENT. Each pixel is held to the screen by itself (Reference#blit_image sets pixels one at a
+          # time, and `set_pixel` leaves out one that is off it), so a picture half off the screen shows its
+          # half, and a row off the screen is passed over by the width of its pixels.
+          #
+          # The numbers it keeps are on the stack, which is in the data segment (SS), since DS is the art
+          # segment while it reads pixels: BP+0 the x of the picture's left edge, +4 the y of the row to
+          # draw, +8 the picture's width, +10 the rows left.
+          def emit_blit_routine(asm)
+            frame = ->(offset) { X86.mem(:bp, offset) }
+            width = Console::DOS.screen_width
+            height = Console::DOS.screen_height
+            asm.label("rt_blit")
+            asm.push(:ds)
+            asm.sub(:sp, 12)
+            asm.mov(:bp, :sp)
+            asm.mov(frame.call(0), :eax)
+            asm.mov(frame.call(4), :ecx)
+            asm.mov_segment(:bx, :art)
+            asm.mov(:ds, :bx)
+            asm.mov(:dx, X86.mem(:si, 0))
+            asm.mov(frame.call(8), :dx)
+            asm.mov(:dx, X86.mem(:si, 2))
+            asm.mov(frame.call(10), :dx)
+            asm.add(:si, 4)
+            asm.label("rt_blit_row")
+            asm.mov(:dx, frame.call(10))
+            asm.test(:dx, :dx)
+            asm.je("rt_blit_done")
+            asm.dec(:dx)
+            asm.mov(frame.call(10), :dx)
+            asm.mov(:eax, frame.call(4))
+            asm.mov(:edi, :eax)
+            asm.inc(:eax)
+            asm.mov(frame.call(4), :eax)
+            asm.xor(:ecx, :ecx)
+            asm.mov(:cx, frame.call(8))
+            asm.cmp(:edi, height)
+            asm.jb("rt_blit_draw_row")
+            asm.add(:si, :cx)
+            asm.jmp("rt_blit_row")
+            asm.label("rt_blit_draw_row")
+            asm.mov(:eax, width)
+            asm.imul(:edi, :eax)
+            asm.mov(:ebx, frame.call(0))
+            asm.label("rt_blit_pixel")
+            asm.mov(:dl, X86.mem(:si, 0))
+            asm.inc(:si)
+            asm.cmp(:dl, TRANSPARENT)
+            asm.je("rt_blit_next")
+            asm.cmp(:ebx, width)
+            asm.jae("rt_blit_next")
+            asm.mov(X86.mem(:bx, 0, index: :di, seg: :es), :dl)
+            asm.label("rt_blit_next")
+            asm.inc(:ebx)
+            asm.dec(:cx)
+            asm.jne("rt_blit_pixel")
+            asm.jmp("rt_blit_row")
+            asm.label("rt_blit_done")
+            asm.add(:sp, 12)
+            asm.pop(:ds)
             asm.ret
           end
 

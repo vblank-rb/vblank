@@ -112,6 +112,32 @@ class TestDOSCheckedRun < Minitest::Test
     end
   end
 
+  # A picture with a hole in it (the dots are transparent), drawn whole, half off each edge, and where a
+  # number the game works out says.
+  def test_a_picture_is_drawn_whole_and_half_off_the_screen_as_the_interpreter_draws_it
+    checked(frames: 4) do
+      screen :bitmap
+      clear_screen :blue
+      image(:ship, "." => :transparent, "#" => :white, "o" => :red, "x" => :green) do
+        <<~ART
+          ..##..
+          .#oo#.
+          ##oo##
+          #xxxx#
+          .#..#.
+        ART
+      end
+      blit :ship, 20, 30
+      here = var :here, 0
+      game_loop do
+        here += 37
+        blit :ship, here % 340 - 3, here % 215 - 2
+        blit :ship, 317, 197
+        blit :ship, 0, 0
+      end
+    end
+  end
+
   def test_repeat_and_if_and_else_agree
     checked(frames: 5) do
       total = var :total, 0

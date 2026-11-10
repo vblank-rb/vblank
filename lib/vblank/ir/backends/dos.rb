@@ -115,14 +115,17 @@ module VBlank
           asm = X86.new
           asm.jmp("start")
           lowering.emit(asm)
-          Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts)
+          Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?)
           refuse_too_much_code!(asm.here)
-          data_segment = (asm.here + 15) / 16
-          assembled = asm.assemble(data: data_segment)
+          art_segment = (asm.here + 15) / 16
+          art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
+          refuse_too_much_art!(art.bytesize)
+          data_segment = art_segment + (art.bytesize / 16)
+          assembled = asm.assemble(art: art_segment, data: data_segment)
           places = Places.new(variables: lowering.variables, lists: {}, runtime: Runtime.places(memory),
-                              source_program: program, code: asm.here, bytes: ByteCounts.new(code: asm.here, data: 0),
-                              routines: [])
-          Cartridge::DOSEXE.new(assembled.bytes.ljust(data_segment * 16, "\0"), title: title, entry: [0, 0],
+                              source_program: program, code: asm.here,
+                              bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])
+          Cartridge::DOSEXE.new(assembled.bytes.ljust(art_segment * 16, "\0") + art, title: title, entry: [0, 0],
                                 stack: [data_segment, 0xFFFE], relocations: assembled.segment_words.map { |at| [0, at] },
                                 extra_paragraphs: EXTRA_PARAGRAPHS, built: places)
         end
@@ -131,6 +134,13 @@ module VBlank
         EXTRA_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
 
         private
+
+        def refuse_too_much_art!(bytes)
+          return if bytes <= MOST_CODE_BYTES
+
+          raise LoweringError, "This game's pictures are #{bytes} bytes, and a DOS program keeps them in one segment of " \
+                               "#{MOST_CODE_BYTES}. To fix this, use fewer or smaller pictures."
+        end
 
         def refuse_too_much_code!(bytes)
           return if bytes <= MOST_CODE_BYTES
