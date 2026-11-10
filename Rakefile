@@ -117,13 +117,28 @@ VBlank::Testing::RakeTasks.new do |t|
   t.consoles = VBlank::Console::KITS.keys
 end
 
-# What this repository's runs need besides: a whole run waits for any other on the machine, the
-# emulator is built for every run (on the native and JavaScript runs a few tests ask the cartridge
-# itself as the answer key — the sound the desktop build makes, test/sound_comparison.rb, and the
-# jukebox's voices), and a run with COVERAGE=1 starts its report afresh.
+# What this repository's runs need besides: a whole run waits for any other on the machine, and a
+# run with COVERAGE=1 starts its report afresh.
 task "test:all" => :suite_lock
-VBlank::Testing::Lowering::NAMES.each { |lowering| task "test:lowering:#{lowering}" => %i[suite_lock compile_emulator] }
+VBlank::Testing::Lowering::NAMES.each { |lowering| task "test:lowering:#{lowering}" => :suite_lock }
 task "test:lowering:gba" => :clear_coverage
+
+# EACH RUN BUILDS THE EMULATOR IT PLAYS A CARTRIDGE IN, AND NO OTHER. Which one follows the console
+# a run plays games as, not its lowering:
+#
+# - the GBA run reads the Advance's cartridge back in libmgba (test/lowering/gba/);
+# - the Game Boy Color run plays the Color's cartridges in libmgba too;
+# - the Super Nintendo, Genesis and PlayStation runs play theirs in bsnes, Genesis Plus GX and
+#   Beetle PSX;
+# - the C build's run as the Advance takes the Advance cartridge's sound as the answer key for the
+#   desktop build's speaker (test/sound_comparison.rb). Its runs as the other consoles take none
+#   yet; each names its console's emulator here when it gains a sound test of its own.
+#
+# The JavaScript and Ruby runs build none: their sound is held sample for sample to the C build's
+# (test/runtime_sounds.rb), so they run on a machine with no emulator and no C compiler for one.
+task "test:lowering:gba" => :compile_emulator
+task "test:lowering:gbc" => :compile_emulator
+task "test:lowering:native:gba" => :compile_emulator
 task "test:lowering:snes" => :compile_snes_core
 task "test:lowering:genesis" => :compile_genesis_core
 task "test:lowering:ps1" => :compile_ps1_core

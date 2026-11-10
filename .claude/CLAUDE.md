@@ -84,8 +84,9 @@ library that will not load.
 **In THIS repository** it is a `path:` entry in the Gemfile, so `require "ruby_gba_emulator"`
 resolves and the seam takes the same route a consumer takes rather than a fallback nobody else
 has. Bundler does NOT build its extension though — it builds them for gem and git sources, not
-for a path one — so `rake compile_emulator` does that (a prerequisite of every test task;
-`rake test:emulator` builds and runs its own suite). That build is keyed on source files being
+for a path one — so `rake compile_emulator` does that (a prerequisite of the runs that play a
+cartridge in it: the GBA run, the Game Boy Color run and the C build's run as the Advance; the
+JavaScript and Ruby runs need no emulator; `rake test:emulator` builds and runs its own suite). That build is keyed on source files being
 newer, which cannot see a Ruby version change — after switching Ruby, run `rake clean` in
 `ruby-gba-emulator/`. The load error tells you which of the two you are looking at. A checkout's
 build also records the C source it came from, so a game that loads a checkout built before the
