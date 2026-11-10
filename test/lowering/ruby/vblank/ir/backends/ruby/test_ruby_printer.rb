@@ -10,7 +10,11 @@ class TestRubyPrinter < Minitest::Test
     builder = Builder.new
     builder.instance_eval(&block)
     builder.finalize_program
-    text, = VBlank::IR::Backends::Ruby::Lowering.new(builder.program).text_and_gaps(VBlank::IR::Backends::Ruby::HEADLESS_FUNCTIONS)
+    printed_program(builder.program)
+  end
+
+  private def printed_program(program)
+    text, = VBlank::IR::Backends::Ruby::Lowering.new(program).text_and_gaps(VBlank::IR::Backends::Ruby::HEADLESS_FUNCTIONS)
     text
   end
 
@@ -32,20 +36,30 @@ class TestRubyPrinter < Minitest::Test
 
   # In Ruby nought is true, so a number taken as a condition is compared with nought, a loop's
   # included; a comparison taken as one is Ruby's own, with no call to answer 1 or 0.
+  #
+  # The number taken as a condition is a tree made by hand: game code always writes a test.
   def test_a_condition_is_compared_with_nought
     nodes = nodes_of_method(printed do
       x = 0
       game_loop { x = 0 if x > 6 }
     end, :rg_game_main)
 
-    compared = nodes.grep(Prism::IfNode).map(&:predicate).grep(Prism::CallNode).find do |test|
+    compared = if_tests(nodes).find do |test|
       test.name == :> && reads_instance_variable?(test.receiver, :@v_x) && integer?(test.arguments.arguments.first, 6)
     end
     refute_nil compared, "the game should test x > 6 as Ruby's own comparison"
     refute_includes call_names(nodes), :rg_gt
-    loop_test = nodes.grep(Prism::WhileNode).first.predicate
-    assert_equal :!=, loop_test.name
+
+    build = VBlank::IR::Build
+    counted = build.program(build.set(:left, 3), build.loop_(build.if_(build.var_ref(:left), build.sub(:left, 1)), build.wait_vblank))
+    number_tests = if_tests(nodes_of_method(printed_program(counted), :rg_game_main))
+    with_nought = number_tests.find do |test|
+      test.name == :!= && reads_instance_variable?(test.receiver, :@v_left) && integer?(test.arguments.arguments.first, 0)
+    end
+    refute_nil with_nought, "the game should test left != 0, since nought is true in Ruby"
   end
+
+  private def if_tests(nodes) = nodes.grep(Prism::IfNode).map(&:predicate).grep(Prism::CallNode)
 
   # The game's own sums are Ruby's +, written where they run rather than a call to the runtime for
   # each: YJIT compiles an operator on small numbers to a few instructions, and a method only as a
