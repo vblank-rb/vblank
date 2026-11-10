@@ -244,7 +244,14 @@ module VBlank
       # parts of Backends::DOS::Lowering::NOT_LOWERED_YET, and the other parts it refuses by name
       # (Lowering#refuse_unmade_parts!). A verb is here when a game that uses it reaches a step of the
       # part; the lowering's coverage test holds the parts to the lowering's.
-      VERBS_NOT_MADE_YET = Ractor.make_shareable({})
+      NOT_MADE_YET_PART = "everything past numbers, the game loop and a painted screen of pixels"
+
+      VERBS_NOT_MADE_YET = Ractor.make_shareable({
+        NOT_MADE_YET_PART => ANSWERS.keys - %i[setting built_for_computer? built_for? screen_width screen_height
+                                               border halt debug_halt game_loop once_a_frame frames_since_power_on
+                                               each_pass repeat wait_vblank screen clear_screen pixel color rgb rgb8
+                                               var set add add_var sub sub_var copy]
+      })
 
       # What the page says of the steps the DOS build does not make yet: for each part, the
       # verbs that wait on it and the steps it names in a refusal.

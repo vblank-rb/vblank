@@ -14,11 +14,18 @@ module VBlank
       # Where the program keeps its data segment: 0040:00F0.
       DATA_SEGMENT_AT = 0x4F0
 
+      # A byte beside it that a program started as `GAME.EXE HOLD` sets, to wait at its start until a reader
+      # clears it (RubyDOSEmulator::Core::START_GATE_AT, which is the same place). The byte is nought in a
+      # PC that nobody reads, and the program never waits there.
+      START_GATE_AT = 0x4F2
+
       module_function
 
       def read8(core, offset) = bytes(core, offset, 1).getbyte(0)
       def read16(core, offset) = bytes(core, offset, 2).unpack1("v")
       def read32(core, offset) = bytes(core, offset, 4).unpack1("V")
+
+      def write32(core, offset, value) = core.poke(linear(core, offset), [value & 0xFFFF_FFFF].pack("V"))
 
       def bytes(core, offset, count) = core.peek(linear(core, offset), count)
 

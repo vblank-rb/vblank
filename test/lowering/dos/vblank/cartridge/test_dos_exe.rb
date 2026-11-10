@@ -54,7 +54,7 @@ class TestDOSEXE < Minitest::Test
     Dir.mktmpdir("dos-exe") do |dir|
       path = File.join(dir, "TEST.EXE")
       executable.write(path)
-      probe = VBlank::Diagnostics::DOSProbe.new(path)
+      probe = VBlank::Diagnostics::DOSProbe.new(path, hold: false)
       probe.step(frames)
       yield probe
     ensure

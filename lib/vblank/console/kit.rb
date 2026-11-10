@@ -365,7 +365,8 @@ module VBlank
       def lowering = IR::Backends::DOS
       def cartridge = Cartridge::DOSEXE
       def reading = Diagnostics::DOSReading
-      def open_core(path, save_dir:) = Diagnostics::Emulator.open_dos(path)
+      # Held at its start, for a reader to release (Diagnostics::DOSMemory::START_GATE_AT).
+      def open_core(path, save_dir:) = Diagnostics::Emulator.open_dos(path, hold: true)
       def open_probe(path, save_dir:) = Diagnostics::DOSProbe.new(path)
       def save_file_extension = ".sav"
       # The 386 reads a number of any size at any address, low byte first.

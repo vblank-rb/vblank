@@ -14,6 +14,8 @@ module VBlank
 end
 
 require_relative "dos/x86"
+require_relative "dos/memory"
+require_relative "dos/runtime"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
 require_relative "dos/checked_run"
@@ -85,14 +87,56 @@ module VBlank
       # register to the arithmetic. A game's variables live in one data segment; a list or picture too
       # big for what is left goes in a far segment of its own and is reached through ES.
       class DOS
+        # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every variable by
+        # the game's name (its offset in the data segment), every list (none are made yet), where the runtime
+        # keeps how the run stands (Runtime::Frame's names), and the program it was built from. +bytes+ gives
+        # what the program comes to (ByteCounts).
+        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines) do
+          # Where the runtime counts the times the game has waited for the screen.
+          def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+        end
+
+        # What the program comes to: +code+, the bytes the processor runs, and +data+, the bytes it only reads.
+        ByteCounts = Data.define(:code, :data)
+
         # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
         def findings = (@findings ||= [])
 
-        # +program+ as an MZ EXE (Cartridge::DOSEXE). The code generator is the next piece of work, so a build
-        # says so, in words for the author.
-        def build(_program, title: "VBLANK", cache: nil)
-          raise LoweringError, "The build for DOS cannot make #{title} yet. The code generator for DOS is not " \
-                               "written. To fix this, build the game for another console."
+        # The most code a program can have: it is one segment, reached by a 16-bit offset.
+        MOST_CODE_BYTES = Console::DOSHardware::SEGMENT_SIZE
+
+        # +program+ as an MZ EXE (Cartridge::DOSEXE), carrying its Places. The code is first, the runtime
+        # behind the game's, and the data segment starts on the first paragraph after it, in memory the loader
+        # gives beyond the file (EXTRA_PARAGRAPHS), cleared by the program as it starts.
+        def build(program, title: "VBLANK", cache: BuildCache.for(DOS, program))
+          memory = Memory.new
+          Runtime.reserve(memory)
+          lowering = Lowering.new(program, memory: memory, cache: cache)
+          asm = X86.new
+          asm.jmp("start")
+          lowering.emit(asm)
+          Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts)
+          refuse_too_much_code!(asm.here)
+          data_segment = (asm.here + 15) / 16
+          assembled = asm.assemble(data: data_segment)
+          places = Places.new(variables: lowering.variables, lists: {}, runtime: Runtime.places(memory),
+                              source_program: program, code: asm.here, bytes: ByteCounts.new(code: asm.here, data: 0),
+                              routines: [])
+          Cartridge::DOSEXE.new(assembled.bytes.ljust(data_segment * 16, "\0"), title: title, entry: [0, 0],
+                                stack: [data_segment, 0xFFFE], relocations: assembled.segment_words.map { |at| [0, at] },
+                                extra_paragraphs: EXTRA_PARAGRAPHS, built: places)
+        end
+
+        # A segment of 64K for the numbers and the stack, in memory the loader gives beyond the file.
+        EXTRA_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
+
+        private
+
+        def refuse_too_much_code!(bytes)
+          return if bytes <= MOST_CODE_BYTES
+
+          raise LoweringError, "This game's code is #{bytes} bytes, and a DOS program keeps its code in one segment of " \
+                               "#{MOST_CODE_BYTES}. To fix this, make the game smaller."
         end
       end
     end

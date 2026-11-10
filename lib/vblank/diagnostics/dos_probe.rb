@@ -11,9 +11,16 @@ module VBlank
     # reader takes four bytes a pixel with red in the low byte. The reader gives keys as one number with a
     # bit each, and the core takes the keys' own names (DOS::HeadlessRun::KEYS lists which is which).
     class DOSProbe
-      def initialize(path)
-        @core = Emulator.open_dos(path)
+      # +hold+ starts the program held at its start and lets it go at once, as the runtime of a program VBlank
+      # builds waits for (Core::START_GATE_AT): its first frame is then its own first. A program that has no
+      # gate (one made by hand) is started plain.
+      def initialize(path, hold: true)
+        @core = Emulator.open_dos(path, hold: hold)
         @frames = 0
+        return unless hold
+
+        @core.run_frame until @core.gate_closed? || @core.frames > GATE_FRAMES
+        @core.release_gate
       end
 
       # THE PICTURE IS THE SIZE THE CARD SHOWS NOW, which the program sets. Before the first frame DOSBox
@@ -53,6 +60,9 @@ module VBlank
       def closed? = @closed == true
 
       KEYS = IR::Backends::DOS::HeadlessRun::KEYS
+
+      # The most frames a program may take to reach its gate.
+      GATE_FRAMES = 600
     end
   end
 end
