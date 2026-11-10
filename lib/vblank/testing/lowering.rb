@@ -88,6 +88,10 @@ module VBlank
                                      Run.new(name: :ps1, title: "PlayStation", console: :ps1, checked: true,
                                              does: "the game built as a PlayStation program, played in Beetle PSX " \
                                                    "and checked against the interpreter",
+                                             needs: nil, player: nil, yjit: true),
+                                     Run.new(name: :dos, title: "DOS", console: :dos, checked: true,
+                                             does: "the game built as a DOS program, played in DOSBox " \
+                                                   "and checked against the interpreter",
                                              needs: nil, player: nil, yjit: true)
                                    ])
 

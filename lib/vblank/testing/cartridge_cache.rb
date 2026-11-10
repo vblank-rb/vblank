@@ -57,7 +57,7 @@ module VBlank
       FRAMEWORK_GLOBS = ["lib/**/*", "ext/**/*", "core/**/*", "ruby-*-emulator/{lib,ext,core}/**/*"].freeze
       # Where each emulator gem the bundle holds is, read once as the library loads: a gem a game loads
       # apart from VBlank is read where it is. (A test in a Ractor cannot ask rubygems.)
-      EMULATOR_ROOTS = Ractor.make_shareable(%w[ruby-gba-emulator ruby-snes-emulator ruby-genesis-emulator ruby-ps1-emulator]
+      EMULATOR_ROOTS = Ractor.make_shareable(%w[ruby-gba-emulator ruby-snes-emulator ruby-genesis-emulator ruby-ps1-emulator ruby-dos-emulator]
                                               .filter_map { |name| Gem.loaded_specs[name]&.full_gem_path })
 
       # WHAT A KEY IS MADE OF, each part's digest: the library's and emulators' files, the Ruby, the
