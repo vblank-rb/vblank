@@ -5,5 +5,5 @@
 VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :pixelation,
   needed_by: %i[pixelate],
-  hooks: %i[setup screen_set block_size shown_plain shown_columns shown_row]
+  hooks: %i[setup screen_set block_size shown_plain shown_columns shown_row visit_state]
 )

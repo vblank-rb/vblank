@@ -58,3 +58,12 @@ end
 
 # Framebuffer#pixel: down, every row of a block shows the block's top row.
 def rg_pixelation_shown_row(y) = y - (y % @rg_read_block)
+
+# rg_hook_visit_state: the two sizes (Computer::StateFields "pixelation").
+def rg_pixelation_visit_state
+  numbers = rg_state_numbers("pixelation", [@rg_block, @rg_read_block])
+  if numbers.any? { |size| size < 1 }
+    rg_fault("This state is damaged: its blocks are smaller than a pixel. Load a state that this game wrote.")
+  end
+  @rg_block, @rg_read_block = numbers
+end

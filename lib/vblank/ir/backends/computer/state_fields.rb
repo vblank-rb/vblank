@@ -16,10 +16,16 @@ module VBlank
         # decides: :save_size (a byte of save memory each), :screen_cells (a pixel of the screen each),
         # :three_screens (three numbers a pixel), :run_pixels (a pixel of every run the game paints
         # into each) or :runs (one a run). +with_save_memory+ marks a field only a game that reaches save
-        # memory keeps.
+        # memory keeps, and +feature+ one only a game that takes in that runtime feature keeps
+        # (RuntimeFeatures; each visits its own through the visit_state hook, in the order the
+        # features are joined).
+        #
+        # A feature with no field here keeps nothing a frame boundary needs: light works its rows out
+        # again after every wait, before the next picture is read; columns paints and keeps nothing;
+        # faces keeps only tables it works out from the game's colours.
         module StateFields
-          Field = Data.define(:name, :count, :with_save_memory) do
-            def initialize(name:, count:, with_save_memory: false)
+          Field = Data.define(:name, :count, :with_save_memory, :feature) do
+            def initialize(name:, count:, with_save_memory: false, feature: nil)
               super
             end
           end
@@ -62,12 +68,24 @@ module VBlank
             # the two shares.
             Field.new(name: "screen.shares", count: 2 * 3 * MOST_SEE_THROUGH),
             Field.new(name: "screen.runs.places", count: :run_pixels),
-            Field.new(name: "screen.runs.painted", count: :runs)
+            Field.new(name: "screen.runs.painted", count: :runs),
+            # The fade toward black or white and its steps; the tint's way (none, toward black or
+            # white, toward a colour), toward white, its colour, steps, and whether the display mixes
+            # it; a fade placed in the stack (in force, the layer's place, toward white, steps); and
+            # where the fade reaches (the whole screen, inside or outside) and its rectangle.
+            Field.new(name: "fades", count: 16, feature: :fades),
+            # The size of the blocks things are painted in, and of those a painted screen is read in.
+            Field.new(name: "pixelation", count: 2, feature: :pixelation)
           ].freeze
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches
-          # save memory with +save_memory+, else the rest.
-          def self.kept(save_memory:) = FIELDS.select { |field| save_memory || !field.with_save_memory }
+          # save memory with +save_memory+, else the rest, and of the runtime features named in
+          # +features+.
+          def self.kept(save_memory:, features: [])
+            FIELDS.select do |field|
+              (save_memory || !field.with_save_memory) && (field.feature.nil? || features.include?(field.feature))
+            end
+          end
         end
       end
     end

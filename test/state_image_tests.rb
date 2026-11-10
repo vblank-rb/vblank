@@ -64,11 +64,15 @@ module StateImageTests
     [*(:a if (frame % 17).zero?), *(:b if (frame / 25).odd?)]
   end
 
-  # Each frame's variables and picture check, from the frame after +from+ on, watched as +run+ plays.
+  # Each frame's variables and the checks of its picture as stored and as shown (through the window,
+  # a fade and the blocks), from the frame after +from+ on, watched as +run+ plays.
   private def frames_seen(run, program, frames:, from: 0)
     seen = []
     run.input_each_frame { |frame| buttons_on(from + frame) }
-       .each_vblank { |_frame| seen << [run.vars.dup, VBlank::IR::Backends::RunComparison.picture_check(run.screen.to_a)] }
+       .each_vblank do |_frame|
+         pictures = [run.screen.to_a, run.screen.shown].map { |cells| VBlank::IR::Backends::RunComparison.picture_check(cells) }
+         seen << [run.vars.dup, pictures]
+       end
        .run(program, frames: frames)
     seen
   end
@@ -128,6 +132,53 @@ module StateImageTests
     end
   end
 
+  # A GAME WITH A FADE, A TINT AND BLOCKS UNDER WAY: each is set only now and then, so for many
+  # frames after the state the picture shows one the game set before it, which only the state's
+  # copy of the drawing features brings back.
+  private def effects_game(tear_free:)
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :bitmap, tear_free: tear_free
+      n = var :n, 0
+      x = var :x, 0
+      level = var :level, 0
+      size = var :size, 1
+      game_loop do
+        n += 1
+        x += rand(1..5)
+        x = 0 if x > 200
+        level = (n * 3) % 90
+        size = ((n / 13) % 6) + 1
+        clear_screen :blue
+        draw_rect_at x, 40, 30, 30, :white
+        draw_rect_at 0, 0, 4, 4, :red
+        draw_rect_at 4, 0, 4, 4, :green
+        fade :black, level, inside: [0, 0, 120, 80] if n % 32 == 7
+        tint :red, level if n % 32 == 23
+        pixelate size if n % 13 == 0
+        wait_vblank
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  [false, true].each do |tear_free|
+    define_method(:"test_a_fade_and_blocks_under_way_come_back_from_the_state#{"_on_two_pages" if tear_free}") do
+      program = effects_game(tear_free: tear_free)
+      unbroken, state = unbroken_with_state(program)
+
+      # After STATE_AFTER the fade held to a rectangle and blocks of 4 are in force.
+      assert_plays_on_from(state, program, unbroken)
+      other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+      # After frame 30 a tint is, set on frame 23.
+      tinted = state_run.writing_state_after(30)
+      frames_seen(tinted, program, frames: 31)
+      [state_run, *other_runs].each { |reader| assert_plays_on_from(tinted.state, program, unbroken, reader: reader, from: 30, frames: 20) }
+      assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[fades pixelation]))
+    end
+  end
+
   def test_a_run_read_from_a_state_plays_on_as_the_unbroken_run
     program = state_game
     unbroken, state = unbroken_with_state(program)
@@ -152,11 +203,15 @@ module StateImageTests
 
   def test_the_runtimes_fields_are_the_ones_every_runtime_keeps
     _, state = unbroken_with_state(state_game)
-    runtime = runtime_field_names(state)
 
-    assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: true).map(&:name), runtime
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: true))
+  end
+
+  # The runtime's fields in +state+ are +fields+, in order, each holding the numbers it says.
+  private def assert_runtime_fields(state, fields)
+    assert_equal fields.map(&:name), runtime_field_names(state)
     counts = state.lines.to_h { |line| [line.split("\t").first, line.split("\t").last.split.first.to_i] }
-    VBlank::IR::Backends::Computer::StateFields::FIELDS.each do |field|
+    fields.each do |field|
       assert_equal field.count, counts.fetch(field.name), "#{field.name} holds #{field.count} numbers" if field.count.is_a?(Integer)
     end
   end

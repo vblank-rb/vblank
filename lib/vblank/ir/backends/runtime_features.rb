@@ -130,6 +130,9 @@ module VBlank
           # (Reference#fading?). Asked once a thing painted.
           Hook.new(name: :blend_held_by_fade, way: :claim,
                    c_signature: "static int32_t rg_hook_blend_held_by_fade(void)"),
+          # The state image is written or read (runtime/rg_state.h): each feature visits its own
+          # fields, the ones Computer::StateFields lists under its name, after the screen's.
+          Hook.new(name: :visit_state, way: :each, c_signature: "static void rg_hook_visit_state(void)"),
 
           # --- the sound runtime's hooks (rg_sound.c) ---
 

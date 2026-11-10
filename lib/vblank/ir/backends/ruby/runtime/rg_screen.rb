@@ -1177,6 +1177,7 @@ def rg_screen_visit_state
   rg_visit_areas
   rg_visit_kept_shares
   rg_visit_runs
+  rg_hook_visit_state
 end
 
 # A patch of picture kept under a sprite: whether it was saved, then its cells (rg_state.h).

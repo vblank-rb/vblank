@@ -5,5 +5,5 @@
 VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :fades,
   needed_by: %i[fade tint],
-  hooks: %i[setup screen_set fade_filter paint_fade_for blend_held_by_fade]
+  hooks: %i[setup screen_set fade_filter paint_fade_for blend_held_by_fade visit_state]
 )

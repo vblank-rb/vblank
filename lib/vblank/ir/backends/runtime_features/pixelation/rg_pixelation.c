@@ -55,3 +55,12 @@ static const int64_t *rg_pixelation_shown_columns(void) {
 
 /* Framebuffer#pixel: down, every row of a block shows the block's top row. */
 static int64_t rg_pixelation_shown_row(int64_t y) { return y - y % read_block; }
+
+/* rg_hook_visit_state: the two sizes (Computer::StateFields "pixelation"). */
+static void rg_pixelation_visit_state(void) {
+  int64_t numbers[] = {block, read_block};
+  rg_state_numbers("pixelation", numbers, 2);
+  if (numbers[0] < 1 || numbers[1] < 1)
+    rg_fault("This state is damaged: its blocks are smaller than a pixel. Load a state that this game wrote.");
+  block = (int32_t)numbers[0], read_block = (int32_t)numbers[1];
+}

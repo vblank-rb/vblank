@@ -13,7 +13,8 @@
 
 /* What a display does to the finished picture: one effect at a time (Framebuffer#fade_to). */
 static int32_t fade_white, fade_steps;
-static enum { TINT_NONE, TINT_TOWARD, TINT_COLOR } tint_mode;
+typedef enum { TINT_NONE, TINT_TOWARD, TINT_COLOR } tint_modes;
+static tint_modes tint_mode;
 static int32_t tint_white, tint_color, tint_steps, tint_by_display;
 
 /* A FADE PLACED IN THE STACK, while one is in force (Reference @fade_placed): how far forward the
@@ -260,6 +261,26 @@ void rg_screen_tint(int32_t color, int32_t steps) {
   fade_filter_stale = 1;
   int32_t blend_changed_hands = see_through_layers() > 0 && rg_fades_blend_held_by_fade() != took_the_blend;
   if (was_placed || blend_changed_hands) request_repaint();
+}
+
+/* rg_hook_visit_state: the fade, the tint, a fade placed in the stack and where the fade reaches
+ * (Computer::StateFields "fades"). The tables are made again from them as the picture is next read. */
+static void rg_fades_visit_state(void) {
+  int64_t numbers[] = {
+    fade_white, fade_steps, tint_mode, tint_white, tint_color, tint_steps, tint_by_display,
+    placed_fade.in_force, placed_fade.layer_place, placed_fade.toward_white, placed_fade.steps,
+    fade_side, fade_area[0], fade_area[1], fade_area[2], fade_area[3],
+  };
+  rg_state_numbers("fades", numbers, (int32_t)(sizeof numbers / sizeof numbers[0]));
+  if (numbers[2] < 0 || numbers[2] > (int64_t)TINT_COLOR)
+    rg_fault("This state is damaged: the screen names a tint it does not have. Load a state that this game wrote.");
+  fade_white = (int32_t)numbers[0], fade_steps = (int32_t)numbers[1], tint_mode = (tint_modes)numbers[2];
+  tint_white = (int32_t)numbers[3], tint_color = (int32_t)numbers[4], tint_steps = (int32_t)numbers[5];
+  tint_by_display = (int32_t)numbers[6];
+  placed_fade = (fade_in_the_stack){(int32_t)numbers[7], (int32_t)numbers[8], (int32_t)numbers[9], (int32_t)numbers[10]};
+  fade_side = (int32_t)numbers[11];
+  for (int32_t i = 0; i < 4; i++) fade_area[i] = (int32_t)numbers[12 + i];
+  fade_filter_stale = 1;
 }
 
 /* Backends::FadeSteps.steps */

@@ -278,6 +278,30 @@ def rg_screen_tint(color, steps)
   rg_request_repaint if was_placed || blend_changed_hands
 end
 
+RG_TINT_MODES = %i[none toward color].freeze # The tint's way, by its number in the state image
+
+# rg_hook_visit_state (rg_fades.c's rg_fades_visit_state).
+def rg_fades_visit_state
+  placed = @rg_placed_fade
+  numbers = [
+    @rg_fade_white, @rg_fade_steps, RG_TINT_MODES.index(@rg_tint_mode), @rg_tint_white, @rg_tint_color, @rg_tint_steps,
+    rg_state_flag(@rg_tint_by_display), rg_state_flag(placed.in_force), placed.layer_place, placed.toward_white, placed.steps,
+    @rg_fade_side, *@rg_fade_area
+  ]
+  rg_state_numbers("fades", numbers)
+  unless numbers[2].between?(0, RG_TINT_MODES.length - 1)
+    rg_fault("This state is damaged: the screen names a tint it does not have. Load a state that this game wrote.")
+  end
+  @rg_fade_white, @rg_fade_steps = numbers[0, 2]
+  @rg_tint_mode = RG_TINT_MODES[numbers[2]]
+  @rg_tint_white, @rg_tint_color, @rg_tint_steps = numbers[3, 3]
+  @rg_tint_by_display = numbers[6] != 0
+  @rg_placed_fade = RgPlacedFade.new(numbers[7] != 0, *numbers[8, 3])
+  @rg_fade_side = numbers[11]
+  @rg_fade_area = numbers[12, 4]
+  @rg_fade_filter_stale = true
+end
+
 # Backends::FadeSteps.steps
 def rg_fade_steps(amount, fraction_bits, walked)
   levels = walked != 0 ? RG_WALK_STEPS : 16

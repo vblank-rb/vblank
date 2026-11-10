@@ -114,3 +114,7 @@ static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place) {
 #ifndef RG_HOOK_BLEND_HELD_BY_FADE_TAKEN
 static int32_t rg_hook_blend_held_by_fade(void) { return 0; }
 #endif
+
+#ifndef RG_HOOK_VISIT_STATE_TAKEN
+static void rg_hook_visit_state(void) {}
+#endif

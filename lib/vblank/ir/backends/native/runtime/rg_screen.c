@@ -190,6 +190,7 @@ static const shown_filter *rg_hook_fade_filter(void);                /* what a f
 static const shown_filter *rg_hook_dim_filter(void);                 /* what a light does to it, or NULL */
 static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place);   /* the colours a placed fade paints a thing as, or NULL */
 static int32_t rg_hook_blend_held_by_fade(void);                     /* 1: a fade holds the display's blend */
+static void rg_hook_visit_state(void);                               /* the state image visits each feature's fields */
 
 /* --- small arithmetic --- */
 
@@ -1145,6 +1146,7 @@ void rg_screen_visit_state(void) {
   visit_areas();
   visit_kept_shares();
   visit_runs();
+  rg_hook_visit_state();
 }
 
 void rg_patch_visit_state(const char *name, int32_t buffer, int32_t width, int32_t height) {
