@@ -42,6 +42,11 @@ the choice is pretended, so `--refresh-rate 120` on a 60Hz monitor shows each pi
 refreshes and plays at half speed. The pacing rule and the limit behind a hidden window are plain
 arithmetic in `runtime/rg_pacing.h`, tested as that (`test_native_pacing.rb`).
 
+**A shell's unpacking plays on a thread of its own** (`play_part_on_thread` in `runtime/rg_sdl.c`),
+so its window keeps drawing while the routine works. `test_native_shell.rb` runs the unpacking part
+as the shell does, with `--frame-times` besides, on a port whose routine works about a second with
+no write and no wait (`ShellTests#busy_port`), and counts the pictures in the report.
+
 **An editor's complaints about the runtime's C are not the build's.** An editor's C checker reads
 `lib/vblank/ir/backends/native/runtime/` on its own. Every native build writes a
 `compile_flags.txt` above that folder with the build's own flags and header folders

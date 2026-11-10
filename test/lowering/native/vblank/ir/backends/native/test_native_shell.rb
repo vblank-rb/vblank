@@ -65,6 +65,57 @@ class TestNativeShell < Minitest::Test
     end
   end
 
+  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES plays on a thread of its own, so its window
+  # keeps showing pictures the whole time. Played on the window's thread, as it was, it showed a
+  # picture only every thirtieth time the routine waited for a frame, and this one waits for none
+  # as it works. The unpacking part is run as the shell runs it, with --frame-times besides, whose
+  # last word counts the pictures handed to the display.
+  BUSY_STEPS = 400_000_000 # ShellTests#busy_port's: enough to keep the game as C at work for many frames
+
+  def test_an_unpacking_shows_pictures_while_it_works_between_writes
+    Dir.mktmpdir do |dir|
+      shell = Native.new.build_desktop_shell(busy_port(original_nowhere(dir), steps: BUSY_STEPS), File.join(dir, "busy-shell"),
+                                             console: :gba, err: nil)
+      answer = File.join(dir, "answer.txt")
+      run = Computer::ProgramRun.run(File.join(shell, "parts", "unpack-0"),
+                                     args: ["--part", answer, "--data-pack", copy_at(dir), "--part-fast", "--frame-times",
+                                            "--settings-file", File.join(dir, "none.txt")],
+                                     env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)
+      pictures = run.complaints[/^pictures: (\d+)/, 1].to_i
+
+      assert_operator pictures, :>=, 10, "the window showed #{pictures} pictures as the unpacking worked:\n#{run.complaints}"
+      assert_includes File.read(answer), "list #{VBlank::Original::Unpacking::BYTES} #{HEIGHTS.length} #{HEIGHTS.join(' ')}\n"
+      assert_a_window_closed_part_way_leaves_no_answer(shell, dir)
+    end
+  end
+
+  # The window closed while the unpacking works (SDL takes the signal a system sends a program it
+  # asks to end as the window closing): the program ends at once, without waiting for the unpacking,
+  # and leaves no answer, whole or half, for the shell to make a pack from.
+  private def assert_a_window_closed_part_way_leaves_no_answer(shell, dir)
+    answer = File.join(dir, "closed-answer.txt")
+    pid = Process.spawn(NO_SCREEN_OR_SPEAKER, File.join(shell, "parts", "unpack-0"), "--part", answer, "--data-pack", copy_at(dir),
+                        "--part-fast", "--settings-file", File.join(dir, "none-closed.txt"), err: File::NULL, out: File::NULL)
+    sleep 0.3
+    closed_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    Process.kill("TERM", pid)
+    Process.wait(pid)
+
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - closed_at, :<, 0.4, "the window waited for the unpacking"
+    assert_empty Dir.glob("#{answer}*"), "an answer was left behind"
+  end
+
+  # The same shell whole: the pack it keeps is the all-in-one build's, byte for byte.
+  def test_a_shell_whose_unpacking_works_between_writes_keeps_the_all_in_one_pack
+    Dir.mktmpdir do |dir|
+      shell = Native.new.build_desktop_shell(busy_port(original_nowhere(dir), steps: BUSY_STEPS), File.join(dir, "busy-shell"),
+                                             console: :gba, err: nil)
+      play(shell_exe(shell), dir, "busy", options: shell_options(dir, copy: copy_at(dir)))
+
+      assert_equal Dir.mktmpdir { |other| busy_port(original(other), steps: 1).data_pack_file }, kept_pack(dir)
+    end
+  end
+
   # A script of buttons, a line a frame, with nothing held once its lines run out.
   private def keys_file(dir, name, lines)
     File.join(dir, name).tap { |path| File.write(path, [*lines, *(["0"] * 20)].map { |line| "#{line}\n" }.join) }

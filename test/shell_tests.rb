@@ -76,6 +76,31 @@ module ShellTests
     end
   end
 
+  # A PORT WHOSE UNPACKING WORKS A LONG TIME BETWEEN WRITES (a port rendering music before it writes
+  # a byte): +steps+ rounds of arithmetic on the copy's own bytes, which no compiler can work out
+  # ahead, with no write and no wait for a frame among them, and then the heights unpacked. The
+  # pack it makes does not depend on +steps+.
+  private def busy_port(from, steps:)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          busy = 0
+          mixed = 0
+          while busy < steps
+            mixed = ((mixed * 31) + copy.byte(mixed & 255)) & 0xFFFF
+            busy += 1
+          end
+          copy.unpack_rle at: RLE_AT, into: into[:heights]
+        end
+      end
+      heights = table :heights, pack[:heights]
+      game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
+    end
+  end
+
   # The made-up original on a machine where no copy of it is set: what a shell is built from, so
   # building one never writes the copy back (#original does).
   private def original_nowhere(folder)

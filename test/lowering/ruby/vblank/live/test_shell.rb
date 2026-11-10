@@ -190,33 +190,15 @@ class TestShell < Minitest::Test
   # byte) plays away from the window, so the window keeps showing frames the whole time, and the
   # pack it makes is still the all-in-one build's byte for byte. Played on the window, as it was, the
   # routine showed a frame only when it waited for one, and this one waits for none as it works.
-  BUSY_STEPS = 6_000_000
-
-  private def busy_port(from)
-    busy_steps = BUSY_STEPS
-    VBlank.game("MADE UP", consoles: %i[gba]) do
-      screen :bitmap
-      clear_screen :black
-      pack = data_pack(from: from, version: "1") do |slots|
-        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
-        slots.fill_from_copy do |copy, into|
-          busy = 0
-          busy += 1 while busy < busy_steps
-          copy.unpack_rle at: RLE_AT, into: into[:heights]
-        end
-      end
-      heights = table :heights, pack[:heights]
-      game_loop { draw_rect_at heights[0] * 4, 40, 4, 4, :white }
-    end
-  end
+  BUSY_STEPS = 3_000_000 # ShellTests#busy_port's, enough to keep the Ruby runtime at work for many frames
 
   def test_the_window_keeps_showing_frames_while_the_unpacking_works_between_writes
     Dir.mktmpdir do |folder|
-      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder)), err: nil))
+      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder), steps: BUSY_STEPS), err: nil))
       device = Headless.new(frames: 100_000)
       pack = shell.pack_from_copy("made_up.gba", COPY, device)
 
-      assert_equal Dir.mktmpdir { |other| busy_port(original(other)).data_pack_file }, pack
+      assert_equal Dir.mktmpdir { |other| busy_port(original(other), steps: 1).data_pack_file }, pack
       assert_operator device.pictures.size, :>=, 10, "the window showed a frame only now and then as the unpacking worked"
     end
   end
@@ -246,7 +228,7 @@ class TestShell < Minitest::Test
   # for the unpacking to finish its work.
   def test_a_window_closed_while_the_unpacking_works_keeps_no_pack
     Dir.mktmpdir do |folder|
-      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder)), err: nil))
+      shell = Shell.from(VBlank::Original::Shell.build(busy_port(original_nowhere(folder), steps: BUSY_STEPS), err: nil))
       began = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       pack = shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: 2))
 

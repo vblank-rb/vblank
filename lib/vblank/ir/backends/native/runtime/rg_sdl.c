@@ -306,7 +306,7 @@ static long frames_played;
 static uint32_t scripted_keys;
 /* A PART OF A SHELL (--part RESULT; rg_shell.c): played like any game, and where a game would halt it
  * writes where every variable and list stands into the RESULT file, and ends. --part-fast is an
- * unpacking: no waiting for the end of a frame, and a picture only now and then. */
+ * unpacking, played on a thread of its own (play_part_on_thread). */
 static const char *part_result_path;
 static FILE *part_result;
 static int part_fast;
@@ -413,7 +413,9 @@ static void write_settings_file(void);
 static _Noreturn void finish_script(void);
 
 static _Noreturn void quit(int status) {
-  write_save_file();
+  /* An unpacking keeps no save, and plays on a thread of its own (play_part_on_thread) that may still
+   * be running: its memory is not read from here. */
+  if (!part_fast) write_save_file();
   write_settings_file();
   rg_menu_stop();
   if (timing_frames) report_frame_times();
@@ -1046,8 +1048,13 @@ static void wait_out_undrawn_picture(void) {
 /* Shows the picture as it stands: once, or where the monitor paces the frames, once for each
  * refresh a picture is shown for, each waiting for its refresh. A picture that is the one already
  * up, with nothing over it and nothing owed to the window, is neither uploaded nor drawn. */
-static void present(void) {
-  const uint16_t *picture = rg_screen_shown();
+static void present_picture(const uint16_t *picture, bool game_is_ours);
+
+static void present(void) { present_picture(rg_screen_shown(), true); }
+
+/* ...+picture+, which is the game's own unless +game_is_ours+ is false: an unpacking plays on another
+ * thread, and its variables are not this thread's to read. */
+static void present_picture(const uint16_t *picture, bool game_is_ours) {
   bool same_picture = texture_has_picture && memcmp(picture, texture_holds, sizeof texture_holds) == 0;
   bool drawn_over = something_is_drawn_over_the_picture();
   if (same_picture && !window_owed_a_drawing && !drawn_over) {
@@ -1061,7 +1068,7 @@ static void present(void) {
     memcpy(texture_holds, picture, sizeof texture_holds);
     texture_has_picture = true;
   }
-  watch_variables();
+  if (game_is_ours) watch_variables();
   for (int i = 0; i < draws_per_picture; i++) {
     draw_window();
     SDL_RenderPresent(renderer);
@@ -1479,13 +1486,28 @@ static void push_key(SDL_Scancode key, bool down) {
   SDL_PushEvent(&event);
 }
 
-/* A part's last word: where every variable and list stands, in its RESULT file. */
+/* A part's last word: where every variable and list stands, in its RESULT file. Written beside the
+ * file and then moved into place, so an answer is never left half written by a window closed as it
+ * was being written. Whether it was written.
+ *
+ * Must run on the thread the game plays on, and once: it reads every variable and list, through
+ * part_result. */
+static bool write_part_result(void) {
+  char *writing = NULL;
+  if (SDL_asprintf(&writing, "%s.writing", part_result_path) < 0) return false;
+  part_result = fopen(writing, "wb");
+  bool written = part_result != NULL;
+  if (written) {
+    rg_game_dump_state();
+    written = fclose(part_result) == 0 && SDL_RenamePath(writing, part_result_path);
+    part_result = NULL;
+  }
+  SDL_free(writing);
+  return written;
+}
+
 static _Noreturn void finish_part(void) {
-  part_result = fopen(part_result_path, "wb");
-  if (!part_result) refuse_to_start("its answer cannot be written");
-  rg_game_dump_state();
-  fclose(part_result);
-  part_result = NULL;
+  if (!write_part_result()) refuse_to_start("its answer cannot be written");
   quit(0);
 }
 
@@ -1692,10 +1714,10 @@ static void sdl_wait_vblank(void) {
   if (scripted && frames_played >= frames_to_play) finish_script();
   Uint64 frame_ended = SDL_GetTicksNS();
   rg_window_frame_played(frame_ended, game_resumed_ns ? frame_ended - game_resumed_ns : 0);
-  if (!part_fast) play_frame_sound();
+  play_frame_sound();
   rg_frame_begins();
   frames_played++;
-  bool shown = part_fast ? frames_played % 30 == 0 : end_of_slot();
+  bool shown = end_of_slot();
   if (shown) present();
   write_files_due();
   read_events();
@@ -1758,6 +1780,118 @@ static void sdl_dump_list(const rg_list *list) {
 }
 
 static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
+
+/* AN UNPACKING PLAYS ON A THREAD OF ITS OWN (--part-fast). An unpacking is a game whose routine may
+ * work for a long time between two waits for a frame (a port rendering its music before it writes a
+ * byte). Played on the window's thread, the window can read its events and draw only at those
+ * waits, so it freezes for as long as the routine works. So the game plays on another thread, as
+ * fast as that thread goes, and the window's thread keeps its own loop a frame at a time.
+ *
+ * WHAT CROSSES BETWEEN THE TWO is the picture and one number. The unpacking draws its own progress
+ * bar, as game code, so at a wait for a frame its thread copies the picture it has drawn into
+ * part_picture under a lock, at most once a frame's time, and the window's thread copies it out and
+ * shows it. part_state says how the unpacking ended. Everything else of the game (its variables,
+ * its lists, the screen it draws on) is the unpacking thread's alone while it plays, and everything
+ * of SDL's that touches the window is the window's thread's alone.
+ *
+ * SDL's threads, locks and atomic numbers are used, which the window already links on every desktop
+ * it is built for, so there is no code here for one system's threads.
+ *
+ * A WINDOW CLOSED PART WAY ends the program from the window's thread, and the unpacking thread ends
+ * with it. Its answer is written beside the file and moved into place (write_part_result), so no
+ * half an answer is left, and the shell that started the part finds none and makes no pack. */
+enum { PART_PLAYING, PART_DONE, PART_FAULTED };
+static SDL_AtomicInt part_state;
+static SDL_Mutex *part_picture_lock;
+static uint16_t part_picture[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT]; /* the newest the unpacking drew, under the lock */
+static Uint64 part_picture_copied_ns;                             /* the unpacking thread's: when it last copied one */
+static char part_fault_words[512];                                /* written before part_state says PART_FAULTED */
+
+/* Must be 8 MB or more: the game's routines were written for the main thread's stack, and a
+ * thread's own is far smaller on some systems unless it is asked for. */
+#define PART_THREAD_STACK_BYTES (8 * 1024 * 1024)
+
+/* The unpacking's picture as it stands, copied for the window: every time when +always+, else only
+ * when a frame's time has gone by since the last, since making the picture is work of its own. */
+static void copy_part_picture(bool always) {
+  Uint64 now = SDL_GetTicksNS();
+  if (!always && part_picture_copied_ns && now - part_picture_copied_ns < FRAME_NS) return;
+  part_picture_copied_ns = now;
+  const uint16_t *picture = rg_screen_shown();
+  SDL_LockMutex(part_picture_lock);
+  memcpy(part_picture, picture, sizeof part_picture);
+  SDL_UnlockMutex(part_picture_lock);
+}
+
+/* The unpacking thread has nothing left to do, and waits for the window's thread to end the program. */
+static _Noreturn void part_thread_rests(int state) {
+  SDL_SetAtomicInt(&part_state, state);
+  for (;;) SDL_Delay(1000);
+}
+
+/* The unpacking's frame boundary: nothing waits, no button is read and no sound is played. */
+static void part_thread_wait_vblank(void) {
+  rg_frame_begins();
+  frames_played++;
+  copy_part_picture(false);
+}
+
+static void part_thread_fault(const char *format, va_list args) {
+  vsnprintf(part_fault_words, sizeof part_fault_words, format, args);
+  part_thread_rests(PART_FAULTED);
+}
+
+/* The unpacking came to its end: its last picture (the whole bar) and its answer. */
+static void part_thread_halt(void) {
+  copy_part_picture(true);
+  if (!write_part_result()) {
+    snprintf(part_fault_words, sizeof part_fault_words, "%s cannot write its answer (%s)", rg_game_title, SDL_GetError());
+    part_thread_rests(PART_FAULTED);
+  }
+  part_thread_rests(PART_DONE);
+}
+
+static const rg_driver part_thread_driver = {part_thread_wait_vblank, part_thread_halt, part_thread_fault,
+                                             sdl_dump_variable,       sdl_sound_logged, sdl_dump_list};
+
+static int play_part(void *unused) {
+  (void)unused;
+  rg_play_frames();
+  part_thread_halt(); /* a game with no game loop ends */
+  return 0;
+}
+
+/* Starts the unpacking on its thread and keeps the window going until it ends: each frame the
+ * newest picture is shown and the window's events are read (closing it ends the program). How the
+ * unpacking ended is read before its picture is, so its last picture is shown before the program ends. */
+static _Noreturn void play_part_on_thread(void) {
+  static uint16_t shown[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+  part_picture_lock = SDL_CreateMutex();
+  rg_active_driver = &part_thread_driver;
+  SDL_PropertiesID properties = SDL_CreateProperties();
+  SDL_SetPointerProperty(properties, SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER, (void *)play_part);
+  SDL_SetStringProperty(properties, SDL_PROP_THREAD_CREATE_NAME_STRING, "unpacking");
+  SDL_SetNumberProperty(properties, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, PART_THREAD_STACK_BYTES);
+  SDL_Thread *thread = part_picture_lock ? SDL_CreateThreadWithProperties(properties) : NULL;
+  SDL_DestroyProperties(properties);
+  if (!thread) refuse_to_start("the unpacking cannot be started");
+  SDL_DetachThread(thread);
+  for (;;) {
+    int state = SDL_GetAtomicInt(&part_state);
+    SDL_LockMutex(part_picture_lock);
+    memcpy(shown, part_picture, sizeof shown);
+    SDL_UnlockMutex(part_picture_lock);
+    present_picture(shown, false);
+    if (state == PART_DONE) quit(0);
+    if (state == PART_FAULTED) {
+      fprintf(stderr, "%s\n", part_fault_words);
+      SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, part_fault_words, window);
+      quit(1);
+    }
+    read_and_apply_events();
+    wait_for_next_frame();
+  }
+}
 
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
 /* The player's BIOS, read whole, or NULL. */
@@ -2018,6 +2152,7 @@ int main(int argc, char **argv) {
   play_console_start_up();
 #endif
   read_computer_clock();
+  if (part_fast) play_part_on_thread();
   rg_active_driver = &sdl;
   rg_play_frames();
   /* A game with no game loop ends; its last picture stays up like a halt's. */

@@ -248,6 +248,9 @@ static char *part_file(const char *name) {
 static int run_part(const char *name, const char *copy, const char *keys, const char *result, int fast, int menu_open) {
   char *exe = part_file(name);
   if (!exe) return 0;
+  /* A part whose window is closed writes no answer, so the answer of the part before it must not be
+   * left there to be read as this one's. */
+  SDL_RemovePath(result);
   const char *args[12];
   int count = 0;
   args[count++] = exe;
@@ -288,6 +291,11 @@ static int run_part(const char *name, const char *copy, const char *keys, const 
   }
   if (script) SDL_CloseIO(script);
   SDL_free(exe);
+  /* A part writes its answer beside the file and moves it into place (rg_sdl.c's write_part_result);
+   * one whose window was closed as it wrote leaves the half it had written, which goes here. */
+  char *writing = NULL;
+  if (SDL_asprintf(&writing, "%s.writing", result) >= 0) SDL_RemovePath(writing);
+  SDL_free(writing);
   return ok;
 }
 
