@@ -165,14 +165,17 @@ class TestSDL < Minitest::Test
     window.show(Array.new(240 * 160, 0), 240, 160)
     refute window.hold_while_paused
     assert_nil window.take_state_request, "no states are offered until the game plays"
+    assert_nil window.save_file, "and no save file is kept until the game plays"
 
     assert window.offer_states(name)
+    assert_instance_of VBlank::Live::SaveFile, window.save_file
     press_key(62)
     window.show(Array.new(240 * 160, 0), 240, 160)
     window.hold_while_paused
     assert_equal VBlank::Live::WindowMenu::StateRequest.new(action: :save, slot: 0), window.take_state_request
 
     window.withdraw_states
+    assert_nil window.save_file
     press_key(62)
     window.show(Array.new(240 * 160, 0), 240, 160)
     window.hold_while_paused

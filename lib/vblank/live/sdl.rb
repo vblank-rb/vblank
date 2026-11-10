@@ -242,13 +242,15 @@ module VBlank
       # folder (a match with other players).
       attr_reader :save_file
 
-      # Starts offering save states, kept in the folder called +name+ (StateSlots.folder_name), as a shell's
-      # window does once its game plays; false when the computer will not make the folder.
+      # Starts offering save states, and keeping the game's save memory, in the folder called +name+
+      # (StateSlots.folder_name), as a shell's window does once its game plays; false when the computer
+      # will not make the folder.
       def offer_states(name)
         return false unless @has_menu
 
         @states = states_in(name)
         @menu.states = @states
+        @save_file = save_file_in(name)
         !@states.nil?
       end
 
@@ -256,6 +258,7 @@ module VBlank
       def withdraw_states
         @states = nil
         @menu.states = nil
+        @save_file = nil
       end
 
       # What the player asked to save or load, with the menu or F5 and F9, once, or nil.
