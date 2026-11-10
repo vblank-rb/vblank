@@ -20,6 +20,11 @@ module VBlank
       # wrote them. A game built for one it is not for is refused.
       attr_reader :consoles
 
+      # The four characters that tell this game from another of the same title: the code it wrote, or
+      # the one the framework works out from its title. Stable across rebuilds, so a place named from it
+      # (where a window keeps save states) is still the game's after the code changes.
+      def identifying_code = code || GameCode.for(title)
+
       # Whether the game's window, played on a computer, has a menu: it does unless the game asks for none.
       def menu? = @menu
 

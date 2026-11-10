@@ -12,6 +12,9 @@
  *   draw WIDTH DENSITY HELD FAST RATE WORK
  *                                    print what the menu draws; RATE and WORK are words, - for none
  *   state                            print whether it is open and whether Quit was chosen
+ *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
+ *   request                          print the save or load the menu asked for and use it up:
+ *                                    "request save 3", "request load 0", or "request none"
  *
  * What is drawn is printed a part to a line: "box x y width height radius r g b a", or
  * "words r g b a text" followed by a "letter" line for each letter, its rectangle in the font's
@@ -86,7 +89,15 @@ int main(void) {
       const char *work = strtok(NULL, " \n");
       rg_window_menu_draw(&drawing, width, density, held, fast, strcmp(rate, "-") ? rate : NULL, strcmp(work, "-") ? work : NULL);
       print_drawing();
-    } else if (strcmp(command, "state") == 0) {
+} else if (strcmp(command, "slot") == 0) {
+  int slot = atoi(strtok(NULL, " \n"));
+  const char *words = strtok(NULL, "\n");
+  rg_window_set_state_slot_text(slot, words ? words : "");
+} else if (strcmp(command, "request") == 0) {
+  int saving, slot;
+  if (rg_window_take_state_request(&saving, &slot)) printf("request %s %d\n", saving ? "save" : "load", slot);
+  else printf("request none\n");
+} else if (strcmp(command, "state") == 0) {
       printf("open %d quit %d\n", rg_window_menu_is_open(), rg_window_menu_quit_chosen());
     }
   }

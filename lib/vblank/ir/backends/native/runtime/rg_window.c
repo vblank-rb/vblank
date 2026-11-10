@@ -408,10 +408,40 @@ int rg_window_button_key(int button, int slot) {
 int rg_window_hotkey_key(int hotkey) { return is_hotkey(hotkey) ? now.hotkeys[hotkey] : RG_NO_KEY; }
 int rg_window_pad_button(int button) { return is_button(button) ? now.pad[button] : 0; }
 
+/* --- save states --- */
+
+static char state_slot_text[RG_WINDOW_STATE_SLOTS][32];
+static int state_asked, state_asked_saving, state_asked_slot;
+
+void rg_window_set_state_slot_text(int slot, const char *text) {
+  if (slot < 0 || slot >= RG_WINDOW_STATE_SLOTS) return;
+  snprintf(state_slot_text[slot], sizeof state_slot_text[slot], "%s", text);
+}
+
+const char *rg_window_state_slot_text(int slot) {
+  if (slot < 0 || slot >= RG_WINDOW_STATE_SLOTS || !state_slot_text[slot][0]) return "Empty";
+  return state_slot_text[slot];
+}
+
+void rg_window_ask_state(int saving, int slot) {
+  state_asked = 1;
+  state_asked_saving = saving;
+  state_asked_slot = slot;
+}
+
+int rg_window_take_state_request(int *saving, int *slot) {
+  if (!state_asked) return 0;
+  state_asked = 0;
+  *saving = state_asked_saving;
+  *slot = state_asked_slot;
+  return 1;
+}
+
 static char notice[192];
 
 const char *rg_window_notice(void) { return notice; }
 void rg_window_clear_notice(void) { notice[0] = '\0'; }
+void rg_window_set_notice(const char *text) { snprintf(notice, sizeof notice, "%s", text); }
 
 static const char *say(const char *format, ...) __attribute__((format(printf, 1, 2)));
 static const char *say(const char *format, ...) {

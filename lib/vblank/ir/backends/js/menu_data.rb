@@ -29,7 +29,7 @@ module VBlank
               { label: line.label, kind: line.kind, does: line.does, setting: line.setting, least: line.range&.min, most: line.range&.max,
                 step: line.step, written: line.written, shortcut: line.shortcut, place: line.place }
             end
-            { name: heading.name, lines: lines }
+            { name: heading.name, lines: lines, states: heading.states? }
           end
         end
       end

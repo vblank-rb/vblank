@@ -123,8 +123,8 @@ module VBlank
           cartridge = (checked_cartridge(game, console: console, settings: settings, err: err, progress: progress) if bios)
           program = cartridge&.source_program ||
                     checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: pack_at_start)
-          compile_desktop(program, path, title: game.title, menu: game.menu?, cartridge: cartridge, target: target, strip: strip,
-                                         progress: progress)
+          compile_desktop(program, path, title: game.title, code: game.identifying_code, menu: game.menu?, cartridge: cartridge,
+                                         target: target, strip: strip, progress: progress)
           FileUtils.chmod(0o755, path)
           path
         ensure
@@ -153,7 +153,7 @@ module VBlank
           shell.parts.each do |part|
             game_part = part.role == :game
             file = game_part ? File.join(path, File.basename(path)) : File.join(path, ShellData::PARTS_FOLDER, ShellData.part_name(part))
-            compile_desktop(part.program, "#{file}#{ending}", title: game.title, menu: part.window_menu, cartridge: nil, target: target,
+            compile_desktop(part.program, "#{file}#{ending}", title: game.title, code: game.identifying_code, menu: part.window_menu, cartridge: nil, target: target,
                                                                strip: strip, shell: (shell if game_part), progress: progress,
                                                                part_name: game_part ? "game" : ShellData.part_name(part))
             FileUtils.chmod(0o755, "#{file}#{ending}")
@@ -189,7 +189,7 @@ module VBlank
         # start-up is played only where +cartridge+ holds the start of the game's cartridge to read it
         # from. +shell+ (an Original::Shell) makes the program a shell's game. +progress+ is told the two
         # steps, each with +part_name+ beside it where a shell builds several programs.
-        def compile_desktop(program, path, title:, menu:, cartridge:, target:, strip:, shell: nil,
+        def compile_desktop(program, path, title:, code:, menu:, cartridge:, target:, strip:, shell: nil,
                             progress: Messages::Progress.silent, part_name: nil)
           progress.step("Writing C")
           progress.show_detail(part_name) if part_name
@@ -205,7 +205,7 @@ module VBlank
             File.write(File.join(src, SOUND_FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features, joins: :sound))
             File.write(File.join(src, Computer::ConsoleNumbers::FILE),
                        Computer::ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?) +
-                       Computer::StateFile.c_text(program))
+                       Computer::StateFile.c_text(program) + "#define RG_GAME_CODE #{code.to_s.inspect}\n")
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
             end

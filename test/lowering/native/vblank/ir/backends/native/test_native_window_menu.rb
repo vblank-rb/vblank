@@ -14,6 +14,13 @@ class TestNativeWindowMenu < Minitest::Test
   Zig = Native::Zig
   Menu = VBlank::Live::Menu
   WindowMenu = VBlank::Live::WindowMenu
+  # What the Ruby menu is told of the places states are kept in; the C one is told with "slot N WORDS".
+  class Slots
+    def initialize = @taken = {}
+    def set(slot, words) = @taken[slot] = words
+    def text_for(slot) = @taken.fetch(slot, "Empty")
+  end
+
   HARNESS = Ractor.make_shareable(File.expand_path("menu_harness.c", __dir__))
 
   # How the window is drawn after each key, taken in turn: its width in pixels, its density, whether
@@ -69,16 +76,35 @@ class TestNativeWindowMenu < Minitest::Test
                      "press enter", "state")
   end
 
+  # The Save and Load headings: the slots as they say "Empty" and as they say when a state was
+  # taken (set with "slot N WORDS"), the quick lines, and the line chosen on each.
+  def test_the_save_and_load_headings_draw_the_same
+    to_save = ["toggle", *["press right"] * 5]
+    assert_same_drawing([*to_save, "slot 3 2026-11-10 14:03", "slot 0 2026-11-09 09:30", "press down", "press down", "press down",
+                         "press down", "press right", *["press down"] * 12, "press up", "press left", "press left", "toggle"],
+                        most_scale: 6)
+  end
+
+  # Enter on a quick line or a slot asks for a save or a load, closes the menu, and is asked once.
+  def test_a_save_or_load_chosen_is_asked_for_once_and_the_menu_closes
+    to_save = ["toggle", *["press right"] * 5]
+    got = ask(*to_save, "press down", "press enter", "request", "request", "state", "toggle", *["press right"] * 6, "press down",
+              "press down", "press down", "press enter", "request", "toggle", *["press right"] * 5, "press down", *["press down"] * 10,
+              "press enter", "request")
+    assert_equal ["request save 0", "request none", "open 0 quit 0", "request load 2", "request save 10"], got
+  end
+
+
   private
 
   # Plays +walk+ through both copies, drawing after each step, and fails at the first line that
   # differs, saying which key it came after.
   def assert_same_drawing(walk, most_scale:, picture: [240, 160])
-    menu = Menu.new(picture: picture, scales: 1..most_scale)
+    menu = Menu.new(picture: picture, scales: 1..most_scale, states: slots = Slots.new)
     commands = ["picture #{picture.join(' ')}", "most_scale #{most_scale}"]
     expected = []
     (["start"] + walk).each_with_index do |step, index|
-      play_in_ruby(menu, step) unless step == "start"
+      play_in_ruby(menu, step, slots) unless step == "start"
       commands << step unless step == "start"
       width, density, held, fast, rate, work = DRAWS[index % DRAWS.size]
       commands << "draw #{width} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
@@ -96,9 +122,10 @@ class TestNativeWindowMenu < Minitest::Test
     end
   end
 
-  def play_in_ruby(menu, step)
+  def play_in_ruby(menu, step, slots)
     command, name = step.split
     case command
+    when "slot" then slots.set(name.to_i, step.split(" ", 3).last)
     when "toggle" then menu.toggle
     when "press" then menu.press(name.to_sym)
     when "capture_key" then menu.controls.capture_key(name.to_i)

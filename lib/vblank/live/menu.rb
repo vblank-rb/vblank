@@ -32,15 +32,34 @@ module VBlank
       # picture's, which the frontend may make fewer than WindowMenu::SCALES (what fits the screen);
       # +controls+, the Settings that hold which key is what, and the rules for changing them. While
       # one is being chosen the window hands it the next key or gamepad button (#capture_key).
+      # +states+ answers #text_for(slot) with the words for a place a state is kept (when it was
+      # taken, or that it is empty); a menu given none has no Save or Load heading, which is how a
+      # match with other players has none.
       def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
-                     controls: Settings.new(key_names: NumberedKeys.new))
+                     controls: Settings.new(key_names: NumberedKeys.new), states: nil)
         @scales = scales
         @controls = controls
+        @states = states
+        @headings = states ? WindowMenu::HEADINGS : WindowMenu::HEADINGS.reject(&:states?)
         self.settings = settings
         @picture = picture
         @open = @quit = false
+        @state_request = nil
         @heading = 0
         @row = -1
+      end
+
+      # What the player asked to save or load (a WindowMenu::StateRequest), once, or nil. The window
+      # does it between two frames of the game, which is the only time a state can be taken.
+      def take_state_request
+        request = @state_request
+        @state_request = nil
+        request
+      end
+
+      # A save or load asked for by a key (F5, F9) rather than a line of the menu.
+      def ask_state(action, slot)
+        @state_request = WindowMenu::StateRequest.new(action: action, slot: slot)
       end
 
       # The settings changed from outside the menu: a hotkey, which switches one as its line would.
@@ -62,7 +81,7 @@ module VBlank
       end
 
       # The heading whose lines are showing, while the menu is open.
-      def open_heading = (WindowMenu::HEADINGS[@heading].name if @open)
+      def open_heading = (@headings[@heading].name if @open)
 
       # The line chosen under it, or nil while the bar is.
       def chosen_line = (lines[@row].label if @open && @row >= 0)
@@ -102,7 +121,7 @@ module VBlank
 
       private
 
-      def lines = WindowMenu::HEADINGS[@heading].lines
+      def lines = @headings[@heading].lines
 
       def press_on_bar(key)
         case key
@@ -112,7 +131,7 @@ module VBlank
       end
 
       def move_heading(key)
-        @heading = (@heading + (key == :right ? 1 : -1)) % WindowMenu::HEADINGS.size
+        @heading = (@heading + (key == :right ? 1 : -1)) % @headings.size
         @row = -1
       end
 
@@ -134,12 +153,21 @@ module VBlank
         when :check then @settings = @settings.with(line.setting => !@settings.setting(line.setting))
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
+        when :slot then ask_state_and_close(line.does == :save_state ? :save : :load, line.place)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
           @controls.reset_keys if line.does == :reset_keys
           @controls.reset_hotkeys if line.does == :reset_hotkeys
+          ask_state_and_close(:save, WindowMenu::QUICK_SLOT) if line.does == :quick_save
+          ask_state_and_close(:load, WindowMenu::QUICK_SLOT) if line.does == :quick_load
         end
+      end
+
+      # A save or load chosen from a line: asked for, and the menu closes so the game goes on.
+      def ask_state_and_close(action, slot)
+        ask_state(action, slot)
+        @open = false
       end
 
       # --- drawing ---
@@ -171,7 +199,7 @@ module VBlank
         bar = size(:bar)
         add_box(0, 0, width, bar, 0, :bar)
         x = size(:pad)
-        WindowMenu::HEADINGS.each_with_index do |heading, index|
+        @headings.each_with_index do |heading, index|
           wide = width_of(heading.name)
           if index == @heading
             @heading_left = x - size(:heading_pad)
@@ -214,6 +242,7 @@ module VBlank
         when :slider then size(:slider)
         when :check then size(:check)
         when :button, :hotkey then width_of(@controls.text_for(line))
+        when :slot then width_of(@states.text_for(line.place))
         else line.shortcut ? width_of(line.shortcut) : 0
         end
       end
@@ -228,6 +257,9 @@ module VBlank
         when :button, :hotkey
           text = @controls.text_for(line)
           add_words_in_row(text, right - width_of(text), y, row, line.place == @controls.capture_place(line.kind) ? :fast : :dim)
+        when :slot
+          text = @states.text_for(line.place)
+          add_words_in_row(text, right - width_of(text), y, row, :dim)
         end
       end
 

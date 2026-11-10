@@ -24,6 +24,11 @@ class TestJSPageMenu < Minitest::Test
     def key(name) = NAMES.key(name)
   end
 
+  # The places states are kept in, as the Ruby copy is told of them: all empty, as a new page's are.
+  class EmptySlots
+    def text_for(_slot) = "Empty"
+  end
+
   # A key on the page, and what it is in the Ruby copy: a key for the menu, or a key being chosen.
   MOVES = { right: "ArrowRight", left: "ArrowLeft", up: "ArrowUp", down: "ArrowDown", enter: "Enter" }.freeze
   CHOSEN = { 20 => "KeyQ", 26 => "KeyW", 29 => "KeyZ", 19 => "KeyP", Live::Settings::ESCAPE => "Escape" }.freeze
@@ -74,7 +79,7 @@ class TestJSPageMenu < Minitest::Test
 
   # Plays +walk+ through both and fails at the first step they differ.
   private def assert_same_menu(walk)
-    menu = Live::Menu.new(controls: Live::Settings.new(key_names: KeyNames.new))
+    menu = Live::Menu.new(controls: Live::Settings.new(key_names: KeyNames.new), states: EmptySlots.new)
     expected = [ruby_says(menu)]
     codes = walk.map do |step|
       case step

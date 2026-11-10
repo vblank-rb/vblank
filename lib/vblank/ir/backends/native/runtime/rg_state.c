@@ -129,24 +129,46 @@ static int read_line(const char *line, const char *end) {
   return read;
 }
 
-/* The file's two first lines (Computer::StateFile): its version, then the build that wrote it,
- * each refused in plain words when it is not this build's. Gives back where the image starts. */
-static const char *refuse_other_build(const char *text) {
+/* The file's two first lines (Computer::StateFile): its version, then the build that wrote it. The
+ * words for why they are not this build's, or NULL when they are, in which case +rest+ is where the
+ * image starts. Changes nothing, so a window can ask before it reads. */
+static const char *header_problem(const char *text, const char **rest) {
+  static char problem[400];
   int version = 0, used = 0;
   if (sscanf(text, "vblank-state %d\n%n", &version, &used) != 1 || used == 0)
-    rg_fault("This is not a save state: it does not start with \"vblank-state\". Load a state that this game wrote.");
-  if (version != RG_STATE_VERSION)
-    rg_fault("This state is version %d of the save-state format, and this build reads version %d. Load a state that this build "
+    return "This is not a save state: it does not start with \"vblank-state\". Load a state that this game wrote.";
+  if (version != RG_STATE_VERSION) {
+    snprintf(problem, sizeof problem,
+             "This state is version %d of the save-state format, and this build reads version %d. Load a state that this build "
              "wrote.", version, RG_STATE_VERSION);
+    return problem;
+  }
   text += used;
   char console[32] = "", build[80] = "";
   used = 0;
   if (sscanf(text, "build %31s %79s\n%n", console, build, &used) != 2 || used == 0)
-    rg_fault("This state is damaged: its second line does not name the build that saved it. Load a state that this game wrote.");
-  if (strcmp(console, RG_GAME_CONSOLE) != 0 || strcmp(build, RG_GAME_BUILD) != 0)
-    rg_fault("This state is for another build of the game: build %.8s for the %s saved it, and this is build %.8s for the %s. "
+    return "This state is damaged: its second line does not name the build that saved it. Load a state that this game wrote.";
+  if (strcmp(console, RG_GAME_CONSOLE) != 0 || strcmp(build, RG_GAME_BUILD) != 0) {
+    snprintf(problem, sizeof problem,
+             "This state is for another build of the game: build %.8s for the %s saved it, and this is build %.8s for the %s. "
              "Load a state that this build saved.", build, console, RG_GAME_BUILD, RG_GAME_CONSOLE);
-  return text + used;
+    return problem;
+  }
+  *rest = text + used;
+  return NULL;
+}
+
+const char *rg_state_header_problem(const char *text) {
+  const char *rest;
+  return header_problem(text, &rest);
+}
+
+/* Each refused in plain words when it is not this build's. Gives back where the image starts. */
+static const char *refuse_other_build(const char *text) {
+  const char *rest = NULL;
+  const char *problem = header_problem(text, &rest);
+  if (problem) rg_fault("%s", problem);
+  return rest;
 }
 
 void rg_state_read(const char *text) {

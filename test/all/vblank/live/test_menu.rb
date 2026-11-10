@@ -286,6 +286,63 @@ class TestMenu < Minitest::Test
     assert_equal [lines_box.call(one).x * 2, lines_box.call(one).y * 2], [lines_box.call(two).x, lines_box.call(two).y]
   end
 
+  # --- saving and loading states ---
+
+  # What a menu is told of the places a state is kept: when each was taken, or that it is empty.
+  class Slots
+    def initialize(taken = {}) = @taken = taken
+    def text_for(slot) = @taken.fetch(slot, "Empty")
+  end
+
+  # A menu with no places to keep states in (a match with other players) offers none.
+  def test_a_menu_with_no_places_for_states_has_no_save_or_load_heading
+    menu = opened
+    menu.press(:left)
+
+    assert_equal "Hotkeys", menu.open_heading
+    menu.press(:right)
+    assert_equal "Game", menu.open_heading
+  end
+
+  def test_save_and_load_headings_follow_hotkeys_where_states_can_be_kept
+    menu = opened(states: Slots.new)
+    4.times { menu.press(:right) }
+    assert_equal "Hotkeys", menu.open_heading
+    menu.press(:right)
+    assert_equal "Save", menu.open_heading
+    menu.press(:right)
+    assert_equal "Load", menu.open_heading
+  end
+
+  # A slot says whether it holds a state, and when it was taken, at the right of its line.
+  def test_each_slot_says_whether_it_holds_a_state_and_when
+    menu = opened(states: Slots.new(3 => "2026-11-10 14:03"))
+    5.times { menu.press(:right) }
+    words = drawn_words(menu).map(&:text)
+
+    assert_equal ["Quick Save", "F5", "Slot 1", "Empty", "Slot 2", "Empty", "Slot 3", "2026-11-10 14:03"], words.drop(7).first(8)
+  end
+
+  def test_quick_save_asks_for_the_quick_state_and_closes_the_menu
+    menu = opened(states: Slots.new)
+    5.times { menu.press(:right) }
+    menu.press(:down)
+    menu.press(:enter)
+
+    refute menu.open?
+    assert_equal WindowMenu::StateRequest.new(action: :save, slot: 0), menu.take_state_request
+    assert_nil menu.take_state_request
+  end
+
+  def test_a_slot_chosen_to_load_asks_to_load_that_slot
+    menu = opened(states: Slots.new)
+    6.times { menu.press(:right) }
+    4.times { menu.press(:down) }
+    menu.press(:enter)
+
+    assert_equal WindowMenu::StateRequest.new(action: :load, slot: 3), menu.take_state_request
+  end
+
   private
 
   def opened(**options)

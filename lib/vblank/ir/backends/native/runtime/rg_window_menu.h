@@ -31,8 +31,18 @@ extern "C" {
 
 /* --- what the menu holds, from the library (rg_window_menu_data.c) --- */
 
-typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK, RG_MENU_BUTTON, RG_MENU_HOTKEY } rg_menu_kind;
-typedef enum { RG_MENU_NOTHING, RG_MENU_RESUME, RG_MENU_QUIT, RG_MENU_RESET_KEYS, RG_MENU_RESET_HOTKEYS } rg_menu_does;
+typedef enum { RG_MENU_ACTION, RG_MENU_SLIDER, RG_MENU_CHECK, RG_MENU_BUTTON, RG_MENU_HOTKEY, RG_MENU_SLOT } rg_menu_kind;
+typedef enum {
+  RG_MENU_NOTHING,
+  RG_MENU_RESUME,
+  RG_MENU_QUIT,
+  RG_MENU_RESET_KEYS,
+  RG_MENU_RESET_HOTKEYS,
+  RG_MENU_QUICK_SAVE,
+  RG_MENU_QUICK_LOAD,
+  RG_MENU_SAVE_STATE,
+  RG_MENU_LOAD_STATE
+} rg_menu_does;
 /* The settings a line shows, each one of rg_window.c's. */
 typedef enum {
   RG_MENU_NO_SETTING,
@@ -48,7 +58,8 @@ typedef enum { RG_MENU_NOT_WRITTEN, RG_MENU_TIMES, RG_MENU_PERCENT, RG_MENU_WIND
 
 /* A line under a heading. +shortcut+ is the key that does the same outside the menu, written dim
  * at its right, or NULL; +line_before+ draws a line across the box above it; +place+ is which
- * console button or hotkey an RG_MENU_BUTTON or RG_MENU_HOTKEY line changes. */
+ * console button or hotkey an RG_MENU_BUTTON or RG_MENU_HOTKEY line changes, or which slot a
+ * RG_MENU_SLOT line saves to or loads from. */
 typedef struct {
   const char *label;
   rg_menu_kind kind;

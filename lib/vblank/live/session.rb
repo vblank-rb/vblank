@@ -148,6 +148,26 @@ module VBlank
         masks
       end
 
+      # SAVE STATES, which only a device with a person at it asks for (SDL's menu and keys). The game
+      # asks at the top of each frame boundary, the one place a state can be taken or put back (the
+      # runtime's rg_live_state_at_boundary), and these hand the question to the device.
+      #
+      # What the device asked to save or load (a WindowMenu::StateRequest), once, or nil.
+      def take_state_request = (@device.take_state_request if @device.respond_to?(:take_state_request))
+
+      # The game's state, +text+, to keep in +slot+ (QUICK_SLOT or 1 to 10).
+      def state_saved(slot, text) = @device.state_saved(slot, text)
+
+      # The state kept in +slot+, or nil when the slot holds none (the device says so itself).
+      def state_to_load(slot) = @device.state_to_load(slot)
+
+      # The state in +slot+ was put back.
+      def state_loaded(slot) = @device.state_loaded(slot)
+
+      # The game cannot use the state, in these words.
+      def state_refused(words) = @device.state_refused(words)
+
+
       private
 
       # Every connected player's buttons for the pass that starts, this machine's +held+ among them.

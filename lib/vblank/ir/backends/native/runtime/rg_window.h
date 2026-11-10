@@ -204,6 +204,23 @@ const char *rg_window_capture_prompt(void);
 /* The last thing the window has to say about a choice that did not go through, or "". */
 const char *rg_window_notice(void);
 void rg_window_clear_notice(void);
+/* Says +text+ in the notice, for what the window did on its own (a state saved or refused). */
+void rg_window_set_notice(const char *text);
+
+/* --- save states: the places they are kept and what is asked of them --- */
+
+/* The places: slot 0 is the quick one, 1 to 10 the others (Live::WindowMenu::STATE_SLOTS). */
+#define RG_WINDOW_STATE_SLOTS 11
+/* What the menu shows at the right of a slot's line: "Empty", or when the state was taken. The
+ * window (rg_sdl.c) sets these as it reads the folder the states are kept in. */
+void rg_window_set_state_slot_text(int slot, const char *text);
+const char *rg_window_state_slot_text(int slot);
+
+/* A save or load asked for from the menu or by F5 and F9: held until the window does it between two
+ * frames, the one time a state can be taken. */
+void rg_window_ask_state(int saving, int slot);
+/* Whether one was asked for, and which; asking uses it up. */
+int rg_window_take_state_request(int *saving, int *slot);
 
 /* --- hotkeys --- */
 

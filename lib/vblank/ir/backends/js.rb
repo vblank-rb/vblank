@@ -131,11 +131,13 @@ module VBlank
         # createGame's text and, with +data+ :separate, the data file its big tables are in (nil
         # with them :inline). A game whose data is separate fetches it from +rg_data_beside+, which
         # whatever wraps the text declares (see #data_beside_declaration).
-        def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true, name: "createGame")
+        # +code+ is the game's identifying code (Cartridge::Game#identifying_code), which names where a page keeps its
+        # save states; left out, the one worked out from +title+.
+        def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true, name: "createGame", code: nil)
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
           [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
-            fingerprint_text(program), MenuData.source(menu: menu),
+            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
@@ -197,7 +199,8 @@ module VBlank
           shell.parts.each { |part| refuse_console_only_steps!(part.program, err) }
           progress.step("Writing JavaScript")
           functions = shell.parts.map do |part|
-            factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part)).first
+            factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part),
+                                  code: game.identifying_code).first
           end
           script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_refusal.js rg_shell.js rg_mount.js]),
                                                 shell_start_text(shell))
@@ -295,7 +298,7 @@ module VBlank
           refuse_folder!(path)
           program = checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: pack_at_start)
           progress.step("Writing JavaScript")
-          text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?)
+          text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?, code: game.identifying_code)
           File.write(path, yield(text, data_file, program.described_console))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file
           progress.done

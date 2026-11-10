@@ -33,6 +33,7 @@ end
 # once the frame boundary has passed, and the buttons the player answers are read for the pass
 # that starts.
 def rg_driver_wait_vblank
+  rg_live_state_at_boundary
   rg_live_mix_match_seed
   left, right = rg_sound_render_frame
   rg_frame_begins
@@ -40,6 +41,29 @@ def rg_driver_wait_vblank
   throw :rg_live_stop, :player if buttons.nil?
 
   rg_buttons_read(buttons)
+end
+
+# A SAVE OR LOAD THE PLAYER ASKED FOR, done where the headless run does its own (rg_headless.rb's
+# rg_headless_state_at_boundary): as the game's frame ends, before its sound is made and the next frame
+# begins. That is the one moment every routine is stopped at its wait, so a state written now is the
+# game whole, and one read back puts the game where it was. A state this build cannot read is
+# refused before anything changes, in the words the runtime gives, and the game plays on.
+def rg_live_state_at_boundary
+  request = @rg_live.take_state_request
+  return if request.nil?
+
+  if request.action == :save
+    @rg_live.state_saved(request.slot, rg_state_write)
+    return
+  end
+  text = @rg_live.state_to_load(request.slot)
+  return if text.nil?
+
+  problem = rg_state_header_problem(text)
+  return @rg_live.state_refused(problem) if problem
+
+  rg_state_read(text)
+  @rg_live.state_loaded(request.slot)
 end
 
 # The match's seed goes into the game's random numbers once, at the end of the first pass, which is

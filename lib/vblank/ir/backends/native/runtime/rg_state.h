@@ -34,6 +34,11 @@ void rg_state_write(FILE *out);
  * not keep, lacks one it does, or holds a different count stops the game saying which. */
 void rg_state_read(const char *text);
 
+/* The words for why the image in +text+ is not this build's (not a state, another version, another
+ * build), or NULL when its first two lines are this build's. Changes nothing, so a window asks before
+ * it reads, and tells the player instead of stopping the game. */
+const char *rg_state_header_problem(const char *text);
+
 /* Whether an image is being read just now, rather than written. */
 int rg_state_reading(void);
 

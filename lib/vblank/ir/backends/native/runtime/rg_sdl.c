@@ -140,6 +140,7 @@
 #include "rg_settings_root.h"
 #include "rg_shell.h"
 #include "rg_sound.h"
+#include "rg_state.h"
 #include "rg_window.h"
 #include "rg_window_menu.h"
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
@@ -478,6 +479,134 @@ static void read_save_file(void) {
   fprintf(stderr, "%s cannot start: %s\n", rg_game_title, message);
   SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, message, window);
   quit(1);
+}
+
+/* --- save states: the quick one and slots 1 to 10, a file each beside where the game's save is kept --- */
+
+#ifndef RG_GAME_CODE
+#define RG_GAME_CODE "0000" /* a build that was not told the game's code */
+#endif
+
+/* The folder the states are kept in, with its closing slash, or NULL for a game with no menu or
+ * where the folder cannot be made (and then the menu has no Save or Load, and F5 and F9 do nothing). */
+static char *state_folder;
+
+/* The folder a game's states go in is named for the game's title, as the save's is, and then its
+ * code, which keeps two games of one title from writing over each other's states and stays the
+ * same when the game is built again (Live::StateSlots.folder_name says the same in Ruby). */
+static void name_state_folder(char *name, size_t room) {
+  char title[64];
+  name_save_folder(title, sizeof title);
+  snprintf(name, room, "%s %s", title, RG_GAME_CODE);
+}
+
+/* Where the states are kept: beside the file --save-file asked for, or else in the game's folder
+ * among the files the operating system keeps for each program and each person. */
+static void choose_state_folder(const char *save_file_asked) {
+  if (!rg_game_has_menu) return;
+  if (save_file_asked) {
+    const char *slash = strrchr(save_file_asked, '/');
+    const char *backslash = strrchr(save_file_asked, '\\');
+    if (backslash && (!slash || backslash > slash)) slash = backslash;
+    int length = slash ? (int)(slash - save_file_asked) + 1 : 0;
+    if (SDL_asprintf(&state_folder, "%.*s", length, length ? save_file_asked : "") < 0) state_folder = NULL;
+    return;
+  }
+  char name[128];
+  name_state_folder(name, sizeof name);
+  char *folder = SDL_GetPrefPath("vblank", name);
+  if (!folder) return;
+  state_folder = SDL_strdup(folder);
+  SDL_free(folder);
+}
+
+/* The file of slot +slot+ (0 is the quick one), in +path+, or nothing when there is no folder. */
+static void state_path(int slot, char *path, size_t room) {
+  if (slot == 0) snprintf(path, room, "%sstate-quick", state_folder);
+  else snprintf(path, room, "%sstate-%d", state_folder, slot);
+}
+
+/* What each slot says in the menu: when its file was written, by the computer's clock, or empty. */
+static void show_state_slots(void) {
+  if (!state_folder) return;
+  for (int slot = 0; slot < RG_WINDOW_STATE_SLOTS; slot++) {
+    char path[1024], words[32] = "";
+    state_path(slot, path, sizeof path);
+    SDL_PathInfo info;
+    SDL_DateTime when;
+    if (SDL_GetPathInfo(path, &info) && SDL_TimeToDateTime(info.modify_time, &when, true))
+      snprintf(words, sizeof words, "%04d-%02d-%02d %02d:%02d", when.year, when.month, when.day, when.hour, when.minute);
+    rg_window_set_state_slot_text(slot, words);
+  }
+}
+
+static void say_about_state(const char *format, int slot) {
+  char words[256], place[32];
+  if (slot == 0) snprintf(place, sizeof place, "the quick slot");
+  else snprintf(place, sizeof place, "slot %d", slot);
+  snprintf(words, sizeof words, format, place);
+  fprintf(stderr, "%s: %s\n", rg_game_title, words);
+  rg_window_set_notice(words);
+}
+
+/* The game's state written to the file of +slot+: to a new file beside it, which then takes its
+ * place, so a state that cannot be written leaves the one before it whole. */
+static void save_state_to(int slot) {
+  char path[1024], writing[1100];
+  state_path(slot, path, sizeof path);
+  snprintf(writing, sizeof writing, "%s.writing", path);
+  FILE *out = fopen(writing, "wb");
+  if (!out) {
+    fprintf(stderr, "%s cannot write the state to %s\n", rg_game_title, path);
+    rg_window_set_notice("The state cannot be written. The folder for it cannot be written to.");
+    return;
+  }
+  rg_state_write(out);
+  int written = fclose(out) == 0 && SDL_RenamePath(writing, path);
+  if (!written) rg_window_set_notice("The state cannot be written. The folder for it cannot be written to.");
+  else say_about_state("Saved to %s", slot);
+  show_state_slots();
+}
+
+/* The state in the file of +slot+ put back into the game, unless the slot has none or its state is
+ * another build's, which is said in plain words and leaves the game as it is. */
+static void load_state_from(int slot) {
+  char path[1024];
+  state_path(slot, path, sizeof path);
+  size_t size = 0;
+  void *loaded = SDL_GetPathInfo(path, NULL) ? SDL_LoadFile(path, &size) : NULL;
+  if (!loaded) {
+    say_about_state("There is no state in %s", slot);
+    return;
+  }
+  char *text = malloc(size + 1);
+  if (!text) {
+    SDL_free(loaded);
+    return;
+  }
+  memcpy(text, loaded, size);
+  text[size] = '\0';
+  SDL_free(loaded);
+  const char *problem = rg_state_header_problem(text);
+  if (problem) {
+    fprintf(stderr, "%s: %s\n", rg_game_title, problem);
+    rg_window_set_notice(problem);
+  } else {
+    rg_state_read(text);
+    say_about_state("Loaded %s", slot);
+  }
+  free(text);
+}
+
+/* What the player asked to save or load, done now: the frame that has just ended is the one place a
+ * state can be taken or put back (the windowless run does the same, in rg_headless.c), so it is
+ * done at the top of the frame boundary, before the frame's sound is made. */
+static void serve_state_request(void) {
+  int saving, slot;
+  if (!rg_window_take_state_request(&saving, &slot)) return;
+  if (!state_folder) return;
+  if (saving) save_state_to(slot);
+  else load_state_from(slot);
 }
 
 /* --- the settings file (rg_window.h says what is in it and how it is read) --- */
@@ -1093,6 +1222,10 @@ static void key_changed(const SDL_KeyboardEvent *key) {
   if (key->down && code == RG_KEY_ESCAPE) quit_play();
 
   int hotkey = rg_window_key_hotkey(code);
+  if (key->down && state_folder && (code == SDL_SCANCODE_F5 || code == SDL_SCANCODE_F9) && hotkey < 0 && rg_window_key_button(code) < 0) {
+    rg_window_ask_state(code == SDL_SCANCODE_F5, 0);
+    return;
+  }
   if (opens_menu(code, hotkey)) {
     if (key->down) rg_window_menu_toggle();
     return;
@@ -1543,6 +1676,7 @@ static void read_computer_clock(void) {
 /* The frame boundary: the picture the frame drew is shown, the clock comes round, and the
  * buttons for the next frame are read. */
 static void sdl_wait_vblank(void) {
+  serve_state_request();
   if (scripted && frames_played >= frames_to_play) finish_script();
   Uint64 frame_ended = SDL_GetTicksNS();
   rg_window_frame_played(frame_ended, game_resumed_ns ? frame_ended - game_resumed_ns : 0);
@@ -1865,6 +1999,8 @@ int main(int argc, char **argv) {
   choose_pacing();
   choose_save_file(save_file_asked_for);
   read_save_file();
+  choose_state_folder(save_file_asked_for);
+  show_state_slots();
 
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
   play_console_start_up();

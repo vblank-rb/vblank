@@ -38,6 +38,16 @@ def rg_state_read(text)
   @rg_state_taken = nil
 end
 
+# The words for why +text+ cannot be read by this build (not a state, another version, another
+# build), or nil when its first two lines are this build's. Nothing is changed either way, so a
+# window can ask before it reads.
+def rg_state_header_problem(text)
+  rg_state_refuse_other_build(text.lines)
+  nil
+rescue RgFault => e
+  e.message
+end
+
 # Whether an image is being read just now, rather than written.
 def rg_state_reading = !@rg_state_image.nil?
 

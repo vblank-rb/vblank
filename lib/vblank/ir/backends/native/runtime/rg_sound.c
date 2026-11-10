@@ -70,6 +70,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "rg_sound.h"
 #include "rg_driver.h"

@@ -1430,6 +1430,13 @@ module VBlank
       raise Thor::Error, "Port #{port} is in use already. Give another with --port."
     end
 
+    # The folder a window keeps a game's save states in, or nil in a match with other players, which has none.
+    def state_folder_name(game, network)
+      return nil if network
+
+      VBlank::Live::StateSlots.folder_name(title: game.title, code: game.identifying_code)
+    end
+
     # +session+ played in a window until the player stops it, or --pictures are shown; the window
     # is closed however the play ends. Something the game does that its rules refuse (a push onto a
     # full list) is said in words.
@@ -1440,7 +1447,7 @@ module VBlank
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
                                      height: console.screen_height, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
-                                     config_dir: options[:config_dir])
+                                     config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network))
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."

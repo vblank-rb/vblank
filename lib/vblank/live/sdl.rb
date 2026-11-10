@@ -179,8 +179,12 @@ module VBlank
       #
       # +caption+ is what the title bar says, where that differs from the game's +title+, which the
       # settings are kept under: a watched playthrough says it is one, and keeps the game's settings.
+      #
+      # +state_folder_name+ names the folder (in the place the computer keeps a program's files, as for
+      # a game's save) where the menu keeps save states: StateSlots.folder_name says it. Left out, the
+      # window has no Save or Load in its menu and no F5 or F9, as in a match with other players.
       def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil,
-                     caption: nil)
+                     caption: nil, state_folder_name: nil)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
@@ -206,11 +210,37 @@ module VBlank
           close
           raise
         end
+        @states = states_in(state_folder_name) if menu && state_folder_name
         @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height], controls: @player_settings,
-                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max)
+                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
         @settings = @menu.settings # as the window last made them so
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
       end
+
+      # --- save states (Session says when they are taken) ---
+
+      # The states' places in the folder called +name+, or nil when the computer will not make it.
+      private def states_in(name)
+        folder = pref_folder(name)
+        StateSlots.new(folder: folder) if folder
+      end
+
+      # What the player asked to save or load, with the menu or F5 and F9, once, or nil.
+      def take_state_request = @menu.take_state_request
+
+      def state_saved(slot, text)
+        done = @states.write(slot, text)
+        notice(done == true ? "Saved #{slot_words(slot)}" : done)
+      end
+
+      def state_to_load(slot)
+        text = @states.read(slot)
+        notice("There is no state in #{slot_words(slot)}") if text.nil?
+        text
+      end
+
+      def state_loaded(slot) = notice("Loaded #{slot_words(slot)}")
+      def state_refused(words) = notice(words)
 
       # What the settings file held that could not be used, a sentence to a line, each file's
       # sentences under its name; empty when all of it could.
@@ -872,6 +902,8 @@ module VBlank
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
           @menu.toggle unless repeat
+        elsif @states && QUICK_KEYS.key?(scancode)
+          @menu.ask_state(QUICK_KEYS[scancode], WindowMenu::QUICK_SLOT) unless repeat
         elsif @menu.open? && MENU_KEYS.key?(scancode)
           @kept_from_game << scancode
           press_menu(MENU_KEYS[scancode]) unless repeat && MENU_KEYS[scancode] == :enter
@@ -895,6 +927,11 @@ module VBlank
       def menu_opener?(scancode, hotkey)
         hotkey == :menu || (scancode == GRAVE && !@player_settings.button_of_key(GRAVE))
       end
+
+      def slot_words(slot) = slot == WindowMenu::QUICK_SLOT ? "the quick slot" : "slot #{slot}"
+
+      # F5 and F9 save and load the quick state, as in an emulator.
+      QUICK_KEYS = Ractor.make_shareable({ 62 => :save, 66 => :load })
 
       def raise_failed!(what)
         raise Failed, "SDL cannot #{what}: #{@sdl.SDL_GetError}."

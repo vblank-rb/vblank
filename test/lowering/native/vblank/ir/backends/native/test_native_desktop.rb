@@ -249,6 +249,7 @@ class TestNativeDesktop < Minitest::Test
       assert_a_file_that_cannot_be_used_is_said_and_the_game_plays_on(exe, dir)
       assert_the_menu_is_drawn_over_the_picture(exe, dir)
       assert_the_menu_holds_the_game_and_keeps_its_keys(exe, dir)
+      assert_save_states_are_kept_beside_the_save_and_put_back(exe, dir)
       assert_the_frame_time_shows_without_the_frame_rate(exe, dir)
     end
   end
@@ -681,6 +682,36 @@ class TestNativeDesktop < Minitest::Test
     assert_operator quit.variables[:frames], :<, 5, "Quit stops the play"
     assert_operator escaped.variables[:frames], :<, 5, "Escape stops the play"
   end
+
+  # SAVE STATES: F5 saves the quick one and F9 puts it back, between two frames, so the game's count
+  # goes back to what it was when F5 was pressed. The menu does the same with a slot: the Save
+  # heading's Slot 2, then the Load heading's Slot 2. States are files beside the save asked for
+  # (--save-file), and a state another game wrote is refused in plain words and the game plays on.
+  def assert_save_states_are_kept_beside_the_save_and_put_back(exe, dir)
+    folder = File.join(dir, "states-#{rand(1 << 30)}")
+    FileUtils.mkdir_p(folder)
+    options = ["--save-file", File.join(folder, "save.sav")]
+    plain = play_window(exe, dir, [], frames: 40, options: options)
+    quick = play_window(exe, dir, [*["0"] * 9, "0 key:F5", *["0"] * 9, "0 key:F9"], frames: 40, options: options)
+
+    assert_path_exists File.join(folder, "state-quick")
+    assert_operator quick.variables[:frames], :<, plain.variables[:frames] - 5, "the count went back to where F5 was pressed"
+    assert_match(/Loaded the quick slot/, quick.said)
+    to_save = ["0", "0 hotkey:menu", *["0 key:Right"] * 5, "0 key:Down", "0 key:Down", "0 key:Down", "0 key:Return"]
+    play_window(exe, dir, [*to_save, *["0"] * 6], frames: 40, options: options)
+    assert_path_exists File.join(folder, "state-2")
+
+    to_load = ["0", "0 hotkey:menu", *["0 key:Right"] * 6, "0 key:Down", "0 key:Down", "0 key:Down", "0 key:Return"]
+    loaded = play_window(exe, dir, [*["0"] * 25, *to_load], frames: 50, options: options)
+    assert_match(/Loaded slot 2/, loaded.said)
+
+    File.write(File.join(folder, "state-3"), "vblank-state 1\nbuild gba 0123456789abcdef\n")
+    refused = play_window(exe, dir, [*["0"] * 3, "0 hotkey:menu", *["0 key:Right"] * 6, *["0 key:Down"] * 4, "0 key:Return"], frames: 30,
+                                    options: options)
+    assert_match(/another build/, refused.said)
+    assert_equal 30, refused.variables[:frames]
+  end
+
 
   # The frame time is the developer's own reading, and shows in the corner with the frame rate hidden.
   def assert_the_frame_time_shows_without_the_frame_rate(exe, dir)
