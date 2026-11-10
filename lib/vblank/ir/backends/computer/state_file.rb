@@ -34,7 +34,10 @@ module VBlank
           # as it is.
           def c_text(program) = values(program).map { |name, value| "#define #{name} #{value.inspect}\n" }.join
           def js_text(program) = values(program).map { |name, value| "const #{name} = #{value.inspect};\n" }.join
-          def ruby_text(program) = values(program).map { |name, value| "#{name} = #{value.inspect}\n" }.join
+          # Strings frozen, so the constants can be shared with a game played in a Ractor.
+          def ruby_text(program)
+            values(program).map { |name, value| "#{name} = #{value.inspect}#{".freeze" if value.is_a?(String)}\n" }.join
+          end
         end
       end
     end
