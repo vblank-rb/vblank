@@ -504,6 +504,58 @@ module PackAtStartTests
     end
   end
 
+  # The frames the number is looked at after, each showing a different number.
+  NUMBER_FRAMES = [1, 2, 4].freeze
+
+  # A NUMBER THAT CHANGES in a font of the pack's pixels whose digits differ in width, as an
+  # original's alphabet keeps them: each digit two or three pixels wide, overlapping in the slot,
+  # and a space four wide, which a number without leading noughts shows in a place not reached.
+  private def changing_number_game(folder, screen_kind, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen screen_kind
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
+      letters = pack[:letters]
+      digits = ("0".."9").to_h { |digit| [digit, letters.pixels(digit.to_i * 6, 6 * (2 + (digit.to_i % 2)))] }
+      font :digits, glyphs: digits.merge(" " => letters.pixels(60, 24)), height: 6
+      shown = var :shown, 1
+      numbers = lambda do
+        draw_number shown, 10, 10, :white, digits: 3, font: :digits
+        draw_number shown, 10, 30, :red, digits: 3, leading_zeros: true, font: :digits
+        draw_number 7, 10, 50, :white, digits: 3, font: :digits
+      end
+      # A tiled screen's number is declared once and follows its variable; a bitmap's is painted each pass.
+      instance_exec(&numbers) if screen_kind == :tiled
+      game_loop do
+        if screen_kind == :bitmap
+          clear_screen :blue
+          instance_exec(&numbers)
+        end
+        shown.store!(shown + 37)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_changing_number_in_digits_of_differing_widths_is_drawn_as_the_all_in_one_build_draws_it
+    %i[bitmap tiled].each do |screen_kind|
+      Dir.mktmpdir do |folder|
+        whole = changing_number_game(folder, screen_kind)
+        left_out = changing_number_game(folder, screen_kind, options: PACK_AT_START)
+
+        screens = NUMBER_FRAMES.map do |frames|
+          shown = game_player.run(whole, frames: frames).screen.to_a
+          assert_equal shown, game_player.hand_file(lettering_pack_file).run(left_out, frames: frames).screen.to_a,
+                       "on a #{screen_kind} screen after #{frames} frames, the game handed its pack shows the all-in-one number"
+          shown
+        end
+        assert_equal 3, screens.uniq.length, "on a #{screen_kind} screen the number shows, and changes"
+      end
+    end
+  end
+
   def test_a_game_handed_its_pack_as_it_starts_plays_as_its_all_in_one_build
     Dir.mktmpdir do |folder|
       left_out = pack_at_start_game(folder)

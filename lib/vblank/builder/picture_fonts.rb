@@ -255,27 +255,25 @@ module VBlank
       end
 
       # draw_number in a font of a pack's pixels with the pack left out: the number drawn in the font
-      # of pictures of its colour. A number that changes draws each digit as one of ten pictures in the
-      # same place, so it needs all ten, of one width: a font of glyphs given as rows does not, so the
-      # refusal says why this build differs.
+      # of pictures of its colour, laid out as the same font read into the build (a font of glyphs)
+      # lays it out. A number that changes can show any digit, so it needs all ten. They may differ in
+      # width, as an original's alphabet keeps them: each is drawn at the left of a column as wide as
+      # the font's widest letter. A place the number has not reached is left empty, as a font of glyphs
+      # leaves it, even where the font has a space.
       def draw_number_in_lettering(value, x, y, color, font:, digits:, within:, leading_zeros:)
         refuse_missing_color!("draw_number", color)
-        refuse_unfit_lettering_numerals!(font) unless DSL::Value.fixed_number(value)
+        refuse_missing_lettering_numerals!(font) unless DSL::Value.fixed_number(value)
         draw_number_in_pictures(value, x, y, nil, font: picture_font_of_lettering(font, color), digits: digits,
-                                                  within: within, leading_zeros: leading_zeros)
+                                                  within: within, leading_zeros: leading_zeros, as_glyph_font: true)
       end
 
-      def refuse_unfit_lettering_numerals!(font)
-        metrics = @lettering_fonts.fetch(font).metrics
-        missing = metrics.missing_characters("0123456789")
-        widths = ("0".."9").map { |digit| metrics.glyph_width(digit) }.uniq
-        return if missing.empty? && widths.one?
+      def refuse_missing_lettering_numerals!(font)
+        missing = @lettering_fonts.fetch(font).metrics.missing_characters("0123456789")
+        return if missing.empty?
 
         raise ArgumentError,
-              "draw_number: font :#{font} reads its letters from the pack as the game starts. " \
-              "In such a font, a number that changes needs the digits 0 to 9, all one width. " \
-              "#{missing.empty? ? 'Its digits differ in width.' : "It has no #{missing.map(&:inspect).join(', ')}."} " \
-              "To fix this, give the font all ten digits at one width, or draw a fixed number."
+              "draw_number: font :#{font} has no #{missing.map(&:inspect).join(', ')}. A number that changes can " \
+              "show any digit, so the font needs all of 0 to 9. To fix this, add the missing letters, or draw a fixed number."
       end
 
       # A picture font's pictures have their own colours, so a colour given beside it would be
@@ -324,17 +322,20 @@ module VBlank
       # draw_number in a picture font, in a field of +digits+ columns, each as wide as the widest
       # picture, placed and right-aligned as any number is. A place the number has not reached
       # is a leading nought: the "0" picture with +leading_zeros+, else the font's space where it
-      # has one (which paints over the digit that was there), else nothing.
-      def draw_number_in_pictures(value, x, y, color, font:, digits:, within:, leading_zeros:)
+      # has one (which paints over the digit that was there), else nothing. With +as_glyph_font+ it is
+      # laid out as a font of glyphs lays it out: the digits may differ in size, each drawn at the left
+      # of its column, and a place not reached is left empty.
+      def draw_number_in_pictures(value, x, y, color, font:, digits:, within:, leading_zeros:, as_glyph_font: false)
         picture_font = @picture_fonts[font]
         refuse_color_for_picture_font!("draw_number", font, color, nil)
         cell = picture_font.cell_w
         x = column_for(x, (digits * cell) - picture_font.spacing, within, "draw_number")
+        space = picture_font.picture(" ") unless as_glyph_font
         fixed = DSL::Value.fixed_number(value)
-        return draw_fixed_number_in_pictures(fixed, x, y, picture_font, font, digits, leading_zeros) if fixed
+        return draw_fixed_number_in_pictures(fixed, x, y, picture_font, font, digits, leading_zeros, space) if fixed
 
-        numerals = refuse_unfit_numerals!(picture_font, font)
-        blank = leading_zeros ? nil : picture_font.picture(" ")
+        numerals = as_glyph_font ? ("0".."9").map { |digit| picture_font.picture(digit) } : refuse_unfit_numerals!(picture_font, font)
+        blank = leading_zeros ? nil : space
         if Text::TILE_HARDWARE_MODES.include?(@screen_mode)
           require_hud_declared_once!("draw_number")
           return draw_live_number_in_sprites(value, x, y, cell, numerals, blank, digits, leading_zeros)
@@ -346,10 +347,12 @@ module VBlank
         draw_live_number_in_pictures(value, x, y, font, cell, numerals, blank, digits, leading_zeros)
       end
 
-      def draw_fixed_number_in_pictures(number, x, y, picture_font, font, digits, leading_zeros)
+      # A fixed number, its unreached places noughts with +leading_zeros+, else +space+ (a picture,
+      # or nil to leave them empty).
+      def draw_fixed_number_in_pictures(number, x, y, picture_font, font, digits, leading_zeros, space)
         text = number.to_s
         pad = [digits - text.length, 0].max
-        filler = leading_zeros ? "0" : (" " if picture_font.picture(" "))
+        filler = leading_zeros ? "0" : (" " if space)
         refuse_missing_characters!(text + filler.to_s, picture_font, font)
         return draw_pictures_of((filler * pad) + text, x, y, picture_font) if filler
 
@@ -388,9 +391,23 @@ module VBlank
 
         declare_func(routine) do
           column = DSL::Value.new(self, Build.var_ref(DIGIT_COLUMN))
-          blit(poses, halved ? column * 2 : column, DIGIT_ROW, showing: DIGIT_SHOWN)
+          column = column * 2 if halved
+          if poses.map { |pose| @images.fetch(pose) }.uniq.one?
+            blit(poses, column, DIGIT_ROW, showing: DIGIT_SHOWN)
+          else
+            emit_blit_by_digit_shown(poses, column)
+          end
         end
         routine
+      end
+
+      # Draws the one of +poses+ that DIGIT_SHOWN numbers, where they differ in size: a test and a
+      # blit for each, since a blit that picks between pictures needs them one size.
+      def emit_blit_by_digit_shown(poses, column)
+        poses.each_with_index do |pose, k|
+          record(Build.if_(Build.binop(:==, Build.var_ref(DIGIT_SHOWN), Build.int(k)),
+                           Build.blit(pose, column.node, Build.var_ref(DIGIT_ROW))))
+        end
       end
 
       # The digit of +source+ at +place+, or +blank+ while the number is smaller than the place:
