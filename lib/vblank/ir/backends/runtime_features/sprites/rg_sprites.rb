@@ -526,63 +526,73 @@ def rg_sprites_front_layer = @rg_over_picture
 
 # --- the state image (rg_sprites.c says what each field holds) ---
 
-RG_PLACED_STATE_NUMBERS = 10
-RG_PLACED_SPRITE = 0
-RG_PLACED_IMAGE = 1
-RG_PLACED_CUT_COUNT = 9
-RG_CUT_NUMBERS = 2          # the line, and the piece
-RG_DRAWN_PLACE_NUMBERS = 3  # whether drawn, and where
 RG_MOST_SLICES_LEFT_OUT = 16_384 # rg_sprites.c's MAX_LEFT_OUT
 RG_STATE_NOTHING_IN_FRONT = 0x8000 # rg_screen.c's RG_NOTHING_IN_FRONT, which this runtime keeps as nil
 
+# "sprites": how many were last put on screen and how many are kept for a rebuild, and whether
+# the layer over a painted picture is up.
+RgSpritesPlace = Data.define(:drawn, :kept, :over_picture_up)
+
+# "sprites.drawing" and "sprites.kept", one a sprite: its number, picture, place and level, its
+# turn, and how many slices a crowded line leaves out of it, which follow in the field after.
+RgPlacedPlace = Data.define(:sprite, :image, :x, :y, :level, :turned, :angle, :size, :resizes, :cut_count)
+
+# The cuts field, one a slice left out: the line, and the piece.
+RgCutPlace = Data.define(:line, :piece)
+
+# "sprites.drawn_places", one for each sprite there is room for: whether it was last drawn straight
+# onto the picture, and where.
+RgDrawnPlace = Data.define(:drawn, :x, :y)
+
 def rg_refuse_damaged_sprites(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
 
-# One sprite's numbers in "sprites.drawing" or "sprites.kept".
-def rg_placed_state_numbers(placed)
-  [placed.sprite, placed.image, placed.x, placed.y, placed.level, rg_state_flag(placed.turned), placed.angle, placed.size,
-   rg_state_flag(placed.resizes), placed.cuts ? placed.cuts.length : 0]
+def rg_placed_place(placed)
+  RgPlacedPlace.new(sprite: placed.sprite, image: placed.image, x: placed.x, y: placed.y, level: placed.level,
+                    turned: rg_state_flag(placed.turned), angle: placed.angle, size: placed.size,
+                    resizes: rg_state_flag(placed.resizes), cut_count: placed.cuts ? placed.cuts.length : 0)
 end
 
 # The +count+ sprites of +placed+ as field +name+, and the slices left out of them as +cuts_name+;
 # gives back the sprites read, or +placed+ when writing. +cuts_before+ slices were read already
 # for the other list.
 def rg_visit_placed_objects(name, cuts_name, placed, count, cuts_before)
-  reading = rg_state_reading
-  numbers = rg_state_numbers(name, reading ? Array.new(count * RG_PLACED_STATE_NUMBERS, 0) : placed.flat_map { |p| rg_placed_state_numbers(p) })
-  each_sprite = numbers.each_slice(RG_PLACED_STATE_NUMBERS).to_a
-  each_sprite.each do |n|
-    next if n[RG_PLACED_SPRITE].between?(0, RG_MAX_SPRITES - 1) && n[RG_PLACED_CUT_COUNT] >= 0 &&
-            n[RG_PLACED_IMAGE].between?(0, @rg_game_picture_sizes[RG_SIZE_IMAGES] - 1)
+  places = rg_state_records(name, placed.map { |p| rg_placed_place(p) }, RgPlacedPlace, count)
+  places.each do |place|
+    next if place.sprite.between?(0, RG_MAX_SPRITES - 1) && place.cut_count >= 0 &&
+            place.image.between?(0, @rg_game_picture_sizes[RG_SIZE_IMAGES] - 1)
 
     rg_refuse_damaged_sprites("a sprite names a sprite or a picture the game does not have")
   end
-  cut_total = each_sprite.sum { |n| n[RG_PLACED_CUT_COUNT] }
+  cut_total = places.sum(&:cut_count)
   rg_refuse_damaged_sprites("more slices of sprites are left out than can be") if cut_total > RG_MOST_SLICES_LEFT_OUT - cuts_before
-  cuts = rg_state_numbers(cuts_name, reading ? Array.new(cut_total * RG_CUT_NUMBERS, 0) : placed.flat_map { |p| (p.cuts || []).flatten })
-  return placed unless reading
+  cuts = rg_state_records(cuts_name, placed.flat_map { |p| (p.cuts || []).map { |line, piece| RgCutPlace.new(line, piece) } },
+                          RgCutPlace, cut_total)
+  return placed unless rg_state_reading
 
-  cut_pairs = cuts.each_slice(RG_CUT_NUMBERS).to_a
-  each_sprite.map do |n|
-    these = cut_pairs.shift(n[RG_PLACED_CUT_COUNT])
-    RgPlaced.new(n[0], n[1], n[2], n[3], n[4], n[5] != 0, n[6], n[7], n[8], these.empty? ? nil : these)
+  places.map do |place|
+    these = cuts.shift(place.cut_count).map { |cut| [cut.line, cut.piece] }
+    RgPlaced.new(place.sprite, place.image, place.x, place.y, place.level, place.turned != 0, place.angle, place.size,
+                 place.resizes, these.empty? ? nil : these)
   end
 end
 
 # rg_hook_visit_state (rg_sprites.c's rg_sprites_visit_state).
 def rg_sprites_visit_state
-  counts = rg_state_numbers("sprites", [@rg_drawing.length, @rg_sprite_layer.length, rg_state_flag(!@rg_over_picture.nil?)])
-  unless counts[0].between?(0, RG_MAX_SPRITES) && counts[1].between?(0, RG_MAX_SPRITES)
+  counts = rg_state_record("sprites", RgSpritesPlace.new(drawn: @rg_drawing.length, kept: @rg_sprite_layer.length,
+                                                         over_picture_up: rg_state_flag(!@rg_over_picture.nil?)))
+  unless counts.drawn.between?(0, RG_MAX_SPRITES) && counts.kept.between?(0, RG_MAX_SPRITES)
     rg_refuse_damaged_sprites("more sprites are on screen than there is room for")
   end
-  @rg_drawing = rg_visit_placed_objects("sprites.drawing", "sprites.drawing.cuts", @rg_drawing, counts[0], 0)
+  @rg_drawing = rg_visit_placed_objects("sprites.drawing", "sprites.drawing.cuts", @rg_drawing, counts.drawn, 0)
   drawing_cuts = @rg_drawing.sum { |p| p.cuts ? p.cuts.length : 0 }
-  @rg_sprite_layer = rg_visit_placed_objects("sprites.kept", "sprites.kept.cuts", @rg_sprite_layer, counts[1], drawing_cuts)
+  @rg_sprite_layer = rg_visit_placed_objects("sprites.kept", "sprites.kept.cuts", @rg_sprite_layer, counts.kept, drawing_cuts)
 
-  places = rg_state_numbers("sprites.drawn_places", @rg_last_drawn.flat_map { |place| place ? [1, *place] : [0, 0, 0] })
-  @rg_last_drawn = places.each_slice(RG_DRAWN_PLACE_NUMBERS).map { |drawn, x, y| drawn != 0 ? [x, y] : nil }
+  places = @rg_last_drawn.map { |place| place ? RgDrawnPlace.new(1, *place) : RgDrawnPlace.new(0, 0, 0) }
+  places = rg_state_records("sprites.drawn_places", places, RgDrawnPlace, RG_MAX_SPRITES)
+  @rg_last_drawn = places.map { |place| place.drawn != 0 ? [place.x, place.y] : nil }
 
   front = @rg_over_picture&.map { |color| color || RG_STATE_NOTHING_IN_FRONT } ||
           Array.new(RG_SCREEN_CELLS, RG_STATE_NOTHING_IN_FRONT)
   front = rg_state_numbers("sprites.over_picture", front)
-  @rg_over_picture = (front.map { |color| color == RG_STATE_NOTHING_IN_FRONT ? nil : color } if counts[2] != 0)
+  @rg_over_picture = (front.map { |color| color == RG_STATE_NOTHING_IN_FRONT ? nil : color } if counts.over_picture_up != 0)
 end
