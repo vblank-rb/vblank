@@ -182,7 +182,8 @@ module StateImageTests
   # A GAME OF SCENERY DRAWN FROM TILES: a field scrolled only now and then, shown from its second
   # map since frame 25 and changed a cell at a time since, so after the state the picture shows a
   # scroll, a map and cells the game set before it. On the Advance a second background is held to a
-  # box that moves now and then, in front of the field, and bent row by row.
+  # box that moves now and then, in front of the field, bent row by row, and see-through by an
+  # amount the game changes now and then; and a fade now and then is placed under it.
   private def scenery_game
     tile = Minitest::Test::SOLID_TILE
     boxed = game_console == :gba
@@ -196,17 +197,26 @@ module StateImageTests
       checks = Array.new(32) { |row| Array.new(32) { |col| (row + col).odd? ? "#" : "." }.join }
       stripes = Array.new(32) { |row| (row.even? ? "o" : ".") * 32 }
       field = background :field, tiles: :set, map: { checks: checks, stripes: stripes }
-      sky = background :sky, tiles: :set, map: Array.new(32) { "o#" * 16 } if boxed
       n = var :n, 0
-      sky.scroll_each_row { |row| (row + n) % 16 } if boxed
       x = var :x, 0
+      haze = var :haze, 30
+      if boxed
+        layers :fog
+        sky = nil
+        layer(:fog, transparency: haze) { sky = background :sky, tiles: :set, map: Array.new(32) { "o#" * 16 } }
+        sky.scroll_each_row { |row| (row + n) % 16 }
+      end
       game_loop do
         n += 1
         x += rand(1..5)
         field.scroll_to x, n * 2 if n % 9 == 4
         field.show_map 1 if n == 25
         field.set_tile n % 32, (n / 32) % 32, "o" if n % 3 == 0
-        sky.show_only_inside n % 100, 10, 60, 40 if boxed && n % 11 == 5
+        if boxed
+          sky.show_only_inside n % 100, 10, 60, 40 if n % 11 == 5
+          haze = 20 + ((n * 7) % 60) if n % 10 == 3
+          fade :black, (n * 3) % 90, under: :fog if n % 32 == 7
+        end
         wait_vblank
       end
     end
@@ -221,13 +231,15 @@ module StateImageTests
     assert_operator unbroken.map(&:last).uniq.length, :>, 20, "the game's picture moves"
     assert_plays_on_from(state, program, unbroken)
     other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
-    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled]))
+    features = game_console == :gba ? %i[fades tiled] : %i[tiled]
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: features))
   end
 
   # A GAME OF SPRITES THE FRAMEWORK DRAWS over scenery: a row of a dozen that crowds one line of
-  # the screen, which a console that draws only so many on a line leaves some of out, and a ship.
-  # Each pass places them once and then waits seven frames while the water scrolls, so the frames
-  # after the state, the middle of a pass, show the sprites the pass placed before it.
+  # the screen, which a console that draws only so many on a line leaves some of out, a ship, and a
+  # badge whose picture the game paints from a list. Each pass places them once and then waits seven
+  # frames while the water scrolls, so the frames after the state, the middle of a pass, show the
+  # sprites and the badge's picture as the pass left them.
   private def sprites_game
     tile = Minitest::Test::SOLID_TILE
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
@@ -238,6 +250,10 @@ module StateImageTests
       image(:buoy, "#" => :red) { tile }
       tiles :sea, "#" => :sea_t
       water = background :water, tiles: :sea, map: Array.new(32) { "#" * 32 }
+      colors :ink, %i[transparent white yellow]
+      canvas = list :canvas, capacity: 32, width: :byte, full_of: 0
+      badge = image :badge, from: canvas, width: 8, height: 8, colors: :ink
+      sprite :badge, at: [100, 120]
       ship = sprite :ship, at: [10, 100]
       buoys = Array.new(12) { |i| sprite :buoy, at: [i * 12, 40] }
       n = var :n, 0
@@ -245,6 +261,8 @@ module StateImageTests
         n += 1
         ship.x = (n * 5) % 200
         buoys[3].y = 40 + (n % 3)
+        canvas[n % 32] = (n % 3) * 0x11
+        badge.changed if n % 4 == 1
         repeat(7) do
           water.scroll_by 1, 0
           wait_vblank
