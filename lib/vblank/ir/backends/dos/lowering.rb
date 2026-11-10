@@ -18,9 +18,9 @@ module VBlank
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
         # its conditions and halting, and a painted screen of one page with a cleared screen, pixels,
-        # rectangles, pictures (`blit`) and text, in a palette of the colours the game names. Everything else is
-        # refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at all is refused in
-        # the words its answers have (Console::Answers#refusals).
+        # rectangles, pictures (`blit`), text and numbers, in a palette of the colours the game names.
+        # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
+        # all is refused in the words its answers have (Console::Answers#refusals).
         class Lowering
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
@@ -32,13 +32,13 @@ module VBlank
           # #value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit draw_text
+            draw_rect_at blit draw_text draw_digit
           ] + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = %i[int var_ref binop neg].freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
-          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text].freeze
+          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET: all the others. A kind leaves the list the day it is made
           # (the coverage test holds the list and the two above to every kind there is).
@@ -171,19 +171,40 @@ module VBlank
           def keep_texts
             @program.walk.select { |node| node.kind == :draw_text }.each do |node|
               key = text_key(node)
+              @art_places[key] = picture_of_text(node.fonts.get(node.font), node.text, node.color) unless @art_places.key?(key)
+            end
+          end
+
+          # Each digit a game draws as it runs: ten pictures, 0 to 9, in the font and colour, and a table of their
+          # places (a word each) that the digit's value picks from. A digit the font has no pixels for is a
+          # picture of no rows.
+          def keep_digits
+            @program.walk.select { |node| node.kind == :draw_digit }.each do |node|
+              key = digits_key(node)
               next if @art_places.key?(key)
 
-              drawn = []
-              node.fonts.get(node.font).each_pixel(node.text) { |x, y| drawn << [x, y] }
-              next if drawn.empty?
-
-              width = drawn.map(&:first).max + 1
-              height = drawn.map(&:last).max + 1
-              pixels = Array.new(width * height, Runtime::TRANSPARENT)
-              drawn.each { |x, y| pixels[(y * width) + x] = palette_entry(node.color) }
+              places = (0..9).map { |digit| picture_of_text(node.fonts.get(node.font), digit.to_s, node.color) }
               @art_places[key] = @art.bytesize
-              @art << [width, height].pack("v2") << pixels.pack("C*")
+              @art << places.pack("v10")
             end
+          end
+
+          def digits_key(node) = [:digits, node.font, Graphics::Color.resolve(node.color)]
+
+          # The place in the art segment of the picture of +text+ in +color+, made now: its width and height,
+          # then its pixels as palette entries, or no rows at all where the font draws nothing of it.
+          def picture_of_text(font, text, color)
+            drawn = []
+            font.each_pixel(text) { |x, y| drawn << [x, y] }
+            place = @art.bytesize
+            return place.tap { @art << [0, 0].pack("v2") } if drawn.empty?
+
+            width = drawn.map(&:first).max + 1
+            height = drawn.map(&:last).max + 1
+            pixels = Array.new(width * height, Runtime::TRANSPARENT)
+            drawn.each { |x, y| pixels[(y * width) + x] = palette_entry(color) }
+            @art << [width, height].pack("v2") << pixels.pack("C*")
+            place
           end
 
           def text_key(node) = [:text, node.text, node.font, Graphics::Color.resolve(node.color)]
@@ -201,6 +222,7 @@ module VBlank
           # interpreter draws it (Reference#exec_draw_text), and the same text in the same colour is one picture.
           def keep_pictures
             keep_texts
+            keep_digits
             drawn_pictures.each do |name|
               image = picture_image(name)
               @art_places[name] = @art.bytesize
@@ -256,6 +278,7 @@ module VBlank
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
             when :draw_text then emit_draw_text(node)
+            when :draw_digit then emit_draw_digit(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -409,11 +432,32 @@ module VBlank
           # Reference#exec_draw_text: the words as a picture in their colour, at x and y. A text with no pixels
           # in its font draws nothing.
           def emit_draw_text(node)
-            place = @art_places[text_key(node)] or return
-
+            place = @art_places.fetch(text_key(node))
             emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
             @asm.mov(:si, place)
             @asm.call("rt_blit")
+          end
+
+          # Reference#exec_draw_digit: the picture of the digit the value is, picked from the table of ten places
+          # (a value outside 0 to 9 draws nothing), at the digit's x and y.
+          def emit_draw_digit(node)
+            table = @art_places.fetch(digits_key(node))
+            skip = fresh_label("no_digit")
+            emit_value(node.value)
+            @asm.cmp(:eax, 9)
+            @asm.ja(skip)
+            @asm.mov(:bx, :ax)
+            @asm.add(:bx, :bx)
+            @asm.add(:bx, table)
+            @asm.mov_segment(:cx, :art)
+            @asm.push(:ds)
+            @asm.mov(:ds, :cx)
+            @asm.mov(:si, X86.mem(:bx, 0))
+            @asm.pop(:ds)
+            @asm.mov(:eax, node.x)
+            @asm.mov(:ecx, node.y)
+            @asm.call("rt_blit")
+            @asm.label(skip)
           end
 
           def value_node(operand) = operand.is_a?(Integer) ? Build.int(operand) : operand

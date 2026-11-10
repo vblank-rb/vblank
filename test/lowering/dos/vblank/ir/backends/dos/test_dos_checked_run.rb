@@ -155,6 +155,21 @@ class TestDOSCheckedRun < Minitest::Test
     end
   end
 
+  def test_numbers_drawn_as_the_game_runs_agree_with_the_interpreter
+    checked(frames: 6) do
+      screen :bitmap
+      clear_screen :black
+      score = var :score, 0
+      draw_number 1234, 8, 8, :white
+      game_loop do
+        score += 137
+        draw_number score, 8, 30, :green, digits: 6
+        draw_number score % 1000, 8, 50, :yellow, digits: 5, leading_zeros: true
+        draw_number 0 - score, 100, 70, :red, digits: 4
+      end
+    end
+  end
+
   def test_a_text_in_a_colour_picked_as_the_game_runs_is_refused_by_name
     error = assert_raises(DOS::Lowering::NotMadeYet) do
       checked(frames: 2) do
