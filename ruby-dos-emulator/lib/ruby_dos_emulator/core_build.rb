@@ -31,13 +31,18 @@ module RubyDOSEmulator
   #   patch -p1 -i ruby-dos-emulator/core/dosbox-vblank-probe.patch
   #   make -j4 CPUFLAGS=-Wl,--version-script=ruby-dos-emulator/core/dosbox-exports.map
   #
+  # (on macOS, CPUFLAGS=-Wl,-exported_symbols_list,ruby-dos-emulator/core/dosbox-exports-macos.txt)
+  #
   # VBLANK_DOS_CORE points the gem at a core built some other way.
   module CoreBuild
     REVISION = "1.0-preview6"
     ARCHIVE = "https://codeload.github.com/schellingb/dosbox-pure/tar.gz/#{REVISION}".freeze
     PATCH = File.expand_path("../../core/dosbox-vblank-probe.patch", __dir__)
-    # The only symbols the core exports (see the file), which lets the system unload it again.
+    # The only symbols the core exports (see the file), which lets the system unload it again. GNU ld
+    # reads a version script; the macOS linker has no such option and reads a list of symbol names
+    # instead, each with the leading underscore its C names carry there.
     EXPORTS = File.expand_path("../../core/dosbox-exports.map", __dir__)
+    EXPORTS_MACOS = File.expand_path("../../core/dosbox-exports-macos.txt", __dir__)
 
     # Why a core could not be made, in words for the person installing.
     class CannotBuild < StandardError; end
@@ -70,9 +75,15 @@ module RubyDOSEmulator
         FileUtils.mkdir_p(source)
         run.call("tar", "xzf", archive, "-C", source, "--strip-components=1")
         run.call("patch", "--quiet", "-d", source, "-p1", "-i", PATCH)
-        run.call("make", "-C", source, "-j#{Etc.nprocessors}", "CPUFLAGS=-Wl,--version-script=#{EXPORTS}")
+        run.call("make", "-C", source, "-j#{Etc.nprocessors}", "CPUFLAGS=#{exports_linker_flag}")
         move_into_place(library_in(source), target)
       end
+    end
+
+    def exports_linker_flag(platform: RUBY_PLATFORM)
+      return "-Wl,-exported_symbols_list,#{EXPORTS_MACOS}" if platform.include?("darwin")
+
+      "-Wl,--version-script=#{EXPORTS}"
     end
 
     # The Makefile names the library for the platform: .so on Linux, .dylib on macOS. It is kept as the
