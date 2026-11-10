@@ -224,6 +224,47 @@ module StateImageTests
     assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled]))
   end
 
+  # A GAME OF SPRITES THE FRAMEWORK DRAWS over scenery: a row of a dozen that crowds one line of
+  # the screen, which a console that draws only so many on a line leaves some of out, and a ship.
+  # Each pass places them once and then waits seven frames while the water scrolls, so the frames
+  # after the state, the middle of a pass, show the sprites the pass placed before it.
+  private def sprites_game
+    tile = Minitest::Test::SOLID_TILE
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder.instance_eval do
+      screen :tiled
+      image(:sea_t, "#" => :blue) { tile }
+      image(:ship, "#" => :white) { tile }
+      image(:buoy, "#" => :red) { tile }
+      tiles :sea, "#" => :sea_t
+      water = background :water, tiles: :sea, map: Array.new(32) { "#" * 32 }
+      ship = sprite :ship, at: [10, 100]
+      buoys = Array.new(12) { |i| sprite :buoy, at: [i * 12, 40] }
+      n = var :n, 0
+      game_loop do
+        n += 1
+        ship.x = (n * 5) % 200
+        buoys[3].y = 40 + (n % 3)
+        repeat(7) do
+          water.scroll_by 1, 0
+          wait_vblank
+        end
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_sprites_the_framework_draws_come_back_from_the_state
+    program = sprites_game
+    unbroken, state = unbroken_with_state(program)
+
+    assert_operator unbroken.map(&:last).uniq.length, :>, 10, "the game's picture moves"
+    assert_plays_on_from(state, program, unbroken)
+    other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled sprites]))
+  end
+
   def test_a_run_read_from_a_state_plays_on_as_the_unbroken_run
     program = state_game
     unbroken, state = unbroken_with_state(program)

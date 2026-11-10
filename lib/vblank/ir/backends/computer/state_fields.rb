@@ -17,7 +17,9 @@ module VBlank
         # :three_screens (three numbers a pixel), :run_pixels (a pixel of every run the game paints
         # into each), :runs (one a run), or a count the field before it holds (:scenery_put_up,
         # :held_tiles, four a change), the game's backgrounds (:backgrounds, 21 each), or what those
-        # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each).
+        # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each), and the sprites
+        # (:sprites_drawn and :sprites_kept, ten each; :sprite_cuts, two a slice; :sprite_places,
+        # three for each sprite there is room for).
         # +with_save_memory+ marks a field only a game that reaches save memory keeps, and +feature+
         # one only a game that takes in that runtime feature keeps
         # (RuntimeFeatures; each visits its own through the visit_state hook, in the order the
@@ -89,7 +91,19 @@ module VBlank
             # named, the box, the turn, the status bar's place, covering the sprites, and bends kept.
             Field.new(name: "tiled.backgrounds", count: :backgrounds, feature: :tiled),
             Field.new(name: "tiled.cells", count: :own_cells, feature: :tiled), # each own copy of a map, in turn
-            Field.new(name: "tiled.bends", count: :bent_lines, feature: :tiled) # a screen's lines for each bend worked out
+            Field.new(name: "tiled.bends", count: :bent_lines, feature: :tiled), # a screen's lines for each bend worked out
+            # How many sprites were last put on screen and how many are kept for a rebuild, and
+            # whether the layer over a painted picture is up.
+            Field.new(name: "sprites", count: 3, feature: :sprites),
+            # Each sprite: its number, picture, place, level, turn (turned, angle, size, resizes), and
+            # how many slices a crowded line leaves out, then those slices, a line and a piece each.
+            Field.new(name: "sprites.drawing", count: :sprites_drawn, feature: :sprites),
+            Field.new(name: "sprites.drawing.cuts", count: :sprite_cuts, feature: :sprites),
+            Field.new(name: "sprites.kept", count: :sprites_kept, feature: :sprites),
+            Field.new(name: "sprites.kept.cuts", count: :sprite_cuts, feature: :sprites),
+            # Whether each sprite was last drawn straight onto the picture, and where.
+            Field.new(name: "sprites.drawn_places", count: :sprite_places, feature: :sprites),
+            Field.new(name: "sprites.over_picture", count: :screen_cells, feature: :sprites)
           ].freeze
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches

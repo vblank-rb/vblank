@@ -7,5 +7,5 @@ VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :sprites,
   needed_by: %i[object present_objects pixels_overlap],
   after: %i[tiled],
-  hooks: %i[setup screen_crossed paint_level drawn_count drawn_sprite any_sprite_kept front_layer]
+  hooks: %i[setup screen_crossed paint_level drawn_count drawn_sprite any_sprite_kept front_layer visit_state]
 )
