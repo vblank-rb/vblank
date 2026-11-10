@@ -17,9 +17,9 @@ module VBlank
         # instruction on a game's number whose answer Int32 gives otherwise.
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
-        # its conditions and halting, and a painted screen of one page with a cleared screen and pixels, in
-        # a palette of the colours the game names. Everything else is refused by name until it is made
-        # (NOT_LOWERED_YET), and what a PC cannot do at all is refused in the words its answers have
+        # its conditions and halting, and a painted screen of one page with a cleared screen, pixels and
+        # rectangles, in a palette of the colours the game names. Everything else is refused by name until it
+        # is made (NOT_LOWERED_YET), and what a PC cannot do at all is refused in the words its answers have
         # (Console::Answers#refusals).
         class Lowering
           # A program refused because it reaches something the build does not make yet, with the +part+ of
@@ -31,10 +31,14 @@ module VBlank
           # EVERY KIND THIS LOWERING WRITES, each by a method called by name in #emit_statement and
           # #value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
-            program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel
+            program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
+            draw_rect_at
           ] + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = %i[int var_ref binop neg].freeze
+
+          # The statements that paint in a colour the game names, which the palette must hold.
+          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at].freeze
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET: all the others. A kind leaves the list the day it is made
           # (the coverage test holds the list and the two above to every kind there is).
@@ -123,7 +127,7 @@ module VBlank
 
           # The colours the game names, as the 15-bit numbers the interpreter paints with, after black.
           def palette_of(program)
-            colors = program.walk.select { |node| %i[clear_screen pixel].include?(node.kind) }
+            colors = program.walk.select { |node| PAINTING_KINDS.include?(node.kind) }
                             .map { |node| Graphics::Color.resolve(node.color) }.uniq - [0]
             if colors.size > CONSOLE.list_colors - 1
               raise LoweringError, "This game paints with #{colors.size} colours. DOS shows #{CONSOLE.list_colors} at once, " \
@@ -174,6 +178,7 @@ module VBlank
             when :screen then nil # mode 13h is set at power-on, and a screen of one page is all there is
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
+            when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -307,6 +312,28 @@ module VBlank
             with_operands(node.x, node.y)
             @asm.mov(:dl, palette_entry(node.color))
             @asm.call("rt_pixel")
+          end
+
+          # The same rectangle however the game wrote it (Reference#exec_fill_rect, #exec_dma_fill_rect and
+          # #exec_draw_rect_at): x, y, width and height into EAX, ECX, EDX and EBX, the palette entry into SI.
+          def emit_rectangle(node)
+            emit_values_into(%i[eax ecx edx ebx], [node.x, node.y, node.w, node.h].map { |edge| value_node(edge) })
+            @asm.mov(:si, palette_entry(node.color))
+            @asm.call("rt_fill_rect")
+          end
+
+          def value_node(operand) = operand.is_a?(Integer) ? Build.int(operand) : operand
+
+          # +operands+ worked out into +registers+. What needs working out is done first and kept on the stack,
+          # since the working uses EAX and ECX; a number or a variable is then loaded straight into its register.
+          def emit_values_into(registers, operands)
+            worked = registers.zip(operands).reject { |_, operand| simple?(operand) }
+            worked.each do |_, operand|
+              emit_value(operand)
+              @asm.push(:eax)
+            end
+            registers.zip(operands).each { |register, operand| emit_simple_into(register, operand) if simple?(operand) }
+            worked.reverse_each { |register, _| @asm.pop(register) }
           end
 
           # --- values: worked out into EAX ---

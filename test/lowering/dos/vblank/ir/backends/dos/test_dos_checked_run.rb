@@ -86,6 +86,32 @@ class TestDOSCheckedRun < Minitest::Test
     end
   end
 
+  def test_rectangles_agree_with_the_interpreter_inside_and_off_the_screen
+    checked(frames: 3) do
+      screen :bitmap
+      clear_screen :black
+      fill_rect 10, 10, 20, 30, :red
+      dma_fill_rect 100, 50, 7, 3, :green
+      x = var :x, 0
+      y = var :y, 0
+      w = var :w, 0
+      h = var :h, 0
+      game_loop do
+        x = -5
+        y = 190
+        w = 30
+        h = 40
+        draw_rect_at x, y, w, h, :blue
+        draw_rect_at 310, -3, 50, 8, :white
+        draw_rect_at 0, 0, 0, 5, :yellow
+        draw_rect_at 4, 4, 5, -2, :yellow
+        draw_rect_at 2_147_483_000, 5, 2_000, 4, :white
+        draw_rect_at(-2_147_483_000, 5, 2_000, 4, :white)
+        draw_rect_at x + 50, y - 150, w * 2, h / 4, :red
+      end
+    end
+  end
+
   def test_repeat_and_if_and_else_agree
     checked(frames: 5) do
       total = var :total, 0

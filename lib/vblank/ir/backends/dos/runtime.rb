@@ -304,6 +304,51 @@ module VBlank
             asm.ret
           end
 
+          # A rectangle: x in EAX, y in ECX, width in EDX, height in EBX, the palette entry in SI. It is the
+          # pixels of the interpreter's `x.upto(x + width - 1)` loop that are on the screen, so each far edge is
+          # x + width (saturating, so a sum past 32 bits is the far end it would be on a number line, not a
+          # wrapped one), each edge is held to the screen, and a rectangle with no width or height left draws
+          # nothing. The rows are then one REP STOSB each.
+          def emit_rectangle_routine(asm, width, height)
+            asm.label("rt_fill_rect")
+            [[:edx, :eax, "x"], [:ebx, :ecx, "y"]].each do |far, near, axis|
+              asm.add(far, near)
+              asm.jno("rt_fill_rect_#{axis}_sum")
+              asm.mov(far, 0x7FFF_FFFF)
+              asm.test(near, near)
+              asm.jns("rt_fill_rect_#{axis}_sum")
+              asm.mov(far, -0x8000_0000)
+              asm.label("rt_fill_rect_#{axis}_sum")
+              asm.test(near, near)
+              asm.jns("rt_fill_rect_#{axis}_near")
+              asm.xor(near, near)
+              asm.label("rt_fill_rect_#{axis}_near")
+              asm.cmp(far, axis == "x" ? width : height)
+              asm.jle("rt_fill_rect_#{axis}_far")
+              asm.mov(far, axis == "x" ? width : height)
+              asm.label("rt_fill_rect_#{axis}_far")
+              asm.cmp(near, far)
+              asm.jge("rt_fill_rect_done")
+            end
+            asm.sub(:edx, :eax)
+            asm.sub(:ebx, :ecx)
+            asm.mov(:ebp, width)
+            asm.imul(:ecx, :ebp)
+            asm.add(:ecx, :eax)
+            asm.mov(:di, :cx)
+            asm.mov(:ax, :si)
+            asm.label("rt_fill_rect_row")
+            asm.mov(:cx, :dx)
+            asm.push(:di)
+            asm.stos(8, rep: true)
+            asm.pop(:di)
+            asm.add(:di, width)
+            asm.dec(:ebx)
+            asm.jne("rt_fill_rect_row")
+            asm.label("rt_fill_rect_done")
+            asm.ret
+          end
+
           # Drawing on the card's memory, with ES at A000h.
           def emit_drawing_routines(asm)
             width = Console::DOS.screen_width
@@ -324,6 +369,8 @@ module VBlank
             asm.stos(8)
             asm.label("rt_pixel_done")
             asm.ret
+
+            emit_rectangle_routine(asm, width, height)
 
             # The whole screen one colour: EAX is four pixels' worth of the palette entry.
             asm.label("rt_clear_screen")
