@@ -232,6 +232,22 @@ module VBlank
         StateSlots.new(folder: folder) if folder
       end
 
+      # Starts offering save states, kept in the folder called +name+ (StateSlots.folder_name), as a shell's
+      # window does once its game plays; false when the computer will not make the folder.
+      def offer_states(name)
+        return false unless @has_menu
+
+        @states = states_in(name)
+        @menu.states = @states
+        !@states.nil?
+      end
+
+      # Stops offering them again, as the shell's window does when its game ends.
+      def withdraw_states
+        @states = nil
+        @menu.states = nil
+      end
+
       # What the player asked to save or load, with the menu or F5 and F9, once, or nil.
       def take_state_request = @menu.take_state_request
 

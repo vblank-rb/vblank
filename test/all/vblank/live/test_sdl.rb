@@ -157,6 +157,31 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A shell's window offers states only while its game plays: F5 asks for nothing before, or after.
+  def test_a_window_offers_states_only_between_offer_and_withdraw
+    name = "vblank-test-states #{Process.pid}"
+    window = open_window
+    press_key(62)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    refute window.hold_while_paused
+    assert_nil window.take_state_request, "no states are offered until the game plays"
+
+    assert window.offer_states(name)
+    press_key(62)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    window.hold_while_paused
+    assert_equal VBlank::Live::WindowMenu::StateRequest.new(action: :save, slot: 0), window.take_state_request
+
+    window.withdraw_states
+    press_key(62)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    window.hold_while_paused
+    assert_nil window.take_state_request
+  ensure
+    FileUtils.rm_rf(window.folder_for(name)) if window
+    window&.close
+  end
+
   # Tab fast forwards for as long as it is held, as it does in the desktop build.
   def test_tab_fast_forwards_while_it_is_held
     window = open_window

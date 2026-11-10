@@ -39,11 +39,20 @@ module VBlank
                      controls: Settings.new(key_names: NumberedKeys.new), states: nil)
         @scales = scales
         @controls = controls
-        @states = states
-        @headings = states ? WindowMenu::HEADINGS : WindowMenu::HEADINGS.reject(&:states?)
+        self.states = states
         self.settings = settings
         @picture = picture
         @open = @quit = false
+        @state_request = nil
+        @heading = 0
+        @row = -1
+      end
+
+      # The places states are kept in changed: a shell's window has none while its menu and unpacking play and
+      # has them once its game does. The menu starts again on its first heading.
+      def states=(states)
+        @states = states
+        @headings = states ? WindowMenu::HEADINGS : WindowMenu::HEADINGS.reject(&:states?)
         @state_request = nil
         @heading = 0
         @row = -1

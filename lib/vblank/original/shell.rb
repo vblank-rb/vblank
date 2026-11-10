@@ -42,7 +42,12 @@ module VBlank
       # One program of a shell, as a backend writes it out: its +role+ (:game, :menu or :unpacking),
       # its +number+ (an unpacking's, from 0; nil for the others), the +program+, and whether its
       # window has the window's menu (+window_menu+).
-      Part = Data.define(:role, :number, :program, :window_menu)
+      Part = Data.define(:role, :number, :program, :window_menu) do
+        # A shell saves only its game, once the shell has handed over to it: the menu and the unpackings
+        # run before that, and a state is never taken or loaded while they do. The game part's states are
+        # its own, checked against its own build.
+        def keeps_states? = role == :game && window_menu
+      end
 
       # The game first, then the menu, then each unpacking in the order of its number.
       def parts

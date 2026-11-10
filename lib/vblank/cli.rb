@@ -1243,12 +1243,21 @@ module VBlank
                                 refused: lambda { |words|
                                   warn words
                                   window.notice(words)
-                                }, play_game: ->(playing) { live_shell_session(playing).play(window) })
+                                }, play_game: ->(playing) { play_shell_game(window, game, playing) })
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise Thor::Error, e.message
     ensure
       window&.close
+    end
+
+    # The game of a shell, played in its window with save states: only the game offers them, once the
+    # menu and the unpacking are done (Original::Shell::Part#keeps_states?).
+    def play_shell_game(window, game, playing)
+      window.offer_states(state_folder_name(game, nil))
+      live_shell_session(playing).play(window)
+    ensure
+      window.withdraw_states
     end
 
     # The game a shell plays once it has its pack, as #live_session plays a game.

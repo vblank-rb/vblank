@@ -10,6 +10,18 @@ require "shell_tests"
 class TestOriginalShell < Minitest::Test
   include ShellTests
 
+  # A shell saves only its game: the menu and each unpacking offer no Save or Load, and the game's part
+  # does once the shell has handed over to it, as any game does.
+  def test_only_the_games_part_of_a_shell_keeps_save_states
+    Dir.mktmpdir do |folder|
+      shell = VBlank::Original::Shell.build(port_without_copy(folder), err: nil)
+      kept = shell.parts.select(&:keeps_states?).map(&:role)
+
+      assert_equal [:game], kept
+      assert_operator shell.parts.size, :>, 1
+    end
+  end
+
   # A port whose code depends on what the copy holds cannot be a shell: the build stops, naming
   # the line that read the copy.
   def test_a_port_that_reads_the_copy_as_it_is_built_is_refused_as_a_shell

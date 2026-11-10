@@ -109,6 +109,9 @@ module VBlank
           @last_frame_at = now
         end
 
+        # Nobody is at the controls of an unpacking, so no state is ever asked for.
+        def take_state_request = nil
+
         def buttons_after(_pixels, _left, _right)
           @lock.synchronize { @last_frame_at = now }
           @left -= 1

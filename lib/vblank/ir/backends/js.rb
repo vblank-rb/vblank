@@ -133,7 +133,7 @@ module VBlank
         # whatever wraps the text declares (see #data_beside_declaration).
         # +code+ is the game's identifying code (Cartridge::Game#identifying_code), which names where a page keeps its
         # save states; left out, the one worked out from +title+. +states+ false leaves Save and Load out of the
-        # menu, as a shell's parts have it: they run one after another, and would write one set of slots.
+        # menu, as a shell's menu and unpackings have it (Original::Shell::Part#keeps_states?).
         def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true, name: "createGame", code: nil, states: true)
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
@@ -201,7 +201,7 @@ module VBlank
           progress.step("Writing JavaScript")
           functions = shell.parts.map do |part|
             factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part),
-                                  code: game.identifying_code, states: false).first
+                                  code: game.identifying_code, states: part.keeps_states?).first
           end
           script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_refusal.js rg_shell.js rg_mount.js]),
                                                 shell_start_text(shell))

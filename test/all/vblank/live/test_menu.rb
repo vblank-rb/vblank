@@ -343,6 +343,20 @@ class TestMenu < Minitest::Test
     assert_equal WindowMenu::StateRequest.new(action: :load, slot: 3), menu.take_state_request
   end
 
+  # A shell's window has no places for states while its menu and unpacking play, and has them once its
+  # game does.
+  def test_states_offered_later_add_the_save_and_load_headings
+    menu = opened
+    menu.states = Slots.new
+    5.times { menu.press(:right) }
+
+    assert_equal "Save", menu.open_heading
+    menu.states = nil
+    assert_equal "Game", menu.open_heading
+    menu.press(:left)
+    assert_equal "Hotkeys", menu.open_heading
+  end
+
   private
 
   def opened(**options)

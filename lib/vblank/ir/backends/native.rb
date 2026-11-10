@@ -153,10 +153,10 @@ module VBlank
           shell.parts.each do |part|
             game_part = part.role == :game
             file = game_part ? File.join(path, File.basename(path)) : File.join(path, ShellData::PARTS_FOLDER, ShellData.part_name(part))
-            # A shell's parts run one after another, so no part keeps save states: they would be one set of
-            # slots written by several programs.
+            # Only the game's part keeps save states (Original::Shell::Part#keeps_states?): the menu and the
+            # unpackings run before it, and a state is never taken or loaded while they do.
             compile_desktop(part.program, "#{file}#{ending}", title: game.title, code: game.identifying_code,
-                                                               menu: part.window_menu, states: false, cartridge: nil, target: target,
+                                                               menu: part.window_menu, states: part.keeps_states?, cartridge: nil, target: target,
                                                                strip: strip, shell: (shell if game_part), progress: progress,
                                                                part_name: game_part ? "game" : ShellData.part_name(part))
             FileUtils.chmod(0o755, "#{file}#{ending}")
