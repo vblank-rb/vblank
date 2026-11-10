@@ -13,6 +13,7 @@
 #include "rg_refusal.h"
 #include "rg_screen.h"
 #include "rg_sound.h"
+#include "rg_state.h"
 
 const rg_driver *rg_active_driver;
 
@@ -279,6 +280,60 @@ static void motor_frame(void) {
 }
 
 int32_t rg_motor_on(void) { return motor_on; }
+
+/* --- the state image (rg_state.h) --- */
+
+/* +count+ numbers of a field kept as unsigned 32-bit numbers, through the 64-bit numbers a field holds. */
+static void visit_unsigned(const char *name, uint32_t *at, int32_t count) {
+  int64_t values[RG_MOST_PLAYERS];
+  for (int32_t i = 0; i < count; i++) values[i] = at[i];
+  rg_state_numbers(name, values, count);
+  for (int32_t i = 0; i < count; i++) at[i] = (uint32_t)values[i];
+}
+
+/* Every timer as five numbers: started, running, its rate, its frames a second, and how far it has
+ * ticked. Then the order they were first started in: how many, and the timers' numbers. */
+static void visit_timers(void) {
+  int64_t values[RG_MAX_TIMERS * 5];
+  for (int32_t i = 0; i < RG_MAX_TIMERS; i++) {
+    const game_timer *timer = &timers[i];
+    int64_t each[5] = {timer->started, timer->running, timer->ticks_a_second, timer->frames_a_second, timer->parts};
+    memcpy(&values[i * 5], each, sizeof each);
+  }
+  rg_state_numbers("runtime.timers", values, RG_MAX_TIMERS * 5);
+  for (int32_t i = 0; i < RG_MAX_TIMERS; i++) {
+    int64_t *each = &values[i * 5];
+    timers[i] = (game_timer){(int32_t)each[0], (int32_t)each[1], (int32_t)each[2], (int32_t)each[3], each[4]};
+  }
+  int64_t order[RG_MAX_TIMERS + 1] = {timers_started_count};
+  for (int32_t i = 0; i < RG_MAX_TIMERS; i++) order[i + 1] = i < timers_started_count ? timers_started[i] : -1;
+  rg_state_numbers("runtime.timers.order", order, RG_MAX_TIMERS + 1);
+  timers_started_count = (int32_t)order[0];
+  for (int32_t i = 0; i < RG_MAX_TIMERS; i++) timers_started[i] = (int32_t)order[i + 1];
+}
+
+/* The runtime's own fields, in Computer::StateFields's order. */
+void rg_runtime_visit_state(void) {
+  visit_unsigned("runtime.buttons.held", held, RG_MOST_PLAYERS);
+  visit_unsigned("runtime.buttons.seen", seen, RG_MOST_PLAYERS);
+  visit_unsigned("runtime.buttons.pressed", pressed, RG_MOST_PLAYERS);
+  connected = rg_state_number("runtime.players.connected", connected);
+  visit_timers();
+  int64_t clock[7] = {clock_present, clock_set, clock_counts_frames, clock_seconds, clock_ticks, clock_kept_days, clock_kept_seconds};
+  rg_state_numbers("runtime.clock", clock, 7);
+  clock_present = (int32_t)clock[0];
+  clock_set = (int32_t)clock[1];
+  clock_counts_frames = (int32_t)clock[2];
+  clock_seconds = clock[3];
+  clock_ticks = clock[4];
+  clock_kept_days = (int32_t)clock[5];
+  clock_kept_seconds = (int32_t)clock[6];
+  int64_t motor[3] = {rumble_left, rumble_bits, motor_on};
+  rg_state_numbers("runtime.motor", motor, 3);
+  rumble_left = (int32_t)motor[0];
+  rumble_bits = (int32_t)motor[1];
+  motor_on = (int32_t)motor[2];
+}
 
 /* The middle of Reference#advance_frame, in its order: the picture is switched on, the timers
  * tick, and then the sound moves on. */

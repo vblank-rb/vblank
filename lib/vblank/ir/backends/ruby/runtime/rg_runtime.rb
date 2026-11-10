@@ -164,6 +164,59 @@ end
 
 def rg_motor_on = @rg_motor_on ? 1 : 0
 
+# --- the state image (rg_state.rb) ---
+
+# The most players the image has room for: the same sixteen the C runtime keeps.
+RG_STATE_MOST_PLAYERS = 16
+
+# +buttons+, one number a connected player, as a field of sixteen numbers, the unused ones nought;
+# read back, it is given the length it had.
+def rg_state_buttons(name, buttons)
+  numbers = buttons + ([0] * (RG_STATE_MOST_PLAYERS - buttons.length))
+  rg_state_numbers(name, numbers)
+  numbers.first(buttons.length)
+end
+
+# Every timer as five numbers: started, running, its rate, its frames a second, and how far it has
+# ticked. Then the order they were first started in: how many, and the timers' numbers, -1 for the
+# places not used.
+def rg_state_timers
+  numbers = @rg_timers.flat_map do |timer|
+    [timer.started ? 1 : 0, timer.running ? 1 : 0, timer.ticks_a_second, timer.frames_a_second, timer.parts]
+  end
+  rg_state_numbers("runtime.timers", numbers)
+  @rg_timers.each_with_index do |timer, i|
+    started, running, timer.ticks_a_second, timer.frames_a_second, timer.parts = numbers[i * 5, 5]
+    timer.started = started != 0
+    timer.running = running != 0
+  end
+  order = [@rg_timers_started.length, *Array.new(RG_MAX_TIMERS) { |i| @rg_timers_started.fetch(i, -1) }]
+  rg_state_numbers("runtime.timers.order", order)
+  @rg_timers_started = order[1, order[0]]
+end
+
+# The runtime's own fields, in Computer::StateFields's order.
+def rg_runtime_visit_state
+  held = rg_state_buttons("runtime.buttons.held", @rg_held)
+  seen = rg_state_buttons("runtime.buttons.seen", @rg_seen)
+  pressed = rg_state_buttons("runtime.buttons.pressed", @rg_pressed)
+  connected = rg_state_number("runtime.players.connected", @rg_held.length)
+  # An image read here is told how many players it has only after their buttons, so each list is cut
+  # or filled out to that now.
+  shaped = [held, seen, pressed].map { |buttons| Array.new(connected) { |player| buttons.fetch(player, 0) } }
+  @rg_held, @rg_seen, @rg_pressed = shaped
+  rg_state_timers
+  clock = [@rg_clock_present, @rg_clock_set, @rg_clock_counts_frames, @rg_clock_seconds, @rg_clock_ticks,
+           @rg_clock_kept_days, @rg_clock_kept_seconds]
+  rg_state_numbers("runtime.clock", clock)
+  @rg_clock_present, @rg_clock_set, @rg_clock_counts_frames, @rg_clock_seconds, @rg_clock_ticks,
+    @rg_clock_kept_days, @rg_clock_kept_seconds = clock
+  motor = [@rg_rumble_left || 0, @rg_rumble_bits || 0, @rg_motor_on ? 1 : 0]
+  rg_state_numbers("runtime.motor", motor)
+  @rg_rumble_left, @rg_rumble_bits = motor
+  @rg_motor_on = motor[2] != 0
+end
+
 # --- stopping ---
 
 # The game stopped on purpose (`halt`), which stops the motor too. The driver never comes back.
@@ -294,7 +347,7 @@ class RgTimer
     @started = false
     @running = false
     @ticks_a_second = 0
-    @frames_a_second = 1
+    @frames_a_second = 0 # Nought until started, as in the C and JavaScript runtimes
     @parts = 0
   end
 

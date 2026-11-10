@@ -45,6 +45,11 @@
 #                               with the low byte first
 #   --sound-voice N             only voice N is in it (1 and 2 the square voices, 3 the wave voice,
 #                               4 the noise voice), which is how a test hears one voice at a time
+#   --state-out FILE            the whole state (rg_state.rb) written to FILE at the frame boundary
+#   --state-out-after N         after frame N, before the next frame begins
+#   --state-in FILE             the state FILE holds is read in at the first frame boundary, so the
+#                               run goes on from there: its frame 1 is the frame after the one the
+#                               state was written at
 #   --start-file FILE           the game is handed FILE as it starts: the data pack of a game built
 #                               with its pack left out, or the copy its unpacking reads
 
@@ -91,6 +96,15 @@ def rg_headless_main(argv)
     when "--sound-voice"
       i += 1
       rg_sound_hear_only(argv[i].to_i)
+    when "--state-out"
+      i += 1
+      @rg_state_out_path = argv[i]
+    when "--state-out-after"
+      i += 1
+      @rg_state_out_after = argv[i].to_i
+    when "--state-in"
+      i += 1
+      @rg_state_in = File.read(argv[i])
     when "--start-file"
       i += 1
       unless File.file?(argv[i])
@@ -110,6 +124,7 @@ def rg_headless_main(argv)
 end
 
 def rg_driver_wait_vblank
+  rg_headless_state_at_boundary
   rg_headless_write_frame_sound
   rg_headless_finish if @rg_frame >= @rg_frames_to_play
   rg_frame_begins
@@ -123,6 +138,23 @@ def rg_driver_wait_vblank
 end
 
 def rg_driver_halt = rg_headless_finish
+
+# The state written or read at this frame boundary, as the options asked: the one given with
+# --state-in is read in at the first boundary, and the one asked for with --state-out is written at
+# the boundary after frame --state-out-after.
+def rg_headless_state_at_boundary
+  if @rg_state_in
+    state = @rg_state_in
+    @rg_state_in = nil
+    rg_state_read(state)
+  end
+  return unless @rg_state_out_path && @rg_frame == @rg_state_out_after
+
+  File.write(@rg_state_out_path, rg_state_write)
+rescue SystemCallError
+  $stderr.puts "the state could not be written to #{@rg_state_out_path}"
+  exit 1
+end
 
 # Said on the error stream, and the run ends badly, which is how a test sees it.
 def rg_driver_fault(message)

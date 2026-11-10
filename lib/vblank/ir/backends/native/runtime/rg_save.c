@@ -1,10 +1,12 @@
 /*
  * The game's save memory (rg_save.h): IR::SaveImage, a method at a time.
  */
+#include <stdlib.h>
 #include <string.h>
 #include "rg_int32.h"
 #include "rg_runtime.h"
 #include "rg_save.h"
+#include "rg_state.h"
 
 /* The biggest chip a cartridge has, which is the most a game can ask for. */
 #define MOST_BYTES (128 * 1024)
@@ -171,3 +173,19 @@ void rg_save_file_written(void) {
 }
 
 void rg_save_cut_power_after(long steps) { power_left = steps; }
+
+/* THE SAVE MEMORY IN THE STATE IMAGE (rg_state.h): every byte, and where a block is still being
+ * wiped. A game with no save memory keeps none. Read back, the memory differs from the file it came
+ * from, so the file is due to be written again. */
+void rg_save_visit_state(void) {
+  if (size() == 0) return;
+  wake();
+  int64_t *values = malloc(sizeof(int64_t) * (size_t)size());
+  if (!values) rg_fault("there is no room for the save memory in the state");
+  for (int32_t i = 0; i < size(); i++) values[i] = bytes[i];
+  rg_state_numbers("save.memory", values, size());
+  for (int32_t i = 0; i < size(); i++) bytes[i] = (uint8_t)values[i];
+  free(values);
+  wiping = rg_state_number("save.wiping", wiping);
+  if (rg_state_reading()) changed();
+}

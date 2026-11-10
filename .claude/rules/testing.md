@@ -110,6 +110,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `console_bios_cases.rb` (where a player's Game Boy Advance BIOS is found and whether it is used, the same for the Ruby and C rules, with made-up files and a made-up checksum, so no BIOS is needed),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
+`state_image_tests.rb` (a game's whole state written at a frame and read into a fresh run, which plays on as the unbroken run did, played by the C, JavaScript and Ruby runs, each reading a state across from another),
 `runtime_feature_games.rb` (small games that do or do not use a runtime feature, for the native, JavaScript and Ruby runs' tests that a game takes in only the features it uses),
 `clock_tests.rb` (the clock's tests, played by each console that has one),
 `players_connected_tests.rb` (how many players are connected, played by each console whose build reads one controller: the Advance, the Color and the Genesis),

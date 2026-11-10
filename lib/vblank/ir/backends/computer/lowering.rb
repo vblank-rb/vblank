@@ -260,7 +260,27 @@ module VBlank
           #
           # Every routine that can wait for a frame is then made resumable (Resumable), so the place
           # the game has reached is in its globals between frames, in every language it is printed in.
-          def top_level = Resumable.new(top_level_items).items
+          def top_level
+            items = Resumable.new(top_level_items).items
+            [*items, Statements::Function.new(name: @names.own("visit_state"), body: visit_state(items), exported: true)]
+          end
+
+          # THE GAME'S HALF OF THE STATE IMAGE (runtime/rg_state.h): every global the build wrote and every
+          # list, found among the finished top level, so a global added anywhere in the lowering, a
+          # routine's place and locals among them (Resumable), is in the image without being named
+          # here. A global is a field of one number, "game." and its name; a list is "list." and the
+          # game's name for it.
+          def visit_state(items)
+            items.flat_map do |item|
+              case item
+              when Statements::Global
+                [Statements::Assign.new(item.name, call("rg_state_number", Statements::Text.new("game.#{item.name.text}"), item.name))]
+              when Statements::ListStorage
+                [eval_call("rg_state_list", Statements::Text.new("list.#{item.label}"), Statements::AddressOf.new(item.name))]
+              else []
+              end
+            end
+          end
 
           def top_level_items
             routines = @called.map { |name| Statements::Function.new(name: routine(name), body: body_of(@funcs.fetch(name))) }
@@ -275,7 +295,7 @@ module VBlank
             [Statements::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
              Statements::Include.new("rg_int32.h"), Statements::Include.new("rg_runtime.h"), Statements::Include.new("rg_list.h"),
              Statements::Include.new("rg_screen.h"), Statements::Include.new("rg_sound.h"),
-             Statements::Include.new("rg_save.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },
+             Statements::Include.new("rg_save.h"), Statements::Include.new("rg_state.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },
              *variable_names.map { |name| Statements::Global.new(name: variable(name)) },
              *list_storage,
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),

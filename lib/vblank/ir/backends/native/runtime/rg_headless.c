@@ -62,6 +62,12 @@
  * picture as a check number too, since the picture itself is in the file. A picture is far more
  * than a pipe holds at once, and a reader that takes it a pipeful at a time waits its turn for
  * each; a file is read in one go.
+ *
+ * With --state-out FILE --state-out-after N the whole state (rg_state.h) is written to FILE at the
+ * frame boundary after frame N, before the next frame begins. With --state-in FILE the state FILE
+ * holds is read in at the first frame boundary, after the game's first pass and before its second
+ * frame begins, so the run goes on from there: its frame 1 is the frame after the one the state was
+ * written at.
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -73,6 +79,7 @@
 #include "rg_save.h"
 #include "rg_screen.h"
 #include "rg_sound.h"
+#include "rg_state.h"
 
 static long frames_to_play;
 static long frame; /* frames started so far */
@@ -82,6 +89,52 @@ static const char *asked_name; /* the one variable or list being asked about jus
 static FILE *sound_out;   /* where each frame's sound is written, if anywhere */
 static FILE *picture_out; /* where each moment's picture is written, if anywhere */
 static const char *save_path; /* the file save memory is read from and written back to, if any */
+static const char *state_out_path; /* where the state is written, if anywhere... */
+static long state_out_after = -1;  /* ...at the boundary after this frame */
+static char *state_in;             /* the state read in at the first boundary, until it is */
+
+/* The whole of the file at +path+ as text, or NULL where it cannot be read. */
+static char *read_text_file(const char *path) {
+  FILE *file = fopen(path, "rb");
+  if (!file) return NULL;
+  char *text = NULL;
+  size_t size = 0, room = 0;
+  for (;;) {
+    if (size + 1 >= room) {
+      room = room ? room * 2 : 65536;
+      char *grown = realloc(text, room);
+      if (!grown) {
+        free(text);
+        fclose(file);
+        return NULL;
+      }
+      text = grown;
+    }
+    size_t got = fread(text + size, 1, room - size - 1, file);
+    size += got;
+    if (got == 0) break;
+  }
+  fclose(file);
+  text[size] = '\0';
+  return text;
+}
+
+/* The state written or read at this frame boundary, as the options asked. */
+static void state_at_boundary(void) {
+  if (state_in) {
+    rg_state_read(state_in);
+    free(state_in);
+    state_in = NULL;
+  }
+  if (!state_out_path || frame != state_out_after) return;
+  FILE *out = fopen(state_out_path, "wb");
+  if (!out) {
+    fprintf(stderr, "the state could not be written to %s\n", state_out_path);
+    exit(1);
+  }
+  rg_state_write(out);
+  fclose(out);
+}
 
 /* Save memory as the file holds it, and whether that went well. No file is a new cartridge; a
  * file of any other size than the game's save memory is somebody else's save. */
@@ -254,6 +307,7 @@ static void answer_until_buttons(void) {
 }
 
 static void headless_wait_vblank(void) {
+  state_at_boundary();
   if (asked) {
     if (frame >= frames_to_play) finish();
     rg_frame_begins();
@@ -348,6 +402,16 @@ int rg_headless_main(int argc, char **argv) {
       int64_t seconds = strtoll(argv[++i], NULL, 10);
       int64_t ticks = strtoll(argv[++i], NULL, 10);
       rg_clock_starts_at(seconds, ticks, (int32_t)strtol(argv[++i], NULL, 10));
+    } else if (strcmp(argv[i], "--state-out") == 0 && i + 1 < argc) {
+      state_out_path = argv[++i];
+    } else if (strcmp(argv[i], "--state-out-after") == 0 && i + 1 < argc) {
+      state_out_after = strtol(argv[++i], NULL, 10);
+    } else if (strcmp(argv[i], "--state-in") == 0 && i + 1 < argc) {
+      state_in = read_text_file(argv[++i]);
+      if (!state_in) {
+        fprintf(stderr, "the state at %s could not be read\n", argv[i]);
+        return 2;
+      }
     } else if (strcmp(argv[i], "--start-file") == 0 && i + 1 < argc) {
       if (!rg_start_file_read(argv[++i])) {
         fprintf(stderr, "the file at %s could not be read\n", argv[i]);

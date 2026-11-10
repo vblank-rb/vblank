@@ -64,7 +64,7 @@ module VBlank
         # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
         # build always has them, and the builds a test makes of the game do not come through here
         # at all.
-        SHARED_RUNTIME = %w[rg_headless.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c].freeze
+        SHARED_RUNTIME = %w[rg_headless.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c rg_state.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
         FEATURES_FILE = "rg_runtime_features.h" # What rg_screen.c includes for the game's features (RuntimeFeatures#c_text)
         SOUND_FEATURES_FILE = "rg_sound_features.h" # ...and rg_sound.c, for the game's sound features

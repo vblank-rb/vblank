@@ -41,7 +41,7 @@ module VBlank
         # The runtime every program carries, in the order it is put together, and the driver with
         # no window that follows it in a program the tests play.
         RUNTIME = Ractor.make_shareable(%w[rg_int32.rb rg_refusal.rb rg_runtime.rb rg_list.rb rg_screen.rb rg_sound.rb
-                                           rg_save.rb])
+                                           rg_save.rb rg_state.rb])
         HEADLESS_DRIVER = "rg_headless.rb"
         LIVE_DRIVER = "rg_live.rb"
 

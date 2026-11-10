@@ -212,6 +212,23 @@ module VBlank
             self
           end
 
+          # Write the whole state (runtime/rg_state.h) at the frame boundary after frame +frame+, for
+          # #state to give back once the run ends. Gives back self.
+          def writing_state_after(frame)
+            @state_after = frame
+            self
+          end
+
+          # The state the run wrote (#writing_state_after), as the text the program wrote.
+          attr_reader :state
+
+          # Start from +state+, a state's text, read in at the first frame boundary: the run's frame 1
+          # is then the frame after the one the state was written at. Gives back self.
+          def starting_from_state(state)
+            @state_in = state
+            self
+          end
+
           # Drive input that changes over time: the block is called for each frame with its
           # number (1, 2, 3, …) and gives back the buttons held during it. It may read the game
           # (#[], #screen, #sprites) as it stands at the end of the frame before. Gives back self.
@@ -399,8 +416,9 @@ module VBlank
                 @sound_read = 0
                 @pass_buttons = IR::Buttons::PassButtons.new
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
-                                          *held_options, *clock_options, *start_file_options(dir)])
+                                          *held_options, *clock_options, *start_file_options(dir), *state_options(dir)])
               end
+              @state = read_state_written(dir) if @state_after
               read_sound(File.join(dir, "sound")) if @records_sound && !@sounds_as_played
               @save.replace_with_sav(File.binread(save_file(dir)), from: "The save memory the program wrote") if @keeps_save
             end
@@ -413,6 +431,27 @@ module VBlank
           def frame_options(picture_path) = ["--picture-out", picture_path]
 
           def save_file(dir) = File.join(dir, "save")
+          def state_file(dir) = File.join(dir, "state")
+
+          # The state the program wrote, refused where the run ended before the frame it was asked
+          # to write it after.
+          def read_state_written(dir)
+            return File.read(state_file(dir)) if File.exist?(state_file(dir))
+
+            raise ArgumentError, "the run ended before frame #{@state_after}, so it wrote no state. Play more frames, or " \
+                                 "write the state after an earlier frame."
+          end
+
+          # The state written out (#writing_state_after) and read in (#starting_from_state), each
+          # through a file beside the run's others.
+          def state_options(dir)
+            options = @state_after ? ["--state-out", state_file(dir), "--state-out-after", @state_after.to_s] : []
+            return options unless @state_in
+
+            path = File.join(dir, "state_in")
+            File.write(path, @state_in)
+            [*options, "--state-in", path]
+          end
 
           # The program writes the two speakers' samples a moment at a time, the left's first.
           def read_sound(path)

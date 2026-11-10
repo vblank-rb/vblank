@@ -151,6 +151,18 @@ def rg_save_erase(at, wait)
   @rg_save_wiping = start if wait == 0
 end
 
+# THE SAVE MEMORY IN THE STATE IMAGE (rg_state.rb): every byte, and where a block is still being
+# wiped. A game with no save memory keeps none.
+def rg_save_visit_state
+  return if rg_save_size == 0
+
+  bytes = rg_save_bytes
+  numbers = bytes.dup
+  rg_state_numbers("save.memory", numbers)
+  bytes.replace(numbers.map { |byte| byte & 0xFF })
+  @rg_save_wiping = rg_state_number("save.wiping", @rg_save_wiping)
+end
+
 # TURN THE POWER OFF part way through a save, for a test: once +steps+ more steps are taken the
 # next one stops the game as a `halt` does (IR::SaveImage#cut_power_after).
 def rg_save_cut_power_after(steps)
