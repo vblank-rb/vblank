@@ -240,6 +240,51 @@ class TestTimer < Minitest::Test
     assert_equal 567, seen.fetch(1)
   end
 
+  # ...AND THE INTERRUPTED CALL CARRIES ON WHERE IT WAS. The game waits inside :walk, four steps a
+  # walk, and every other frame the tick runs :walk again from its start, to its end without
+  # waiting. The game's own walk then goes on from the step it had reached, so a walk takes the
+  # game four of its frames however often the tick walks too. A build that runs the game's routines
+  # a step at a time keeps the routine's place and count for the tick's call and puts them back
+  # after; one that did not would carry on from where the tick's walk ended.
+  def test_a_call_a_handler_interrupted_carries_on_where_it_was
+    b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
+    b.instance_eval do
+      screen :bitmap
+      waiting = var :waiting, 0
+      steps = var :steps, 0
+      walks = var :walks, 0
+      answered = var :answered, 0
+      func(:walk) do
+        repeat(4) do
+          steps += 1
+          wait_vblank if waiting == 1
+        end
+      end
+      beat = timer :beat, per_second: 30
+      beat.on_tick do
+        waiting = 0
+        call :walk
+        waiting = 1
+        answered += 1
+      end
+      game_loop do
+        waiting = 1
+        call :walk
+        walks += 1
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    seen = {}
+    run = game_player
+    run.each_vblank { |frame| seen[frame] = [run[:steps], run[:walks], run[:answered]] }.run(b.program, frames: 14)
+
+    # The interpreter's answer, frame by frame: steps the game and the tick took, walks the game
+    # finished, ticks answered.
+    assert_equal [[1, 0, 0], [6, 0, 1], [7, 0, 1], [12, 0, 2], [12, 1, 2], [17, 1, 3], [18, 1, 3], [23, 1, 4], [24, 1, 4],
+                  [28, 2, 5], [29, 2, 5], [34, 2, 6], [35, 2, 6], [40, 2, 7]], (1..14).map { |frame| seen.fetch(frame) }
+  end
+
   # A HANDLER CAN DRAW. On a painted screen it draws what the game's own lines draw, a number
   # here; on a tear-free one what it draws goes on the page being drawn, so the loop's next
   # clear takes it away before that page is shown and the screen stays blue. (A Color keeps one
