@@ -51,7 +51,8 @@ module VBlank
                            decode: lambda { |slot, bytes|
                              IR::FormatReading.numbers(bytes, slot.format, width: slot.width, signed: slot.signed)
                            }),
-        pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes })
+        pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes }),
+        samples: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.unpack("c*") })
       })
 
       # +count+ colours, in the colour layout of +layout+ (a console's name).
@@ -71,9 +72,18 @@ module VBlank
       # of up to 256 colours row by row, as a computer game keeps its art. A byte is a byte in every
       # layout, so the slot names none; how the original lays its art out is the game's to undo in
       # its unpacking routine, which writes the slot row by row.
-      def self.pixels(name, count:, at: nil)
-        new(name: name.to_sym, shape: :pixels, at: at, count: count, width: nil, signed: nil, format: nil)
+      def self.pixels(name, count:, at: nil) = of_bytes(:pixels, name, count, at)
+
+      # +count+ samples of a recorded sound, one byte each, 8-bit signed (-128 to 127), for a
+      # recording's `pcm:` (`sample :bang, pcm: pack[:bang], rate: 7000`). The rate is the game's to
+      # name, since a sound's speed is not part of its bytes. A byte is a byte in every layout.
+      def self.samples(name, count:, at: nil) = of_bytes(:samples, name, count, at)
+
+      # A slot of one-byte items that no layout changes: pixels or samples.
+      def self.of_bytes(shape, name, count, at)
+        new(name: name.to_sym, shape: shape, at: at, count: count, width: nil, signed: nil, format: nil)
       end
+      private_class_method :of_bytes
 
       # Number layouts by byte order: :low_first, as DOS and Windows games keep them, or :high_first.
       BYTE_ORDERS = { low_first: Console::LOW_BYTE_FIRST_NUMBERS, high_first: Console::HIGH_BYTE_FIRST_NUMBERS }.freeze

@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "pack_at_start_tests"
+require "pack_sound_tests"
 
 # A GAME HANDED ITS DATA PACK AS IT STARTS, played on the interpreter (PackAtStartTests in
 # test/pack_at_start_tests.rb, which says why these are not in test/all/). The game as C, as
@@ -9,4 +10,5 @@ require "pack_at_start_tests"
 class TestPackAtStartInterpreter < Minitest::Test
   include PackAtStartTests
   include PackAtStartLayoutTests
+  include PackSoundTests
 end

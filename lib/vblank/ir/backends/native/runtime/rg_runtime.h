@@ -140,6 +140,9 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_table: +count+ entries of +table+, kept as +kept+ (RG_TABLE_INT8...), from
  * byte +at+ on, each as wide as that, low byte first, or high byte first where +high_byte_first+ is 1.
  *
+ * rg_start_file_fill_bytes: +count+ bytes of +samples+ from index +at+ on, each the file's byte from
+ * byte +file_at+ on, as a signed number (a recording's samples).
+ *
  * rg_start_file_fill_picture: one picture's pixels, from +rules+, which are numbers: what is filled
  * (RG_FILL_TILE: a background tile's pixels, of which there are +total+, RG_SEE_THROUGH where the
  * layer behind shows; RG_FILL_IMAGE: the pixels of an image a sprite, a blit or a face draws, of
@@ -165,6 +168,7 @@ int rg_start_file_read(const char *path);
 void rg_start_file_hand(const uint8_t *bytes, int32_t size);
 void rg_start_file_open(const int32_t *rules, const char *missing, const char *wrong_size, const char *wrong_check);
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first);
+void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
 
 #endif

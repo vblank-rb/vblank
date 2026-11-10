@@ -298,6 +298,7 @@ module VBlank
             art = picture_data
             start_file_routines = build_start_file_routines
             [Statements::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
+             *recording_samples_define,
              Statements::Include.new("rg_int32.h"), Statements::Include.new("rg_runtime.h"), Statements::Include.new("rg_list.h"),
              Statements::Include.new("rg_screen.h"), Statements::Include.new("rg_sound.h"),
              Statements::Include.new("rg_save.h"), Statements::Include.new("rg_state.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },

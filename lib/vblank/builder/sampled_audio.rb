@@ -35,6 +35,7 @@ module VBlank
         end
 
         bytes, rate = sample_data(name, pcm, from, rate)
+        start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)
           raise ArgumentError, "sample :#{name} must have a positive rate. The rate is how many samples play in one second. You gave #{rate.inspect}."
         end
@@ -43,7 +44,8 @@ module VBlank
 
         record(IR::Build.sample(name, bytes, rate, note: note,
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
-                                                   holds_from: holds_point(name, holds_from, bytes.bytesize, rate)))
+                                                   holds_from: holds_point(name, holds_from, bytes.bytesize, rate),
+                                                   from_file: start_file_offset))
         DSL::Sample.new(self, name)
       end
 
@@ -94,11 +96,36 @@ module VBlank
 
           loaded = Audio::Wav.load(resolve_asset_path(from))
           [loaded[:bytes], rate || loaded[:rate]]
+        elsif pcm.is_a?(DSL::PackSlot)
+          [pack_recording_bytes(name, pcm, rate), rate]
         elsif pcm
           [pack_pcm(name, pcm), rate || DEFAULT_SAMPLE_RATE]
         else
           raise ArgumentError, "sample :#{name} needs sound data. Give pcm: (raw samples) or from: (a .wav file)."
         end
+      end
+
+      # The samples of a recording that takes `pcm: pack[:slot]`. Built all-in-one they are what the
+      # slot holds. With the pack left out they are zeros of the slot's count, which the runtime
+      # fills from the start file as the game starts (see #recording_start_file_offset), so the build
+      # never holds them. A sound runs at a speed its bytes do not say, so `rate:` is required.
+      def pack_recording_bytes(name, handle, rate)
+        raise ArgumentError, "sample :#{name} takes its samples from the data pack, so it needs rate:. The rate is how " \
+                             "many samples play in one second. To fix this, add `rate: 7000` or the rate of the sound." if rate.nil?
+
+        refuse_slot_from_elsewhere!(handle, "sample :#{name}'s pcm:")
+        refuse_slot_read_wrongly!(handle, :samples, "sample :#{name}'s pcm:")
+        return ("\0".b * handle.count) if pack_left_out?
+
+        @data_pack_contents.bytes_of(handle.layout.name).byteslice(handle.first_pixel, handle.count)
+      end
+
+      # Where in the start file the recording's first sample is, for a recording that takes `pcm:` from
+      # the pack with the pack left out; nil for every other recording.
+      def recording_start_file_offset(pcm)
+        return unless pcm.is_a?(DSL::PackSlot) && pack_left_out?
+
+        @pack_slot_starts.fetch(pcm.layout.name) + pcm.first_pixel
       end
 
       # Pack the PCM into 8-bit signed bytes, whether it came as a byte string or an

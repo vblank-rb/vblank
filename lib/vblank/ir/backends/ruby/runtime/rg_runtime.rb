@@ -255,6 +255,11 @@ def rg_start_file_fill_table(table, kept, count, at, high_byte_first)
   table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[high_byte_first][kept]))
 end
 
+# +count+ bytes of +samples+ from index +at+, each the file's byte from +file_at+ on, as a signed number.
+def rg_start_file_fill_bytes(samples, at, count, file_at)
+  samples[at, count] = @rg_start_file.byteslice(file_at, count).unpack("c*")
+end
+
 RG_FILL_TILE = 0
 RG_TURN_MIRRORED = 1
 RG_TURN_UPSIDE_DOWN = 2

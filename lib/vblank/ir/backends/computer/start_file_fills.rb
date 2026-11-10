@@ -46,7 +46,7 @@ module VBlank
           def build_start_file_routines
             return [] unless reads_start_file?
 
-            [Statements::Function.new(name: start_file_routine, body: build_start_file_table_fills + build_start_file_picture_fills)]
+            [Statements::Function.new(name: start_file_routine, body: build_start_file_table_fills + build_start_file_picture_fills + build_start_file_recording_fills)]
           end
 
           # Each table the game reads that is read from the file: as many entries as it holds, kept

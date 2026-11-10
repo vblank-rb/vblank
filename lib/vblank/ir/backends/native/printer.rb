@@ -45,6 +45,7 @@ module VBlank
           def print_top(item)
             case item
             when Statements::Include then line(0, "#include \"#{item.header}\"")
+            when Statements::Define then line(0, "#define #{item.name}")
             when Statements::Global then line(0, "static #{item.type} #{item.name.text} = #{expression(Statements::Int.new(item.value))};")
             when Statements::ConstArray then print_const_array(item)
             when Statements::ConstGlobal then print_const_global(item)
@@ -80,7 +81,7 @@ module VBlank
               return print_embedded_array(item, embedded)
             end
 
-            line(0, "#{linkage(item)}const #{item.type} #{item.name.text}[#{[item.values.size, 1].max}] = {")
+            line(0, "#{linkage(item)}#{'const ' unless item.writable}#{item.type} #{item.name.text}[#{[item.values.size, 1].max}] = {")
             # C has no empty initializer, so an array with no values holds one zero (its size is 1).
             values = item.values.empty? ? [0] : item.values
             values.each_slice(16) { |row| line(1, "#{row.map { |value| array_value(value) }.join(', ')},") }
@@ -103,7 +104,7 @@ module VBlank
             @embedded[file] = bytes
             line(0, "#pragma clang diagnostic push")
             line(0, "#pragma clang diagnostic ignored \"-Wc23-extensions\"")
-            line(0, "#{linkage(item)}const #{item.type} #{item.name.text}[#{item.values.size}] = {")
+            line(0, "#{linkage(item)}#{'const ' unless item.writable}#{item.type} #{item.name.text}[#{item.values.size}] = {")
             line(0, "#embed \"#{file}\"")
             line(0, "};")
             line(0, "#pragma clang diagnostic pop")

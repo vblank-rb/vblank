@@ -153,7 +153,34 @@ module VBlank
             end
             samples = recordings.flat_map { |sample| sample.bytes.unpack("c*") }
             [sound_table("recordings", [recordings.size, *heads.flatten]),
-             Statements::ConstArray.new(name: @names.own("recording_samples"), type: "int8_t", values: samples, exported: true)]
+             Statements::ConstArray.new(name: recording_samples_name, type: "int8_t", values: samples, exported: true,
+                                        writable: recordings_read_from_start_file?)]
+          end
+
+          def recording_samples_name = @names.own("recording_samples")
+
+          # Whether a recording takes its samples from the file the program is handed as it starts. Its
+          # samples are then zeros in the array above, which the runtime overwrites in place.
+          def recordings_read_from_start_file? = @sound_log.recordings.any?(&:from_file)
+
+          # rg_mix.h declares the array const unless told it is written, which is when a recording reads
+          # its samples from the start file.
+          def recording_samples_define
+            recordings_read_from_start_file? ? [Statements::Define.new("RG_RECORDING_SAMPLES_WRITABLE")] : []
+          end
+
+          # Each recording that reads its samples from the file, written into its place in the array of
+          # every recording's samples, as long as the zeros it holds.
+          def build_start_file_recording_fills
+            at = 0
+            @sound_log.recordings.filter_map do |sample|
+              start = at
+              at += sample.bytes.bytesize
+              next unless sample.from_file
+
+              eval_call("rg_start_file_fill_bytes", recording_samples_name, Statements::Int.new(start),
+                        Statements::Int.new(sample.bytes.bytesize), Statements::Int.new(sample.from_file))
+            end
           end
 
           # Each song list a run can pick from, as the numbers of its songs.

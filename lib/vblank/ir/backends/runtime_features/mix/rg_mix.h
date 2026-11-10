@@ -18,7 +18,13 @@
  * the game declares, with its bytes. */
 extern const int32_t rg_game_mix[];
 extern const int32_t rg_game_recordings[];
+/* A game whose recordings read their samples from the start file writes this array as it starts,
+ * and says so before this header (RG_RECORDING_SAMPLES_WRITABLE). */
+#ifdef RG_RECORDING_SAMPLES_WRITABLE
+extern int8_t rg_game_recording_samples[];
+#else
 extern const int8_t rg_game_recording_samples[];
+#endif
 
 /* The game's own `play` of recording number +recording+: read +step+ 65536ths of a sample for
  * each sample of the mix (its pitch), at +loudness+ out of 512, going +back+ that many samples at

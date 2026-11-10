@@ -82,6 +82,8 @@ module ConformanceFixture
       B.bitmap(:obj8, width: 8, height: 8, # an 8x8 picture for a composited object (a valid sprite size)
                        pixels: Array.new(64, 0x03E0).pack("v*"), transparent: nil,
                        colors: [0x0000, 0x03E0]), # ...with its own list, so it can be drawn with another
+      # A recording that reads its samples from a start file (from_file:) is not here: a cartridge is never handed
+      # a file, so every cartridge lowering refuses it. test/pack_sound_tests.rb plays it on each run that is.
       B.sample(:clip, [0, 60, 120, 60, 0, -60, -120, -60].pack("c*"), 8000), # a tiny PCM clip
       B.backing_buffer(:under, width: 4, height: 4), # a save-under patch for a moving object
       B.table(:lut, [10, 20, 30, 40], width: :byte, signed: false), # a ROM lookup table (read by table_get below)

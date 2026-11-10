@@ -27,6 +27,8 @@ module VBlank
     #   of the same numbers held in the game (Assets.placed_pixels, which both use). A picture can take only its
     #   colours or only its places from the file, and hold the other list itself; and it can be
     #   turned round or upside down, as `mirror` and `upside_down` turn one.
+    # - a recording (Nodes::Sample#from_file): its samples, one byte each, 8-bit signed, as many as the
+    #   zeros of its bytes; the program holds zeros until the file is read.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -57,6 +59,10 @@ module VBlank
         # The same picture turned +way+ once it is read.
         def turned(way) = with(turns: [*turns, way].freeze)
       end
+
+      # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
+      # name here and one branch there.
+      READ_KINDS = %i[table bitmap sample].freeze
 
       # The most colours a picture's places can pick from: a place is four bits.
       PLACES = 16
@@ -131,12 +137,29 @@ module VBlank
 
         filled = program.copy
         filled.start_file = nil
-        read = filled.walk.select { |node| %i[table bitmap].include?(node.kind) && node.from_file }
-        read.each { |node| node.kind == :table ? fill_table(node, bytes.b) : fill_picture(node, bytes.b) }
+        read = filled.walk.select { |node| READ_KINDS.include?(node.kind) && node.from_file }
+        read.each { |node| fill_node(node, bytes.b) }
         VBlank.logger.debug("start file") do
           "read the #{file.called}, #{file.size} bytes, into #{read.map { |node| ":#{node.name}" }.join(', ')}"
         end
         filled
+      end
+
+      # What +node+ (a table, a picture or a recording) reads from the file.
+      def self.fill_node(node, bytes)
+        case node.kind
+        when :table then fill_table(node, bytes)
+        when :bitmap then fill_picture(node, bytes)
+        when :sample then fill_recording(node, bytes)
+        else raise ArgumentError, "a #{node.kind} is not read from the file (READ_KINDS names the kinds that are)"
+        end
+      end
+
+      # A recording's samples, read from the place it names: one byte each, as long as the zeros the
+      # program holds for them.
+      def self.fill_recording(node, bytes)
+        node.bytes = bytes.byteslice(node.from_file, node.bytes.bytesize)
+        node.from_file = nil
       end
 
       # A table's entries, read from the place it names.
@@ -181,7 +204,7 @@ module VBlank
         tiles = bytes.byteslice(where.places_at, (count / FormatReading::TILE_PIXELS) * where.tile_format.tile_bytes)
         Assets.picture_places_of_tiles(FormatReading.tiles(tiles, where.tile_format).flatten, across: where.across)
       end
-      private_class_method :fill_table, :fill_picture, :picture_places
+      private_class_method :fill_node, :fill_recording, :fill_table, :fill_picture, :picture_places
     end
   end
 end

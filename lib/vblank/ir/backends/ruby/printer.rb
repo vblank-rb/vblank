@@ -78,7 +78,7 @@ module VBlank
 
           def print_top(item)
             case item
-            when Statements::Include, Statements::Prototype then nil # a method is found wherever it is defined
+            when Statements::Include, Statements::Define, Statements::Prototype then nil # a method is found wherever it is defined
             when Statements::Global then add_starting_value("@#{item.name.text} = #{integer(item.value)}")
             when Statements::ConstArray then print_const_array(item)
             when Statements::StartFileArray then print_start_file_array(item)
@@ -113,15 +113,16 @@ module VBlank
           def print_const_array(item)
             values = item.values.map { |value| integer(value) }
             name = "@#{item.name.text}"
+            frozen = item.writable ? "" : ".freeze"
             if values.size > MOST_WRITTEN_AS_NUMBERS
               packing = PACKING.fetch(item.type) { raise LoweringError, "the printer has no packing for C's #{item.type}" }
               bytes = [item.values.pack(packing)].pack("m0")
-              add_starting_value("#{name} = #{string(bytes)}.unpack1(\"m\").unpack(#{string(packing)}).freeze")
+              add_starting_value("#{name} = #{string(bytes)}.unpack1(\"m\").unpack(#{string(packing)})#{frozen}")
             elsif values.empty?
-              add_starting_value("#{name} = [0].freeze")
+              add_starting_value("#{name} = [0]#{frozen}")
             else
               rows = values.each_slice(16).map { |row| "#{INDENT * 2}#{row.join(', ')},\n" }.join
-              @setup << "#{INDENT}#{name} = [\n#{rows}#{INDENT}].freeze\n"
+              @setup << "#{INDENT}#{name} = [\n#{rows}#{INDENT}]#{frozen}\n"
             end
           end
 

@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "pack_at_start_tests"
+require "pack_sound_tests"
 
 # A GAME HANDED ITS DATA PACK AS IT STARTS, played as JavaScript and checked against the
 # interpreter on every frame (PackAtStartTests in test/pack_at_start_tests.rb, which says why these
@@ -10,6 +11,7 @@ require "pack_at_start_tests"
 class TestJSPackAtStart < Minitest::Test
   include PackAtStartTests
   include PackAtStartLayoutTests
+  include PackSoundTests
 
   # JavaScript writes a small array as its numbers and a big one as base64.
   def test_the_game_as_javascript_holds_none_of_the_originals_bytes

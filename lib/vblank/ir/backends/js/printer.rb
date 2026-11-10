@@ -79,7 +79,7 @@ module VBlank
 
           def print_top(item)
             case item
-            when Statements::Include, Statements::Prototype then nil # JavaScript finds a function wherever it is declared
+            when Statements::Include, Statements::Define, Statements::Prototype then nil # JavaScript finds a function wherever it is declared
             when Statements::Global then line(0, "let #{item.name.text} = #{integer(item.value)};")
             when Statements::ConstArray then print_const_array(item)
             when Statements::StartFileArray then print_start_file_array(item)

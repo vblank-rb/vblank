@@ -57,6 +57,10 @@ module VBlank
       # `places:` (`image ..., colors: [...], places: pack[:art], see_through: 255`).
       def pixels(name, count:, at: nil) = add(Original::Slot.pixels(name, at: at, count: count))
 
+      # +count+ samples of recorded sound, one byte each, 8-bit signed, for a recording's `pcm:`
+      # (`sample :bang, pcm: pack[:bang], rate: 7000`, or `pack[:sounds].samples(first, count)`).
+      def samples(name, count:, at: nil) = add(Original::Slot.samples(name, at: at, count: count))
+
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
       # takes a third argument, the name of the release it unpacks, a plain String as the game is
@@ -178,19 +182,12 @@ module VBlank
 
       # A handle on +count+ pixels from pixel +first+ (0 first) of a slot of pixels, for an image's
       # `places:`.
-      def pixels(first, count)
-        unless shape == :pixels && pixel_count.nil?
-          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `pixels` picks pixels of a slot of pixels. " \
-                               "To fix this, call it on a slot of pixels."
-        end
-        unless [first, count].all?(Integer) && first >= 0 && count.positive? && first + count <= layout.count
-          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} pixels, 0 to #{layout.count - 1}. There are no " \
-                               "#{count.inspect} pixels from pixel #{first.inspect}. To fix this, give a first pixel and " \
-                               "a count that end in the slot."
-        end
+      def pixels(first, count) = bytes_run(:pixels, first, count)
 
-        with(first_pixel: first, pixel_count: count)
-      end
+      # A handle on +count+ samples from sample +first+ (0 first) of a slot of samples, for a
+      # recording's `pcm:`. It shares the first and the count of a handle on pixels, since a
+      # sample is a byte as a pixel is.
+      def samples(first, count) = bytes_run(:samples, first, count)
 
       # Whether the handle is on a bank of colours.
       def bank? = !first_color.nil?
@@ -230,6 +227,24 @@ module VBlank
         end
 
         with(tile_index: first, across: across, down: down)
+      end
+
+      private
+
+      # A handle on +count+ of the +kind+ (:pixels or :samples) of a slot of that kind, from number
+      # +first+: the one check both share.
+      def bytes_run(kind, first, count)
+        unless shape == kind && pixel_count.nil?
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `#{kind}` picks #{kind} of a slot of #{kind}. " \
+                               "To fix this, call it on a slot of #{kind}."
+        end
+        unless [first, count].all?(Integer) && first >= 0 && count.positive? && first + count <= layout.count
+          raise ArgumentError, "You asked for #{count.inspect} #{kind} from #{kind.to_s.chomp('s')} #{first.inspect}. " \
+                               "Slot :#{layout.name} holds #{layout.count} #{kind}, numbered 0 to #{layout.count - 1}. " \
+                               "To fix this, give a first #{kind.to_s.chomp('s')} and a count that end inside the slot."
+        end
+
+        with(first_pixel: first, pixel_count: count)
       end
     end
   end

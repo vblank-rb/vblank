@@ -108,6 +108,10 @@ module VBlank
 
           Include = Data.define(:header)
 
+          # A macro the headers read, written above them (C alone): the runtime's header asks for it
+          # where the game writes an array it declares const so it can be filled as the game starts.
+          Define = Data.define(:name)
+
           # A global the game keeps, starting at +value+.
           Global = Data.define(:name, :value, :type) do
             def initialize(name:, value: 0, type: "int32_t")
@@ -117,9 +121,11 @@ module VBlank
 
           # Numbers fixed when the program is built: a table, a picture, or +values+ that are Structs
           # (+type+ then the struct's). +exported+ is for the art the runtime reads by name (see
-          # runtime/rg_screen.h).
-          ConstArray = Data.define(:name, :type, :values, :exported) do
-            def initialize(name:, type:, values:, exported: false)
+          # runtime/rg_screen.h). +writable+ is for numbers the program starts with that the runtime
+          # overwrites in part from the start file as the game starts (a recording's samples), so
+          # they are written where they can be written.
+          ConstArray = Data.define(:name, :type, :values, :exported, :writable) do
+            def initialize(name:, type:, values:, exported: false, writable: false)
               super
             end
           end

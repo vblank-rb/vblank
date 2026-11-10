@@ -19,6 +19,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     names none. How the original lays its art out (column by column, in posts, in pages) is the game's
     to undo in its unpacking routine, which writes the slot row by row (`pack[:walls][i] = place`);
     VBlank reads no one original's format.
+  - `slots.samples :sounds, count: 4096` — **recorded sound, one byte each, 8-bit signed**, for a recording's
+    `pcm:` (`instrument :pistol, pcm: pack[:sounds].samples(first, count), rate: 7000`, or `sample :bang,
+    pcm: pack[:bang], rate: 7000` for a whole slot). `rate:` is required, since a sound's speed is not in its
+    bytes. With the pack left out the build holds zeros of the recording's length and the runtime fills them
+    at power-on from the start file, so every verb a recording plays in (`play`, songs, sound effects)
+    works in a shell. A recording given as `pcm:` bytes beside it stays as it was. Worked example:
+    `test/pack_sound_tests.rb`.
 
   Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
   A computer game's numbers (`platform: :pc`) are low byte first, as DOS and Windows games keep them,
@@ -211,7 +218,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   or `places: [...]` in the game. The program holds zeros of the picture's size, and the runtime fills
   them at power-on. **The build sees a whole box**: a default hitbox, a cut into blocks or the pieces a
   console draws it in follow the box of its size, not the see-through pixels in it, so a game that
-  wants a tighter box says `hitbox:`. Any other verb that reads a slot's bytes is refused at the line.
+  wants a tighter box says `hitbox:`.
+- `sample`/`instrument` with `pcm: pack[:sounds]` — the recording's samples, filled from the file at power-on.
+  Any other verb that reads a slot's bytes is refused at the line.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
   `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.

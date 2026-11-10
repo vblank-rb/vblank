@@ -472,6 +472,10 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
   }
 }
 
+void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at) {
+  for (int32_t i = 0; i < count; i++) samples[at + i] = (int8_t)start_file[file_at + i];
+}
+
 /* The place of the pixel at +row+ and +column+ of a picture read from the file: +across+ tiles
  * wide, from +places_at+ on, each tile kept in the layout set at +tile+ (rg_runtime.h, RG_TILE_FORMAT_NUMBERS):
  * bit +plane+ of the pixel is the bit plane_bits[plane] + row * row_bits + column_bits[column] of

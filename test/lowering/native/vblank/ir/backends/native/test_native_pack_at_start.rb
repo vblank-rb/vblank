@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "pack_at_start_tests"
+require "pack_sound_tests"
 
 # A GAME HANDED ITS DATA PACK AS IT STARTS, played as C and checked against the interpreter on
 # every frame (PackAtStartTests in test/pack_at_start_tests.rb, which says why these are not in
@@ -10,6 +11,7 @@ require "pack_at_start_tests"
 class TestNativePackAtStart < Minitest::Test
   include PackAtStartTests
   include PackAtStartLayoutTests
+  include PackSoundTests
 
   # C writes every array as its numbers.
   def test_the_game_as_c_holds_none_of_the_originals_bytes

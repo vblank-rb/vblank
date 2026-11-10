@@ -603,4 +603,31 @@ class TestDataPacks < Minitest::Test
       assert_equal Color.resolve(:white), screen.pixel(110, 40), "10 puts the second at 110"
     end
   end
+
+  # A recording from the pack, built all-in-one, holds the samples the slot holds: it sounds as the
+  # same recording given as numbers does, and its place in the copy is read as 8-bit signed.
+  def test_a_recording_from_the_pack_sounds_as_one_holding_its_samples
+    Dir.mktmpdir do |folder|
+      from = original(folder)
+      samples = COPY.byteslice(0x1C0, 32).unpack("c*")
+      packed = Builder.new
+      packed.instance_eval do
+        screen :bitmap
+        pack = data_pack(from: from, version: "1") { |slots| slots.samples :bang, at: 0x1C0, count: 32 }
+        sample(:bang, pcm: pack[:bang], rate: 8000).play
+        game_loop { wait_vblank }
+      end
+      held = Builder.new
+      held.instance_eval do
+        screen :bitmap
+        sample(:bang, pcm: samples, rate: 8000).play
+        game_loop { wait_vblank }
+      end
+      [packed, held].each(&:finalize_program)
+
+      heard = game_player.run(held.program, frames: 4).mixed_sound
+      assert heard.flatten.any? { |level| level != 0 }, "the recording held directly sounds"
+      assert_equal heard, game_player.run(packed.program, frames: 4).mixed_sound
+    end
+  end
 end

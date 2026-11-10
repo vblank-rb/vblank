@@ -1480,7 +1480,7 @@ module VBlank
         declaration!
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
-                 envelope: :shape, holds_from: :int
+                 envelope: :shape, holds_from: :int, from_file: :int
       end
 
       class SaveInit
