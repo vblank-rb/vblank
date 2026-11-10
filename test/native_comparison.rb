@@ -14,6 +14,7 @@ module NativeComparison
   include VBlank::IR::Backends::Native::Differences
 
   Native = VBlank::IR::Backends::Native
+  Computer = VBlank::IR::Backends::Computer
   Reference = VBlank::IR::Backends::Reference
   Builder = VBlank::Builder
   WIDTH = VBlank::Console::ADVANCE.screen_width

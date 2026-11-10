@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # THE GAME'S SOUND, written as calls into runtime/rg_sound.h — mixed into Lowering the way
         # Picture is.
         #
@@ -59,24 +59,24 @@ module VBlank
           end
 
           def lower_enable_sound(_node) = [eval_call("rg_sound_enabled")]
-          def lower_beep(node) = [eval_call("rg_sound_beep", C::Int.new(@sound_log.beep_number(node)))]
-          def lower_wave(node) = [eval_call("rg_sound_wave", C::Int.new(@sound_log.wave_number(node)))]
+          def lower_beep(node) = [eval_call("rg_sound_beep", Statements::Int.new(@sound_log.beep_number(node)))]
+          def lower_wave(node) = [eval_call("rg_sound_wave", Statements::Int.new(@sound_log.wave_number(node)))]
           def lower_stop_wave(_node) = [eval_call("rg_sound_stop_wave")]
-          def lower_noise(node) = [eval_call("rg_sound_noise", C::Int.new(@sound_log.noise_number(node)))]
+          def lower_noise(node) = [eval_call("rg_sound_noise", Statements::Int.new(@sound_log.noise_number(node)))]
           # Named `this_frame: true`, the tune starts where it is named (rg_music_start_here).
           def lower_play_song(node)
-            [eval_call("rg_music_request", C::Int.new(@sound_log.song_number(node.name))),
+            [eval_call("rg_music_request", Statements::Int.new(@sound_log.song_number(node.name))),
              *(eval_call("rg_music_start_here") if node.this_frame)]
           end
           def lower_stop_music(_node) = [eval_call("rg_music_stop")]
-          def lower_hold_music(node) = [eval_call("rg_music_hold", C::Int.new(node.held ? 1 : 0))]
+          def lower_hold_music(node) = [eval_call("rg_music_hold", Statements::Int.new(node.held ? 1 : 0))]
 
           # A song picked from a list by a number the game works out: the list is written as the
           # numbers of its songs, and the runtime picks one, or leaves the music alone for a
           # number naming none.
           def lower_play_from_list(node)
             [eval_call(node.this_frame ? "rg_music_start_here_one_of" : "rg_music_request_one_of", song_list_name(node.name),
-                       C::Int.new(song_lists.fetch(node.name).songs.size), value(node.which))]
+                       Statements::Int.new(song_lists.fetch(node.name).songs.size), value(node.which))]
           end
 
           def song_lists = @song_lists ||= @program.walk.select { |node| node.kind == :song_list }.to_h { |node| [node.name, node] }
@@ -86,7 +86,7 @@ module VBlank
           # list is written as the numbers of its effects (SoundLog#effect_number).
           def lower_play_sound_effect(node)
             [eval_call(node.this_frame ? "rg_effect_start_here_one_of" : "rg_effect_request_one_of", effect_list_name(node.name),
-                       C::Int.new(effect_lists.fetch(node.name).effects.size), value(node.which))]
+                       Statements::Int.new(effect_lists.fetch(node.name).effects.size), value(node.which))]
           end
 
           def effect_lists
@@ -107,15 +107,15 @@ module VBlank
             frequency = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(node.pitch || info.note || :C4)
             back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
             levels = VBlank::Audio::Sound::MIX_LEVELS
-            [eval_call("rg_mix_play", C::Int.new(@sound_log.recording_number(node.name)),
-                       C::Int.new(Mixing.step(info, frequency, mix_clock.rate)),
-                       C::Int.new(levels.fetch(node.volume, levels[:full])), C::Int.new(back),
-                       C::Int.new(node.loop ? 1 : 0))]
+            [eval_call("rg_mix_play", Statements::Int.new(@sound_log.recording_number(node.name)),
+                       Statements::Int.new(Mixing.step(info, frequency, mix_clock.rate)),
+                       Statements::Int.new(levels.fetch(node.volume, levels[:full])), Statements::Int.new(back),
+                       Statements::Int.new(node.loop ? 1 : 0))]
           end
 
           # ...and its `stop`, of one recording or, with no name, of every one the game plays.
           def lower_stop_sample(node)
-            [eval_call("rg_mix_stop", C::Int.new(node.name ? @sound_log.recording_number(node.name) : -1))]
+            [eval_call("rg_mix_stop", Statements::Int.new(node.name ? @sound_log.recording_number(node.name) : -1))]
           end
 
           # The rate the mix runs at and how many samples a frame holds: the console's own clock
@@ -153,14 +153,14 @@ module VBlank
             end
             samples = recordings.flat_map { |sample| sample.bytes.unpack("c*") }
             [sound_table("recordings", [recordings.size, *heads.flatten]),
-             C::ConstArray.new(name: @names.own("recording_samples"), type: "int8_t", values: samples, exported: true)]
+             Statements::ConstArray.new(name: @names.own("recording_samples"), type: "int8_t", values: samples, exported: true)]
           end
 
           # Each song list a run can pick from, as the numbers of its songs.
           def song_list_tables
             picked = @reachable.filter_map { |node| node.name if node.kind == :play_from_list }.uniq
             picked.map do |name|
-              C::ConstArray.new(name: song_list_name(name), type: "int32_t",
+              Statements::ConstArray.new(name: song_list_name(name), type: "int32_t",
                                 values: song_lists.fetch(name).songs.map { |song| @sound_log.song_number(song) })
             end
           end
@@ -169,7 +169,7 @@ module VBlank
           def effect_list_tables
             played = @reachable.filter_map { |node| node.name if node.kind == :play_sound_effect }.uniq
             played.map do |name|
-              C::ConstArray.new(name: effect_list_name(name), type: "int32_t",
+              Statements::ConstArray.new(name: effect_list_name(name), type: "int32_t",
                                 values: effect_lists.fetch(name).effects.map { |effect| @sound_log.effect_number(effect) })
             end
           end
@@ -198,7 +198,7 @@ module VBlank
           def sound_power_on
             return [] unless variable_names.include?(Tunes::LEVEL) && runtime_features.any? { |feature| feature.name == :music }
 
-            [eval_call("rg_music_follow_level", C::AddressOf.new(variable(Tunes::LEVEL)))]
+            [eval_call("rg_music_follow_level", Statements::AddressOf.new(variable(Tunes::LEVEL)))]
           end
 
           # Everything about the game's sound that the runtime reads, as arrays of whole numbers
@@ -210,7 +210,7 @@ module VBlank
           end
 
           def sound_table(name, values)
-            C::ConstArray.new(name: @names.own(name), type: "int32_t", values: values, exported: true)
+            Statements::ConstArray.new(name: @names.own(name), type: "int32_t", values: values, exported: true)
           end
 
           # The rules every voice keeps: how fast each one's clock ticks, how often the program's

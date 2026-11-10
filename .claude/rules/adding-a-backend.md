@@ -77,7 +77,7 @@ A console of its own needs, beyond a lowering:
   compares console names (`test/all/vblank/console/test_kit.rb` fails the build if something does).
 - **The desktop, web and Ruby builds are made as any console.** The C, JavaScript and Ruby runtimes
   read what they need of the console from numbers written ahead of them when the game is built
-  (`Native::ConsoleNumbers`, `JS#console_text`, `Ruby::Lowering#console_text`): its screen size, its
+  (`Computer::ConsoleNumbers`, `JS#console_text`, `Ruby::Lowering#console_text`): its screen size, its
   frame's length, whether it blends, whether its cartridge has a motor and whether its clock keeps
   the date. The rest the lowering decides from the program's console, as the interpreter does (the
   game loop's order, `IR::Frames.loop_in_console_order`). Those runs play the suite once for each
@@ -152,14 +152,15 @@ suite test holds to the interpreter's words, and the command line's console choi
 - `Testing::Pictures::LINE_UPS`, once the one cartridge reader plays its cartridges;
 - the CI workflow's shell, and its page under `.claude/dsl/` (generated from the answers).
 
-## Start from the native lowering's statements
+## Start from the computer builds' statements
 
-`Native::Lowering` does not write C text: it builds a small tree of statements (`Native::C`) —
-globals, routines, constant tables, and calls into a runtime — and only `Native::Printer` turns
-that into C. There is no operator anywhere in it (every number goes through a runtime function
+`Computer::Lowering` does not write text: it builds a small tree of statements (`Computer::Statements`) —
+globals, routines, constant tables, and calls into a runtime — and a printer turns that into the
+build's language (`Native::Printer` for C). There is no operator anywhere in it (every number goes through a runtime function
 that does what `IR::Int32` does), so nothing in it is C's alone. The JavaScript lowering is that
 same tree printed by `JS::Printer`, and a runtime (`js/runtime/*.js`) that is the native one's C
-written again, function for function: `JS::Lowering < Native::Lowering`. Everything that decides
+written again, function for function: `JS::Lowering < Computer::Lowering`, as
+`Native::Lowering` is. Everything that decides
 what a program says — which art is worked out in Ruby, which kinds are not lowered yet — is then
 said once, and the two lowerings can only differ in how a runtime does a thing, which the checked
 run finds.
@@ -211,7 +212,7 @@ A new backend is named for the platform it targets (`JS`, not `Canvas` or `V8`),
 
 A backend is right when a game played on it does what the same game does on Reference: the same
 variables, lists, pool fields, picture, sprites, sound log and mixed sound, on every frame.
-Native is held to that by `Native::CheckedRun`: it plays the game as C, plays the same buttons on
+Native is held to that by `Native::CheckedRun` (with `Computer::Check`): it plays the game as C, plays the same buttons on
 Reference, and fails at the first frame the two differ. Nothing compares generated code against
 code somebody wrote down; a test of a backend's own output (the ARM it emits, the C it writes)
 is the exception, and lives in that backend's own test folder.
@@ -221,9 +222,9 @@ What a new lowering needs for this, following Native:
 - a **headless run** that takes the interpreter's calls (`hold`, `input_each_frame`,
   `each_vblank`, `run(program, frames:)`, `[]`, `vars`, `screen.pixel`, `sprites`, `list`,
   `pool`, `audio` and the rest a test reaches for), so a test written against Reference plays
-  the game on it unchanged (`Native::HeadlessRun`);
+  the game on it unchanged (a subclass of `Computer::HeadlessRun`, as `Native::HeadlessRun` is);
 - a **checked run** that plays it and then Reference on the same buttons and compares every
-  frame (`Native::CheckedRun`, with the comparisons in `Native::Differences`);
+  frame (`Computer::Check`, with the comparisons in `Computer::Differences`, and a `CheckedRun` of its own, as `Native::CheckedRun` is);
 - what it cannot answer yet raises by name (`HeadlessRun::CannotAnswer`), never guesses.
 
 ## The contracts every backend honours
@@ -237,7 +238,7 @@ What a new lowering needs for this, following Native:
 - **Console-only kinds are refused up front.** `IR::Portability` tags each kind `:portable` or
   `:hardware_only` (`raw` and `read_scanline` today). A backend that cannot run one refuses a
   program that can REACH one, before writing anything, with a plain message
-  (`Native::Lowering#refuse_unlowered_kinds!`). A hardware-only step in a routine nothing calls
+  (`Computer::Lowering#refuse_unlowered_kinds!`). A hardware-only step in a routine nothing calls
   is not refused: it never runs, and Reference does the same.
 - **Dispatch is one method per kind, called by name in a `case`.** Reference lists its kinds in
   `STATEMENT_KINDS` and `VALUE_KINDS` and calls each kind's method in a written-out `case`
@@ -282,7 +283,7 @@ Each of these is what Reference does; check the line before relying on it.
   scene called from a scene: the runtime has to take a frame from the middle of a call and come
   back to it (Reference's `advance_frame` runs synchronously inside `exec_wait_vblank`). The C,
   JavaScript and Ruby lowerings make every routine that can reach a wait resumable
-  (`Native::Resumable`): cut into numbered steps, its step and locals in globals of its own, a wait
+  (`Computer::Resumable`): cut into numbered steps, its step and locals in globals of its own, a wait
   giving back 1 up the chain to a driver that calls `rg_game_main` once a frame. So between frames
   the place the game has reached is in its globals, which a save state writes; a routine that never
   waits stays as it was.
@@ -318,11 +319,12 @@ game's own suite uses:
 - **`Testing::Pictures` plays the cartridge of the program's console**, which that console's
   kit builds (`builder.cartridge_for`) and the one reader reads back, so a new console's programs
   are compared pixel for pixel once its kit names them.
-- **Reuse the native checked run.** `Native::HeadlessRun` reads a program that prints
-  runtime/rg_headless.c's lines, and `Native::CheckedRun` compares it with the interpreter; a
+- **Reuse the computer builds' checked run.** `Computer::HeadlessRun` reads a program that prints
+  runtime/rg_headless.c's lines, and `Computer::Check` compares it with the interpreter; a
   windowless program of the new lowering that prints the same lines is read and checked by
-  them, through a subclass that says how its program is built (`JS::HeadlessRun` and
-  `JS::CheckedRun`, `Ruby::HeadlessRun` and `Ruby::CheckedRun`).
+  them, through a subclass that says how its program is built and run (`Native::HeadlessRun` and
+  `Native::CheckedRun`, `JS::HeadlessRun` and `JS::CheckedRun`, `Ruby::HeadlessRun` and `Ruby::CheckedRun`;
+  `Computer::ProgramRun.run` runs the program).
 
 ## What done means
 

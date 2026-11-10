@@ -7,7 +7,7 @@ require "native_comparison"
 class TestNativeRefusals < Minitest::Test
   include NativeComparison
 
-  LoweringError = VBlank::IR::Backends::Native::LoweringError
+  LoweringError = VBlank::IR::Backends::Computer::LoweringError
 
   # Bytes of the console's own machine code only mean something on the console.
   def test_raw_machine_code_is_refused_by_name

@@ -10,6 +10,7 @@ require "vblank/live"
 # both of the settings the backend is built at, which have to agree.
 class TestNativeWindowMenu < Minitest::Test
   Native = VBlank::IR::Backends::Native
+  Computer = VBlank::IR::Backends::Computer
   Zig = Native::Zig
   Menu = VBlank::Live::Menu
   WindowMenu = VBlank::Live::WindowMenu
@@ -131,7 +132,7 @@ class TestNativeWindowMenu < Minitest::Test
     input = commands.map { |command| "#{command}\n" }.join
     sources = [HARNESS, menu_data, *%w[rg_window_menu.c rg_menu_font.c rg_window.c].map { |file| File.join(Zig::RUNTIME_DIR, file) }]
     checked, fast = %i[checked fast].map do |mode|
-      Zig.run_program(Zig.compile_without_sdl(sources, mode: mode), input: input).lines.map(&:chomp)
+      Computer::ProgramRun.run(Zig.compile_without_sdl(sources, mode: mode), input: input).lines.map(&:chomp)
     end
     assert_equal checked, fast, "the checked and the optimised build should answer alike"
     checked

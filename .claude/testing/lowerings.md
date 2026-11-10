@@ -138,7 +138,7 @@ This suite takes it from the library exactly as a game does. `require "vblank/te
 (`VBlank::Testing.lowering`, read once from `VBLANK_LOWERING`), and a module giving
 `game_player`, `skip_on_native` and `CheckedPlayer`. `CheckedPlayer` is
 `VBlank::IR::Backends::Native::CheckedRun` with a disagreement reported as a failed test; the
-comparisons are `Native::Differences`. The rake tasks are the library's
+comparisons are `Computer::Differences`. The rake tasks are the library's
 (`VBlank::Testing::RakeTasks`): this Rakefile makes `rake test:all` and the `test:lowering:` tasks
 with it, handing over the test files, the lowering folders and the consoles (`%i[gba gbc]`; a
 game's Rakefile that names none gets no Color run), and adds only the machine lock, the emulator

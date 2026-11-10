@@ -10,11 +10,12 @@ class TestNativeSettingsRoot < Minitest::Test
 
   HARNESS = Ractor.make_shareable(File.expand_path("settings_root_harness.c", __dir__))
   Zig = VBlank::IR::Backends::Native::Zig
+  Computer = VBlank::IR::Backends::Computer
 
   def test_the_c_rule_answers_the_table
     lines = CASES.map { |told, _folder| "#{word(told[:config_dir])} #{word(told[:xdg])} #{word(told[:home])} #{told[:linux] ? 1 : 0}\n" }
     exe = Zig.compile_without_sdl([HARNESS], mode: :checked)
-    answers = Zig.run_program(exe, input: lines.join).lines.map(&:chomp)
+    answers = Computer::ProgramRun.run(exe, input: lines.join).lines.map(&:chomp)
 
     assert_equal CASES.map { |_told, folder| folder || "-" }, answers
   end

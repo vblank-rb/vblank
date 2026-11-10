@@ -20,7 +20,7 @@ bundle exec ruby -Itest test/all/vblank/dsl/test_thing.rb           # one file, 
 | the native lowering's C runtime | `rake test:lowering:native` |
 | the JavaScript lowering's own code: its printer, its runtime | `rake test:lowering:js` |
 | the Ruby lowering's own code: its printer, its runtime | `rake test:lowering:ruby` |
-| the native lowering's statements (`Native::Lowering`, `Picture`, `Sound`, `Saving`), which the JavaScript and Ruby lowerings print too | `rake test:lowering:native`, `rake test:lowering:js` and `rake test:lowering:ruby` |
+| the statements the computer builds share (`Computer::Lowering`, `Picture`, `Sound`, `Saving`), which the JavaScript and Ruby lowerings print too | `rake test:lowering:native`, `rake test:lowering:js` and `rake test:lowering:ruby` |
 | the GBA lowering's own code: the ARM it emits | `rake test:lowering:gba` |
 | the Game Boy Color lowering's own code: the SM83 it emits, its runtime, its art | `rake test:lowering:gbc` |
 | anything every lowering reads: the DSL, the IR, the interpreter, the build checks, the test helpers | `rake test:all` |

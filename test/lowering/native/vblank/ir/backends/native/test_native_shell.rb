@@ -20,6 +20,7 @@ class TestNativeShell < Minitest::Test
   include ShellTests
 
   Native = VBlank::IR::Backends::Native
+  Computer = VBlank::IR::Backends::Computer
 
   NO_SCREEN_OR_SPEAKER = { "SDL_VIDEO_DRIVER" => "dummy", "SDL_AUDIO_DRIVER" => "dummy" }.freeze
   GAME_FRAMES = 8
@@ -85,7 +86,7 @@ class TestNativeShell < Minitest::Test
   # The game as the window plays it for GAME_FRAMES frames with nothing held.
   private def play(exe, dir, name, options: [])
     picture = File.join(dir, "#{name}.bmp")
-    run = Native::Zig.run_program(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none-#{name}.txt"),
+    run = Computer::ProgramRun.run(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none-#{name}.txt"),
                                               "--window-picture", picture, *options],
                                        input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)
     Played.new(variables: Native::HeadlessRun.variables_in(run.printed.lines.map(&:chomp)), picture: File.binread(picture),
@@ -132,7 +133,7 @@ class TestNativeShell < Minitest::Test
   private def assert_refuses_files_that_are_no_release(shell, dir)
     FileUtils.rm_rf(File.join(dir, "kept"))
     { wrong_copy_at(dir) => "not a release of Made Up that this game knows", short_copy_at(dir) => "is 100 bytes" }.each do |file, words|
-      refused = assert_raises(Native::Zig::Error) { play(shell_exe(shell), dir, "refused", options: shell_options(dir, copy: file)) }
+      refused = assert_raises(Computer::Error) { play(shell_exe(shell), dir, "refused", options: shell_options(dir, copy: file)) }
 
       assert_includes refused.message, words
       refute File.exist?(File.join(dir, "kept", "data.pack"))

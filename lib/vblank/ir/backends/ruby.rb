@@ -65,7 +65,7 @@ module VBlank
         # Raised when a program needs something the runtime cannot do yet, naming the +part+ it
         # needs: a test asks it as it asks a question the lowering cannot answer, and the Ruby
         # run skips it under that part's name (Testing::RubyCheckedPlayer).
-        class RuntimeGap < Native::HeadlessRun::CannotAnswer
+        class RuntimeGap < Computer::HeadlessRun::CannotAnswer
           attr_reader :part
 
           def initialize(part, message)
@@ -101,7 +101,7 @@ module VBlank
         # The library files are carried as they are, so a fix to the window or the session reaches
         # the next script built; SCRIPT_PARTS lists them, and a script that names something none of
         # them defines fails when it gets there (test_ruby_script.rb plays one).
-        # +pack_at_start+ leaves the game's data pack out (Native#checked_program). +shell+ builds
+        # +pack_at_start+ leaves the game's data pack out (Computer::CheckedProgram.build). +shell+ builds
         # the game as a shell (Original::Shell): the file holds none of the original's data, and
         # makes the pack from the player's copy the first time it is played (Live::Shell). +progress+ (a
         # Messages::Progress) is told each step as it begins.
@@ -112,8 +112,8 @@ module VBlank
             progress.step("Writing Ruby")
             File.write(path, script(built.game, title: game.title, menu: game.menu?, shell: built))
           else
-            program = Native.new.checked_program(game, console: console, settings: settings, err: err, progress: progress,
-                                                 pack_at_start: pack_at_start)
+            program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
+                                                    pack_at_start: pack_at_start)
             progress.step("Writing Ruby")
             File.write(path, script(program, title: game.title, menu: game.menu?))
           end

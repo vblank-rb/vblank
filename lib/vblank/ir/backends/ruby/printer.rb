@@ -27,7 +27,7 @@ module VBlank
         # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
         #   array's block calling it by name.
         class Printer
-          C = Native::C
+          Statements = Computer::Statements
           INDENT = "  "
 
           # The most numbers a table is written out as; a bigger one is written as base64.
@@ -60,7 +60,7 @@ module VBlank
           # The body of the game's class: rg_game_setup, which gives every instance variable its
           # starting value, and then a method for every routine. +items+ is the top level.
           def print_file(items)
-            @lists = items.grep(C::ListStorage).to_set { |list| list.name.text }
+            @lists = items.grep(Statements::ListStorage).to_set { |list| list.name.text }
             routines = +""
             @out = routines
             items.each { |item| print_top(item) }
@@ -78,14 +78,14 @@ module VBlank
 
           def print_top(item)
             case item
-            when C::Include, C::Prototype then nil # a method is found wherever it is defined
-            when C::Global then add_starting_value("@#{item.name.text} = #{integer(item.value)}")
-            when C::ConstArray then print_const_array(item)
-            when C::StartFileArray then print_start_file_array(item)
-            when C::Function then print_function(item)
-            when C::FunctionTable then print_routine_table(item)
-            when C::ListStorage then add_starting_value("@#{item.name.text} = RgList.new(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
-            when C::Comment then nil # the tree's own heading; the file has Ruby::WRITTEN_BY
+            when Statements::Include, Statements::Prototype then nil # a method is found wherever it is defined
+            when Statements::Global then add_starting_value("@#{item.name.text} = #{integer(item.value)}")
+            when Statements::ConstArray then print_const_array(item)
+            when Statements::StartFileArray then print_start_file_array(item)
+            when Statements::Function then print_function(item)
+            when Statements::FunctionTable then print_routine_table(item)
+            when Statements::ListStorage then add_starting_value("@#{item.name.text} = RgList.new(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
+            when Statements::Comment then nil # the tree's own heading; the file has Ruby::WRITTEN_BY
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
             end
           end
@@ -125,7 +125,7 @@ module VBlank
             end
           end
 
-          # An array the start file fills (C::StartFileArray): its size alone, zeros until the runtime
+          # An array the start file fills (Statements::StartFileArray): its size alone, zeros until the runtime
           # puts the file's entries in it.
           def print_start_file_array(item)
             add_starting_value("@#{item.name.text} = Array.new(#{integer([item.count, 1].max)}, 0)")
@@ -139,30 +139,30 @@ module VBlank
 
           def statement(depth, item)
             case item
-            when C::Eval then line(depth, expression(item.call))
-            when C::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)}")
-            when C::Local then @locals << item.name.text
+            when Statements::Eval then line(depth, expression(item.call))
+            when Statements::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)}")
+            when Statements::Local then @locals << item.name.text
                                line(depth, "#{item.name.text} = #{expression(item.value)}")
-            when C::If then print_if(depth, item)
-            when C::While then print_block_statement(depth, "while #{condition(item.condition)}", item.body)
-            when C::Break then line(depth, "break")
-            when C::Return then line(depth, "return")
-            when C::Block then statements(depth, item.body) # a Ruby method's locals are its own already
-            when C::Comment then comment(depth, item.text)
-            when C::Steps then print_steps(depth, item)
-            when C::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
+            when Statements::If then print_if(depth, item)
+            when Statements::While then print_block_statement(depth, "while #{condition(item.condition)}", item.body)
+            when Statements::Break then line(depth, "break")
+            when Statements::Return then line(depth, "return")
+            when Statements::Block then statements(depth, item.body) # a Ruby method's locals are its own already
+            when Statements::Comment then comment(depth, item.text)
+            when Statements::Steps then print_steps(depth, item)
+            when Statements::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
                               line(depth, "next")
-            when C::Pause then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
+            when Statements::Pause then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
                                line(depth, "return 1")
-            when C::Finish then line(depth, "#{expression(item.counter)} = 0")
+            when Statements::Finish then line(depth, "#{expression(item.counter)} = 0")
                                 line(depth, "return 0")
-            when C::Resume then line(depth, "return 1 if #{expression(item.call)} == 1")
-            when C::RunToEnd then print_run_to_end(depth, item)
+            when Statements::Resume then line(depth, "return 1 if #{expression(item.call)} == 1")
+            when Statements::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
           end
 
-          # A resumable routine run from its start for an answer (C::RunToEnd): the counters and locals
+          # A resumable routine run from its start for an answer (Statements::RunToEnd): the counters and locals
           # it can reach kept in Ruby locals, the counters set to 0, and all put back after.
           def print_run_to_end(depth, item)
             kept = item.counters + item.locals.map(&:name)
@@ -172,7 +172,7 @@ module VBlank
             kept.each_with_index { |name, k| line(depth, "#{expression(name)} = rg_kept_#{k}") }
           end
 
-          # A resumable routine's steps (Native::Resumable): a loop round a case on its counter, each
+          # A resumable routine's steps (Computer::Resumable): a loop round a case on its counter, each
           # step going on to the next with `next`, and leaving the method with 1 or 0.
           def print_steps(depth, item)
             line(depth, "while true")
@@ -207,7 +207,7 @@ module VBlank
 
           # A number taken as a condition: not nought; a comparison is one already.
           def condition(item)
-            operator = item.is_a?(C::Call) && COMPARISONS[item.function.text]
+            operator = item.is_a?(Statements::Call) && COMPARISONS[item.function.text]
             return "#{expression(item)} != 0" unless operator
 
             left, right = item.args
@@ -218,12 +218,12 @@ module VBlank
 
           def expression(item)
             case item
-            when C::Int then integer(item.value)
-            when C::Name then name(item)
-            when C::AddressOf then address_of(item.name)
-            when C::Text then string(item.value)
-            when C::Index then "#{expression(item.array)}[#{expression(item.index)}]"
-            when C::Call then call(item)
+            when Statements::Int then integer(item.value)
+            when Statements::Name then name(item)
+            when Statements::AddressOf then address_of(item.name)
+            when Statements::Text then string(item.value)
+            when Statements::Index then "#{expression(item.array)}[#{expression(item.index)}]"
+            when Statements::Call then call(item)
             else raise LoweringError, "the printer has no expression form for #{item.class}"
             end
           end

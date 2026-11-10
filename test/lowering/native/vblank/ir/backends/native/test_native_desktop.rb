@@ -79,7 +79,7 @@ class TestNativeDesktop < Minitest::Test
       program = Native.new.checked_program(game, console: :gbc, err: nil)
       frames = 6
       input = "0\n" * frames
-      actual = parse_snapshots(Native::Zig.run_program(exe, args: ["--headless", frames, "--every-picture"], input: input), program)
+      actual = parse_snapshots(Computer::ProgramRun.run(exe, args: ["--headless", frames, "--every-picture"], input: input), program)
       expected = reference_snapshots(program, frames: frames, buttons: {})
 
       assert_equal 160, program.described_console.screen_width
@@ -313,10 +313,10 @@ class TestNativeDesktop < Minitest::Test
   def test_a_bios_the_program_cannot_use_is_refused
     Dir.mktmpdir do |dir|
       color = VBlank.game("COLOR", consoles: %i[gbc]) { game_loop { wait_vblank } }
-      no_cartridge = assert_raises(VBlank::IR::Backends::Native::LoweringError) do
+      no_cartridge = assert_raises(VBlank::IR::Backends::Computer::LoweringError) do
         Native.new.build_desktop(game_that_counts, File.join(dir, "packless"), bios: true, pack_at_start: true, err: nil)
       end
-      no_bios = assert_raises(VBlank::IR::Backends::Native::LoweringError) do
+      no_bios = assert_raises(VBlank::IR::Backends::Computer::LoweringError) do
         Native.new.build_desktop(color, File.join(dir, "color"), bios: true, err: nil)
       end
 
@@ -738,7 +738,7 @@ class TestNativeDesktop < Minitest::Test
   # keys pressed from +presses+.
   def variables_after(exe, frames, presses, *options, env: {})
     input = (1..frames).map { |frame| "#{buttons_line(presses.fetch(frame, []))}\n" }.join
-    printed = Native::Zig.run_program(exe, args: ["--scripted-keys", frames, *options], input: input,
+    printed = Computer::ProgramRun.run(exe, args: ["--scripted-keys", frames, *options], input: input,
                                            env: NO_SCREEN_OR_SPEAKER.merge(env))
     Native::HeadlessRun.variables_in(printed.lines.map(&:chomp))
   end
@@ -805,7 +805,7 @@ class TestNativeDesktop < Minitest::Test
   def assert_runs_headless_like_the_interpreter(exe)
     input = (1..FRAMES).map { |frame| "#{buttons_line(RUN.fetch(frame, []))}\n" }.join
     program = Native.new.checked_program(PongGame::GAME, err: nil)
-    actual = parse_snapshots(Native::Zig.run_program(exe, args: ["--headless", FRAMES, "--every-picture"], input: input), program)
+    actual = parse_snapshots(Computer::ProgramRun.run(exe, args: ["--headless", FRAMES, "--every-picture"], input: input), program)
     expected = reference_snapshots(program, frames: FRAMES, buttons: RUN)
 
     assert_equal expected.map(&:heading), actual.map(&:heading)
@@ -819,7 +819,7 @@ class TestNativeDesktop < Minitest::Test
   # paddle is at NORMAL's speed — where the interpreter ends given the same buttons.
   def assert_keys_work_the_menus_through_the_window(exe)
     input = (1..MENU_FRAMES).map { |frame| "#{buttons_line(MENU_RUN.fetch(frame, []))}\n" }.join
-    printed = Native::Zig.run_program(exe, args: ["--scripted-keys", MENU_FRAMES], input: input, env: NO_SCREEN_OR_SPEAKER)
+    printed = Computer::ProgramRun.run(exe, args: ["--scripted-keys", MENU_FRAMES], input: input, env: NO_SCREEN_OR_SPEAKER)
     program = Native.new.checked_program(PongGame::GAME, err: nil)
     expected = reference_snapshots(program, frames: MENU_FRAMES, buttons: MENU_RUN).last.variables
 

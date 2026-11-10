@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class JS
         # What tells a game played as JavaScript from the same game played on the interpreter:
-        # Native::Differences, in the same words but for what the checked side is called, and with
+        # Computer::Differences, in the same words but for what the checked side is called, and with
         # every pixel of every frame played as JavaScript where a check needs to say where two
         # pictures differ.
         module Differences
-          include Native::Differences
+          include Computer::Differences
 
           def lowered_side = "JS"
 
@@ -22,7 +22,7 @@ module VBlank
 
         # A game played as JavaScript (HeadlessRun), and then the same buttons, frame for frame,
         # played on the interpreter, stopping at the first frame the two disagree on. Everything it
-        # compares, and how, is Native::Check's: the two lowerings are held to the interpreter by one
+        # compares, and how, is Computer::Check's: the two lowerings are held to the interpreter by one
         # check, so neither can be held to less.
         #
         #   run = VBlank::IR::Backends::JS::CheckedRun.new
@@ -31,7 +31,7 @@ module VBlank
         #
         # It needs node, as every JavaScript run without a browser does.
         class CheckedRun < HeadlessRun
-          include Native::Check
+          include Computer::Check
           include Differences
           extend Differences
         end

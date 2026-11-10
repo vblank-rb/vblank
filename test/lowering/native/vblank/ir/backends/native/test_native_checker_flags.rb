@@ -42,8 +42,8 @@ class TestNativeCheckerFlags < Minitest::Test
     header = File.read(File.join(Zig::RUNTIME_DIR, "rg_console.h"))
     defined = header.scan(/^#define (RG_\w+) (\d+)$/).to_h { |name, value| [name, Integer(value)] }
 
-    assert_equal VBlank::IR::Backends::Native::StartFileNumbers::NAMES.to_h,
-                 defined.slice(*VBlank::IR::Backends::Native::StartFileNumbers::NAMES.keys)
+    assert_equal VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.to_h,
+                 defined.slice(*VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.keys)
   end
 
   # The C the tests compile beside the runtime (a harness that drives one header on its own) is

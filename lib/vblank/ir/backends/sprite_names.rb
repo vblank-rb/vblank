@@ -8,7 +8,7 @@ module VBlank
       # The interpreter reports what it drew by name (Reference#sprites): whose each sprite is, under
       # the name the game declared it with, and which of its pictures it is showing, under the name
       # the author gave that picture. A lowered game keeps the same rows as numbers — the C prints
-      # them (Native::DrawnSprites), a Color cartridge keeps them in a table (GBC::Places). Both
+      # them (Computer::DrawnSprites), a Color cartridge keeps them in a table (GBC::Places). Both
       # sides number the names here, the lowering to write the numbers in and the run to read them
       # back, which is what keeps the two in step.
       class SpriteNames

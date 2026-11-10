@@ -17,7 +17,7 @@
 
 /* The whole program, from power-on, a frame at a time: it carries on from where it stopped and
  * gives back 1 when it stops for a frame, 0 when the game is done. Every routine that waits is
- * written so (Native::Resumable), so between frames the place the game has reached is in its
+ * written so (Computer::Resumable), so between frames the place the game has reached is in its
  * globals. The driver calls it through rg_play_frames. */
 int32_t rg_game_main(void);
 
@@ -62,7 +62,7 @@ int32_t rg_motor_on(void);
 /* The game did something the interpreter refuses (pushed onto a full list, read past the end
  * of one): says so, in the words given printf-style, and stops. Never comes back. A program
  * with no window ends with RG_GAME_WENT_WRONG, so whoever started it can tell the game going
- * wrong from the program failing in its own right (Native::Zig::GAME_WENT_WRONG). */
+ * wrong from the program failing in its own right (Computer::ProgramRun::GAME_WENT_WRONG). */
 _Noreturn void rg_fault(const char *format, ...) __attribute__((format(printf, 1, 2)));
 #define RG_GAME_WENT_WRONG 3
 
@@ -150,7 +150,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * another list it is drawn with, 1 where its places in the file are one byte a pixel row by row
  * rather than tiles (a picture of up to 256 colours), and the place that is see-through (0 for a
  * picture of tiles, -1 for none). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
- * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Native::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
+ * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Computer::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
  * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
  * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its
  * colours are kept in, RG_COLOR_FORMAT_NUMBERS numbers (Console::ColorFormat): 1 for the high byte

@@ -14,6 +14,7 @@ require "test_helper"
 # fires stops the program, and the test with it), and optimised the way a release is.
 class TestNativeInt32Helpers < Minitest::Test
   Int32 =VBlank::IR::Int32
+  Computer = VBlank::IR::Backends::Computer
   Zig = VBlank::IR::Backends::Native::Zig
   ListValue = VBlank::IR::Backends::Reference::ListValue
   HARNESS = Ractor.make_shareable(File.expand_path("int32_harness.c", __dir__))
@@ -111,6 +112,6 @@ class TestNativeInt32Helpers < Minitest::Test
   def calculate(mode, cases)
     exe = Zig.compile_without_sdl([HARNESS], mode: mode)
     input = cases.map { |name, a, b, c| "#{name} #{a} #{b} #{c}\n" }.join
-    Zig.run_program(exe, input: input).lines.map(&:to_i)
+    Computer::ProgramRun.run(exe, input: input).lines.map(&:to_i)
   end
 end

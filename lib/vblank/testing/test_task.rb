@@ -182,7 +182,7 @@ module VBlank
         require_relative "../root"
         require_relative "../ir/backends/native/zig"
         IR::Backends::Native::Zig.version
-      rescue IR::Backends::Native::Zig::Error => e
+      rescue IR::Backends::Computer::Error => e
         abort "The native lowering's run needs zig, and #{e.message}"
       end
 

@@ -12,6 +12,7 @@ class TestNativeSaves < Minitest::Test
   include NativeComparison
 
   HeadlessRun = VBlank::IR::Backends::Native::HeadlessRun
+  Computer = VBlank::IR::Backends::Computer
 
   # A number kept in save memory, counted up two a frame from the 5 it is declared with.
   private def counting_up
@@ -104,7 +105,7 @@ class TestNativeSaves < Minitest::Test
 
     Dir.mktmpdir do |dir|
       path = File.join(dir, "game.sav")
-      Native::Zig.run_program(Native.new.build_headless(counting_up), args: [3, "--save", path])
+      Computer::ProgramRun.run(Native.new.build_headless(counting_up), args: [3, "--save", path])
 
       assert_equal interpreters.to_sav, File.binread(path)
       assert_equal ["game.sav"], Dir.children(dir), "the file it was writing took the save file's place"
@@ -117,8 +118,8 @@ class TestNativeSaves < Minitest::Test
       path = File.join(dir, "other.sav")
       File.binwrite(path, "\xFF".b * 100)
 
-      error = assert_raises(Native::Zig::Error) do
-        Native::Zig.run_program(Native.new.build_headless(counting_up), args: [3, "--save", path])
+      error = assert_raises(Computer::Error) do
+        Computer::ProgramRun.run(Native.new.build_headless(counting_up), args: [3, "--save", path])
       end
 
       assert_match(/is not this game's save memory, which is 32768 bytes/, error.message)

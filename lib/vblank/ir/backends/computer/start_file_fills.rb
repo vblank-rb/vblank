@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # THE FILE A PROGRAM IS HANDED AS IT STARTS (IR::StartFile), written as C: a game built
         # with its data pack left out, or its unpacking, which reads the player's copy. Mixed into
         # Lowering.
@@ -11,7 +11,7 @@ module VBlank
         # The program's first statement asks the runtime to check the file it was handed
         # (rg_start_file_open, handed StartFile#rules: the numbers to check and the sentences to stop
         # with when there is no file or it is another), and then calls a routine of the game's own that fills every array
-        # read from it: each table, written as its size alone (C::StartFileArray), from where its
+        # read from it: each table, written as its size alone (Statements::StartFileArray), from where its
         # first entry is; and each picture read from it, into the runtime's pixels: a background's
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
         # it is drawn in, into the image pixels. That routine is written last, once the art is laid
@@ -33,7 +33,7 @@ module VBlank
 
             rules = @program.start_file.rules
             [eval_call("rg_start_file_open", drawing_array("start_file_rules", "int32_t", rules.numbers),
-                       C::Text.new(rules.words.missing), C::Text.new(rules.words.wrong_size), C::Text.new(rules.words.wrong_check)),
+                       Statements::Text.new(rules.words.missing), Statements::Text.new(rules.words.wrong_size), Statements::Text.new(rules.words.wrong_check)),
              eval_call(start_file_routine.text)]
           end
 
@@ -41,12 +41,12 @@ module VBlank
 
           # The routine's prototype, which goes above the game's routines, and the routine, which
           # goes after the art. Nothing for a program that reads no file.
-          def build_start_file_prototypes = reads_start_file? ? [C::Prototype.new(name: start_file_routine)] : []
+          def build_start_file_prototypes = reads_start_file? ? [Statements::Prototype.new(name: start_file_routine)] : []
 
           def build_start_file_routines
             return [] unless reads_start_file?
 
-            [C::Function.new(name: start_file_routine, body: build_start_file_table_fills + build_start_file_picture_fills)]
+            [Statements::Function.new(name: start_file_routine, body: build_start_file_table_fills + build_start_file_picture_fills)]
           end
 
           # Each table the game reads that is read from the file: as many entries as it holds, kept
@@ -54,8 +54,8 @@ module VBlank
           def build_start_file_table_fills
             tables_read.select(&:from_file).map do |table|
               eval_call("rg_start_file_fill_table", @names.of(:table, table.name),
-                        C::Int.new(Lowering::TABLE_KEPT_AS.fetch(table_type(table))),
-                        C::Int.new(table.entry_count), C::Int.new(table.from_file), C::Int.new(table.file_number_format.high_byte_first ? 1 : 0))
+                        Statements::Int.new(Lowering::TABLE_KEPT_AS.fetch(table_type(table))),
+                        Statements::Int.new(table.entry_count), Statements::Int.new(table.from_file), Statements::Int.new(table.file_number_format.high_byte_first ? 1 : 0))
             end
           end
 

@@ -12,6 +12,7 @@ require "test_helper"
 # The rule is plain counting, so it is asked directly, through a small C program, with no window.
 class TestNativeSaveFile < Minitest::Test
   Zig = VBlank::IR::Backends::Native::Zig
+  Computer = VBlank::IR::Backends::Computer
   HARNESS = Ractor.make_shareable(File.expand_path("save_harness.c", __dir__))
 
   def test_a_game_that_saves_nothing_has_no_file_due
@@ -42,7 +43,7 @@ class TestNativeSaveFile < Minitest::Test
   def due_over(frames:, saving:, writes: true)
     checked, fast = %i[checked fast].map do |mode|
       exe = Zig.compile_without_sdl([HARNESS, File.join(Zig::RUNTIME_DIR, "rg_save.c")], mode: mode)
-      Zig.run_program(exe, input: "play #{frames} #{saving} #{writes ? 1 : 0}\n")
+      Computer::ProgramRun.run(exe, input: "play #{frames} #{saving} #{writes ? 1 : 0}\n")
     end
     assert_equal checked, fast, "the checked and the optimised build should answer alike"
     due, owed = checked.split("unwritten")

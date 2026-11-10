@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # WHAT THE GAME'S NAMES ARE CALLED IN C.
         #
         # A game names its variables, routines, lists and pictures with Ruby symbols, and the
@@ -26,7 +26,7 @@ module VBlank
                                            })
 
           def initialize
-            @given = {} # [kind, IR name] -> C::Name
+            @given = {} # [kind, IR name] -> Statements::Name
             @taken = {} # C text -> [kind, IR name] it was given to
           end
 
@@ -43,13 +43,13 @@ module VBlank
               end
 
               @taken[text] = [kind, name]
-              C::Name.new(text)
+              Statements::Name.new(text)
             end
           end
 
           # A name the generated file uses for itself, which no game name can reach: a game
           # name always carries one of the prefixes above.
-          def own(text) = C::Name.new("rg_game_#{text}")
+          def own(text) = Statements::Name.new("rg_game_#{text}")
 
           private
 

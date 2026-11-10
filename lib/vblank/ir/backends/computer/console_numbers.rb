@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # THE CONSOLE THE C IS BUILT AS, written where the runtime reads it: rg_console_numbers.h,
         # beside game.c, which runtime/rg_console.h includes. Its screen is the size of the
         # runtime's buffers and window, and its clock sets how long a frame lasts. Everything else
@@ -40,7 +40,7 @@ module VBlank
           # The header for +console+, +start_up+ as #values takes it.
           def header(console, start_up: true)
             defines = values(console, start_up: start_up).map { |name, value| "#define #{name} #{as_number(value)}\n" }
-            "/* Written by Native::ConsoleNumbers: the #{console.title}. */\n#{defines.join}"
+            "/* Written by Computer::ConsoleNumbers: the #{console.title}. */\n#{defines.join}"
           end
         end
       end

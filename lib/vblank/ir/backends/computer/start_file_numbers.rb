@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # HOW MANY NUMBERS, AND WHERE, a picture read from the start file is handed to the runtimes
         # in (StartFileFills#start_file_fill_rules): the layout its tiles are kept in, then the
         # layout its colours are kept in. Written ahead of each runtime with the console's numbers

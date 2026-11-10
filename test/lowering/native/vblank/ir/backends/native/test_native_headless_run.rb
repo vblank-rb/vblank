@@ -91,7 +91,7 @@ class TestNativeHeadlessRun < Minitest::Test
   end
 
   private def assert_stopped_before_its_first_frame(program)
-    error = assert_raises(VBlank::IR::Backends::Native::Zig::Error) do
+    error = assert_raises(VBlank::IR::Backends::Computer::Error) do
       HeadlessRun.new.allowing_each_frame(1).run(program, frames: 3)
     end
 

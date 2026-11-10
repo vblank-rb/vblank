@@ -1,7 +1,7 @@
 /*
  * The console a game is built as: how big its screen is, and how its clock counts a frame.
  *
- * A game names the consoles it is for, and the C is built as one of them (Native::ConsoleNumbers
+ * A game names the consoles it is for, and the C is built as one of them (Computer::ConsoleNumbers
  * writes its numbers into rg_console_numbers.h, beside game.c). The runtime's screen buffers are
  * that size, its window shows that many pixels, and its frames last as long as that console's.
  * Where no such file is beside it — the small C programs the native tests build around one
@@ -73,7 +73,7 @@
 #endif
 
 /* Where each number of a picture's tile and colour layouts sits in the rules a start-file fill is
- * handed (Native::StartFileNumbers, which writes them into every build). These are the same numbers,
+ * handed (Computer::StartFileNumbers, which writes them into every build). These are the same numbers,
  * for a file of the runtime read on its own, as an editor's checker reads it; a test holds them to
  * StartFileNumbers::NAMES. */
 #ifndef RG_TILE_BYTES_AT

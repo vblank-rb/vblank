@@ -81,7 +81,7 @@ module VBlank
     end
 
     # What a test's player is on the native lowering's run: the game played as C and checked
-    # against the interpreter on every frame (Native::CheckedRun says what it compares).
+    # against the interpreter on every frame (Computer::Check says what it compares).
     class CheckedPlayer < IR::Backends::Native::CheckedRun
       include DisagreementFailsTest
       include PlaysRunConsole

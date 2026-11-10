@@ -9,11 +9,11 @@ module VBlank
         #
         # The windowless Ruby program prints the lines the native lowering's windowless program
         # prints, so everything about reading it — the variables, the lists, the picture file,
-        # the sprites — is Native::HeadlessRun's, and only the program it plays is this one's.
-        class HeadlessRun < Native::HeadlessRun
-          # Raised for something a test asks that the Ruby lowering cannot answer yet. The native
+        # the sprites — is Computer::HeadlessRun's, and only the program it plays is this one's.
+        class HeadlessRun < Computer::HeadlessRun
+          # Raised for something a test asks that the Ruby lowering cannot answer yet. The shared
           # one's, since both are asked the same questions.
-          CannotAnswer = Native::HeadlessRun::CannotAnswer
+          CannotAnswer = Computer::HeadlessRun::CannotAnswer
 
           private
 

@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # WHICH SPRITES A GAME DREW, as the C prints it (runtime/rg_headless.c) and as a test reads
         # it: a line for each row, "sprite" and four numbers — whose, which picture, and where —
         # numbered by SpriteNames (RG_NO_NAME is SpriteNames::NO_NAME).

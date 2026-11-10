@@ -11,6 +11,7 @@ require "test_helper"
 # the settings the backend is built at, which have to agree.
 class TestNativeWindow < Minitest::Test
   Zig = VBlank::IR::Backends::Native::Zig
+  Computer = VBlank::IR::Backends::Computer
   HARNESS = Ractor.make_shareable(File.expand_path("window_harness.c", __dir__))
 
   # --- pause and step ---
@@ -523,7 +524,7 @@ class TestNativeWindow < Minitest::Test
     input = commands.map { |command| "#{command}\n" }.join
     checked, fast = %i[checked fast].map do |mode|
       exe = Zig.compile_without_sdl([HARNESS, File.join(Zig::RUNTIME_DIR, "rg_window.c")], mode: mode)
-      Zig.run_program(exe, input: input).lines.map(&:chomp)
+      Computer::ProgramRun.run(exe, input: input).lines.map(&:chomp)
     end
     assert_equal checked, fast, "the checked and the optimised build should answer alike"
     checked

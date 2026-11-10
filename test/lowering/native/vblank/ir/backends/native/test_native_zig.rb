@@ -3,7 +3,7 @@
 require "test_helper"
 require "native_comparison"
 
-# How a program zig built is run and read back (Native::Zig.run_program).
+# How a program zig built is run and read back (Computer::ProgramRun.run).
 class TestNativeZig < Minitest::Test
   include NativeComparison
 
@@ -27,7 +27,7 @@ class TestNativeZig < Minitest::Test
       screen :bitmap
       game_loop { clear_screen :red }
     end
-    error = assert_raises(VBlank::IR::Backends::Native::LoweringError) do
+    error = assert_raises(VBlank::IR::Backends::Computer::LoweringError) do
       Native.new.build_desktop(game, File.join(Dir.tmpdir, "nowhere"), target: :amiga, err: nil)
     end
 
@@ -53,7 +53,7 @@ class TestNativeZig < Minitest::Test
     frames = 60
 
     printed = beside_busy_threads(3) do
-      Zig.run_program(exe, args: [frames, "--every-picture"], input: "0\n" * frames, seconds: 15)
+      Computer::ProgramRun.run(exe, args: [frames, "--every-picture"], input: "0\n" * frames, seconds: 15)
     end
 
     assert_equal frames, printed.scan(/^frame \d+$/).length, "every frame should have been printed"

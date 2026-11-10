@@ -13,6 +13,7 @@ class TestNativeConsoleBIOS < Minitest::Test
 
   HARNESS = Ractor.make_shareable(File.expand_path("console_bios_harness.c", __dir__))
   Zig = VBlank::IR::Backends::Native::Zig
+  Computer = VBlank::IR::Backends::Computer
   ConsoleBIOS = VBlank::Live::ConsoleBIOS
 
   def test_the_c_rule_gives_the_ruby_rules_answers
@@ -24,7 +25,7 @@ class TestNativeConsoleBIOS < Minitest::Test
         "#{[places[:environment], places[:setting], places[:shared_folder], KNOWN_SHA1].map { |v| word(v) }.join("\t")}\n"
       end
       exe = Zig.compile_without_sdl([HARNESS], mode: :checked)
-      answers = Zig.run_program(exe, input: lines.join).lines.map(&:chomp)
+      answers = Computer::ProgramRun.run(exe, input: lines.join).lines.map(&:chomp)
 
       assert_equal rows.map { |places| ruby_answer(places) }, answers
     end
@@ -34,7 +35,7 @@ class TestNativeConsoleBIOS < Minitest::Test
     exe = Zig.compile_without_sdl([HARNESS], mode: :checked)
     Dir.mktmpdir("vblank-bios") do |dir|
       places = console_bios_places(dir, { shared: :unknown })
-      answer = Zig.run_program(exe, input: "-\t-\t#{places[:shared_folder]}\t#{ConsoleBIOS::KNOWN_SHA1.first}\n")
+      answer = Computer::ProgramRun.run(exe, input: "-\t-\t#{places[:shared_folder]}\t#{ConsoleBIOS::KNOWN_SHA1.first}\n")
 
       assert_includes answer, "SHA-1 checksum #{ConsoleBIOS::KNOWN_SHA1.first}."
     end

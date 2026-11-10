@@ -45,10 +45,6 @@ module VBlank
           RUNTIME_DIR = Ractor.make_shareable(File.expand_path("runtime", __dir__))
           BUILD_FILE = Ractor.make_shareable(File.expand_path("build/build.zig", __dir__))
 
-          # Raised when zig is missing or the wrong version, refuses the C it was given, or the
-          # program it built stops with an error.
-          class Error < StandardError; end
-
           module_function
 
           # Compiles +sources+ (C files on disk) into one program, with zig's C compiler alone and
@@ -203,79 +199,13 @@ module VBlank
                .max_by { |dir| File.mtime(dir) }
           end
 
-          # Runs a program this built with +args+, feeding it +input+, and gives back what it
-          # printed. One still running after +seconds+ is stopped and reported: a game that loops
-          # without ever waiting for the screen never ends on its own, where the interpreter
-          # stops it at its step budget.
-          #
-          # WHAT IT READS AND PRINTS ARE FILES, read back once it has ended, and not pipes read
-          # while it runs. A pipe holds a little and then makes the program wait for its reader,
-          # and a reader in Ruby takes its turn again for every piece, behind every other thread
-          # that is busy, since Ruby runs one thread at a time. Beside a few busy threads a
-          # program that ends in a second took minutes that way, and +seconds+ ran out on a
-          # program that was only waiting to be read. Through files its run is its own.
-          #
-          # With +complaints+ true it gives back what it printed and what it wrote to its error
-          # stream, as Run.
-          Run = Data.define(:printed, :complaints)
-
-          def run_program(exe, args: [], input: "", env: {}, seconds: 60, complaints: false)
-            Dir.mktmpdir("vblank-run") do |dir|
-              fed, printed, complained = %w[fed printed complained].map { |name| File.join(dir, name) }
-              File.binwrite(fed, input)
-              pid = Process.spawn(env, exe, *args.map(&:to_s), in: fed, out: printed, err: complained,
-                                                               rlimit_fsize: MOST_PRINTED_BYTES)
-              waiter = Process.detach(pid)
-              begin
-                finished = waiter.join(seconds)
-              ensure
-                # Stopped on every way out that leaves it running: out of time, or this thread
-                # interrupted while it waited. The folder it prints into goes when this returns.
-                stop_program(pid) if waiter.alive?
-              end
-              status = waiter.value
-              raise Error, "#{File.basename(exe)} was still running after #{seconds} seconds, and was stopped" unless finished
-
-              refuse_stopped_program!(exe, status, File.read(complained))
-              complaints ? Run.new(printed: File.read(printed), complaints: File.read(complained)) : File.read(printed)
-            end
-          end
-
-          # The code a built program ends with when the GAME went wrong (rg_fault in the runtime,
-          # RG_GAME_WENT_WRONG there): pushed onto a full list, played a recording nobody
-          # declared. Any other way of stopping is the program's own failure.
-          GAME_WENT_WRONG = 3
-
-          # Raises for a program that did not end well: IR::ProgramError, with the program's own
-          # sentence, for a game that went wrong — the error the interpreter raises for the same
-          # game — and Error for anything else, a crash or a check the compiler put in.
-          def refuse_stopped_program!(exe, status, complaint)
-            return if status.success?
-            raise IR::ProgramError, complaint.strip if status.exitstatus == GAME_WENT_WRONG
-
-            raise Error, "#{File.basename(exe)} stopped (#{status}):\n#{complaint}"
-          end
-
-          # The most a program run by #run_program may print before the system stops it. What it
-          # prints is kept in a file, and a game stuck in a loop that prints on every pass would
-          # otherwise fill the disk for as long as it is given. A long run that prints every
-          # frame's picture comes to a small part of this.
-          MOST_PRINTED_BYTES = 2 * 1024 * 1024 * 1024
-
-          # Ends a program that may already have ended.
-          def stop_program(pid)
-            Process.kill(:KILL, pid)
-          rescue Errno::ESRCH
-            nil
-          end
-
           # The installed zig's version, refusing one this backend was not written against.
           def version
             found = capture_command("zig", "version").strip
             return found if found.start_with?(VERSION)
 
-            raise Error, "this needs zig #{VERSION}x, and the zig installed is #{found}. Pin it for this " \
-                         "project in mise (zig = \"0.17.0\") and run `mise install`."
+            raise Computer::Error, "this needs zig #{VERSION}x, and the zig installed is #{found}. Pin it for this " \
+                                  "project in mise (zig = \"0.17.0\") and run `mise install`."
           end
 
           def cache_key(sources, folders, flags)
@@ -322,9 +252,9 @@ module VBlank
             out, err, status = Open3.capture3(env, *command)
             return out if status.success?
 
-            raise Error, "#{command.first(2).join(' ')} failed:\n#{err}#{out}"
+            raise Computer::Error, "#{command.first(2).join(' ')} failed:\n#{err}#{out}"
           rescue Errno::ENOENT
-            raise Error, "zig was not found. This project installs it through mise: run `mise install`."
+            raise Computer::Error, "zig was not found. This project installs it through mise: run `mise install`."
           end
 
           private_class_method :cache_key, :compiled_programs_dir, :sdl_build_cache_dir, :capture_command,

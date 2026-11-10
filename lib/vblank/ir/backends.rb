@@ -24,6 +24,8 @@ require_relative "backends/cartridge_check"
 require_relative "backends/gba"
 # Must load before native, js and ruby: each takes in the runtime features a game uses.
 require_relative "backends/runtime_features"
+# Must load before native, js and ruby: they print and play the statements it builds.
+require_relative "backends/computer"
 require_relative "backends/native"
 require_relative "backends/js"
 require_relative "backends/ruby"

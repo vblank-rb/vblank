@@ -197,10 +197,13 @@ module VBlank
         keys.empty? ? :every_run : keys
       end
 
+      # The runs that build a game for a computer: each is written from the shared code in computer/.
+      COMPUTER_RUN_NAMES = %i[native js ruby].freeze
+
       def plays_owning(path)
+        return @plays.select { |name, _| COMPUTER_RUN_NAMES.include?(name) } if computer_code?(path)
+
         lowering = run_whose_code_holds(path)
-        # Every run that builds the game is written over the native lowering's statements, or near enough.
-        return @plays.select { |name, _| Lowering.run_named(name).checked? } if lowering&.name == :native
         return @plays.select { |name, _| name == lowering.name } if lowering
 
         @plays.select do |name, console|
@@ -211,6 +214,8 @@ module VBlank
       def run_whose_code_holds(path)
         Lowering::RUNS.find { |run| path.start_with?("#{BACKENDS}/#{run.name}/") || path == "#{BACKENDS}/#{run.name}.rb" }
       end
+
+      def computer_code?(path) = path.start_with?("#{BACKENDS}/computer/") || path == "#{BACKENDS}/computer.rb"
 
       def inside?(path, folders) = folders.any? { |dir| path.start_with?("#{dir}/") }
 

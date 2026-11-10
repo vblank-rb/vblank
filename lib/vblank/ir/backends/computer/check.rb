@@ -1,0 +1,165 @@
+# frozen_string_literal: true
+
+module VBlank
+  module IR
+    module Backends
+      module Computer
+        # A game played as a program for a computer (a build's HeadlessRun), and then the same buttons, frame for frame, played on
+        # the interpreter — stopping at the first frame the two disagree on, about any variable,
+        # any list or pool, any pixel, which sprites were drawn and where, or which recordings
+        # the mixer is sounding — and at the end, about every slice of mixed sound and how many
+        # sounds a full mixer lost. A game that saves is played both ways from the same save
+        # memory, and the two have to end the run with the same bytes in it.
+        #
+        # A checked run is a kind of its headless run with this check included, so it takes the
+        # interpreter's calls and answers every question the headless run answers, and a test
+        # written against Reference.new can be handed one of these instead and play its game as C
+        # with nothing else changed:
+        #
+        #   run = VBlank::IR::Backends::Native::CheckedRun.new
+        #   run.input_each_frame { |frame| frame < 30 ? [:right] : [] }.run(game.program, frames: 60)
+        #   run[:x]
+        #
+        # A run the two disagree on raises Disagreement, saying the frame and everything that
+        # differs there. It needs zig, as every native build does.
+        #
+        # A test that watches the run (each_vblank) watches the game as C, as it goes; the
+        # interpreter is played afterwards, and nothing is watched twice.
+        #
+        # That is what makes playing a test's game this way worth more than the test's own checks.
+        # Those look at the pixels and variables whoever wrote them thought to look at; this looks
+        # at everything, at every frame, so a native lowering that draws something wrong where no
+        # test was looking still fails. The buttons are the ones the native run was actually
+        # given, so an input script that decided from what the game was doing is replayed exactly,
+        # without being asked again. (A run by step budget does ask the script once more,
+        # beforehand: see #frames_within.)
+        #
+        # Pictures are compared by a check number for each frame (see HeadlessRun::Moment), which
+        # is what keeps a long run cheap; only a run that fails is played again in full, to say
+        # where.
+        #
+        # The C, JavaScript and Ruby checked runs include it in their own headless runs
+        # (Native::CheckedRun, JS::CheckedRun, Ruby::CheckedRun), so every lowering of these statements
+        # is held to the interpreter by one check.
+        module Check
+          # The game as C and the interpreter disagreed. The message says the frame and everything
+          # that differs there.
+          Disagreement = RunComparison::Disagreement
+
+          # Every frame's buttons are kept as they are sent (#buttons_sent), for the replay: the
+          # test's own script's when it gave one, else whatever it held for the whole run. +save+ is
+          # the save memory the game starts with, as the interpreter takes it, and it holds what the
+          # game as C left in it once the run is over.
+          def initialize(save: SaveImage.new)
+            super
+            @played = {}
+          end
+
+          # +frames+ as the interpreter counts them. A step budget alone (+max_steps+) is the
+          # interpreter's own measure, and the C keeps no count of its steps — so the interpreter
+          # works out how many frames fit in the budget, and the C plays that many. Beside +frames+ a
+          # budget only guards one frame of the interpreter, and means nothing here.
+          def run(program, max_steps: nil, frames: nil)
+            frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
+            refuse_endless_game_without_frames!(program, max_steps)
+            interpreters_save = save_as_handed_over
+            super(program, frames: frames)
+            interpreter, interpreted = play_on_interpreter(program, frames, interpreters_save)
+            difference = self.class.first_difference(interpreted, moments) ||
+                         self.class.sounds_difference(interpreter.audio, audio_played) ||
+                         self.class.mix_difference(interpreter.mixed_sound, mixed_sound) ||
+                         self.class.drops_difference(interpreter.sound_drops, sound_drops) ||
+                         self.class.save_difference(interpreters_save, @save)
+            raise Disagreement, disagreement_message(difference, program, frames) if difference
+
+            self
+          end
+
+          private
+
+          # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
+          def buttons_sent(frame) = (@played[frame] = super)
+
+          # How many frames the interpreter plays in +max_steps+ steps: it stops a game on the
+          # frame boundary after the budget runs out, so a run by budget is a run of that many
+          # whole frames. The buttons are asked of the test's own script here and again on the
+          # native run, so a script that reads the game sees it as it stood before this run.
+          def frames_within(program, max_steps)
+            lead = interpreter_from(save_as_handed_over).input_each_frame { |frame| scripted_buttons(frame) }
+                                                        .run(program, max_steps: max_steps)
+            return lead.frame unless lead.frame.zero? && lead.stopped_at_budget?
+
+            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game before it first waits for the screen"
+          end
+
+          # A game that never waits for the screen has no frames for a count of them to stop. The
+          # interpreter stops it at its step budget; the C keeps no count of its steps, and would
+          # play on until HeadlessRun gave up on it a minute later. Such a game never asks for a
+          # frame's buttons, so the interpreter can be asked first, with only the buttons held
+          # from power-on, whether it comes to an end by itself, inside the test's own step
+          # budget when it gave one.
+          #
+          # A game whose only wait is in a routine nothing calls, or after a loop that never ends,
+          # is not caught here and still runs for that minute: asking the interpreter first about
+          # every game would play every test twice over.
+          def refuse_endless_game_without_frames!(program, max_steps)
+            return if program.walk.any? { |node| node.kind == :wait_vblank }
+            return unless interpreter_from(save_as_handed_over).run(program, max_steps: max_steps).stopped_at_budget?
+
+            raise RunComparison::AsksTheInterpreter, "its step budget to stop a game that never waits for the screen"
+          end
+
+          # The interpreter starting from +save+, with the buttons held for the whole run down
+          # from power-on, the clock started where it was and the file handed over, as the game as
+          # C has them (#hold, #clock_at, #hand_file).
+          def interpreter_from(save)
+            interpreter = Reference.new(save: save).hold(*@held).hand_file(@handed_file)
+            @clock_started ? interpreter.clock_at(@clock_started, set: @clock_set) : interpreter
+          end
+
+          # A save memory of the interpreter's own holding what this run's holds now, and cut at
+          # the same step where a cut is waiting — taken before the game as C plays, which leaves
+          # its own bytes in the one the test handed over.
+          def save_as_handed_over
+            copy = @save.dup
+            copy.cut_power_after(@save.power_left) if @save.power_left
+            copy
+          end
+
+          # The interpreter played on the same buttons from +save+, and its moments.
+          def play_on_interpreter(program, frames, save)
+            interpreter = interpreter_from(save)
+            interpreted = []
+            interpreter.input_each_frame { |frame| @played.fetch(frame, []) }
+                       .each_vblank { |frame| interpreted << moment_of(interpreter, frame) }
+                       .run(program, frames: frames)
+            [interpreter, interpreted << moment_of(interpreter, :end)]
+          end
+
+          def moment_of(interpreter, frame)
+            HeadlessRun::Moment.new(frame: frame, variables: interpreter.vars.dup,
+                                    picture: HeadlessRun.picture_check(interpreter.screen.shown),
+                                    sounds: interpreter.audio.size, sprites: interpreter.sprites,
+                                    collections: interpreter.game_state.except(:vars), sounding: interpreter.active_samples,
+                                    motor: interpreter.motor_on?)
+          end
+
+          # A picture that differs is played again with every pixel of every frame, to say where.
+          def disagreement_message(difference, program, frames)
+            message = "#{lowering_name} and the interpreter disagree at #{difference}"
+            return message unless difference.include?("picture")
+
+            want = reference_snapshots(program, frames: frames, buttons: @played, held: @held, start_file: @handed_file)
+            got = lowered_snapshots(program, frames: frames, buttons: @played, mode: :checked, held: @held,
+                                             start_file: @handed_file)
+            first = want.zip(got).find { |reference, native| reference.picture != native.picture }
+            return message unless first
+
+            where = picture_difference(first.first.picture, first.last.picture, program.described_console.screen_width)
+            "#{message} (#{first.last.heading}: #{where})"
+          end
+        end
+      end
+    end
+  end
+end

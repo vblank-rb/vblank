@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # THE PICTURE, written as C: the drawing statements, a scene taking the screen over, and
         # the art they draw with. Mixed into Lowering, beside the logic.
         #
@@ -170,7 +170,7 @@ module VBlank
           end
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).
-          def runtime_array(what, type, values) = C::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true)
+          def runtime_array(what, type, values) = Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true)
 
           # Every picture a sprite can show, once for each list of colors it is drawn with. A pixel
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
@@ -300,16 +300,16 @@ module VBlank
 
             from, to = %w[load_from load_to].map { |what| local_name(what) }
             fits = [from, to].zip(bounds).map do |name, (_, most)|
-              call("rg_both", call("rg_ge", name, C::Int.new(0)), call("rg_le", name, C::Int.new(most)))
+              call("rg_both", call("rg_ge", name, Statements::Int.new(0)), call("rg_le", name, Statements::Int.new(most)))
             end.reduce { |both, each| call("rg_both", both, each) }
             kept = Lowering::TABLE_KEPT_AS.fetch(table_type(table))
             loads = @tile_poses.each_value.select { |pose| pose.tiles == node.name }.map do |pose|
               pieces = drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
-              eval_call("rg_tile_pose_load", C::Int.new(@run_numbers.fetch(pose.name)), pieces, C::Int.new(pose.pieces.length),
-                        @names.of(:table, node.table), C::Int.new(kept), from, to, C::Int.new(node.count))
+              eval_call("rg_tile_pose_load", Statements::Int.new(@run_numbers.fetch(pose.name)), pieces, Statements::Int.new(pose.pieces.length),
+                        @names.of(:table, node.table), Statements::Int.new(kept), from, to, Statements::Int.new(node.count))
             end
-            [C::Block.new([C::Local.new(name: from, value: value(node.at)), C::Local.new(name: to, value: value(node.to)),
-                           C::If.new(condition: fits, body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])])]
+            [Statements::Block.new([Statements::Local.new(name: from, value: value(node.at)), Statements::Local.new(name: to, value: value(node.to)),
+                           Statements::If.new(condition: fits, body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])])]
           end
 
           # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the
@@ -383,7 +383,7 @@ module VBlank
 
           # Reference#exec_copy_tiles and what a scene arriving does with each run it shows.
           def tile_copy(run)
-            eval_call("rg_tiles_copy", C::Int.new(@run_numbers.fetch(run.name)), C::AddressOf.new(list(run.list)))
+            eval_call("rg_tiles_copy", Statements::Int.new(@run_numbers.fetch(run.name)), Statements::AddressOf.new(list(run.list)))
           end
 
           def lower_copy_tiles(node)
@@ -396,8 +396,8 @@ module VBlank
           def lower_copy_owed_tiles(node)
             per = Nodes::CopyOwedTiles::RUNS_PER_MASK
             copies = node.runs.each_with_index.map do |name, i|
-              bit = call("rg_and", call("rg_shr", variable(node.masks.fetch(i / per)), C::Int.new(i % per)), C::Int.new(1))
-              C::If.new(condition: call("rg_eq", bit, C::Int.new(1)), body: [tile_copy(@tile_runs.fetch(name))])
+              bit = call("rg_and", call("rg_shr", variable(node.masks.fetch(i / per)), Statements::Int.new(i % per)), Statements::Int.new(1))
+              Statements::If.new(condition: call("rg_eq", bit, Statements::Int.new(1)), body: [tile_copy(@tile_runs.fetch(name))])
             end
             [*copies, eval_call("rg_screen_request_rebuild")]
           end
@@ -509,15 +509,15 @@ module VBlank
           # (Reference#live_see_through_weights), answering for the layer it is asked about.
           def see_through_amounts
             answers = @see_through.each_with_index.map do |layer, number|
-              C::If.new(condition: call("rg_see_through_asked", C::Int.new(number)),
+              Statements::If.new(condition: call("rg_see_through_asked", Statements::Int.new(number)),
                         body: [eval_call("rg_see_through_answer", value(layer.shows), value(layer.behind))])
             end
-            C::Function.new(name: @names.own("see_through_amounts"), body: answers, exported: true)
+            Statements::Function.new(name: @names.own("see_through_amounts"), body: answers, exported: true)
           end
 
           # Reference#exec_see_through
           def lower_see_through(node)
-            [eval_call("rg_see_through_told", C::Int.new(@see_through_numbers.fetch(node.layer)))]
+            [eval_call("rg_see_through_told", Statements::Int.new(@see_through_numbers.fetch(node.layer)))]
           end
 
           # The routine rg_screen.c calls for how far across one row of a bent background sits
@@ -526,11 +526,11 @@ module VBlank
           # worked out from there.
           def bend_offsets
             answers = @bends.each_value.map do |bend|
-              C::If.new(condition: call("rg_bend_asked", C::Int.new(@backgrounds.fetch(bend.name))),
+              Statements::If.new(condition: call("rg_bend_asked", Statements::Int.new(@backgrounds.fetch(bend.name))),
                         body: [assign(bend.row, call("rg_bend_line")), *body_of(bend),
                                eval_call("rg_bend_answer", value(bend.offset))])
             end
-            C::Function.new(name: @names.own("bend_offsets"), body: answers, exported: true)
+            Statements::Function.new(name: @names.own("bend_offsets"), body: answers, exported: true)
           end
 
           # Reference#work_out_bends: every bend's line 0, then the rest of each bend in turn,
@@ -540,9 +540,9 @@ module VBlank
             height = @program.described_console.screen_height
             first_lines = @bends.each_key.map { |name| work_out_bend_lines(name, 0, 1) }
             the_rest = @bends.flat_map do |name, bend|
-              [work_out_bend_lines(name, 1, height), assign(bend.row, C::Int.new(height))]
+              [work_out_bend_lines(name, 1, height), assign(bend.row, Statements::Int.new(height))]
             end
-            C::Function.new(name: @names.own("work_out_bends"), body: first_lines + the_rest, exported: true)
+            Statements::Function.new(name: @names.own("work_out_bends"), body: first_lines + the_rest, exported: true)
           end
 
           # The routines rg_screen.c calls to work the game's light out (Reference#work_out_shade):
@@ -557,16 +557,16 @@ module VBlank
                    else
                      []
                    end
-            C::Function.new(name: @names.own("shade_span"), body: body, exported: true)
+            Statements::Function.new(name: @names.own("shade_span"), body: body, exported: true)
           end
 
           def shade_amount
             body = @shade ? [eval_call("rg_shade_darkness", value(@shade.amount))] : []
-            C::Function.new(name: @names.own("shade_amount"), body: body, exported: true)
+            Statements::Function.new(name: @names.own("shade_amount"), body: body, exported: true)
           end
 
           def work_out_bend_lines(name, first, past)
-            eval_call("rg_bend_work_out", C::Int.new(@backgrounds.fetch(name)), C::Int.new(first), C::Int.new(past))
+            eval_call("rg_bend_work_out", Statements::Int.new(@backgrounds.fetch(name)), Statements::Int.new(first), Statements::Int.new(past))
           end
 
           # Reference#exec_scroll_rows: the bend stands from power-on, so where it is written
@@ -633,38 +633,38 @@ module VBlank
             two_pages &&= @program.described_console.painted_pages == 2
             # A backdrop that follows a list (nil) is left as the list has it, which rg_screen.c reads
             # as a colour below nought.
-            change = call(function, C::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), C::Int.new(backdrop || -1))
+            change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), Statements::Int.new(backdrop || -1))
             always = @handover.always_up
-            put_back = [*always.map_choices.map { |var| assign(var, C::Int.new(0)) },
+            put_back = [*always.map_choices.map { |var| assign(var, Statements::Int.new(0)) },
                         *(always.painted_tiles + always.painted_pictures).map { |run| tile_copy(run) }]
-            return [C::Eval.new(change)] if put_back.empty?
+            return [Statements::Eval.new(change)] if put_back.empty?
 
-            [C::If.new(condition: change, body: put_back)]
+            [Statements::If.new(condition: change, body: put_back)]
           end
 
           def lower_clear_screen(node) = [eval_call("rg_screen_clear", color(node.color))]
 
           # Reference#exec_inside: the edges are numbers written in the program.
           def lower_inside(node)
-            [eval_call("rg_screen_inside", *[node.x, node.y, node.w, node.h].map { |edge| C::Int.new(edge) }),
+            [eval_call("rg_screen_inside", *[node.x, node.y, node.w, node.h].map { |edge| Statements::Int.new(edge) }),
              *body_of(node), eval_call("rg_screen_inside_ended")]
           end
 
           def lower_camera(node) = [eval_call("rg_screen_camera", value(node.x), value(node.y))]
 
           def lower_blit(node)
-            [eval_call("rg_screen_blit", C::Int.new(image_number(node.name)), value(node.x), value(node.y))]
+            [eval_call("rg_screen_blit", Statements::Int.new(image_number(node.name)), value(node.x), value(node.y))]
           end
 
           def lower_blit_pose(node)
             pictures = drawing_array("poses", "int32_t", node.poses.map { |name| image_number(name) })
-            [eval_call("rg_screen_blit_pose", pictures, C::Int.new(node.poses.length), value(node.index),
+            [eval_call("rg_screen_blit_pose", pictures, Statements::Int.new(node.poses.length), value(node.index),
                        value(node.x), value(node.y))]
           end
 
           def lower_draw_column_at(node)
-            [eval_call("rg_screen_column", C::Int.new(image_number(node.name)), value(node.slice), value(node.x),
-                       value(node.top), value(node.height), C::Int.new(node.width || 1))]
+            [eval_call("rg_screen_column", Statements::Int.new(image_number(node.name)), value(node.slice), value(node.x),
+                       value(node.top), value(node.height), Statements::Int.new(node.width || 1))]
           end
 
           # Reference#exec_draw_place: the statements under it, which hand the place's routine the
@@ -675,8 +675,8 @@ module VBlank
           # how many, then the edges nothing outside is drawn.
           def lower_fill_face(node)
             pictures = drawing_array("pictures", "int32_t", node.pictures.map { |name| image_number(name) })
-            [eval_call("rg_screen_face", pictures, C::Int.new(node.pictures.length), value(node.picture),
-                       C::AddressOf.new(list(node.corners)), value(node.count),
+            [eval_call("rg_screen_face", pictures, Statements::Int.new(node.pictures.length), value(node.picture),
+                       Statements::AddressOf.new(list(node.corners)), value(node.count),
                        *node.edges.map { |operand| value(operand) }, value(node.perspective), shading_array(node))]
           end
 
@@ -711,8 +711,8 @@ module VBlank
             buffer = @patches.fetch(node.buffer) do
               raise LoweringError, "backing buffer #{node.buffer.inspect} is used and never declared"
             end
-            eval_call(function, C::Int.new(@patch_numbers.fetch(node.buffer)), C::Int.new(buffer.width),
-                      C::Int.new(buffer.height), value(node.x), value(node.y))
+            eval_call(function, Statements::Int.new(@patch_numbers.fetch(node.buffer)), Statements::Int.new(buffer.width),
+                      Statements::Int.new(buffer.height), value(node.x), value(node.y))
           end
 
           def lower_fill_rect(node)
@@ -730,7 +730,7 @@ module VBlank
             points = node.fonts.get(node.font).enum_for(:each_pixel, node.text).flat_map { |dx, dy| [dx, dy] }
             name = drawing_array("text_points", "int16_t", points)
             ink = node.picked ? call("rg_pick_color", value(node.showing), color(node.color), color(node.picked)) : color(node.color)
-            [eval_call("rg_screen_points", value(node.x), value(node.y), ink, name, C::Int.new(points.length / 2))]
+            [eval_call("rg_screen_points", value(node.x), value(node.y), ink, name, Statements::Int.new(points.length / 2))]
           end
 
           # A live digit: the ten digits' points, and where each begins.
@@ -748,7 +748,7 @@ module VBlank
           def lower_background(node)
             return [] if @handover.on_arrival?(node)
 
-            id = C::Int.new(entry_of(node))
+            id = Statements::Int.new(entry_of(node))
             [eval_call("rg_screen_paint_owed_rebuild"), eval_call(node.scene ? "rg_background_stamp" : "rg_background_put_up", id)]
           end
 
@@ -773,11 +773,11 @@ module VBlank
           def lower_set_tile(node)
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
-                                C::Int.new(node.tile), C::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
+                                Statements::Int.new(node.tile), Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
             end
 
             [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row),
-                       C::Int.new(node.tile))]
+                       Statements::Int.new(node.tile))]
           end
 
           # Reference#exec_show_held_tiles
@@ -793,14 +793,14 @@ module VBlank
           # The number rg_screen.c knows the background a statement names by: the entry that
           # keeps what the game does to that name (see #entry_of for one declaration's own).
           def background_number(node)
-            C::Int.new(@backgrounds.fetch(node.name) do
+            Statements::Int.new(@backgrounds.fetch(node.name) do
               raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}"
             end)
           end
 
           def lower_affine_background(node)
             [eval_call("rg_background_turn", background_number(node), value(node.angle),
-                       value(node.scale), C::Int.new(node.around_x), C::Int.new(node.around_y))]
+                       value(node.scale), Statements::Int.new(node.around_x), Statements::Int.new(node.around_y))]
           end
 
           # Reference#exec_present_objects: every sprite the frame draws is taken off the picture,
@@ -812,7 +812,7 @@ module VBlank
             drawn = node.names.map { |name| presented_object(name) }
             placements = placements_in_draw_order(node)
             if hides_sprites?
-              placements = [C::If.new(condition: sprites_hidden, body: [C::Assign.new(sprites_hidden, C::Int.new(0))],
+              placements = [Statements::If.new(condition: sprites_hidden, body: [Statements::Assign.new(sprites_hidden, Statements::Int.new(0))],
                                       otherwise: placements)]
             end
             [eval_call("rg_objects_begin"), *drawn.map { |obj| sprite_removal(obj) },
@@ -827,18 +827,18 @@ module VBlank
           # the frame's own placing does after the wait. Empty in a game without such sprites.
           def sprites_over_picture_routine
             present = sprites_over_picture? && IR::SpritesOverPicture.frame_sprite_step(@program)
-            C::Function.new(name: @names.own("sprites_over_picture"), body: present ? lower_present_objects(present) : [],
+            Statements::Function.new(name: @names.own("sprites_over_picture"), body: present ? lower_present_objects(present) : [],
                             exported: true)
           end
 
           # Reference#exec_hide_sprites: noted, for the frame drawn after this pass.
-          def lower_hide_sprites(_node) = [C::Assign.new(sprites_hidden, C::Int.new(1))]
+          def lower_hide_sprites(_node) = [Statements::Assign.new(sprites_hidden, Statements::Int.new(1))]
 
           def hides_sprites? = (@hides_sprites ||= [@program.walk.any? { |node| node.kind == :hide_sprites }]).first
 
           def sprites_hidden = @names.own("sprites_hidden")
 
-          def sprites_hidden_globals = hides_sprites? ? [C::Global.new(name: sprites_hidden)] : []
+          def sprites_hidden_globals = hides_sprites? ? [Statements::Global.new(name: sprites_hidden)] : []
 
           def presented_object(name)
             @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
@@ -884,19 +884,19 @@ module VBlank
           # One run: for each place the order list holds, back to front, the sprite it names is
           # placed.
           def ordered_run_placement(run)
-            order = C::AddressOf.new(list(run.order))
+            order = Statements::AddressOf.new(list(run.order))
             count = local_name("count")
             index = local_name("index")
             place = local_name("place")
             placed = run.objects.each_with_index.map do |name, at|
-              C::If.new(condition: call("rg_eq", place, C::Int.new(at)), body: [sprite_placement(presented_object(name))])
+              Statements::If.new(condition: call("rg_eq", place, Statements::Int.new(at)), body: [sprite_placement(presented_object(name))])
             end
-            read_place = call("rg_place_in_ordered_run", call("rg_list_get", order, index), C::Int.new(run.objects.length))
-            C::Block.new([C::Local.new(name: count, value: call("rg_list_length", order)),
-                          C::Local.new(name: index, value: C::Int.new(0)),
-                          C::While.new(condition: call("rg_lt", index, count),
-                                       body: [C::Local.new(name: place, value: read_place), *placed,
-                                              C::Assign.new(index, call("rg_add", index, C::Int.new(1)))])])
+            read_place = call("rg_place_in_ordered_run", call("rg_list_get", order, index), Statements::Int.new(run.objects.length))
+            Statements::Block.new([Statements::Local.new(name: count, value: call("rg_list_length", order)),
+                          Statements::Local.new(name: index, value: Statements::Int.new(0)),
+                          Statements::While.new(condition: call("rg_lt", index, count),
+                                       body: [Statements::Local.new(name: place, value: read_place), *placed,
+                                              Statements::Assign.new(index, call("rg_add", index, Statements::Int.new(1)))])])
           end
 
           # A sprite covered the box all its pictures fit in (Reference#restore_scene_rect).
@@ -905,10 +905,10 @@ module VBlank
           def sprite_removal(obj)
             unless turns_or_resizes?(obj)
               width, height = sprite_canvas(obj)
-              return eval_call("rg_object_take_off", sprite_number(obj), C::Int.new(width), C::Int.new(height))
+              return eval_call("rg_object_take_off", sprite_number(obj), Statements::Int.new(width), Statements::Int.new(height))
             end
 
-            eval_call("rg_object_take_off_turned", sprite_number(obj), C::Int.new(image_number(obj.poses.first)),
+            eval_call("rg_object_take_off_turned", sprite_number(obj), Statements::Int.new(image_number(obj.poses.first)),
                       yes_or_no(!constant?(obj.scale, Build::SCALE_ONE)))
           end
 
@@ -916,7 +916,7 @@ module VBlank
           # names one of its pictures.
           def sprite_placement(obj)
             pose = local_name("pose")
-            in_range = call("rg_both", call("rg_ge", pose, C::Int.new(0)), call("rg_lt", pose, C::Int.new(obj.poses.length)))
+            in_range = call("rg_both", call("rg_ge", pose, Statements::Int.new(0)), call("rg_lt", pose, Statements::Int.new(obj.poses.length)))
             placed = [sprite_number(obj), picture_drawn(obj, pose), value(obj.x), value(obj.y), level_drawn_at(obj)]
             add = if turns_or_resizes?(obj)
                     eval_call("rg_objects_add_turned", *placed, value(obj.angle), value(obj.scale),
@@ -924,26 +924,26 @@ module VBlank
                   else
                     eval_call("rg_objects_add", *placed)
                   end
-            C::If.new(condition: call("rg_eq", value(obj.active), C::Int.new(1)),
-                      body: [C::Block.new([C::Local.new(name: pose, value: value(obj.pose)),
-                                           C::If.new(condition: in_range, body: [add])])])
+            Statements::If.new(condition: call("rg_eq", value(obj.active), Statements::Int.new(1)),
+                      body: [Statements::Block.new([Statements::Local.new(name: pose, value: value(obj.pose)),
+                                           Statements::If.new(condition: in_range, body: [add])])])
           end
 
           # Reference#object_transformed?: a sprite turns or resizes unless both its angle and
           # its size are still the numbers every sprite starts with.
           def turns_or_resizes?(obj) = !(constant?(obj.angle, 0) && constant?(obj.scale, Build::SCALE_ONE))
 
-          def sprite_number(obj) = C::Int.new(@sprites.fetch(obj.name))
+          def sprite_number(obj) = Statements::Int.new(@sprites.fetch(obj.name))
 
           # Reference#object_level: how deep a sprite sits now. One that can be put in other
           # layers has a level for each, after the one it was declared at, and the number its
           # layer variable holds picks among them.
           def level_drawn_at(obj)
             levels = Stacking.levels_of(@stacking.depths, obj)
-            return C::Int.new(levels.first) if levels.one?
+            return Statements::Int.new(levels.first) if levels.one?
 
-            pick = call("rg_place_of_choice", variable(obj.layer_pick), C::Int.new(levels.length - 1))
-            C::Index.new(drawing_array("levels", "int32_t", levels), pick)
+            pick = call("rg_place_of_choice", variable(obj.layer_pick), Statements::Int.new(levels.length - 1))
+            Statements::Index.new(drawing_array("levels", "int32_t", levels), pick)
           end
 
           # Which picture a sprite showing pose number +pose+ (one of its poses, already checked)
@@ -959,23 +959,23 @@ module VBlank
             sets = [[nil], *lists.map { |colors| colors.is_a?(Symbol) ? sets_held_by(colors) : [colors] }]
             rows = sets.flatten(1).flat_map { |colors| obj.poses.map { |name| image_number(name, colors) } }
             pictures = drawing_array("pose_rows", "int32_t", rows)
-            return C::Index.new(pictures, pose) if lists.empty?
+            return Statements::Index.new(pictures, pose) if lists.empty?
 
             row = row_drawn_with(obj, lists, sets)
-            C::Index.new(pictures, call("rg_add", call("rg_mul", row, C::Int.new(obj.poses.length)), pose))
+            Statements::Index.new(pictures, call("rg_add", call("rg_mul", row, Statements::Int.new(obj.poses.length)), pose))
           end
 
           # Which row of its pictures a sprite is on: the first row of the list it is drawn with
           # now, and for a list that holds other colors, as many rows further as the set it holds.
           def row_drawn_with(obj, lists, sets)
-            choice = call("rg_place_of_choice", value(obj.recolor), C::Int.new(lists.length))
+            choice = call("rg_place_of_choice", value(obj.recolor), Statements::Int.new(lists.length))
             return choice if lists.none?(Symbol)
 
             first_rows = sets.each_with_object([0]) { |held, starts| starts << (starts.last + held.length) }
-            row = C::Index.new(drawing_array("first_rows", "int32_t", first_rows.first(sets.length)), choice)
+            row = Statements::Index.new(drawing_array("first_rows", "int32_t", first_rows.first(sets.length)), choice)
             lists.each_with_index.select { |colors, _| colors.is_a?(Symbol) }.reduce(row) do |so_far, (name, at)|
-              held = call("rg_place_of_choice", held_colors(name), C::Int.new(sets_held_by(name).length - 1))
-              call("rg_add", so_far, call("rg_mul", call("rg_eq", choice, C::Int.new(at + 1)), held))
+              held = call("rg_place_of_choice", held_colors(name), Statements::Int.new(sets_held_by(name).length - 1))
+              call("rg_add", so_far, call("rg_mul", call("rg_eq", choice, Statements::Int.new(at + 1)), held))
             end
           end
 
@@ -992,7 +992,7 @@ module VBlank
           def held_colors(name) = @names.of(:colors, name)
 
           def held_colors_globals
-            @color_lists.each_key.map { |name| C::Global.new(name: held_colors(name), value: Build::NO_RECOLOR) }
+            @color_lists.each_key.map { |name| Statements::Global.new(name: held_colors(name), value: Build::NO_RECOLOR) }
           end
 
           # Reference#exec_color_list_holds. Nothing is painted here: everything drawn with the
@@ -1000,14 +1000,14 @@ module VBlank
           # (ColorList#backdrop_place) is given its colour in the set held now, from a table of the
           # one colour in each set, the declared set first as rg_place_of_choice counts them.
           def lower_color_list_holds(node)
-            held = C::Assign.new(held_colors(node.name), value(node.which))
+            held = Statements::Assign.new(held_colors(node.name), value(node.which))
             place = @color_lists.fetch(node.name).backdrop_place
             return [held] unless place
 
             sets = sets_held_by(node.name)
             colors = drawing_array("backdrop_colors", "int32_t", sets.map { |set| set.fetch(place) & 0x7FFF })
-            choice = call("rg_place_of_choice", held_colors(node.name), C::Int.new(sets.length - 1))
-            [held, eval_call("rg_screen_show_backdrop", C::Index.new(colors, choice))]
+            choice = call("rg_place_of_choice", held_colors(node.name), Statements::Int.new(sets.length - 1))
+            [held, eval_call("rg_screen_show_backdrop", Statements::Index.new(colors, choice))]
           end
 
           # Reference#pixels_overlap?: each side's picture now, and where it is.
@@ -1021,24 +1021,24 @@ module VBlank
           # not checked first here; rg_pose_image reads it the way the interpreter does.
           def picture_collided(poses, pose)
             pictures = drawing_array("poses", "int32_t", poses.map { |name| image_number(name) })
-            call("rg_pose_image", pictures, C::Int.new(poses.length), value(pose))
+            call("rg_pose_image", pictures, Statements::Int.new(poses.length), value(pose))
           end
 
           # Reference#exec_fade: over the whole screen, or placed in the stack under a layer, which
           # rg_screen.c knows by how far forward it is (IR::Stacking.at_or_above).
           def lower_fade(node)
-            fade = [C::Int.new(node.toward == :white ? 1 : 0), fade_steps(node), walks_colors(node)]
+            fade = [Statements::Int.new(node.toward == :white ? 1 : 0), fade_steps(node), walks_colors(node)]
             return [eval_call("rg_screen_fade_in_area", *fade_area(node), *fade.first(2))] if node.reaches
             return [eval_call("rg_screen_fade", *fade)] unless node.under
 
-            [eval_call("rg_screen_fade_under", C::Int.new(stack_place(node.under)), *fade)]
+            [eval_call("rg_screen_fade_under", Statements::Int.new(stack_place(node.under)), *fade)]
           end
 
           # Which side of its rectangle a fade reaches, then the rectangle's four edges, as
           # rg_screen_fade_in_area takes them.
           def fade_area(node)
             side = node.reaches == :inside ? "RG_FADE_INSIDE" : "RG_FADE_OUTSIDE"
-            [C::Name.new(side), *node.area.map { |edge| C::Int.new(edge) }]
+            [Statements::Name.new(side), *node.area.map { |edge| Statements::Int.new(edge) }]
           end
 
           # Reference#exec_pixelate. Where the blocks stop is not this statement's to set: a
@@ -1048,16 +1048,16 @@ module VBlank
           # Reference#exec_tint: counted in 256ths however it reaches the screen. Which way
           # it is mixed follows the screen up, which rg_screen.c knows.
           def lower_tint(node)
-            steps = call("rg_fade_steps", value(node.amount), C::Int.new(node.fraction_bits || -1), C::Int.new(1))
+            steps = call("rg_fade_steps", value(node.amount), Statements::Int.new(node.fraction_bits || -1), Statements::Int.new(1))
             [eval_call("rg_screen_tint", color(node.color), steps)]
           end
 
           # 1 where this fade or tint walks the colors in 256ths rather than having the
           # display blend in sixteenths, which the whole program decides (see IR::Fading).
-          def walks_colors(node) = C::Int.new(@fading.palette_walk?(node) ? 1 : 0)
+          def walks_colors(node) = Statements::Int.new(@fading.palette_walk?(node) ? 1 : 0)
 
           def fade_steps(node)
-            call("rg_fade_steps", value(node.amount), C::Int.new(node.fraction_bits || -1), walks_colors(node))
+            call("rg_fade_steps", value(node.amount), Statements::Int.new(node.fraction_bits || -1), walks_colors(node))
           end
 
           # --- a scene taking the screen over (Reference#take_over) ---
@@ -1070,14 +1070,14 @@ module VBlank
                        screen_change("rg_screen_cross_to", Modes::SCREEN_OF_MODE.fetch(arrival.mode),
                                      arrival.mode == Modes::BUFFERED, arrival.backdrop)
                      end
-            [eval_call("rg_scene_enter", C::Int.new(@scenes.fetch(scene))),
-             *arrival.scenery.map { |bg| eval_call("rg_background_forget_cells", C::Int.new(entry_of(bg))) },
+            [eval_call("rg_scene_enter", Statements::Int.new(@scenes.fetch(scene))),
+             *arrival.scenery.map { |bg| eval_call("rg_background_forget_cells", Statements::Int.new(entry_of(bg))) },
              *screen,
-             eval_call("rg_scene_take_down", C::Int.new(arrival.scenery.empty? ? 0 : 1)),
-             *arrival.map_choices.map { |var| assign(var, C::Int.new(0)) },
+             eval_call("rg_scene_take_down", Statements::Int.new(arrival.scenery.empty? ? 0 : 1)),
+             *arrival.map_choices.map { |var| assign(var, Statements::Int.new(0)) },
              *(arrival.painted_tiles + arrival.painted_pictures).map { |run| tile_copy(run) },
-             *arrival.scenery.map { |bg| eval_call("rg_background_put_up", C::Int.new(entry_of(bg))) },
-             eval_call("rg_scene_redraw_sprites", C::Int.new(arrival.scenery.empty? ? 0 : 1))]
+             *arrival.scenery.map { |bg| eval_call("rg_background_put_up", Statements::Int.new(entry_of(bg))) },
+             eval_call("rg_scene_redraw_sprites", Statements::Int.new(arrival.scenery.empty? ? 0 : 1))]
           end
 
           # The number rg_screen.c knows this one declaration by. A name gives the entry that
@@ -1090,15 +1090,15 @@ module VBlank
 
           # --- small pieces ---
 
-          def color(name) = C::Int.new(Graphics::Color.resolve(name))
+          def color(name) = Statements::Int.new(Graphics::Color.resolve(name))
 
           # 1 or 0, which is how a yes or a no is handed to the C.
-          def yes_or_no(answer) = C::Int.new(answer ? 1 : 0)
+          def yes_or_no(answer) = Statements::Int.new(answer ? 1 : 0)
 
           # A constant array for one drawing statement, kept to be written before the routines.
           def drawing_array(what, type, values)
             name = @names.own("#{what}_#{@drawing_arrays.length + 1}")
-            @drawing_arrays << C::ConstArray.new(name: name, type: type, values: values)
+            @drawing_arrays << Statements::ConstArray.new(name: name, type: type, values: values)
             name
           end
         end

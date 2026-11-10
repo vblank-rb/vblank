@@ -95,7 +95,7 @@ module VBlank
             @stdin.flush
             rows = []
             until rows.last == "."
-              rows << (@program_out.gets or raise Zig::Error, "the program stopped when it was asked: #{question}").chomp
+              rows << (@program_out.gets or raise Computer::Error, "the program stopped when it was asked: #{question}").chomp
             end
             rows
           end

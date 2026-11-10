@@ -4,8 +4,12 @@ module VBlank
   module IR
     module Backends
       class Native
-        # Turns the C syntax tree (C) into text. The only place in the backend that writes C.
+        # Turns the C syntax tree (Computer::Statements) into text. The only place in the backend that writes C.
         class Printer
+          Statements = Computer::Statements
+          LoweringError = Computer::LoweringError
+          Resumable = Computer::Resumable
+
           INDENT = "  "
 
           # The most numbers a table of bytes is written out as. A bigger one is kept in a file of
@@ -40,17 +44,17 @@ module VBlank
 
           def print_top(item)
             case item
-            when C::Include then line(0, "#include \"#{item.header}\"")
-            when C::Global then line(0, "static #{item.type} #{item.name.text} = #{expression(C::Int.new(item.value))};")
-            when C::ConstArray then print_const_array(item)
-            when C::ConstGlobal then print_const_global(item)
+            when Statements::Include then line(0, "#include \"#{item.header}\"")
+            when Statements::Global then line(0, "static #{item.type} #{item.name.text} = #{expression(Statements::Int.new(item.value))};")
+            when Statements::ConstArray then print_const_array(item)
+            when Statements::ConstGlobal then print_const_global(item)
             # Zeros until the start file fills it: a static array with no initializer.
-            when C::StartFileArray then line(0, "static #{item.type} #{item.name.text}[#{[item.count, 1].max}];")
-            when C::Prototype then line(0, "#{linkage(item)}#{returned(item)} #{item.name.text}(void);")
-            when C::Function then print_function(item)
-            when C::FunctionTable then print_function_table(item)
-            when C::ListStorage then print_list_storage(item)
-            when C::Comment then comment(0, item.text)
+            when Statements::StartFileArray then line(0, "static #{item.type} #{item.name.text}[#{[item.count, 1].max}];")
+            when Statements::Prototype then line(0, "#{linkage(item)}#{returned(item)} #{item.name.text}(void);")
+            when Statements::Function then print_function(item)
+            when Statements::FunctionTable then print_function_table(item)
+            when Statements::ListStorage then print_list_storage(item)
+            when Statements::Comment then comment(0, item.text)
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
             end
           end
@@ -131,24 +135,24 @@ module VBlank
 
           def statement(depth, item)
             case item
-            when C::Eval then line(depth, "#{expression(item.call)};")
-            when C::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)};")
-            when C::Local then line(depth, "#{item.type} #{item.name.text} = #{expression(item.value)};")
-            when C::If then print_if(depth, item)
-            when C::While then print_while(depth, item)
-            when C::Break then line(depth, "break;")
-            when C::Return then line(depth, "return;")
-            when C::Block then print_block(depth, item)
-            when C::Comment then comment(depth, item.text)
-            when C::Steps then print_steps(depth, item)
-            when C::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)};")
+            when Statements::Eval then line(depth, "#{expression(item.call)};")
+            when Statements::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)};")
+            when Statements::Local then line(depth, "#{item.type} #{item.name.text} = #{expression(item.value)};")
+            when Statements::If then print_if(depth, item)
+            when Statements::While then print_while(depth, item)
+            when Statements::Break then line(depth, "break;")
+            when Statements::Return then line(depth, "return;")
+            when Statements::Block then print_block(depth, item)
+            when Statements::Comment then comment(depth, item.text)
+            when Statements::Steps then print_steps(depth, item)
+            when Statements::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)};")
                               line(depth, "continue;")
-            when C::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)};")
+            when Statements::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)};")
                                line(depth, "return 1;")
-            when C::Finish then line(depth, "#{item.counter.text} = 0;")
+            when Statements::Finish then line(depth, "#{item.counter.text} = 0;")
                                 line(depth, "return 0;")
-            when C::Resume then line(depth, "if (#{resumable_call(item.call)}) return 1;")
-            when C::RunToEnd then print_run_to_end(depth, item)
+            when Statements::Resume then line(depth, "if (#{resumable_call(item.call)}) return 1;")
+            when Statements::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
           end
@@ -170,7 +174,7 @@ module VBlank
             line(depth, "}")
           end
 
-          # A resumable routine run from its start for an answer (C::RunToEnd), in a block of its own:
+          # A resumable routine run from its start for an answer (Statements::RunToEnd), in a block of its own:
           # the counters and locals it can reach kept, the counters set to 0, and all put back after.
           def print_run_to_end(depth, item)
             kept = item.counters.map { |name| ["int32_t", name] } + item.locals.map { |local| [local.type, local.name] }
@@ -213,13 +217,13 @@ module VBlank
 
           def expression(item)
             case item
-            when C::Int then integer(item.value)
-            when C::Name then item.text
-            when C::AddressOf then "&#{item.name.text}"
-            when C::Text then string(item.value)
-            when C::Struct then "{#{item.fields.map { |field, value| ".#{field} = #{expression(value)}" }.join(', ')}}"
-            when C::Index then "#{expression(item.array)}[#{expression(item.index)}]"
-            when C::Call then "#{item.function.text}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
+            when Statements::Int then integer(item.value)
+            when Statements::Name then item.text
+            when Statements::AddressOf then "&#{item.name.text}"
+            when Statements::Text then string(item.value)
+            when Statements::Struct then "{#{item.fields.map { |field, value| ".#{field} = #{expression(value)}" }.join(', ')}}"
+            when Statements::Index then "#{expression(item.array)}[#{expression(item.index)}]"
+            when Statements::Call then "#{item.function.text}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
             else raise LoweringError, "the printer has no expression form for #{item.class}"
             end
           end

@@ -138,7 +138,7 @@ class TestIRGuardrailTooManySprites < Minitest::Test
   # The interpreter is the answer key a game's own tests run against, so it refuses the
   # same programs in the same words rather than drawing 520 sprites no backend can.
   # Asked of the interpreter by name: on the native and JavaScript runs the player is the game
-  # as C or JavaScript, whose own lowering refuses past 512 first (see Native::Picture).
+  # as C or JavaScript, whose own lowering refuses past 512 first (see Computer::Picture).
   def test_the_interpreter_refuses_in_the_same_words
     error = assert_raises(Reference::ProgramError) { Reference.new.run(game) }
 

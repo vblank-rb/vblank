@@ -14,6 +14,7 @@ require "vblank/live"
 class TestNativeBIOSBoot < Minitest::Test
   HARNESS = Ractor.make_shareable(File.expand_path("bios_boot_harness.c", __dir__))
   Zig = VBlank::IR::Backends::Native::Zig
+  Computer = VBlank::IR::Backends::Computer
   ASM = VBlank::IR::Backends::GBA::ASM
 
   FRAME_BYTES = 240 * 160 * 4
@@ -122,7 +123,7 @@ class TestNativeBIOSBoot < Minitest::Test
         game_loop { pixel 1, 1, :white }
       end.write(rom)
       pictures, sound = File.join(dir, "pictures"), File.join(dir, "sound")
-      said = Zig.run_program(harness, args: ["boot", bios, rom, 400, pictures, sound], seconds: 120)
+      said = Computer::ProgramRun.run(harness, args: ["boot", bios, rom, 400, pictures, sound], seconds: 120)
       frames = said[/^frames (\d+)/, 1].to_i
 
       assert_includes said, "reached_game 1"
@@ -177,7 +178,7 @@ class TestNativeBIOSBoot < Minitest::Test
     Dir.mktmpdir("vblank-bios-boot") do |dir|
       image = File.join(dir, "program.bin")
       File.binwrite(image, code)
-      said = Zig.run_program(harness, args: ["program", image, steps, *peek.map { |address| format("0x%08X", address) }])
+      said = Computer::ProgramRun.run(harness, args: ["program", image, steps, *peek.map { |address| format("0x%08X", address) }])
       said.lines.each_with_object({}) do |line, run|
         name, value = line.chomp.split(" ", 2)
         case name

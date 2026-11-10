@@ -1828,7 +1828,7 @@ module VBlank
                                                                  bios: options[:bios],
                                                                  progress: VBlank::Messages::Progress.to($stderr))
       say "Built #{path}"
-    rescue VBlank::BuildError, VBlank::IR::Backends::Native::Zig::Error => e
+    rescue VBlank::BuildError, VBlank::IR::Backends::Computer::Error => e
       raise Thor::Error, e.message
     end
 

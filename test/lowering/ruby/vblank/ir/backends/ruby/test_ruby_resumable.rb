@@ -2,23 +2,23 @@
 
 require "test_helper"
 
-# A routine that waits for a frame, made resumable (Native::Resumable) and printed as Ruby: the main
+# A routine that waits for a frame, made resumable (Computer::Resumable) and printed as Ruby: the main
 # routine hands each frame back to whoever calls it, and everything that says where the game is,
 # down to a loop's count two calls deep, is in the game's own variables. So a game copied between
 # frames, variable for variable, into a fresh one plays on exactly as the first would have: the
 # heart of a save state.
 class TestRubyResumable < Minitest::Test
-  C = VBlank::IR::Backends::Native::C
-  Resumable = VBlank::IR::Backends::Native::Resumable
+  Statements = VBlank::IR::Backends::Computer::Statements
+  Resumable = VBlank::IR::Backends::Computer::Resumable
   Printer = VBlank::IR::Backends::Ruby::Printer
 
-  private def c_name(text) = C::Name.new(text: text)
-  private def int(value) = C::Int.new(value: value)
-  private def call(function, *args) = C::Call.new(function: c_name(function), args: args)
-  private def wait = C::Eval.new(call: call("rg_wait_vblank"))
+  private def c_name(text) = Statements::Name.new(text: text)
+  private def int(value) = Statements::Int.new(value: value)
+  private def call(function, *args) = Statements::Call.new(function: c_name(function), args: args)
+  private def wait = Statements::Eval.new(call: call("rg_wait_vblank"))
 
   # The trail takes a digit at each step the game passes: trail = trail * 10 + digit.
-  private def mark(digit) = C::Assign.new(target: c_name("trail"), value: call("rg_add", call("rg_mul", c_name("trail"), int(10)), int(digit)))
+  private def mark(digit) = Statements::Assign.new(target: c_name("trail"), value: call("rg_add", call("rg_mul", c_name("trail"), int(10)), int(digit)))
 
   # main marks 1, calls inner, marks 9. inner marks 2, waits, then counts to three in a loop of
   # its own (a local), waiting and marking 3 each time round, and marks 4. A loop with no wait in it
@@ -26,21 +26,21 @@ class TestRubyResumable < Minitest::Test
   private def program
     count = c_name("rg_local_count1")
     quick = c_name("rg_local_quick2")
-    inner = C::Function.new(name: c_name("rg_routine_inner"), body: [
+    inner = Statements::Function.new(name: c_name("rg_routine_inner"), body: [
                               mark(2), wait,
-                              C::Local.new(name: count, value: int(0)),
-                              C::While.new(condition: call("rg_lt", count, int(3)),
-                                           body: [wait, mark(3), C::Assign.new(target: count, value: call("rg_add", count, int(1)))]),
-                              C::Local.new(name: quick, value: int(0)),
-                              C::While.new(condition: call("rg_lt", quick, int(5)),
-                                           body: [C::Assign.new(target: quick, value: call("rg_add", quick, int(1)))]),
-                              C::Assign.new(target: c_name("quick_seen"), value: quick),
+                              Statements::Local.new(name: count, value: int(0)),
+                              Statements::While.new(condition: call("rg_lt", count, int(3)),
+                                           body: [wait, mark(3), Statements::Assign.new(target: count, value: call("rg_add", count, int(1)))]),
+                              Statements::Local.new(name: quick, value: int(0)),
+                              Statements::While.new(condition: call("rg_lt", quick, int(5)),
+                                           body: [Statements::Assign.new(target: quick, value: call("rg_add", quick, int(1)))]),
+                              Statements::Assign.new(target: c_name("quick_seen"), value: quick),
                               mark(4)
                             ])
-    main = C::Function.new(name: c_name("rg_game_main"), exported: true,
-                           body: [mark(1), C::Eval.new(call: call("rg_routine_inner")), mark(9)])
-    [C::Global.new(name: c_name("trail")), C::Global.new(name: c_name("quick_seen")),
-     C::Prototype.new(name: c_name("rg_routine_inner")), inner, main]
+    main = Statements::Function.new(name: c_name("rg_game_main"), exported: true,
+                           body: [mark(1), Statements::Eval.new(call: call("rg_routine_inner")), mark(9)])
+    [Statements::Global.new(name: c_name("trail")), Statements::Global.new(name: c_name("quick_seen")),
+     Statements::Prototype.new(name: c_name("rg_routine_inner")), inner, main]
   end
 
   # A routine the runtime asks for an answer (a timer's tick) calling a routine the game is stopped
@@ -48,16 +48,16 @@ class TestRubyResumable < Minitest::Test
   # and marks 6; then main marks 9. The tick clears the flag and calls stop_or_not too.
   private def program_with_an_answer
     flag = c_name("flag")
-    stop_or_not = C::Function.new(name: c_name("rg_routine_stop_or_not"), body: [
-                                    mark(5), C::If.new(condition: flag, body: [wait]), mark(6)
+    stop_or_not = Statements::Function.new(name: c_name("rg_routine_stop_or_not"), body: [
+                                    mark(5), Statements::If.new(condition: flag, body: [wait]), mark(6)
                                   ])
-    main = C::Function.new(name: c_name("rg_game_main"), exported: true,
-                           body: [C::Assign.new(target: flag, value: int(1)),
-                                  C::Eval.new(call: call("rg_routine_stop_or_not")), mark(9)])
-    tick = C::Function.new(name: c_name("rg_game_timer_ticks"), exported: true,
-                           body: [C::Assign.new(target: flag, value: int(0)), C::Eval.new(call: call("rg_routine_stop_or_not"))])
-    [C::Global.new(name: c_name("trail")), C::Global.new(name: c_name("quick_seen")), C::Global.new(name: flag),
-     C::Prototype.new(name: c_name("rg_routine_stop_or_not")), stop_or_not, main, tick]
+    main = Statements::Function.new(name: c_name("rg_game_main"), exported: true,
+                           body: [Statements::Assign.new(target: flag, value: int(1)),
+                                  Statements::Eval.new(call: call("rg_routine_stop_or_not")), mark(9)])
+    tick = Statements::Function.new(name: c_name("rg_game_timer_ticks"), exported: true,
+                           body: [Statements::Assign.new(target: flag, value: int(0)), Statements::Eval.new(call: call("rg_routine_stop_or_not"))])
+    [Statements::Global.new(name: c_name("trail")), Statements::Global.new(name: c_name("quick_seen")), Statements::Global.new(name: flag),
+     Statements::Prototype.new(name: c_name("rg_routine_stop_or_not")), stop_or_not, main, tick]
   end
 
   # A class whose objects are the game, printed as Ruby from the resumable tree, with readers for

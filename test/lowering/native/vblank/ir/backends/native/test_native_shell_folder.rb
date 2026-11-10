@@ -18,6 +18,7 @@ class TestNativeShellFolder < Minitest::Test
   include FolderOriginal
 
   Native = VBlank::IR::Backends::Native
+  Computer = VBlank::IR::Backends::Computer
 
   NO_SCREEN_OR_SPEAKER = { "SDL_VIDEO_DRIVER" => "dummy", "SDL_AUDIO_DRIVER" => "dummy" }.freeze
   GAME_FRAMES = 8
@@ -54,7 +55,7 @@ class TestNativeShellFolder < Minitest::Test
       File.join(changed, "copy") => "copy/INDEX.MU1 is not the file of the MU1 release of Folder Game",
       File.join(FOLDER, "data.mu1") => "data.mu1 is one file. A copy of Folder Game is a folder" }.each do |picked, words|
       FileUtils.rm_rf(File.join(dir, "kept"))
-      refused = assert_raises(Native::Zig::Error) { play(exe, dir, copy: picked) }
+      refused = assert_raises(Computer::Error) { play(exe, dir, copy: picked) }
 
       assert_includes refused.message, words
       refute File.exist?(File.join(dir, "kept", "data.pack"))
@@ -66,7 +67,7 @@ class TestNativeShellFolder < Minitest::Test
   private def play(exe, dir, copy:)
     keys = File.join(dir, "menu.keys")
     File.write(keys, MENU_KEYS)
-    run = Native::Zig.run_program(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none.txt"),
+    run = Computer::ProgramRun.run(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none.txt"),
                                               "--pack-folder", File.join(dir, "kept"), "--shell-menu-keys", keys,
                                               "--shell-copy", copy],
                                        input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)

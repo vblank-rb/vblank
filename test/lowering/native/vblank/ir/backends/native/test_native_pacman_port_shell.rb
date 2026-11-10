@@ -13,6 +13,7 @@ class TestNativePacmanPortShell < Minitest::Test
   include PacmanShellTests
 
   Native = VBlank::IR::Backends::Native
+  Computer = VBlank::IR::Backends::Computer
 
   NO_SCREEN_OR_SPEAKER = { "SDL_VIDEO_DRIVER" => "dummy", "SDL_AUDIO_DRIVER" => "dummy" }.freeze
   MENU_KEYS = (["0", "0", "1"] + ["0"] * 20).map { |line| "#{line}\n" }.join.freeze
@@ -40,7 +41,7 @@ class TestNativePacmanPortShell < Minitest::Test
 
   private def play(exe, dir, name, options: [])
     picture = File.join(dir, "#{name}.bmp")
-    run = Native::Zig.run_program(exe, args: ["--scripted-keys", GAME_PASSES, "--settings-file", File.join(dir, "none-#{name}.txt"),
+    run = Computer::ProgramRun.run(exe, args: ["--scripted-keys", GAME_PASSES, "--settings-file", File.join(dir, "none-#{name}.txt"),
                                               "--window-picture", picture, *options],
                                        input: SCRIPT, env: NO_SCREEN_OR_SPEAKER, seconds: 480, complaints: true)
     Played.new(variables: Native::HeadlessRun.variables_in(run.printed.lines.map(&:chomp)), picture: game_rows_of(File.binread(picture)),

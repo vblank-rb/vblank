@@ -100,7 +100,7 @@ static int32_t shaded_color(const int32_t *shading, int32_t color, int32_t shade
  * perspective every +spans+ pixels (none when nought).
  *
  * +numbers+ is, for a picture given as numbers into the shading's colours, those numbers as a
- * picture of the same size (Native::Picture#shading_array); its pixels is NULL for any other. */
+ * picture of the same size (Computer::Picture#shading_array); its pixels is NULL for any other. */
 static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int32_t right, picture art,
                      picture numbers, int32_t spans, const int32_t *shading) {
   int32_t start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16);
@@ -155,7 +155,7 @@ enum { FACE_MOST_CORNERS = 8 };
  * come six numbers each (x and y in sixteenths of a pixel, u and v in picture pixels with sixteen
  * fraction bits, one over the distance with 26, and the light, 0 to 0xFFFF), and nothing outside
  * left, top, right and bottom is drawn. A +shading+ of [0] draws the picture as it is; any other
- * is its levels, its colours and each level's places (Native::Picture#shading_array), and every
+ * is its levels, its colours and each level's places (Computer::Picture#shading_array), and every
  * pixel is drawn in the colour its blended light's level gives. The picture's number is held to the ends of the list of pictures, and the count
  * to FACE_MOST_CORNERS. In perspective (+spans+ not nought) u and v become u and v over the
  * distance (Reference::FaceEdges.in_perspective) before the edges are walked. */

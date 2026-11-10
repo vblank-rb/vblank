@@ -136,7 +136,7 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
 end
 
 # Reference#exec_fill_face: one face already on the screen, filled with its picture, each pixel
-# through +shading+ unless it is [0] (Native::Picture#shading_array).
+# through +shading+ unless it is [0] (Computer::Picture#shading_array).
 def rg_screen_face(pictures, picture_count, picture, corner_list, corner_count, left, top, right, bottom, spans,
                    shading)
   corner_count = RG_FACE_MOST_CORNERS if corner_count > RG_FACE_MOST_CORNERS

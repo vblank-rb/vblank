@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # THE C THE BACKEND WRITES, as data rather than text.
         #
         # The lowering builds these and the Printer alone turns them into text, so the things
@@ -12,10 +12,10 @@ module VBlank
         # method ever glues C together out of strings.
         #
         # It is small on purpose. The game's numbers only ever go through rg_int32.h (see the
-        # comment atop Native), so an expression here is a number, a name, the address of a
+        # comment atop Backends::Native), so an expression here is a number, a name, the address of a
         # name, a piece of text, or a call — there are no operators, and so no precedence to
         # get wrong.
-        module C
+        module Statements
           # --- expressions ---
 
           # A whole number, written so C reads it as the int32_t it is.
@@ -96,7 +96,7 @@ module VBlank
 
           # A call of a resumable routine from one that answers the runtime and cannot wait: run from
           # its start to its end now, and a wait there is a fault (rg_wait_vblank_while_answering).
-          # The +counters+ (Names) and +locals+ (the C::Locals made globals) of every resumable routine the call can reach are kept before
+          # The +counters+ (Names) and +locals+ (the Statements::Locals made globals) of every resumable routine the call can reach are kept before
           # it, the counters set to 0 so each runs from its start, and all put back after it, so a game
           # stopped inside one of them carries on from where it stopped.
           RunToEnd = Data.define(:call, :counters, :locals)

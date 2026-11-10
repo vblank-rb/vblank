@@ -9,12 +9,12 @@ module VBlank
         #
         # The windowless JavaScript program prints exactly what the native one prints, line for
         # line, so everything about reading it — the variables, the lists, the picture file, the
-        # sprites, the sound log, the mixer — is Native::HeadlessRun's, and only the program it
+        # sprites, the sound log, the mixer — is Computer::HeadlessRun's, and only the program it
         # plays is this one's.
-        class HeadlessRun < Native::HeadlessRun
+        class HeadlessRun < Computer::HeadlessRun
           # Raised for something a test asks of the interpreter that the JavaScript lowering cannot
-          # answer yet. The native one's, since both are asked the same questions.
-          CannotAnswer = Native::HeadlessRun::CannotAnswer
+          # answer yet. The shared one's, since both are asked the same questions.
+          CannotAnswer = Computer::HeadlessRun::CannotAnswer
 
           private
 

@@ -13,8 +13,9 @@ class TestRunProgress < Minitest::Test
   PLAYS = [%i[gba gba], %i[native gba], %i[native gbc], %i[js gba], %i[gbc gbc]].freeze
   LOWERING_FOLDERS = { gba: ["test/lowering/gba"], native: ["test/lowering/native"] }.freeze
   CONSOLE_FOLDERS = { gbc: ["test/console/gbc"] }.freeze
-  FILES = ["lib/vblank/dsl/value.rb", "lib/vblank/ir/backends/gbc/lowering.rb", "lib/vblank/ir/backends/native/c.rb",
-           "test/all/test_walker.rb", "test/lowering/gba/support.rb", "test/console/gbc/support.rb", "NOTES.md"].freeze
+  FILES = ["lib/vblank/dsl/value.rb", "lib/vblank/ir/backends/gbc/lowering.rb", "lib/vblank/ir/backends/computer/statements.rb",
+           "lib/vblank/ir/backends/native/printer.rb", "test/all/test_walker.rb", "test/lowering/gba/support.rb",
+           "test/console/gbc/support.rb", "NOTES.md"].freeze
 
   private def in_project
     Dir.mktmpdir do |root|
@@ -79,14 +80,24 @@ class TestRunProgress < Minitest::Test
     end
   end
 
-  # The other runs are built over what the native lowering writes.
-  def test_the_native_lowerings_code_redoes_every_run_that_builds_the_game
+  # The C, JavaScript and Ruby builds are written from what the computer builds share.
+  def test_the_computer_builds_shared_code_redoes_their_runs
     in_project do |root|
       progress = finished_project(root)
-      write(root, "lib/vblank/ir/backends/native/c.rb", "two")
+      write(root, "lib/vblank/ir/backends/computer/statements.rb", "two")
       progress.apply_changes
 
-      assert_equal PLAYS - [%i[gba gba]], still_to_play(progress)
+      assert_equal [%i[native gba], %i[native gbc], %i[js gba]], still_to_play(progress)
+    end
+  end
+
+  def test_the_c_builds_own_code_redoes_its_runs_alone
+    in_project do |root|
+      progress = finished_project(root)
+      write(root, "lib/vblank/ir/backends/native/printer.rb", "two")
+      progress.apply_changes
+
+      assert_equal [%i[native gba], %i[native gbc]], still_to_play(progress)
     end
   end
 

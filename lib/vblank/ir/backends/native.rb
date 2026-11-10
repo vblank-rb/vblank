@@ -4,19 +4,8 @@ require "digest"
 require "fileutils"
 require "tmpdir"
 require_relative "native/zig"
-require_relative "native/names"
-require_relative "native/start_file_numbers"
-require_relative "native/console_numbers"
 require_relative "native/cartridge_start"
-require_relative "native/c"
-require_relative "native/resumable"
 require_relative "native/printer"
-require_relative "native/drawn_sprites"
-require_relative "native/picture"
-require_relative "native/sound_log"
-require_relative "native/sound"
-require_relative "native/saving"
-require_relative "native/start_file_fills"
 require_relative "native/lowering"
 require_relative "native/headless_run"
 require_relative "native/rules_run" # ...and a game's rules alone, read only as asked
@@ -54,22 +43,8 @@ module VBlank
       # - It is checked by running, against Backends::Reference, and never by comparing the C
       #   it wrote against C somebody wrote down.
       class Native
-        # A game's program, checked the way a cartridge build checks it, every guardrail on, with no
-        # cartridge made (Cartridge::Game#checked_program). So nothing the console's answers refuse
-        # can be built for a desktop instead. What only the console's own code generator refuses (a
-        # cartridge too full, a part it does not make yet) is found by building the cartridge, which
-        # costs a big game most of a minute, so a computer's build leaves it to the cartridge build.
-        # Guardrail warnings are printed to +err+, as the cartridge build prints them.
-        #
-        # The program is for +console+, one the game names, and the first it names when that is left
-        # out. It is built as that console: the runtime's screen is its size (ConsoleNumbers), and the
-        # program does what the game does on it. +pack_at_start+ leaves the game's data pack out
-        # (Cartridge::Options).
-        def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent,
-                            pack_at_start: false)
-          game.checked_program(err: err, progress: progress, settings: settings, console: console || game.consoles.first,
-                               pack_at_start: pack_at_start)
-        end
+        # A game's program, as every build for a computer starts from it (Computer::CheckedProgram.build).
+        def checked_program(game, **options) = Computer::CheckedProgram.build(game, **options)
 
         # The cartridge a desktop build that plays the console's start-up reads the start of
         # (CartridgeStart), and whose checked program it is built from.
@@ -107,7 +82,7 @@ module VBlank
         # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
         def build_headless(program, mode: :checked)
           lowering = Lowering.new(program, title: "VBlank")
-          game = write_source(lowering.source_files, ConsoleNumbers.header(program.described_console), lowering.runtime_features)
+          game = write_source(lowering.source_files, Computer::ConsoleNumbers.header(program.described_console), lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
@@ -138,7 +113,7 @@ module VBlank
         def build_desktop(game, path, console: nil, settings: {}, target: nil, strip: false, pack_at_start: false, bios: false,
                           err: $stderr, progress: Messages::Progress.silent)
           if File.directory?(path)
-            raise LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
+            raise Computer::LoweringError, "#{path} is a folder, so the program cannot be written there. Name a file instead."
           end
           refuse_unknown_target!(target)
           console ||= game.consoles.first
@@ -168,7 +143,7 @@ module VBlank
                                 progress: Messages::Progress.silent)
           refuse_unknown_target!(target)
           if File.file?(path)
-            raise LoweringError, "#{path} is a file, and a shell is a folder of programs. Name a folder instead."
+            raise Computer::LoweringError, "#{path} is a file, and a shell is a folder of programs. Name a folder instead."
           end
 
           shell = Original::Shell.build(game, console: console || game.consoles.first, settings: settings, err: err, progress: progress)
@@ -192,18 +167,18 @@ module VBlank
         def refuse_unusable_bios!(console, pack_at_start)
           described = Console.described(console)
           unless described.plays_bios_start_up
-            raise LoweringError, "VBlank cannot use a #{described.title} BIOS yet. To build this program, leave out --bios."
+            raise Computer::LoweringError, "VBlank cannot use a #{described.title} BIOS yet. To build this program, leave out --bios."
           end
           return unless pack_at_start
 
-          raise LoweringError, "The BIOS reads the game's cartridge, and a build that leaves its data pack out makes no " \
+          raise Computer::LoweringError, "The BIOS reads the game's cartridge, and a build that leaves its data pack out makes no " \
                                "cartridge. To build this program, leave out --bios or --pack-at-start."
         end
 
         def refuse_unknown_target!(target)
           return if target.nil? || TARGETS.key?(target)
 
-          raise LoweringError, "There is no build for #{target.inspect}. A game can be built for " \
+          raise Computer::LoweringError, "There is no build for #{target.inspect}. A game can be built for " \
                                "#{TARGETS.keys.join(', ')}, or for this computer with no target."
         end
 
@@ -227,7 +202,7 @@ module VBlank
             lowering.runtime_features.each { |feature| FileUtils.cp_r(feature.folder, src) }
             File.write(File.join(src, FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features))
             File.write(File.join(src, SOUND_FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features, joins: :sound))
-            File.write(File.join(src, ConsoleNumbers::FILE), ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?))
+            File.write(File.join(src, Computer::ConsoleNumbers::FILE), Computer::ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?))
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
             end
@@ -243,7 +218,7 @@ module VBlank
         end
 
         # The C on disk, where the compiler can read it, with the console's numbers beside it
-        # (ConsoleNumbers), in a folder named for what it holds so two programs never write over
+        # (Computer::ConsoleNumbers), in a folder named for what it holds so two programs never write over
         # each other. Each file is written under a name of its own and then renamed into place,
         # so two threads building the same game at once — tests run side by side — each put down a
         # whole file and never read half of the other's. +files+ are Lowering#source_files: game.c and
@@ -259,7 +234,7 @@ module VBlank
 
           FileUtils.mkdir_p(dir)
           # game.c last: a folder holding it is whole.
-          { ConsoleNumbers::FILE => numbers, FEATURES_FILE => screen_text, SOUND_FEATURES_FILE => sound_text,
+          { Computer::ConsoleNumbers::FILE => numbers, FEATURES_FILE => screen_text, SOUND_FEATURES_FILE => sound_text,
             **files.except(Lowering::GAME_FILE), Lowering::GAME_FILE => text }.each do |name, body|
             writing = File.join(dir, "#{name}.#{Process.pid}.#{rand(1 << 30)}")
             File.binwrite(writing, body)

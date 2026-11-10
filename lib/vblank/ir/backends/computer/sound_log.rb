@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # WHAT A GAME'S SOUND LOG SAYS, as the C prints it and as a test reads it.
         #
         # The interpreter keeps a log of what it played (Reference#audio): sound switched on, a

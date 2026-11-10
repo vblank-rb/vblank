@@ -32,12 +32,12 @@ module VBlank
           end
 
           # Runs +script+ with node, handing it +args+ and feeding it +input+, and gives back what
-          # it printed. It is the native lowering's own runner with node as the program, so a
+          # it printed. It is Computer::ProgramRun's runner with node as the program, so a
           # script is held to everything a C program is: stopped after +seconds+, stopped if it
-          # prints more than Native::Zig::MOST_PRINTED_BYTES, and its ending read the same way —
-          # IR::ProgramError for a game that went wrong, Native::Zig::Error for anything else.
+          # prints more than Computer::ProgramRun::MOST_PRINTED_BYTES, and its ending read the same way —
+          # IR::ProgramError for a game that went wrong, Computer::Error for anything else.
           def run_program(script, args: [], input: "", seconds: 60)
-            Native::Zig.run_program("node", args: [script, *args], input: input, seconds: seconds)
+            Computer::ProgramRun.run("node", args: [script, *args], input: input, seconds: seconds)
           end
         end
       end

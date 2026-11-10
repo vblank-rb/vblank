@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      class Native
+      module Computer
         # A ROUTINE THAT STOPS FOR A FRAME AND CARRIES ON, written so that where it stopped is data.
         #
         # A game waits for the next frame wherever it likes: in its game loop, in a scene's own
@@ -11,11 +11,11 @@ module VBlank
         # the place a game has reached cannot be written to a file, and so cannot be saved part way
         # and loaded back (a save state).
         #
-        # So every routine that can reach a wait (#resumable_names) is cut into numbered STEPS (C::Steps),
+        # So every routine that can reach a wait (#resumable_names) is cut into numbered STEPS (Statements::Steps),
         # and keeps the number of the step it is on in a global of its own, its counter. A wait ends
         # its step: the counter is set to the step after, and the routine hands back 1, waiting
-        # (C::Pause). A call of another such routine starts a step of its own, so when the callee hands
-        # back 1 the caller hands back 1 too (C::Resume), and when it is called again it calls the
+        # (Statements::Pause). A call of another such routine starts a step of its own, so when the callee hands
+        # back 1 the caller hands back 1 too (Statements::Resume), and when it is called again it calls the
         # callee again, which carries on from its own counter. The driver plays the game by calling the
         # main routine once a frame until it hands back 0. A routine's locals become globals of its own,
         # since a step after a wait still reads them; no routine calls itself (LoweringPlan refuses
@@ -32,13 +32,12 @@ module VBlank
         # tick, a bend's lines), and such a routine cannot wait; one of the game's resumable routines
         # it calls runs from its start to its end, as the interpreter runs it. The game may be stopped
         # inside that very routine, so the call keeps the counters and locals of every resumable
-        # routine it can reach, runs from step 0, and puts them back (C::RunToEnd).
+        # routine it can reach, runs from step 0, and puts them back (Statements::RunToEnd).
         #
         # One transform of the statement tree, before any printer sees it: the C, JavaScript and Ruby
         # printers each print the steps their own way, and none of them has to know which routines
         # wait.
         class Resumable
-          C = Native::C
 
           WAIT = "rg_wait_vblank"
           CALL_ROUTINE = "rg_call_routine"
@@ -49,8 +48,8 @@ module VBlank
           # +items+ is the file's top level (Lowering#top_level).
           def initialize(items)
             @items = items
-            @functions = items.grep(C::Function).to_h { |function| [function.name.text, function] }
-            @tables = items.grep(C::FunctionTable).to_h { |table| [table.name.text, table.functions.map(&:text)] }
+            @functions = items.grep(Statements::Function).to_h { |function| [function.name.text, function] }
+            @tables = items.grep(Statements::FunctionTable).to_h { |table| [table.name.text, table.functions.map(&:text)] }
             @resumable = resumable_names
             @cuts = @resumable.select { |name| @functions.key?(name) }.to_h { |name| [name, cut_routine(name)] }
           end
@@ -60,13 +59,13 @@ module VBlank
           def items
             rewritten = @items.map do |item|
               case item
-              when C::Function then rewritten_routine(item)
-              when C::Prototype then item.with(resumable: @resumable.include?(item.name.text))
-              when C::FunctionTable then item.with(resumable: item.functions.any? { |name| @resumable.include?(name.text) })
+              when Statements::Function then rewritten_routine(item)
+              when Statements::Prototype then item.with(resumable: @resumable.include?(item.name.text))
+              when Statements::FunctionTable then item.with(resumable: item.functions.any? { |name| @resumable.include?(name.text) })
               else item
               end
             end
-            first_routine = rewritten.index { |item| [C::Prototype, C::Function, C::FunctionTable].include?(item.class) }
+            first_routine = rewritten.index { |item| [Statements::Prototype, Statements::Function, Statements::FunctionTable].include?(item.class) }
             rewritten.insert(first_routine || rewritten.length, *step_globals)
           end
 
@@ -75,7 +74,7 @@ module VBlank
           # One routine cut into steps: its counter, its steps and its locals, now globals.
           CutRoutine = Data.define(:counter, :steps, :locals)
 
-          def counter_of(function_name) = C::Name.new(text: "#{function_name}_step")
+          def counter_of(function_name) = Statements::Name.new(text: "#{function_name}_step")
 
           # --- which routines can wait ---
 
@@ -103,9 +102,9 @@ module VBlank
           def reaches_wait?(statements, names = @resumable)
             statements.any? do |statement|
               case statement
-              when C::Eval then call_waits?(statement.call, names)
-              when C::If then reaches_wait?(statement.body, names) || reaches_wait?(statement.otherwise, names)
-              when C::While, C::Block then reaches_wait?(statement.body, names)
+              when Statements::Eval then call_waits?(statement.call, names)
+              when Statements::If then reaches_wait?(statement.body, names) || reaches_wait?(statement.otherwise, names)
+              when Statements::While, Statements::Block then reaches_wait?(statement.body, names)
               else false
               end
             end
@@ -148,9 +147,9 @@ module VBlank
           def resumable_calls_in(statements)
             statements.flat_map do |statement|
               case statement
-              when C::Eval then resumable_named_by(statement.call)
-              when C::If then resumable_calls_in(statement.body) + resumable_calls_in(statement.otherwise)
-              when C::While, C::Block then resumable_calls_in(statement.body)
+              when Statements::Eval then resumable_named_by(statement.call)
+              when Statements::If then resumable_calls_in(statement.body) + resumable_calls_in(statement.otherwise)
+              when Statements::While, Statements::Block then resumable_calls_in(statement.body)
               else []
               end
             end
@@ -170,7 +169,7 @@ module VBlank
           # The counters and locals of every resumable routine, as globals.
           def step_globals
             @cuts.values.flat_map do |cut|
-              [C::Global.new(name: cut.counter), *cut.locals.map { |local| C::Global.new(name: local.name, type: local.type) }]
+              [Statements::Global.new(name: cut.counter), *cut.locals.map { |local| Statements::Global.new(name: local.name, type: local.type) }]
             end
           end
 
@@ -181,17 +180,17 @@ module VBlank
             cut = @cuts[name]
             return function unless cut
 
-            function.with(body: [C::Steps.new(counter: cut.counter, steps: cut.steps)], resumable: true)
+            function.with(body: [Statements::Steps.new(counter: cut.counter, steps: cut.steps)], resumable: true)
           end
 
           # A routine the runtime calls for an answer, which cannot wait: a wait in it is a fault, and a
-          # resumable routine it calls is run from its start to its end (C::RunToEnd).
+          # resumable routine it calls is run from its start to its end (Statements::RunToEnd).
           def answer_body(statements)
             statements.map do |statement|
               case statement
-              when C::Eval then answer_call(statement)
-              when C::If then statement.with(body: answer_body(statement.body), otherwise: answer_body(statement.otherwise))
-              when C::While, C::Block then statement.with(body: answer_body(statement.body))
+              when Statements::Eval then answer_call(statement)
+              when Statements::If then statement.with(body: answer_body(statement.body), otherwise: answer_body(statement.otherwise))
+              when Statements::While, Statements::Block then statement.with(body: answer_body(statement.body))
               else statement
               end
             end
@@ -199,17 +198,17 @@ module VBlank
 
           def answer_call(statement)
             call = statement.call
-            return C::Eval.new(call: C::Call.new(function: C::Name.new(text: WAIT_WHILE_ANSWERING))) if call.function.text == WAIT
+            return Statements::Eval.new(call: Statements::Call.new(function: Statements::Name.new(text: WAIT_WHILE_ANSWERING))) if call.function.text == WAIT
             return statement unless call_waits?(call)
 
             cuts = resumable_reached_by(call).map { |name| @cuts.fetch(name) }
-            C::RunToEnd.new(call: call, counters: cuts.map(&:counter), locals: cuts.flat_map(&:locals))
+            Statements::RunToEnd.new(call: call, counters: cuts.map(&:counter), locals: cuts.flat_map(&:locals))
           end
 
           # ONE ROUTINE CUT INTO STEPS. Steps are numbered as they are made, from 0, and each is a
           # list of statements ending in a Goto, a Pause or a Finish.
           class Cut
-            # The routine's locals (C::Local), each kept in a global of its own now.
+            # The routine's locals (Statements::Local), each kept in a global of its own now.
             attr_reader :locals
 
             # +counter+ names the routine's counter; +holds_wait+ answers whether a statement holds a
@@ -225,7 +224,7 @@ module VBlank
             # The steps of a routine whose body is +statements+.
             def steps_of(statements)
               append_statements(statements, nil)
-              append(C::Finish.new(counter: @counter))
+              append(Statements::Finish.new(counter: @counter))
               @steps
             end
 
@@ -238,7 +237,7 @@ module VBlank
 
             def append(statement) = @steps[@step] << statement
             def open_step(step) = @step = step
-            def goto_step(step) = C::Goto.new(counter: @counter, step: step)
+            def goto_step(step) = Statements::Goto.new(counter: @counter, step: step)
 
             # +loop_end+ is the step a Break here goes on at: the end of the cut loop it is in.
             def append_statements(statements, loop_end)
@@ -249,10 +248,10 @@ module VBlank
               return append(uncut_statement(statement, loop_end, in_loop: false)) unless @holds_wait.call(statement)
 
               case statement
-              when C::Eval then append_stop(statement)
-              when C::If then append_branch(statement, loop_end)
-              when C::While then append_loop(statement)
-              when C::Block then append_statements(statement.body, loop_end)
+              when Statements::Eval then append_stop(statement)
+              when Statements::If then append_branch(statement, loop_end)
+              when Statements::While then append_loop(statement)
+              when Statements::Block then append_statements(statement.body, loop_end)
               end
             end
 
@@ -262,12 +261,12 @@ module VBlank
               step = new_step
               if statement.call.function.text == WAIT
                 append(statement)
-                append(C::Pause.new(counter: @counter, step: step))
+                append(Statements::Pause.new(counter: @counter, step: step))
                 open_step(step)
               else
                 append(goto_step(step))
                 open_step(step)
-                append(C::Resume.new(call: statement.call))
+                append(Statements::Resume.new(call: statement.call))
               end
             end
 
@@ -275,7 +274,7 @@ module VBlank
               taken = new_step
               other = statement.otherwise.empty? ? nil : new_step
               after = new_step
-              append(C::If.new(condition: statement.condition, body: [goto_step(taken)], otherwise: [goto_step(other || after)]))
+              append(Statements::If.new(condition: statement.condition, body: [goto_step(taken)], otherwise: [goto_step(other || after)]))
               open_step(taken)
               append_statements(statement.body, loop_end)
               append(goto_step(after))
@@ -293,7 +292,7 @@ module VBlank
               after = new_step
               append(goto_step(head))
               open_step(head)
-              append(C::If.new(condition: statement.condition, body: [goto_step(body)], otherwise: [goto_step(after)]))
+              append(Statements::If.new(condition: statement.condition, body: [goto_step(body)], otherwise: [goto_step(after)]))
               open_step(body)
               append_statements(statement.body, after)
               append(goto_step(head))
@@ -305,16 +304,16 @@ module VBlank
             # at that loop's end (one inside a loop kept whole is that loop's own).
             def uncut_statement(statement, loop_end, in_loop:)
               case statement
-              when C::Local
+              when Statements::Local
                 @locals << statement
-                C::Assign.new(target: statement.name, value: statement.value)
-              when C::Return then C::Finish.new(counter: @counter)
-              when C::Break then in_loop ? statement : goto_step(loop_end)
-              when C::If
+                Statements::Assign.new(target: statement.name, value: statement.value)
+              when Statements::Return then Statements::Finish.new(counter: @counter)
+              when Statements::Break then in_loop ? statement : goto_step(loop_end)
+              when Statements::If
                 statement.with(body: uncut_statements(statement.body, loop_end, in_loop),
                                otherwise: uncut_statements(statement.otherwise, loop_end, in_loop))
-              when C::While then statement.with(body: uncut_statements(statement.body, loop_end, true))
-              when C::Block then statement.with(body: uncut_statements(statement.body, loop_end, in_loop))
+              when Statements::While then statement.with(body: uncut_statements(statement.body, loop_end, true))
+              when Statements::Block then statement.with(body: uncut_statements(statement.body, loop_end, in_loop))
               else statement
               end
             end

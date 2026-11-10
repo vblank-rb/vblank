@@ -110,7 +110,7 @@ def rg_match_seed = @rg_match_seed || 0
 # --- frames ---
 
 # The frame the game drew has ended, whoever is driving and whether or not the run stops here. The
-# game then hands the frame back (its routines are resumable, Native::Resumable), and the driver
+# game then hands the frame back (its routines are resumable, Computer::Resumable), and the driver
 # takes the frame between calls of rg_game_main (#rg_play_frames).
 def rg_wait_vblank
   rg_screen_frame_ended

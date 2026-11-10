@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class JS
-        # Turns the statement tree the lowering builds (Native::C) into JavaScript. The only place
+        # Turns the statement tree the lowering builds (Computer::Statements) into JavaScript. The only place
         # in the backend that writes JavaScript.
         #
         # The tree has no operators in it — every number a game keeps goes through a runtime
@@ -15,12 +15,12 @@ module VBlank
         #
         # WAITING FOR A FRAME. A browser cannot stop a script part way: a page that never gives
         # control back never shows a picture. Every routine that can reach a wait is resumable
-        # (Native::Resumable): it gives back 1 when it stops for a frame and carries on from its own
+        # (Computer::Resumable): it gives back 1 when it stops for a frame and carries on from its own
         # counter when called again, so the driver plays the game by calling rg_game_main once a
         # frame, and the browser keeps control between frames, with the place the game has reached
         # kept in its globals, which a save state can write.
         class Printer
-          C = Native::C
+          Statements = Computer::Statements
           INDENT = "  "
 
           # The JavaScript typed array each C type a table or a picture is kept in becomes.
@@ -55,7 +55,7 @@ module VBlank
 
           # The whole file: +items+ is the top level, in the order it is to appear.
           def print_file(items)
-            @lists = items.grep(C::ListStorage).to_set { |list| list.name.text }
+            @lists = items.grep(Statements::ListStorage).to_set { |list| list.name.text }
             items.each { |item| print_top(item) }
             print_data_fill unless @fills.empty?
             @out
@@ -79,14 +79,14 @@ module VBlank
 
           def print_top(item)
             case item
-            when C::Include, C::Prototype then nil # JavaScript finds a function wherever it is declared
-            when C::Global then line(0, "let #{item.name.text} = #{integer(item.value)};")
-            when C::ConstArray then print_const_array(item)
-            when C::StartFileArray then print_start_file_array(item)
-            when C::Function then print_function(item)
-            when C::FunctionTable then line(0, "const #{item.name.text} = [#{item.functions.map(&:text).join(', ')}];")
-            when C::ListStorage then print_list_storage(item)
-            when C::Comment then comment(0, item.text)
+            when Statements::Include, Statements::Prototype then nil # JavaScript finds a function wherever it is declared
+            when Statements::Global then line(0, "let #{item.name.text} = #{integer(item.value)};")
+            when Statements::ConstArray then print_const_array(item)
+            when Statements::StartFileArray then print_start_file_array(item)
+            when Statements::Function then print_function(item)
+            when Statements::FunctionTable then line(0, "const #{item.name.text} = [#{item.functions.map(&:text).join(', ')}];")
+            when Statements::ListStorage then print_list_storage(item)
+            when Statements::Comment then comment(0, item.text)
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
             end
           end
@@ -117,7 +117,7 @@ module VBlank
             end
           end
 
-          # An array the start file fills (C::StartFileArray): its size alone, zeros until then.
+          # An array the start file fills (Statements::StartFileArray): its size alone, zeros until then.
           def print_start_file_array(item)
             type = ARRAYS.fetch(item.type) { raise LoweringError, "the printer has no array for C's #{item.type}" }
             line(0, "const #{item.name.text} = new #{type}(#{[item.count, 1].max});")
@@ -169,21 +169,21 @@ module VBlank
 
           def statement(depth, item)
             case item
-            when C::Eval then print_eval(depth, item.call)
-            when C::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)};")
-            when C::Local then line(depth, "let #{item.name.text} = #{expression(item.value)};")
-            when C::If then print_if(depth, item)
-            when C::While then print_block_statement(depth, "while (#{expression(item.condition)}) {", item.body)
-            when C::Break then line(depth, "break;")
-            when C::Return then line(depth, "return;")
-            when C::Block then print_block_statement(depth, "{", item.body)
-            when C::Comment then comment(depth, item.text)
-            when C::Steps then print_steps(depth, item)
-            when C::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)}; continue;")
-            when C::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)}; return 1;")
-            when C::Finish then line(depth, "#{item.counter.text} = 0; return 0;")
-            when C::Resume then line(depth, "if (#{routine_call(item.call)}) return 1;")
-            when C::RunToEnd then print_run_to_end(depth, item)
+            when Statements::Eval then print_eval(depth, item.call)
+            when Statements::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)};")
+            when Statements::Local then line(depth, "let #{item.name.text} = #{expression(item.value)};")
+            when Statements::If then print_if(depth, item)
+            when Statements::While then print_block_statement(depth, "while (#{expression(item.condition)}) {", item.body)
+            when Statements::Break then line(depth, "break;")
+            when Statements::Return then line(depth, "return;")
+            when Statements::Block then print_block_statement(depth, "{", item.body)
+            when Statements::Comment then comment(depth, item.text)
+            when Statements::Steps then print_steps(depth, item)
+            when Statements::Goto then line(depth, "#{item.counter.text} = #{integer(item.step)}; continue;")
+            when Statements::Pause then line(depth, "#{item.counter.text} = #{integer(item.step)}; return 1;")
+            when Statements::Finish then line(depth, "#{item.counter.text} = 0; return 0;")
+            when Statements::Resume then line(depth, "if (#{routine_call(item.call)}) return 1;")
+            when Statements::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
           end
@@ -197,7 +197,7 @@ module VBlank
             expression(call)
           end
 
-          # A resumable routine run from its start for an answer (C::RunToEnd), in a block of its own:
+          # A resumable routine run from its start for an answer (Statements::RunToEnd), in a block of its own:
           # the counters and locals it can reach kept, the counters set to 0, and all put back after.
           def print_run_to_end(depth, item)
             kept = item.counters + item.locals.map(&:name)
@@ -209,7 +209,7 @@ module VBlank
             line(depth, "}")
           end
 
-          # A resumable routine's steps (Native::Resumable): a loop round a switch on its counter,
+          # A resumable routine's steps (Computer::Resumable): a loop round a switch on its counter,
           # each step going on with `continue` and leaving the routine with 1 or 0.
           def print_steps(depth, item)
             line(depth, "for (;;) {")
@@ -243,12 +243,12 @@ module VBlank
 
           def expression(item)
             case item
-            when C::Int then integer(item.value)
-            when C::Name then item.text
-            when C::AddressOf then address_of(item.name)
-            when C::Text then string(item.value)
-            when C::Index then "#{expression(item.array)}[#{expression(item.index)}]"
-            when C::Call then "#{item.function.text}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
+            when Statements::Int then integer(item.value)
+            when Statements::Name then item.text
+            when Statements::AddressOf then address_of(item.name)
+            when Statements::Text then string(item.value)
+            when Statements::Index then "#{expression(item.array)}[#{expression(item.index)}]"
+            when Statements::Call then "#{item.function.text}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
             else raise LoweringError, "the printer has no expression form for #{item.class}"
             end
           end

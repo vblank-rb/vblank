@@ -7,10 +7,10 @@ module VBlank
         # ONE PROGRAM, WRITTEN OUT AS RUBY. Make one per program and ask for #text_and_gaps.
         #
         # The program is built as a tree of statements — globals, routines, tables of numbers,
-        # and calls into a runtime, never an operator on a number — by the native lowering this
-        # inherits, so how a program is treated (which kinds are refused, which art is worked out in
+        # and calls into a runtime, never an operator on a number — by the lowering this
+        # inherits (Computer::Lowering), so how a program is treated (which kinds are refused, which art is worked out in
         # Ruby while building) is decided in one place; Printer writes that tree as Ruby.
-        class Lowering < Native::Lowering
+        class Lowering < Computer::Lowering
           # The program as the body of the game's class, and the runtime functions it calls that
           # the runtime it is to run with does not have yet (+runtime_functions+, the functions of
           # the runtime and the driver it is put together with), each said in a few words.
@@ -28,9 +28,9 @@ module VBlank
           # the cycles a frame lasts, and whether its cartridge's clock keeps the date. A frame's
           # share of a second is what decides how many samples of sound a frame makes, and how far
           # the cartridge's clock moves on. The names and numbers are the C and JavaScript
-          # runtimes' (Native::ConsoleNumbers), with true and false kept as Ruby's own.
+          # runtimes' (Computer::ConsoleNumbers), with true and false kept as Ruby's own.
           def console_text
-            Native::ConsoleNumbers.values(@program.described_console).map { |name, value| "#{name} = #{value}\n" }.join
+            Computer::ConsoleNumbers.values(@program.described_console).map { |name, value| "#{name} = #{value}\n" }.join
           end
 
           private
@@ -43,7 +43,7 @@ module VBlank
           # each has). Empty once the runtime is whole. In the order they first appear in the
           # printed program, and the first is the one a test that skips is counted under.
           def runtime_gaps(items, called, runtime_functions)
-            own = items.grep(Native::C::Function).map { |function| function.name.text }
+            own = items.grep(Computer::Statements::Function).map { |function| function.name.text }
             called.to_a - own - runtime_functions
           end
         end

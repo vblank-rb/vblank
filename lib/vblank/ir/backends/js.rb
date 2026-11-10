@@ -49,7 +49,7 @@ module VBlank
       # JavaScript too (`rake test:lowering:js` plays only that), checked against the interpreter
       # on every frame, so a feature is not done until it works here as well.
       #
-      # HOW IT IS MADE. The native lowering already writes a program as a tree of statements and
+      # HOW IT IS MADE. Computer::Lowering already writes a program as a tree of statements and
       # calls into a runtime, with no operator anywhere on a game's number (see the comment atop
       # Native); JS::Lowering prints that same tree as JavaScript, and the runtime is
       # runtime/*.js, the native runtime's C written again in JavaScript, function for function,
@@ -69,9 +69,9 @@ module VBlank
       # same way (HeadlessRun); or runtime/rg_page.js, which draws to a canvas, reads the keyboard
       # and plays the sound through Web Audio.
       class JS
-        # Raised when a program cannot be written as JavaScript. The same error the native
-        # lowering raises, since most of what refuses a program is the lowering they share.
-        LoweringError = Native::LoweringError
+        # Raised when a program cannot be written as JavaScript. The same error every
+        # lowering for a computer raises, since most of what refuses a program is the lowering they share.
+        LoweringError = Computer::LoweringError
 
         RUNTIME_DIR = Ractor.make_shareable(File.expand_path("js/runtime", __dir__))
 
@@ -88,16 +88,16 @@ module VBlank
         # The first line of everything the backend writes.
         WRITTEN_BY = "// Written by VBlank's JavaScript backend. Do not edit; build the game again.\n"
 
-        # A game's program, checked exactly the way a cartridge build checks it, as the native
-        # lowering checks one (Native#checked_program), so nothing the console would refuse is
-        # made for a browser instead — and then for the steps only the console can run
+        # A game's program, checked exactly the way a cartridge build checks it, as every
+        # build for a computer checks one (Computer::CheckedProgram.build), so nothing the console
+        # would refuse is made for a browser instead — and then for the steps only the console can run
         # (Guardrails::Checks::WebPortability), each said with its line, which stop the build.
         # +console+ is the one the game is built as, the first it names when left out.
-        # +pack_at_start+ leaves the game's data pack out (Native#checked_program).
+        # +pack_at_start+ leaves the game's data pack out (Computer::CheckedProgram.build).
         def checked_program(game, console: nil, settings: {}, err: $stderr, progress: Messages::Progress.silent,
                             pack_at_start: false)
-          program = Native.new.checked_program(game, console: console, settings: settings, err: err, progress: progress,
-                                               pack_at_start: pack_at_start)
+          program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
+                                                  pack_at_start: pack_at_start)
           refuse_console_only_steps!(program, err)
           program
         end
@@ -261,10 +261,10 @@ module VBlank
 
         # THE CONSOLE THE GAME IS BUILT AS, ahead of the runtime, which reads it: how big its screen
         # is, and how its clock counts a frame, from +console+ (a Console::Description). As the
-        # native runtime has them (Native::ConsoleNumbers).
+        # native runtime has them (Computer::ConsoleNumbers).
         def console_text(console)
-          Native::ConsoleNumbers.values(console).map do |name, value|
-            "const #{name} = #{Native::ConsoleNumbers.as_number(value)};\n"
+          Computer::ConsoleNumbers.values(console).map do |name, value|
+            "const #{name} = #{Computer::ConsoleNumbers.as_number(value)};\n"
           end.join
         end
 
