@@ -138,6 +138,35 @@ class TestDOSCheckedRun < Minitest::Test
     end
   end
 
+  def test_text_is_drawn_as_the_interpreter_draws_it
+    checked(frames: 4) do
+      screen :bitmap
+      clear_screen :blue
+      draw_text "HELLO, DOS 386!", 8, 8, :white
+      draw_text "same colour, same picture", 8, 40, :white
+      draw_text "SCORE 0123456789", 8, 60, :yellow
+      draw_text "EDGE: this line runs off the right side of the screen", 100, 190, :green
+      count = var :count, 0
+      game_loop do
+        count += 1
+        draw_text "FRAME", 200, 100, :red
+        draw_text "", 5, 5, :red
+      end
+    end
+  end
+
+  def test_a_text_in_a_colour_picked_as_the_game_runs_is_refused_by_name
+    error = assert_raises(DOS::Lowering::NotMadeYet) do
+      checked(frames: 2) do
+        screen :bitmap
+        lit = var :lit, 1
+        game_loop { draw_text "BLINK", 8, 8, %i[white red], showing: lit }
+      end
+    end
+
+    assert_match(/colour it picks as it runs/, error.message)
+  end
+
   def test_repeat_and_if_and_else_agree
     checked(frames: 5) do
       total = var :total, 0

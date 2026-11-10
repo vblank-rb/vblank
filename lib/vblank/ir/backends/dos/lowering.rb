@@ -18,7 +18,7 @@ module VBlank
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
         # its conditions and halting, and a painted screen of one page with a cleared screen, pixels,
-        # rectangles and pictures (`blit`), in a palette of the colours the game names. Everything else is
+        # rectangles, pictures (`blit`) and text, in a palette of the colours the game names. Everything else is
         # refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at all is refused in
         # the words its answers have (Console::Answers#refusals).
         class Lowering
@@ -32,13 +32,13 @@ module VBlank
           # #value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit
+            draw_rect_at blit draw_text
           ] + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = %i[int var_ref binop neg].freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
-          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at].freeze
+          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text].freeze
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET: all the others. A kind leaves the list the day it is made
           # (the coverage test holds the list and the two above to every kind there is).
@@ -113,6 +113,7 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_screens!
+            refuse_unmade_text!
           end
 
           # A screen drawn from tiles, or one that keeps two pictures (`tear_free: true`), is not made yet.
@@ -125,6 +126,16 @@ module VBlank
                                    "does not make that yet. To fix this, use `screen :bitmap` for now.",
                                    part: Console::DOSAnswers::NOT_MADE_YET_PART)
             end
+          end
+
+          # A text whose colour is picked as the game runs (`picked:`) is two pictures and a choice, which is not
+          # made yet.
+          def refuse_unmade_text!
+            return unless @program.walk.any? { |node| node.kind == :draw_text && node.picked }
+
+            raise NotMadeYet.new("This game writes text in a colour it picks as it runs. The #{CONSOLE.title} build " \
+                                 "does not make that yet. To fix this, give the text one colour for now.",
+                                 part: Console::DOSAnswers::NOT_MADE_YET_PART)
           end
 
           def loop_variables = @plan.game_loops.flat_map { |node| console_loop(node).variables }
@@ -157,6 +168,26 @@ module VBlank
             @pictures_declared.fetch(name) { raise LoweringError, "the picture #{name.inspect} is drawn and never declared" }
           end
 
+          def keep_texts
+            @program.walk.select { |node| node.kind == :draw_text }.each do |node|
+              key = text_key(node)
+              next if @art_places.key?(key)
+
+              drawn = []
+              node.fonts.get(node.font).each_pixel(node.text) { |x, y| drawn << [x, y] }
+              next if drawn.empty?
+
+              width = drawn.map(&:first).max + 1
+              height = drawn.map(&:last).max + 1
+              pixels = Array.new(width * height, Runtime::TRANSPARENT)
+              drawn.each { |x, y| pixels[(y * width) + x] = palette_entry(node.color) }
+              @art_places[key] = @art.bytesize
+              @art << [width, height].pack("v2") << pixels.pack("C*")
+            end
+          end
+
+          def text_key(node) = [:text, node.text, node.font, Graphics::Color.resolve(node.color)]
+
           def picture_image(name) = (@images ||= {})[name] ||= @cache.image(picture_node(name))
 
           # The 15-bit colours a picture draws, not counting what it leaves transparent.
@@ -165,8 +196,11 @@ module VBlank
             (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map { |at| image.color_at(at) }.uniq
           end
 
-          # Each picture the game draws, made into its bytes of the art segment once its palette is known.
+          # Each picture the game draws, and each text it writes, made into its bytes of the art segment once its
+          # palette is known. A text is the picture of its pixels in its font and colour, which is how the
+          # interpreter draws it (Reference#exec_draw_text), and the same text in the same colour is one picture.
           def keep_pictures
+            keep_texts
             drawn_pictures.each do |name|
               image = picture_image(name)
               @art_places[name] = @art.bytesize
@@ -221,6 +255,7 @@ module VBlank
             when :pixel then emit_pixel(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
+            when :draw_text then emit_draw_text(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -368,6 +403,16 @@ module VBlank
           def emit_blit(node)
             emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
             @asm.mov(:si, @art_places.fetch(node.name))
+            @asm.call("rt_blit")
+          end
+
+          # Reference#exec_draw_text: the words as a picture in their colour, at x and y. A text with no pixels
+          # in its font draws nothing.
+          def emit_draw_text(node)
+            place = @art_places[text_key(node)] or return
+
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            @asm.mov(:si, place)
             @asm.call("rt_blit")
           end
 
