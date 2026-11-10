@@ -176,6 +176,7 @@ module RubyDOSEmulator
 
       @call[:retro_unload_game].call
       @call[:retro_deinit].call
+      @call[:vblank_wait_for_thread].call # the emulation thread leaves the library before it is unloaded
       @handle.close # the library unloads, and its 42 MB of static memory with it (core/dosbox-exports.map says why)
       @call = nil
       FileUtils.rm_rf(@dir)
@@ -208,6 +209,7 @@ module RubyDOSEmulator
       retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
       retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T],
       vblank_finish_frame: [[], Fiddle::TYPE_VOID],
+      vblank_wait_for_thread: [[], Fiddle::TYPE_VOID],
       vblank_set_directory: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
       vblank_key_event: [[Fiddle::TYPE_INT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
       vblank_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOIDP],
