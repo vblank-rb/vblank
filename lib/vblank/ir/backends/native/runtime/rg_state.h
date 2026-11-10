@@ -55,6 +55,7 @@ void rg_game_visit_state(void);
 void rg_runtime_visit_state(void);
 void rg_save_visit_state(void);
 void rg_screen_visit_state(void);
+void rg_sound_visit_state(void);
 
 /* A patch of picture kept under a sprite (rg_patch_save), +width+ by +height+: whether it was
  * saved, then its cells. The build visits each patch the game declares. */

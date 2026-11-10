@@ -46,6 +46,7 @@ def rg_state_visit_all
   rg_runtime_visit_state
   rg_save_visit_state
   rg_screen_visit_state
+  rg_sound_visit_state
 end
 
 RG_STATE_SHORTEST_RUN = 4 # The shortest run of one number written as "times*number"
@@ -116,6 +117,18 @@ def rg_state_numbers(name, values)
     @rg_state_lines << "#{name}\t#{[values.length, *rg_state_words(values)].join(" ")}\n"
   end
   values
+end
+
+# A field whose numbers are the members of +record+, a Data of whole numbers, in the order it
+# declares them: written, or given back as a record of the same kind holding what the image holds.
+# A part's fields with several meanings are named this way rather than kept as a row of numbers.
+def rg_state_record(name, record) = record.class.new(*rg_state_numbers(name, record.to_h.values))
+
+# Each of +records+, all of one kind, as one field: written, or given back as records made from
+# the image's numbers. +count+ is how many the image holds, which reading needs before it has any.
+def rg_state_records(name, records, kind, count)
+  numbers = rg_state_reading ? Array.new(count * kind.members.length, 0) : records.flat_map { |record| record.to_h.values }
+  rg_state_numbers(name, numbers).each_slice(kind.members.length).map { |slice| kind.new(*slice) }
 end
 
 # A field of one number the build wrote as a global: written, or given back from the image.

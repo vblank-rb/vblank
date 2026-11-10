@@ -70,8 +70,10 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include "rg_sound.h"
 #include "rg_driver.h"
+#include "rg_state.h"
 #include "rg_runtime.h"
 #include "rg_console.h"
 
@@ -118,6 +120,7 @@ static void rg_hook_sound_frame_ended(void);                     /* ...and what 
 static void rg_hook_voice_taken_by_game(int32_t voice);          /* a beep, wave or stop_wave took a voice */
 static int32_t rg_hook_mixed_slice(const int32_t **samples);     /* the newest mixed slice, or 0 for none */
 static void rg_hook_moment_printed(void);                        /* a windowless run prints a moment */
+static void rg_hook_visit_sound_state(void);                     /* the state image visits each feature's fields */
 
 /* How much one step of loudness moves the speaker. Two voices at their loudest then swing
  * through half of what a sample can hold. All four at once, at their loudest, can ask for more
@@ -537,6 +540,81 @@ void rg_sound_frame(void) {
 }
 
 void rg_sound_print_moment(void) { rg_hook_moment_printed(); }
+
+/* --- the state image --- */
+
+static _Noreturn void refuse_damaged_sound(const char *what) {
+  rg_fault("This state is damaged: %s. Load a state that this game wrote.", what);
+}
+
+/* A loudness as four numbers: now, samples it holds a step, samples left, and whether it swells. */
+enum { LOUDNESS_NUMBERS = 4, SQUARE_STATE_NUMBERS = 7 + LOUDNESS_NUMBERS, WAVE_STATE_NUMBERS = WAVE_STEPS + 6,
+       NOISE_STATE_NUMBERS = 7 + LOUDNESS_NUMBERS, SOUND_STATE_NUMBERS = 3 + RG_NOISE_VOICE };
+
+static void put_loudness(int64_t *at, const fading_volume *fading) {
+  at[0] = fading->volume, at[1] = fading->hold_samples, at[2] = fading->left, at[3] = fading->up;
+}
+
+static fading_volume loudness_from(const int64_t *at) {
+  if (at[0] < 0 || at[0] >= VOLUMES) refuse_damaged_sound("a voice is louder than a voice can be");
+  return (fading_volume){(int32_t)at[0], (int32_t)at[1], (int32_t)at[2], at[3] != 0};
+}
+
+/* The console voices' fields (Computer::StateFields "sound" and the rest), then each sound
+ * feature's (rg_hook_visit_sound_state). +heard_only+ is a test's, not the game's, and stays. */
+void rg_sound_visit_state(void) {
+  int64_t general[SOUND_STATE_NUMBERS] = {(int64_t)sample_carry, slide_clock, loaded_waveform};
+  for (int32_t voice = 1; voice <= RG_NOISE_VOICE; voice++) general[2 + voice] = sides[voice];
+  rg_state_numbers("sound", general, SOUND_STATE_NUMBERS);
+  if (general[0] < 0 || general[0] >= RG_CONSOLE_TICKS_A_SECOND || general[1] < 0 || general[1] >= SLIDE_TICK_SAMPLES ||
+      general[2] < -1 || general[2] >= rg_game_waveforms[0])
+    refuse_damaged_sound("the sound is somewhere it cannot be");
+  sample_carry = (uint64_t)general[0], slide_clock = (int32_t)general[1], loaded_waveform = (int32_t)general[2];
+  for (int32_t voice = 1; voice <= RG_NOISE_VOICE; voice++) {
+    if (general[2 + voice] != 0 && general[2 + voice] != PAN_LEFT && general[2 + voice] != PAN_RIGHT)
+      refuse_damaged_sound("a voice plays from a speaker there is not");
+    sides[voice] = (int32_t)general[2 + voice];
+  }
+
+  int64_t square_numbers[RG_SQUARE_VOICES * SQUARE_STATE_NUMBERS];
+  for (int32_t i = 0; i < RG_SQUARE_VOICES; i++) {
+    const square_voice *s = &squares[i];
+    int64_t *at = square_numbers + i * SQUARE_STATE_NUMBERS;
+    at[0] = s->wave_ticks, at[1] = s->eighths_high, at[2] = s->eighth, at[3] = s->eighth_progress, at[4] = s->slide;
+    at[5] = s->slide_left, at[6] = s->slid_ticks;
+    put_loudness(at + 7, &s->loudness);
+  }
+  rg_state_numbers("sound.squares", square_numbers, RG_SQUARE_VOICES * SQUARE_STATE_NUMBERS);
+  for (int32_t i = 0; i < RG_SQUARE_VOICES; i++) {
+    const int64_t *at = square_numbers + i * SQUARE_STATE_NUMBERS;
+    if (at[2] < 0 || at[2] > 7 || at[0] < 0 || at[6] < 0) refuse_damaged_sound("a square voice is part way through a wave it cannot be");
+    squares[i] = (square_voice){(int32_t)at[0], (int32_t)at[1], loudness_from(at + 7), (int32_t)at[2], at[3], (int32_t)at[4],
+                                (int32_t)at[5], (int32_t)at[6]};
+  }
+
+  int64_t wave_numbers[WAVE_STATE_NUMBERS];
+  for (int32_t i = 0; i < WAVE_STEPS; i++) wave_numbers[i] = wave.steps[i];
+  int64_t *rest = wave_numbers + WAVE_STEPS;
+  rest[0] = wave.switched_on, rest[1] = wave.wave_ticks, rest[2] = wave.quarters, rest[3] = wave.cut_sum, rest[4] = wave.step;
+  rest[5] = wave.step_progress;
+  rg_state_numbers("sound.wave", wave_numbers, WAVE_STATE_NUMBERS);
+  if (rest[4] < 0 || rest[4] >= WAVE_STEPS || rest[1] < 0) refuse_damaged_sound("the wave voice is on a step it does not have");
+  for (int32_t i = 0; i < WAVE_STEPS; i++) wave.steps[i] = (int32_t)wave_numbers[i];
+  wave.switched_on = rest[0] != 0, wave.wave_ticks = (int32_t)rest[1], wave.quarters = (int32_t)rest[2];
+  wave.cut_sum = (int32_t)rest[3], wave.step = (int32_t)rest[4], wave.step_progress = rest[5];
+
+  int64_t noise_numbers[NOISE_STATE_NUMBERS] = {hiss.step_ticks, hiss.bits,         hiss.row,         hiss.high,
+                                                hiss.heard_high, hiss.row_progress, hiss.hand_progress};
+  put_loudness(noise_numbers + 7, &hiss.loudness);
+  rg_state_numbers("sound.noise", noise_numbers, NOISE_STATE_NUMBERS);
+  if (noise_numbers[0] < 0 || (noise_numbers[0] != 0 && (noise_numbers[1] < 2 || noise_numbers[1] > 31)) || noise_numbers[2] < 0 ||
+      noise_numbers[2] > UINT32_MAX)
+    refuse_damaged_sound("the noise voice holds a row of bits it cannot");
+  hiss = (noise_voice){(int32_t)noise_numbers[0], (int32_t)noise_numbers[1], (uint32_t)noise_numbers[2], (int32_t)noise_numbers[3],
+                       (int32_t)noise_numbers[4], loudness_from(noise_numbers + 7), noise_numbers[5], noise_numbers[6]};
+
+  rg_hook_visit_sound_state();
+}
 
 /* The game's sound features and the hooks they take, written by the build beside game.c
  * (RuntimeFeatures#c_text); then what a hook none of them takes does. A file read on its own, by

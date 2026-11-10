@@ -155,7 +155,11 @@ module VBlank
           # A windowless run prints a moment (rg_headless.c and its twins): each feature prints the
           # lines of its own state. A game with none of them prints nothing here.
           Hook.new(name: :moment_printed, way: :each, joins: :sound,
-                   c_signature: "static void rg_hook_moment_printed(void)")
+                   c_signature: "static void rg_hook_moment_printed(void)"),
+          # The state image is written or read: each sound feature visits its own fields, after the
+          # console voices' (rg_sound_visit_state).
+          Hook.new(name: :visit_sound_state, way: :each, joins: :sound,
+                   c_signature: "static void rg_hook_visit_sound_state(void)")
         ])
 
         # +needed_by+ is the kinds of step that need the feature; +after+ the features whose hooks

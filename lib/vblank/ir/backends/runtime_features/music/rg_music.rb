@@ -774,3 +774,133 @@ def rg_play_song_frame
   @rg_song_frame = @rg_game_music[@rg_song + 1]
   rg_start_walks(true)
 end
+
+# --- the state image (rg_music.c says what each field holds) ---
+
+RG_WOBBLE_NUMBERS = 6
+RG_SWELL_NUMBERS = 7
+RG_SHAPE_NUMBERS = 3
+RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
+
+# "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
+# far into the tune, the volume its notes were set at, and how many notes and voices are held.
+RgMusicPlace = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
+                           :held_voices)
+
+# "music.parts", one a part of the playing tune: whether it walks its notes after the first time
+# through, and which comes next. The rest of a part is the song's, read again from it.
+RgPartPlace = Data.define(:after_first, :next_note)
+
+def rg_refuse_damaged_music(what) = rg_fault("This state is damaged: #{what}. Load a state that this game wrote.")
+
+# rg_hook_visit_sound_state (rg_music.c's rg_music_visit_sound_state).
+def rg_music_visit_sound_state
+  place = rg_state_record("music", RgMusicPlace.new(
+                                     wanted: @rg_wanted, playing: @rg_playing, ended: @rg_ended, stops: @rg_stops,
+                                     stops_seen: @rg_stops_seen, held: rg_state_flag(@rg_music_held),
+                                     song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
+                                     held_voices: @rg_holder_order.length
+                                   ))
+  songs = (-1...rg_song_count)
+  unless [place.wanted, place.playing, place.ended].all? { |song| songs.cover?(song) } &&
+         place.held_notes.between?(0, RG_PARTS_MOST) && place.held_voices.between?(0, RG_NOISE_VOICE)
+    rg_refuse_damaged_music("the music holds more than it can")
+  end
+  @rg_wanted = place.wanted
+  @rg_playing = place.playing
+  @rg_ended = place.ended
+  @rg_stops = place.stops
+  @rg_stops_seen = place.stops_seen
+  @rg_music_held = place.held != 0
+  @rg_song_frame = place.song_frame
+  @rg_level = place.level
+  rg_visit_part_walks
+  rg_visit_held_notes(place.held_notes)
+  rg_visit_music_voices(place.held_voices)
+  rg_visit_effects
+end
+
+def rg_visit_part_walks
+  if rg_state_reading
+    @rg_song = @rg_playing >= 0 ? rg_song_numbers(@rg_playing) : 0
+    @rg_part_count = @rg_playing >= 0 ? @rg_game_music[@rg_song + 4] : 0
+    rg_refuse_damaged_music("the song has more parts than a song can") if @rg_part_count > RG_PARTS_MOST
+  end
+  squares_met = [0]
+  written = @rg_song + RG_NUMBERS_PER_SONG
+  places = Array.new(rg_state_reading ? 0 : @rg_part_count) do |i|
+    first, written = rg_read_part(@rg_playing, written, false, squares_met)
+    part = @rg_parts[i]
+    RgPartPlace.new(after_first: rg_state_flag(part.notes != first.notes || part.count != first.count), next_note: part.next_note)
+  end
+  places = rg_state_records("music.parts", places, RgPartPlace, @rg_part_count)
+  return unless rg_state_reading
+
+  squares_met = [0]
+  written = @rg_song + RG_NUMBERS_PER_SONG
+  places.each_with_index do |place, i|
+    walk, written = rg_read_part(@rg_playing, written, place.after_first != 0, squares_met)
+    rg_refuse_damaged_music("a part of the song is past its last note") unless place.next_note.between?(0, walk.count)
+    walk.next_note = place.next_note
+    @rg_parts[i] = walk
+  end
+end
+
+def rg_visit_held_notes(count)
+  @rg_holding = rg_state_records("music.holding", @rg_holding, RgHeldNote, count)
+  return if @rg_holding.all? { |note| note.voice.between?(0, RG_NOISE_VOICE) }
+
+  rg_refuse_damaged_music("a held note is on a voice there is not")
+end
+
+# Each voice's wobble, swell and shapes, who holds it, and the voices in the order first held.
+def rg_visit_music_voices(holder_count)
+  numbers = []
+  (1..RG_WAVE_VOICE).each do |v|
+    w = @rg_wobbles[v]
+    numbers.push(w.vibrato, w.wait, w.left, rg_state_flag(w.rising), w.steps, w.ticks)
+  end
+  (1..RG_NOISE_VOICE).each do |v|
+    s = @rg_swells[v]
+    numbers.push(rg_state_flag(s.active), s.step || 0, s.volume || 0, s.counted || 0, rg_state_flag(s.swelling),
+                 s.wave_ticks || 0, s.eighths_high || 0)
+  end
+  (1..RG_SQUARE_VOICES).each { |v| numbers.push(@rg_shapes[v].bits, @rg_shapes[v].frame, rg_state_flag(@rg_shapes[v].steps)) }
+  numbers.concat(@rg_holders[1..], Array.new(RG_NOISE_VOICE) { |i| @rg_holder_order[i] || 0 })
+  numbers = rg_state_numbers("music.voices", numbers)
+
+  at = 0
+  (1..RG_WAVE_VOICE).each do |v|
+    n = numbers[at, RG_WOBBLE_NUMBERS]
+    @rg_wobbles[v] = RgWobble.new(n[0], n[1], n[2], n[3] != 0, n[4], n[5])
+    at += RG_WOBBLE_NUMBERS
+  end
+  (1..RG_NOISE_VOICE).each do |v|
+    n = numbers[at, RG_SWELL_NUMBERS]
+    @rg_swells[v] = RgSwellWalk.new(n[0] != 0, n[1], n[2], n[3], n[4] != 0, n[5], n[6])
+    at += RG_SWELL_NUMBERS
+  end
+  (1..RG_SQUARE_VOICES).each do |v|
+    n = numbers[at, RG_SHAPE_NUMBERS]
+    @rg_shapes[v] = RgShapeWalk.new(n[0], n[1], n[2] != 0)
+    at += RG_SHAPE_NUMBERS
+  end
+  @rg_holders = [0, *numbers[at, RG_NOISE_VOICE]]
+  @rg_holder_order = numbers[at + RG_NOISE_VOICE, holder_count]
+  return if @rg_holder_order.all? { |voice| voice.between?(1, RG_NOISE_VOICE) }
+
+  rg_refuse_damaged_music("a voice is held that there is not")
+end
+
+def rg_visit_effects
+  numbers = Array.new(rg_effect_count) do |e|
+    [rg_state_flag(@rg_effect_asked[e]), rg_state_flag(@rg_effect_asked_now[e]), rg_state_flag(@rg_effect_stopping[e]),
+     rg_state_flag(@rg_effect_running[e]), @rg_effect_frame[e], *(@rg_effect_cursors[e] || Array.new(RG_PARTS_MOST, 0))]
+  end
+  numbers = rg_state_numbers("music.effects", numbers.flatten)
+  numbers.each_slice(RG_EFFECT_STATE_NUMBERS).with_index do |n, e|
+    @rg_effect_asked[e], @rg_effect_asked_now[e], @rg_effect_stopping[e], @rg_effect_running[e] = n[0, 4].map { |flag| flag != 0 }
+    @rg_effect_frame[e] = n[4]
+    @rg_effect_cursors[e] = n[5, RG_PARTS_MOST]
+  end
+end

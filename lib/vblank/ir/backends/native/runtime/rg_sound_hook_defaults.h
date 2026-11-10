@@ -24,6 +24,10 @@ static int32_t rg_hook_mixed_slice(const int32_t **samples) {
 }
 #endif
 
+#ifndef RG_HOOK_VISIT_SOUND_STATE_TAKEN
+static void rg_hook_visit_sound_state(void) {}
+#endif
+
 /* A game with no recordings prints nothing of the mix. */
 #ifndef RG_HOOK_MOMENT_PRINTED_TAKEN
 static void rg_hook_moment_printed(void) {}

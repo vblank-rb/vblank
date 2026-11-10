@@ -58,6 +58,18 @@ class RgMixVoice
   end
 
   def releasing? = @owner != RG_MIX_GAME && (@phase == RG_SHAPE_FALLING || @phase == RG_SHAPE_DONE)
+
+  # Its numbers in the state image, in the order rg_mix.c's mix_voice keeps them.
+  def state_numbers
+    [@sounding ? 1 : 0, @owner, @effect, @lane, @rank, @loops, @ticket, @recording, @position, @fraction, @step, @back,
+     @loudness, @gain, @ramp, @shaped, @level, @phase, @attack, @decay, @sustain, @release]
+  end
+
+  def state_numbers=(numbers)
+    sounding, @owner, @effect, @lane, @rank, @loops, @ticket, @recording, @position, @fraction, @step, @back,
+      @loudness, @gain, @ramp, @shaped, @level, @phase, @attack, @decay, @sustain, @release = numbers
+    @sounding = sounding != 0
+  end
 end
 
 def rg_mix_setup
@@ -384,4 +396,29 @@ def rg_mix_moment_printed
   dropped, music_held = rg_mix_drops
   $stdout.write("mixing#{sounding.flatten.map { |number| " #{number}" }.join}\n" \
                 "mix_peak #{rg_mix_peak}\nmix_drops #{dropped} #{music_held}\n")
+end
+
+# --- the state image (rg_mix.c says what each field holds) ---
+
+RG_MIX_VOICE_NUMBERS = 22
+
+# rg_hook_visit_sound_state (rg_mix.c's rg_mix_visit_sound_state).
+def rg_mix_visit_sound_state
+  counts = rg_state_numbers("mix", [@rg_mix_slices_made, @rg_mix_peak, @rg_mix_drop_count, @rg_mix_drops_music, @rg_mix_tickets])
+  @rg_mix_slices_made, @rg_mix_peak, @rg_mix_drop_count, @rg_mix_drops_music, @rg_mix_tickets = counts
+  @rg_slices_printed = @rg_mix_slices_made # the writer's run printed the newest already
+
+  numbers = rg_state_numbers("mix.voices", @rg_mix_voices.first(rg_mix_voice_count).flat_map(&:state_numbers))
+  numbers.each_slice(RG_MIX_VOICE_NUMBERS).with_index do |n, i|
+    voice = RgMixVoice.new
+    voice.state_numbers = n
+    if voice.sounding && (!voice.recording.between?(0, @rg_game_recordings[0] - 1) || voice.position.negative?)
+      rg_fault("This state is damaged: the mixer plays a recording the game does not have. Load a state that this game wrote.")
+    end
+    @rg_mix_voices[i] = voice
+  end
+
+  samples = rg_mixes != 0 ? rg_slice_samples : 0
+  newest = rg_state_numbers("mix.slice", (@rg_mix_slice || Array.new(samples, 0)).first(samples))
+  @rg_mix_slice = newest if samples.positive?
 end

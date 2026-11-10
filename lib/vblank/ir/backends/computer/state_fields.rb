@@ -19,7 +19,9 @@ module VBlank
         # :held_tiles, four a change), the game's backgrounds (:backgrounds, 21 each), or what those
         # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each), and the sprites
         # (:sprites_drawn and :sprites_kept, ten each; :sprite_cuts, two a slice; :sprite_places,
-        # three for each sprite there is room for).
+        # three for each sprite there is room for), and the sound (:mix_voices, 22 a voice of the
+        # mixer; :slice_samples, a slice's samples; :song_parts, two a part of the playing tune;
+        # :held_notes, six a note; :sound_effects, 25 an effect).
         # +with_save_memory+ marks a field only a game that reaches save memory keeps, and +feature+
         # one only a game that takes in that runtime feature keeps
         # (RuntimeFeatures; each visits its own through the visit_state hook, in the order the
@@ -103,7 +105,37 @@ module VBlank
             Field.new(name: "sprites.kept.cuts", count: :sprite_cuts, feature: :sprites),
             # Whether each sprite was last drawn straight onto the picture, and where.
             Field.new(name: "sprites.drawn_places", count: :sprite_places, feature: :sprites),
-            Field.new(name: "sprites.over_picture", count: :screen_cells, feature: :sprites)
+            Field.new(name: "sprites.over_picture", count: :screen_cells, feature: :sprites),
+            # THE SOUND, after the screen: the part of a sample a frame carried, the slide clock, the
+            # waveform a tune last put in the wave voice, and which speaker each voice plays from.
+            Field.new(name: "sound", count: 7),
+            # Each square voice: its wave's ticks, eighths high, the eighth it is in and how far
+            # through, its slide, the slide's ticks left and where it has slid to, then its loudness
+            # (now, samples a step holds, samples left, swelling).
+            Field.new(name: "sound.squares", count: 22),
+            # The wave voice's 32 steps, whether it is on, its wave's ticks, its quarters, their sum,
+            # the step it is on and how far through.
+            Field.new(name: "sound.wave", count: 38),
+            # The noise voice: a step's ticks, the bits in its row, the row, which way it stands and
+            # stood when last heard, how far through a step and to the next hand-over, then its
+            # loudness.
+            Field.new(name: "sound.noise", count: 11),
+            # The mixer: slices made, the most voices at once, plays dropped and the most the music
+            # held then, and sounds the game has started; then each voice's 22 numbers, and the
+            # newest slice.
+            Field.new(name: "mix", count: 5, feature: :mix),
+            Field.new(name: "mix.voices", count: :mix_voices, feature: :mix),
+            Field.new(name: "mix.slice", count: :slice_samples, feature: :mix),
+            # The music: the tune wanted, playing and ended, stops asked and seen, held, how far into
+            # the tune, the volume its notes were set at, how many notes are held and voices have
+            # been held; each part's walk (after its first time through, and its next note); each
+            # held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
+            # and shapes and who holds it; and each sound effect's place.
+            Field.new(name: "music", count: 10, feature: :music),
+            Field.new(name: "music.parts", count: :song_parts, feature: :music),
+            Field.new(name: "music.holding", count: :held_notes, feature: :music),
+            Field.new(name: "music.voices", count: 18 + 28 + 6 + 8, feature: :music),
+            Field.new(name: "music.effects", count: :sound_effects, feature: :music)
           ].freeze
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches

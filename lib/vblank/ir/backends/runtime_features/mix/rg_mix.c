@@ -486,3 +486,46 @@ static void rg_mix_moment_printed(void) {
   int32_t dropped = rg_mix_drops(&music_held);
   printf("\nmix_peak %d\nmix_drops %d %d\n", (int)rg_mix_peak(), (int)dropped, (int)music_held);
 }
+
+/* --- the state image --- */
+
+/* A voice in "mix.voices" is its 22 numbers in the order mix_voice keeps them, every one a whole
+ * number, so the struct is read as that many in a row. */
+enum { MIX_VOICE_NUMBERS = 22, MIX_STATE_NUMBERS = 5 };
+_Static_assert(sizeof(mix_voice) == MIX_VOICE_NUMBERS * sizeof(int32_t), "a mixer voice is its numbers and nothing else");
+
+/* rg_hook_visit_sound_state: how many slices were made, the most voices at once, the plays dropped
+ * and the most the music held then, the sounds the game has started, each voice, and the newest
+ * slice (Computer::StateFields "mix" and the rest). A game that mixes nothing keeps the counts
+ * alone. */
+static void rg_mix_visit_sound_state(void) {
+  int64_t counts[MIX_STATE_NUMBERS] = {slices_made, peak, drops, drops_music, tickets};
+  rg_state_numbers("mix", counts, MIX_STATE_NUMBERS);
+  slices_made = (int32_t)counts[0], peak = (int32_t)counts[1], drops = (int32_t)counts[2], drops_music = (int32_t)counts[3];
+  tickets = (int32_t)counts[4];
+  slices_printed = slices_made; /* the writer's run printed the newest already */
+
+  if (VOICES > VOICES_MOST) rg_fault("the mixer has %d voices, and the most is %d", (int)VOICES, VOICES_MOST);
+  int64_t numbers[VOICES_MOST * MIX_VOICE_NUMBERS];
+  for (int32_t i = 0; i < VOICES; i++) {
+    const int32_t *fields = (const int32_t *)&voices[i];
+    for (int32_t k = 0; k < MIX_VOICE_NUMBERS; k++) numbers[i * MIX_VOICE_NUMBERS + k] = fields[k];
+  }
+  rg_state_numbers("mix.voices", numbers, VOICES * MIX_VOICE_NUMBERS);
+  for (int32_t i = 0; i < VOICES; i++) {
+    int32_t *fields = (int32_t *)&voices[i];
+    for (int32_t k = 0; k < MIX_VOICE_NUMBERS; k++) fields[k] = (int32_t)numbers[i * MIX_VOICE_NUMBERS + k];
+    if (voices[i].sounding && (voices[i].recording < 0 || voices[i].recording >= rg_game_recordings[0] || voices[i].position < 0))
+      rg_fault("This state is damaged: the mixer plays a recording the game does not have. Load a state that this game wrote.");
+  }
+
+  int32_t samples = MIXES ? SLICE_SAMPLES : 0;
+  if (!slice) slice = calloc((size_t)(samples ? samples : 1), sizeof *slice);
+  if (!slice) rg_fault("no memory for a slice of %d samples", (int)samples);
+  int64_t *newest = malloc((size_t)(samples ? samples : 1) * sizeof *newest);
+  if (!newest) rg_fault("There is no room to read or write the state.");
+  for (int32_t at = 0; at < samples; at++) newest[at] = slice[at];
+  rg_state_numbers("mix.slice", newest, samples);
+  for (int32_t at = 0; at < samples; at++) slice[at] = (int32_t)newest[at];
+  free(newest);
+}

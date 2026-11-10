@@ -6,6 +6,6 @@
 VBlank::IR::Backends::RuntimeFeatures.declare(
   name: :mix,
   needed_by: %i[sample play_sample stop_sample],
-  hooks: %i[setup sound_frame sound_frame_ended mixed_slice moment_printed],
+  hooks: %i[setup sound_frame sound_frame_ended mixed_slice moment_printed visit_sound_state],
   joins: :sound
 )

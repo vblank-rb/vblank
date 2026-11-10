@@ -25,6 +25,7 @@ static void visit_all(void) {
   rg_runtime_visit_state();
   rg_save_visit_state();
   rg_screen_visit_state();
+  rg_sound_visit_state();
 }
 
 static int reading;
