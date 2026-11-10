@@ -13,6 +13,10 @@ module VBlank
   end
 end
 
+require_relative "dos/lowering"
+require_relative "dos/headless_run"
+require_relative "dos/checked_run"
+
 module VBlank
   module IR
     module Backends
@@ -56,6 +60,19 @@ module VBlank
       #                     cores: mount a temporary folder as C:, run the .EXE, step frames, read
       #                     video memory and the shown picture, read memory and sound, press keys.
       #
+      # WHERE THE CODE PARTS FROM THE TABLE, AND WHY:
+      #
+      # - MODE X IS 60 HZ, NOT 70. The table said "about 70 Hz in 13h and Mode X". Mode 13h draws its 200 lines
+      #   with the card's 400-line timing (each line twice, 449 lines of 800 dots, 70.087 Hz). Mode X's 240
+      #   lines are drawn with 480-line timing (525 lines of 800 dots, 59.94 Hz), as the 640 x 480 mode is.
+      #   Console::DOSHardware::LINES_A_FRAME has the numbers and the variants' descriptions use them.
+      # - THE EMULATOR GEM IS PURE RUBY OVER FIDDLE, with a frontend written in C inside the core (see
+      #   ruby-dos-emulator): DOSBox Pure emulates on a thread of its own and calls its frontend from there,
+      #   which a Ruby callback cannot answer.
+      # - A PROGRAM TELLS THE READER WHERE ITS DATA IS. DOS loads an EXE wherever it finds room, so the
+      #   program's first act is to store its data segment at 0040:00F0, the 16 bytes the PC's designers
+      #   kept for programs to share (Diagnostics::DOSMemory), and a variable's address is an offset in it.
+      #
       # WHAT IS DIFFERENT FROM THE PLAYSTATION'S AND THE GENESIS'S LOWERINGS: nothing about where the
       # lowering sits. It is a peer of those two: it walks the IR and emits machine code itself, through
       # a Ruby assembler (DOS::X86) and a writer for the file (the MZ .EXE), and shares what the other
@@ -66,11 +83,16 @@ module VBlank
       # segments, so a number held in a variable is two 16-bit halves to the eye but one 32-bit
       # register to the arithmetic. A game's variables live in one data segment; a list or picture too
       # big for what is left goes in a far segment of its own and is reached through ES.
-      #
-      # THE EMULATOR GEM IS PURE RUBY OVER FIDDLE, not a C extension: like the PlayStation's and the
-      # Super Nintendo's, it drives a libretro core, and the only thing that needs building is the
-      # core. (The first draft of the brief said "C extension"; the code beside it does not need one.)
       class DOS
+        # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
+        def findings = (@findings ||= [])
+
+        # +program+ as an MZ EXE (Cartridge::DOSEXE). The code generator is the next piece of work, so a build
+        # says so, in words for the author.
+        def build(_program, title: "VBLANK", cache: nil)
+          raise LoweringError, "The build for DOS cannot make #{title} yet. The code generator for DOS is not " \
+                               "written. To fix this, build the game for another console."
+        end
       end
     end
   end

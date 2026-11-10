@@ -16,6 +16,7 @@ require_relative "console/gbc_hardware"      # The Game Boy Color's addresses, f
 require_relative "console/snes_hardware"     # The Super Nintendo's addresses, flags and memory map
 require_relative "console/genesis_hardware"  # The Sega Genesis's ports, registers, header and memory map
 require_relative "console/ps1_hardware"      # The PlayStation's ports, graphics commands and memory map
+require_relative "console/dos_hardware"      # DOS's memory, video, sound and keyboard ports
 require_relative "console/questions"         # What a line of a game asks of its console
 require_relative "console/answers"           # What an answer to "what does this verb do here?" is
 require_relative "console/advance_answers"   # The Game Boy Advance's answers: every verb works
@@ -23,4 +24,5 @@ require_relative "console/color_answers"     # The Game Boy Color's answers: wor
 require_relative "console/snes_answers"      # The Super Nintendo's answers: works or refused
 require_relative "console/genesis_answers"   # The Sega Genesis's answers: works or refused
 require_relative "console/ps1_answers"       # The PlayStation's answers: works or refused
+require_relative "console/dos_answers"       # DOS's answers: works or refused
 require_relative "console/kit"               # Which parts of the library serve each console

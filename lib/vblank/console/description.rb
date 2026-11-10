@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "hardware"
+require_relative "dos_hardware"
 
 module VBlank
   module Console
@@ -507,6 +508,66 @@ module VBlank
                                   # Its graphics chip fills a face from corners on whole pixels, not by
                                   # rows' middles (Backends::PS1::PolygonFill).
                                   face_fill_by_row_middles: false)
+
+    # DOS: a PC with a VGA card, an AdLib and a Sound Blaster, running a program in real mode (an MZ
+    # EXE). The plain console is VGA mode 13h: 320 × 200 pixels of 256 colours, each colour six bits a
+    # channel through the card's palette. The card has no sprites and no tiles: the processor draws
+    # everything into memory, so a sprite is pixels the processor copies and the number of them is the
+    # framework's, not the hardware's. A frame is one vertical retrace, 70.087 a second. The keyboard is
+    # the pad: the arrows, Ctrl and Alt for A and B, Enter and Right Shift for Start and Select, Z and X
+    # for L and R. What each verb does on it is Console::DOSAnswers's to say; the design is written atop
+    # Backends::DOS.
+    DOS = Description.new(name: :dos, title: "DOS", screen_width: 320, screen_height: 200,
+                          buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
+                          # A background is pixels in the processor's own picture, so it is held to a box
+                          # as a rectangle the drawing stays inside, kept in memory the way a painted
+                          # screen's area is (the same as the PlayStation's).
+                          holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                          area_clips_called_routines: true,
+                          # Nothing in the card limits sprites: the processor draws each one, so the limit is
+                          # time. 256 shown, as many as a 386 draws in a frame of small ones.
+                          sprites: 256, sprite_places: 512,
+                          sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true,
+                          sprite_sizes: nil, tile_planes: nil,
+                          backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
+                          bar_is_a_background: false,
+                          # The processor writes the picture's memory whenever it likes.
+                          changes_cells_while_drawing: true,
+                          # The card's palette changes what a number looks like, and nothing mixes two
+                          # layers, so a fade is walked colour by colour, which the palette makes cheap.
+                          blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 256,
+                          color_bits: 5,
+                          # A tear-free painted screen is a second picture in memory, drawn while the first
+                          # is shown, then copied to the card in the retrace.
+                          painted_pages: 2,
+                          # The PC's clock chip (the CMOS clock) keeps the date and the time.
+                          clock_keeps_date: true,
+                          # The dots the card counts, and the dots one frame takes: 449 lines of 800
+                          # (DOSHardware), which is 70.087 frames a second, as DOSBox shows.
+                          cycles_a_second: DOSHardware::DOT_CLOCK, cycles_a_frame: 449 * DOSHardware::DOTS_A_LINE,
+                          # The processor mixes recordings into one stream the Sound Blaster plays by DMA,
+                          # so a recording can be shaped, and no sound chip's timer hands out samples.
+                          samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
+                          recordings_at_once: 8, mixes_recordings: true,
+                          recording_voice_hz: nil, lowest_square_hz: nil,
+                          # The AdLib's chip makes a sample 49716 times a second.
+                          voice_output_hz: DOSHardware::ADLIB_RATE,
+                          # A list or a pool lives in a segment, which holds 64K.
+                          largest_memory_bytes: DOSHardware::SEGMENT_SIZE,
+                          # The variables are in one segment (64K, less the stack and the runtime's own
+                          # state); lists and pools that do not fit go in segments of their own, in the
+                          # 640K less DOS and the program: 384K are kept for them.
+                          work_memory_bytes: DOSHardware::SEGMENT_SIZE, work_memory_kept_bytes: 8192,
+                          roomier_memory_bytes: 384 * 1024, variables_go_far: false,
+                          # The pass draws into a back picture and the wait copies it to the card, so a
+                          # pass places its sprites and scroll before the wait.
+                          sprites_placed_before_wait: true,
+                          rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                          extension: ".exe",
+                          # The 486's cache is 8K, shared by code and data.
+                          code_cache_bytes: 8192,
+                          # The processor fills a face as the interpreter does, from rows' middles.
+                          face_fill_by_row_middles: true)
 
     # Each console's description is reached through its kit (Console::Kit, Console.described).
 

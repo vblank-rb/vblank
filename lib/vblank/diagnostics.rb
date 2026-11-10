@@ -33,6 +33,9 @@ require_relative "diagnostics/color_reading"     # What a Game Boy Color cartrid
 require_relative "diagnostics/snes_reading"      # What a Super Nintendo cartridge does
 require_relative "diagnostics/genesis_reading"   # What a Genesis cartridge does
 require_relative "diagnostics/ps1_reading"       # What a PlayStation program does
+require_relative "diagnostics/dos_memory"        # DOS memory, by offset into the program's data segment
+require_relative "diagnostics/dos_probe"         # A running DOS program
+require_relative "diagnostics/dos_reading"       # What a DOS program does
 require_relative "diagnostics/tearing"
 require_relative "diagnostics/flicker"
 require_relative "diagnostics/tick_rate"

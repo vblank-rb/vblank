@@ -337,9 +337,45 @@ module VBlank
       def save_file_extension = ".srm"
     end
 
-    KITS =Ractor.make_shareable({ gba: AdvanceKit.new(ADVANCE), gbc: ColorKit.new(COLOR),
+    # DOS's. Its programs play in DOSBox, through ruby-dos-emulator. A program is an MZ EXE, and a game's
+    # saves go in a file beside it (the lowering does not make saves yet).
+    class DOSKit < CheckedKit
+      # THE VIDEO MODES A GAME CAN ASK FOR besides mode 13h, as variants (`variants: { dos: :mode_x }`): the
+      # same PC and the same game, shown on a screen of another size. The card draws nothing for a game, so
+      # what changes is the picture's size, and with it the memory a picture takes. +build+ names the mode
+      # the program sets and the build lays its picture out for.
+      MODE_X = Variant.new(name: :mode_x, title: "Mode X, a 320 × 240 screen",
+                           changes: { screen_width: 320, screen_height: 240,
+                                      cycles_a_frame: DOSHardware::LINES_A_FRAME.fetch(:mode_x) * DOSHardware::DOTS_A_LINE },
+                           build: { video_mode: :mode_x },
+                           note: "the VGA card with its four memory planes written one at a time, which " \
+                                 "gives 320 × 240 pixels of 256 colours with square pixels")
+      VESA_640X480 = Variant.new(name: :vesa_640x480, title: "a 640 × 480 screen",
+                                 changes: { screen_width: 640, screen_height: 480,
+                                            cycles_a_frame: DOSHardware::LINES_A_FRAME.fetch(:vesa_640x480) *
+                                                            DOSHardware::DOTS_A_LINE },
+                                 build: { video_mode: :vesa_640x480 },
+                                 note: "VESA mode 101h, 640 × 480 pixels of 256 colours, which the card's " \
+                                       "memory shows in banks of 64K")
+      DOS_VARIANTS = Ractor.make_shareable({ mode_x: MODE_X, vesa_640x480: VESA_640X480 })
+
+      def variants = DOS_VARIANTS
+      def answers = DOSAnswers
+      def answers_page = answers.reference(not_yet: IR::Backends::DOS::Lowering::NOT_LOWERED_YET)
+      def lowering = IR::Backends::DOS
+      def cartridge = Cartridge::DOSEXE
+      def reading = Diagnostics::DOSReading
+      def open_core(path, save_dir:) = Diagnostics::Emulator.open_dos(path)
+      def open_probe(path, save_dir:) = Diagnostics::DOSProbe.new(path)
+      def save_file_extension = ".sav"
+      # The 386 reads a number of any size at any address, low byte first.
+      def words_at_any_address? = true
+      def value_alignment(_bytes) = 1
+    end
+
+    KITS = Ractor.make_shareable({ gba: AdvanceKit.new(ADVANCE), gbc: ColorKit.new(COLOR),
                                    snes: SNESKit.new(SUPER_NINTENDO), genesis: GenesisKit.new(GENESIS),
-                                   ps1: PS1Kit.new(PLAYSTATION) })
+                                   ps1: PS1Kit.new(PLAYSTATION), dos: DOSKit.new(DOS) })
 
     # What a game can tell about each console, by name.
     DESCRIPTIONS = Ractor.make_shareable(KITS.transform_values(&:description))
