@@ -82,7 +82,8 @@ module VBlank
         # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
         def build_headless(program, mode: :checked)
           lowering = Lowering.new(program, title: "VBlank")
-          game = write_source(lowering.source_files, Computer::ConsoleNumbers.header(program.described_console), lowering.runtime_features)
+          numbers = Computer::ConsoleNumbers.header(program.described_console) + Computer::StateFile.c_text(program)
+          game = write_source(lowering.source_files, numbers, lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
@@ -202,7 +203,9 @@ module VBlank
             lowering.runtime_features.each { |feature| FileUtils.cp_r(feature.folder, src) }
             File.write(File.join(src, FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features))
             File.write(File.join(src, SOUND_FEATURES_FILE), RuntimeFeatures.c_text(lowering.runtime_features, joins: :sound))
-            File.write(File.join(src, Computer::ConsoleNumbers::FILE), Computer::ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?))
+            File.write(File.join(src, Computer::ConsoleNumbers::FILE),
+                       Computer::ConsoleNumbers.header(program.described_console, start_up: !cartridge.nil?) +
+                       Computer::StateFile.c_text(program))
             if cartridge && program.described_console.plays_bios_start_up
               File.write(File.join(src, CartridgeStart::FILE), CartridgeStart.header(cartridge.buffer))
             end

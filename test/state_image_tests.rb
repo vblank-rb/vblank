@@ -18,7 +18,7 @@ module StateImageTests
   SPEAKERS = %i[left right].freeze
 
   # A GAME OF EVERY KIND OF STATE THE IMAGE HOLDS SO FAR: variables, a list shifted round its ring,
-  # random numbers, a timer and its handler, a press and a hold, a routine that waits for a frame
+  # a pool whose things come and go, random numbers, a timer and its handler, a press and a hold, a routine that waits for a frame
   # two calls deep, and save memory. It paints its whole picture every pass from those numbers, so
   # its picture says where it stands. It places its own waits (frame_sync: :manual), so the one in
   # spin is a frame of its own and not caught up with the loop's.
@@ -31,6 +31,7 @@ module StateImageTests
       spins = var :spins, 0
       beats = var :beats, 0
       trail = list :trail, capacity: 4, width: :byte
+      sparks = pool :spark, x: 0, y: 0, capacity: 6
       beat = timer :beat, per_second: 25
       beat.on_tick { beats += 1 }
       func(:spin) do
@@ -52,6 +53,12 @@ module StateImageTests
         draw_rect_at spins % 200, 60, 8, 8, :green
         draw_rect_at trail[0], 80, 4, 4, :yellow
         draw_rect_at best, 100, 4, 4, :white if held(:b)
+        sparks.spawn(x: x, y: 120) if x % 5 == 0
+        sparks.each do |spark|
+          spark.x += 3
+          spark.remove if spark.x > 230
+          draw_rect_at spark.x, spark.y, 2, 2, :yellow
+        end
         call :spin_twice if pressed(:a)
         wait_vblank
       end
@@ -456,7 +463,8 @@ module StateImageTests
   # The runtime's fields in +state+ are +fields+, in order, each holding the numbers it says.
   private def assert_runtime_fields(state, fields)
     assert_equal fields.map(&:name), runtime_field_names(state)
-    counts = state.lines.to_h { |line| [line.split("\t").first, line.split("\t").last.split.first.to_i] }
+    counts = state.lines.select { |line| line.include?("\t") }
+                  .to_h { |line| [line.split("\t").first, line.split("\t").last.split.first.to_i] }
     fields.each do |field|
       assert_equal field.count, counts.fetch(field.name), "#{field.name} holds #{field.count} numbers" if field.count.is_a?(Integer)
     end
@@ -499,15 +507,41 @@ module StateImageTests
     assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false).map(&:name), runtime
   end
 
-  # The names of the fields the runtime visits by hand, leaving out the ones the build writes.
+  # The names of the fields the runtime visits by hand, leaving out the ones the build writes and
+  # the file's own first lines, which are not fields.
   private def runtime_field_names(state)
-    state.lines.map { |line| line.split("\t").first }.reject { |name| name.start_with?("game.", "list.", "patch.") }
+    state.lines.select { |line| line.include?("\t") }.map { |line| line.split("\t").first }
+         .reject { |name| name.start_with?("game.", "list.", "patch.") }
   end
 
-  def test_a_state_of_another_game_is_refused_naming_what_it_lacks
+  def test_a_state_of_another_build_is_refused_naming_both_builds
     _, state = unbroken_with_state(state_game)
+    saved_by = VBlank::Network::Fingerprint.of(state_game, title: "").short
+    this_build = VBlank::Network::Fingerprint.of(counting_game, title: "").short
 
     error = assert_raises(VBlank::IR::ProgramError) { state_run.starting_from_state(state).run(counting_game, frames: 3) }
-    assert_match(/for another game/, error.message)
+    assert_match(/another build/, error.message)
+    assert_includes error.message, saved_by
+    assert_includes error.message, this_build
+  end
+
+  # THE FILE says first which version of the format it is, then which game and build wrote it, as
+  # the console and the build's fingerprint (Network::Fingerprint), and then holds the image.
+  def test_a_state_starts_with_its_version_and_build
+    program = state_game
+    _, state = unbroken_with_state(program)
+    fingerprint = VBlank::Network::Fingerprint.of(program, title: "")
+
+    assert_equal "vblank-state #{VBlank::IR::Backends::Computer::StateFile::VERSION}", state.lines[0].chomp
+    assert_equal "build #{fingerprint.console} #{fingerprint.digest}", state.lines[1].chomp
+  end
+
+  def test_a_state_of_another_version_is_refused_naming_it
+    program = state_game
+    _, state = unbroken_with_state(program)
+    newer = state.sub(/\Avblank-state \d+/, "vblank-state 999")
+
+    error = assert_raises(VBlank::IR::ProgramError) { state_run.starting_from_state(newer).run(program, frames: 3) }
+    assert_match(/version 999/, error.message)
   end
 end

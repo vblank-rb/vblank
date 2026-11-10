@@ -5,8 +5,17 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include "rg_console.h"
 #include "rg_runtime.h"
 #include "rg_state.h"
+
+/* The save-state file's version and this build (Computer::StateFile, written beside game.c). A
+ * file of the runtime read on its own, as the editor's checker reads it, has neither. */
+#ifndef RG_STATE_VERSION
+#define RG_STATE_VERSION 1
+#define RG_GAME_CONSOLE ""
+#define RG_GAME_BUILD ""
+#endif
 
 /* An image's field, as read: its name, its numbers, and whether a part has taken it yet. */
 typedef struct {
@@ -33,6 +42,7 @@ static int reading;
 int rg_state_reading(void) { return reading; }
 
 void rg_state_write(FILE *out) {
+  fprintf(out, "vblank-state %d\nbuild %s %s\n", RG_STATE_VERSION, RG_GAME_CONSOLE, RG_GAME_BUILD);
   writing_to = out;
   visit_all();
   writing_to = NULL;
@@ -119,8 +129,29 @@ static int read_line(const char *line, const char *end) {
   return read;
 }
 
+/* The file's two first lines (Computer::StateFile): its version, then the build that wrote it,
+ * each refused in plain words when it is not this build's. Gives back where the image starts. */
+static const char *refuse_other_build(const char *text) {
+  int version = 0, used = 0;
+  if (sscanf(text, "vblank-state %d\n%n", &version, &used) != 1 || used == 0)
+    rg_fault("This is not a save state: it does not start with \"vblank-state\". Load a state that this game wrote.");
+  if (version != RG_STATE_VERSION)
+    rg_fault("This state is version %d of the save-state format, and this build reads version %d. Load a state that this build "
+             "wrote.", version, RG_STATE_VERSION);
+  text += used;
+  char console[32] = "", build[80] = "";
+  used = 0;
+  if (sscanf(text, "build %31s %79s\n%n", console, build, &used) != 2 || used == 0)
+    rg_fault("This state is damaged: its second line does not name the build that saved it. Load a state that this game wrote.");
+  if (strcmp(console, RG_GAME_CONSOLE) != 0 || strcmp(build, RG_GAME_BUILD) != 0)
+    rg_fault("This state is for another build of the game: build %.8s for the %s saved it, and this is build %.8s for the %s. "
+             "Load a state that this build saved.", build, console, RG_GAME_BUILD, RG_GAME_CONSOLE);
+  return text + used;
+}
+
 void rg_state_read(const char *text) {
   forget_image();
+  text = refuse_other_build(text);
   for (const char *line = text; *line;) {
     const char *end = strchr(line, '\n');
     if (!end) end = line + strlen(line);

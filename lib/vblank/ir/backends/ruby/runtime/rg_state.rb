@@ -16,7 +16,7 @@
 
 # The image as text: the game's fields, then the runtime's, then the save memory's.
 def rg_state_write
-  @rg_state_lines = []
+  @rg_state_lines = ["vblank-state #{RG_STATE_VERSION}\n", "build #{RG_GAME_CONSOLE} #{RG_GAME_BUILD}\n"]
   rg_state_visit_all
   text = @rg_state_lines.join
   @rg_state_lines = nil
@@ -26,7 +26,7 @@ end
 # Reads an image from +text+ into the game and its runtime. One that names a field this build does
 # not keep, lacks one it does, or holds a different count stops the game saying which.
 def rg_state_read(text)
-  @rg_state_image = rg_state_parse(text)
+  @rg_state_image = rg_state_parse(rg_state_refuse_other_build(text.lines))
   @rg_state_taken = {}
   rg_state_visit_all
   @rg_state_image.each_key do |name|
@@ -51,10 +51,33 @@ end
 
 RG_STATE_SHORTEST_RUN = 4 # The shortest run of one number written as "times*number"
 
+# The file's two first lines (Computer::StateFile): its version, then the build that wrote it, each
+# refused in plain words when it is not this build's (rg_state.c's refuse_other_build). Gives back
+# the image's lines.
+def rg_state_refuse_other_build(lines)
+  version = lines[0]&.chomp&.match(/\Avblank-state (\d+)\z/)
+  rg_fault('This is not a save state: it does not start with "vblank-state". Load a state that this game wrote.') unless version
+  if version[1].to_i != RG_STATE_VERSION
+    rg_fault("This state is version #{version[1]} of the save-state format, and this build reads version #{RG_STATE_VERSION}. " \
+             "Load a state that this build wrote.")
+  end
+  build = lines[1]&.chomp&.match(/\Abuild (\S+) (\S+)\z/)
+  unless build
+    rg_fault("This state is damaged: its second line does not name the build that saved it. Load a state that this game wrote.")
+  end
+  console, digest = build.captures
+  if console != RG_GAME_CONSOLE || digest != RG_GAME_BUILD
+    rg_fault("This state is for another build of the game: build #{digest[0, 8]} for the #{console} saved it, and this is " \
+             "build #{RG_GAME_BUILD[0, 8]} for the #{RG_GAME_CONSOLE}. Load a state that this build saved.")
+  end
+  lines.drop(2)
+end
+
 # The image's lines as name => numbers.
-def rg_state_parse(text)
+def rg_state_parse(lines)
   image = {}
-  text.each_line(chomp: true) do |line|
+  lines.each do |line|
+    line = line.chomp
     next if line.empty?
 
     name, rest = line.split("\t", 2)

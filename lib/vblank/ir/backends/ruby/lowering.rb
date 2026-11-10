@@ -30,7 +30,8 @@ module VBlank
           # the cartridge's clock moves on. The names and numbers are the C and JavaScript
           # runtimes' (Computer::ConsoleNumbers), with true and false kept as Ruby's own.
           def console_text
-            Computer::ConsoleNumbers.values(@program.described_console).map { |name, value| "#{name} = #{value}\n" }.join
+            Computer::ConsoleNumbers.values(@program.described_console).map { |name, value| "#{name} = #{value}\n" }.join +
+              Computer::StateFile.ruby_text(@program)
           end
 
           private

@@ -134,7 +134,8 @@ module VBlank
         def factory_and_data_file(program, title: "VBlank", data: :inline, menu: true, name: "createGame")
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
-          [["function #{name}(host) {\n", console_text(program.described_console), fingerprint_text(program), MenuData.source(menu: menu),
+          [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
+            fingerprint_text(program), MenuData.source(menu: menu),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
@@ -145,7 +146,8 @@ module VBlank
         # it is not made through createGame.
         def build_headless(program)
           lowering = Lowering.new(program)
-          write_program(WRITTEN_BY + in_own_function(console_text(program.described_console), fingerprint_text(program),
+          write_program(WRITTEN_BY + in_own_function(console_text(program.described_console), Computer::StateFile.js_text(program),
+                                                     fingerprint_text(program),
                                                      *runtime_text(runtime_for(program) + ["rg_headless.js"]),
                                                      RuntimeFeatures.js_text(lowering.runtime_features), lowering.source,
                                                      "rg_driver_start();\n"))
