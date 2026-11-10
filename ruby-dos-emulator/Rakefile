@@ -1,0 +1,31 @@
+# frozen_string_literal: true
+
+require "rake/testtask"
+require_relative "lib/ruby_dos_emulator/core_library"
+require_relative "lib/ruby_dos_emulator/core_build"
+
+# THE CORE: DOSBox Pure with the probe patch, built into core/build/dosbox_pure_libretro.so (kept under
+# that name on a Mac too, where the build makes a .dylib). CoreBuild says what it is and how it is made.
+# VBLANK_DOS_CORE points this code at a core built some other way.
+BUILT = RubyDOSEmulator::CoreLibrary::BUILT
+PATCH = RubyDOSEmulator::CoreBuild::PATCH
+
+desc "Build DOSBox Pure as a libretro core, with the probe patch, into core/build/"
+task :compile_core do
+  next if File.file?(BUILT) && File.mtime(BUILT) > File.mtime(PATCH)
+
+  RubyDOSEmulator::CoreBuild.make(BUILT)
+end
+
+desc "Remove the built core"
+task :clean do
+  rm_rf File.dirname(BUILT)
+end
+
+Rake::TestTask.new(test: :compile_core) do |t|
+  t.libs << "test" << "lib"
+  t.test_files = FileList["test/**/test_*.rb"]
+  t.warning = false
+end
+
+task default: :test

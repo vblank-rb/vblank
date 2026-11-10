@@ -206,6 +206,38 @@ module VBlank
         named
       end
 
+      # DOS'S EMULATOR is a gem of its own too, ruby-dos-emulator: DOSBox Pure, built as a libretro core
+      # with a patch that hands over the PC's memories, driven through Fiddle. It is loaded the same way,
+      # the gem first and this repository's checkout second, and when it is missing it says how to get it.
+      def load_dos!
+        return true if dos_loaded?
+
+        require "ruby_dos_emulator"
+        true
+      rescue LoadError
+        lib = VBlank.root.join("ruby-dos-emulator", "lib").to_s
+        unless File.directory?(lib)
+          raise LoadError, "An emulator is required to run a DOS program, and ruby-dos-emulator will " \
+                           "not load. To fix this, add it to the git block that names vblank in your Gemfile: " \
+                           "widen its glob to \"{,ruby-gba-emulator/,ruby-dos-emulator/}*.gemspec\" and add " \
+                           "`gem \"ruby-dos-emulator\"` inside it. Then run `rake compile_core` in " \
+                           "ruby-dos-emulator/ to build the DOSBox Pure core it plays programs in."
+        end
+
+        $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+        require "ruby_dos_emulator"
+        true
+      end
+
+      def dos_loaded? = !defined?(::RubyDOSEmulator::Core).nil?
+
+      # A DOS machine running a program, an .EXE or a .COM (see RubyDOSEmulator::Core). The program's
+      # folder is the machine's drive C:, and a file it saves is read back from the core.
+      def open_dos(program_path)
+        load_dos!
+        RubyDOSEmulator::Core.new(program_path)
+      end
+
       # Open an emulator core on a ROM file path.
       #
       # +save_dir+ names where the cartridge's battery-backed save memory is kept. The core

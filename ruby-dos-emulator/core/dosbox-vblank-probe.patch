@@ -1,0 +1,122 @@
+diff --git a/dosbox_pure_libretro.cpp b/dosbox_pure_libretro.cpp
+index ec99bf3..5014174 100644
+--- a/dosbox_pure_libretro.cpp
++++ b/dosbox_pure_libretro.cpp
+@@ -3830,8 +3830,36 @@ void retro_deinit(void)
+ }
+ 
+ // Unused features
+-void *retro_get_memory_data(unsigned id) { (void)id; return NULL; }
+-size_t retro_get_memory_size(unsigned id) { (void)id; return 0; }
++// VBlank probe: hands over the machine's memories to the test harness (see ruby-dos-emulator/core/dosbox-vblank-probe.patch).
++// System RAM is the first megabyte of the PC's address space; the others are named by the harness.
++#include "include/vga.h"
++enum { VBLANK_VIDEO_RAM = 0x8001, VBLANK_PALETTE = 0x8002, VBLANK_VGA_STATE = 0x8003 };
++static Bit32u vblank_vga_state[4];
++void *retro_get_memory_data(unsigned id)
++{
++	switch (id)
++	{
++		case RETRO_MEMORY_SYSTEM_RAM: return MemBase;
++		case VBLANK_VIDEO_RAM: return vga.mem.linear;
++		case VBLANK_PALETTE: return vga.dac.rgb;
++		case VBLANK_VGA_STATE:
++			vblank_vga_state[0] = (Bit32u)vga.mode; vblank_vga_state[1] = (Bit32u)vga.draw.width;
++			vblank_vga_state[2] = (Bit32u)vga.draw.height; vblank_vga_state[3] = (Bit32u)vga.draw.address_add;
++			return vblank_vga_state;
++	}
++	return NULL;
++}
++size_t retro_get_memory_size(unsigned id)
++{
++	switch (id)
++	{
++		case RETRO_MEMORY_SYSTEM_RAM: return 0x100000;
++		case VBLANK_VIDEO_RAM: return vga.mem.linear ? vga.vmemsize : 0;
++		case VBLANK_PALETTE: return sizeof(vga.dac.rgb);
++		case VBLANK_VGA_STATE: return sizeof(vblank_vga_state);
++	}
++	return 0;
++}
+ void retro_cheat_reset(void) { }
+ void retro_cheat_set(unsigned index, bool enabled, const char *code) { (void)index; (void)enabled; (void)code; }
+ bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) { return false; }
+@@ -4071,3 +4099,78 @@ unsigned DBP_Build_GL_Program(int vertex_shader_srcs_count, const char** vertex_
+ 	}
+ 	return prog;
+ }
++
++// VBlank probe: the frontend half, written here because DOSBox Pure calls its frontend from the thread it
++// emulates on, and a Ruby callback cannot be run from a thread Ruby did not start. These keep what the
++// harness reads: the last picture, the sound made, and the keys held. Each copy of the library has its own.
++#include <pthread.h>
++#include <vector>
++#define VBLANK_EXPORT extern "C" __attribute__((visibility("default")))
++static pthread_mutex_t vblank_lock = PTHREAD_MUTEX_INITIALIZER;
++static const char* vblank_directory = ".";
++static std::vector<Bit32u> vblank_pixels;
++static unsigned vblank_picture_width, vblank_picture_height;
++static std::vector<int16_t> vblank_sound;
++static retro_keyboard_event_t vblank_keyboard_event;
++static unsigned char vblank_keys[512];
++static void RETRO_CALLCONV vblank_log(enum retro_log_level, const char*, ...) { }
++VBLANK_EXPORT void vblank_set_directory(const char* path) { vblank_directory = path; }
++// A key going down or up, told to the core the way a frontend does: through the callback it asked for,
++// and kept in a table the core's polling asks about (it lets go of a key its polling says is up).
++VBLANK_EXPORT void vblank_key_event(bool down, unsigned code)
++{
++	if (code < sizeof(vblank_keys)) vblank_keys[code] = down;
++	if (vblank_keyboard_event) vblank_keyboard_event(down, code, 0, 0);
++}
++VBLANK_EXPORT bool vblank_environment(unsigned cmd, void* data)
++{
++	switch (cmd & 0xFFFF)
++	{
++		case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*)data = true; return true;
++		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: return *(int*)data == RETRO_PIXEL_FORMAT_XRGB8888;
++		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
++		case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char**)data = vblank_directory; return true;
++		case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool*)data = false; return true;
++		case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: vblank_keyboard_event = ((struct retro_keyboard_callback*)data)->callback; return true;
++		case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((struct retro_log_callback*)data)->log = vblank_log; return true;
++	}
++	return false;
++}
++VBLANK_EXPORT void vblank_video_refresh(const void* data, unsigned width, unsigned height, size_t pitch)
++{
++	if (!data) return;
++	pthread_mutex_lock(&vblank_lock);
++	vblank_picture_width = width; vblank_picture_height = height;
++	vblank_pixels.resize((size_t)width * height);
++	for (unsigned y = 0; y != height; y++) memcpy(&vblank_pixels[(size_t)y * width], (const char*)data + y * pitch, width * 4);
++	pthread_mutex_unlock(&vblank_lock);
++}
++VBLANK_EXPORT size_t vblank_audio_batch(const int16_t* data, size_t frames)
++{
++	pthread_mutex_lock(&vblank_lock);
++	vblank_sound.insert(vblank_sound.end(), data, data + frames * 2);
++	pthread_mutex_unlock(&vblank_lock);
++	return frames;
++}
++VBLANK_EXPORT void vblank_audio_sample(int16_t left, int16_t right) { int16_t pair[2] = { left, right }; vblank_audio_batch(pair, 1); }
++VBLANK_EXPORT void vblank_input_poll(void) { }
++VBLANK_EXPORT int16_t vblank_input_state(unsigned port, unsigned device, unsigned index, unsigned id)
++{
++	return (port == 0 && device == RETRO_DEVICE_KEYBOARD && id < sizeof(vblank_keys)) ? vblank_keys[id] : 0;
++}
++// The last picture: its width and height, and a pointer to its pixels (valid until the next frame).
++VBLANK_EXPORT const Bit32u* vblank_picture(unsigned* width, unsigned* height)
++{
++	*width = vblank_picture_width; *height = vblank_picture_height;
++	return vblank_pixels.empty() ? NULL : &vblank_pixels[0];
++}
++// Copies out and forgets the sound made so far, as many 16-bit values as fit; returns how many it held.
++VBLANK_EXPORT size_t vblank_take_sound(int16_t* into, size_t room)
++{
++	pthread_mutex_lock(&vblank_lock);
++	size_t held = vblank_sound.size(), taken = held < room ? held : room;
++	if (into) memcpy(into, &vblank_sound[0], taken * 2);
++	vblank_sound.erase(vblank_sound.begin(), vblank_sound.begin() + taken);
++	pthread_mutex_unlock(&vblank_lock);
++	return held;
++}
