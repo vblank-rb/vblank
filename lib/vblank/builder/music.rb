@@ -232,7 +232,9 @@ module VBlank
 
       def record_score(member:, score:)
         @songs[member] = score
-        record(Build.song(member, **score.to_song))
+        # A part that reads its notes from the data pack as the game starts keeps its handle until here (PackScores).
+        reads_at_start = score.parts.any? { |part| part.notes.is_a?(DSL::PackNotes) }
+        record(Build.song(member, **(reads_at_start ? song_reading_notes_at_start(score) : score.to_song)))
         member
       end
 

@@ -19,7 +19,9 @@ module VBlank
         # tile for every cell; and each colour that is no part of a picture, a screen's backdrop,
         # into an array of the game's own; and each number worked out from a recording's rate, the
         # sample it holds from or its envelope, where the file has those
-        # (Sound#build_start_file_sound_fills). That routine is written last, once the art is laid out
+        # (Sound#build_start_file_sound_fills), and the notes of each part of a song that keeps them
+        # there, made into the room the music table holds for them
+        # (Sound#build_start_file_note_fills). That routine is written last, once the art is laid out
         # and it is known where in the pixels each picture is.
         #
         # So the game as C, JavaScript or Ruby holds none of the original's bytes, and a game that

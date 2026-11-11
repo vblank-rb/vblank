@@ -114,13 +114,16 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
+  # A build that reads its pack as the game starts plays the song too (test/pack_scores_at_start_tests.rb),
+  # given the one thing it cannot work out without the notes.
+  def test_a_build_reading_its_pack_as_it_starts_needs_the_scores_length
     Dir.mktmpdir do |folder|
       b = Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
       pack = b.data_pack(from: original(folder), version: "1") { |slots| slots.notes :melody, at: MELODY_AT, count: MOST }
       error = assert_raises(ArgumentError) { b.songs :music, [Score.new(parts: [Part.new(notes: pack[:melody])])] }
 
-      assert_includes error.message, "not made that way yet"
+      assert_includes error.message, "length"
+      b.songs :music, [Score.new(parts: [Part.new(notes: pack[:melody])], length: 96)]
     end
   end
 end

@@ -40,11 +40,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack[:adsr].snes_envelope(3)`: three bytes of a slot of bytes, ADSR1, ADSR2 and GAIN, envelope 0 from
     byte 0, read as a `VBlank::Audio::SNESEnvelope` (`sound.md`), so the unpacking routine copies the
     original's bytes and converts nothing. An envelope past the end of its slot is a friendly error.
-    Built all-in-one these are read as the game is built. A build that leaves its pack out reads an
-    instrument's `rate:`, `holds_from:` and four-byte `envelope:` as the game starts (below), and refuses
-    a part's notes and a chip envelope from the pack for now. Worked examples:
-    `test/all/vblank/builder/test_pack_scores.rb`, `test/pack_sound_tests.rb` and
-    `test/snes_envelope_tests.rb`.
+    Built all-in-one these are read as the game is built. A build that leaves its pack out reads a
+    part's notes and an instrument's `rate:`, `holds_from:` and four-byte `envelope:` as the game starts
+    (below), and refuses a chip envelope from the pack for now. Worked examples:
+    `test/all/vblank/builder/test_pack_scores.rb`, `test/pack_scores_at_start_tests.rb`,
+    `test/pack_sound_tests.rb` and `test/snes_envelope_tests.rb`.
 
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
   (a whole number, 1 or more; 1 when not named). It changes only the shell's progress bar (below):
@@ -283,6 +283,20 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   the rate most recordings have, which the build must know, so that build is refused naming the recording, and
   `holds_from:` and `envelope:` work there. `envelope: pack[:adsr].snes_envelope(3)` is refused at the line for
   now. Worked example: `test/pack_sound_tests.rb`.
+- `Score::Part.new(notes: pack[:title_0].notes(instruments: %i[horn bass]), ...)` in `songs` and `sound_effects` — a
+  part's notes. **The Score must give `length:`**, in ticks, since where the last note ends is in the pack; one
+  without it is refused at the line. The build knows how many notes the slot holds and none of them, so the
+  program holds room for the most events they can make (two for each note, a note and the rest it ends in) and
+  the runtime makes the part's events from the file at power-on (`IR::StartFile::Notes`,
+  `rg_start_file_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest
+  where a note's length runs out before the next begins, the later of two on one frame, none past the song's
+  end, and each part put right where the song comes round. The build hands the runtime the frame of every tick
+  and what every key, instrument and volume comes to on the part's voice, so a part can be on any voice and be
+  transposed. It sounds as the all-in-one build does. **Nothing the file holds stops the game**, where the
+  all-in-one build refuses the same records: a key past 127 is a rest, and an instrument the part does not name
+  or a volume past 15 is the part's own. A part that moves its pitch so far that some key from 0 to 127 is past
+  its voice is refused at the line, since any key may be in the pack. Worked example:
+  `test/pack_scores_at_start_tests.rb`.
 - `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
   original's own tiles, map and colours (`backgrounds.md`). The program holds a tile for each cell of the map,
   see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank

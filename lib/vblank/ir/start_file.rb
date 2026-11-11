@@ -36,6 +36,8 @@ module VBlank
     # - a recording's settings (Nodes::Sample#settings_from_file, a RecordingSettings): the rate it
     #   was recorded at, the sample a held note reads back to and its envelope, each a number or
     #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
+    # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
+    #   that a port's unpacking writes. The program holds no event for it.
     # - a background (Nodes::Background#from_file, a Background): its map, one number of two bytes
     #   a cell in the layout the original's console keeps a map in (Console::MapWordFormat), and
     #   the tiles and the banks of colours those numbers pick from. Which tiles there are and what
@@ -181,10 +183,69 @@ module VBlank
       RECORDING_STAND_IN_HOLD = 0
       def self.recording_stand_in_envelope = Audio::Envelope.new(attack: 0, decay: 0, sustain: 0, release: 0)
 
+      # A PART'S NOTES IN THE FILE (Audio::Music::Part#from_file): +count+ records of eight bytes
+      # from +at+ on, each an Original::PackNote, ended early by a note that ends its part.
+      # +instruments+ are the recordings a note's instrument number picks from, in order. The
+      # rest is what turns the records into the events a part plays, which is the Score's work:
+      # +part+, the Audio::Score::Part with no notes in it, +tempo+ and +ticks_per_beat+, the
+      # Score's, and +who+, how a message names the part.
+      #
+      # WHAT IS KNOWN AS THE GAME IS BUILT is how many records there can be, the song's length in
+      # frames (the Score gives its `length:`), the frame every tick falls on, and what each key,
+      # each instrument and each volume a record can name comes to on the part's voice (#key_events).
+      # Only which of them each record names, and when, is the file's. So a backend that plays
+      # the program without the file holds room for the most events the records can make
+      # (#most_events) and makes them as it starts, by the rule .notes_in and Audio::Score::Events
+      # are: the records in the order of their ticks, a rest where a note's length runs out
+      # before the next begins, the later of two on one frame, none past the song's end, and each
+      # part put right for coming round (IR::Tunes.loop_passes).
+      #
+      # The file is the player's, so nothing in it stops the game, where the build that holds the
+      # same records refuses them: a key past 127 is a rest, and an instrument the part does not
+      # name or a volume past 15 is the part's own.
+      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who) do
+        # The frame each tick falls on (an Audio::Score::Timing).
+        def timing = Audio::Score::Timing.new(self)
+
+        # The most events the records can make: a note and the rest it ends in, for each.
+        def most_events = count * 2
+
+        # The part as it plays +notes+ (Audio::Score::Note each) in a song +total+ frames long.
+        def voice_playing(notes, total) = part.with(notes: notes).to_voice(timing, total, who)
+
+        # WHAT EACH KEY COMES TO ON THE PART'S VOICE: the event a note of each key from 0 to
+        # MOST_KEY makes, in the keys' order, worked out as the part works any note out (its
+        # voice, its transpose). An event's frame is its key.
+        def key_events
+          notes = (0..MOST_KEY).map { |key| Audio::Score::Note.new(at: key, key: key) }
+          part.with(notes: notes).to_voice(TicksAsFrames, MOST_KEY + 1, who).events
+        end
+      end
+
+      # The highest key and the loudest volume a record names.
+      MOST_KEY = 127
+      MOST_VOLUME = 15
+
+      # A timing that puts each tick on the frame of its own number (Notes#key_events).
+      module TicksAsFrames
+        def self.at(tick) = tick
+      end
+
+      # The notes +where+ (a Notes) names in +bytes+, the file, in the records' order, with what
+      # no part can play held as Notes says.
+      def self.notes_in(bytes, where)
+        records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * Original::PackNote::BYTES))
+        records.map do |note|
+          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
+                                 key: (note.key if note.key <= MOST_KEY), volume: (note.volume if note.volume <= MOST_VOLUME),
+                                 instrument: where.instruments[note.instrument])
+        end
+      end
+
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
-      # nothing (.place_in_file).
-      READ_KINDS = %i[table bitmap sample background screen].freeze
+      # nothing (.place_in_file); a song reads the notes of the parts that keep theirs there.
+      READ_KINDS = %i[table bitmap sample background screen song].freeze
 
       # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
       def self.place_in_file(node)
@@ -193,6 +254,7 @@ module VBlank
         case node.kind
         when :screen then node.backdrop_from_file
         when :sample then node.from_file || node.settings_from_file
+        when :song then node.voices.filter_map(&:from_file).first
         else node.from_file
         end
       end
@@ -306,7 +368,17 @@ module VBlank
         when :sample then fill_recording(node, bytes)
         when :background then fill_background(program, node, bytes)
         when :screen then fill_backdrop(node, bytes)
+        when :song then fill_song(node, bytes)
         else raise ArgumentError, "a #{node.kind} is not read from the file (READ_KINDS names the kinds that are)"
+        end
+      end
+
+      # A song's parts that keep their notes in the file, each the part a Score makes of those
+      # notes when the game is built holding them.
+      def self.fill_song(node, bytes)
+        node.voices = node.voices.map do |part|
+          where = part.from_file
+          where ? where.voice_playing(notes_in(bytes, where), node.total_frames) : part
         end
       end
 
@@ -511,7 +583,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :fill_table, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
+      private_class_method :fill_node, :fill_recording, :fill_song, :fill_table, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece
     end

@@ -11,7 +11,13 @@
 
 /* Every song the game has and every sound effect it makes, as numbers (the lowering writes them;
  * see rg_music.c for the layouts). */
+/* A game with a part that reads its notes from the start file writes them into this table as it
+ * starts (rg_start_file_fill_notes), and says so before this header (RG_MUSIC_WRITABLE). */
+#ifdef RG_MUSIC_WRITABLE
+extern int32_t rg_game_music[];
+#else
 extern const int32_t rg_game_music[];
+#endif
 /* A game with a recording that reads its settings from the start file writes the note rows worked
  * out from them as it starts, and says so before this header (RG_NOTE_SOUNDS_WRITABLE). */
 #ifdef RG_NOTE_SOUNDS_WRITABLE

@@ -221,8 +221,12 @@ module VBlank
       # Audio::SNESEnvelope), for a part that was given those bytes: +envelope+ is then the
       # nearest shape, which every backend plays but the one whose chip takes the bytes
       # themselves (IR::Tunes.said_chip_envelope). A note's own is in its event's last place.
+      #
+      # +from_file+ is where the part's notes are in the file the program is handed as it starts
+      # (an IR::StartFile::Notes), for a part that reads them from there: +events+ is then empty
+      # until the file is read. Nil for every other part.
       Part = Data.define(:events, :duty, :volume, :instrument, :wave, :noise, :decay, :metallic,
-                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope)
+                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope, :from_file)
 
       class Part
         # WHAT A PART CARRIES WHEN IT SETS NOTHING — every optional field's answer, in one place,
@@ -231,7 +235,8 @@ module VBlank
         # here: a part with no notes in it is a part nobody wrote.
         DEFAULTS = { duty: :half, volume: 12, instrument: nil, wave: nil,
                      noise: false, decay: :fast, metallic: false, name: nil, envelope: nil,
-                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil, chip_envelope: nil }.freeze
+                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil, chip_envelope: nil,
+                     from_file: nil }.freeze
 
         # WHAT A PART'S VOICE CANNOT DO IS REFUSED HERE, where both ways a song reaches the IR meet:
         # a fade on a voice that cannot count one (NoteFade.refuse_without_counting!), a slide off

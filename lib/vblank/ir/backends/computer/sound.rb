@@ -58,6 +58,7 @@ module VBlank
             @sound_log = SoundLog.new(@program)
             @start_file_sound_numbers = [] # a play's numbers known once the start file is read (#start_file_sound_number)
             @start_file_note_rows = [] # the note rows that take a number from it (#note_sound_row)
+            @start_file_note_fills = [] # the parts whose notes are made from it (#encoded_part_read_at_start)
             refuse_unknown_rate_setting_mix!
           end
 
@@ -185,16 +186,18 @@ module VBlank
 
           def recordings_with_settings_in_start_file = @sound_log.recordings.select(&:settings_from_file)
 
-          # The calls that fill every number worked out from a recording's settings in the file.
+          # The calls that fill every number worked out from a recording's settings in the file,
+          # and then each part's notes that are in it (#build_start_file_note_fills).
           # The sound's tables are made first, since making them is what finds the note rows.
           def build_start_file_sound_fills
             sound_tables
-            recordings_with_settings_in_start_file.flat_map do |sample|
+            settings_fills = recordings_with_settings_in_start_file.flat_map do |sample|
               settings = sample.settings_from_file
               rows = @start_file_note_rows.select { |row| row.recording == sample.name }
               [*(start_file_step_fills(sample, rows) if settings.rate), *(start_file_hold_fills(sample, rows) if settings.holds_from),
                *(start_file_shape_fills(sample, rows) if settings.envelope)]
             end
+            settings_fills + build_start_file_note_fills
           end
 
           # A whole number of 64 bits as two of 32, the high half first: how a runtime is handed a
@@ -352,7 +355,8 @@ module VBlank
           def written_sound_array_defines
             [("RG_RECORDING_SAMPLES_WRITABLE" if recordings_read_from_start_file?),
              ("RG_RECORDINGS_WRITABLE" if recording_shapes_read_from_start_file?),
-             ("RG_NOTE_SOUNDS_WRITABLE" unless @start_file_note_rows.empty?)].compact.map { |name| Statements::Define.new(name) }
+             ("RG_NOTE_SOUNDS_WRITABLE" unless @start_file_note_rows.empty?),
+             ("RG_MUSIC_WRITABLE" unless @start_file_note_fills.empty?)].compact.map { |name| Statements::Define.new(name) }
           end
 
           # Each recording that reads its samples from the file, written into its place in the array of
@@ -491,25 +495,34 @@ module VBlank
 
           # Every song, as the runtime reads them: how many there are, where each starts, and
           # then the songs.
+          #
+          # A part that reads its notes from the start file is written as room for them
+          # (#encoded_part_read_at_start), and where that room is in the table is known only here, so
+          # each such part's fill is kept with its place (#build_start_file_note_fills).
           def music_table
-            songs = @sound_log.songs.map { |song| encoded_song(song, Tunes.loop_passes(song)) }
-            effects = @sound_log.sound_effects.map { |name| encoded_effect(@sound_log.song(name)) }
+            songs = @sound_log.songs.map { |song| [song, Tunes.loop_passes(song), !Tunes.plays_once?(song)] }
+            effects = @sound_log.sound_effects.map do |name|
+              song = @sound_log.song(name)
+              [song, effect_passes(song), false]
+            end
             starts = []
             at = 1 + songs.size + effects.size # past the count and the starts themselves
-            (songs + effects).each do |numbers|
+            entries = (songs + effects).map do |song, passes, comes_round|
+              @note_fills_of_entry = []
+              numbers = encoded_song(song, passes, comes_round: comes_round)
               starts << at
+              @note_fills_of_entry.each { |fill| @start_file_note_fills << fill.with(notes_at: at + fill.notes_at) }
               at += numbers.size
+              numbers
             end
-            sound_table("music", [songs.size + effects.size, *starts, *songs.flatten, *effects.flatten])
+            sound_table("music", [entries.size, *starts, *entries.flatten], writable: !@start_file_note_fills.empty?)
           end
 
           # A SOUND EFFECT'S NOTES, written again after every song. It plays once and never comes
           # round, so each part is its notes as written, as the interpreter's player walks them —
           # where the same Score played as a tune (a game may name it in `play_song`) is put right
           # for coming round (Tunes.loop_passes), which can add a rest the effect does not have.
-          def encoded_effect(song)
-            encoded_song(song, song.voices.map { |part| Tunes::Pass.new(first: part.events, again: []) })
-          end
+          def effect_passes(song) = song.voices.map { |part| Tunes::Pass.new(first: part.events, again: []) }
 
           # Where each effect's notes are in the music table: after every song, in the order the
           # effects were declared.
@@ -519,14 +532,21 @@ module VBlank
           # its rank, and each part, with its notes the first time through and every time after
           # (+passes+). Every song the game declares is written, played or not, so the numbering is
           # the one SoundLog gives.
-          def encoded_song(song, passes)
+          # +comes_round+ is whether the entry is played again from its loop frame: a song that does
+          # not play once, and never a sound effect's notes.
+          def encoded_song(song, passes, comes_round:)
             lanes = 0
-            parts = song.voices.each_with_index.zip(passes).map do |(part, number), pass|
+            numbers = [song.total_frames, Tunes.loop_frame(song), Tunes.plays_once?(song) ? 1 : 0, Tunes.song_rank(song),
+                       song.voices.size]
+            song.voices.each_with_index.zip(passes) do |(part, number), pass|
               lane = Tunes.part_kind(part) == :recorded ? (lanes += 1) - 1 : nil
-              encoded_part(part, number, pass, lane)
+              if part.from_file
+                numbers.concat(encoded_part_read_at_start(song, part, number, lane, comes_round: comes_round, part_at: numbers.size))
+              else
+                numbers.concat(encoded_part(part, number, pass, lane))
+              end
             end
-            [song.total_frames, Tunes.loop_frame(song), Tunes.plays_once?(song) ? 1 : 0, Tunes.song_rank(song),
-             parts.size, *parts.flatten]
+            numbers
           end
 
           # A part: which kind of voice it plays on, which of its song's parts it is, the two
@@ -536,6 +556,96 @@ module VBlank
             kind = Tunes.part_kind(part)
             [PART_KINDS.fetch(kind), number, *part_tone(kind, part, lane), pass.first.size, pass.again.size,
              *(pass.first + pass.again).flat_map { |note| encoded_note(note, part, kind) }]
+          end
+
+          # --- a part's notes read from the start file (IR::StartFile::Notes) ---
+          #
+          # The player walks a part's notes in the music table, so a part whose notes are in the
+          # file is written as ROOM for them: as many notes as its records can make, each on frame
+          # -1, a frame no song is ever on, so the player passes none of them. The routine that
+          # reads the file then writes the notes the records make over the first of that room
+          # (rg_start_file_fill_notes), and what is left over stays unplayed.
+          #
+          # The runtime makes the notes by IR::StartFile::Notes' rule, and everything in that rule
+          # that is a number is worked out here and handed over: the frame each tick falls on
+          # (#tick_frames_array), and for the part what each key, each instrument and each volume a
+          # record can name comes to in a note's six numbers (#start_file_note_rules). So no runtime
+          # tunes a key or times a tick.
+
+          # What fills one part's room: where its first note is in the music table, the rules, and
+          # the array of the frame each tick falls on.
+          StartFileNotesFill = Data.define(:notes_at, :rules, :tick_frames)
+
+          # A frame no song and no sound effect is ever on.
+          NEVER_PLAYED = -1
+          NUMBERS_PER_NOTE = 6
+          NUMBERS_PER_PART = 6
+
+          # +part_at+ is where the part starts in its song's numbers.
+          def encoded_part_read_at_start(song, part, number, lane, comes_round:, part_at:)
+            kind = Tunes.part_kind(part)
+            where = part.from_file
+            # One more than the records make where the song comes round: the rest or the held note
+            # a part is put right with at its loop frame (IR::Tunes.loop_passes).
+            first = where.most_events + (comes_round ? 1 : 0)
+            again = comes_round ? where.most_events + 1 : 0
+            rules = [first, again, where.at, where.count, song.total_frames, Tunes.loop_frame(song), comes_round ? 1 : 0,
+                     *start_file_note_rules(part, kind, where)]
+            @note_fills_of_entry << StartFileNotesFill.new(notes_at: part_at + NUMBERS_PER_PART, rules: rules,
+                                                           tick_frames: tick_frames_array(where, song.total_frames))
+            [PART_KINDS.fetch(kind), number, *part_tone(kind, part, lane), first, again,
+             *([NEVER_PLAYED, 0, 0, 0, 0, 0] * (first + again))]
+          end
+
+          # WHAT A RECORD COMES TO ON THIS PART, as the numbers of a note (#encoded_note): what a
+          # rest's fourth number is; the fifth and sixth of a note that sounds, which are the
+          # part's; how many instruments the part names; then the third number for each volume
+          # from 0 to 15 and for the part's own; for each instrument, the first that names the
+          # same recording, which is how two notes are known to play the same one; the second
+          # number for each key; and the fourth for each key, on the part's own instrument and
+          # then on each it names (a part on a voice of the console's has the one list).
+          def start_file_note_rules(part, kind, where)
+            events = where.key_events
+            recorded = kind == :recorded
+            sounding = encoded_note([0, events.first[1], nil, nil, nil], part, kind)
+            heard = [*(0..StartFile::MOST_VOLUME), part.volume].map { |volume| recorded ? Tunes.mix_loudness(volume) : volume }
+            lasts = if recorded
+                      [nil, *where.instruments].map { |name| events.map { |event| note_sound_row([0, event[1], name, nil, nil], part) } }
+                    else
+                      [events.map { |event| note_ticks(kind, event[1]) }]
+                    end
+            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, *heard,
+             *where.instruments.map { |name| where.instruments.index(name) },
+             *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten]
+          end
+
+          # The most ticks a record can name: where a note starts, and how long it lasts.
+          MOST_TICKS = 2 * 0xFFFF # Original::PackNote keeps each in two bytes
+
+          # THE FRAME EACH TICK FALLS ON, for every tick before the song's end, as an array of the
+          # game's: one for each different timing and length among the game's Scores.
+          def tick_frames_array(where, total_frames)
+            timing = where.timing
+            (@tick_frames_arrays ||= {})[[where.tempo, where.ticks_per_beat, total_frames]] ||= begin
+              frames = []
+              (0..MOST_TICKS).each do |tick|
+                frame = timing.at(tick)
+                break if frame >= total_frames
+
+                frames << frame
+              end
+              [drawing_array("tick_frames", "int32_t", frames), frames.size]
+            end
+          end
+
+          # A call for each part that reads its notes from the file: the rules begin with where the
+          # part's room is in the music table, and how many ticks the array of frames holds.
+          def build_start_file_note_fills
+            @start_file_note_fills.map do |fill|
+              frames, ticks = fill.tick_frames
+              eval_call("rg_start_file_fill_notes", @names.own("music"),
+                        drawing_array("start_file_notes", "int32_t", [fill.notes_at, ticks, *fill.rules]), frames)
+            end
           end
 
           # What a part's voice sounds like, as two numbers. A square part: how many eighths of

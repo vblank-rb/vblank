@@ -24,7 +24,11 @@ module VBlank
             @sound_effects = Tunes.effects(program).uniq
             @waves = program.walk.select { |node| node.kind == :wave }.map { |node| wave_of(node) }.uniq
             @hits = program.walk.select { |node| node.kind == :noise }.map { |node| hit_of(node) }.uniq
-            @pitches = [0, *@songs.flat_map { |song| song.voices.flat_map { |part| part.events.map { |event| event[1] } } }].uniq
+            # A part that reads its notes from the start file may play any key, so every key's pitch
+            # on its voice is one of the songs' (IR::StartFile::Notes#key_events).
+            read_at_start = @songs.flat_map { |song| song.voices.filter_map(&:from_file) }.flat_map(&:key_events)
+            @pitches = [0, *@songs.flat_map { |song| song.voices.flat_map { |part| part.events.map { |event| event[1] } } },
+                        *read_at_start.map { |event| event[1] }].uniq
             # A name declared twice is the last declaration's, as the interpreter gathers them.
             @recordings = program.walk.select { |node| node.kind == :sample }.group_by(&:name).values.map(&:last)
           end

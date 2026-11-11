@@ -236,7 +236,32 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * rg_start_file_fill_shapes: an envelope, from four bytes of the file (attack, decay, sustain,
  * release). +rules+: where they are, how they are kept (0, those four bytes), the most a level
  * is, how many entries, and each entry of +into+, where five numbers start: 1 and the four for a
- * shape, all 0 for the one that is no shape at all. */
+ * shape, all 0 for the one that is no shape at all.
+ *
+ * A PART'S NOTES IN THE FILE (IR::StartFile::Notes): records of eight bytes that a port's
+ * unpacking writes (Original::PackNote), low byte first: the tick a note starts on and how many
+ * ticks it lasts (two bytes each, 0 for until the next), its key (0 to 127, anything else a rest),
+ * which of the part's instruments it plays and its volume (0 to 15), each the part's own where
+ * it names none the part has, and a byte of nothing. A record starting on tick 65535 ends the
+ * part. The game holds room for the notes in rg_game_music (rg_music.h), each on frame -1, which
+ * the player never reaches, and this writes the notes the records make over the first of them.
+ *
+ * rg_start_file_fill_notes makes them by the one rule every backend keeps (Audio::Score::Events
+ * and IR::Tunes.loop_passes say why each step is so): the records in the order of their ticks,
+ * those on one tick in the file's order; each an event on its tick's frame, and a rest where its
+ * length runs out unless the next record has begun by then; the later of two events on one
+ * frame; none on a frame at or past the song's end; and, for a song that comes round, the part
+ * put right at its loop frame, in the notes it plays the first time through and those it plays
+ * every time after. +tick_frames+ is the frame each tick falls on, for every tick before the
+ * song's end. +rules+: where the part's first note is in +music+, how many ticks +tick_frames+
+ * holds, the room for notes the first time through and for every time after, where the records
+ * are in the file and how many at most, the song's length in frames, the frame it comes round
+ * to, 1 if it comes round, a rest's fourth number, the fifth and sixth numbers of a note that
+ * sounds, and how many instruments the part names. Then a note's third number for each volume
+ * from 0 to 15 and for the part's own; for each instrument the first that names the same
+ * recording; a note's second number for each of the 128 keys; and its fourth for each key, on
+ * the part's own instrument and then on each it names. Every number of a note is one the game
+ * worked out as it was built: nothing here tunes a key or times a tick. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
@@ -251,5 +276,6 @@ void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, in
 void rg_start_file_fill_steps(int32_t *into, const int32_t *rules);
 void rg_start_file_fill_holds(int32_t *into, const int32_t *rules);
 void rg_start_file_fill_shapes(int32_t *into, const int32_t *rules);
+void rg_start_file_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 
 #endif

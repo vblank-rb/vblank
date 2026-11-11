@@ -87,13 +87,18 @@ module VBlank
 
       # Every sounding a song asks for. A note's own instrument and envelope win over the part's,
       # and the part's own pairing is here too, for a part whose notes all set nothing.
+      #
+      # A part that reads its notes from the file the program is handed as it starts
+      # (StartFile::Notes) has no events yet: any of the instruments it names may sound, each
+      # shaped as the part is.
       def soundings(song)
         song.voices.flat_map do |part|
           next [] unless part.instrument
 
+          from_file = (part.from_file&.instruments || []).map { |name| Sounding.new(name: name, envelope: part.envelope) }
           part.events.map do |event|
             Sounding.new(name: event[2] || part.instrument, envelope: event[4] || part.envelope)
-          end.push(Sounding.new(name: part.instrument, envelope: part.envelope))
+          end.push(Sounding.new(name: part.instrument, envelope: part.envelope), *from_file)
         end.uniq
       end
 
@@ -425,9 +430,10 @@ module VBlank
       # Does anything sound once the song has come round? A part does if a note in its later
       # passes does — which counts a note held across the loop frame and sounded again there —
       # or if the song ends on a note, which then carries on into the repeat.
+      # A part whose notes are known only once the program reads its file may sound there.
       def repeat_sounds?(song)
         song.voices.zip(loop_passes(song)).any? do |part, pass|
-          sounding?(part.events.last) || pass.again.any? { |event| sounding?(event) }
+          part.from_file || sounding?(part.events.last) || pass.again.any? { |event| sounding?(event) }
         end
       end
 

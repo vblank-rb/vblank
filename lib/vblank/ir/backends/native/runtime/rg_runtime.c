@@ -568,6 +568,146 @@ void rg_start_file_fill_shapes(int32_t *into, const int32_t *rules) {
   }
 }
 
+/* --- a part's notes in the file (rg_runtime.h, rg_start_file_fill_notes) --- */
+
+/* Where the numbers of a part's rules are, and the sizes of a record and a note. */
+enum {
+  RG_NOTES_AT = 0,
+  RG_NOTES_TICKS = 1,
+  RG_NOTES_FIRST_ROOM = 2,
+  RG_NOTES_RECORDS_AT = 4,
+  RG_NOTES_RECORDS = 5,
+  RG_NOTES_TOTAL_FRAMES = 6,
+  RG_NOTES_LOOP_FRAME = 7,
+  RG_NOTES_COMES_ROUND = 8,
+  RG_NOTES_REST_LAST = 9,
+  RG_NOTES_FLAGS = 10,
+  RG_NOTES_SHAPES = 11,
+  RG_NOTES_INSTRUMENTS = 12,
+  RG_NOTES_HEADER_NUMBERS = 13,
+  RG_NOTE_KEYS = 128,
+  RG_NOTE_VOLUMES = 16, /* and one more, the part's own */
+  RG_NOTE_RECORD_BYTES = 8,
+  RG_NOTE_NUMBERS = 6,
+  RG_NOTE_ENDS_PART = 0xFFFF
+};
+
+/* An event of a part: the frame it is on, its key (-1 for a rest), which list of the part's
+ * instruments it plays (0 for the part's own), the first instrument that names the same recording
+ * (-1 for the part's own), and its volume (RG_NOTE_VOLUMES for the part's own). */
+typedef struct {
+  int32_t frame, key, instrument, recording, volume;
+} start_file_event;
+
+static int32_t start_file_record_tick(int32_t records_at, int32_t record) {
+  return (int32_t)start_file_number(records_at + (record * RG_NOTE_RECORD_BYTES), 2, 0);
+}
+
+/* +event+ after the +made+ already in +events+: the later of two on one frame is kept, and none
+ * is kept on a frame at or past the song's end. Hands back how many there are now. */
+static int32_t start_file_keep_event(start_file_event *events, int32_t made, start_file_event event, int32_t total_frames) {
+  if (event.frame >= total_frames) return made;
+  if (made > 0 && events[made - 1].frame == event.frame) {
+    events[made - 1] = event;
+    return made;
+  }
+  events[made] = event;
+  return made + 1;
+}
+
+/* +event+ as a note's six numbers, at +into+. */
+static void start_file_write_note(int32_t *into, const start_file_event *event, const int32_t *rules) {
+  const int32_t *heard = rules + RG_NOTES_HEADER_NUMBERS;
+  const int32_t *pitches = heard + RG_NOTE_VOLUMES + 1 + rules[RG_NOTES_INSTRUMENTS];
+  const int32_t *lasts = pitches + RG_NOTE_KEYS;
+  int32_t rest = event->key < 0;
+  into[0] = event->frame;
+  into[1] = rest ? 0 : pitches[event->key];
+  into[2] = heard[event->volume];
+  into[3] = rest ? rules[RG_NOTES_REST_LAST] : lasts[(event->instrument * RG_NOTE_KEYS) + event->key];
+  into[4] = rest ? 0 : rules[RG_NOTES_FLAGS];
+  into[5] = rest ? 0 : rules[RG_NOTES_SHAPES];
+}
+
+void rg_start_file_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
+  int32_t ticks = rules[RG_NOTES_TICKS], records_at = rules[RG_NOTES_RECORDS_AT], total_frames = rules[RG_NOTES_TOTAL_FRAMES];
+  int32_t loop_frame = rules[RG_NOTES_LOOP_FRAME], instruments = rules[RG_NOTES_INSTRUMENTS];
+  const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
+  const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES};
+
+  /* The records before the one that ends the part, in the order of their ticks; those on one
+   * tick stay in the file's order. */
+  int32_t records = 0;
+  while (records < rules[RG_NOTES_RECORDS] && start_file_record_tick(records_at, records) != RG_NOTE_ENDS_PART) records++;
+  int32_t *order = malloc(sizeof *order * (size_t)(records + 1));
+  start_file_event *events = malloc(sizeof *events * (size_t)((records * 2) + 1));
+  if (!order || !events) rg_fault("there is no room to read the %d notes of a song's part", (int)records);
+  for (int32_t i = 0; i < records; i++) {
+    int32_t at = i;
+    while (at > 0 && start_file_record_tick(records_at, order[at - 1]) > start_file_record_tick(records_at, i)) {
+      order[at] = order[at - 1];
+      at--;
+    }
+    order[at] = i;
+  }
+
+  /* Each record is an event, and a rest where its length runs out, unless the next has begun. */
+  int32_t made = 0;
+  for (int32_t n = 0; n < records; n++) {
+    const uint8_t *record = start_file + records_at + (order[n] * RG_NOTE_RECORD_BYTES);
+    int32_t tick = record[0] | (record[1] << 8), length = record[2] | (record[3] << 8);
+    int32_t named = record[5] < instruments;
+    start_file_event event = {tick < ticks ? tick_frames[tick] : total_frames, record[4] < RG_NOTE_KEYS ? record[4] : -1,
+                              named ? record[5] + 1 : 0, named ? same_recording[record[5]] : -1,
+                              record[6] < RG_NOTE_VOLUMES ? record[6] : RG_NOTE_VOLUMES};
+    made = start_file_keep_event(events, made, event, total_frames);
+    int32_t ends = tick + length;
+    if (length > 0 && !(n + 1 < records && start_file_record_tick(records_at, order[n + 1]) <= ends)) {
+      start_file_event rest = rest_of_part;
+      rest.frame = ends < ticks ? tick_frames[ends] : total_frames;
+      made = start_file_keep_event(events, made, rest, total_frames);
+    }
+  }
+
+  /* WHAT THE PART IS DOING AT THE LOOP FRAME, for a song that comes round (IR::Tunes.loop_passes):
+   * a part with a note starting there needs nothing; one silent there and sounding at the end is
+   * silenced there; one holding a note across it sounds that note again there every time after
+   * the first, unless the song ends on the same note. */
+  int32_t split = 0, silence = 0, strike = 0;
+  if (rules[RG_NOTES_COMES_ROUND]) {
+    while (split < made && events[split].frame < loop_frame) split++;
+    if (!(split < made && events[split].frame == loop_frame)) {
+      const start_file_event *held = split > 0 ? &events[split - 1] : NULL;
+      const start_file_event *ending = made > 0 ? &events[made - 1] : NULL;
+      if (!(held && held->key >= 0)) silence = ending && ending->key >= 0;
+      else strike = !(ending->key == held->key && ending->recording == held->recording && ending->volume == held->volume);
+    }
+  }
+
+  int32_t *first = music + rules[RG_NOTES_AT];
+  int32_t *again = first + (rules[RG_NOTES_FIRST_ROOM] * RG_NOTE_NUMBERS);
+  start_file_event at_loop = strike ? events[split - 1] : rest_of_part;
+  at_loop.frame = loop_frame;
+  for (int32_t i = 0; i < split; i++, first += RG_NOTE_NUMBERS) start_file_write_note(first, &events[i], rules);
+  if (silence) {
+    start_file_write_note(first, &at_loop, rules);
+    first += RG_NOTE_NUMBERS;
+  }
+  if (silence || strike) {
+    start_file_write_note(again, &at_loop, rules);
+    again += RG_NOTE_NUMBERS;
+  }
+  for (int32_t i = split; i < made; i++, first += RG_NOTE_NUMBERS) {
+    start_file_write_note(first, &events[i], rules);
+    if (rules[RG_NOTES_COMES_ROUND]) {
+      start_file_write_note(again, &events[i], rules);
+      again += RG_NOTE_NUMBERS;
+    }
+  }
+  free(order);
+  free(events);
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];

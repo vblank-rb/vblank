@@ -266,8 +266,11 @@ module VBlank
       module Events
         module_function
 
+        # Notes on one tick keep the order they were given in, so which of them is kept is the
+        # same wherever the part's events are worked out (a build that reads its notes as the
+        # game starts works them out again in each runtime).
         def for_part(part, frames, total, who)
-          notes = part.notes.sort_by(&:at)
+          notes = part.notes.each_with_index.sort_by { |note, place| [note.at, place] }.map(&:first)
           kind = Music.kind_played(Music.resolve_plays(part.plays))
           events = notes.each_with_index.flat_map do |note, n|
             said = Music.without_trailing_nils([note.fade(who), note.slide(who), note.wobble(who), note.side(who),
