@@ -425,3 +425,48 @@ def rg_mix_visit_sound_state
   newest = rg_state_numbers("mix.slice", (@rg_mix_slice || Array.new(samples, 0)).first(samples))
   @rg_mix_slice = newest if samples.positive?
 end
+
+# --- a recording's settings in the file (rg_mix.h says what each of these is handed) ---
+
+RG_FILE_NUMBER_NUMBERS = 4
+RG_FILE_NUMBER_READS = Ractor.make_shareable({ 1 => %w[C C], 2 => %w[v n], 4 => %w[V N] })
+
+# The number of a recording's setting, from the four numbers of +rules+ at +where+ (rg_mix.c's
+# start_file_setting).
+def rg_start_file_setting(rules, where)
+  width = rules[where + 1]
+  number = @rg_start_file.byteslice(rules[where], width).unpack1(RG_FILE_NUMBER_READS.fetch(width)[rules[where + 2]])
+  top = 1 << ((width * 8) - 1)
+  rules[where + 3] == 1 && number >= top ? number - (top * 2) : number
+end
+
+# rg_mix.c's number_of_halves.
+def rg_number_of_halves(high, low) = [high, low].pack("l>l>").unpack1("G")
+
+def rg_mix_fill_steps(into, rules)
+  rate = [rg_start_file_setting(rules, 0), 1].max
+  rest = RG_FILE_NUMBER_NUMBERS
+  mix_rate = rg_number_of_halves(rules[rest], rules[rest + 1])
+  rules[rest + 2].times do |i|
+    entry = rest + 3 + (i * 3)
+    step = ((rate.to_f / mix_rate) * rg_number_of_halves(rules[entry + 1], rules[entry + 2])) * 65_536
+    into[rules[entry]] = step < 1 ? 1 : [(step + 0.5).floor, 2_147_483_647].min
+  end
+end
+
+def rg_mix_fill_holds(into, rules)
+  rest = RG_FILE_NUMBER_NUMBERS
+  length = rules[rest]
+  holds_from = rg_start_file_setting(rules, 0).clamp(0, length - 1)
+  rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = length - holds_from }
+end
+
+def rg_mix_fill_shapes(into, rules)
+  at = rules[0]
+  full = rules[2]
+  attack, decay, sustain, release = @rg_start_file.byteslice(at, 4).bytes
+  shaped = !(attack == full && sustain == full && release.zero?)
+  rules[3].times do |i|
+    into[rules[4 + i], 5] = shaped ? [1, attack, decay, sustain, release] : [0, 0, 0, 0, 0]
+  end
+end

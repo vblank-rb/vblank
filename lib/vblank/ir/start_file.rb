@@ -151,7 +151,7 @@ module VBlank
       # AN ENVELOPE IN THE FILE: the bytes from +at+ on, kept as +kept_as+ names. :envelope is the
       # four bytes an Audio::Envelope keeps, in its order (attack, decay, sustain, release); another
       # way of keeping one is another name here and a branch in .envelope_in and in each runtime's
-      # rg_start_file_fill_shapes.
+      # rg_mix_fill_shapes.
       EnvelopeBytes = Data.define(:at, :kept_as)
 
       # The Audio::Envelope +where+ (an EnvelopeBytes) names in +bytes+, the file.

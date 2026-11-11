@@ -275,7 +275,7 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   pack[:shapes].envelope(3)` — the recording's settings. The build works a play and a note out from them (how fast a
   voice reads the recording, how far back a held note reads, the shape's four numbers), so the program holds a
   stand-in for each number worked out and the runtime writes it again from the file at power-on
-  (`IR::StartFile::RecordingSettings`, `rg_start_file_fill_steps`, `_holds` and `_shapes`). It sounds as the
+  (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
   all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
   where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
   still, and a hold outside the recording is its first sample or its last. **`rate:` from the pack needs a console
@@ -288,7 +288,7 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   without it is refused at the line. The build knows how many notes the slot holds and none of them, so the
   program holds room for the most events they can make (two for each note, a note and the rest it ends in) and
   the runtime makes the part's events from the file at power-on (`IR::StartFile::Notes`,
-  `rg_start_file_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest
+  the music feature's `rg_music_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest
   where a note's length runs out before the next begins, the later of two on one frame, none past the song's
   end, and each part put right where the song comes round. The build hands the runtime the frame of every tick
   and what every key, instrument and volume comes to on the part's voice, so a part can be on any voice and be

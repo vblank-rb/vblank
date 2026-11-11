@@ -44,6 +44,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "rg_mix.h"
 #include "rg_runtime.h"
@@ -527,4 +528,63 @@ static void rg_mix_visit_sound_state(void) {
   rg_state_numbers("mix.slice", newest, samples);
   for (int32_t at = 0; at < samples; at++) slice[at] = (int32_t)newest[at];
   free(newest);
+}
+
+/* --- a recording's settings in the start file (rg_mix.h says what each of these is handed) --- */
+
+/* The number of a recording's setting: +where+ is where it is in the file, how many bytes it is,
+ * 1 for the high byte first, and 1 where it can be below zero (RG_FILE_NUMBER_NUMBERS numbers). */
+enum { RG_FILE_NUMBER_NUMBERS = 4 };
+static int64_t start_file_setting(const int32_t *where) {
+  uint32_t number = rg_start_file_number(where[0], where[1], where[2]);
+  if (!where[3]) return (int64_t)number;
+  if (where[1] == 1) return (int64_t)(int8_t)number;
+  return where[1] == 2 ? (int64_t)(int16_t)number : (int64_t)(int32_t)number;
+}
+
+/* The number with a fraction that two of the game's numbers hold, the high half first (IEEE 754). */
+static double number_of_halves(int32_t high, int32_t low) {
+  uint64_t bits = ((uint64_t)(uint32_t)high << 32) | (uint64_t)(uint32_t)low;
+  double number;
+  memcpy(&number, &bits, sizeof number);
+  return number;
+}
+
+void rg_mix_fill_steps(int32_t *into, const int32_t *rules) {
+  int64_t rate = start_file_setting(rules);
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
+  double mix_rate = number_of_halves(rest[0], rest[1]);
+  int32_t count = rest[2];
+  if (rate < 1) rate = 1;
+  for (int32_t i = 0; i < count; i++) {
+    const int32_t *entry = rest + 3 + (i * 3);
+    /* IR::Mixing.step's sum, in its order, rounded to the nearest whole step. */
+    double step = (((double)rate / mix_rate) * number_of_halves(entry[1], entry[2])) * 65536.0;
+    into[entry[0]] = step >= 2147483647.0 ? INT32_MAX : step < 1.0 ? 1 : (int32_t)(step + 0.5);
+  }
+}
+
+void rg_mix_fill_holds(int32_t *into, const int32_t *rules) {
+  int64_t holds_from = start_file_setting(rules);
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
+  int32_t length = rest[0], count = rest[1];
+  if (holds_from < 0) holds_from = 0;
+  if (holds_from > length - 1) holds_from = length - 1;
+  for (int32_t i = 0; i < count; i++) into[rest[2 + i]] = length - (int32_t)holds_from;
+}
+
+void rg_mix_fill_shapes(int32_t *into, const int32_t *rules) {
+  int32_t at = rules[0], full = rules[2], count = rules[3];
+  const uint8_t *kept = rg_start_file_bytes() + at;
+  int32_t attack = kept[0], decay = kept[1], sustain = kept[2], release = kept[3];
+  /* A shape that climbs at once, holds at full and stops dead is no shape (Audio::Envelope#plain?). */
+  int32_t shaped = !(attack == full && sustain == full && release == 0);
+  for (int32_t i = 0; i < count; i++) {
+    int32_t *shape = into + rules[4 + i];
+    shape[0] = shaped;
+    shape[1] = shaped ? attack : 0;
+    shape[2] = shaped ? decay : 0;
+    shape[3] = shaped ? sustain : 0;
+    shape[4] = shaped ? release : 0;
+  }
 }

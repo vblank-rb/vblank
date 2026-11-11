@@ -140,12 +140,15 @@ module VBlank
           # start file, the build writes what it works out from a stand-in and the routine that
           # reads the file writes each number again from the file's:
           #
-          #   rg_start_file_fill_steps   the step of each play and each note's row, from the rate;
-          #   rg_start_file_fill_holds   how far back each reads, from the sample held from;
-          #   rg_start_file_fill_shapes  the recording's shape, and each row that takes it.
+          #   rg_mix_fill_steps   the step of each play and each note's row, from the rate;
+          #   rg_mix_fill_holds   how far back each reads, from the sample held from;
+          #   rg_mix_fill_shapes  the recording's shape, and each row that takes it.
           #
           # They write into the game's own array for a play's numbers, and into the tables of
           # recordings and of note rows, which such a game declares as written.
+          #
+          # They are the mix feature's (RuntimeFeatures), which every game that declares a
+          # recording is built with.
 
           # A number of a play that is known once the file is read: the step that sounds
           # +recording+ at +frequency+, or how far back +recording+ reads at its end.
@@ -180,7 +183,7 @@ module VBlank
           RECORDING_NUMBERS = 7
           RECORDING_SHAPE_AT = 2
 
-          # How each runtime's rg_start_file_fill_shapes is told an envelope is kept
+          # How each runtime's rg_mix_fill_shapes is told an envelope is kept
           # (IR::StartFile::EnvelopeBytes#kept_as).
           ENVELOPES_KEPT_AS = Ractor.make_shareable({ envelope: 0 })
 
@@ -191,13 +194,18 @@ module VBlank
           # The sound's tables are made first, since making them is what finds the note rows.
           def build_start_file_sound_fills
             sound_tables
-            settings_fills = recordings_with_settings_in_start_file.flat_map do |sample|
+            build_start_file_settings_fills + build_start_file_note_fills
+          end
+
+          def takes_runtime_feature?(name) = runtime_features.any? { |feature| feature.name == name }
+
+          def build_start_file_settings_fills
+            recordings_with_settings_in_start_file.flat_map do |sample|
               settings = sample.settings_from_file
               rows = @start_file_note_rows.select { |row| row.recording == sample.name }
               [*(start_file_step_fills(sample, rows) if settings.rate), *(start_file_hold_fills(sample, rows) if settings.holds_from),
                *(start_file_shape_fills(sample, rows) if settings.envelope)]
             end
-            settings_fills + build_start_file_note_fills
           end
 
           # A whole number of 64 bits as two of 32, the high half first: how a runtime is handed a
@@ -220,7 +228,7 @@ module VBlank
             plays = @start_file_sound_numbers.each_with_index.select { |number, _| number.is_a?(StartFileStep) && number.recording == sample.name }
             in_plays = plays.map { |number, entry| [entry, *double_halves(number.frequency.to_f / note)] }
             in_rows = rows.map { |row| [1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_STEP_AT, *double_halves(row.pitch.to_f / note)] }
-            start_file_sound_fill("rg_start_file_fill_steps", "start_file_steps", head, in_plays, in_rows)
+            start_file_sound_fill("rg_mix_fill_steps", "start_file_steps", head, in_plays, in_rows)
           end
 
           # HOW FAR BACK A HELD NOTE READS, from the sample it holds from in the file: the
@@ -229,7 +237,7 @@ module VBlank
             head = [*start_file_number_rules(sample.settings_from_file.holds_from), sample.bytes.bytesize]
             plays = @start_file_sound_numbers.each_index.select { |entry| @start_file_sound_numbers[entry] == StartFileHold.new(recording: sample.name) }
             in_rows = rows.map { |row| [1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT] }
-            start_file_sound_fill("rg_start_file_fill_holds", "start_file_holds", head, plays.map { |entry| [entry] }, in_rows)
+            start_file_sound_fill("rg_mix_fill_holds", "start_file_holds", head, plays.map { |entry| [entry] }, in_rows)
           end
 
           # THE SHAPE FROM THE FILE: the recording's own, and each row of a note that set none and
@@ -239,10 +247,10 @@ module VBlank
             head = [where.at, ENVELOPES_KEPT_AS.fetch(where.kept_as), VBlank::Audio::Envelope::MOST]
             recording = [[1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + RECORDING_SHAPE_AT]]
             in_rows = rows.select(&:recording_shape).map { |row| [1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_SHAPE_AT] }
-            [eval_call("rg_start_file_fill_shapes", @names.own("recordings"),
+            [eval_call("rg_mix_fill_shapes", @names.own("recordings"),
                        drawing_array("start_file_shapes", "int32_t", [*head, recording.size, *recording.flatten])),
              *(unless in_rows.empty?
-                 [eval_call("rg_start_file_fill_shapes", @names.own("note_sounds"),
+                 [eval_call("rg_mix_fill_shapes", @names.own("note_sounds"),
                             drawing_array("start_file_shapes", "int32_t", [*head, in_rows.size, *in_rows.flatten]))]
                end)]
           end
@@ -411,7 +419,7 @@ module VBlank
           # names `music_volume` plays every part at its written volume with nothing worked out. A
           # game with no music feature has no player to tell.
           def sound_power_on
-            return [] unless variable_names.include?(Tunes::LEVEL) && runtime_features.any? { |feature| feature.name == :music }
+            return [] unless variable_names.include?(Tunes::LEVEL) && takes_runtime_feature?(:music)
 
             [eval_call("rg_music_follow_level", Statements::AddressOf.new(variable(Tunes::LEVEL)))]
           end
@@ -564,7 +572,7 @@ module VBlank
           # file is written as ROOM for them: as many notes as its records can make, each on frame
           # -1, a frame no song is ever on, so the player passes none of them. The routine that
           # reads the file then writes the notes the records make over the first of that room
-          # (rg_start_file_fill_notes), and what is left over stays unplayed.
+          # (rg_music_fill_notes), and what is left over stays unplayed.
           #
           # The runtime makes the notes by IR::StartFile::Notes' rule, and everything in that rule
           # that is a number is worked out here and handed over: the frame each tick falls on
@@ -573,8 +581,9 @@ module VBlank
           # tunes a key or times a tick.
 
           # What fills one part's room: where its first note is in the music table, the rules, and
-          # the array of the frame each tick falls on.
-          StartFileNotesFill = Data.define(:notes_at, :rules, :tick_frames)
+          # what the array of the frame each tick falls on is made from (#tick_frames_array), which
+          # is declared only by a game that makes the call.
+          StartFileNotesFill = Data.define(:notes_at, :rules, :where, :total_frames)
 
           # A frame no song and no sound effect is ever on.
           NEVER_PLAYED = -1
@@ -591,8 +600,8 @@ module VBlank
             again = comes_round ? where.most_events + 1 : 0
             rules = [first, again, where.at, where.count, song.total_frames, Tunes.loop_frame(song), comes_round ? 1 : 0,
                      *start_file_note_rules(part, kind, where)]
-            @note_fills_of_entry << StartFileNotesFill.new(notes_at: part_at + NUMBERS_PER_PART, rules: rules,
-                                                           tick_frames: tick_frames_array(where, song.total_frames))
+            @note_fills_of_entry << StartFileNotesFill.new(notes_at: part_at + NUMBERS_PER_PART, rules: rules, where: where,
+                                                           total_frames: song.total_frames)
             [PART_KINDS.fetch(kind), number, *part_tone(kind, part, lane), first, again,
              *([NEVER_PLAYED, 0, 0, 0, 0, 0] * (first + again))]
           end
@@ -640,10 +649,14 @@ module VBlank
 
           # A call for each part that reads its notes from the file: the rules begin with where the
           # part's room is in the music table, and how many ticks the array of frames holds.
+          # None for a game with no music feature, which declares songs and plays none: it has no
+          # player to walk the notes, and no rg_music_fill_notes to make them.
           def build_start_file_note_fills
+            return [] unless takes_runtime_feature?(:music)
+
             @start_file_note_fills.map do |fill|
-              frames, ticks = fill.tick_frames
-              eval_call("rg_start_file_fill_notes", @names.own("music"),
+              frames, ticks = tick_frames_array(fill.where, fill.total_frames)
+              eval_call("rg_music_fill_notes", @names.own("music"),
                         drawing_array("start_file_notes", "int32_t", [fill.notes_at, ticks, *fill.rules]), frames)
             end
           end

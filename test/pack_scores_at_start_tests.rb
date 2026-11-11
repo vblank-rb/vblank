@@ -65,8 +65,9 @@ module PackScoresAtStartTests
 
   # A game whose songs and sound effects are made by the block, which is handed a way to get a
   # part's notes by slot name: the slot's handle with the pack left out (+folder+ given), or the
-  # notes written by hand. It plays song 0 on A and sound effect 0 on B.
-  private def scored_game(parts, folder: nil, instruments: {}, &scores)
+  # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
+  # declares them and plays neither.
+  private def scored_game(parts, folder: nil, instruments: {}, plays: true, &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
@@ -92,8 +93,8 @@ module PackScoresAtStartTests
       effects = (sound_effects :sfx, made[:effects] if made[:effects])
       game_loop do
         wait_vblank
-        music.play 0 if pressed(:a)
-        effects.play 0 if effects && pressed(:b)
+        music.play 0 if plays && pressed(:a)
+        effects.play 0 if plays && effects && pressed(:b)
       end
     end
     b.finalize_program
@@ -214,6 +215,19 @@ module PackScoresAtStartTests
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
+  # A game that declares a song and never plays one is built without the music player (the music
+  # runtime feature), which is what makes a part's notes from the file. It starts all the same.
+  def test_a_game_that_declares_a_song_and_plays_none_still_starts
+    Dir.mktmpdir do |folder|
+      silent = scored_game({ melody: MELODY }, folder: folder, plays: false) do |notes_of|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, length: 96, plays_once: true)] }
+      end
+      played = game_player.hand_file(pack_file({ melody: MELODY })).hold(:a).run(silent, frames: 4)
+
+      assert_empty played.audio.select { |entry| entry.first == :note }
+    end
+  end
 
   def test_the_game_without_its_pack_holds_none_of_the_notes
     Dir.mktmpdir do |folder|

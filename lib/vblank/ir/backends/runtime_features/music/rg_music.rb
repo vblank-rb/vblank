@@ -902,3 +902,107 @@ def rg_visit_effects
     @rg_effect_cursors[e] = n[5, RG_PARTS_MOST]
   end
 end
+
+# --- a part's notes in the file (rg_music.h, rg_music_fill_notes; rg_music.c says each step) ---
+
+RG_NOTES_AT = 0
+RG_NOTES_TICKS = 1
+RG_NOTES_FIRST_ROOM = 2
+RG_NOTES_RECORDS_AT = 4
+RG_NOTES_RECORDS = 5
+RG_NOTES_TOTAL_FRAMES = 6
+RG_NOTES_LOOP_FRAME = 7
+RG_NOTES_COMES_ROUND = 8
+RG_NOTES_REST_LAST = 9
+RG_NOTES_FLAGS = 10
+RG_NOTES_SHAPES = 11
+RG_NOTES_INSTRUMENTS = 12
+RG_NOTES_HEADER_NUMBERS = 13
+RG_NOTE_KEYS = 128
+RG_NOTE_VOLUMES = 16
+RG_NOTE_RECORD_BYTES = 8
+RG_NOTE_NUMBERS = 6
+RG_NOTE_ENDS_PART = 0xFFFF
+
+# An event of a part (rg_music.c's start_file_event).
+RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume)
+
+# rg_music.c's start_file_keep_event: +event+ after those in +events+.
+def rg_start_file_keep_event(events, event, total_frames)
+  return if event.frame >= total_frames
+
+  if !events.empty? && events.last.frame == event.frame
+    events[-1] = event
+  else
+    events << event
+  end
+end
+
+# rg_music.c's start_file_write_note: +event+ as a note's six numbers, from +into+ on in +music+.
+def rg_start_file_write_note(music, into, event, rules)
+  heard = RG_NOTES_HEADER_NUMBERS
+  pitches = heard + RG_NOTE_VOLUMES + 1 + rules[RG_NOTES_INSTRUMENTS]
+  lasts = pitches + RG_NOTE_KEYS
+  rest = event.key.negative?
+  music[into] = event.frame
+  music[into + 1] = rest ? 0 : rules[pitches + event.key]
+  music[into + 2] = rules[heard + event.volume]
+  music[into + 3] = rest ? rules[RG_NOTES_REST_LAST] : rules[lasts + (event.instrument * RG_NOTE_KEYS) + event.key]
+  music[into + 4] = rest ? 0 : rules[RG_NOTES_FLAGS]
+  music[into + 5] = rest ? 0 : rules[RG_NOTES_SHAPES]
+end
+
+def rg_music_fill_notes(music, rules, tick_frames)
+  ticks = rules[RG_NOTES_TICKS]
+  total_frames = rules[RG_NOTES_TOTAL_FRAMES]
+  loop_frame = rules[RG_NOTES_LOOP_FRAME]
+  instruments = rules[RG_NOTES_INSTRUMENTS]
+  same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
+  frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : total_frames }
+
+  # The records before the one that ends the part, in the order of their ticks; those on one tick
+  # stay in the file's order.
+  held_bytes = @rg_start_file.byteslice(rules[RG_NOTES_RECORDS_AT], rules[RG_NOTES_RECORDS] * RG_NOTE_RECORD_BYTES)
+  records = held_bytes.unpack("vvCCCC" * rules[RG_NOTES_RECORDS]).each_slice(6).take_while { |record| record[0] != RG_NOTE_ENDS_PART }
+  records = records.each_with_index.sort_by { |record, place| [record[0], place] }.map(&:first)
+
+  events = []
+  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES)
+  records.each_with_index do |(tick, length, key, instrument, volume), n|
+    named = instrument < instruments
+    rg_start_file_keep_event(events, RgStartFileEvent.new(frame_of.call(tick), key < RG_NOTE_KEYS ? key : -1, named ? instrument + 1 : 0,
+                                                          named ? rules[same_recording + instrument] : -1,
+                                                          volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES), total_frames)
+    ends = tick + length
+    next unless length.positive? && !(n + 1 < records.length && records[n + 1][0] <= ends)
+
+    rest = rest_of_part.dup
+    rest.frame = frame_of.call(ends)
+    rg_start_file_keep_event(events, rest, total_frames)
+  end
+
+  comes_round = rules[RG_NOTES_COMES_ROUND] != 0
+  split = 0
+  silence = false
+  strike = false
+  if comes_round
+    split = events.index { |event| event.frame >= loop_frame } || events.length
+    unless split < events.length && events[split].frame == loop_frame
+      held = split.positive? ? events[split - 1] : nil
+      ending = events.last
+      if held && held.key >= 0
+        strike = !(ending.key == held.key && ending.recording == held.recording && ending.volume == held.volume)
+      else
+        silence = !ending.nil? && ending.key >= 0
+      end
+    end
+  end
+
+  at_loop = (strike ? events[split - 1] : rest_of_part).dup
+  at_loop.frame = loop_frame
+  first = events.first(split) + (silence ? [at_loop] : []) + events.drop(split)
+  again = comes_round ? (silence || strike ? [at_loop] : []) + events.drop(split) : []
+  again_at = rules[RG_NOTES_AT] + (rules[RG_NOTES_FIRST_ROOM] * RG_NOTE_NUMBERS)
+  first.each_with_index { |event, n| rg_start_file_write_note(music, rules[RG_NOTES_AT] + (n * RG_NOTE_NUMBERS), event, rules) }
+  again.each_with_index { |event, n| rg_start_file_write_note(music, again_at + (n * RG_NOTE_NUMBERS), event, rules) }
+end
