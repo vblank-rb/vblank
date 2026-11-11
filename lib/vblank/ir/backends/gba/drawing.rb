@@ -571,6 +571,7 @@ module VBlank
           # the frame. Switched on last, a layer either draws its own scenery or is not on
           # yet, and not on yet is one frame of backdrop.
           def emit_scene_preamble(name)
+            emit_painted_scene_without_backdrop(name) if @palette_tint.tints_screen_backdrops?
             emit_scene_mode(name) if @layout.modes.switched_per_scene?
             emit_painted_run_places(name)
             emit_scene_scenery(name)
@@ -596,8 +597,21 @@ module VBlank
             @scene_entry.emit_once_on_arrival(:backdrop, name) { emit_backdrop_color(arrival.backdrop) }
           end
 
-          # The colour +color+ into the first place of the background colours: the backdrop.
+          # A PAINTED SCENE TAKING OVER, in a build that puts a screen's backdrop back after a walk
+          # of the colours (PaletteTint#prepare_screen_backdrops): it has no backdrop to put back,
+          # and says so before its screen and colours go up, since a tint kept across the change
+          # walks them as they do. A scene drawn from tiles writes its own after (#emit_scene_backdrop).
+          def emit_painted_scene_without_backdrop(name)
+            return if IR::SceneHandover.tiles?(IR::Modes::SCREEN_OF_MODE.fetch(scene_handover.arrival(name).mode))
+
+            @scene_entry.emit_once_on_arrival(:backdrop, name) { @palette_tint.emit_no_screen_backdrop }
+          end
+
+          # The colour +color+ into the first place of the background colours: the backdrop. A
+          # build that walks its colour tables puts it in through the tint in force.
           def emit_backdrop_color(color)
+            return @palette_tint.emit_backdrop_through_tint(color) if @palette_tint.tints_screen_backdrops?
+
             @emitter.emit(ASM.load_immediate(ACC, color))
             @emitter.emit(ASM.load_immediate(TMP, PALETTE_START))
             @emitter.emit(ASM.store_halfword(ACC, TMP))

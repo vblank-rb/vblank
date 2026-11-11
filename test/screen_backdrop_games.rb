@@ -18,8 +18,8 @@ module ScreenBackdropGames
 
   # A title that says the screen line +title_screen+ gives it (a Hash of `screen :tiled` options,
   # nil for none), shown for five frames, then a board that says no screen of its own; each the
-  # corner tile in its top left cell alone.
-  def title_and_board(title_screen: nil)
+  # corner tile in its top left cell alone. +before_loop+ is said before the game loop.
+  def title_and_board(title_screen: nil, &before_loop)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
@@ -31,6 +31,7 @@ module ScreenBackdropGames
         background :title, tiles: :corner_set, map: ["c"]
       end
       scene(:board) { background :board, tiles: :corner_set, map: ["c"] }
+      instance_eval(&before_loop) if before_loop
       game_loop do
         tick += 1
         state = 1 if tick == 6
