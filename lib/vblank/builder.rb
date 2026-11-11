@@ -879,8 +879,12 @@ module VBlank
     # rather than with one turn, because a picture turns around one point however many
     # times the game turns it (see {Background#turns_around}). Every write of that
     # background's matrix carries it, so there is nowhere for a second answer to live.
-    def set_background_pivot(name, x, y)
+    #
+    # +map_point+ is the point of the background's own map that sits there, or nil for a map
+    # hung from the screen's corner, whose point there is the same two numbers.
+    def set_background_pivot(name, x, y, map_point: nil)
       declared_background(name).pivot = [x, y]
+      declared_background(name).pivot_map_point = map_point
     end
 
     # The last statement recorded into the block being built, or nil where nothing has been
@@ -1495,7 +1499,10 @@ module VBlank
       # so the ones being kept are told now, when every line has been read.
       @inline_affine_nodes.each do |node|
         pivot = declared_background(node.name).pivot
-        node.around_x, node.around_y = pivot if pivot
+        next unless pivot
+
+        node.around_x, node.around_y = pivot
+        node.map_x, node.map_y = declared_background(node.name).pivot_map_point || pivot
       end
 
       write_between_frames(@inline_affine_nodes, backgrounds_that(&:turns_each_frame?)) do |name, background|
@@ -1529,7 +1536,8 @@ module VBlank
       write = Build.if_(changed,
                         Build.affine_background(name, angle: Build.var_ref(background.angle),
                                                       scale: Build.var_ref(background.scale),
-                                                      around: background.pivot || @console.middle),
+                                                      around: background.pivot || @console.middle,
+                                                      map_point: background.pivot_map_point),
                         Build.set(told_angle, Build.var_ref(background.angle)),
                         Build.set(told_size, Build.var_ref(background.scale)))
 

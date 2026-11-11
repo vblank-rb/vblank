@@ -686,9 +686,22 @@ module VBlank
       #
       # Nothing about the picture moves when only the pivot changes: at its drawn size,
       # upright, a background lands in exactly the same place whatever it turns around.
-      def turns_around(x, y)
+      #
+      # WHICH POINT OF THE MAP IS THERE is the screen's own point unless the game names one:
+      # the map hangs from the screen's corner, so the point of it under (120, 72) is its own
+      # (120, 72). `map_point:` names another, in the map's pixels from its top left:
+      #
+      #   background(:sword, tiles: :sword, map: grid).turns_around(120, 72, map_point: [128, 128])
+      #
+      # puts the middle of a map 256 pixels a side at (120, 72), and it stays there at every
+      # size and angle. That is how a console's own games place such a layer: by the map's
+      # middle, set down at a point of the screen. This one does move the picture, since it
+      # says where the map lies: upright at its drawn size the map is moved so the two points meet.
+      def turns_around(x, y, map_point: nil)
         affine_vars # this background is one that turns — the same claim `rotate`/`scale` make
-        @builder.set_background_pivot(@name, require_integer_pixel!(x, "x"), require_integer_pixel!(y, "y"))
+        refuse_bad_map_point!(map_point)
+        @builder.set_background_pivot(@name, require_integer_pixel!(x, "x"), require_integer_pixel!(y, "y"),
+                                      map_point: map_point)
         self
       end
 
@@ -1052,6 +1065,16 @@ module VBlank
               "#{@name}.turns_around takes numbers you write, not a value the game works out. " \
               "You gave #{axis} = #{value.inspect}. The point a picture turns around is settled " \
               "when you write the program. To fix this, write #{axis} as a whole number of pixels."
+      end
+
+      # `map_point:` is two whole numbers written in the program, as the pivot is.
+      def refuse_bad_map_point!(map_point)
+        return if map_point.nil? || (map_point.is_a?(Array) && map_point.length == 2 && map_point.all?(Integer))
+
+        raise ArgumentError,
+              "#{@name}.turns_around was given map_point: #{map_point.inspect}. map_point: is the point of the " \
+              "background's map that sits at the pivot. To fix this, give two whole numbers of pixels from the " \
+              "map's top left, like `map_point: [128, 128]`."
       end
 
       # A number written on the declaration line is what the background STARTS at, so it is

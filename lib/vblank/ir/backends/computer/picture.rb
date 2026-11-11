@@ -904,9 +904,15 @@ module VBlank
             end)
           end
 
+          # Reference#exec_affine_background: a map whose named point sits at the pivot is first
+          # moved that far from the screen's corner, as a scroll, which the turn is worked out over.
           def lower_affine_background(node)
-            [eval_call("rg_background_turn", background_number(node), value(node.angle),
-                       value(node.scale), Statements::Int.new(node.around_x), Statements::Int.new(node.around_y))]
+            turn = eval_call("rg_background_turn", background_number(node), value(node.angle),
+                             value(node.scale), Statements::Int.new(node.around_x), Statements::Int.new(node.around_y))
+            return [turn] if node.map_shift == [0, 0]
+
+            [eval_call("rg_background_scroll", background_number(node), *node.map_shift.map { |pixels| Statements::Int.new(pixels) }),
+             turn]
           end
 
           # Reference#exec_present_objects: every sprite the frame draws is taken off the picture,

@@ -1257,7 +1257,7 @@ module VBlank
             # Builder#affine_write_if_changed). So reaching this is already the answer
             # to both questions, and what is left is the write.
             emit_bg_affine_matrix(node)
-            emit_bg_affine_reference_point(node.around_x, node.around_y)
+            emit_bg_affine_reference_point(node.around_x, node.around_y, node.map_x, node.map_y)
           end
 
           # The same numbers a turning hardware sprite reads (see
@@ -1331,7 +1331,12 @@ module VBlank
           # what makes a pivot free of side effects: at its drawn size, upright, the matrix
           # is the identity and the reference point comes out at nought wherever the pivot
           # is, so a background that is not turning lands in exactly the same place.
-          def emit_bg_affine_reference_point(px, py)
+          #
+          # (+map_x+, +map_y+) is the point of the map that lands at the pivot: those same two
+          # numbers for a map hung from the screen's corner, or the point the game named
+          # (Nodes::AffineBackground). It is the "pivot's texture position" above, a number
+          # written in the cartridge either way, so naming one costs no instruction.
+          def emit_bg_affine_reference_point(px, py, map_x, map_y)
             load_var(2, BG_AFFINE_PA)
             emit_number(3, px)
             emit(ASM.mul(4, 2, 3))                       # r4 = PA * px
@@ -1339,7 +1344,7 @@ module VBlank
             emit_number(3, py)
             emit(ASM.mul(5, 2, 3))                       # r5 = PB * py
             emit(ASM.add_reg(4, 4, 5))                   # r4 = PA*px + PB*py
-            emit_number(ACC, px * Affine::ONE_TH)
+            emit_number(ACC, map_x * Affine::ONE_TH)
             emit(ASM.sub_reg(ACC, ACC, 4))
             store_word_acc(REG_BG2X)
 
@@ -1350,7 +1355,7 @@ module VBlank
             emit_number(3, py)
             emit(ASM.mul(5, 2, 3))                       # r5 = PD * py
             emit(ASM.add_reg(4, 4, 5))                   # r4 = PC*px + PD*py
-            emit_number(ACC, py * Affine::ONE_TH)
+            emit_number(ACC, map_y * Affine::ONE_TH)
             emit(ASM.sub_reg(ACC, ACC, 4))
             store_word_acc(REG_BG2Y)
           end

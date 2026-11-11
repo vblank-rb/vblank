@@ -395,12 +395,22 @@ module VBlank
       # place the same point of the picture keeps landing on. The middle of the screen
       # unless the program sets another. They are settled while the program is written
       # rather than worked out as it runs, so they are plain numbers on the statement.
+      #
+      # +map_x+/+map_y+ are the point of the background's own map, in its pixels from its top
+      # left, that sits at that point of the screen at every size and angle. They are the same
+      # two numbers as +around_x+/+around_y+ unless the program names a point of the map: the
+      # map then hangs from the screen's corner, and upright at its drawn size it lies as a
+      # background that does not turn lies.
       class AffineBackground
         include Node
         kind :affine_background
         category :draw
         operands name: :name, angle: :value, scale: :value,
-                 around_x: :int, around_y: :int
+                 around_x: :int, around_y: :int, map_x: :int, map_y: :int
+
+        # How far the map is moved from the screen's corner, in pixels each way: nothing, unless
+        # the program named the point of the map at the pivot.
+        def map_shift = [map_x - around_x, map_y - around_y]
       end
 
       # One cell of a declared background becomes a different tile, while the game runs —

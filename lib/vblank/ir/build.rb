@@ -813,10 +813,14 @@ module VBlank
       # The builder gives the middle of the screen the game is built for when the game gives
       # none (Console::Description#middle), which is where a picture that swings or grows
       # about nothing in particular belongs.
-      def affine_background(name, angle:, scale:, around:)
+      # +map_point+ is the point of the background's own map that sits there, in the map's
+      # pixels, as [x, y]: the same two numbers as +around+ where the game names none, which
+      # is a map hung from the screen's corner.
+      def affine_background(name, angle:, scale:, around:, map_point: nil)
         x, y = around
+        map_x, map_y = map_point || around
         Nodes.build(:affine_background, name: name, angle: to_value_node(angle), scale: to_value_node(scale),
-                                        around_x: x, around_y: y)
+                                        around_x: x, around_y: y, map_x: map_x, map_y: map_y)
       end
 
       # Show the named background scrolled to the offset (+x+, +y+) in pixels — the

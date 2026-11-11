@@ -53,12 +53,12 @@ module VBlank
       # rule that spans two would otherwise be a lookup in each, kept in step by hand —
       # the exact failure `pool` exists to spare a game writing its own data.
       #
-      # Every field but +node+, +scene_gates+, +bends_rows+ and +pivot+ holds the NAME of a hidden
-      # variable the build allocated, and is nil until the program does the thing that
-      # needs it. So a background that is never scrolled has no +scroll_x+, and asking
+      # Every field but +node+, +scene_gates+, +bends_rows+, +pivot+ and +pivot_map_point+ holds
+      # the NAME of a hidden variable the build allocated, and is nil until the program does the
+      # thing that needs it. So a background that is never scrolled has no +scroll_x+, and asking
       # #scrolls? is the same question as asking whether the game ever scrolled it.
       DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,
-                                      :angle, :scale, :scene_gates, :bends_rows, :pivot,
+                                      :angle, :scale, :scene_gates, :bends_rows, :pivot, :pivot_map_point,
                                       :shown_colors, :live_colors, :box, :held,
                                       keyword_init: true) do
         def scrolls? = !scroll_x.nil?

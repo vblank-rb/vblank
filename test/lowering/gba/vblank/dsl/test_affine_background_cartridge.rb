@@ -95,6 +95,29 @@ class TestAffineBackgroundCartridge < Minitest::Test
                  "the console zoomed toward the middle of the screen, not toward the point it was given"
   end
 
+  # The map's middle named as the point at the pivot (`map_point:`): the mark at column 16 and
+  # row 16 has its corner at the screen's (60, 40) at twice the size, and the mark two tiles right
+  # of it is four tiles' width away.
+  def test_the_console_puts_a_named_point_of_the_map_at_the_pivot
+    map = marked_map({ [16, 16] => "#", [18, 16] => "$" })
+    builder = Builder.new
+    builder.instance_eval do
+      screen :rotozoom
+      image :white, "#" => :white do "########\n" * 8 end
+      image :red, "#" => :red do "########\n" * 8 end
+      tiles :t, "#" => :white, "$" => :red
+      background(:board, tiles: :t, map: map).turns_around(60, 40, map_point: [128, 128]).scale(2.0)
+      game_loop { wait_vblank }
+    end
+    builder.finalize_program
+    v = assert_emulator_loads_rom(assemble_rom(builder.program, name: "AFFMAP"), frames: 4)
+
+    assert_equal Color.resolve(:white), v.pixel_gba(60, 40)
+    assert_equal Color.resolve(:white), v.pixel_gba(75, 55)
+    refute_equal Color.resolve(:white), v.pixel_gba(59, 40)
+    assert_equal Color.resolve(:red), v.pixel_gba(92, 40)
+  end
+
   # --- THE TURN IS WRITTEN ONLY ON A FRAME WHERE IT CHANGED ---
   #
   # A picture that has stopped moving is told to hold still by being told nothing, and

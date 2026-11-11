@@ -2135,6 +2135,9 @@ module VBlank
           @bg_by_name.fetch(node.name) { raise ProgramError, "affine transform of undeclared background #{node.name.inspect}" }
           @bg_affine[node.name] = Turn.new(angle: eval_value(node.angle) % 360, size: eval_value(node.scale),
                                            pivot_x: node.around_x, pivot_y: node.around_y)
+          # A map whose named point sits at the pivot is moved that far from the screen's corner,
+          # which is a scroll: the one a turned layer has, since the game cannot scroll it.
+          @bg_scroll[node.name] = node.map_shift unless node.map_shift == [0, 0]
           request_repaint
         end
 
