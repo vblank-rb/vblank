@@ -81,7 +81,7 @@ end
 #
 # NOTHING IS MADE FOR A PIXEL. Every object this makes is one Ruby's garbage collector clears away
 # later, and a place of a few thousand faces fills hundreds of thousands of pixels a picture: with a
-# pair of arrays made for each one, three quarters of a game's time went on clearing them. So each
+# pair of arrays made for each one, most of a game's time went on clearing them. So each
 # end's numbers and each step are plain variables, and where the C has a routine for a spot in
 # perspective (rg_face_place_in_perspective, which would hand back two numbers in an array) its sums
 # are written out here, at each end of a stretch. A stretch's step across the picture is worked out

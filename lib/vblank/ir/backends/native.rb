@@ -237,12 +237,7 @@ module VBlank
           sound_text = RuntimeFeatures.c_text(features, joins: :sound)
           dir = File.join(Dir.tmpdir, "vblank-native", "src-#{Digest::SHA256.hexdigest(text + numbers + screen_text + sound_text)[0, 24]}")
           path = File.join(dir, Lowering::GAME_FILE)
-          if File.exist?(path)
-            # Must touch a folder used again: Zig.prune_compiled_programs clears the folders here by
-            # when each was last touched, and one made hours ago would go while the compiler reads it.
-            FileUtils.touch(dir)
-            return path
-          end
+          return path if File.exist?(path) && source_folder_touched?(dir)
 
           FileUtils.mkdir_p(dir)
           # game.c last: a folder holding it is whole.
@@ -253,6 +248,19 @@ module VBlank
             File.rename(writing, File.join(dir, name))
           end
           path
+        end
+
+        # Must touch a folder used again: Zig.prune_compiled_programs clears the folders here by when
+        # each was last touched, and one made hours ago would go while the compiler reads it. False
+        # when the folder went between being found and being touched, so it is written again. The
+        # folder's times are set where it is, never by FileUtils.touch, which would make a plain file
+        # of that name where the folder had been.
+        def source_folder_touched?(dir)
+          now = Time.now
+          File.utime(now, now, dir)
+          true
+        rescue Errno::ENOENT
+          false
         end
       end
     end

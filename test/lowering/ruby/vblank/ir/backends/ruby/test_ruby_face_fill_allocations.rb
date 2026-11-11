@@ -4,7 +4,7 @@ require "test_helper"
 require "place_games"
 
 # A game built as Ruby fills a 3D face a pixel at a time in Ruby, and an object made for each pixel is
-# one the garbage collector then clears away: a game of a few thousand faces spent three quarters of
+# one the garbage collector then clears away: a game of a few thousand faces spent most of
 # its time doing that. So what the fill works out for each pixel is kept in plain numbers, and the
 # arrays it makes are a few to a row and to a stretch of perspective. The picture is held to the
 # interpreter's by the place tests this run plays; this is only the count.

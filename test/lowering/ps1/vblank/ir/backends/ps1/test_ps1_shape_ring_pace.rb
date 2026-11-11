@@ -72,7 +72,7 @@ class TestPS1ShapeRingPace < Minitest::Test
   # THE VIEWER MUST MOVE. A place drawn where it was declared, by a viewer that has not moved since
   # the pass before, reads the points that pass turned and turns none (IR::PlaceDrawing, "HANDED
   # OVER UNCHANGED"); a shape at a spot turns its points for every drawing. Measured with the viewer
-  # standing still, the declared place costs two thirds of the shapes at spots, and all of the
+  # standing still, the declared place costs well under the shapes at spots, and all of the
   # difference is turning it never did. No game holds its viewer still.
   IN_VIEW = VBlank.game("BALLS IN VIEW", consoles: %i[ps1]) do
     screen :bitmap, tear_free: true

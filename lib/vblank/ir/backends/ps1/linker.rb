@@ -30,9 +30,6 @@ module VBlank
 
           DOES_NOT_FIT = "This game does not fit in the PlayStation's memory."
 
-          # What the game keeps in RAM takes most of the room when it is more than this share of it.
-          KEPT_IS_MOST = 0.5
-
           # +origin+ is where the program is loaded, and +room+ how many bytes it may take from there:
           # the rest of RAM is the stack's, and below +origin+ what the game keeps, +kept+ bytes of it.
           def initialize(sections, origin: ORIGIN, room: Console::PS1Hardware::PROGRAM_END - origin, kept: 0)
@@ -60,14 +57,14 @@ module VBlank
           end
 
           # The program and what the game keeps share the room, so the words give both, and by how
-          # much the two together pass it. The fix named is for whichever takes most.
+          # much the two together pass it. The fix named is for whichever of the two is bigger.
           def refuse_too_big!(total)
             if @sections.none?(&:holds)
               raise Error, "the framework's own code needs #{total} bytes, more than the #{@room} the program has"
             end
 
             shared = @room + @kept
-            fix = if @kept > shared * KEPT_IS_MOST
+            fix = if @kept > total
                     "give the game's lists smaller capacities, or use fewer variables"
                   else
                     Sections.biggest(@sections).fix

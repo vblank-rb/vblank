@@ -1565,11 +1565,11 @@ module VBlank
               emit(ASM.cmp_imm(11, 0))
               emit_branch(:bcond, lit_pixels, cond: :ne)
             end
-            emit_pixel_pair_and_single_loops(done, lit: false)
+            emit_both_pixel_pair_loops(done, lit: false)
             if @lit
               emit_branch(:b, done)
               place_label(lit_pixels)
-              emit_pixel_pair_and_single_loops(done, lit: true)
+              emit_both_pixel_pair_loops(done, lit: true)
             end
             place_label(done)
           end
@@ -1581,7 +1581,7 @@ module VBlank
           # memory: what both start from, the pixel a span starts with on the right half of a pair,
           # and the one it ends with on the left half (+last+). Each of those pixels is held against
           # the see-through number, which for a picture with none is a number no pixel is.
-          def emit_pixel_pair_and_single_loops(done, lit:)
+          def emit_both_pixel_pair_loops(done, lit:)
             even = gensym
             see_through = gensym
             last = gensym
@@ -1741,7 +1741,7 @@ module VBlank
           # and the lone pixels read the picture's shifts from memory.
           #
           # What it starts from, and the pixel a span starts with on the right half of a pair, are
-          # behind it (#emit_pixel_pair_and_single_loops); the pixel a span ends with on the left
+          # behind it (#emit_both_pixel_pair_loops); the pixel a span ends with on the left
           # half is at +last+, in the other loop.
           def emit_pixel_pairs(done, last, lit: false)
             pairs = gensym

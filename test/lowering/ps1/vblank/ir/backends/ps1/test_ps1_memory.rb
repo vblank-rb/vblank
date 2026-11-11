@@ -21,8 +21,8 @@ class TestPS1Memory < Minitest::Test
     end
   end
 
-  # Three lists of 240K each, more than the 480K the build once set aside for everything a game
-  # keeps: the program is small, so the rest of the 2 megabytes is the game's. The first slot of the
+  # Three lists of 240K each, a third of main RAM between them: the program is small, so the rest of
+  # the 2 megabytes is the game's. The first slot of the
   # first and the last slot of the last are written and read back.
   BIG_LIST_SLOTS = 60_000
   BIG_LISTS = VBlank.game("BIG LISTS", consoles: %i[ps1]) do

@@ -5,7 +5,7 @@ require "stringio"
 
 # What a loop of the game's costs on the PlayStation, read from where Beetle PSX says the time went. The
 # R3000 runs the instruction after every branch whether the branch is taken or not, and a loop is mostly
-# branches: with a NOP after each one, a turn of the plainest loop there is spent a fifth of its
+# branches: with a NOP after each one, a turn of the plainest loop there is spent one of its
 # instructions doing nothing. The assembler now moves the instruction before a branch into that slot
 # where it can (R3000#take_slot_filler), and this holds what the loop costs with them filled.
 class TestPS1DelaySlotCost < Minitest::Test

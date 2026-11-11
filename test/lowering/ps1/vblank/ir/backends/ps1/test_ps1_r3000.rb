@@ -262,6 +262,16 @@ class TestPS1R3000 < Minitest::Test
     assert_equal [0x10000000, ADDIU_T1, 0x10000000, 0], words(asm)
   end
 
+  # ...and so is the instruction after a jump written with no slot of its own.
+  def test_a_branch_leaves_the_instruction_after_a_jump_written_without_its_slot
+    asm = R3000.new("slot")
+    asm.jr(:ra, delay: :none)
+    asm.addiu(:t1, :t1, 1)
+    asm.b("there")
+
+    assert_equal [0x03E00008, ADDIU_T1, 0x10000000, 0], words(asm)
+  end
+
   def test_an_immediate_out_of_range_is_refused
     assert_raises(R3000::Error) { R3000.new("x").addiu(:t0, :t0, 0x8000) }
     assert_raises(R3000::Error) { R3000.new("x").ori(:t0, :t0, -1) }

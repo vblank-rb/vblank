@@ -246,6 +246,9 @@ module VBlank
 
               removing = "#{path}.removing.#{Process.pid}"
               File.rename(path, removing)
+              # A build may have touched it between the look and the rename: then it is put back.
+              next File.rename(removing, path) if File.mtime(removing) >= cutoff
+
               FileUtils.rm_rf(removing)
             rescue SystemCallError
               next

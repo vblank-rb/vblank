@@ -40,7 +40,7 @@ class TestPS1FractionDivideCost < Minitest::Test
 
   # 50.25 over 3.5, a distance over a depth: the numerator brought up is past 32 bits and the divisor past
   # sixteen, so one divide gives the answer's top digit and a second a guess at the bottom one, put right
-  # with a multiply. The long division of two guessed digits, which this is not, took 190.
+  # with a multiply. The long division of two guessed digits, which this is not, took a third more.
   def test_a_usual_divide_by_one_or_more_costs_little_more_than_its_two_divides
     assert_operator cycles_a_divide(dividing(50.25, 3.5)), :<, 150
   end

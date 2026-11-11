@@ -103,6 +103,7 @@ module VBlank
             @loaded = nil
             @since_hi_lo = 2
             @slot_filler = nil
+            @next_is_in_slot = false
           end
 
           # --- the section ---
@@ -274,13 +275,13 @@ module VBlank
           def jr(rs, delay: :nop, &slot)
             filler = take_slot_filler([rs]) unless slot || delay == :none
             r_type(0x08, rs: rs, fills_slot: false)
-            fill_delay_slot(filler, slot) unless delay == :none
+            delay == :none ? leave_slot_to_next_instruction : fill_delay_slot(filler, slot)
           end
 
           def jalr(rs, delay: :nop, &slot)
             filler = take_slot_filler([rs], links: true) unless slot || delay == :none
             r_type(0x09, rs: rs, rd: :ra, fills_slot: false)
-            fill_delay_slot(filler, slot) unless delay == :none
+            delay == :none ? leave_slot_to_next_instruction : fill_delay_slot(filler, slot)
           end
 
           # --- the system ---
@@ -438,8 +439,9 @@ module VBlank
             emit_word(0) if @loaded && reads.any? { |name| name != :zero && register(name) == @loaded }
             after_load = @loaded
             at = here
+            in_slot = @next_is_in_slot
             emit_word(word)
-            return unless fills_slot
+            return unless fills_slot && !in_slot
 
             @slot_filler = SlotFiller.new(at: at, word: word, reads: reads.map { |name| register(name) },
                                           writes: writes && register(writes), after_load: after_load)
@@ -447,9 +449,16 @@ module VBlank
 
           def emit_nop_after_load = (emit_word(0) if @loaded)
 
+          # A jump written with `delay: :none` has the next instruction for its slot, whatever writes
+          # it: that one is the jump's, and no later branch may take it for its own.
+          def leave_slot_to_next_instruction
+            @next_is_in_slot = true
+          end
+
           def emit_word(word)
             @loaded = nil
             @slot_filler = nil
+            @next_is_in_slot = false
             @since_hi_lo += 1
             @bytes << [word & 0xFFFF_FFFF].pack("V")
           end
