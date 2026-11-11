@@ -102,6 +102,57 @@ class TestSNESChipEnvelopes < Minitest::Test
     assert_equal [0x00, 0x00, 0x7F], envelope_bytes(first_voice_registers(song_game(ADSR, tune), frames: 10))
   end
 
+  # ONE INSTRUMENT, EVERY SHAPE: a part or a note given the chip's bytes has them written for its
+  # notes, whatever its instrument was declared with.
+  private def tune_of(*parts) = Score.new(tempo: 150, length: 90, plays_once: true, parts: parts)
+
+  private def note(**said) = Score::Note.new(at: 0, key: :C4, length: NOTE_FRAMES, **said)
+
+  def test_a_part_given_the_chips_bytes_has_them_written_for_an_instrument_with_none
+    tune = tune_of(Score::Part.new(plays: :plain, envelope: CLIMBING_GAIN, notes: [note]))
+
+    assert_equal [0x35, 0x47, 0xCA], envelope_bytes(first_voice_registers(song_game(ADSR, tune), frames: 10))
+  end
+
+  def test_a_parts_bytes_are_written_in_place_of_its_instruments
+    tune = tune_of(Score::Part.new(plays: :tone, envelope: CLIMBING_GAIN, notes: [note]))
+
+    assert_equal [0x35, 0x47, 0xCA], envelope_bytes(first_voice_registers(song_game(ADSR, tune), frames: 10))
+  end
+
+  def test_a_note_given_the_chips_bytes_has_them_written_in_place_of_its_parts
+    tune = tune_of(Score::Part.new(plays: :plain, envelope: ADSR, notes: [note(envelope: CLIMBING_GAIN)]))
+
+    assert_equal [0x35, 0x47, 0xCA], envelope_bytes(first_voice_registers(song_game(nil, tune), frames: 10))
+  end
+
+  def test_a_notes_ordinary_envelope_is_played_in_place_of_its_parts_bytes
+    shape = VBlank::Audio::Envelope.new(attack: 16, decay: 250, sustain: 100, release: 250)
+    tune = tune_of(Score::Part.new(plays: :plain, envelope: ADSR, notes: [note(envelope: shape)]))
+
+    assert_equal [0x00, 0x00, 0x7F], envelope_bytes(first_voice_registers(song_game(nil, tune), frames: 10))
+  end
+
+  # Three parts play one instrument, each with bytes of its own: three voices, three envelopes.
+  def test_three_parts_shape_one_instrument_three_ways
+    shapes = [ADSR, CLIMBING_GAIN, SNESEnvelope.new(adsr1: 0xDF, adsr2: 0x94)]
+    program = song_game(nil, tune_of(*shapes.map { |shape| Score::Part.new(plays: :plain, envelope: shape, notes: [note]) }))
+    dsp = SNES::CheckedRun.new.run(program, frames: 10).dsp_registers
+    written = SNES::Music.recording_voices(program).first(3).map { |voice| dsp.byteslice((voice << 4) + ADSR1, 3).bytes }
+
+    assert_equal [[0xB5, 0x60, 0x12], [0x35, 0x47, 0xCA], [0xDF, 0x94, 0x00]], written
+  end
+
+  def test_a_sound_effects_part_given_the_chips_bytes_has_them_written
+    effect = tune_of(Score::Part.new(plays: :plain, envelope: CLIMBING_GAIN, notes: [note]))
+    program = game(nil) do
+      sounds = sound_effects :sfx, { ding: effect }
+      sounds.play :ding
+    end
+
+    assert_equal [0x35, 0x47, 0xCA], envelope_bytes(first_voice_registers(program, frames: 20))
+  end
+
   # With no song the game's writes go to the sound chip at once, not through the queue.
   def test_the_games_own_play_writes_the_bytes_unchanged
     program = game(ADSR) { @tone.play(:C4) }

@@ -573,6 +573,8 @@ module VBlank
           sounds = IR::Tunes.note_sounds?(:recorded, frequency, volume, nil)
           head = keep_group([[GROUP_LOG, number_of.call([:note, song.name, frequency]), 0]])
           walks = part.events.any? { |note| IR::Tunes.glides?(note) } ? { walks: true } : {}
+          chip = IR::Tunes.said_chip_envelope(part, event)
+          walks = walks.merge(chip_envelope: chip) if chip
           if sounds
             row = @recordings.recorded_note_row(instrument || part.instrument, frequency, volume,
                                                 envelope || part.envelope, **walks) + 1

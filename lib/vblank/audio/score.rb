@@ -127,7 +127,10 @@ module VBlank
         #
         # +envelope+ shapes how each of this part's notes starts and ends — read only by a part
         # that plays a recording, since the console's own voices shape their own. A part that sets
-        # nothing takes whatever the instrument it plays was declared with.
+        # nothing takes whatever the instrument it plays was declared with. It is a Hash of times,
+        # an Envelope, or the Super Nintendo sound chip's own bytes (an SNESEnvelope): that
+        # console's build writes the bytes to the note's voice, and every other build plays the
+        # nearest Envelope, so one instrument serves every shape a game plays it with.
         def initialize(notes:, plays: nil, volume: 12, duty: :half, decay: nil, swell: nil, metallic: false,
                        envelope: nil, slide_up: nil, slide_down: nil, vibrato: nil, pan: nil, transpose: nil,
                        pitch_offset: nil)
@@ -146,7 +149,8 @@ module VBlank
           Music::Part.playing(plays, who: who, events: Events.for_part(self, frames, total, who), duty: one, duties: duties,
                                      shift: PitchShift.said(transpose: transpose, pitch_offset: pitch_offset, where: who),
                                      volume: volume, decay: (drum && decay) || :fast, metallic: metallic,
-                                     envelope: Envelope.of(envelope, "a part"),
+                                     envelope: SNESEnvelope.nearest_shape(envelope, "a part"),
+                                     chip_envelope: SNESEnvelope.chip_envelope_of(envelope),
                                      fade: NoteFade.for_part(NoteFade.said(decay: decay, swell: swell, where: who),
                                                              drum: drum),
                                      slide: PitchSlide.said(up: slide_up, down: slide_down, where: who),
@@ -267,9 +271,10 @@ module VBlank
           kind = Music.kind_played(Music.resolve_plays(part.plays))
           events = notes.each_with_index.flat_map do |note, n|
             said = Music.without_trailing_nils([note.fade(who), note.slide(who), note.wobble(who), note.side(who),
-                                                note.shape(who), note.noise_clock, note.glides || nil])
+                                                note.shape(who), note.noise_clock, note.glides || nil,
+                                                SNESEnvelope.chip_envelope_of(note.envelope)])
             on = [frames.at(note.at), note.frequency(kind), note.instrument_name, note.volume,
-                  Envelope.of(note.envelope, "a note"), *said]
+                  SNESEnvelope.nearest_shape(note.envelope, "a note"), *said]
             next [on] unless note.length
 
             ends = note.at + note.length

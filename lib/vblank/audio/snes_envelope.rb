@@ -69,6 +69,14 @@ module VBlank
         super
       end
 
+      # WHAT AN AUTHOR WROTE AS AN `envelope:`, WHERE IT MAY BE THE CHIP'S BYTES, read two ways. The
+      # shape every build but the Super Nintendo's plays: the nearest Envelope for an SNESEnvelope,
+      # and for anything else what Envelope.of makes of it (+where+ names what it was written on,
+      # for a message). And the bytes themselves, for the Super Nintendo's build: +said+ when it
+      # is an SNESEnvelope, or nil.
+      def self.nearest_shape(said, where) = said.is_a?(SNESEnvelope) ? said.closest_envelope : Envelope.of(said, where)
+      def self.chip_envelope_of(said) = (said if said.is_a?(SNESEnvelope))
+
       # Whether the two ADSR bytes shape the note. When not, GAIN does.
       def adsr? = adsr1.anybits?(ADSR_ON)
 

@@ -151,6 +151,17 @@ module VBlank
       # console told the setting itself reads it: the rate it makes is the note's pitch already.
       def said_noise_clock(event) = event[Audio::Music::Part::NOISE_CLOCK_SLOT]
 
+      # A RECORDED NOTE'S ENVELOPE AS A SOUND CHIP KEEPS IT (an Audio::SNESEnvelope), where the
+      # note or its part was given one, or nil. It goes with the envelope that shapes the note: a
+      # note that set its own envelope has its own bytes or none, whatever its part was given,
+      # and a note that set none has its part's. Nil for a note and a part that set no envelope
+      # at all, which is shaped as the recording was declared; the backend holding the
+      # declarations knows that one. Only a console whose chip takes the bytes reads this: the
+      # nearest ordinary shape is in the envelope's own place already.
+      def said_chip_envelope(part, event)
+        event[4] ? event[Audio::Music::Part::CHIP_ENVELOPE_SLOT] : part.chip_envelope
+      end
+
       # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
 

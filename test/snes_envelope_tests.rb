@@ -60,6 +60,25 @@ module SNESEnvelopeGames
     b.finalize_program
     b.program
   end
+
+  # A game whose instrument has no envelope of its own, and whose song plays one note of it
+  # shaped by its part's envelope (+part+) or the note's own (+note+).
+  private def own_envelope_game(part: nil, note: nil)
+    score = VBlank::Audio::Score
+    notes = [score::Note.new(at: 0, key: :C4, length: NOTE_FRAMES, envelope: note)]
+    tune = score.new(tempo: TEMPO, length: 90, plays_once: true, parts: [score::Part.new(plays: :tone, envelope: part, notes: notes)])
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :tone, pcm: RECORDING, rate: 8000, note: :C4, holds_from: 0
+      music = songs :music, [tune]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
 end
 
 module SNESEnvelopeTests
@@ -94,6 +113,23 @@ module SNESEnvelopeTests
 
     assert_operator wanted[0].last, :<, wanted[1].last, "the nearest envelope climbs as the chip's GAIN does"
     assert_equal VBlank::Audio::Envelope::FULL, wanted[2].last
+    assert_equal wanted, played
+  end
+
+  # One instrument serves every shape: the bytes go on the part, or on the note.
+  def test_a_part_given_the_chips_bytes_plays_the_nearest_envelope
+    wanted = levels_at(own_envelope_game(part: ADSR.closest_envelope), WATCHED)
+    played = levels_at(own_envelope_game(part: ADSR), WATCHED)
+
+    assert_operator wanted[0].last, :<, wanted[1].last, "the part's shape climbs, where the instrument's own would sound flat out"
+    assert_equal wanted, played
+  end
+
+  def test_a_note_given_the_chips_bytes_plays_the_nearest_envelope_in_place_of_its_parts
+    wanted = levels_at(own_envelope_game(part: ADSR, note: CLIMBING_GAIN.closest_envelope), WATCHED)
+    played = levels_at(own_envelope_game(part: ADSR, note: CLIMBING_GAIN), WATCHED)
+
+    assert_equal VBlank::Audio::Envelope::FULL, wanted[2].last, "GAIN's climb reaches the top, where the part's ADSR holds at half"
     assert_equal wanted, played
   end
 

@@ -216,8 +216,13 @@ module VBlank
       # AN EVENT CAN SET ITS OWN in a sixth place, after the envelope, its own slide in a seventh,
       # its own wobble in an eighth, its own side in a ninth and its own shape in a tenth: [frame,
       # frequency, instrument, volume, envelope, fade, slide, vibrato, pan, duty].
+      #
+      # +chip_envelope+ is the part's +envelope+ as one console's sound chip keeps it (an
+      # Audio::SNESEnvelope), for a part that was given those bytes: +envelope+ is then the
+      # nearest shape, which every backend plays but the one whose chip takes the bytes
+      # themselves (IR::Tunes.said_chip_envelope). A note's own is in its event's last place.
       Part = Data.define(:events, :duty, :volume, :instrument, :wave, :noise, :decay, :metallic,
-                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties)
+                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope)
 
       class Part
         # WHAT A PART CARRIES WHEN IT SETS NOTHING — every optional field's answer, in one place,
@@ -226,7 +231,7 @@ module VBlank
         # here: a part with no notes in it is a part nobody wrote.
         DEFAULTS = { duty: :half, volume: 12, instrument: nil, wave: nil,
                      noise: false, decay: :fast, metallic: false, name: nil, envelope: nil,
-                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil }.freeze
+                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil, chip_envelope: nil }.freeze
 
         # WHAT A PART'S VOICE CANNOT DO IS REFUSED HERE, where both ways a song reaches the IR meet:
         # a fade on a voice that cannot count one (NoteFade.refuse_without_counting!), a slide off
@@ -256,6 +261,9 @@ module VBlank
         NOISE_CLOCK_SLOT = 10
         # ...and true on a recorded note that carries on the one sounding (Score::Note#glides).
         GLIDE_SLOT = 11
+        # ...and a recorded note's own envelope as a sound chip keeps it (an Audio::SNESEnvelope),
+        # beside the nearest shape in the envelope's place.
+        CHIP_ENVELOPE_SLOT = 12
 
         # Does this part, or a note of it, set a slide?
         def slides? = Music.slides_said?(slide, events)

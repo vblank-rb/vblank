@@ -95,8 +95,9 @@ module VBlank
             # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+ read at
             # +frequency+, from its start, back to where it holds from at its end. Nothing is logged as it comes
             # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
-            # is one thing it does not do yet. Its number in "recording_plays".
-            def recorded_note_row(name, frequency, _volume, envelope = nil)
+            # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
+            # another console's sound chip's bytes for the shape, which nothing here reads.
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil)
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?
