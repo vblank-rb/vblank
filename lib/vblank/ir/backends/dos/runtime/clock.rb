@@ -160,18 +160,17 @@ module VBlank
             end
 
             # rt_clock_tick: the clock moved on by the frames the wait just ended took. Changes EAX and ECX.
-            # The frame is the plain screen's: the build that makes a screen variant, whose frame is longer,
-            # must count that screen's dots here, as the interpreter does.
+            # The frame is the screen's the program is built for, as the interpreter's is.
             def emit_tick(asm, memory)
               at = ->(name) { X86.mem(nil, memory[name], size: 32) }
-              a_second = Console::DOS.cycles_a_second
+              a_second = memory.screen.cycles_a_second
               asm.label("rt_clock_tick")
               asm.mov(:eax, at.call(Frame::FRAMES_TAKEN))
               asm.cmp(:eax, MOST_FRAMES)
               asm.jbe("rt_clock_tick_frames")
               asm.mov(:eax, MOST_FRAMES)
               asm.label("rt_clock_tick_frames")
-              asm.mov(:ecx, Console::DOS.cycles_a_frame)
+              asm.mov(:ecx, memory.screen.cycles_a_frame)
               asm.imul(:eax, :ecx)
               asm.add(:eax, at.call(DOTS))
               asm.label("rt_clock_tick_second")

@@ -16,7 +16,12 @@ module VBlank
           CONSOLE = Console::DOS
           LIMIT = CONSOLE.work_memory_bytes - CONSOLE.work_memory_kept_bytes
 
-          def initialize
+          # The screen the program is built for, which everything that lays the program out or draws asks
+          # (Screen).
+          attr_reader :screen
+
+          def initialize(screen)
+            @screen = screen
             @top = 0
             @places = {}
           end

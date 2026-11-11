@@ -547,7 +547,7 @@ module VBlank
           # Where the game holds drawing to an area, a cleared screen is the area cleared
           # (Framebuffer#clear): a rectangle of the whole screen, which the area holds to itself.
           def emit_clear_area(node)
-            emit_values_into(%i[eax ecx edx ebx], [0, 0, CONSOLE.screen_width, CONSOLE.screen_height].map { |edge| Build.int(edge) })
+            emit_values_into(%i[eax ecx edx ebx], [0, 0, @memory.screen.width, @memory.screen.height].map { |edge| Build.int(edge) })
             @asm.mov(:si, palette_entry(node.color))
             @asm.call("rt_fill_rect")
           end
@@ -556,9 +556,9 @@ module VBlank
           # was before given back after, from the stack. The rectangle is numbers written in the game, so its
           # edges are worked out here, each held to the screen, with no width or height where it has none left.
           def emit_inside(node)
-            left = node.x.clamp(0, CONSOLE.screen_width)
-            top = node.y.clamp(0, CONSOLE.screen_height)
-            edges = [left, top, (node.x + node.w).clamp(left, CONSOLE.screen_width), (node.y + node.h).clamp(top, CONSOLE.screen_height)]
+            left = node.x.clamp(0, @memory.screen.width)
+            top = node.y.clamp(0, @memory.screen.height)
+            edges = [left, top, (node.x + node.w).clamp(left, @memory.screen.width), (node.y + node.h).clamp(top, @memory.screen.height)]
             places = Array.new(4) { |i| X86.mem(nil, @memory[Runtime::AREA] + (i * 4), size: 32) }
             places.each do |place|
               @asm.mov(:eax, place)

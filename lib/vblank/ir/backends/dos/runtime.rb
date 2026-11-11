@@ -124,11 +124,7 @@ module VBlank
 
           # The timer's interrupts in one frame, a power of two so the ticks are made frames by a shift, and
           # the number the timer chip counts down from to make them: a frame's worth of its clock, in parts.
-          # The frame is the plain screen's. A variant's screen has a longer one, so the build that makes a
-          # variant must work this out from that screen's frame, or the ticks stop being eight to a frame.
           TICKS_A_FRAME = 8
-          TIMER_COUNT = (Console::DOSHardware::PIT_CLOCK * Console::DOS.cycles_a_frame /
-                         (Console::DOS.cycles_a_second * TICKS_A_FRAME.to_f)).round
 
           # THE AREA DRAWING IS HELD TO (`inside`), for a game that names one: its left, top, right and bottom
           # edges, a word each, the right and the bottom the first column and row outside it. It starts as the
@@ -143,9 +139,14 @@ module VBlank
 
           # The video memory's segment, and the card's ports.
           VIDEO = Console::DOSHardware::VIDEO_SEGMENT
-          PIXELS = Console::DOS.screen_width * Console::DOS.screen_height
 
           module_function
+
+          # The number the timer chip counts down from for +screen+: a frame's worth of its clock, in
+          # TICKS_A_FRAME parts.
+          def timer_count(screen)
+            (Console::DOSHardware::PIT_CLOCK * screen.cycles_a_frame / (screen.cycles_a_second * TICKS_A_FRAME.to_f)).round
+          end
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
@@ -176,7 +177,7 @@ module VBlank
           # +starts+ is [offset, number] for places that begin on something other than nought.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:)
             starts += whole_screen_area(memory) if area
-            starts += [[memory[Frame::CHANGED_TOP], Console::DOS.screen_height]]
+            starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
             starts += Sprites.starts(memory) if sprites
             emit_start(asm, memory, palette, starts, saves, clock, sprites)
             Saving.emit(asm, memory) if saves
@@ -194,13 +195,13 @@ module VBlank
 
           # The area as the program starts: the whole screen, as [place, number] for the start to set.
           def whole_screen_area(memory)
-            [0, 0, Console::DOS.screen_width, Console::DOS.screen_height].each_with_index.map { |edge, i| [memory[AREA] + (i * 4), edge] }
+            [0, 0, memory.screen.width, memory.screen.height].each_with_index.map { |edge, i| [memory[AREA] + (i * 4), edge] }
           end
 
           # The edges the drawing routines compare with: the area's, where the game keeps one, read through
           # +seg+ by a routine whose DS is not the data segment; or the screen's own.
           def edges(memory, area, seg: nil)
-            return Edges.new(left: 0, top: 0, right: Console::DOS.screen_width, bottom: Console::DOS.screen_height) unless area
+            return Edges.new(left: 0, top: 0, right: memory.screen.width, bottom: memory.screen.height) unless area
 
             Edges.new(*Array.new(4) { |i| X86.mem(nil, memory[AREA] + (i * 4), seg: seg, size: 32) })
           end
@@ -241,14 +242,14 @@ module VBlank
             asm.mov_segment(:ax, :back)
             asm.mov(:es, :ax)
             asm.xor(:di, :di)
-            asm.mov(:cx, PIXELS / 4)
+            asm.mov(:cx, memory.screen.pixels / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
             if sprites
               asm.mov_segment(:ax, :shown)
               asm.mov(:es, :ax)
               asm.xor(:di, :di)
-              asm.mov(:cx, PIXELS / 4)
+              asm.mov(:cx, memory.screen.pixels / 4)
               asm.xor(:eax, :eax)
               asm.stos(32, rep: true)
             end
@@ -446,7 +447,7 @@ module VBlank
             asm.mov(extended, 0)
           end
 
-          # The timer chip set to TIMER_COUNT and its interrupt handed to rt_timer, the BIOS's routine kept to
+          # The timer chip set to its count for the screen (timer_count) and its interrupt handed to rt_timer, the BIOS's routine kept to
           # be called. ES is nought (the interrupt table's segment) and interrupts are off.
           def emit_timer_start(asm, memory)
             h = Console::DOSHardware
@@ -460,9 +461,9 @@ module VBlank
             asm.mov(X86.mem(nil, h::TIMER_VECTOR + 2, seg: :es), :cs)
             asm.mov(:al, h::PIT_SET_COUNTER_0)
             asm.out_byte(h::PIT_COMMAND)
-            asm.mov(:al, TIMER_COUNT & 0xFF)
+            asm.mov(:al, timer_count(memory.screen) & 0xFF)
             asm.out_byte(h::PIT_COUNTER_0)
-            asm.mov(:al, TIMER_COUNT >> 8)
+            asm.mov(:al, timer_count(memory.screen) >> 8)
             asm.out_byte(h::PIT_COUNTER_0)
           end
 
@@ -478,7 +479,7 @@ module VBlank
             asm.mov_segment(:ax, :data)
             asm.mov(:ds, :ax)
             asm.inc(X86.mem(nil, memory[Frame::TIMER_TICKS], size: 32))
-            asm.add(X86.mem(nil, memory[Frame::BIOS_TIME], size: 16), TIMER_COUNT)
+            asm.add(X86.mem(nil, memory[Frame::BIOS_TIME], size: 16), timer_count(memory.screen))
             asm.jb("rt_timer_bios")
             asm.mov(:al, h::END_OF_INTERRUPT)
             asm.out_byte(h::INTERRUPT_CONTROLLER)
@@ -505,7 +506,7 @@ module VBlank
           def emit_copy_changed_rows(asm, memory, label, from:, to:, forget:)
             top = X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16)
             bottom = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16)
-            width = Console::DOS.screen_width
+            width = memory.screen.width
             asm.label(label)
             asm.mov(:ax, bottom)
             asm.sub(:ax, top)
@@ -523,7 +524,7 @@ module VBlank
             asm.mov(:si, :ax)
             asm.mov(:di, :ax)
             if forget
-              asm.mov(top, Console::DOS.screen_height)
+              asm.mov(top, memory.screen.height)
               asm.mov(bottom, 0)
             end
             asm.pop(:cx)
@@ -562,7 +563,7 @@ module VBlank
           # Every row marked as changed.
           def emit_mark_every_row(asm, memory)
             asm.mov(X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16), 0)
-            asm.mov(X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16), Console::DOS.screen_height)
+            asm.mov(X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16), memory.screen.height)
           end
 
           # rt_keyboard, the keyboard's interrupt (see THE KEYBOARD above). It keeps every register it uses,
@@ -754,7 +755,7 @@ module VBlank
           # draw, +8 the picture's width, +10 the rows left.
           def emit_blit_routine(asm, memory, edges, name: "rt_blit", marks: true, from_art: true)
             frame = ->(offset) { X86.mem(:bp, offset) }
-            width = Console::DOS.screen_width
+            width = memory.screen.width
             asm.label(name)
             asm.push(:ds)
             asm.sub(:sp, 12)
@@ -831,7 +832,7 @@ module VBlank
 
           # Drawing in the game's picture, with ES at its segment.
           def emit_drawing_routines(asm, memory, edges)
-            width = Console::DOS.screen_width
+            width = memory.screen.width
 
             # A pixel: x in EAX, y in ECX, the palette entry in DL. One outside the edges is left out
             # (Framebuffer#set_pixel).
@@ -863,7 +864,7 @@ module VBlank
             asm.label("rt_clear_screen")
             emit_mark_every_row(asm, memory)
             asm.xor(:di, :di)
-            asm.mov(:cx, PIXELS / 4)
+            asm.mov(:cx, memory.screen.pixels / 4)
             asm.stos(32, rep: true)
             asm.ret
           end

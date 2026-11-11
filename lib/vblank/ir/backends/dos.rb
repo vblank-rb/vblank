@@ -14,6 +14,7 @@ module VBlank
 end
 
 require_relative "dos/x86"
+require_relative "dos/screen"
 require_relative "dos/memory"
 require_relative "dos/runtime"
 require_relative "dos/runtime/saving"
@@ -118,7 +119,7 @@ module VBlank
         # behind the game's, and the data segment starts on the first paragraph after it, in memory the loader
         # gives beyond the file (EXTRA_PARAGRAPHS), cleared by the program as it starts.
         def build(program, title: "VBLANK", cache: BuildCache.for(DOS, program))
-          memory = Memory.new
+          memory = Memory.new(Screen.of(program))
           sprites = Lowering::Sprites.count_in(program)
           walks = Lowering.walks_colors?(program)
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),

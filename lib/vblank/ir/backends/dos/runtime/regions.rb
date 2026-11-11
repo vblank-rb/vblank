@@ -19,14 +19,14 @@ module VBlank
             module_function
 
             def emit(asm, memory, edges)
-              emit_save(asm)
+              emit_save(asm, memory.screen)
               Runtime.emit_blit_routine(asm, memory, edges, name: "rt_restore_region", from_art: false)
             end
 
             # rt_save_region: the patch at offset SI of the data segment filled from the game's picture, its
             # top left at x in EAX and y in ECX. On the stack, from BP: the x of its left edge, the y of the
             # row to keep next, its width, and the rows left. Changes every register but the segment ones.
-            def emit_save(asm)
+            def emit_save(asm, screen)
               frame = ->(offset, size) { X86.mem(:bp, offset, size: size) }
               asm.label("rt_save_region")
               asm.sub(:sp, 12)
@@ -48,7 +48,7 @@ module VBlank
               asm.inc(frame.call(4, 32))
               asm.mov(:ebx, frame.call(0, 32))
               # Where the row's first pixel is in the picture, which is used only for a pixel on the screen.
-              asm.mov(:eax, Console::DOS.screen_width)
+              asm.mov(:eax, screen.width)
               asm.imul(:eax, :ecx)
               asm.add(:eax, :ebx)
               asm.mov(:di, :ax)
@@ -56,9 +56,9 @@ module VBlank
               asm.label("rt_save_region_pixel")
               asm.mov(:al, TRANSPARENT)
               # As numbers with no sign, so one below nought is off the screen as one past its edge is.
-              asm.cmp(:ecx, Console::DOS.screen_height)
+              asm.cmp(:ecx, screen.height)
               asm.jae("rt_save_region_kept")
-              asm.cmp(:ebx, Console::DOS.screen_width)
+              asm.cmp(:ebx, screen.width)
               asm.jae("rt_save_region_kept")
               asm.mov(:al, X86.mem(:di, 0, seg: :es))
               asm.label("rt_save_region_kept")

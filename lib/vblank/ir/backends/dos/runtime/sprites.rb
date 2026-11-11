@@ -65,10 +65,10 @@ module VBlank
             end
 
             # What the start sets: no rows stood in yet.
-            def starts(memory) = [[memory[ROWS_TOP], Console::DOS.screen_height]]
+            def starts(memory) = [[memory[ROWS_TOP], memory.screen.height]]
 
             def emit(asm, memory)
-              screen = Edges.new(left: 0, top: 0, right: Console::DOS.screen_width, bottom: Console::DOS.screen_height)
+              screen = Edges.new(left: 0, top: 0, right: memory.screen.width, bottom: memory.screen.height)
               emit_place(asm, memory)
               emit_over_picture(asm, memory)
               Runtime.emit_copy_changed_rows(asm, memory, "rt_sprites_picture_rows", from: :back, to: :shown, forget: false)
@@ -97,7 +97,7 @@ module VBlank
             # rt_sprites_over_picture: the picture shown made from the game's picture and the sprites placed
             # (the three steps above). Changes every register but the segment ones.
             def emit_over_picture(asm, memory)
-              height = Console::DOS.screen_height
+              height = memory.screen.height
               placed = X86.mem(nil, memory[PLACED], size: 16)
               top = X86.mem(nil, memory[ROWS_TOP], size: 16)
               bottom = X86.mem(nil, memory[ROWS_BOTTOM], size: 16)
