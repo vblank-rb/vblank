@@ -262,9 +262,9 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # A BUILD THAT READS ITS PACK AS THE GAME STARTS knows a bank's name and none of its colours, so
-  # what needs the colours while the game is built is refused, naming the list. That such a build
-  # shows the background is PackBackgroundAtStartTests's, on the runs that are handed a file.
+  # A BUILD THAT READS ITS PACK AS THE GAME STARTS knows a bank's name and none of its colours.
+  # What it shows, a bank walked, recoloured or drawn in among it, is PackBackgroundAtStartTests's,
+  # on the runs that are handed a file. These are what it refuses as the game is built.
   private def left_out_refusal(folder, &uses_bank)
     words = [ADVANCE_CELL.(1)]
     options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
@@ -273,29 +273,12 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  def test_a_walk_of_a_bank_read_as_the_game_starts_is_refused
+  # The build cannot find a pixel's place in colours it does not hold.
+  def test_a_picture_of_colors_drawn_from_a_bank_read_as_the_game_starts_is_refused
     Dir.mktmpdir do |folder|
-      error = left_out_refusal(folder) { |world| world.draw_with color_walk(:palette_0, from: :black), showing: 0 }
+      error = left_out_refusal(folder) { |_world| image :mark, width: 2, height: 1, colors: :palette_1, data: %i[red green] }
 
-      assert_includes error.message, ":palette_0"
-      assert_includes error.message, "as the game starts"
-    end
-  end
-
-  def test_a_picture_drawn_from_a_bank_read_as_the_game_starts_is_refused
-    Dir.mktmpdir do |folder|
-      error = left_out_refusal(folder) { |_world| image :mark, width: 8, height: 8, colors: :palette_1, places: [1] * 64 }
-
-      assert_includes error.message, ":palette_1"
-      assert_includes error.message, "as the game starts"
-    end
-  end
-
-  def test_a_bank_drawn_with_another_bank_read_as_the_game_starts_is_refused
-    Dir.mktmpdir do |folder|
-      error = left_out_refusal(folder) { |world| world.draw_with({ palette_0: :palette_1 }) }
-
-      assert_includes error.message, ":palette_1"
+      assert_includes error.message, "image :mark"
       assert_includes error.message, "as the game starts"
     end
   end

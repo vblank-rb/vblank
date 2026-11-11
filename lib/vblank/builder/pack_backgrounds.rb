@@ -37,8 +37,9 @@ module VBlank
     # (IR::StartFile::Background), and each backend that plays such a program works the cells out
     # as it starts, as they are worked out here. What the build must still know is true of it: its
     # size, and the names of its lists, every bank of the slot, since any of them may be drawn
-    # from. A bank's colours are not known, so a line that needs them while the game is built is
-    # refused, naming the list (#refuse_color_list_read_at_start!).
+    # from. A bank's colours are not known, so its list holds a marker for each
+    # (#declare_bank_stand_in), and what a build holding them works out from them, the steps of a
+    # `color_walk` among it, is made as the game starts.
     module PackBackgrounds
       private
 
@@ -172,7 +173,8 @@ module VBlank
         tiles(tileset, stand_ins.to_h { |picture| [picture, picture] })
         handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
         @backgrounds.fetch(name).node.from_file = where
-        handle
+        # Which bank the map uses is in the file, so one list given alone is every bank's.
+        handle.allow_one_list_for_every_bank
       end
 
       # A picture standing in for the tiles drawn from bank +bank+ of a background read as the game
@@ -197,18 +199,6 @@ module VBlank
         record_picture(node)
         record_visible_bounds(name: picture, width: side, height: side, cells: [], transparent: nil)
         picture
-      end
-
-      # A LIST OF COLOURS READ AS THE GAME STARTS HOLDS NO COLOURS WHILE THE GAME IS BUILT, so a
-      # line that needs them is refused: a walk worked out from them, a picture drawn in them, a
-      # sprite or another list given them. +where+ names the line ("color_walk :title_0"). What
-      # still works is drawing a background's tiles of that bank with a list of the game's own.
-      def refuse_color_list_read_at_start!(name, where)
-        return unless @color_lists_read_at_start&.key?(name)
-
-        raise ArgumentError, "#{where} needs the colors of :#{name}. :#{name} is a bank of colors from the data pack, and " \
-                             "this build reads its pack as the game starts, so the build does not know those colors. " \
-                             "To fix this, use a list that the game declares with `colors`, or build the game all-in-one."
       end
 
       # `colors :name` for a name a bank read as the game starts has already.

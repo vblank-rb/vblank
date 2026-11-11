@@ -235,6 +235,171 @@ module PackBackgroundAtStartTests
     end
   end
 
+  # A BANK'S COLOURS ARE READ AS THE GAME STARTS, AND SO IS WHATEVER IS MADE OF THEM. Each of these
+  # needs a bank's colours where a build holding them works something out: the steps of a walk, a
+  # picture's pixels, a list told to hold a bank.
+  WALK_STEPS = 5
+
+  # A screen brought up from black a bank at a time, as a console's own games walk every bank of
+  # their colours: each step of each walk is made from the file's colours.
+  def test_banks_walked_up_from_black_read_at_start_show_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(3, mirrored: true), ADVANCE_CELL.(1, bank: 1, upside_down: true)]
+
+    assert_background_plays_alike("walked from black", :gba, advance_tiles, 4, words, across: 4, cell: 8, frames: 2..(WALK_STEPS + 3)) do |world|
+      walks = { palette_0: color_walk(:palette_0, from: :black, steps: WALK_STEPS),
+                palette_1: color_walk(:palette_1, from: :black, steps: WALK_STEPS) }
+      step = var :step, 0
+      game_loop do
+        world.draw_with(walks, showing: step)
+        wait_vblank
+        step.store!(step + 1)
+      end
+    end
+  end
+
+  # The fade as a game with a screen of one bank writes it: one walk, and no bank named. Which
+  # bank the map uses is in the file, so the build with its pack left out draws every bank with it.
+  def test_a_walk_given_alone_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1, bank: 1), ADVANCE_CELL.(2, bank: 1, mirrored: true), ADVANCE_CELL.(3, bank: 1)]
+
+    assert_background_plays_alike("one walk", :gba, advance_tiles, 4, words, across: 3, cell: 8, frames: 2..(WALK_STEPS + 3)) do |world|
+      step = var :step, 0
+      game_loop do
+        world.draw_with color_walk(:palette_1, from: :white, steps: WALK_STEPS), showing: step
+        wait_vblank
+        step.store!(step + 1)
+      end
+    end
+  end
+
+  def test_a_genesis_originals_bank_walked_read_at_start_shows_as_the_all_in_one_build
+    words = [GENESIS_CELL.(1), GENESIS_CELL.(2, bank: 1, upside_down: true), GENESIS_CELL.(3, bank: 1, mirrored: true)]
+    tiles = PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
+
+    assert_background_plays_alike("the Genesis's, walked", :genesis, tiles, 4, words, across: 3, cell: 8, frames: 2..(WALK_STEPS + 3)) do |world|
+      walks = { palette_0: color_walk(:palette_0, from: :black, steps: WALK_STEPS),
+                palette_1: color_walk(:palette_1, from: :white, steps: WALK_STEPS) }
+      step = var :step, 0
+      game_loop do
+        world.draw_with(walks, showing: step)
+        wait_vblank
+        step.store!(step + 1)
+      end
+    end
+  end
+
+  def test_a_bank_drawn_with_another_bank_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2), ADVANCE_CELL.(3, bank: 1), ADVANCE_CELL.(1, bank: 1, mirrored: true)]
+
+    assert_background_plays_alike("one bank with another", :gba, advance_tiles, 4, words, across: 4, cell: 8) do |world|
+      world.draw_with({ palette_0: :palette_1 })
+      game_loop { wait_vblank }
+    end
+  end
+
+  # A picture drawn in a bank's list, on a sprite beside the background.
+  def test_a_picture_drawn_in_a_bank_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1)]
+
+    assert_background_plays_alike("a picture in a bank", :gba, advance_tiles, 4, words, across: 2, cell: 8) do |_world|
+      image :mark, width: 8, height: 8, colors: :palette_1, places: (0...64).map { |at| 1 + (at % 3) }
+      sprite :mark, at: [40, 40]
+      game_loop { wait_vblank }
+    end
+  end
+
+  # `recolor` of a bank reaches what is drawn with it: a sprite, and the background's cells of
+  # that bank. A list of the game's own, then another bank, then its own colours again.
+  def test_a_bank_recolored_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(3, bank: 1, mirrored: true)]
+    other = OTHER.each_with_index.map { |color, at| at.zero? ? :transparent : color }
+
+    assert_background_plays_alike("a bank recoloured", :gba, advance_tiles, 4, words, across: 3, cell: 8, frames: 1..6) do |world|
+      colors :other, other
+      world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+      image :dot, width: 8, height: 8, places: Array.new(64, 2), colors: :palette_1
+      dot = sprite :dot, at: [40, 40]
+      dot.draw_with :palette_1
+      pass = var :pass, 0
+      game_loop do
+        recolor :palette_1, %i[other palette_0], showing: pass - 2
+        pass += 1
+      end
+    end
+  end
+
+  # The backdrop follows a bank's list, as it follows any list: the bank's first colour, which
+  # no picture can show.
+  def test_a_backdrop_following_a_bank_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1)]
+    Dir.mktmpdir do |folder|
+      from = original(folder, :gba, advance_tiles, words)
+      games = [VBlank::Cartridge::Options.new, LEFT_OUT].map do |options|
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :video, at: TILES_AT, count: 4
+            slots.numbers :map, at: MAP_AT, count: 2, width: :half, signed: false
+            slots.colors :palette, at: COLORS_AT, count: 32
+          end
+          colors :sky, pack[:palette].bank(1)
+          screen :tiled, backdrop: :sky, backdrop_place: 3
+          background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 2
+          game_loop { wait_vblank }
+        end
+        b.finalize_program
+        [b.program, b.made_data_pack_file]
+      end
+      (whole, file), (left_out,) = games
+      shown = game_player.run(whole, frames: 2).screen
+
+      assert_equal shown(BANKS[1][3]), shown.pixel(100, 100), "the all-in-one build shows the bank's color where no tile draws"
+      assert_equal shown.to_a, game_player.hand_file(file).run(left_out, frames: 2).screen.to_a
+    end
+  end
+
+  # A SHIMMER: four lists, each a bank of another slot of the pack, and a background from the pack
+  # that draws one of its own banks with each of them in turn, by a number. The other slot's
+  # colours here are the bytes the tiles are kept in, read as colours: sixty-four of them, all
+  # unlike the screen's own.
+  def test_a_bank_stepped_through_lists_from_the_pack_read_at_start_shows_as_the_all_in_one_build
+    words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(3, bank: 1, mirrored: true), ADVANCE_CELL.(1, bank: 1, upside_down: true)]
+    Dir.mktmpdir do |folder|
+      from = original(folder, :gba, advance_tiles, words)
+      games = [VBlank::Cartridge::Options.new, LEFT_OUT].map do |options|
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :video, at: TILES_AT, count: 4
+            slots.numbers :map, at: MAP_AT, count: 4, width: :half, signed: false
+            slots.colors :palette, at: COLORS_AT, count: 32
+            slots.colors :shimmer, at: TILES_AT, count: 64
+          end
+          shimmers = Array.new(4) { |bank| colors :"shimmer#{bank}", pack[:shimmer].bank(bank) }
+          rays = background :rays, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4
+          step = var :step, 0
+          game_loop do
+            rays.draw_with({ palette_1: shimmers }, showing: step)
+            wait_vblank
+            step.store!(step + 1)
+          end
+        end
+        b.finalize_program
+        [b.program, b.made_data_pack_file]
+      end
+      (whole, file), (left_out,) = games
+      seen = (1..7).map do |count|
+        shown = game_player.run(whole, frames: count).screen.to_a
+        assert_equal shown, game_player.hand_file(file).run(left_out, frames: count).screen.to_a,
+                     "after #{count} frames the game handed its pack shows what the all-in-one build shows"
+        shown
+      end
+
+      assert_operator seen.uniq.length, :>=, 5, "each of the four lists, and the bank's own colors after them, is a different picture"
+    end
+  end
+
   # A fade of the whole picture needs no colour of a bank while the game is built.
   def test_a_background_read_at_start_fades_as_the_all_in_one_build
     words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(3), ADVANCE_CELL.(1, bank: 1, mirrored: true)]

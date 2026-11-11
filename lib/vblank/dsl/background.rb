@@ -83,6 +83,20 @@ module VBlank
         self
       end
 
+      # ONE LIST GIVEN ALONE (`draw_with :dusk`, `draw_with walk, showing: step`) DRAWS EVERY LIST
+      # OF THE LAYER. A layer drawn from several lists is, as a rule, told which list each is drawn
+      # with, by name. A background from the data pack whose pack is read as the game starts has
+      # a list for every bank of its slot, since which banks its map uses is in the file. A game
+      # whose screen uses one bank gives one list and names none, which is right where the build
+      # holds the map and sees the one bank; here the same line draws every bank with that list,
+      # so the bank the map uses shows it, and the two builds show one picture.
+      #
+      # Called by Builder::PackBackgrounds as it declares such a background.
+      def allow_one_list_for_every_bank
+        @one_list_for_every_bank = true
+        self
+      end
+
       # THE CELLS `set_cell` MAY WRITE, each as the original's own cell number (a PackCells), or nil
       # for none.
       #
@@ -890,6 +904,7 @@ module VBlank
         names = recolors.requested_lists!(which, showing)
         @told_own = true if names.nil?
         return nil if names.nil?
+        return names.map { |name| Array.new(drawn_lists.length, name) } if @one_list_for_every_bank
 
         unless drawn_lists.length == 1
           raise ArgumentError,

@@ -303,7 +303,11 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank
   (`IR::StartFile::Background`, `rg_start_file_fill_background`). Each bank of the slot is a list named
   `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.
-  The build does not know a bank's colours, so what needs them while the game is built is refused at the line.
+  The build does not know a bank's colours, so a bank's list holds a marker for each, as a list declared from
+  the pack does (below): `color_walk` of a bank, `recolor` with one, a picture drawn in one and a bank drawn
+  with another all show what the all-in-one build shows. One list given alone (`city.draw_with walk, showing:
+  step`) draws every bank, since the build cannot tell which bank the map uses. A background that follows more
+  than one bank the game recolours is refused when the game is written out, for now.
   Worked example: `test/pack_background_tests.rb`.
 - `screen :tiled, backdrop: pack[:palette]` (also `.bank(n)` and `backdrop_place:`) — the screen's backdrop,
   on the game's own `screen` line or a scene's. The program holds no colour for it: the screen keeps where

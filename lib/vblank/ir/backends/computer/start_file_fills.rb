@@ -16,8 +16,10 @@ module VBlank
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
         # it is drawn in, into the image pixels (a pose that is a frame of the original's is such a
         # picture, its pieces painted in, #start_file_pose_rules); and each background whose map is read from it, a
-        # tile for every cell; and each colour that is no part of a picture, a screen's backdrop,
-        # into an array of the game's own; and each number worked out from a recording's rate, the
+        # tile for every cell; and each colour that is no part of a picture read from it, a screen's
+        # backdrop and the colours of each list declared from the pack, into an array of the
+        # game's own, from which a pixel drawn in such a colour is filled (#start_file_colors);
+        # and each number worked out from a recording's rate, the
         # sample it holds from or its envelope, where the file has those
         # (Sound#build_start_file_sound_fills), and the notes of each part of a song that keeps them
         # there, made into the room the music table holds for them
