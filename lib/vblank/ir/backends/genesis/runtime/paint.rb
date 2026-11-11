@@ -102,12 +102,13 @@ module VBlank
               memory.reserve(Tiles::DRAWN, 2 + (Tiles::MOST_SPRITES * Tiles::DRAWN_BYTES))
             end
 
-            # +sprites+ for a game that shows sprites over its picture.
-            def emit(asm, memory, camera: false, colors: false, sprites: false)
+            # +sprites+ for a game that shows sprites over its picture; +samples+ for one that plays
+            # recordings (Picture#emit_dma_started).
+            def emit(asm, memory, camera: false, colors: false, sprites: false, samples: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, memory, at, colors: colors, sprites: sprites)
-              emit_sprites(asm, memory, at) if sprites
-              emit_upload(asm, memory, at, camera: camera, colors: colors, sprites: sprites)
+              emit_sprites(asm, memory, at, samples: samples) if sprites
+              emit_upload(asm, memory, at, camera: camera, colors: colors, sprites: sprites, samples: samples)
               emit_camera(asm, at) if camera
               emit_clear(asm, memory, at)
               emit_area(asm, at)
@@ -194,10 +195,10 @@ module VBlank
 
             # The sprites' routines (Tiles' rt_sprites_begin and rt_sprite_place), and
             # rt_sprite_table_written, which the blank's copy calls.
-            def emit_sprites(asm, memory, at)
+            def emit_sprites(asm, memory, at, samples: false)
               Tiles.emit_sprites(asm, memory, at)
               asm.label("rt_sprite_table_written")
-              Tiles.emit_sprite_table_written(asm, memory, at)
+              Tiles.emit_sprite_table_written(asm, memory, at, samples: samples)
               asm.rts
             end
 
@@ -290,7 +291,7 @@ module VBlank
             # A game with sprites over its picture (+sprites+) writes its sprite table first, before the
             # tiles: a pass that changed many tiles takes several blanks, and the sprites then show on the
             # first of them, as the interpreter shows them with the pass.
-            def emit_upload(asm, memory, at, camera: false, colors: false, sprites: false)
+            def emit_upload(asm, memory, at, camera: false, colors: false, sprites: false, samples: false)
               h = Console::GenesisHardware
               asm.label("rt_upload")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
@@ -344,7 +345,7 @@ module VBlank
               asm.label("rt_upload_done")
               asm.rts
 
-              emit_upload_dma(asm, memory)
+              emit_upload_dma(asm, memory, samples: samples)
 
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
@@ -362,8 +363,10 @@ module VBlank
 
             # rt_upload_dma: D2 tiles from tile D3 (counted from nought) of the copy into video RAM. The
             # video chip is told how many words, where they are in work RAM (halved, since it counts in
-            # words), and then where they go, and that last write starts it.
-            def emit_upload_dma(asm, memory)
+            # words), and then where they go, and that last write starts it (Picture#emit_dma_started,
+            # which stops the sound processor for it in a game that plays recordings, +samples+). The
+            # copy is all of it in work RAM, so a run never crosses one of the chip's 128K blocks.
+            def emit_upload_dma(asm, memory, samples: false)
               h = Console::GenesisHardware
               register = ->(number) { h::VDP_REGISTER | (number << 8) }
               asm.label("rt_upload_dma")
@@ -399,7 +402,7 @@ module VBlank
               asm.lsr(:l, 6, asm.d(5))
               asm.or(:l, asm.d(5), asm.d(1))
               asm.or(:l, asm.imm(h::WRITE_VRAM | h::COMMAND_DMA), asm.d(1))
-              asm.move(:l, asm.d(1), asm.ind(2))
+              Picture.emit_dma_started(asm, asm.d(1), asm.ind(2), samples: samples)
               asm.rts
             end
 

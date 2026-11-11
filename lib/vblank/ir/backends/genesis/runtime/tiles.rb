@@ -99,13 +99,14 @@ module VBlank
             # +columns+ is how many cells across the planes are (32 or 64).
             # +colors+ for a game that changes its colours as it runs (Tint).
             # +scene_tiles+ for a game whose scenes each bring their own tiles in (#emit_scene_tiles).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false)
+            # +samples+ for a game that plays recordings (Picture#emit_dma_started).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
               emit_maps(asm, memory, at)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
-              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles)
+              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples)
             end
 
             # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
@@ -548,14 +549,14 @@ module VBlank
             # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
             # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
             # everything else is in.
-            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false)
+            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
               emit_cells_written(asm, memory, at)
-              emit_sprite_table_written(asm, memory, at)
+              emit_sprite_table_written(asm, memory, at, samples: samples)
               emit_scroll_written(asm, memory)
               emit_screen_back_on(asm, at) if scene_tiles
               asm.rts
@@ -632,7 +633,7 @@ module VBlank
             # written there, with the link it has: the row after its own. The rows after it go to their
             # own places, copied by the chip (#emit_sprite_rows_copied_by_chip). The row noted first is
             # the table's last, and its link is cleared here, since 80 names no row.
-            def emit_sprite_table_written(asm, memory, at)
+            def emit_sprite_table_written(asm, memory, at, samples: false)
               h = Console::GenesisHardware
               notes_end = memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT)), asm.abs_l(h::VDP_CONTROL))
@@ -651,7 +652,7 @@ module VBlank
               2.times { asm.move(:l, asm.post(1), asm.ind(2)) }
               asm.subq(:w, 1, asm.d(5))
               asm.branch(:eq, "rt_upload_sprites_done")
-              emit_sprite_rows_copied_by_chip(asm)
+              emit_sprite_rows_copied_by_chip(asm, samples: samples)
               asm.label("rt_upload_sprites_done")
             end
 
@@ -666,8 +667,12 @@ module VBlank
             # so the address is halved, and the top byte of a place in work RAM halved is always $7F.
             # The rows go to their own places in the table: with D0 bytes noted, that many before the
             # row past the table's end, and one row on; a command keeps its address in its high word,
-            # and the write of it starts the copy.
-            def emit_sprite_rows_copied_by_chip(asm)
+            # and the write of it starts the copy (Picture#emit_dma_started, which stops the sound
+            # processor for it in a game that plays recordings, +samples+).
+            #
+            # The rows cannot cross one of the chip's 128K blocks, where its count of the source wraps:
+            # work RAM is the top 64K of the last one, and the notes end inside it.
+            def emit_sprite_rows_copied_by_chip(asm, samples: false)
               h = Console::GenesisHardware
               register = ->(number) { h::VDP_REGISTER | (number << 8) }
               asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(3))
@@ -691,7 +696,7 @@ module VBlank
               asm.neg(:l, asm.d(0))
               first_past = h.command(h::WRITE_VRAM, SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES))
               asm.add(:l, asm.imm(first_past | h::COMMAND_DMA), asm.d(0))
-              asm.move(:l, asm.d(0), asm.ind(3))
+              Picture.emit_dma_started(asm, asm.d(0), asm.ind(3), samples: samples)
             end
 
             # Where each plane's view is, into the horizontal scroll table (a plane moved right by the

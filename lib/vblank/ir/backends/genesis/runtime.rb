@@ -78,7 +78,7 @@ module VBlank
             Frame.emit(asm, memory, sound: sound)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
-                                      sprites: sprites_over_picture, scene_tiles: scene_tiles)
+                                      sprites: sprites_over_picture, scene_tiles: scene_tiles, samples: !plays.nil?)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
