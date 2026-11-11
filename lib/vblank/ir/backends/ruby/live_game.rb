@@ -73,8 +73,10 @@ module VBlank
           def state_crc = @game.rg_live_state_crc
 
           # Every variable and list of the game by name, as they stand now: the runtime's RgLiveState, whose
-          # +vars+ (`{ "x" => 3 }`) and +lists+ are Hashes by the game's own names.
-          def state = @game.rg_live_state
+          # +vars+ (`{ "x" => 3 }`) and +lists+ are Hashes by the game's own names. With
+          # +byte_lists_packed+, a list of bytes (`width: :byte`) is a binary String, a byte an item,
+          # not an Array of numbers: a data pack's build reads hundreds of megabytes that way.
+          def state(byte_lists_packed: false) = @game.rg_live_state(byte_lists_packed)
         end
       end
     end

@@ -38,6 +38,26 @@ class TestUnpacking < Minitest::Test
     end
   end
 
+  # The Ruby run keeps the copy and the pack as bytes, not a number a byte, and gives the pack back
+  # as bytes: what it wrote is the copy byte for byte, the high bytes too (read back signed inside the
+  # game, 0x82 is -126), and the same pack the interpreter writes.
+  def test_the_pack_played_as_ruby_is_the_copy_byte_for_byte_as_the_interpreter_writes_it
+    Dir.mktmpdir do |folder|
+      copied = 64
+      unpacking = unpacking_of(folder) do |copy, pack|
+        repeat(copied) { |at| pack[:walls][at] = copy.byte(at) }
+      end
+      copy = Array.new(COPY_SIZE) { |at| ((at * 37) + 120) & 0xFF }.pack("C*")
+      unpacking = unpacking.with(copy_bytes: copy)
+
+      as_ruby = unpacking.slot_bytes_in(unpacking.run_as_ruby(frames: 10))
+      on_interpreter = unpacking.slot_bytes_in(unpacking.run_on(Reference.new, frames: 10))
+
+      assert_equal copy.byteslice(0, copied).bytes, as_ruby.fetch(:walls).bytes
+      assert_equal on_interpreter.fetch(:walls).bytes, as_ruby.fetch(:walls).bytes
+    end
+  end
+
   # The watchdog ends with the run: a routine that waits and ends gets to its end, and nothing is
   # raised in the test after it.
   def test_a_routine_that_waits_for_frames_gets_to_its_end

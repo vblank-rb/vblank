@@ -251,8 +251,30 @@ end
 RG_START_FILE_READS = Ractor.make_shareable([["c*", "C*", "s<*", "v*", "l<*"], ["c*", "C*", "s>*", "n*", "l>*"]])
 RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 
+# A TABLE OF BYTES THE FILE FILLS IS KEPT AS BYTES: an RgBytes (an RgSignedBytes for signed ones), a
+# binary String whose table[i] gives a number, as an Array's does. An Array would keep each byte as a Ruby
+# number of eight bytes, and a data pack's unpacking reads the whole of the player's copy into one
+# such table: hundreds of megabytes, wanting gigabytes. An unsigned table's [] is getbyte itself, so
+# a read costs what an Array's does.
+class RgBytes < String
+  def initialize(count) = super("\0".b * count)
+
+  alias [] getbyte
+  alias []= setbyte
+end
+
+class RgSignedBytes < RgBytes
+  def [](index)
+    byte = getbyte(index)
+    byte && byte >= 0x80 ? byte - 0x100 : byte
+  end
+end
+
 def rg_start_file_fill_table(table, kept, count, at, high_byte_first)
-  table.replace(@rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept]).unpack(RG_START_FILE_READS[high_byte_first][kept]))
+  bytes = @rg_start_file.byteslice(at, count * RG_START_FILE_ENTRY_BYTES[kept])
+  return table.replace(bytes) if table.is_a?(RgBytes)
+
+  table.replace(bytes.unpack(RG_START_FILE_READS[high_byte_first][kept]))
 end
 
 # +count+ bytes of +samples+ from index +at+, each the file's byte from +file_at+ on, as a signed number.

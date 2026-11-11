@@ -84,7 +84,7 @@ module VBlank
             when Statements::StartFileArray then print_start_file_array(item)
             when Statements::Function then print_function(item)
             when Statements::FunctionTable then print_routine_table(item)
-            when Statements::ListStorage then add_starting_value("@#{item.name.text} = RgList.new(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
+            when Statements::ListStorage then add_starting_value("@#{item.name.text} = RgList.build(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
             when Statements::Comment then nil # the tree's own heading; the file has Ruby::WRITTEN_BY
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
             end
@@ -129,7 +129,13 @@ module VBlank
           # An array the start file fills (Statements::StartFileArray): its size alone, zeros until the runtime
           # puts the file's entries in it.
           def print_start_file_array(item)
-            add_starting_value("@#{item.name.text} = Array.new(#{integer([item.count, 1].max)}, 0)")
+            count = integer([item.count, 1].max)
+            made = case item.type
+                   when "uint8_t" then "RgBytes.new(#{count})"
+                   when "int8_t" then "RgSignedBytes.new(#{count})"
+                   else "Array.new(#{count}, 0)"
+                   end
+            add_starting_value("@#{item.name.text} = #{made}")
           end
 
           # --- statements ---

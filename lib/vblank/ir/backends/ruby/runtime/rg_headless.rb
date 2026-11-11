@@ -172,8 +172,7 @@ end
 # them in, which in a list the game shifts is not the order they sit in memory. The tab ends the
 # name, since a pool's field may be called anything, spaces and all.
 def rg_driver_dump_list(list)
-  items = Array.new(list.length) { |i| list.items[rg_list_slot(list, i)] }
-  $stdout.write("list #{list.name}\t#{items.join(' ')}\n")
+  $stdout.write("list #{list.name}\t#{list.items_in_order.join(' ')}\n")
 end
 
 # "sound" first, for the same reason a variable's line starts with "var"; printed as it happens,

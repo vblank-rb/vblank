@@ -89,7 +89,7 @@ module VBlank
           watchdog.kill
           watchdog.join
         end
-        RubyRun.new(game.state)
+        RubyRun.new(game.state(byte_lists_packed: true))
       end
 
       # What the watchdog stops a routine with that has gone too long without a frame.
@@ -137,9 +137,16 @@ module VBlank
         def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
-      # A Ruby run's variables and lists, by the names a run of the interpreter is asked by.
+      # A Ruby run's variables and lists, by the names a run of the interpreter is asked by. Its lists
+      # of bytes are kept as binary Strings (LiveGame#state's byte_lists_packed): #list gives one as
+      # numbers, as the interpreter does, and #list_bytes as it is.
       RubyRun = Data.define(:state) do
-        def list(name) = state.lists.fetch(name.to_s)
+        def list(name)
+          items = state.lists.fetch(name.to_s)
+          items.is_a?(String) ? items.unpack("c*") : items
+        end
+
+        def list_bytes(name) = state.lists.fetch(name.to_s)
         def [](name) = state.vars.fetch(name.to_s)
       end
 
@@ -201,8 +208,8 @@ module VBlank
 
       # Each slot's bytes, by name, in what +run+ (a run of #program, on any backend) wrote.
       def slot_bytes_in(run)
-        bytes = run.list(BYTES).map { |item| item & 0xFF }
-        places.to_h { |name, start| [name, bytes[start, slot_named(name).byte_size].pack("C*")] }
+        bytes = run.is_a?(RubyRun) ? run.list_bytes(BYTES) : run.list(BYTES).map { |item| item & 0xFF }.pack("C*")
+        places.to_h { |name, start| [name, bytes.byteslice(start, slot_named(name).byte_size)] }
       end
 
       # How many bytes +run+ has unpacked so far, of #byte_size.

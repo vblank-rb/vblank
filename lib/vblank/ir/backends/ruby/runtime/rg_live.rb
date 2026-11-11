@@ -102,12 +102,16 @@ end
 RgLiveState = Data.define(:vars, :lists)
 
 # Every variable and list the game keeps, by name, as they stand now (an RgLiveState). It is what a bot reads
-# (Bots::GameView), and it is the same state the number above is made from.
-def rg_live_state
+# (Bots::GameView), and it is the same state the number above is made from. With +byte_lists_packed+ a
+# list of bytes is given as a binary String, a byte an item, rather than an Array of numbers eight times
+# its size: what a data pack's build reads its pack from.
+def rg_live_state(byte_lists_packed = false)
   @rg_state_snapshot = RgLiveState.new(vars: {}, lists: {})
+  @rg_byte_lists_packed = byte_lists_packed
   rg_game_dump_state
   snapshot = @rg_state_snapshot
   @rg_state_snapshot = nil
+  @rg_byte_lists_packed = false
   snapshot
 end
 
@@ -121,9 +125,8 @@ end
 def rg_driver_dump_list(list)
   return unless @rg_state_text || @rg_state_snapshot
 
-  items = Array.new(list.length) { |i| list.items[rg_list_slot(list, i)] }
-  @rg_state_text << "list #{list.name}\t#{items.join(' ')}\n" if @rg_state_text
-  @rg_state_snapshot.lists[list.name.to_s] = items if @rg_state_snapshot
+  @rg_state_text << "list #{list.name}\t#{list.items_in_order.join(' ')}\n" if @rg_state_text
+  @rg_state_snapshot.lists[list.name.to_s] = list.items_for_state(@rg_byte_lists_packed) if @rg_state_snapshot
 end
 
 def rg_driver_sound_logged(_line); end

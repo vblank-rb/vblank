@@ -173,7 +173,7 @@ def rg_state_number(name, value) = rg_i32(rg_state_numbers(name, [value]).first)
 # A list: where the oldest item is, how many it holds, and every slot, used or not, as the ring
 # stands, so the game's next push and shift land where they would have.
 def rg_state_list(name, list)
-  numbers = [list.front, list.length, *list.items.first(list.capacity)]
+  numbers = [list.front, list.length, *list.slots]
   rg_state_numbers(name, numbers)
   return unless @rg_state_image
 
@@ -184,5 +184,5 @@ def rg_state_list(name, list)
   end
   list.front = front
   list.length = length
-  list.capacity.times { |slot| list.items[slot] = rg_list_fit(list, numbers[slot + 2]) }
+  list.capacity.times { |slot| list.set_item(slot, rg_list_fit(list, numbers[slot + 2])) }
 end
