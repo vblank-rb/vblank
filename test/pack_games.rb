@@ -17,6 +17,7 @@ require "pack_pose_of_shapes_games"
 require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
+require "pack_place_games"
 
 # EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
@@ -1354,8 +1355,18 @@ module PackGames
     ].freeze
   end
 
+  # A LIT 3D ROOM READ FROM A DATA PACK (PackPlaceGames): its points and faces, how many faces are
+  # used, its shading and where its viewer starts. Only a console that draws a place plays it.
+  class Places < Kit
+    GAMES = [
+      game(:lit_place_shading_and_viewer_from_pack, passes: PackPlaceGames::PASSES) do |folder, options|
+        built(*PackPlaceGames.pack_room_game(folder, options))
+      end
+    ].freeze
+  end
+
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank].freeze
+          Sounds, Scores, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

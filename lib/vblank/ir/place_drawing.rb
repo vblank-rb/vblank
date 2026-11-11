@@ -103,11 +103,19 @@ module VBlank
       # +fill_by_row_middles+ means a face drawn whole whose corners cross no row's middle is passed over before
       # its corners are handed on (#whole_face_statements): true where the fill draws a row only where
       # an edge crosses its middle, as the interpreter's does.
+      #
+      # A PLACE READ FROM A FILE AS THE GAME STARTS (Builder::PackPlaces): +faces+ and +points+ are
+      # then the most it can have, and +faces_used+ names the table whose one entry is how many of
+      # its faces are drawn, held to 0 to +faces+ as each drawing starts. Its numbers are the
+      # player's, so +numbers_held+ holds each point number and picture slot a face names to those the
+      # place has as it is read: a wrong number draws a wrong face, never stops the game.
       def initialize(place, faces:, points:, pictures:, shading: nil, point_lights: nil, corners_in_a_loop: false,
-                     outcode_test: true, fill_by_row_middles: false)
+                     outcode_test: true, fill_by_row_middles: false, faces_used: nil, numbers_held: false)
         @place = place
         @faces = faces
         @points = points
+        @faces_used = faces_used
+        @numbers_held = numbers_held
         @pictures = pictures
         @shading = shading
         @point_lights = point_lights
@@ -618,7 +626,27 @@ module VBlank
 
       # The drawing routine's statements: every face, in the order the place declares them.
       def statements
-        [Build.repeat(@faces, name(:face), Build.call(face_routine))]
+        [Build.repeat(face_count, name(:face), Build.call(face_routine))]
+      end
+
+      # How many faces are drawn: all of them, or for a place read from a file the count it holds.
+      def face_count
+        return @faces unless @faces_used
+
+        Build.clamped(Build.table_get(@faces_used, 0), 0, @faces)
+      end
+
+      # A point's number read from the faces table at +at+ (a value), held to the place's points
+      # where the numbers are the player's.
+      def face_point(at)
+        number = Build.table_get(faces_table, at)
+        @numbers_held ? Build.clamped(number, 0, @points - 1) : number
+      end
+
+      # The face's picture slot, held to the place's slots where the numbers are the player's.
+      def face_slot
+        slot = Build.table_get(faces_table, face_field(FACE_SLOT))
+        @numbers_held ? Build.clamped(slot, 0, @pictures.length - 1) : slot
       end
 
       # The faces whose numbers list +list+ holds, in its order, drawn where the game puts them; a
@@ -626,7 +654,7 @@ module VBlank
       # once, as the drawing starts.
       def listed_statements(list)
         face = var(:face)
-        known = Build.binop(:and, Build.binop(:>=, face, 0), Build.binop(:<, face, @faces))
+        known = Build.binop(:and, Build.binop(:>=, face, 0), Build.binop(:<, face, face_count))
         [Build.repeat(Build.list_len(list), name(:listed),
                       Build.set(name(:face), Build.list_get(list, var(:listed))),
                       Build.if_(known, Build.call(face_routine)))]
@@ -646,7 +674,7 @@ module VBlank
         [Build.set(name(:base), Build.binop(:*, var(:face), FACE_STRIDE)),
          *CORNERS.times.flat_map { |k| coded_corner(k) },
          Build.if_(Build.binop(:==, Build.binop(:&, shared, var(:rejecting_codes)), 0),
-                   Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
+                   Build.set(name(:slot), face_slot),
                    Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
                    whole_or_cut)]
       end
@@ -724,7 +752,7 @@ module VBlank
       # Corner +k+'s point, turned the first time this drawing meets it, and its code.
       def coded_corner(k)
         number = turned(:p, k)
-        [Build.set(turned_var(:p, k), Build.table_get(faces_table, face_field(1 + (k * CORNER_FIELDS)))),
+        [Build.set(turned_var(:p, k), face_point(face_field(1 + (k * CORNER_FIELDS)))),
          Build.if_(stale_point_condition(number),
                    Build.set(name(:seen_point), number),
                    Build.call(point_routine)),
@@ -752,7 +780,7 @@ module VBlank
          Build.set(name(:corner_at), face_field(1)),
          # The corner's code is read once, and again only after the point routine has turned it afresh.
          Build.repeat(CORNERS, name(:corner),
-                      Build.set(name(:corner_point), Build.table_get(faces_table, var(:corner_at))),
+                      Build.set(name(:corner_point), face_point(var(:corner_at))),
                       Build.set(name(:corner_code), Build.list_get(codes_list, var(:corner_point))),
                       Build.if_(Build.binop(:!=, Build.shift_right(var(:corner_code), STAMP_SHIFT), var(:drawing)),
                                 Build.set(name(:seen_point), var(:corner_point)),
@@ -762,7 +790,7 @@ module VBlank
                       Build.set(name(:face_reach), Build.binop(:|, var(:face_reach), var(:corner_code))),
                       Build.add(name(:corner_at), CORNER_FIELDS)),
          Build.if_(Build.binop(:==, var(:face_codes), 0),
-                   Build.set(name(:slot), Build.table_get(faces_table, face_field(FACE_SLOT))),
+                   Build.set(name(:slot), face_slot),
                    Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot)))),
                    whole_or_cut)]
       end
@@ -798,7 +826,7 @@ module VBlank
                      Build.set(name(:corner_at), face_field(1)),
                      Build.set(name(:corner_slot), 0),
                      Build.repeat(CORNERS, name(:corner),
-                                  Build.set(name(:corner_point), Build.table_get(faces_table, var(:corner_at))),
+                                  Build.set(name(:corner_point), face_point(var(:corner_at))),
                                   Build.set(name(:seen_at), Build.binop(:*, var(:corner_point), SEEN_STRIDE)),
                                   Build.set(name(:at_x), seen.call(SEEN_ACROSS)),
                                   Build.set(name(:at_y), seen.call(SEEN_DOWN)),
@@ -855,8 +883,8 @@ module VBlank
         corner = ->(offset) { Build.binop(:+, Build.binop(:*, var(:count), Nodes::FillFace::CORNER_NUMBERS), offset) }
         [Build.set(name(:corner_at), corner_at(var(:corner))),
          Build.set(name(:other_at), corner_at(following)),
-         Build.set(name(:corner_point), Build.table_get(faces_table, here)),
-         Build.set(name(:other_point), Build.table_get(faces_table, there)),
+         Build.set(name(:corner_point), face_point(here)),
+         Build.set(name(:other_point), face_point(there)),
          Build.set(name(:corner_z), seen.call(:corner_point, 2)),
          Build.set(name(:other_z), seen.call(:other_point, 2)),
          Build.if_(in_front_here,

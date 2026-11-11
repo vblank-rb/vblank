@@ -178,6 +178,25 @@ module VBlank
         @face_label = FACE_LABEL
       end
 
+      # A PLACE WHOSE POINTS AND FACES ARE IN THE DATA PACK (Builder::PackPlaces): the build holds
+      # none of them, only the most there can be, +most_points+ and +most_faces+, and the name of the
+      # table whose one entry is how many faces are used (+faces_used_table+, nil for all of them).
+      def declare_from_pack(most_points:, most_faces:, faces_used_table:)
+        @from_pack = true
+        @most_points = most_points
+        @most_faces = most_faces
+        @faces_used_table = faces_used_table
+      end
+
+      # For a place from the pack, the table holding how many of its faces are used, or nil.
+      attr_reader :faces_used_table
+
+      def from_pack? = @from_pack == true
+
+      # How many points and faces the place has: the most there can be for a place from the pack.
+      def point_count = from_pack? ? @most_points : @points.length
+      def face_count = from_pack? ? @most_faces : @faces.length
+
       # The points as a table holds them: three numbers a point.
       def points_table = @points.flatten
 

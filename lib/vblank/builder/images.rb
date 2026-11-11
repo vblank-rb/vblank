@@ -717,6 +717,11 @@ module VBlank
           raise ArgumentError, "image :#{name} was given places in shading: #{shading.inspect}, and there is no such " \
                                "shading. To fix this, declare it with `shading :#{shading}, colors: [...], levels: [...]` first."
         end
+        if shading_node.from_file
+          raise ArgumentError, "image :#{name} was given places in shading :#{shading}, and this build reads that " \
+                               "shading's colors from the data pack as the game starts. The build must know the colors " \
+                               "to make the picture. To fix this, give the picture colors:, or build the game all-in-one."
+        end
         expected = width * height
         unless places.is_a?(Array) && places.length == expected
           raise ArgumentError, "image :#{name} is #{width}x#{height}, so it needs #{expected} places. " \

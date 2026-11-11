@@ -451,6 +451,20 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
   `test/frame_record_unpacking_tests.rb`.
 
+- `place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0), pictures: [...]`,
+  `shading :fade, colors: pack[:palette], levels: pack[:fades]` and `viewer :eye, at: ..., facing: ...` given
+  numbers of the pack — a 3D level, its light and where the viewer starts (`places.md`). The place's points
+  and faces are records of VBlank's own the unpacking writes, read as tables (each written as its size alone
+  and filled at power-on); `faces_used:` is a table of one number, and a drawing draws that many faces, held to
+  0 and the slot's count. The shading holds zeros of its colours and levels and where they are in the file
+  (`IR::StartFile::Shading`), which the interpreter reads as it starts and each runtime writes into the array
+  a lit fill reads (`rg_start_file_fill_colors`, `rg_start_file_fill_places`). The viewer's spot and arrows are
+  set from tables of three and nine numbers where it is declared. **Nothing the file holds stops the game**:
+  a point or picture number a face names past the place's is held to the last, and a shading's place past
+  its colours is place 0. Built all-in-one the same tables are drawn, so both builds draw alike. Worked
+  example: `test/pack_place_games.rb`, held to the same room written in Ruby by
+  `test/interpreter/vblank/builder/test_pack_places_interpreter.rb`.
+
   Any other verb that reads a slot's bytes is refused at the line. So is a verb that works out its data from a
   picture's pixels as the game is built, where the picture's places are in the pack: `sprite_tiles ... copy_from
   :picture` is refused there, since the build holds none of the picture's tiles; copy from a `table` of the

@@ -52,6 +52,7 @@ require_relative "builder/data_packs"          # data_pack: the original's data,
 require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
 require_relative "builder/pack_poses"          # image frame: pack[...]: a pose that is one of the original's frames
 require_relative "builder/pack_scores"         # notes: pack[...]: the original's songs as notes, and its instruments' settings
+require_relative "builder/pack_places"         # place, shading, viewer from pack[...]: a 3D level read from the copy
 require_relative "builder/shell_screens"       # shell_screen: a shell's first screen, made the game's own
 
 module VBlank
@@ -113,6 +114,7 @@ module VBlank
     include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
     include PackPoses  # image frame: pack[...] (a pose that is one of the original's own frames)
     include PackScores # notes: pack[...] (the original's songs as notes, and its instruments' settings)
+    include PackPlaces # place, shading, viewer from pack[...] (a 3D level read from the player's copy)
     include ShellScreens # shell_screen (a shell's first screen: its font, colours, picture, words and lines)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree

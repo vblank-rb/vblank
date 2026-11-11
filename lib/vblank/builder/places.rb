@@ -48,10 +48,19 @@ module VBlank
       # @param shading [Symbol, nil] the shading the place is lit by
       # @param points [Array<Array<Numeric>>, nil] each point's [x, y, z], for a place from data
       # @param faces [Array<Hash>, nil] each face's points:, picture:, on_picture: and light:, for a place from data
+      # A PLACE FROM THE DATA PACK, as a port reads a level from the player's copy, gives +points+
+      # and +faces+ as slots of the pack and +faces_used+ as the number of the pack that says how
+      # many faces are used (see Builder::PackPlaces):
+      #
+      #   place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0),
+      #                pictures: %i[rock moss]
+      #
       # @param pictures [Array<Symbol>] pictures the place lists before its faces name any
+      # @param faces_used [DSL::PackNumber, nil] for a place from the pack, how many of its faces are used
       # @return [DSL::Place]
-      def place(name, shading: nil, points: nil, faces: nil, pictures: [], &block)
+      def place(name, shading: nil, points: nil, faces: nil, pictures: [], faces_used: nil, &block)
         refuse_unfit_place_source!(name, block, points, faces)
+        from_pack = pack_place_given?(points, faces, faces_used)
         refuse_unfit_name!("place", name)
         if (@places ||= {}).key?(name)
           raise ArgumentError, "There is already a place :#{name}. To fix this, give each place its own name."
@@ -60,12 +69,16 @@ module VBlank
 
         shape = DSL::Place.new(name, @images)
         shape.pictures(*pictures)
-        block ? shape.instance_exec(&block) : shape.declare_from_data(points, faces)
-        refuse_empty_place!(shape)
-        declare_place_data(shape)
+        if from_pack
+          declare_place_from_pack(shape, points, faces, faces_used)
+        else
+          block ? shape.instance_exec(&block) : shape.declare_from_data(points, faces)
+          refuse_empty_place!(shape)
+          declare_place_data(shape)
+        end
         if shading
           shape.shading = shading
-          shape.point_lights = list(IR::PlaceDrawing.name_of(name, :point_lights), capacity: shape.points.length,
+          shape.point_lights = list(IR::PlaceDrawing.name_of(name, :point_lights), capacity: shape.point_count,
                                                                                    full_of: 0.0)
         end
         @places[name] = shape
@@ -82,11 +95,17 @@ module VBlank
       #
       # @param name [Symbol] the shading's name
       # @param colors [Array] the game's colours
+      # A SHADING FROM THE DATA PACK gives +colors+ as a slot of colours and +levels+ as a slot of
+      # bytes, each level's places one after another, darkest first (see Builder::PackPlaces):
+      #
+      #   shading :fade, colors: pack[:palette], levels: pack[:fades]
+      #
       # @param levels [Array<Array<Integer>>] for each level, darkest first, a place in +colors+ for each colour
       def shading(name, colors:, levels:)
         refuse_unfit_name!("shading", name)
         @shadings ||= {}
         raise ArgumentError, "There is already a shading :#{name}. To fix this, give each shading its own name." if @shadings.key?(name)
+        return @shadings[name] = record(pack_shading(name, colors, levels)) if pack_shading_given?(name, colors, levels)
 
         values = colors.map { |color| Graphics::Color.resolve(color) }
         refuse_bad_levels!(name, values, levels)
@@ -98,18 +117,29 @@ module VBlank
       #
       #   eye = viewer :eye, at: [0.0, 0.0, -4.0]
       #
+      # Where a port's viewer starts is in the level it reads, so +at+ (three numbers) and +facing+
+      # (nine: right, up, ahead) may each be numbers of the data pack (see Builder::PackPlaces):
+      #
+      #   eye = viewer :eye, at: pack[:start], facing: pack[:start_facing]
+      #
       # @return [DSL::Viewer]
-      def viewer(name, at:, facing: { right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] })
+      def viewer(name, at:, facing: FACING_AS_DECLARED)
         refuse_unfit_name!("viewer", name)
         if (@viewers ||= {}).key?(name)
           raise ArgumentError, "There is already a viewer :#{name}. To fix this, give each viewer its own name."
         end
 
         seen = DSL::Viewer.new(self, name)
-        DSL::Viewer.starting_numbers(name, at, facing).zip(seen.variables).each { |number, variable| var(variable, number) }
+        from_pack = viewer_start_in_pack(name, at, facing)
+        written = DSL::Viewer.starting_numbers(name, from_pack.at ? [0, 0, 0] : at, from_pack.facing ? FACING_AS_DECLARED : facing)
+        written.zip(seen.variables).each { |number, variable| var(variable, number) }
         seen.scratch_variables.each { |variable| var(variable, 0) }
+        emit_viewer_start_from_pack(seen, from_pack)
         @viewers[name] = seen
       end
+
+      # The way a viewer faces where the game gives none: along the place's own arrows.
+      FACING_AS_DECLARED = Ractor.make_shareable({ right: [1, 0, 0], up: [0, 1, 0], ahead: [0, 0, 1] })
 
       # Draw place +name+ as +seen_by+ sees it, on the screen or inside the area an `inside` holds
       # drawing to. A face is cut where it comes nearer than +near+ wholes to the viewer, and one
@@ -150,6 +180,7 @@ module VBlank
         refuse_bad_view_angle!(view_angle)
         refuse_place_on_plain_screen!(name)
         stance = make_stance("draw_place", name, at, facing)
+        refuse_pack_place_moved!("draw_place", shape) if stance
 
         drawing = place_drawing(shape)
         place_draw_routines(drawing)
@@ -183,6 +214,7 @@ module VBlank
         refuse_bad_near!(near)
         refuse_bad_view_angle!(view_angle)
         stance = make_stance("screen_spot", name, at, facing)
+        refuse_pack_place_moved!("screen_spot", shape) if stance
 
         drawing = place_drawing(shape)
         place_spot_routine(drawing)
@@ -283,7 +315,7 @@ module VBlank
 
       def refuse_unknown_spot_point!(shape, point)
         return if point.is_a?(DSL::Value) && !point.fraction?
-        return if point.is_a?(Integer) && point.between?(0, shape.points.length - 1)
+        return if point.is_a?(Integer) && point.between?(0, shape.point_count - 1)
 
         raise ArgumentError, "screen_spot :#{shape.name} was given the point #{point.inspect}. The place has no " \
                              "point #{point.inspect}. To fix this, give a number that `point` gave in this place."
@@ -385,23 +417,30 @@ module VBlank
       def declare_place_data(shape)
         table(IR::PlaceDrawing.name_of(shape.name, :points), shape.points_table, width: :word, signed: true)
         table(IR::PlaceDrawing.name_of(shape.name, :faces), shape.faces_table, width: :word, signed: true)
+        declare_place_lists(shape)
+      end
+
+      # The lists a place's drawing works in, wherever its points and faces come from.
+      def declare_place_lists(shape)
         list(IR::PlaceDrawing.name_of(shape.name, :slots), capacity: shape.listed_pictures.length, full_of: 0)
         list(IR::PlaceDrawing.name_of(shape.name, :corners),
              capacity: IR::Nodes::FillFace::MOST_CORNERS * IR::Nodes::FillFace::CORNER_NUMBERS, full_of: 0)
-        list(IR::PlaceDrawing.name_of(shape.name, :seen), capacity: shape.points.length * IR::PlaceDrawing::SEEN_STRIDE,
+        list(IR::PlaceDrawing.name_of(shape.name, :seen), capacity: shape.point_count * IR::PlaceDrawing::SEEN_STRIDE,
                                                           full_of: 0)
-        list(IR::PlaceDrawing.name_of(shape.name, :codes), capacity: shape.points.length, full_of: 0)
+        list(IR::PlaceDrawing.name_of(shape.name, :codes), capacity: shape.point_count, full_of: 0)
       end
 
       # The drawing of +shape+, its variables declared the first time the game draws it or asks
       # where one of its points lands.
       def place_drawing(shape)
-        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.faces.length, points: shape.points.length,
+        drawing = IR::PlaceDrawing.new(shape.name, faces: shape.face_count, points: shape.point_count,
                                                    pictures: shape.listed_pictures, shading: shape.shading,
                                                    point_lights: shape.point_lights&.name,
                                                    corners_in_a_loop: !@console.code_cache_bytes.nil?,
                                                    outcode_test: !@console.face_fill_skips_outside_window,
-                                                   fill_by_row_middles: @console.face_fill_by_row_middles)
+                                                   fill_by_row_middles: @console.face_fill_by_row_middles,
+                                                   faces_used: shape.faces_used_table,
+                                                   numbers_held: shape.from_pack?)
         @place_variables ||= {}
         @place_variables[shape.name] ||= drawing.variables.each { |variable| ensure_var(variable) }
         drawing
