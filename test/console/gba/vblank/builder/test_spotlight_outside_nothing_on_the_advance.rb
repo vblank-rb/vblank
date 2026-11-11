@@ -152,16 +152,18 @@ class TestSpotlightOutsideNothingOnTheAdvance < Minitest::Test
   # --- taking turns with a fade placed in the stack ---
 
   # A title half faded under its front layer, then from turn 6 a scene whose light shows nothing
-  # outside it.
-  private def faded_title_then_light
+  # outside it. +with_sprite+ adds a green sprite in the room's layer, inside the light.
+  private def faded_title_then_light(with_sprite: false)
     builder = Builder.new
     builder.instance_eval do
       screen :tiled
       layers :ground, :water
       image(:white_tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
       image(:red_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:guy, "#" => :green) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :white_tile, "r" => :red_tile
       layer(:ground) { background :room, tiles: :set, map: ["#" * 32] * 32 }
+      layer(:ground) { sprite :guy, at: [100, 76] } if with_sprite
       mode = var :mode, 0
       turn = var :turn, 0
       spotlight at: [120, 80], radius: 40, outside: :nothing
@@ -191,5 +193,26 @@ class TestSpotlightOutsideNothingOnTheAdvance < Minitest::Test
     assert_equal WHITE, playing.pixel(*MIDDLE)
     assert_equal BLACK, playing.pixel(*CORNER)
     assert_backends_agree(faded_title_then_light, frames: [3, 6, 7, 8, 12], name: "FADETURN")
+  end
+
+  # THE LIT SCENE TAKES THE FADE OFF. A fade placed in the stack stays across a change of scene
+  # until the game lifts it, but not into a scene the light is on in: the two take turns, since
+  # the light's shape takes the place of the one that keeps a sprite out of such a fade. So the
+  # room and a sprite in its layer, faded in the title, are as drawn inside the light, on the
+  # pass the lit scene takes over and after.
+  def test_a_lit_scene_takes_the_fade_of_the_scene_before_off
+    game = faded_title_then_light(with_sprite: true)
+    title = shown(game, frames: 3)
+    changing = shown(game, frames: 6)
+    playing = shown(game, frames: 12)
+
+    refute_equal WHITE, title.pixel(*MIDDLE), "the title fades the room"
+    refute_equal Color.resolve(:green), title.pixel(103, 79), "...and the sprite in its layer"
+    assert_equal WHITE, changing.pixel(*MIDDLE), "the fade is off on the pass the lit scene takes over"
+    assert_equal WHITE, changing.pixel(*CORNER), "...a picture before the light is on"
+    assert_equal WHITE, playing.pixel(*MIDDLE)
+    assert_equal Color.resolve(:green), playing.pixel(103, 79)
+    assert_equal BLACK, playing.pixel(*CORNER)
+    assert_backends_agree(game, frames: [3, 6, 7, 8, 12], name: "FADETURNGUY")
   end
 end

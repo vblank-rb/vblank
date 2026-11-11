@@ -1295,6 +1295,7 @@ module VBlank
           # from the light worked out at this gap, a frame later (see IR::LightScenes and
           # GBA::Raster#emit_light_leaving). A game whose light never takes turns has no switch.
           @screen.light_off = @vars.fetch(IR::LightScenes::ON, 1).zero?
+          lift_placed_fade_for_light
 
           # The pass that put a background up ends here, and its picture shows the background
           # from the corner (see #put_up_background). A repaint it still owes is painted as
@@ -1680,8 +1681,10 @@ module VBlank
           # only scenery turns had nothing else to show it.
           # ...and so is a status bar, which is painted from its own top rather than the screen's,
           # and anything put up while one shows, which a stamp would paint over the bar's rows.
+          # ...and so is anything put up while a fade placed in the stack is in the picture: a stamp
+          # paints a background as drawn, and the fade reaches it or not by where it is in the stack.
           return request_repaint if @bg_affine.key?(node.name) || node.bar? || node.above_row || bar_showing ||
-                                    @bg_box.key?(node.name)
+                                    @bg_box.key?(node.name) || placed_fade_in_picture?
 
           stamp_background(node)
           in_stack_order(over).each { |bg| stamp_background(bg) }
@@ -1691,6 +1694,11 @@ module VBlank
         # IR::SceneHandover). A painted screen has no layers to switch off, so the picture
         # goes back to the backdrop and the scenery every screen shows, and the next scene's
         # own is stamped from there.
+        #
+        # A FADE PLACED IN THE STACK IS THE GAME'S, NOT THE SCENE'S, and stays until the game lifts
+        # it: the display's blend is left as it was when a scene takes over. The backdrop and the
+        # stamps here are as drawn, so while such a fade is in the picture the picture is owed
+        # again, built with the fade on what it reaches (#repaint_view).
         # True when it took any down.
         def take_down_scenery
           kept = @bg_shown.reject { |bg| @handover.on_arrival?(bg) }
@@ -1700,6 +1708,7 @@ module VBlank
           @scene_fb = nil
           @screen.clear(@backdrop)
           in_stack_order(kept).each { |bg| stamp_background(bg) }
+          request_repaint if placed_fade_in_picture?
           true
         end
 
@@ -2822,6 +2831,27 @@ module VBlank
 
           @screen.fade_steps.positive?
         end
+
+        # A LIGHT THAT TAKES TURNS LIFTS A FADE PLACED IN THE STACK, on the pass of a scene the
+        # light is on in. The two take turns scene by scene (IR::LightScenes): a light that darkens
+        # asks the display for the mixing the fade holds, and any light's shape takes the place of
+        # the shape that keeps a sprite out of such a fade. So a scene the light is on in has the
+        # fade taken off, where every other scene leaves a fade as the game set it, and the scene
+        # the fade is written in sets it again when it is given the screen back.
+        #
+        # Asked as each pass ends, of the switch the scene that ran set, as the console's lit scene
+        # tells the display to mix nothing on every pass it runs (GBA::Drawing#emit_scene_blend).
+        # A game whose light never takes turns has no switch, and nothing is lifted.
+        def lift_placed_fade_for_light
+          return unless @fade_placed && @vars.fetch(IR::LightScenes::ON, 0) != 0
+
+          @fade_placed = nil
+          request_repaint
+        end
+
+        # Is a fade placed in the stack changing the picture as it is built? One of no amount is
+        # in force and changes nothing.
+        def placed_fade_in_picture? = !@fade_placed.nil? && @fade_placed[2].positive?
 
         # The names the fade in force leaves alone — its layer and everything in front.
         def names_above_placed_fade = names_at_or_above(@fade_placed[0])

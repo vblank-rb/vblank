@@ -189,16 +189,19 @@ class TestSpotlightOnTheAdvance < Minitest::Test
   # --- a light that takes turns with another scene's mixing ---
 
   # A title that sees through red water to a white room, then from frame 6 a scene with a light
-  # of darkness 100. +back+ starts in the lit scene and goes to the title instead.
-  private def title_then_light(title: nil, back: false)
+  # of darkness 100. +back+ starts in the lit scene and goes to the title instead, and
+  # +with_sprite+ adds a green sprite in the room's layer, inside the light.
+  private def title_then_light(title: nil, back: false, with_sprite: false)
     title ||= -> { layer(:water, transparency: 50) { background :pond, tiles: :set, map: ["r" * 32] * 32 } }
     program do
       screen :tiled
       layers :ground, :water
       image(:white_tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
       image(:red_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:guy, "#" => :green) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :white_tile, "r" => :red_tile
       layer(:ground) { background :room, tiles: :set, map: ["#" * 32] * 32 }
+      layer(:ground) { sprite :guy, at: [100, 76] } if with_sprite
       mode = var :mode, back ? 1 : 0
       turn = var :turn, 0
       spotlight at: [120, 80], radius: 40, dark: 100
@@ -243,6 +246,28 @@ class TestSpotlightOnTheAdvance < Minitest::Test
 
     assert_equal title.pixel(120, 80), title.pixel(5, 5), "the title is faded the same everywhere"
     assert_backends_agree(fading, frames: TURN_FRAMES, name: "FADES")
+  end
+
+  # THE LIT SCENE TAKES THAT FADE OFF, though a fade placed in the stack otherwise stays across
+  # a change of scene: the light's darkening asks the display for the mixing the fade holds. So
+  # the room and a sprite in its layer are as drawn inside the light, from the pass the lit
+  # scene takes over.
+  def test_a_lit_scene_takes_the_fade_of_the_scene_before_off
+    fading = title_then_light(with_sprite: true, title: lambda {
+      layer(:water) { background :pond, tiles: :set, map: ["r" * 4] * 4 }
+      fade :black, 50, under: :water
+    })
+    title = shown(fading, frames: 3)
+    changing = shown(fading, frames: 6)
+    playing = shown(fading, frames: 12)
+
+    refute_equal WHITE, title.pixel(120, 80), "the title fades the room"
+    refute_equal Color.resolve(:green), title.pixel(103, 79), "...and the sprite in its layer"
+    assert_equal WHITE, changing.pixel(120, 80), "the fade is off on the pass the lit scene takes over"
+    assert_equal WHITE, playing.pixel(120, 80)
+    assert_equal Color.resolve(:green), playing.pixel(103, 79)
+    assert_equal Color.rgb(0, 0, 0), playing.pixel(5, 5)
+    assert_backends_agree(fading, frames: TURN_FRAMES, name: "FADESGUY")
   end
 
   # ...and back again: coming back to the title from the lit scene, the water is mixed again.
