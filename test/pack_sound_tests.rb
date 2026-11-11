@@ -19,10 +19,17 @@ module PackSoundTests
   SOUND_COUNT = 32
   SOUND_RATE = 8000
 
+  # Whether this run's console has the `instrument` verb. One that does not (the Color, whose
+  # songs play on its square, wave and noise voices only) refuses a game that writes one, even one
+  # no song names.
+  private def console_plays_instruments? = VBlank::Console.for(game_console).answers.answer(:instrument).works?
+
   # A game that plays a recording from the pack on the A button: the whole slot as a sample, and
-  # the middle of it as the keys of an instrument. +options+ are the build's.
+  # on B the middle of it, as the keys of an instrument where the console has instruments and as a
+  # second sample where it has none. +options+ are the build's.
   private def sound_game(folder, options: VBlank::Cartridge::Options.new)
     from = options.pack_at_start ? original_nowhere(folder) : original(folder)
+    keyed = console_plays_instruments?
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :bitmap
@@ -31,11 +38,17 @@ module PackSoundTests
         slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT
       end
       bang = sample :bang, pcm: pack[:bang], rate: SOUND_RATE
-      tone = instrument :tone, pcm: pack[:bang].samples(8, 16), rate: SOUND_RATE, note: :C4
+      tone = if keyed
+               instrument :tone, pcm: pack[:bang].samples(8, 16), rate: SOUND_RATE, note: :C4
+             else
+               sample :tone, pcm: pack[:bang].samples(8, 16), rate: SOUND_RATE
+             end
       game_loop do
         wait_vblank
         bang.play if pressed(:a)
-        tone.play(:E4) if pressed(:b)
+        if pressed(:b)
+          keyed ? tone.play(:E4) : tone.play
+        end
       end
     end
     b.finalize_program
@@ -83,6 +96,7 @@ module PackSoundTests
     Dir.mktmpdir do |folder|
       whole = scored_sound_game(folder)
       left_out = scored_sound_game(folder, options: PACK_AT_START)
+      return assert_console_refuses(left_out, sound_pack_file) unless console_plays_instruments?
 
       %i[a b].each do |button|
         heard = game_player.hold(button).run(whole, frames: 30).mixed_sound
@@ -130,6 +144,8 @@ module PackSoundTests
 
   def test_an_instruments_rate_and_hold_read_from_the_pack_sound_as_the_same_numbers_given
     Dir.mktmpdir do |folder|
+      return assert_console_refuses(instrument_settings_game(folder, from_pack: true)) unless console_plays_instruments?
+
       wanted = game_player.hold(:a).run(instrument_settings_game(folder, from_pack: false), frames: 20).mixed_sound
       heard = game_player.hold(:a).run(instrument_settings_game(folder, from_pack: true), frames: 20).mixed_sound
 
@@ -211,8 +227,10 @@ module PackSoundTests
   # Color, the Genesis) refuses the settings game whichever way it is built.
   private def console_mixes_recordings? = VBlank::Console.described(game_console).mixes_recordings
 
-  private def assert_console_refuses(program, file)
-    assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.hand_file(file).run(program, frames: 1) }
+  # The run's console refuses +program+ before it plays, handed +file+ where its pack is left out.
+  private def assert_console_refuses(program, file = nil)
+    player = file ? game_player.hand_file(file) : game_player
+    assert_raises(VBlank::IR::Guardrails::ValidationError) { player.run(program, frames: 1) }
   end
 
   private def assert_settings_at_start_sound_alike(from_pack)
