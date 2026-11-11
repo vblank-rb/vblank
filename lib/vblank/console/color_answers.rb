@@ -137,6 +137,7 @@ module VBlank
         recolor: works("a background that draws with more than one list the game changes is not made yet: the " \
                        "build refuses it and says so."),
         color_walk: works,
+        colors_name_of: works,
         colors_in_use: works("a set can name eight lists or fewer, because the console holds eight lists " \
                              "for sprites. A set with more is refused, naming the set."),
         mirror: works,

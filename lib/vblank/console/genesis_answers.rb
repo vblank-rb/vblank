@@ -130,6 +130,7 @@ module VBlank
                        "(`draw_with [...], showing:`) takes one of the four for each list."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,

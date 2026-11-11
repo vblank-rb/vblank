@@ -114,6 +114,7 @@ module VBlank
                        "with more than one list the game changes is not made yet: the build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,

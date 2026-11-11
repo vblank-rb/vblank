@@ -116,6 +116,7 @@ module VBlank
                        "build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,

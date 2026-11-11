@@ -75,6 +75,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. The sprites and the backgrounds drawn with it are drawn from that one list, however many sets it holds in turn. A background with tiles from other lists too draws only its tiles of that list from it, since each cell names its own list. A background that draws with several lists the game changes draws its tiles of each list from that list, so every list of a screen can change on one frame. A sprite whose pictures are drawn in the list's colours, and drawn with that list alone, keeps no list for its own colours. A sprite drawn with several lists (`draw_with [...], showing:`) takes one of the four for each list.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.

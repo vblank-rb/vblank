@@ -75,6 +75,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `recolor` — works: a list told to hold other colours keeps a palette to itself, so a game can change eight lists of backgrounds on each screen and eight of sprites. A background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.

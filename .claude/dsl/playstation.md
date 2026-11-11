@@ -74,6 +74,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `recolor` — works: a background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.

@@ -59,7 +59,7 @@ module VBlank
         image: works, color: works, rgb: works, rgb8: works, colors: works,
         recolor: works("a background that draws with more than one list the game changes is not made yet: the " \
                        "build refuses it and says so."),
-        colors_in_use: works, color_walk: works, mirror: works, upside_down: works, blit: works,
+        colors_in_use: works, colors_name_of: works, color_walk: works, mirror: works, upside_down: works, blit: works,
         sprite: works("a sprite with `over_picture: true` on a painted screen is the console's own sprite. The " \
                       "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K."),
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
