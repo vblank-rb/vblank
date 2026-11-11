@@ -154,10 +154,10 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false, turned: false)
             Fades.reserve(memory) if walks
             View.reserve(memory) if view
-            Sprites.reserve(memory, sprites) if sprites.positive?
+            Sprites.reserve(memory, sprites, turned: turned) if sprites.positive?
             ModeX.reserve(memory) if memory.screen.mode == :mode_x
             memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
@@ -169,7 +169,7 @@ module VBlank
 
           # Where each of the runtime's names is, for a reader.
           def places(memory, sprites: false, view: false)
-            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : []) + (view ? View::PLACES : [])
+            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites.places(memory) : []) + (view ? View::PLACES : [])
             names.to_h { |name| [name, memory[name]] }
           end
 

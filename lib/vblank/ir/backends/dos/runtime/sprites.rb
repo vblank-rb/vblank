@@ -42,8 +42,10 @@ module VBlank
             # The table as it was when the picture shown was last made, and how many it held.
             PLACED_BEFORE = "rt sprites placed before"
             TABLE_BEFORE = "rt sprites before"
+            # A place nothing is kept in: a game has it when one of its sprites turns or changes size, which is
+            # what says its table's rows are the longer ones.
+            TURNED = "rt sprites turned"
             WORDS = [PLACED, PLACED_BEFORE, ROWS_TOP, ROWS_BOTTOM].freeze
-            PLACES = [PLACED, TABLE].freeze
 
             # One sprite placed: whose and which picture (SpriteNames' numbers), the picture's place in the art
             # segment and its height, a word each, then its x and y.
@@ -54,14 +56,34 @@ module VBlank
             HEIGHT = 6
             X = 8
             Y = 12
+            # And in a game with a sprite that turns (Turning): the picture's width and whether this one turns, a
+            # word each, its angle and its size, and the rows of its patch it can reach, a word each.
+            TURNED_ENTRY_BYTES = 32
+            WIDTH = 16
+            TURNS = 18
+            ANGLE = 20
+            SCALE = 24
+            REACH_BEGIN = 28
+            REACH_END = 30
 
             module_function
 
-            # +most+ is how many sprites the game has: no pass places more.
-            def reserve(memory, most)
+            def turned?(memory) = memory.places.key?(TURNED)
+
+            # How long a row of the table is, and the shift that multiplies by it.
+            def entry_bytes(memory) = turned?(memory) ? TURNED_ENTRY_BYTES : ENTRY_BYTES
+            def entry_shift(memory) = entry_bytes(memory).bit_length - 1
+
+            # The places a reader of the running program is told of.
+            def places(memory) = [PLACED, TABLE] + (turned?(memory) ? [TURNED] : [])
+
+            # +most+ is how many sprites the game has: no pass places more. +turned+ is whether any of them
+            # turns or changes size.
+            def reserve(memory, most, turned: false)
+              memory.reserve(TURNED, 4) if turned
               WORDS.each { |name| memory.reserve(name, 4) }
-              memory.reserve(TABLE, most * ENTRY_BYTES)
-              memory.reserve(TABLE_BEFORE, most * ENTRY_BYTES)
+              memory.reserve(TABLE, most * entry_bytes(memory))
+              memory.reserve(TABLE_BEFORE, most * entry_bytes(memory))
             end
 
             # What the start sets: no rows stood in yet.
@@ -71,6 +93,7 @@ module VBlank
               screen = Edges.new(left: 0, top: 0, right: memory.screen.width, bottom: memory.screen.height)
               emit_place(asm, memory)
               emit_over_picture(asm, memory)
+              Turning.emit(asm, memory) if turned?(memory)
               Runtime.emit_blit_routine(asm, memory, screen, name: "rt_sprite_blit", marks: false)
             end
 
@@ -81,8 +104,9 @@ module VBlank
               entry = ->(part, size) { X86.mem(:bp, part, size: size) }
               asm.label("rt_sprite_place")
               asm.mov(:bp, placed)
-              asm.shl(:bp, 4)
+              asm.shl(:bp, entry_shift(memory))
               asm.add(:bp, memory[TABLE])
+              asm.mov(entry.call(TURNS, 16), 0) if turned?(memory) # until rt_sprite_turned says it does
               asm.mov(entry.call(NAME, 16), :dx)
               asm.mov(entry.call(PICTURE, 16), :di)
               asm.mov(entry.call(ART, 16), :si)
@@ -91,6 +115,29 @@ module VBlank
               asm.mov(entry.call(Y, 32), :ecx)
               asm.inc(placed)
               asm.ret
+            end
+
+            # The rows a sprite that turns stands in, for the row of the table BP is at, with its y in EAX and its
+            # picture's height in EDX: its patch, a picture's height taller than the picture and half of that
+            # above it. A patch that can be counted round the screen's 256 rows (Turning) is every row. One that
+            # does not turn goes on as it was. Changes EBX.
+            def emit_turned_rows(asm, memory)
+              asm.cmp(X86.mem(:bp, TURNS, size: 16), 0)
+              asm.je("rt_sprites_rows_upright")
+              asm.mov(:ebx, :edx)
+              asm.shr(:ebx, 1)
+              asm.sub(:eax, :ebx)
+              asm.shl(:edx, 1)
+              asm.add(:edx, :eax)
+              asm.cmp(:eax, memory.screen.height - Reference::TurnedBox::LINES)
+              asm.jl("rt_sprites_rows_every")
+              asm.cmp(:edx, Reference::TurnedBox::LINES)
+              asm.jle("rt_sprites_rows_known")
+              asm.label("rt_sprites_rows_every")
+              asm.xor(:eax, :eax)
+              asm.mov(:edx, memory.screen.height)
+              asm.jmp("rt_sprites_rows_known")
+              asm.label("rt_sprites_rows_upright")
             end
 
             # rt_sprites_over_picture: the picture shown made from the game's picture and the sprites placed
@@ -106,7 +153,7 @@ module VBlank
               asm.mov(:cx, placed)
               asm.cmp(:cx, X86.mem(nil, memory[PLACED_BEFORE], size: 16))
               asm.jne("rt_sprites_changed")
-              asm.shl(:cx, 4) # the bytes of the table in use
+              asm.shl(:cx, entry_shift(memory)) # the bytes of the table in use
               asm.push(:es)
               asm.push(:ds)
               asm.pop(:es)
@@ -123,7 +170,7 @@ module VBlank
               asm.label("rt_sprites_changed")
               asm.mov(:cx, placed)
               asm.mov(X86.mem(nil, memory[PLACED_BEFORE], size: 16), :cx)
-              asm.shl(:cx, 4)
+              asm.shl(:cx, entry_shift(memory))
               asm.push(:es)
               asm.push(:ds)
               asm.pop(:es)
@@ -147,7 +194,9 @@ module VBlank
               asm.label("rt_sprites_rows")
               asm.mov(:eax, entry.call(Y, 32))
               asm.movzx(:edx, entry.call(HEIGHT, 16))
+              emit_turned_rows(asm, memory) if turned?(memory)
               asm.add(:edx, :eax)
+              asm.label("rt_sprites_rows_known")
               asm.cmp(:eax, 0)
               asm.jge("rt_sprites_top_held")
               asm.xor(:eax, :eax)
@@ -168,7 +217,7 @@ module VBlank
               asm.label("rt_sprites_bottom_kept")
               Runtime.emit_mark_rows(asm, memory, :ax, :dx, "rt_sprites_stand")
               asm.label("rt_sprites_rows_next")
-              asm.add(:bp, ENTRY_BYTES)
+              asm.add(:bp, entry_bytes(memory))
               asm.dec(:cx)
               asm.jne("rt_sprites_rows")
               asm.label("rt_sprites_rows_marked")
@@ -184,13 +233,21 @@ module VBlank
               asm.label("rt_sprites_draw")
               asm.push(:cx)
               asm.push(:bp)
+              if turned?(memory)
+                asm.cmp(entry.call(TURNS, 16), 0)
+                asm.je("rt_sprites_draw_upright")
+                asm.call("rt_sprite_turned_blit")
+                asm.jmp("rt_sprites_draw_next")
+                asm.label("rt_sprites_draw_upright")
+              end
               asm.mov(:si, entry.call(ART, 16))
               asm.mov(:eax, entry.call(X, 32))
               asm.mov(:ecx, entry.call(Y, 32))
               asm.call("rt_sprite_blit")
+              asm.label("rt_sprites_draw_next")
               asm.pop(:bp)
               asm.pop(:cx)
-              asm.add(:bp, ENTRY_BYTES)
+              asm.add(:bp, entry_bytes(memory))
               asm.dec(:cx)
               asm.jne("rt_sprites_draw")
               Rows.emit_pop_picture_segment(asm, memory.screen)

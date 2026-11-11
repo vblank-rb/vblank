@@ -190,8 +190,9 @@ module VBlank
             return [] unless @places.runtime.key?(sprites::PLACED)
 
             table = runtime_place(sprites::TABLE)
+            row_bytes = @places.runtime.key?(sprites::TURNED) ? sprites::TURNED_ENTRY_BYTES : sprites::ENTRY_BYTES
             Array.new(half(runtime_place(sprites::PLACED))) do |i|
-              name, picture, _, _, x, y = Diagnostics::DOSMemory.bytes(@core, table + (i * sprites::ENTRY_BYTES), sprites::ENTRY_BYTES)
+              name, picture, _, _, x, y = Diagnostics::DOSMemory.bytes(@core, table + (i * row_bytes), sprites::ENTRY_BYTES)
                                                                .unpack("s<2v2l<2")
               @drawn_sprites.row(name, picture, x, y)
             end

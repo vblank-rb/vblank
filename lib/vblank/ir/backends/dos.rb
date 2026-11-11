@@ -22,6 +22,7 @@ require_relative "dos/runtime/mode_x"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
+require_relative "dos/runtime/turning"
 require_relative "dos/runtime/view"
 require_relative "dos/runtime/regions"
 require_relative "dos/runtime/fades"
@@ -129,7 +130,7 @@ module VBlank
           second = sprites.positive? || view
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
                                   area: Lowering.area_used_by?(program), sprites: sprites,
-                                  walks: walks, view: view)
+                                  walks: walks, view: view, turned: Lowering::Sprites.turned_in?(program))
           Lowering::Sprites.reserve(memory, program)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new

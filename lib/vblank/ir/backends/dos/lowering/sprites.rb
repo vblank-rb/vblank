@@ -14,11 +14,11 @@ module VBlank
           # table. A sprite switched off, or one whose pose picks no picture, is not placed, which is what
           # "not drawn" means (Reference#objects_on_screen).
           #
-          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), upright, in
-          # its own colours or another list's. The plain sprite of a painted screen is no sprite of this kind
-          # at all: the game paints it into the picture itself, keeping and putting back the patch under it
-          # (Lowering#emit_save_region). One that turns or changes size, sprites a list puts in order, and
-          # any sprite of a screen drawn from tiles are each refused by name.
+          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), in its own
+          # colours or another list's, upright or turned and resized (Runtime::Turning). The plain sprite of a
+          # painted screen is no sprite of this kind at all: the game paints it into the picture itself,
+          # keeping and putting back the patch under it (Lowering#emit_save_region). Sprites a list puts in
+          # order, and any sprite of a screen drawn from tiles, are each refused by name.
           #
           # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, `recolor`). The card has one palette
           # for the whole screen and a sprite's pixels are entries of it, so there is no list of a sprite's
@@ -31,7 +31,7 @@ module VBlank
             STATEMENT_KINDS = %i[present_objects color_list_holds].freeze
 
             # The part of the build a game with such a sprite waits for, for a test run to count skips by.
-            PART = "sprites of a screen drawn from tiles, turned, resized or put in order by a list"
+            PART = "sprites of a screen drawn from tiles, or put in order by a list"
 
             # Where a list of colours the game changes keeps which set it holds: nought for the colours it
             # was declared with, and one more than the set's number for each other.
@@ -73,7 +73,6 @@ module VBlank
             # What about +sprite+ the build does not make yet, in words, or nil.
             def unmade_in_sprite(sprite)
               return "that is not over a painted picture" unless sprite.over_picture
-              return "that turns or changes size" unless constant_number?(sprite.angle, 0) && constant_number?(sprite.scale, Build::SCALE_ONE)
 
               nil
             end
@@ -125,7 +124,17 @@ module VBlank
               end
             end
 
-            def constant_number?(node, number) = node.is_a?(Node) && node.kind == :int && node.value == number
+            def constant_number?(node, number) = Sprites.constant_number?(node, number)
+
+            def self.constant_number?(node, number) = node.is_a?(Node) && node.kind == :int && node.value == number
+
+            # Whether +sprite+ turns or changes size as the game runs (Reference#object_transformed?), and whether
+            # its size changes at all (#object_scales?): one that only turns reaches less of its patch.
+            def self.turns?(sprite) = !(constant_number?(sprite.angle, 0) && constant_number?(sprite.scale, Build::SCALE_ONE))
+            def self.scales?(sprite) = !constant_number?(sprite.scale, Build::SCALE_ONE)
+
+            # Whether any sprite of +program+ does, so that the runtime carries the routine that draws one.
+            def self.turned_in?(program) = program.walk.any? { |node| node.kind == :object && turns?(node) }
 
             # For each sprite, a table in the art segment of its pictures, for each set of colours it can be
             # drawn in (#color_sets) in the order its pose counts them: the place of each, and its number as
@@ -231,7 +240,20 @@ module VBlank
               @asm.mov(:dx, sprite_names.name_number(sprite.declared))
               @asm.mov(:bx, picture_image(sprite.poses.first).height) # a sprite's pictures are all one size
               @asm.call("rt_sprite_place")
+              emit_sprite_turned(sprite) if Sprites.turns?(sprite)
               @asm.label(skip)
+            end
+
+            # The sprite just placed turns (Runtime::Turning): its angle and its size as they are now, and what
+            # is settled as the game is built, its picture's width and the rows of its patch it can reach.
+            def emit_sprite_turned(sprite)
+              image = picture_image(sprite.poses.first)
+              reached = Affine.rows_reached(image.width, image.height, scales: Sprites.scales?(sprite))
+              emit_values_into(%i[eax ecx], [value_node(sprite.angle), value_node(sprite.scale)])
+              @asm.mov(:dx, image.width)
+              @asm.mov(:bx, reached.begin)
+              @asm.mov(:si, reached.end)
+              @asm.call("rt_sprite_turned")
             end
           end
         end
