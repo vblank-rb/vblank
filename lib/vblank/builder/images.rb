@@ -327,6 +327,44 @@ module VBlank
         end
       end
 
+      # A SPRITE TOLD TO FOLLOW THE LISTS ITS POSES ARE DRAWN FROM (HardwareSprite#draw_with given a
+      # hash): +lists+ names each list to follow, drawn with itself. The object +node+ then names
+      # them (IR::Nodes::Object#follows_each), and a pose drawn from one shows what that list holds.
+      #
+      # Each list is followed, never swapped for another: a sprite's other colours are picked by
+      # one number for the whole sprite, and poses of several lists would need a number each.
+      #
+      # A sprite whose poses are all of one list has nothing to tell apart, and this hands back the
+      # name of that list for an ordinary `draw_with` of it. nil otherwise.
+      def follow_pose_lists(node, lists, poses:, showing:, subject:)
+        unless showing.nil?
+          raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. A sprite " \
+                               "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
+                               "this, leave out showing:."
+        end
+        drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
+        named = drawn.compact.map { |name| ":#{name}" }
+        lists.each do |own, with|
+          unless own.is_a?(Symbol) && drawn.include?(own)
+            raise ArgumentError, "#{subject} was told to draw_with #{own.inspect} => #{with.inspect}, and none of its " \
+                                 "pictures is drawn from a list named #{own.inspect}. Its pictures are drawn from " \
+                                 "#{named.empty? ? 'no list that has a name' : named.join(' and ')}. To fix this, name " \
+                                 "one of those lists."
+          end
+          next if with == own || drawn.one?
+
+          raise ArgumentError, "#{subject} shows pictures drawn from #{drawn.length} lists of colors, and it was told " \
+                               "to draw the list :#{own} with #{with.inspect}. Such a sprite can follow each of its " \
+                               "lists. It cannot draw one of them with another list. To fix this, write `#{own}: " \
+                               ":#{own}`, and change the colors with `recolor :#{own}, ...`."
+        end
+        return lists.values.first if drawn.one?
+
+        node.follows_each = ((node.follows_each || []) + lists.keys).uniq
+        (@pose_list_followers ||= []) << node
+        nil
+      end
+
       # The lists a background's tiles were drawn from, each once, in the order first met — what
       # its other colours are matched against, list by list. Every tile has to have been given
       # one, for the same reason a sprite's pictures do (see #shared_pose_colors!). Each is the
@@ -447,7 +485,9 @@ module VBlank
           raise ArgumentError,
                 "#{subject} was told to draw_with other colors, but the pictures it shows were given " \
                 "different `colors:` lists. Another list of colors swaps the sprite's own colors by their " \
-                "places, so give every picture it shows the same `colors:` list."
+                "places, so give every picture it shows the same `colors:` list. Or tell a sprite to follow " \
+                "each of its lists, like `draw_with({ hero: :hero, cape: :cape })`. Then change the colors of a " \
+                "list with `recolor`."
         end
         raise ArgumentError,
               "#{subject} was told to draw_with other colors, but its pictures have no `colors:` list. " \

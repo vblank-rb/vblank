@@ -141,7 +141,8 @@ module VBlank
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
-                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels) do
+                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
+                              :pose_lists) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -166,8 +167,23 @@ module VBlank
       # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
       # game's small picture, which is what the game lays itself out on and what the interpreter
       # plays. +shows_bigger_pixels+ marks whether the console's hardware can show it that way.
+      #
+      # +pose_lists+ sets what the console's build makes of one sprite whose poses are drawn from
+      # different lists of colours. A console's sprite table names the group of colours of each entry
+      # beside its tile, so its own games change the two together for nothing; what differs is how far
+      # each build goes. :one where the build keeps one group for a whole sprite, so such a sprite is
+      # refused, naming the console. :own where it writes the group with the pose's tiles, so each
+      # pose is shown in its own list's colours. :followed where such a sprite can also follow its
+      # lists, each pose shown in what its list holds now (IR::Nodes::Object#follows_each); under :own
+      # that is refused, naming the console. Checks::PosesWithDifferentColors makes both refusals.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
-                     pixel_size: 1, shows_bigger_pixels: false, **rest) = super
+                     pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, **rest) = super
+
+      # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
+      def poses_keep_own_lists? = pose_lists != :one
+
+      # Whether such a sprite can follow the lists its poses are drawn from.
+      def poses_follow_lists? = pose_lists == :followed
 
       def screen_size = [screen_width, screen_height]
 
@@ -327,6 +343,9 @@ module VBlank
                             roomier_memory_bytes: 0, variables_go_far: false,
                             # The sprite table and the scroll are sent from a copy as the wait
                             # ends, so a pass's are placed before it to show on the frame after.
+                            # Each piece's attributes name its list (Backends::GBC::Lowering::Picture
+                            # #pose_rows). A sprite that follows its poses' lists is not made yet.
+                            pose_lists: :own,
                             sprites_placed_before_wait: true,
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,
@@ -392,6 +411,9 @@ module VBlank
                                      roomier_memory_bytes: 120 * 1024, variables_go_far: true,
                                      # The wait sends the sprite table and the scroll from a copy, so
                                      # a pass places them in it before its wait, as the Color's does.
+                                     # Each picture's pieces name its palette (Backends::SNES::Art). A
+                                     # sprite that follows its poses' lists is not made yet.
+                                     pose_lists: :own,
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
@@ -445,6 +467,9 @@ module VBlank
                               roomier_memory_bytes: 0, variables_go_far: false,
                               # The wait sends the sprite table and the scroll from a copy, so a
                               # pass places them in it before its wait, as the Super Nintendo's does.
+                              # Each picture's pieces name its palette, cut against the list it
+                              # follows (Backends::Genesis::Lowering::Picture#followed_list_of).
+                              pose_lists: :followed,
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
                               rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
@@ -499,6 +524,9 @@ module VBlank
                                   work_memory_bytes: 1952 * 1024, work_memory_kept_bytes: 4096,
                                   roomier_memory_bytes: 0, variables_go_far: false,
                                   # A pass's drawing is sent to the graphics chip as its wait ends.
+                                  # Its build makes no sprites yet, so nothing is refused for their
+                                  # lists: the one that makes them draws each pose from its own.
+                                  pose_lists: :followed,
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                                   extension: ".exe",

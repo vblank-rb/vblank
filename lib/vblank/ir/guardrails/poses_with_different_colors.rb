@@ -6,14 +6,20 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # ONE SPRITE, PICTURES GIVEN DIFFERENT LISTS OF COLORS.
+        # ONE SPRITE, PICTURES GIVEN DIFFERENT LISTS OF COLORS, on a console whose build keeps one
+        # list for a whole sprite.
         #
         # A sprite's pixels are not colors. Each is a small number, a place in a list of
-        # sixteen colors, and which list that is gets set once for the whole sprite, in its
-        # row of the table the console composes from. So every picture a sprite can show is
-        # drawn from the one list, and pictures that each came with a list of their own
-        # cannot all be shown by one sprite: whichever list the row names, the others'
-        # pictures come out in the wrong colors.
+        # sixteen colors, and which list that is gets named in the sprite's row of the table
+        # the console composes from, beside the tile it draws. A console's own games write the
+        # two together, so a sprite changes list with its pose for nothing, and a build that
+        # does the same shows each pose in its own list's colors
+        # (Console::Description#poses_drawn_from_own_lists). This check says nothing there.
+        #
+        # A build that sets the list once for the whole sprite draws every picture the sprite
+        # can show from that one list, and pictures that each came with a list of their own
+        # cannot all be shown by it: whichever list the row names, the others' pictures come
+        # out in the wrong colors. So such a sprite is refused there, naming the console.
         #
         # A pool is the same thing many times over. Each of its places is a sprite, and any
         # of them can show any of the pool's pictures.
@@ -27,6 +33,9 @@ module VBlank
           PLAIN_NAME = "a sprite whose pictures have different lists of colors"
 
           def detect(program)
+            console = program.described_console
+            return sprites_following_lists(program, console) if console.poses_keep_own_lists?
+
             pictures = program.walk.select { |node| node.kind == :bitmap }
             lists = pictures.to_h { |node| [node.name, node.colors] }
             list_names = pictures.to_h { |node| [node.name, node.colors_name] }
@@ -35,7 +44,7 @@ module VBlank
               by_list = picture_for_each_list(node, lists)
               next if by_list.size < 2
 
-              Finding.new(check: NAME, severity: :error, node: node, message: message(node, by_list, list_names))
+              Finding.new(check: NAME, severity: :error, node: node, message: message(node, by_list, list_names, console))
             end
           end
 
@@ -46,6 +55,25 @@ module VBlank
 
           private
 
+          # ON A CONSOLE WHOSE BUILD SHOWS EACH POSE IN ITS OWN LIST'S COLORS, what is left to refuse
+          # is a sprite told to follow those lists (Object#follows_each), where the build cannot
+          # do that yet (Console::Description#pose_lists).
+          def sprites_following_lists(program, console)
+            return [] if console.poses_follow_lists?
+
+            Stacking.objects_in_draw_order(program).select(&:follows_each).map do |node|
+              Finding.new(check: NAME, severity: :error, node: node, message: following_message(node, console))
+            end
+          end
+
+          def following_message(node, console)
+            lists = node.follows_each.map { |name| "#{name}: :#{name}" }.join(", ")
+            "#{SpriteWords.owner_capitalized(node)} shows pictures that have different `colors:` lists, and it " \
+              "was told to follow them with `draw_with({ #{lists} })`. The #{console.title} build does not make " \
+              "that yet. It draws each picture in the colors of its own list. To fix this, give all the pictures " \
+              "of the #{SpriteWords.member_word(node)} the same `colors:` list. Then tell it to `draw_with` that list."
+          end
+
           # Each different list this sprite's pictures were given, with the first picture given
           # it. A picture given none is filed under nil. A pose naming no declared picture is
           # left out: that is a different mistake, with words of its own.
@@ -53,9 +81,9 @@ module VBlank
             node.poses.uniq.select { |pose| lists.key?(pose) }.group_by { |pose| lists[pose] }.transform_values(&:first)
           end
 
-          def message(node, by_list, list_names)
-            "#{SpriteWords.owner_capitalized(node)} #{disagreement_sentence(by_list, list_names)} The console draws all " \
-              "the pictures of one sprite from one list of colors.#{pool_note(node)} To fix this, give all " \
+          def message(node, by_list, list_names, console)
+            "#{SpriteWords.owner_capitalized(node)} #{disagreement_sentence(by_list, list_names)} The #{console.title} " \
+              "build draws all the pictures of one sprite from one list of colors.#{pool_note(node)} To fix this, give all " \
               "its pictures the same `colors:` list. Or give none of them a `colors:` list. Then the " \
               "framework makes the list. Or use one #{SpriteWords.member_word(node)} for the pictures of each list. " \
               "To change the colors of one #{SpriteWords.member_word(node)}, tell " \

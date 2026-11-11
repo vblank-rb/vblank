@@ -1265,12 +1265,24 @@ module VBlank
         # +follows+ names a ColorList it is drawn with for good, from power-on, its pictures drawn
         # in that list's own colours: its own colours are then the list's, and a target whose sprites
         # and backgrounds share one table of colours needs no place in it for them. Absent otherwise.
+        #
+        # +follows_each+, on a thing whose poses are drawn from several lists, names the ColorLists
+        # among them that it follows for good, from power-on: a pose drawn from one of those is shown
+        # in what that list holds now, and a pose drawn from any other list in the colours it was
+        # drawn in. Such a thing has no +recolors+: which colours it shows is settled by the pose
+        # showing and what each list holds, with no number of its own. Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
-                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name
+                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list
+
+        # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
+        # or nil for a pose that is shown as it was drawn.
+        def list_followed_by_pose(colors_name)
+          colors_name if colors_name && follows_each&.include?(colors_name)
+        end
       end
 
       class OnTimer

@@ -78,7 +78,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape.
+- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: the same as on the Advance.
 - `picture_groups` — works: the same as on the Advance.

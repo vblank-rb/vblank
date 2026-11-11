@@ -1067,6 +1067,8 @@ module VBlank
           # has a row for every set it can hold, the ones it was declared with first, and the
           # set it holds now picks which of those rows (Reference#colors_held_by).
           def picture_drawn(obj, pose)
+            return picture_following_pose_lists(obj, pose) if obj.follows_each
+
             lists = Array(obj.recolors)
             sets = [[nil], *lists.map { |colors| colors.is_a?(Symbol) ? sets_held_by(colors) : [colors] }]
             rows = sets.flatten(1).flat_map { |colors| obj.poses.map { |name| image_number(name, colors) } }
@@ -1075,6 +1077,27 @@ module VBlank
 
             row = row_drawn_with(obj, lists, sets)
             Statements::Index.new(pictures, call("rg_add", call("rg_mul", row, Statements::Int.new(obj.poses.length)), pose))
+          end
+
+          # The same for a sprite whose poses are drawn from several lists, some of which it follows
+          # (Object#follows_each, Reference#object_color_list). A pose drawn from a list it follows
+          # has a picture for every set that list can hold, the declared one first; any other pose
+          # has its one picture. They are kept one pose after another, so the picture drawn is
+          # where the pose's pictures start plus the set its own list holds now, which is nothing
+          # for a pose that follows no list.
+          def picture_following_pose_lists(obj, pose)
+            followed = obj.poses.map { |name| obj.list_followed_by_pose(picture_named(name).colors_name) }
+            pictures = obj.poses.zip(followed).map do |name, list|
+              list ? sets_held_by(list).map { |colors| image_number(name, colors) } : [image_number(name)]
+            end
+            starts = pictures.each_with_object([0]) { |held, so_far| so_far << (so_far.last + held.length) }.first(pictures.length)
+            lists = followed.compact.uniq
+            list_of_pose = Statements::Index.new(drawing_array("pose_lists", "int32_t", followed.map { |list| lists.index(list) || -1 }), pose)
+            at = lists.each_with_index.reduce(Statements::Index.new(drawing_array("pose_starts", "int32_t", starts), pose)) do |so_far, (list, number)|
+              held = call("rg_place_of_choice", held_colors(list), Statements::Int.new(sets_held_by(list).length - 1))
+              call("rg_add", so_far, call("rg_mul", call("rg_eq", list_of_pose, Statements::Int.new(number)), held))
+            end
+            Statements::Index.new(drawing_array("pose_pictures", "int32_t", pictures.flatten), at)
           end
 
           # Which row of its pictures a sprite is on: the first row of the list it is drawn with

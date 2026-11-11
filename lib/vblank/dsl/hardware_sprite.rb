@@ -395,7 +395,22 @@ module VBlank
       #
       # A number outside the set draws it in its own colours. The change shows on the frame
       # the sprite's position and pose next do, never before or after them.
+      #
+      # A SPRITE WHOSE POSES ARE DRAWN FROM SEVERAL LISTS shows each pose in its own list's colours,
+      # and no one other list lines up with them all. It can FOLLOW its lists: name each list it is
+      # to follow, drawn with itself, and a pose drawn from that list shows what the list holds now,
+      # whatever the game sets it to hold with `recolor`. A list left out stays as drawn.
+      #
+      #   part.draw_with({ title_1: :title_1, title_2: :title_2 })
+      #   part.draw_with(poses.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
       def draw_with(which, showing: nil)
+        if which.is_a?(Hash)
+          subject = "The sprite :#{@object_node.declared || @poses.first}"
+          one_list = @builder.follow_pose_lists(@object_node, which, poses: @poses, showing: showing, subject: subject)
+          return self unless one_list
+
+          which = one_list
+        end
         @recolors ||= begin
           @colors_var = :"#{@object_name}_colors"
           @builder.make_object_recolorable(@object_node, @colors_var)

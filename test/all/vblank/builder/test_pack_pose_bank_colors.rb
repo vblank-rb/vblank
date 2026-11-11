@@ -11,28 +11,36 @@ require "made_up_original_layouts"
 # the pieces, then eight bytes a piece), and its tile word holds the bank in bits 13 and 14, the
 # console's four lines of colours. The answer key is the made-up data: each piece's tile in the
 # colours of the bank its word names.
-class TestPackPoseBankColors < Minitest::Test
+#
+# The made-up original and its games, shared with the Genesis's own tests of one sprite facing
+# frames of different banks (test/console/genesis/vblank/builder/test_pack_pose_bank_colors_on_the_genesis.rb).
+module PackPoseBankColorGames
+  include SharedConstants
+
+  # Every constant here is made shareable where it is assigned: a test may play in a Ractor, and
+  # the test helper freezes the constants a test class declares, not a module's.
+  #
   # Four colours a tile, so the Game Boy Color can show them too.
-  TILES = [
+  TILES = Ractor.make_shareable([
     (0...64).map { |at| 1 + (((at % 8) + (2 * (at / 8))) % 3) },
     (0...64).map { |at| (at / 8).even? ? 1 + ((at % 8) / 3) : 3 }
-  ].freeze
+  ])
   # Four banks of sixteen colours, each place a colour of its own in each bank, every one a colour
   # the Genesis shows exactly.
   TURNS = [0, 7, 3, 5].freeze
-  BANKS = TURNS.map { |turn| MadeUpOriginalLayouts::PALETTE.rotate(turn) }.freeze
-  OTHER = MadeUpOriginalLayouts::PALETTE.rotate(11).freeze
+  BANKS = Ractor.make_shareable(TURNS.map { |turn| MadeUpOriginalLayouts::PALETTE.rotate(turn) })
+  OTHER = Ractor.make_shareable(MadeUpOriginalLayouts::PALETTE.rotate(11))
 
-  FRAME = VBlank::Original::FrameLayout.new(
+  FRAME = Ractor.make_shareable(VBlank::Original::FrameLayout.new(
     piece_bytes: 8, counted: true, count_bytes: 2, high_byte_first: true,
     y_at: 0, x_at: 6, position_bytes: 2, tile_at: 4, tile_bytes: 2, tile_bits: 11,
     flags_at: 4, flags_bytes: 2, mirrored_bit: 11, upside_down_bit: 12, bank_bit: 13, bank_bits: 2,
     size_at: 2, columns_bit: 2, rows_bit: 0, size_bits: 2, tile_order: :down_columns
-  )
+  ))
 
   # A frame of two pieces of one tile each, side by side about the object's place: tile 0 left of
   # it and tile 1 right, each in the bank given. The word's top bit, the priority, is set too.
-  FRAME_OF = ->(left_bank, right_bank) do
+  def self.frame_of(left_bank, right_bank)
     pieces = [[-8, 0, left_bank], [0, 1, right_bank]].map do |x, tile, bank|
       [-8, 0, 0x5A, tile | (bank << 13) | 0x8000, x].pack("s>CCns>")
     end
@@ -43,7 +51,7 @@ class TestPackPoseBankColors < Minitest::Test
   IN_BANK_1 = 0
   IN_BANK_2 = FRAME_BYTES
   IN_TWO_BANKS = FRAME_BYTES * 2
-  FRAMES = (FRAME_OF.(1, 1) + FRAME_OF.(2, 2) + FRAME_OF.(1, 3)).freeze
+  FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3)).freeze
 
   COLORS_AT = 0x40
   FRAMES_AT = 0x100
@@ -113,6 +121,10 @@ class TestPackPoseBankColors < Minitest::Test
 
   # +colors+ as a `colors` list, its first place see-through.
   private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
+end
+
+class TestPackPoseBankColors < Minitest::Test
+  include PackPoseBankColorGames
 
   def test_each_frame_is_drawn_in_the_colors_of_the_bank_its_pieces_name
     Dir.mktmpdir do |folder|
@@ -156,9 +168,11 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # ONE SPRITE IS DRAWN FROM ONE LIST on every console (Guardrails::Checks::PosesWithDifferentColors),
-  # so a sprite whose poses are frames of different banks is refused by every run, naming each
-  # pose's list, which the game did not write down, and the way round it: a sprite for each list.
+  # ONE SPRITE IS DRAWN FROM ONE LIST where the console's build keeps one for a whole sprite
+  # (Guardrails::Checks::PosesWithDifferentColors), as the Advance's does. So a sprite whose poses
+  # are frames of different banks is refused there, naming each pose's list, which the game did not
+  # write down, and the way round it: a sprite for each list. No run's player plays a refused game,
+  # so it is the interpreter by name, the program built for the Advance.
   def test_a_sprite_whose_poses_are_frames_of_different_banks_is_refused_naming_their_lists
     test = self
     Dir.mktmpdir do |folder|
@@ -166,7 +180,8 @@ class TestPackPoseBankColors < Minitest::Test
         test.declare_poses_for(self, pack)
         sprite :both, at: [40, 40], frames: %i[first second], rate: 8
       end
-      error = assert_raises(Reference::ProgramError, VBlank::IR::Guardrails::ValidationError) { game_player.run(program, frames: 2) }
+      program = program.copy.tap { |copy| copy.console = :gba }
+      error = assert_raises(Reference::ProgramError) { Reference.new.run(program, frames: 2) }
 
       assert_includes error.message, "sprite :both"
       assert_includes error.message, ":first is drawn from :palette_1"

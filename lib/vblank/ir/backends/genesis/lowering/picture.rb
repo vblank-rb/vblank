@@ -371,9 +371,29 @@ module VBlank
             # whatever the list holds, and its own colours are the list's as declared. So it is cut against the
             # list's palette, and keeps no palette for its own colours: a title's sprite and its picture, both
             # drawn with the list, then take one of the four between them.
+            #
+            # A SPRITE WHOSE POSES ARE DRAWN FROM SEVERAL LISTS (Object#follows_each) follows, for each pose,
+            # the list that pose is drawn from. The video chip reads a piece's palette from the piece's own
+            # entry in the sprite table, two bits beside its tile, and the cartridge writes that entry from
+            # the pose's pieces every frame. So each pose's picture is cut against its own list's palette,
+            # and the sprite changes palette as it changes pose with no work of its own: the list's write
+            # in the blank is what changes its colours.
             def followed_list_of(name)
-              lists = @objects.values.select { |obj| obj.poses.include?(name) }.map(&:follows).uniq
-              lists.first if lists.length == 1
+              drawn_from = picture_named(name).colors_name
+              showing = @objects.values.select { |obj| obj.poses.include?(name) }
+              lists = showing.map { |obj| obj.follows || obj.list_followed_by_pose(drawn_from) }.uniq
+              return lists.first if lists.length == 1
+
+              refuse_followed_by_some!(name, drawn_from) if showing.any? { |obj| obj.list_followed_by_pose(drawn_from) }
+            end
+
+            # One picture, shown by a sprite that follows its list and by a sprite that does not: the two
+            # would need the picture's pieces to name two palettes.
+            def refuse_followed_by_some!(name, list)
+              raise NotMadeYet.new("The picture :#{name} is drawn from the list of colors :#{list}. One sprite that shows " \
+                                   "it follows that list, and another sprite does not. The Genesis build does not make " \
+                                   "that yet. To fix this, tell each sprite that shows :#{name} to follow :#{list}, like " \
+                                   "`draw_with({ #{list}: :#{list} })`.", part: "the picture")
             end
 
             # The colours of the picture's own list, see-through left out.

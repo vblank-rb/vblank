@@ -244,8 +244,10 @@ module VBlank
           )
         end
 
-        # What the console cannot do at all, and the layers one screen cannot have, refused in the
-        # words a game's build refuses them in (Console::Answers#refusals, Checks::LayerRefusals). A
+        # What the console cannot do at all, the layers one screen cannot have, and a sprite of
+        # several lists of colours its build does not make, refused in the
+        # words a game's build refuses them in (Console::Answers#refusals, Checks::LayerRefusals,
+        # Checks::PosesWithDifferentColors). A
         # program handed straight to a lowering, as a test's is, never passes the build's checks;
         # and one that names no console, or another, is asked about as this one's. It reads every
         # step of the program, and a build's tries share one plan (BuildCache), so a program found
@@ -255,7 +257,8 @@ module VBlank
 
           refused = Console.for(@console.name).answers.refusals(@program.walk.to_a, @console).first
           asked = @program.console == @console.name ? @program : @program.copy.tap { |copy| copy.console = @console.name }
-          refusal = refused&.words || Guardrails::Checks::LayerRefusals.message(asked)
+          refusal = refused&.words || Guardrails::Checks::LayerRefusals.message(asked) ||
+                    Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(asked)
           raise @error, refusal if refusal
 
           @console_lacks_nothing = true

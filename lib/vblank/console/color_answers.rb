@@ -144,7 +144,9 @@ module VBlank
         upside_down: works,
         blit: works("on a painted screen, its colours count towards the four colours of each square that it covers."),
         sprite: works("a sprite is made of the console's 8×8 pieces, forty at once and ten on any one " \
-                      "row of the screen. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is " \
+                      "row of the screen. A sprite whose poses are drawn from different lists of colors shows " \
+                      "each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+                      "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is " \
                       "named, every piece is 8×16: two 8×8 squares one above the other are one of the forty, " \
                       "and a square with none under it is one too, with an empty lower half. " \
                       "`scale`, `face_angle` and `turn` are refused: a Game Boy " \

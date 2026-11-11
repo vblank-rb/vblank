@@ -423,11 +423,13 @@ module VBlank
       def finalize_changing_color_lists
         places = places_for_lists_in_use
         shared = shared_lists_in_use(places)
+        followed_by_poses = keep_changing_lists_poses_follow
         return if @changing_color_lists.empty? && shared.empty?
 
         @changing_color_lists.each do |name, list|
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
-          refuse_changing_list_without_sprites!(name) if users.empty? && @backdrop_list&.name != name
+          followed = @backdrop_list&.name == name || followed_by_poses.include?(name)
+          refuse_changing_list_without_sprites!(name) if users.empty? && !followed
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
           drawn_in_list = ->(pose) { list_drawn_from(pose).last == declared_colors(name) }
           users.each { |user| (boot = user.follow_changing_list_for_good(name, drawn_in_list)) && at_boot(boot) }
@@ -439,6 +441,18 @@ module VBlank
         held.merge!(places)
         @sprite_recolors.each { |recolors| recolors.name_changing_lists!(held) }
         write_changed_colors_between_frames(@changing_color_lists.merge(shared))
+      end
+
+      # THE LISTS A SPRITE OF SEVERAL LISTS FOLLOWS (Images#follow_pose_lists), kept on each such
+      # object only where the game changes the list: a list never told `recolor` holds the colours it
+      # was declared with for good, which are the colours its poses were drawn in, so following it
+      # is drawing them as drawn and the object names nothing. Hands back every list still followed.
+      def keep_changing_lists_poses_follow
+        (@pose_list_followers || []).uniq.flat_map do |node|
+          kept = node.follows_each.select { |name| @changing_color_lists.key?(name) }
+          node.follows_each = kept.empty? ? nil : kept
+          kept
+        end.uniq
       end
 
       # THE LISTS THAT LISTS NEVER IN USE TOGETHER TAKE TURNS IN, from +places+ (see

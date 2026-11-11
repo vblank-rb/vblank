@@ -122,7 +122,8 @@ module VBlank
         blit: works,
         sprite: works("a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is " \
                       "no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a " \
-                      "textured shape."),
+                      "textured shape. A sprite whose poses are drawn from different lists of colors shows each " \
+                      "pose in the colors of its own list."),
         draw_in_order: works,
         hide_sprites: works,
         picture_groups: works,

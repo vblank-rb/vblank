@@ -3108,11 +3108,19 @@ module VBlank
         # THE COLOURS AN OBJECT IS DRAWN IN THIS FRAME, when it is told to draw with another
         # list: each place of the picture's own list shows the colour at the same place of
         # that list. nil draws the picture as it is stored.
-        def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj))
+        def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj, image))
 
-        # The list of colours an object is told to draw with now, or nil for none. This is chosen
-        # where the sprites are placed, since a game can change the number later in the pass.
-        def object_color_list(obj)
+        # The list of colours an object showing the picture +image+ is told to draw with now, or nil
+        # for none. This is chosen where the sprites are placed, since a game can change the number
+        # later in the pass.
+        #
+        # An object whose poses are drawn from several lists has no number: a pose drawn from a list
+        # it follows (Object#follows_each) is drawn with what that list holds now, and any other
+        # pose as it is stored, which is in its own list's colours.
+        def object_color_list(obj, image)
+          followed = obj.follows_each && image && obj.list_followed_by_pose(@bitmaps.fetch(image).colors_name)
+          return colors_held_by(followed) if followed
+
           lists = obj.recolors
           return nil if lists.empty?
 
@@ -3231,7 +3239,7 @@ module VBlank
             obj = on[:object]
             image = on[:picture]
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
-                     level: object_level(obj), color_list: object_color_list(obj), left_out: on[:left_out] }
+                     level: object_level(obj), color_list: object_color_list(obj, image), left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
             snap
           end

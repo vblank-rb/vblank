@@ -63,7 +63,9 @@ module VBlank
                        "not make it yet."),
         colors_in_use: works, colors_name_of: works, color_walk: works, mirror: works, upside_down: works, blit: works,
         sprite: works("a sprite with `over_picture: true` on a painted screen is the console's own sprite. The " \
-                      "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K."),
+                      "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K. " \
+                      "A sprite whose poses are drawn from different lists of colors is refused: this build " \
+                      "draws all the poses of one sprite from one list. Use one sprite for the poses of each list."),
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
