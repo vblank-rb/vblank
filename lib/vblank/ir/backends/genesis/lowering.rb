@@ -1289,9 +1289,11 @@ module VBlank
             known = folded(condition)
             return (@asm.bra(label) if known.zero?) if known
 
-            if binop?(condition, :and)
-              # The interpreter works both sides out; the second is skipped here when the first does
-              # not hold, which is the same thing, since working a side out changes nothing.
+            if binop?(condition, :and) && Unchanging.value?(condition.rhs) { |part| folded(part) }
+              # The interpreter works both sides out (Reference#eval_binop); the second is skipped here
+              # when the first does not hold only where working it out changes nothing (IR::Unchanging). A
+              # side that reads a list can stop the game (an index out of range), so it is worked out
+              # whatever the first side gives, by the value below.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
             elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)

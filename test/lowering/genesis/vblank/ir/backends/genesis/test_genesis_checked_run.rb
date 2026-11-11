@@ -97,6 +97,30 @@ class TestGenesisCheckedRun < Minitest::Test
     assert_match(/index 3 is out of range for list :body \(valid indexes are 0\.\.0\)/, error.message)
   end
 
+  # `&` and `|` work out both sides (TestDSLExpression): played through a checked run, the interpreter
+  # stops first and hides whether the cartridge did too, so the cartridge is played alone here.
+  def test_the_cartridge_works_out_both_sides_of_and_and_or
+    games = [
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits > 100) & (items[3] > 0) }
+      end,
+      proc do
+        items = list :items, capacity: 4
+        items.push 7
+        hits = 0
+        game_loop { hits += 1 if (hits < 100) | (items[3] > 0) }
+      end
+    ]
+    games.each do |game|
+      error = assert_raises(VBlank::IR::ProgramError) { Genesis::HeadlessRun.new.run(program_of(&game), frames: 3) }
+
+      assert_match(/index 3 is out of range for list :items/, error.message)
+    end
+  end
+
   def test_buttons_held_and_pressed_reach_the_game_on_the_frames_they_are_held
     run = Genesis::CheckedRun.new
     run.input_each_frame { |frame| frame % 3 == 1 ? %i[a right] : [] }.run(program_of do
