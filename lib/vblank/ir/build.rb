@@ -614,11 +614,12 @@ module VBlank
       # +colors_name+ names the list of colours +colors+ is, where the game declared it with `colors`
       # (see Assets::Image#colors_name).
       # +pieces+ is a picture made of 8x8 pieces, front-most first (Assets::Image#pieces), or nil.
+      # +piece_groups+ is how many of them each bigger piece was cut into (Assets::Image#piece_groups), or nil.
       def bitmap(name, width:, height:, pixels:, transparent: nil, colors: nil, places: nil, colors_name: nil, pieces: nil,
-                 shading: nil, shading_places: nil, places_from_pack: false)
+                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil)
         Nodes.build(:bitmap, name: name, width: width, height: height,
                           pixels: pixels, transparent: transparent, colors: colors, places: places, colors_name: colors_name,
-                          pieces: pieces, shading: shading, shading_places: shading_places,
+                          pieces: pieces, piece_groups: piece_groups, shading: shading, shading_places: shading_places,
                           places_from_pack: places_from_pack)
       end
 

@@ -530,7 +530,7 @@ module VBlank
           node = Build.bitmap(name, width: turned.width, height: turned.height,
                                     pixels: turned.pixels, transparent: turned.transparent,
                                     colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
-                                    pieces: turned.pieces)
+                                    pieces: turned.pieces, piece_groups: turned.piece_groups)
           read_turned_picture_from_start_file(node, source, way)
           record_picture(node)
           box_x, box_y, box_w, box_h = @image_bounds[source] || [0, 0, turned.width, turned.height]
@@ -625,7 +625,8 @@ module VBlank
       # The picture still keeps colors for everything that draws it; the places ride along
       # beside them, and only the two things that read a pixel as a NUMBER — the console's
       # sprite and tile storage, and swapping in another list of colors — look at them.
-      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false)
+      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false,
+                              piece_groups: nil)
         positive_dims!(name, width, height)
         table = color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
@@ -635,7 +636,7 @@ module VBlank
         record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
                                             places: places.pack("C*"), colors_name: colors_name, pieces: pieces,
-                                            places_from_pack: places_from_pack))
+                                            places_from_pack: places_from_pack, piece_groups: piece_groups))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
@@ -686,7 +687,10 @@ module VBlank
       # pictures of different pieces can be one size. A console that draws sprites
       # from pieces draws it from these ones, rather than cutting the picture on an 8-pixel grid,
       # which can put more pieces on one line than it shows.
-      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil)
+      #
+      # +piece_groups+ is for pieces cut from bigger ones (PackPoses): how many of them each bigger
+      # piece became, in their order (IR::Assets::Image#piece_groups).
+      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil)
         refuse_bad_pieces!(name, pieces, colors)
         refuse_bad_pieced_size!(name, size)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
@@ -706,7 +710,7 @@ module VBlank
         end
         kept = pieces.map { |dx, dy, own| [dx, dy, own.pack("C*")] }
         define_placed_image(name, places: places, width: width, height: height, colors: colors,
-                                  colors_name: colors_name, pieces: kept)
+                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups)
       end
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE

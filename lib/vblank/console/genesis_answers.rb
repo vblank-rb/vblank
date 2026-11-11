@@ -136,6 +136,13 @@ module VBlank
         blit: works,
         sprite: works("a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture " \
                       "of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. " \
+                      "The build draws a pose read from the frames of a data pack as the pieces of its frame. " \
+                      "Each piece of the frame is one piece of the console. The video memory keeps each 8×8 " \
+                      "square of picture one time. Every sprite and background that shows the square uses it, " \
+                      "mirrored or upside down too. So a screen drawn from one slot of tiles uses each tile of " \
+                      "the slot one time. If the pictures of a screen " \
+                      "need more squares than the video memory holds, the build stops. It says how many they " \
+                      "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
                       "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \

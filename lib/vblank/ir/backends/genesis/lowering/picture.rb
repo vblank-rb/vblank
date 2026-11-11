@@ -186,7 +186,7 @@ module VBlank
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
               return make_art_by_scene(poses) if @scene_tiles
 
-              poses.each { |name| make_sprite_picture(name) }
+              make_sprite_pictures(poses)
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
             rescue Art::TooManyLists
@@ -198,18 +198,28 @@ module VBlank
                                    "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
             end
 
-            # The sprite picture +name+, made into pieces (Art#sprite_picture) from the tiles of the scene that
-            # alone shows it, in a game whose sprite pictures take turns (+scene_tiles+ of :sprites).
-            def make_sprite_picture(name)
+            # The sprite pictures +names+, made into pieces, each from the tiles of the scene that alone shows
+            # it in a game whose sprite pictures take turns (+scene_tiles+ of :sprites). Every one is cut
+            # first, in the order given, which is the order their colours take palettes in. Then, for the
+            # pictures that share a room of video memory, the runs of tiles their pieces name go in the
+            # longest first (Art#store_piece_runs_longest_first), and each picture is given its tiles.
+            def make_sprite_pictures(names)
+              names.each { |name| cut_sprite_picture(name) }
+              names.group_by { |name| tiles_scene_of_picture(name) }.each do |scene, together|
+                @art.with_tiles_of(scene) { @art.store_piece_runs_longest_first(together) }
+              end
+              names.each { |name| @art.with_tiles_of(tiles_scene_of_picture(name)) { @art.sprite_picture(name) } }
+            end
+
+            # The sprite picture +name+ cut into pieces (Art#cut_sprite_picture), from the palette it is drawn from.
+            def cut_sprite_picture(name)
               image = @cache.image(picture_named(name))
-              @art.with_tiles_of(tiles_scene_of_picture(name)) do
-                if (list = followed_list_of(name))
-                  @art.sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-                elsif recolored?(name)
-                  @art.sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
-                else
-                  @art.sprite_picture(name, image)
-                end
+              if (list = followed_list_of(name))
+                @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+              elsif recolored?(name)
+                @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+              else
+                @art.cut_sprite_picture(name, image)
               end
             end
 
@@ -232,9 +242,9 @@ module VBlank
               refuse_hand_over_inside_test! if @scene_tiles == :sprites
               shared_poses, own_poses = poses.partition { |name| tiles_scene_of_picture(name).nil? }
               shared_backgrounds, own_backgrounds = @backgrounds.partition { |bg| tiles_scene_of(bg).nil? }
-              shared_poses.each { |name| make_sprite_picture(name) }
+              make_sprite_pictures(shared_poses)
               shared_backgrounds.each { |bg| make_background_art(bg) }
-              own_poses.each { |name| make_sprite_picture(name) }
+              make_sprite_pictures(own_poses)
               own_backgrounds.each { |bg| make_background_art(bg) }
               @objects.each_value { |obj| recolor_palettes(obj) }
             end
@@ -495,6 +505,7 @@ module VBlank
             def art_sections
               return [] unless places_sprites?
 
+              @art.refuse_too_many_tiles!
               data = M68000.new("art", holds: ART)
               data.label("art colors")
               data.data_words(@art.color_memory)
@@ -576,9 +587,9 @@ module VBlank
                 image = @cache.image(picture_named(bg.tiles.fetch(tile)))
                 @art.with_tiles_of(tiles_scene_of(bg)) do
                   if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
-                    @art.background_cell(image)
+                    @art.background_cell(image, of: bg.name)
                   else
-                    @art.background_cell(image, palette: recolored_palette(bg, image))
+                    @art.background_cell(image, of: bg.name, palette: recolored_palette(bg, image))
                   end
                 end
               end

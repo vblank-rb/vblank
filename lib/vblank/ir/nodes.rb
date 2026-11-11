@@ -474,8 +474,12 @@ module VBlank
         declaration!
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
-                 colors: :list, places: :text, colors_name: :name, pieces: :list,
+                 colors: :list, places: :text, colors_name: :name, pieces: :list, piece_groups: :list,
                  shading: :name, shading_places: :text, from_file: :file_picture, places_from_pack: :flag
+
+        # +piece_groups+ is, for a picture of pieces made from bigger pieces, how many of +pieces+
+        # each bigger piece was cut into, in their order (Assets::Image#piece_groups). Absent on
+        # every other picture.
 
         # +places_from_pack+ is true for a picture whose places are a data pack slot's tiles, kept as the
         # original keeps them (Assets::Image#places_from_pack).

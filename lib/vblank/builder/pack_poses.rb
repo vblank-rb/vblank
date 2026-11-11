@@ -20,7 +20,9 @@ module VBlank
     # BUILT ALL-IN-ONE, the pieces are read here, and the pose is the picture of pieces a port
     # would have written by hand (`image ..., pieces:`), drawn from the tiles each piece names,
     # turned as it says: a piece of several tiles is the tiles its layout names, turned as one. So every
-    # console draws it from those pieces, and every build draws it as any pose.
+    # console draws it from those pieces, and every build draws it as any pose. A picture's pieces
+    # are 8x8 or 16x16, so a bigger piece of the frame is cut, and the picture keeps which of its
+    # pieces were one (IR::Assets::Image#piece_groups) for a console that draws a piece that big.
     #
     # COLOURS FROM THE FRAME. A console's sprite entry names the bank of colours a piece is drawn
     # from, and which bank a frame uses is in the player's copy. Where the frame's layout says
@@ -64,13 +66,23 @@ module VBlank
           read = pieces_of_bank(name, read, opts[:bank]) if opts.key?(:bank)
           colors = pose_bank_list!(name, opts, read)
         end
-        pieces = read.flat_map do |piece|
+        blocks = read.map do |piece|
           pack_piece_blocks(name, piece, frame.piece_layout, tile_places).map do |left, top, places|
             [origin[0] + piece.x + left, origin[1] + piece.y + top, places]
           end
         end
+        pieces = blocks.flatten(1)
         refuse_piece_left_of_origin!(name, pieces)
-        image name, pieces: pieces, colors: colors, **(size ? { size: size } : {})
+        define_pose_of_frame_pieces(name, pieces, blocks.map(&:length), colors, size)
+      end
+
+      # The pose as a picture of +pieces+, as `image name, pieces:, colors:` makes one, which also
+      # keeps how many of them each piece of the frame was cut into (+groups+). A console whose
+      # sprite table draws a piece as big as the frame's then draws the frame's own pieces.
+      def define_pose_of_frame_pieces(name, pieces, groups, colors, size)
+        colors_name = colors if colors.is_a?(Symbol)
+        list = colors_name ? declared_colors_for_image!(name, colors_name) : opts_with_pack_slots_read(name, colors: colors)[:colors]
+        define_pieced_image(name, pieces: pieces, colors: list, colors_name: colors_name, size: size, piece_groups: groups)
       end
 
       # Whether the pose takes its colours from the bank its frame's pieces name: its layout says

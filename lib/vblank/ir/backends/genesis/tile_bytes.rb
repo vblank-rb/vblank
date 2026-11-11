@@ -12,6 +12,21 @@ module VBlank
           def self.of(places)
             places.each_slice(2).map { |left, right| (left << 4) | right }.pack("C*")
           end
+
+          ROW_BYTES = 4
+          ROWS = 8
+          BYTES = ROW_BYTES * ROWS
+
+          # The tile +bytes+ read right to left: each row's bytes in the other order, and the two
+          # pixels of each byte changed over.
+          def self.mirrored(bytes)
+            bytes.unpack("C*").each_slice(ROW_BYTES).flat_map { |row| row.reverse.map { |both| ((both & 0x0F) << 4) | (both >> 4) } }.pack("C*")
+          end
+
+          # The tile +bytes+ read bottom to top: its rows in the other order.
+          def self.upside_down(bytes)
+            (0...ROWS).map { |row| bytes.byteslice(row * ROW_BYTES, ROW_BYTES) }.reverse.join.b
+          end
         end
       end
     end

@@ -12,17 +12,29 @@ module ManyTiles
   # An 8×8 tile drawn in all four places of its list: a quarter of the tile each.
   QUARTERS = Array.new(64) { |i| 1 + ((i % 8) / 4) + (2 * ((i / 8) / 4)) }.freeze
 
+  # THE CORNER THAT TELLS A TILE FROM ANOTHER ONE TURNED ROUND: three pixels at the bottom left,
+  # [column, row] each, drawn in every tile. A console that turns a tile as it draws it keeps one
+  # tile for two that are each other mirrored or upside down, and a number in binary read backwards
+  # is another number. With this corner, a tile turned any way has it in another corner, where no
+  # other tile here has it unless the two are the same tile.
+  CORNER = Ractor.make_shareable([[0, 7], [1, 7], [0, 6]])
+
   module_function
+
+  # Whether the pixel at +col+, +row+ of the tile numbered +bits+ is drawn: a bit of the number,
+  # along its first rows, or the corner.
+  def drawn?(bits, col, row) = bits[(row * 8) + col] == 1 || CORNER.include?([col, row])
 
   # Declare +count+ tiles in +builder+, as images named +prefix+ and a number and a tileset named
   # +prefix+, each one +color+ on black in a pattern no other tile numbered +from+ to +from+ +
-  # +count+ has: its number in binary, a pixel a bit, along its first rows. Hands back the map
-  # that shows each of them once, ACROSS to a row, keyed by its number in the set.
+  # +count+ has, however either is turned: its number in binary, a pixel a bit, along its first
+  # rows, and CORNER. Hands back the map that shows each of them once, ACROSS to a row, keyed by its
+  # number in the set.
   def declare(builder, prefix, count, color, from: 0)
     keys = (0...count).to_h do |k|
       name = :"#{prefix}_#{k}"
       bits = from + k
-      art = (0...8).map { |row| (0...8).map { |col| bits[(row * 8) + col] == 1 ? "#" : "." }.join }.join("\n")
+      art = (0...8).map { |row| (0...8).map { |col| ManyTiles.drawn?(bits, col, row) ? "#" : "." }.join }.join("\n")
       builder.image(name, "#" => color, "." => :black) { art }
       [k, name]
     end
@@ -44,7 +56,7 @@ module ManyTiles
       art = (0...across).map do |y|
         (0...across).map do |x|
           bits = first + ((y / 8) * PICTURE_SQUARES) + (x / 8)
-          bits[((y % 8) * 8) + (x % 8)] == 1 ? "#" : "."
+          ManyTiles.drawn?(bits, x % 8, y % 8) ? "#" : "."
         end.join
       end.join("\n")
       name = :"#{prefix}_#{which}"
