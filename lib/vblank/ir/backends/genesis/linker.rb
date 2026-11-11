@@ -93,8 +93,22 @@ module VBlank
             when :abs32 then bytes[fixup.offset, 4] = [target].pack("N")
             when :abs16 then bytes[fixup.offset, 2] = [short_address(target, fixup, placed)].pack("n")
             when :rel16 then bytes[fixup.offset, 2] = [distance(target, fixup, placed)].pack("n")
+            when :rel8 then bytes.setbyte(fixup.offset + 1, near_distance(target, fixup, placed))
             else raise Error, "unknown fixup #{fixup.kind}"
             end
+          end
+
+          # A near branch's distance is counted from the word after it and is one signed byte, in the
+          # low byte of the instruction. Nought there means a long branch, whose distance follows, so
+          # a near branch cannot go to the instruction after it.
+          def near_distance(target, fixup, placed)
+            far = target - (placed.address + fixup.offset + 2)
+            unless far.between?(-128, 127) && !far.zero?
+              raise Error, "#{placed.section.name}: a near branch to #{fixup.label} is #{far} bytes away, and it reaches " \
+                           "-128 to 127 and not 0"
+            end
+
+            far & 0xFF
           end
 
           # A 16-bit address is taken as signed and widened, so it reaches the first 32K of addresses

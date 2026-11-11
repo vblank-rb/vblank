@@ -396,7 +396,7 @@ module VBlank
               asm.label(name)
               emit_palette_chosen(asm) if recolored
               asm.cmp(:l, asm.post(0), asm.d(1))
-              asm.branch(:cc, "#{name}_done")
+              asm.branch_near(:cc, "#{name}_done")
               asm.add(:w, asm.d(1), asm.d(1))
               asm.add(:w, asm.d(1), asm.d(1))
               asm.movea(:l, asm.idx(0, 0, 1, :w), asm.a(0)) # the picture
@@ -405,17 +405,17 @@ module VBlank
               asm.move(:w, asm.d(2), asm.post(3))
               asm.move(:w, asm.d(3), asm.post(3)) # and where
               asm.move(:w, asm.post(0), asm.d(5)) # its pieces, less one
-              asm.branch(:mi, "#{name}_done")
+              asm.branch_near(:mi, "#{name}_done")
               asm.movea(:w, asm.post(0), asm.a(1)) # the box's left from the sprite's place
               asm.add(:l, asm.d(2), asm.a(1))
               asm.cmp(:w, asm.post(0), asm.a(1))
-              asm.branch(:cc, "#{name}_off_across")
+              asm.branch_near(:cc, "#{name}_off_across")
               asm.movea(:w, asm.post(0), asm.a(1)) # and its top
               asm.add(:l, asm.d(3), asm.a(1))
               asm.cmp(:w, asm.post(0), asm.a(1))
-              asm.branch(:cc, "#{name}_off")
+              asm.branch_near(:cc, "#{name}_off")
               asm.cmp(:w, asm.d(5), asm.d(4))
-              asm.branch(:ls, "#{name}_off") # fewer rows left than pieces
+              asm.branch_near(:ls, "#{name}_off") # fewer rows left than pieces
               asm.swap(asm.d(3))
               asm.move(:w, asm.d(4), asm.d(3))
               emit_palette_masks(asm, name) if recolored

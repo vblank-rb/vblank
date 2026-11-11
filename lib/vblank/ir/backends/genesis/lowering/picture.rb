@@ -975,7 +975,7 @@ module VBlank
               numbers = [obj.pose, obj.x, obj.y]
               numbers << obj.recolor unless obj.recolors.empty?
               if [obj.active, *numbers].all? { |number| operand_of(number) }
-                jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+                emit_jump_unless_showing(obj.active, skip)
                 emit_sprite_numbers_read(numbers)
               else
                 emit_sprite_numbers_worked_out(obj.active, numbers, skip)
@@ -990,6 +990,17 @@ module VBlank
               returns ? @asm.jmp(@asm.abs_l(routine)) : call_routine(routine)
               @asm.label(skip)
               @asm.rts if returns
+            end
+
+            # On to +skip+, the end of the sprite's placing a few instructions on, unless +active+ is 1.
+            # A sprite that shows goes on past the branch, so where +active+ is a variable the branch
+            # is a near one (M68000#branch_near).
+            def emit_jump_unless_showing(active, skip)
+              place = operand_of(active)
+              return jump_unless(Build.binop(:==, active, Build.int(1)), skip) unless place.mode == :disp
+
+              @asm.cmp(:l, @asm.imm(1), place)
+              @asm.branch_near(:ne, skip)
             end
 
             # The registers a sprite's numbers go in, in the order #emit_sprite_placing lists them: which
