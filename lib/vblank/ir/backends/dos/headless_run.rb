@@ -61,7 +61,10 @@ module VBlank
           def kit = Console.for(:dos)
 
           # The size of the screen the program was built for: its variant's, or the plain one.
-          def screen_size = kit.described_as(@places.source_program.variant).screen_size
+          def screen_size = [screen_built_for.width, screen_built_for.height]
+
+          # The screen the program was built for (DOS::Screen), worked out once for each program played.
+          def screen_built_for = (@screens ||= {}.compare_by_identity)[@places] ||= Screen.of(@places.source_program)
 
           # THE PROGRAM IS HELD AT ITS START (the kit opens it so, see Core::START_GATE_AT) and is let go with
           # the frame about to be played, so its first pass ends in the first frame the reader sees. Nothing
@@ -150,10 +153,18 @@ module VBlank
           # be that pass's picture, byte for byte. A game that stopped has shown its last picture, and the
           # card must be that one.
           def refuse_card_not_showing!(picture)
-            return if picture.nil? || @core.chained_pixels(picture.bytesize) == picture
+            return if picture.nil? || card_pixels(picture.bytesize) == picture
 
             raise CardNotSent, "the #{kit.title} program's card does not show the picture the game drew: " \
                                "a row that changed was not sent to it"
+          end
+
+          # The card's first +count+ pixels, a palette entry each, however the screen's mode keeps them in its
+          # four planes: Mode X as the emulator keeps them, the plain mode spread out (Core#chained_pixels).
+          def card_pixels(count)
+            return @core.vga_memory.byteslice(0, count) if screen_built_for.mode == :mode_x
+
+            @core.chained_pixels(count)
           end
 
           # The card showing something other than what the game drew.
@@ -215,7 +226,8 @@ module VBlank
           def entries_drawn_now
             width, height = screen_size
             sprites = @places.runtime.key?(Runtime::Sprites::PLACED)
-            drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: DOS.picture_shown_after_data(sprites: sprites))
+            after_data = DOS.picture_shown_after_data(screen_built_for, sprites: sprites)
+            drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: after_data)
             refuse_card_not_showing!(@stopped ? drawn : @picture_before)
             @picture_before = drawn
           end

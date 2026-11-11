@@ -95,7 +95,7 @@ module VBlank
             end
 
             # rt_sprites_over_picture: the picture shown made from the game's picture and the sprites placed
-            # (the three steps above). Changes every register but the segment ones.
+            # (the three steps above). Changes every register but the segment ones (Rows says what ES is then).
             def emit_over_picture(asm, memory)
               height = memory.screen.height
               placed = X86.mem(nil, memory[PLACED], size: 16)
@@ -179,9 +179,8 @@ module VBlank
               asm.mov(:cx, placed)
               asm.test(:cx, :cx)
               asm.je("rt_sprites_drawn")
-              asm.push(:es)
-              asm.mov_segment(:ax, :shown)
-              asm.mov(:es, :ax)
+              Rows.emit_push_picture_segment(asm, memory.screen)
+              Rows.emit_picture_segment(asm, memory.screen, :shown)
               asm.mov(:bp, memory[TABLE])
               asm.label("rt_sprites_draw")
               asm.push(:cx)
@@ -195,7 +194,7 @@ module VBlank
               asm.add(:bp, ENTRY_BYTES)
               asm.dec(:cx)
               asm.jne("rt_sprites_draw")
-              asm.pop(:es)
+              Rows.emit_pop_picture_segment(asm, memory.screen)
               asm.label("rt_sprites_drawn")
               asm.ret
             end

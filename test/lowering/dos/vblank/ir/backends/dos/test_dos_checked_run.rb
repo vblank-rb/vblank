@@ -208,10 +208,10 @@ class TestDOSCheckedRun < Minitest::Test
     assert_equal 4, played[:count]
   end
 
-  # A variant's screen is not made yet, so its game is refused, not built for 320 × 200 while it is told
+  # A variant whose screen is not made yet is refused, not built for 320 × 200 while it is told
   # another size.
   def test_a_game_with_a_screen_variant_is_refused_naming_the_variant
-    %i[mode_x vesa_640x480].each do |variant|
+    %i[vesa_640x480].each do |variant|
       game = VBlank.game("DOSGAME", consoles: %i[dos], variants: { dos: variant }) do
         screen :bitmap
         halt

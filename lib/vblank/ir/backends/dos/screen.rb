@@ -18,7 +18,8 @@ module VBlank
           def self.of(program)
             kit = Console.for(:dos)
             described = kit.described_as(program.variant)
-            mode = program.variant ? kit.variant(program.variant).build.fetch(:video_mode) : :mode_13h
+            # No variant, or the name that asks for none (Console::Kit#variant gives nil for both).
+            mode = kit.variant(program.variant)&.build&.fetch(:video_mode) || :mode_13h
             new(width: described.screen_width, height: described.screen_height, mode: mode,
                 cycles_a_frame: described.cycles_a_frame, cycles_a_second: described.cycles_a_second)
           end

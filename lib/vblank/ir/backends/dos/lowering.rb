@@ -157,17 +157,21 @@ module VBlank
           end
 
           # The part of the build a game with a screen variant waits for, for a test run to count skips by.
-          VARIANT_PART = "the 320 × 240 and 640 × 480 screens (variants: { dos: :mode_x } and :vesa_640x480)"
+          VARIANT_PART = "the 640 × 480 screen (variants: { dos: :vesa_640x480 })"
 
-          # A variant's screen (Console::DOSKit::DOS_VARIANTS) is not made yet: the program would set mode 13h and
-          # draw 200 rows while the game is told it has the variant's. So a game that names one is refused.
+          # The screens the runtime sets and sends a picture to (Runtime::ModeX is the 320 × 240 one's).
+          MODES_MADE = %i[mode_13h mode_x].freeze
+
+          # A variant whose screen is not made yet (Console::DOSKit::DOS_VARIANTS): the program would set
+          # another mode and draw its rows while the game is told it has the variant's. So a game that names
+          # one is refused.
           def refuse_unmade_variant!
-            return unless @program.variant
+            return if MODES_MADE.include?(@memory.screen.mode)
 
             variant = Console.for(:dos).variant(@program.variant)
             raise NotMadeYet.new("This game is for #{CONSOLE.title} with #{variant.title}. The #{CONSOLE.title} build " \
                                  "cannot make that screen yet. To fix this, remove dos: from variants: or from " \
-                                 "--variant. The game is then built for the 320 × 200 screen.",
+                                 "--variant, or use `variants: { dos: :mode_x }`, the 320 × 240 screen.",
                                  part: VARIANT_PART)
           end
 

@@ -25,7 +25,7 @@ module VBlank
 
             # rt_save_region: the patch at offset SI of the data segment filled from the game's picture, its
             # top left at x in EAX and y in ECX. On the stack, from BP: the x of its left edge, the y of the
-            # row to keep next, its width, and the rows left. Changes every register but the segment ones.
+            # row to keep next, its width, and the rows left. Changes every register but the segment ones (Rows says what ES is then).
             def emit_save(asm, screen)
               frame = ->(offset, size) { X86.mem(:bp, offset, size: size) }
               asm.label("rt_save_region")
@@ -48,10 +48,15 @@ module VBlank
               asm.inc(frame.call(4, 32))
               asm.mov(:ebx, frame.call(0, 32))
               # Where the row's first pixel is in the picture, which is used only for a pixel on the screen.
-              asm.mov(:eax, screen.width)
-              asm.imul(:eax, :ecx)
-              asm.add(:eax, :ebx)
-              asm.mov(:di, :ax)
+              if Rows.apart?(screen)
+                Rows.emit_row_start(asm, screen, :ecx)
+                asm.mov(:di, :bx)
+              else
+                asm.mov(:eax, screen.width)
+                asm.imul(:eax, :ecx)
+                asm.add(:eax, :ebx)
+                asm.mov(:di, :ax)
+              end
               asm.mov(:dx, frame.call(8, 16))
               asm.label("rt_save_region_pixel")
               asm.mov(:al, TRANSPARENT)

@@ -36,6 +36,10 @@ module VBlank
         # outlasts the retrace: the beam then follows the copy down the picture, and shows a whole pass for
         # as long as the copy keeps ahead of it, which a card too slow for that does not.
         #
+        # A screen of more pixels than a segment holds (the 320 x 240 one) keeps its picture a row a segment
+        # (Rows), and its card is sent the rows a plane at a time (ModeX). A plain screen's routines are the
+        # same instructions they were before either was written.
+        #
         # THE KEYBOARD. Each key going down or up interrupts the program (IRQ 1), and the routine the runtime
         # hands the processor for it (rt_keyboard) reads the key's scan code from port 60h and keeps two sets
         # of the game's buttons, a bit each in IR::Buttons's order: the ones down now, and the ones that went
@@ -153,6 +157,7 @@ module VBlank
           def reserve(memory, saves:, clock:, area:, sprites:, walks:)
             Fades.reserve(memory) if walks
             Sprites.reserve(memory, sprites) if sprites.positive?
+            ModeX.reserve(memory) if memory.screen.mode == :mode_x
             memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
             memory.reserve(Frame::FAULT, Frame::FAULT_BYTES)
@@ -239,19 +244,10 @@ module VBlank
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
             # The game's picture starts as the card's does once its mode is set: every pixel the first entry.
-            asm.mov_segment(:ax, :back)
-            asm.mov(:es, :ax)
-            asm.xor(:di, :di)
-            asm.mov(:cx, memory.screen.pixels / 4)
-            asm.xor(:eax, :eax)
-            asm.stos(32, rep: true)
-            if sprites
-              asm.mov_segment(:ax, :shown)
-              asm.mov(:es, :ax)
-              asm.xor(:di, :di)
-              asm.mov(:cx, memory.screen.pixels / 4)
+            ([:back] + (sprites ? [:shown] : [])).each do |picture|
+              Rows.emit_picture_segment(asm, memory.screen, picture)
               asm.xor(:eax, :eax)
-              asm.stos(32, rep: true)
+              Rows.emit_fill_picture(asm, memory.screen, "rt_start_#{picture}")
             end
             asm.push(:bx) # the letter, kept from whatever the BIOS does with BX, and from the save's start
             asm.call("rt_save_start") if saves
@@ -259,6 +255,7 @@ module VBlank
             asm.mov(:ax, Console::DOSHardware::MODE_13H)
             asm.int(0x10)
             asm.pop(:bx)
+            ModeX.emit_mode_registers(asm) if memory.screen.mode == :mode_x
             asm.mov(:dx, Console::DOSHardware::DAC_WRITE_INDEX)
             asm.xor(:al, :al)
             asm.out_to_dx(:al)
@@ -305,8 +302,7 @@ module VBlank
             asm.call("rt_sleep_until_retrace")
             asm.mov(:eax, X86.mem(nil, memory[Frame::TIMER_TICKS], size: 32))
             asm.mov(X86.mem(nil, memory[Frame::TICKS_MARK], size: 32), :eax)
-            asm.mov_segment(:ax, :back)
-            asm.mov(:es, :ax)
+            Rows.emit_picture_segment(asm, memory.screen, :back)
             asm.call("main")
             asm.jmp("rt_halt")
           end
@@ -447,8 +443,8 @@ module VBlank
             asm.mov(extended, 0)
           end
 
-          # The timer chip set to its count for the screen (timer_count) and its interrupt handed to rt_timer, the BIOS's routine kept to
-          # be called. ES is nought (the interrupt table's segment) and interrupts are off.
+          # The timer chip set to its count for the screen (timer_count) and its interrupt handed to rt_timer,
+          # the BIOS's routine kept to be called. ES is nought (the interrupt table's segment) and interrupts are off.
           def emit_timer_start(asm, memory)
             h = Console::DOSHardware
             bios = memory[Frame::BIOS_TIMER]
@@ -497,6 +493,12 @@ module VBlank
           # (+shown+, a segment's name: the game's own, or its picture with the sprites over it), and none
           # marked as changed after.
           def emit_show_picture(asm, memory, shown)
+            case memory.screen.mode
+            when :mode_x then return ModeX.emit_show_picture(asm, memory, shown)
+            when :mode_13h then nil
+            else raise LoweringError, "no routine sends the card a picture in the mode #{memory.screen.mode.inspect}"
+            end
+
             emit_copy_changed_rows(asm, memory, "rt_show_picture", from: shown, to: VIDEO, forget: true)
           end
 
@@ -504,6 +506,8 @@ module VBlank
           # +to+, each a segment's name or its number, and with +forget+ leaves none marked. A row is 320
           # bytes, eighty moves of four. Changes AX, CX and DX.
           def emit_copy_changed_rows(asm, memory, label, from:, to:, forget:)
+            return emit_copy_changed_rows_apart(asm, memory, label, from: from, to: to, forget: forget) if Rows.apart?(memory.screen)
+
             top = X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16)
             bottom = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16)
             width = memory.screen.width
@@ -531,6 +535,55 @@ module VBlank
             emit_segment_into(asm, :es, to)
             emit_segment_into(asm, :ds, from)
             asm.movs(32, rep: true)
+            asm.pop(:di)
+            asm.pop(:si)
+            asm.pop(:es)
+            asm.pop(:ds)
+            asm.label("#{label}_done")
+            asm.ret
+          end
+
+          # The same for a picture kept a row a segment (Rows), from one such picture to another, each a segment's
+          # name (the card's memory is no such picture: ModeX sends it). BX is the row's paragraphs into each and
+          # DX the rows left.
+          def emit_copy_changed_rows_apart(asm, memory, label, from:, to:, forget:)
+            top = X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16)
+            bottom = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16)
+            screen = memory.screen
+            asm.label(label)
+            asm.mov(:ax, bottom)
+            asm.sub(:ax, top)
+            asm.jbe("#{label}_done")
+            asm.push(:ds)
+            asm.push(:es)
+            asm.push(:si)
+            asm.push(:di)
+            asm.push(:bx)
+            asm.push(:ax)
+            asm.mov(:ax, top)
+            asm.mov(:cx, Rows.row_paragraphs(screen))
+            asm.mul(:cx)
+            asm.mov(:bx, :ax)
+            asm.pop(:dx)
+            if forget
+              asm.mov(top, screen.height)
+              asm.mov(bottom, 0)
+            end
+            asm.label("#{label}_row")
+            asm.mov_segment(:ax, to)
+            asm.add(:ax, :bx)
+            asm.mov(:es, :ax)
+            asm.mov_segment(:ax, from)
+            asm.add(:ax, :bx)
+            asm.mov(:ds, :ax)
+            asm.xor(:si, :si)
+            asm.xor(:di, :di)
+            asm.mov(:cx, screen.width / 4)
+            asm.movs(32, rep: true)
+            asm.add(:bx, Rows.row_paragraphs(screen))
+            asm.dec(:dx)
+            asm.jne("#{label}_row")
+            asm.pop(:bx)
             asm.pop(:di)
             asm.pop(:si)
             asm.pop(:es)
@@ -722,17 +775,24 @@ module VBlank
             emit_mark_rows(asm, memory, :cx, :bx, "rt_fill_rect")
             asm.sub(:edx, :eax)
             asm.sub(:ebx, :ecx)
-            asm.mov(:ebp, width)
-            asm.imul(:ecx, :ebp)
-            asm.add(:ecx, :eax)
-            asm.mov(:di, :cx)
-            asm.mov(:ax, :si)
+            if Rows.apart?(memory.screen)
+              asm.mov(:ebp, :eax)
+              Rows.emit_row_start(asm, memory.screen, :ecx)
+              asm.mov(:di, :bp)
+            else
+              asm.mov(:ebp, width)
+              asm.imul(:ecx, :ebp)
+              asm.add(:ecx, :eax)
+              asm.mov(:di, :cx)
+              asm.mov(:ax, :si)
+            end
             asm.label("rt_fill_rect_row")
+            asm.mov(:ax, :si) if Rows.apart?(memory.screen) # the next row's start changes AX
             asm.mov(:cx, :dx)
             asm.push(:di)
             asm.stos(8, rep: true)
             asm.pop(:di)
-            asm.add(:di, width)
+            Rows.emit_next_row(asm, memory.screen)
             asm.dec(:ebx)
             asm.jne("rt_fill_rect_row")
             asm.label("rt_fill_rect_done")
@@ -806,8 +866,12 @@ module VBlank
             asm.add(:si, :cx)
             asm.jmp("#{name}_row")
             asm.label("#{name}_draw_row")
-            asm.mov(:eax, width)
-            asm.imul(:edi, :eax)
+            if Rows.apart?(memory.screen)
+              Rows.emit_row_start(asm, memory.screen, :edi) # DI nought: the pixel is then at its x
+            else
+              asm.mov(:eax, width)
+              asm.imul(:edi, :eax)
+            end
             asm.mov(:ebx, frame.call(0))
             asm.label("#{name}_pixel")
             asm.mov(:dl, X86.mem(:si, 0))
@@ -830,7 +894,8 @@ module VBlank
             asm.ret
           end
 
-          # Drawing in the game's picture, with ES at its segment.
+          # Drawing in the game's picture, with ES at its segment (for a picture kept a row a segment, FS, and
+          # each of these leaves ES at a row of it: Rows).
           def emit_drawing_routines(asm, memory, edges)
             width = memory.screen.width
 
@@ -848,10 +913,16 @@ module VBlank
             asm.mov(:bx, :cx)
             asm.inc(:bx)
             emit_mark_rows(asm, memory, :cx, :bx, "rt_pixel")
-            asm.mov(:ebx, width)
-            asm.imul(:ecx, :ebx)
-            asm.add(:ecx, :eax)
-            asm.mov(:di, :cx)
+            if Rows.apart?(memory.screen)
+              asm.mov(:ebx, :eax)
+              Rows.emit_row_start(asm, memory.screen, :ecx)
+              asm.mov(:di, :bx)
+            else
+              asm.mov(:ebx, width)
+              asm.imul(:ecx, :ebx)
+              asm.add(:ecx, :eax)
+              asm.mov(:di, :cx)
+            end
             asm.mov(:al, :dl)
             asm.stos(8)
             asm.label("rt_pixel_done")
@@ -863,9 +934,7 @@ module VBlank
             # holds no drawing to an area: one that does clears as a rectangle (Lowering#emit_clear_screen).
             asm.label("rt_clear_screen")
             emit_mark_every_row(asm, memory)
-            asm.xor(:di, :di)
-            asm.mov(:cx, memory.screen.pixels / 4)
-            asm.stos(32, rep: true)
+            Rows.emit_fill_picture(asm, memory.screen, "rt_clear_screen")
             asm.ret
           end
         end

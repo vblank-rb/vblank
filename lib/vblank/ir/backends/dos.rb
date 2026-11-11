@@ -17,6 +17,8 @@ require_relative "dos/x86"
 require_relative "dos/screen"
 require_relative "dos/memory"
 require_relative "dos/runtime"
+require_relative "dos/runtime/rows"
+require_relative "dos/runtime/mode_x"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
@@ -138,8 +140,8 @@ module VBlank
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
           refuse_too_much_art!(art.bytesize)
           data_segment = art_segment + (art.bytesize / 16)
-          shown = DOS.picture_shown_after_data(sprites: sprites.positive?)
-          after_pictures = shown + PICTURE_PARAGRAPHS
+          shown = DOS.picture_shown_after_data(memory.screen, sprites: sprites.positive?)
+          after_pictures = shown + Runtime::Rows.picture_paragraphs(memory.screen)
           assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
                                    shown: data_segment + shown, save: data_segment + after_pictures)
           places = Places.new(variables: lowering.variables, lists: {},
@@ -158,13 +160,15 @@ module VBlank
         # THE PICTURE THE GAME DRAWS, in a segment of its own after that one: every pixel a pass draws goes
         # here, and the rows that changed are copied to the card as the retrace begins (Runtime, "THE
         # PICTURE"). A reader of the running program finds it this many paragraphs past the data segment.
+        # It is a segment's worth, or for a screen of more pixels than that, as many as it has (Runtime::Rows).
         PICTURE_AFTER_DATA = EXTRA_PARAGRAPHS
-        PICTURE_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
 
         # A game with sprites has a second picture after the first: the one shown, the game's with the sprites
         # over it (Runtime::Sprites). Where the picture the player is shown is, in paragraphs past the data
         # segment: the second where there is one (+sprites+), the game's own where there is not.
-        def self.picture_shown_after_data(sprites:) = PICTURE_AFTER_DATA + (sprites ? PICTURE_PARAGRAPHS : 0)
+        def self.picture_shown_after_data(screen, sprites:)
+          PICTURE_AFTER_DATA + (sprites ? Runtime::Rows.picture_paragraphs(screen) : 0)
+        end
 
         # The save memory of a game that saves, in a segment of its own after those (Runtime::Saving).
         SAVE_PARAGRAPHS = Runtime::Saving::SIZE / 16
