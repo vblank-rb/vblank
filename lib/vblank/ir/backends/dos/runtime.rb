@@ -183,7 +183,8 @@ module VBlank
           # +starts+ is [offset, number] for places that begin on something other than nought.
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
+                   columns: false)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -200,6 +201,7 @@ module VBlank
             emit_number_routines(asm)
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
+            emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns
             Regions.emit(asm, memory, edges(memory, area, seg: :ss)) if regions
           end
 
@@ -815,6 +817,134 @@ module VBlank
             asm.dec(:ebx)
             asm.jne("rt_fill_rect_row")
             asm.label("rt_fill_rect_done")
+            asm.ret
+          end
+
+          # ONE COLUMN OF A PICTURE, STRETCHED (rt_draw_column, Reference#exec_draw_column_at, whose stepping is
+          # the rule): x in EAX, the top in ECX, the height it is stretched to in EDX, which column of the
+          # picture in EBX (held to the picture's), the picture's place in the art segment in SI, and how many
+          # pixels across the strip is in DI. It walks down the screen: the row that many rows below the top
+          # shows the picture's row `(rows * step) >> 16`, the step being the picture's height in 65536ths of
+          # the height asked for, and that one pixel is written across the strip, or nothing where the picture
+          # is see-through. Only the rows inside +edges+ are walked, so a wall far taller than the screen
+          # costs what the screen's rows cost.
+          #
+          # The sums have no sign and fit 32 bits: a row counted from the top is less than the height, so its
+          # product with the step is less than the picture's height times 65536.
+          #
+          # What it keeps is on the stack (SS), since DS is the art segment while it reads pixels: BP+0 the
+          # step, +4 the rows so far times the step, +8 the pixels across that are inside the edges, +10 the
+          # rows left, +12 the x of the first of those pixels, +14 the picture's width, +16 the top.
+          def emit_column_routine(asm, memory, edges)
+            kept = ->(offset, size) { X86.mem(:bp, offset, size: size) }
+            asm.label("rt_draw_column")
+            asm.cmp(:edx, 0)
+            asm.jle("rt_draw_column_none")
+            asm.push(:ds)
+            asm.sub(:sp, 20)
+            asm.mov(:bp, :sp)
+            asm.mov(kept.call(16, 32), :ecx)
+            # Across: from x to x and the strip's width, held to the edges.
+            asm.and(:edi, 0xFFFF)
+            asm.add(:edi, :eax)
+            asm.jno("rt_draw_column_right")
+            asm.mov(:edi, 0x7FFF_FFFF)
+            asm.label("rt_draw_column_right")
+            asm.cmp(:eax, edges.left)
+            asm.jge("rt_draw_column_left_held")
+            asm.mov(:eax, edges.left)
+            asm.label("rt_draw_column_left_held")
+            asm.cmp(:edi, edges.right)
+            asm.jle("rt_draw_column_right_held")
+            asm.mov(:edi, edges.right)
+            asm.label("rt_draw_column_right_held")
+            asm.cmp(:eax, :edi)
+            asm.jge("rt_draw_column_done")
+            asm.sub(:edi, :eax)
+            asm.mov(kept.call(12, 16), :ax)
+            asm.mov(kept.call(8, 16), :di)
+            # Down: from the top to the top and the height, held to the edges. ECX is then the first row drawn.
+            asm.mov(:eax, :ecx)
+            asm.add(:eax, :edx)
+            asm.jno("rt_draw_column_bottom")
+            asm.mov(:eax, 0x7FFF_FFFF)
+            asm.label("rt_draw_column_bottom")
+            asm.cmp(:eax, edges.bottom)
+            asm.jle("rt_draw_column_bottom_held")
+            asm.mov(:eax, edges.bottom)
+            asm.label("rt_draw_column_bottom_held")
+            asm.cmp(:ecx, edges.top)
+            asm.jge("rt_draw_column_top_held")
+            asm.mov(:ecx, edges.top)
+            asm.label("rt_draw_column_top_held")
+            asm.cmp(:ecx, :eax)
+            asm.jge("rt_draw_column_done")
+            emit_mark_rows(asm, memory, :cx, :ax, "rt_draw_column", seg: :ss)
+            asm.sub(:eax, :ecx)
+            asm.mov(kept.call(10, 16), :ax)
+            asm.push(:ecx)
+            # The picture: its width, the column held to it, and the step from its height.
+            asm.mov_segment(:ax, :art)
+            asm.mov(:ds, :ax)
+            asm.xor(:eax, :eax)
+            asm.mov(:ax, X86.mem(:si, 0))
+            asm.mov(kept.call(14, 16), :ax)
+            asm.dec(:eax)
+            asm.cmp(:ebx, 0)
+            asm.jge("rt_draw_column_slice_low")
+            asm.xor(:ebx, :ebx)
+            asm.label("rt_draw_column_slice_low")
+            asm.cmp(:ebx, :eax)
+            asm.jle("rt_draw_column_slice_high")
+            asm.mov(:ebx, :eax)
+            asm.label("rt_draw_column_slice_high")
+            asm.xor(:eax, :eax)
+            asm.mov(:ax, X86.mem(:si, 2))
+            asm.shl(:eax, 16)
+            asm.mov(:ecx, :edx)
+            asm.xor(:edx, :edx)
+            asm.div(:ecx)
+            asm.mov(kept.call(0, 32), :eax)
+            asm.add(:si, 4)
+            asm.add(:si, :bx) # the column's pixel in the picture's first row
+            asm.pop(:ecx)
+            # How far below the top the first row drawn is, times the step.
+            asm.mov(:eax, :ecx)
+            asm.sub(:eax, kept.call(16, 32))
+            asm.mul(kept.call(0, 32))
+            asm.mov(kept.call(4, 32), :eax)
+            if Rows.apart?(memory.screen)
+              Rows.emit_row_start(asm, memory.screen, :ecx)
+              asm.mov(:di, kept.call(12, 16))
+            else
+              asm.mov(:eax, memory.screen.width)
+              asm.imul(:ecx, :eax)
+              asm.mov(:di, :cx)
+              asm.add(:di, kept.call(12, 16))
+            end
+            asm.label("rt_draw_column_row")
+            asm.mov(:eax, kept.call(4, 32))
+            asm.shr(:eax, 16)
+            asm.mul(kept.call(14, 16))
+            asm.mov(:bx, :ax)
+            asm.add(:bx, :si)
+            asm.mov(:al, X86.mem(:bx, 0, size: 8))
+            asm.cmp(:al, TRANSPARENT)
+            asm.je("rt_draw_column_row_drawn")
+            asm.mov(:cx, kept.call(8, 16))
+            asm.push(:di)
+            asm.stos(8, rep: true)
+            asm.pop(:di)
+            asm.label("rt_draw_column_row_drawn")
+            asm.mov(:eax, kept.call(0, 32))
+            asm.add(kept.call(4, 32), :eax)
+            Rows.emit_next_row(asm, memory.screen)
+            asm.dec(kept.call(10, 16))
+            asm.jne("rt_draw_column_row")
+            asm.label("rt_draw_column_done")
+            asm.add(:sp, 20)
+            asm.pop(:ds)
+            asm.label("rt_draw_column_none")
             asm.ret
           end
 

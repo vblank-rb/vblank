@@ -252,7 +252,7 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor]
+                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

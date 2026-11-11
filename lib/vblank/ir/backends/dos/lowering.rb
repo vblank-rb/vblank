@@ -36,7 +36,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -89,6 +89,9 @@ module VBlank
           # Whether +program+ moves the view over its picture or shows it in blocks, and so is shown a picture made from its own
           # (Runtime::View).
           def self.shown_through_view?(program) = program.walk.any? { |node| %i[camera pixelate].include?(node.kind) }
+
+          # Whether +program+ draws stretched columns of a picture, and so carries the runtime's routine for one.
+          def self.draws_columns?(program) = program.walk.any? { |node| node.kind == :draw_column_at }
 
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
@@ -229,7 +232,7 @@ module VBlank
           def drawn_pictures
             @program.walk.flat_map do |node|
               case node.kind
-              when :blit then [node.name]
+              when :blit, :draw_column_at then [node.name]
               when :blit_pose then node.poses
               else []
               end
@@ -364,6 +367,7 @@ module VBlank
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :camera then emit_camera(node)
+            when :draw_column_at then emit_draw_column_at(node)
             when :color_list_holds then emit_color_list_holds(node)
             when :pixelate then emit_pixelate(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
@@ -705,6 +709,15 @@ module VBlank
           # in its font draws nothing.
           def emit_draw_text(node) = emit_picture_at(@art_places.fetch(text_key(node)), node)
 
+          # Reference#exec_draw_column_at: where, how tall and which column worked out, then the picture's place and
+          # the strip's width, which are settled as the game is built.
+          def emit_draw_column_at(node)
+            emit_values_into(%i[eax ecx edx ebx], [node.x, node.top, node.height, node.slice].map { |operand| value_node(operand) })
+            @asm.mov(:si, @art_places.fetch(node.name))
+            @asm.mov(:di, node.width || 1)
+            @asm.call("rt_draw_column")
+          end
+          
           # The picture at +place+ in the art segment, drawn at the node's x and y.
           def emit_picture_at(place, node)
             @asm.mov(:si, place)
