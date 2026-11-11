@@ -54,13 +54,6 @@ def rg_face_distance(w)
   RG_FACE_RECIPROCALS[(w >> moved) - 1024] >> (moved - 2)
 end
 
-# Reference#place_in_perspective
-def rg_face_place_in_perspective(from, steps, along)
-  over = (1..3).map { |part| rg_add(from[part], rg_mul(steps[part - 1], along)) }
-  distance = rg_face_distance(over[2])
-  [rg_mul_fix(over[0], distance, 14), rg_mul_fix(over[1], distance, 14)]
-end
-
 # Reference::Shade#color_at: the colour +color+ becomes at +shade+ (its level in the top sixteen
 # bits). A colour not in the shading's list stays as it is. Where each colour stands in the list is
 # worked out once for each shading drawn with.
@@ -85,6 +78,14 @@ end
 # perspective every +spans+ pixels (none when nought), each pixel through +shading+ when lit.
 # +numbers+ is, for a picture given as numbers into the shading's colours, the image of those
 # numbers; nil for any other.
+#
+# NOTHING IS MADE FOR A PIXEL. Every object this makes is one Ruby's garbage collector clears away
+# later, and a place of a few thousand faces fills hundreds of thousands of pixels a picture: with a
+# pair of arrays made for each one, three quarters of a game's time went on clearing them. So each
+# end's numbers and each step are plain variables, and where the C has a routine for a spot in
+# perspective (rg_face_place_in_perspective, which would hand back two numbers in an array) its sums
+# are written out here, at each end of a stretch. A stretch's step across the picture is worked out
+# once for the stretch, which is the same division the C does at every pixel of it.
 def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
   start = rg_shr(rg_add(from[0], (1 << 15) - 1), 16)
   stop = rg_shr(rg_add(to[0], (1 << 15) - 1), 16)
@@ -97,26 +98,42 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
   end
   art, at, art_width, art_height = rg_picture_of(image)
   numbered, numbered_at, = rg_picture_of(numbers) if numbers
-  steps = (1..4).map { |part| rg_div(rg_sub(to[part], from[part]), count) }
+  from_u = from[1]
+  from_v = from[2]
+  from_w = from[3]
+  from_shade = from[4]
+  step_u = rg_div(rg_sub(to[1], from_u), count)
+  step_v = rg_div(rg_sub(to[2], from_v), count)
+  step_w = rg_div(rg_sub(to[3], from_w), count)
+  step_shade = rg_div(rg_sub(to[4], from_shade), count)
   near_at = -1
-  near = far = nil
-  ([start, left].max...[stop, right].min).each do |x|
+  near_u = near_v = stretch_step_u = stretch_step_v = 0
+  first = start > left ? start : left
+  past = stop < right ? stop : right
+  (first...past).each do |x|
     along = rg_sub(x, start)
     if spans.zero?
-      u = rg_add(from[1], rg_mul(steps[0], along))
-      v = rg_add(from[2], rg_mul(steps[1], along))
+      u = rg_add(from_u, rg_mul(step_u, along))
+      v = rg_add(from_v, rg_mul(step_v, along))
     else
       # Reference#place_between
       near_along = (along / spans) * spans
-      far_along = [near_along + spans, count].min
       unless near_along == near_at
-        near = rg_face_place_in_perspective(from, steps, near_along)
-        far = rg_face_place_in_perspective(from, steps, far_along)
+        far_along = near_along + spans
+        far_along = count if far_along > count
+        # Reference#place_in_perspective, at the stretch's near end and at its far one
+        distance = rg_face_distance(rg_add(from_w, rg_mul(step_w, near_along)))
+        near_u = rg_mul_fix(rg_add(from_u, rg_mul(step_u, near_along)), distance, 14)
+        near_v = rg_mul_fix(rg_add(from_v, rg_mul(step_v, near_along)), distance, 14)
+        distance = rg_face_distance(rg_add(from_w, rg_mul(step_w, far_along)))
+        far_u = rg_mul_fix(rg_add(from_u, rg_mul(step_u, far_along)), distance, 14)
+        far_v = rg_mul_fix(rg_add(from_v, rg_mul(step_v, far_along)), distance, 14)
+        stretch_step_u = rg_div(rg_sub(far_u, near_u), far_along - near_along)
+        stretch_step_v = rg_div(rg_sub(far_v, near_v), far_along - near_along)
         near_at = near_along
       end
-      u, v = near.zip(far).map do |first, last|
-        rg_add(first, rg_mul(rg_div(rg_sub(last, first), far_along - near_along), along - near_along))
-      end
+      u = rg_add(near_u, rg_mul(stretch_step_u, along - near_along))
+      v = rg_add(near_v, rg_mul(stretch_step_v, along - near_along))
     end
     across = rg_and(rg_shr(u, 16), art_width - 1)
     down = rg_and(rg_shr(v, 16), art_height - 1)
@@ -124,7 +141,7 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
     next if color == RG_NOT_DRAWN
 
     if shading
-      shade = rg_add(from[4], rg_mul(steps[3], along))
+      shade = rg_add(from_shade, rg_mul(step_shade, along))
       color = if numbers
                 rg_shaded_place(shading, numbered[numbered_at + (down * art_width) + across], shade)
               else
