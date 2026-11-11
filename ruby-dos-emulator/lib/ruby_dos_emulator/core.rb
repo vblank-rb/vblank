@@ -6,7 +6,7 @@ require "tmpdir"
 
 module RubyDOSEmulator
   # ONE DOS MACHINE, PLAYED A FRAME AT A TIME with nobody watching: a program (an .EXE or a .COM)
-  # run by DOSBox Pure (a libretro core, see CoreLibrary) with the program's own folder as drive C:,
+  # run by DOSBox (libretro's dosbox-svn core, see CoreBuild) with the program's own folder as drive C:,
   # its keys pressed from Ruby, and everything a test wants to read back handed over as plain bytes:
   # the first megabyte of memory, the video card's memory and palette and mode, the picture shown
   # and the sound made.
@@ -22,7 +22,7 @@ module RubyDOSEmulator
   # two machines that cannot see each other.
   #
   # THE MACHINE IS SET BY A DOSBOX CONFIGURATION FILE (#configuration), which is the "game" the core
-  # is loaded with: DOSBox Pure treats a .conf as plain DOSBox does. It says a Sound Blaster at 220h
+  # is loaded with. It says a Sound Blaster at 220h
   # on IRQ 5 and DMA 1, an AdLib's OPL2, a VGA card with the memory a VESA mode wants, a 486, and a
   # FIXED number of processor cycles for every millisecond, so a program runs the same on every run
   # and on every machine, whatever the host's speed. Then it mounts the program's folder and runs it.
@@ -31,17 +31,25 @@ module RubyDOSEmulator
   # colours, the palette already applied. #vga_memory and #palette are the card's own, for a check
   # that wants what the program wrote rather than what was shown.
   #
-  # THE FRONTEND IS IN THE CORE, NOT IN RUBY. DOSBox Pure emulates on a thread of its own and calls
-  # its frontend (the settings it asks for, the picture, the sound, the keys) from there, and Ruby
-  # stops with a bug report when a callback of its own is run by a thread it did not start. So the
-  # probe patch carries the frontend's half too (the vblank_* functions): it keeps the last picture,
-  # the sound made and the keys held, and this class hands the core their addresses and reads them.
+  # A FRAME IS ONE PICTURE OF THE VIDEO CARD'S. The core is asked for the timing in which the machine
+  # keeps no time by the host's clock and every step ends when the card has finished drawing a picture
+  # (CoreBuild says more). So #run_frame is one vertical retrace, a program that waits for the retrace
+  # makes one pass in it, and what is read afterwards is the machine stopped between two pictures.
+  #
+  # THE FRONTEND IS IN THE CORE, NOT IN RUBY. The machine runs on a stack of its own (a coroutine the
+  # core switches into) and hands its pictures over from there, and Ruby cannot be called from a stack
+  # it does not know. So the probe patch carries the frontend's half too (the vblank_* functions): it
+  # answers the core's questions and keeps the last picture and the sound made, and this class hands
+  # the core their addresses and reads them.
   class Core
     # libretro's name for system RAM, and the probe patch's own (core/dosbox-vblank-probe.patch).
     SYSTEM_RAM = 2
     VIDEO_RAM = 0x8001
     PALETTE = 0x8002
     VGA_STATE = 0x8003
+
+    # libretro's number for a keyboard (RETRO_DEVICE_KEYBOARD), as what is plugged into the first port.
+    KEYBOARD = 3
 
     # DOSBox's speed: processor cycles in each millisecond. 30000 is about a fast 486.
     CYCLES = 30_000
@@ -50,10 +58,14 @@ module RubyDOSEmulator
     KEYS = { up: 273, down: 274, right: 275, left: 276, ctrl: 306, alt: 308, enter: 13, shift: 303,
              z: 122, x: 120, space: 32, escape: 27, left_shift: 304, left_ctrl: 306, right_ctrl: 305 }.freeze
 
+    # The card's state: its mode (DOSBox's own numbering), the width and height it draws, and how far
+    # its memory address moves on for each row.
+    VGAState = Data.define(:mode, :width, :height, :address_add)
+
     # A frame as the core handed it over: its size and its pixels as 0xRRGGBB, row by row.
     Picture = Data.define(:width, :height, :pixels)
 
-    attr_reader :frames, :sample_rate, :fps
+    attr_reader :frames
 
     # THE START GATE: a byte at 0040:00F2, in the 16 bytes the PC keeps free for programs to talk to each
     # other. A program started as `GAME.EXE HOLD` is meant to set it and wait for it to be cleared, so a
@@ -73,11 +85,7 @@ module RubyDOSEmulator
       @frames = 0
       @held = []
       @kept = [] # what the core holds a pointer to, kept from the garbage collector
-      load_library
-      hand_over_callbacks
-      @call[:retro_init].call
-      load_program(File.basename(program))
-      read_timing
+      start(File.basename(program))
     end
 
     # The keys held down, by name (KEYS), from the next frame on.
@@ -91,17 +99,21 @@ module RubyDOSEmulator
       @held = codes
     end
 
-    # Plays one frame: one picture's time, about a seventieth of a second in mode 13h. The machine is left
-    # parked between two frames (see the probe patch's vblank_finish_frame), so everything read after it is
-    # what the program has done by then, whatever the host's speed. #picture is the frame before that one:
-    # DOSBox hands over a frame's picture a frame after it emulates it, so read the screen from
-    # #chained_pixels and #palette to see what the memory holds now.
+    # Plays one frame: until the video card has finished its next picture, about a seventieth of a second
+    # in mode 13h. The machine is stopped when this returns, so everything read after it is what the
+    # program had done by the end of that picture, whatever the host's speed.
     def run_frame
       @call[:retro_run].call
-      @call[:vblank_finish_frame].call
       @frames += 1
       self
     end
+
+    # How many pictures the card draws in a second, as the core last said it: the core says a new mode's
+    # rate at the start of the frame after the one that set the mode.
+    def fps = timing.first
+
+    # How many pairs of samples #take_audio gives for a second of sound.
+    def sample_rate = timing.last
 
     # Whether the program has reached its gate and is waiting there (see START_GATE_AT).
     def gate_closed? = peek(START_GATE_AT, 1).getbyte(0) == 1
@@ -113,12 +125,14 @@ module RubyDOSEmulator
 
     # The last picture the core handed over (a Picture), or nil before the first.
     def picture
-      width = Fiddle::Pointer.malloc(8, Fiddle::RUBY_FREE)
-      pixels = @call[:vblank_picture].call(width, width + 4)
-      return nil if pixels.null?
+      size = Fiddle::Pointer.malloc(8, Fiddle::RUBY_FREE)
+      count = @call[:vblank_copy_picture].call(nil, 0, size, size + 4)
+      return nil if count.zero?
 
-      wide, high = width.to_str(8).unpack("L<2")
-      Picture.new(width: wide, height: high, pixels: pixels.to_str(wide * high * 4).unpack("V*").map { |pixel| pixel & 0xFF_FFFF })
+      pixels = Fiddle::Pointer.malloc(count * 4, Fiddle::RUBY_FREE)
+      @call[:vblank_copy_picture].call(pixels, count, size, size + 4)
+      wide, high = size.to_str(8).unpack("L<2")
+      Picture.new(width: wide, height: high, pixels: pixels.to_str(count * 4).unpack("V*").map { |pixel| pixel & 0xFF_FFFF })
     end
 
     # --- the memories ---
@@ -145,11 +159,8 @@ module RubyDOSEmulator
     # The 256 colours of the card's palette as [red, green, blue], each of 6 bits as the card keeps them.
     def palette = memory(PALETTE).unpack("C*").each_slice(3).to_a
 
-    # The card's state: its mode number (DOSBox's own numbering), and the width and height it draws.
-    def vga_state
-      mode, width, height, address_add = memory(VGA_STATE).unpack("L<4")
-      { mode: mode, width: width, height: height, address_add: address_add }
-    end
+    # The card's state now (a VGAState).
+    def vga_state = VGAState.new(*memory(VGA_STATE).unpack("L<4"))
 
     # --- the sound ---
 
@@ -170,21 +181,39 @@ module RubyDOSEmulator
       found && File.binread(File.join(@drive, found))
     end
 
-    # Unloads the program, shuts the core and lets go of its library.
+    # Unloads the program, shuts the core and lets go of its library, and the machine's memory with it.
     def destroy
       return unless @call
 
       @call[:retro_unload_game].call
       @call[:retro_deinit].call
-      @call[:vblank_wait_for_thread].call # the emulation thread leaves the library before it is unloaded
-      @handle.close # the library unloads, and its 42 MB of static memory with it (core/dosbox-exports.map says why)
-      @call = nil
-      FileUtils.rm_rf(@dir)
+      release
     end
 
     private
 
+    # Loads a library of its own and starts the machine on +program+. A machine that cannot start
+    # leaves nothing behind: not its library, and not its folder.
+    def start(program)
+      load_library
+      hand_over_callbacks
+      @call[:retro_init].call
+      load_program(program)
+      # The core asks for key presses when it is told what is plugged in, which it can only take once it has a machine.
+      @call[:retro_set_controller_port_device].call(0, KEYBOARD)
+    rescue StandardError, LoadError
+      release
+      raise
+    end
+
+    def release
+      @handle&.close
+      @call = nil
+      FileUtils.rm_rf(@dir)
+    end
+
     def memory(id)
+
       size = @call[:retro_get_memory_size].call(id)
       return "".b if size.zero?
 
@@ -205,14 +234,13 @@ module RubyDOSEmulator
       retro_load_game: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_BOOL],
       retro_unload_game: [[], Fiddle::TYPE_VOID],
       retro_run: [[], Fiddle::TYPE_VOID],
+      retro_set_controller_port_device: [[Fiddle::TYPE_UINT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
       retro_get_system_av_info: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
       retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
       retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T],
-      vblank_finish_frame: [[], Fiddle::TYPE_VOID],
-      vblank_wait_for_thread: [[], Fiddle::TYPE_VOID],
       vblank_set_directory: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
       vblank_key_event: [[Fiddle::TYPE_INT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
-      vblank_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOIDP],
+      vblank_copy_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_SIZE_T],
       vblank_take_sound: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T], Fiddle::TYPE_SIZE_T]
     }.freeze
 
@@ -222,16 +250,24 @@ module RubyDOSEmulator
                  retro_set_input_poll: :vblank_input_poll, retro_set_input_state: :vblank_input_state }.freeze
 
     def load_library
-      copy = CoreCopy.make
+      library = CoreLibrary.path
+      copy = CoreCopy.make(library)
       @handle = Fiddle::Handle.new(copy.path, Fiddle::Handle::RTLD_NOW)
-      copy.delete
-      @call = FUNCTIONS.to_h do |name, (args, result)|
-        [name, Fiddle::Function.new(@handle[name.to_s], args, result)]
-      end
+      @call = FUNCTIONS.to_h { |name, (args, result)| [name, Fiddle::Function.new(function_address(name, library), args, result)] }
+    ensure
+      copy&.delete
+    end
+
+    # Where the library keeps the function +name+. A core built without the probe patch has none of the
+    # vblank_* ones, and is refused in words that say so.
+    def function_address(name, library)
+      @handle[name.to_s]
+    rescue Fiddle::DLError
+      raise LoadError, CoreLibrary.unpatched_message(library)
     end
 
     def hand_over_callbacks
-      FRONTEND.each { |setter, function| @call.fetch(setter).call(Fiddle::Pointer.new(@handle[function.to_s])) }
+      FRONTEND.each { |setter, function| @call.fetch(setter).call(Fiddle::Pointer.new(function_address(function, CoreLibrary.path))) }
       @call[:vblank_set_directory].call(kept_string(@dir))
     end
 
@@ -252,6 +288,8 @@ module RubyDOSEmulator
         memsize=4
         [render]
         aspect=false
+        scaler=none
+        frameskip=0
         [cpu]
         core=normal
         cputype=486
@@ -281,11 +319,11 @@ module RubyDOSEmulator
     end
 
     # retro_system_av_info: four numbers for the picture's size, its aspect ratio, then the frame rate
-    # and the sound's rate, both doubles.
-    def read_timing
+    # and the sound's rate, both doubles. Asked each time, since the frame rate is the mode's.
+    def timing
       info = Fiddle::Pointer.malloc(40, Fiddle::RUBY_FREE)
       @call[:retro_get_system_av_info].call(info)
-      @fps, @sample_rate = info.to_str(40).unpack("x24E2")
+      info.to_str(40).unpack("x24E2")
     end
   end
 end

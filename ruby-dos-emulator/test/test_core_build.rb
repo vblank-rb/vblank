@@ -14,7 +14,7 @@ class TestCoreBuild < Minitest::Test
   end
 
   def test_a_mac_is_asked_for_clang
-    assert_equal ["a C++ compiler (clang++)"], CoreBuild.missing_tools(platform: "darwin", on_path: ->(tool) { tool != "clang++" })
+    assert_equal ["a C++ compiler (clang++)"], CoreBuild.missing_tools(platform: "darwin", on_path: ->(tool) { tool != "c++" })
   end
 
   def test_a_build_with_a_tool_missing_stops_before_it_downloads_anything
@@ -34,15 +34,15 @@ class TestCoreBuild < Minitest::Test
       target = File.join(dir, "build", "core.so")
       failing = ->(*) { raise CoreBuild::CannotBuild, "the compiler stopped" }
 
-      assert_raises(CoreBuild::CannotBuild) { CoreBuild.make(target, on_path: ->(_) { true }, run: failing, download: ->(_) {}) }
+      assert_raises(CoreBuild::CannotBuild) { CoreBuild.make(target, on_path: ->(_) { true }, run: failing, download: ->(_, _) {}) }
       refute_path_exists target
     end
   end
 
   def test_the_library_a_mac_builds_is_found_and_kept_under_the_name_asked_for
     Dir.mktmpdir do |dir|
-      File.binwrite(File.join(dir, "dosbox_pure_libretro.dylib"), "core")
-      target = File.join(dir, "out", "dosbox_pure_libretro.so")
+      File.binwrite(File.join(dir, "dosbox_svn_libretro.dylib"), "core")
+      target = File.join(dir, "out", "dosbox_svn_libretro.so")
 
       CoreBuild.move_into_place(CoreBuild.library_in(dir), target)
 
@@ -54,7 +54,7 @@ class TestCoreBuild < Minitest::Test
     Dir.mktmpdir do |dir|
       error = assert_raises(CoreBuild::CannotBuild) { CoreBuild.library_in(dir) }
 
-      assert_includes error.message, "left no dosbox_pure_libretro library"
+      assert_includes error.message, "left no dosbox_svn_libretro library"
     end
   end
 end

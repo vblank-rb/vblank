@@ -62,10 +62,10 @@ task :compile_ps1_core do
   Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile_core" }
 end
 
-# DOS'S EMULATOR: DOSBox Pure, built with ruby-dos-emulator's probe patch (that gem's Rakefile says how).
+# DOS'S EMULATOR: DOSBox, built with ruby-dos-emulator's probe patch (that gem's Rakefile says how).
 # Its binding is plain Ruby over Fiddle too, so the core is all there is to build, once; the DOS run is
 # the only one that plays its programs.
-desc "Build the DOSBox Pure core the DOS run plays its programs in, if it is not built"
+desc "Build the DOSBox core the DOS run plays its programs in, if it is not built"
 task :compile_dos_core do
   Dir.chdir("ruby-dos-emulator") { sh "rake", "compile_core" }
 end

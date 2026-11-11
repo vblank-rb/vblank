@@ -9,10 +9,9 @@ module RubyDOSEmulator
   # one file once, whatever its name is not). So each machine gets a file of its own, made here and deleted
   # as soon as the library is loaded (the system keeps the loaded file alive).
   #
-  # The library is also unloaded when its machine is destroyed, which frees its 42 MB of static memory. That
-  # needs the core to export nothing but libretro's functions and the probe's (core/dosbox-exports.map):
-  # exporting the C++ standard library's templates as well makes libstdc++ bind to the library's copies, and
-  # then the system never unloads it.
+  # The library is also unloaded when its machine is destroyed, and its static memory goes with it. That
+  # needs the core to export nothing but libretro's functions and the probe's, which the probe patch sees
+  # to (CoreBuild says why).
   class CoreCopy
     @count = 0
 

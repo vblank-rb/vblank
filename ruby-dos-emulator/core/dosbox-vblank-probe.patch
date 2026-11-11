@@ -1,150 +1,219 @@
-diff --git a/dosbox_pure_libretro.cpp b/dosbox_pure_libretro.cpp
-index ec99bf3..3d2227d 100644
---- a/dosbox_pure_libretro.cpp
-+++ b/dosbox_pure_libretro.cpp
-@@ -69,6 +69,7 @@ static Semaphore semDoContinue, semDidPause;
- static retro_throttle_state dbp_throttle;
- static std::string dbp_crash_message;
- static std::string dbp_content_path;
-+static volatile int vblank_thread_done; // set by the emulation thread as its last act (see vblank_wait_for_thread)
- static std::string dbp_content_name;
- static retro_time_t dbp_boot_time;
- static size_t dbp_serializesize;
-@@ -2861,6 +2862,7 @@ static void init_dosbox(bool forcemenu = false, bool reinit = false, const std::
- 	{
- 		control->StartUp();
- 		DBP_ThreadControl(TCM_ON_SHUTDOWN);
-+		__atomic_store_n(&vblank_thread_done, 1, __ATOMIC_SEQ_CST);
- 		return 0;
- 	}};
+diff --color -ruN a/libretro/Makefile.libretro b/libretro/Makefile.libretro
+--- a/libretro/Makefile.libretro
++++ b/libretro/Makefile.libretro
+@@ -66,7 +66,13 @@
+ ifeq ($(platform), osx)
+ 	COMMONFLAGS += -DC_HAVE_MPROTECT="1"
+ 	TARGET := $(TARGET_NAME)_libretro.dylib
+-	LDFLAGS += -dynamiclib `$(PKGCONFIG) $(PKG_CONFIG_FLAGS) --libs SDL_net`
++	ifeq ($(WITH_FAKE_SDL), 1)
++	  # VBlank probe: a build with no SDL on a Mac. Its C library has posix_memalign and no memalign.
++	  COMMONFLAGS += -DWITH_FAKE_SDL -DHAVE_POSIX_MEMALIGN=1
++	  LDFLAGS += -dynamiclib -Wl,-exported_symbols_list,link-macos.txt
++	else
++	  LDFLAGS += -dynamiclib `$(PKGCONFIG) $(PKG_CONFIG_FLAGS) --libs SDL_net`
++	endif
+ 	fpic = -fPIC
+ 	ifndef ($(UNIVERSAL))
+ 		CFLAGS += $(ARCHFLAGS)
+diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -608,6 +608,17 @@
+     disk_add_image_index,
+ };
  
-@@ -3830,8 +3832,36 @@ void retro_deinit(void)
++/* VBlank probe: where the machine hands a finished picture's time back to the frontend, and where it is
++   resumed. When it is resumed to be shut (retro_deinit), it leaves the way DOSBox leaves when its window
++   is closed: by throwing, which unwinds to start_dosbox and lets the configuration free what every part
++   of the machine holds (the PC's memory and the video card's above all). Without this the machine is
++   dropped where it stands and all of that memory is left behind. */
++void vblank_leave_frame(void)
++{
++    co_switch(mainThread);
++    if (frontend_exit) throw 0;
++}
++
+ static void leave_thread(Bitu)
+ {
+     MIXER_CallBack(0, audioData, samplesPerFrame * 4);
+@@ -1504,7 +1515,7 @@
+             log_cb(RETRO_LOG_INFO, "[dosbox] loading default configuration %s\n", configPath.c_str());
+         }
+ 
+-#if !defined (VITA) && !defined(__PSL1GHT__)
++#if 0 /* VBlank probe: the harness keeps its own working directory, and its configuration names whole paths. */
+         // Change the current working directory so that it's possible to have paths in .conf and
+         // .bat files (like MOUNT commands) that are relative to the content directory.
+         std::string dir = gamePath.substr(0, gamePath.find_last_of(PATH_SEPARATOR));
+@@ -1619,22 +1630,36 @@
+     restart_program(control->startup_params);
  }
  
- // Unused features
--void *retro_get_memory_data(unsigned id) { (void)id; return NULL; }
--size_t retro_get_memory_size(unsigned id) { (void)id; return 0; }
-+// VBlank probe: hands over the machine's memories to the test harness (see ruby-dos-emulator/core/dosbox-vblank-probe.patch).
-+// System RAM is the first megabyte of the PC's address space; the others are named by the harness.
-+#include "include/vga.h"
++/* VBlank probe: hands the machine's memories to the test harness (ruby-dos-emulator/core/dosbox-vblank-probe.patch).
++   System RAM is the PC's memory from address 0; the others are named by the harness. */
++#include "vga.h"
 +enum { VBLANK_VIDEO_RAM = 0x8001, VBLANK_PALETTE = 0x8002, VBLANK_VGA_STATE = 0x8003 };
 +static Bit32u vblank_vga_state[4];
-+void *retro_get_memory_data(unsigned id)
-+{
-+	switch (id)
-+	{
-+		case RETRO_MEMORY_SYSTEM_RAM: return MemBase;
-+		case VBLANK_VIDEO_RAM: return vga.mem.linear;
-+		case VBLANK_PALETTE: return vga.dac.rgb;
-+		case VBLANK_VGA_STATE:
-+			vblank_vga_state[0] = (Bit32u)vga.mode; vblank_vga_state[1] = (Bit32u)vga.draw.width;
-+			vblank_vga_state[2] = (Bit32u)vga.draw.height; vblank_vga_state[3] = (Bit32u)vga.draw.address_add;
-+			return vblank_vga_state;
-+	}
-+	return NULL;
-+}
-+size_t retro_get_memory_size(unsigned id)
-+{
-+	switch (id)
-+	{
-+		case RETRO_MEMORY_SYSTEM_RAM: return 0x100000;
-+		case VBLANK_VIDEO_RAM: return vga.mem.linear ? vga.vmemsize : 0;
-+		case VBLANK_PALETTE: return sizeof(vga.dac.rgb);
-+		case VBLANK_VGA_STATE: return sizeof(vblank_vga_state);
-+	}
-+	return 0;
-+}
- void retro_cheat_reset(void) { }
- void retro_cheat_set(unsigned index, bool enabled, const char *code) { (void)index; (void)enabled; (void)code; }
- bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) { return false; }
-@@ -4071,3 +4101,90 @@ unsigned DBP_Build_GL_Program(int vertex_shader_srcs_count, const char** vertex_
- 	}
- 	return prog;
+ void* retro_get_memory_data(const unsigned type)
+ {
+-    if (type == RETRO_MEMORY_SYSTEM_RAM)
++    switch (type)
+     {
+-        return GetMemBase();
++        case RETRO_MEMORY_SYSTEM_RAM: return GetMemBase();
++        case VBLANK_VIDEO_RAM: return vga.mem.linear;
++        case VBLANK_PALETTE: return vga.dac.rgb;
++        case VBLANK_VGA_STATE:
++            vblank_vga_state[0] = (Bit32u)vga.mode; vblank_vga_state[1] = (Bit32u)vga.draw.width;
++            vblank_vga_state[2] = (Bit32u)vga.draw.height; vblank_vga_state[3] = (Bit32u)vga.draw.address_add;
++            return vblank_vga_state;
+     }
+     return NULL;
  }
+ 
+ size_t retro_get_memory_size(const unsigned type)
+ {
+-    if (type == RETRO_MEMORY_SYSTEM_RAM)
++    switch (type)
+     {
+-        return MEM_TotalPages() * 4096;
++        case RETRO_MEMORY_SYSTEM_RAM: return MEM_TotalPages() * 4096;
++        case VBLANK_VIDEO_RAM: return vga.mem.linear ? vga.vmemsize : 0;
++        case VBLANK_PALETTE: return sizeof(vga.dac.rgb);
++        case VBLANK_VGA_STATE: return sizeof(vblank_vga_state);
+     }
+-    return  0;
++    return 0;
+ }
+ 
+ /* Stubs */
+@@ -1663,3 +1688,82 @@
+ }
+ 
+ #endif
 +
-+// VBlank probe: the frontend half, written here because DOSBox Pure calls its frontend from the thread it
-+// emulates on, and a Ruby callback cannot be run from a thread Ruby did not start. These keep what the
-+// harness reads: the last picture, the sound made, and the keys held. Each copy of the library has its own.
-+#include <pthread.h>
++/* VBlank probe: the frontend half. In the timing this harness asks for, the core hands each picture over
++   from the emulator's own stack (a coroutine, see GFX_EndUpdate), and Ruby cannot be called from a stack it
++   does not know. So the frontend is here: it answers the core's questions, and keeps what the harness reads
++   afterwards: the last picture and the sound made. Each copy of the library has its own.
++
++   The answers it gives are what make a frame exact. "dosbox_svn_core_timing" is "external": the machine
++   keeps no time by the host's clock, and each retro_run ends when the video card has finished one picture.
++   "dosbox_svn_use_options" is "false": the machine is what the configuration file says, and no core option
++   is laid over it. */
 +#include <vector>
 +#define VBLANK_EXPORT extern "C" __attribute__((visibility("default")))
-+static pthread_mutex_t vblank_lock = PTHREAD_MUTEX_INITIALIZER;
 +static const char* vblank_directory = ".";
 +static std::vector<Bit32u> vblank_pixels;
 +static unsigned vblank_picture_width, vblank_picture_height;
 +static std::vector<int16_t> vblank_sound;
 +static retro_keyboard_event_t vblank_keyboard_event;
-+static unsigned char vblank_keys[512];
 +static void RETRO_CALLCONV vblank_log(enum retro_log_level, const char*, ...) { }
 +VBLANK_EXPORT void vblank_set_directory(const char* path) { vblank_directory = path; }
-+// A key going down or up, told to the core the way a frontend does: through the callback it asked for,
-+// and kept in a table the core's polling asks about (it lets go of a key its polling says is up).
-+VBLANK_EXPORT void vblank_key_event(bool down, unsigned code)
++/* A key going down (1) or up (0), told to the core the way a frontend does: through the callback it asked for. */
++VBLANK_EXPORT void vblank_key_event(int down, unsigned code)
 +{
-+	if (code < sizeof(vblank_keys)) vblank_keys[code] = down;
-+	if (vblank_keyboard_event) vblank_keyboard_event(down, code, 0, 0);
++    if (vblank_keyboard_event) vblank_keyboard_event(down != 0, code, 0, 0);
 +}
 +VBLANK_EXPORT bool vblank_environment(unsigned cmd, void* data)
 +{
-+	switch (cmd & 0xFFFF)
-+	{
-+		case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*)data = true; return true;
-+		case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: return *(int*)data == RETRO_PIXEL_FORMAT_XRGB8888;
-+		case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-+		case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char**)data = vblank_directory; return true;
-+		case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool*)data = false; return true;
-+		case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: vblank_keyboard_event = ((struct retro_keyboard_callback*)data)->callback; return true;
-+		case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((struct retro_log_callback*)data)->log = vblank_log; return true;
-+	}
-+	return false;
++    switch (cmd)
++    {
++        case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: return *(int*)data == RETRO_PIXEL_FORMAT_XRGB8888;
++        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
++        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char**)data = vblank_directory; return true;
++        case RETRO_ENVIRONMENT_GET_VARIABLE:
++        {
++            struct retro_variable* variable = (struct retro_variable*)data;
++            if (!strcmp(variable->key, "dosbox_svn_core_timing")) { variable->value = "external"; return true; }
++            if (!strcmp(variable->key, "dosbox_svn_use_options")) { variable->value = "false"; return true; }
++            return false;
++        }
++        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool*)data = false; return true;
++        case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: vblank_keyboard_event = ((struct retro_keyboard_callback*)data)->callback; return true;
++        case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((struct retro_log_callback*)data)->log = vblank_log; return true;
++        case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
++        case RETRO_ENVIRONMENT_SET_GEOMETRY: return true;
++    }
++    return false;
 +}
++/* A picture the card finished. No data means it is the same as the one before, which is kept. */
 +VBLANK_EXPORT void vblank_video_refresh(const void* data, unsigned width, unsigned height, size_t pitch)
 +{
-+	if (!data) return;
-+	pthread_mutex_lock(&vblank_lock);
-+	vblank_picture_width = width; vblank_picture_height = height;
-+	vblank_pixels.resize((size_t)width * height);
-+	for (unsigned y = 0; y != height; y++) memcpy(&vblank_pixels[(size_t)y * width], (const char*)data + y * pitch, width * 4);
-+	pthread_mutex_unlock(&vblank_lock);
++    if (!data) return;
++    vblank_picture_width = width; vblank_picture_height = height;
++    vblank_pixels.resize((size_t)width * height);
++    for (unsigned y = 0; y != height; y++) memcpy(vblank_pixels.data() + (size_t)y * width, (const char*)data + y * pitch, (size_t)width * 4);
 +}
 +VBLANK_EXPORT size_t vblank_audio_batch(const int16_t* data, size_t frames)
 +{
-+	pthread_mutex_lock(&vblank_lock);
-+	vblank_sound.insert(vblank_sound.end(), data, data + frames * 2);
-+	pthread_mutex_unlock(&vblank_lock);
-+	return frames;
++    vblank_sound.insert(vblank_sound.end(), data, data + frames * 2);
++    return frames;
 +}
 +VBLANK_EXPORT void vblank_audio_sample(int16_t left, int16_t right) { int16_t pair[2] = { left, right }; vblank_audio_batch(pair, 1); }
 +VBLANK_EXPORT void vblank_input_poll(void) { }
-+VBLANK_EXPORT int16_t vblank_input_state(unsigned port, unsigned device, unsigned index, unsigned id)
++/* No mouse and no joystick: the keyboard is told through vblank_key_event. */
++VBLANK_EXPORT int16_t vblank_input_state(unsigned, unsigned, unsigned, unsigned) { return 0; }
++/* Copies the last picture into +into+ when it has room for it (+room+ pixels), and says its size either
++   way; returns how many pixels the picture has, 0 before the first. */
++VBLANK_EXPORT size_t vblank_copy_picture(Bit32u* into, size_t room, unsigned* width, unsigned* height)
 +{
-+	return (port == 0 && device == RETRO_DEVICE_KEYBOARD && id < sizeof(vblank_keys)) ? vblank_keys[id] : 0;
++    *width = vblank_picture_width; *height = vblank_picture_height;
++    if (into && vblank_pixels.size() <= room && !vblank_pixels.empty()) memcpy(into, vblank_pixels.data(), vblank_pixels.size() * 4);
++    return vblank_pixels.size();
 +}
-+// The last picture: its width and height, and a pointer to its pixels (valid until the next frame).
-+VBLANK_EXPORT const Bit32u* vblank_picture(unsigned* width, unsigned* height)
-+{
-+	*width = vblank_picture_width; *height = vblank_picture_height;
-+	return vblank_pixels.empty() ? NULL : &vblank_pixels[0];
-+}
-+// Copies out and forgets the sound made so far, as many 16-bit values as fit; returns how many it held.
++/* Copies out and forgets the sound made so far, as many 16-bit values as fit; returns how many it held. */
 +VBLANK_EXPORT size_t vblank_take_sound(int16_t* into, size_t room)
 +{
-+	pthread_mutex_lock(&vblank_lock);
-+	size_t held = vblank_sound.size(), taken = held < room ? held : room;
-+	if (into) memcpy(into, &vblank_sound[0], taken * 2);
-+	vblank_sound.erase(vblank_sound.begin(), vblank_sound.begin() + taken);
-+	pthread_mutex_unlock(&vblank_lock);
-+	return held;
++    size_t held = vblank_sound.size(), taken = held < room ? held : room;
++    if (into && taken) memcpy(into, vblank_sound.data(), taken * 2);
++    vblank_sound.erase(vblank_sound.begin(), vblank_sound.begin() + taken);
++    return held;
 +}
-+// retro_run starts emulating the next frame on the emulation thread before it returns, so memory read after it
-+// races with the machine. This waits for that frame to finish, and the thread then stays parked until the next
-+// retro_run: what is read is the machine between two frames.
-+VBLANK_EXPORT void vblank_finish_frame(void) { DBP_ThreadControl(TCM_FINISH_FRAME); }
-+// The emulation thread is detached and wakes the main thread before it returns, so a library closed straight
-+// after retro_deinit can be unloaded under a thread still leaving it. This waits until the thread says it is
-+// done (and a moment more for its return), so the library can be closed. It gives up after two seconds.
-+VBLANK_EXPORT void vblank_wait_for_thread(void)
-+{
-+	for (int waited = 0; waited != 2000 && !__atomic_load_n(&vblank_thread_done, __ATOMIC_SEQ_CST); waited++) retro_sleep(1);
-+	retro_sleep(5);
-+}
+diff --color -ruN a/libretro/link-macos.txt b/libretro/link-macos.txt
+--- a/libretro/link-macos.txt
++++ b/libretro/link-macos.txt
+@@ -0,0 +1,2 @@
++_retro_*
++_vblank_*
+diff --color -ruN a/libretro/link.T b/libretro/link.T
+--- a/libretro/link.T
++++ b/libretro/link.T
+@@ -1,5 +1,4 @@
+ {
+-   global: retro_*;
++   global: retro_*; vblank_*;
+    local: *;
+ };
+-
+diff --color -ruN a/src/gui/render.cpp b/src/gui/render.cpp
+--- a/src/gui/render.cpp
++++ b/src/gui/render.cpp
+@@ -214,13 +214,16 @@
+ }
+ 
+ extern Bitu PIC_Ticks;
++#ifdef __LIBRETRO__
++void vblank_leave_frame(void); /* VBlank probe: see libretro.cpp */
++#endif
+ void RENDER_EndUpdate( bool abort ) {
+ 	if (GCC_UNLIKELY(!render.updating))
+ #ifdef __LIBRETRO__
+ 	{
+ 		if (core_timing == CORE_TIMING_SYNCED) {
+ 			GFX_EndUpdate( NULL );
+-			co_switch(mainThread);
++			vblank_leave_frame();
+ 		}
+ 		return;
+ 	}
+@@ -264,7 +267,7 @@
+ 	render.updating=false;
+ #ifdef __LIBRETRO__
+ 	if (core_timing == CORE_TIMING_SYNCED)
+-		co_switch(mainThread);
++		vblank_leave_frame();
+ #endif
+ }
+ 

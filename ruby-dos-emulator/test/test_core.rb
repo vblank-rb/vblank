@@ -40,12 +40,12 @@ class TestCore < Minitest::Test
 
   def test_the_card_says_it_is_drawing_320_by_200
     played(fill_screen(MAGENTA_INDEX), 20) do |core|
-      assert_equal [320, 200], core.vga_state.values_at(:width, :height)
+      assert_equal [320, 200], [core.vga_state.width, core.vga_state.height]
     end
   end
 
   def test_a_frame_is_one_picture_of_a_mode_13h_screen
-    played(fill_screen(MAGENTA_INDEX), 1) do |core|
+    played(fill_screen(MAGENTA_INDEX), 20) do |core|
       assert_in_delta 70.0, core.fps, 0.5
     end
   end
@@ -68,6 +68,19 @@ class TestCore < Minitest::Test
     played(fill_screen(0), 0) do |core|
       assert_raises(ArgumentError) { core.press(%i[fire]) }
     end
+  end
+
+  def test_a_library_without_the_probe_patch_is_refused_saying_so
+    not_a_core = $LOADED_FEATURES.grep(/fiddle\.(bundle|so)\z/).first # a library that loads and has none of the functions
+    setting = RubyDOSEmulator::CoreLibrary::SETTING
+    kept = ENV.fetch(setting, nil)
+    ENV[setting] = not_a_core
+
+    error = written(fill_screen(0)) { |path| assert_raises(LoadError) { RubyDOSEmulator::Core.new(path) } }
+
+    assert_includes error.message, "without this gem's probe patch"
+  ensure
+    ENV[setting] = kept
   end
 
   def test_two_machines_in_one_process_do_not_see_each_other

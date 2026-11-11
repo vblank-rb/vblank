@@ -51,7 +51,7 @@ gem "ruby-genesis-emulator", path: "ruby-genesis-emulator"
 # the programs VBlank builds, to check them.
 gem "ruby-ps1-emulator", path: "ruby-ps1-emulator"
 
-# DOS'S EMULATOR, the same way: DOSBox Pure, driven through Fiddle, whose core `rake compile_core` in
+# DOS'S EMULATOR, the same way: DOSBox, driven through Fiddle, whose core `rake compile_core` in
 # ruby-dos-emulator/ builds (see its Rakefile). It is GPL-2.0, and only plays the programs VBlank builds,
 # to check them.
 gem "ruby-dos-emulator", path: "ruby-dos-emulator"

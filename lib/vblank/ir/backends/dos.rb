@@ -25,7 +25,7 @@ module VBlank
     module Backends
       # The game as a DOS program: the same program every other backend runs, lowered to the 386 in
       # real mode and written as an MZ .EXE, the file DOS loads from a disk and DOSBox runs from a
-      # folder. It is checked in DOSBox (ruby-dos-emulator, a DOSBox Pure core that
+      # folder. It is checked in DOSBox (ruby-dos-emulator, a DOSBox core that
       # `rake compile_dos_core` builds) against the interpreter, which stays the answer key.
       #
       # THE DESIGN, DECIDED BEFORE ANY CODE WAS WRITTEN. Each row is a decision the operator handed
@@ -59,7 +59,7 @@ module VBlank
       #                     are the d-pad, Ctrl is A, Alt is B, Enter is Start, Right Shift is Select,
       #                     Z and X are L and R. No joystick.
       #   Saves             A file beside the program.
-      #   Emulator          A DOSBox libretro core (DOSBox Pure), driven like the other consoles'
+      #   Emulator          A DOSBox libretro core (dosbox-svn), driven like the other consoles'
       #                     cores: mount a temporary folder as C:, run the .EXE, step frames, read
       #                     video memory and the shown picture, read memory and sound, press keys.
       #
@@ -70,8 +70,8 @@ module VBlank
       #   lines are drawn with 480-line timing (525 lines of 800 dots, 59.94 Hz), as the 640 x 480 mode is.
       #   Console::DOSHardware::LINES_A_FRAME has the numbers and the variants' descriptions use them.
       # - THE EMULATOR GEM IS PURE RUBY OVER FIDDLE, with a frontend written in C inside the core (see
-      #   ruby-dos-emulator): DOSBox Pure emulates on a thread of its own and calls its frontend from there,
-      #   which a Ruby callback cannot answer.
+      #   ruby-dos-emulator): the core runs the machine on a stack of its own and calls its frontend from
+      #   there, which a Ruby callback cannot answer.
       # - A PROGRAM TELLS THE READER WHERE ITS DATA IS. DOS loads an EXE wherever it finds room, so the
       #   program's first act is to store its data segment at 0040:00F0, the 16 bytes the PC's designers
       #   kept for programs to share (Diagnostics::DOSMemory), and a variable's address is an offset in it.
