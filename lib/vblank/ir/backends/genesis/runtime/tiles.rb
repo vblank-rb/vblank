@@ -43,10 +43,10 @@ module VBlank
             TILES_AT = Art::TILE_BYTES
 
             MOST_SPRITES = Console::GENESIS.sprites
-            # The cells a game may change in one pass, each noted as its plane, the first word of the
-            # command that points the chip at it (#cell_command) and its tile.
+            # The cells a game may change in one pass, each noted as the first word of the command
+            # that points the chip at it (#cell_command), which has its plane in it, and its tile.
             MOST_CELLS = 64
-            CELL_BYTES = 6
+            CELL_BYTES = 4
             # A sprite piece's note, which is its row of the sprite table: how far down it is as the chip
             # counts (128 past the screen's corner), its size (Art::Piece#size_bits) and its link, the
             # tile and palette it is drawn with, and how far across it is.
@@ -102,7 +102,7 @@ module VBlank
             def emit(asm, memory, columns:, colors: false, scene_tiles: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
-              emit_maps(asm, memory, at, columns)
+              emit_maps(asm, memory, at)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
               emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles)
@@ -203,11 +203,12 @@ module VBlank
             # where its cells are, how many across and how many down) is noted to be copied onto the plane
             # in the blank, and every cell the game changed on that plane before is let go, since the
             # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
-            # (plane, x, y): where the view of the plane is. rt_set_cell(plane, column, row, cell): one
-            # cell noted to change, the game stopped when it changes more than a queue holds. The column
-            # and the row are inside the map: the game's line has tested them (Lowering::Picture#emit_set_tile_of).
-            def emit_maps(asm, memory, at, columns)
-              shift = columns == 64 ? 6 : 5
+            # (plane, x, y): where the view of the plane is. rt_note_cell: one cell noted to change, the
+            # game stopped when it changes more than a queue holds. It takes the note as it is kept,
+            # the command's first word in D1 and the cell's word in D3, and uses D4 and A0: where the
+            # cell is was worked out by the game's line, which knows its plane and often its row
+            # (Lowering::Picture#emit_cell_noted), so this is ten instructions.
+            def emit_maps(asm, memory, at)
               asm.label("rt_background_put_up")
               asm.lea(asm.abs_l("art grids"), asm.a(0))
               asm.lsl(:l, 3, asm.d(1))
@@ -231,43 +232,35 @@ module VBlank
               asm.move(:w, asm.d(2), asm.idx(0, 2, 0))
               asm.rts
 
-              asm.label("rt_set_cell")
+              asm.label("rt_note_cell")
               asm.move(:w, at.call(CELL_COUNT), asm.d(4))
               asm.cmp(:w, asm.imm(MOST_CELLS), asm.d(4))
-              asm.branch(:cs, "rt_set_cell_room")
+              asm.branch(:cs, "rt_note_cell_room")
               asm.moveq(Frame::CELLS_FULL, asm.d(0))
               asm.jmp(asm.abs_l("rt_fault"))
-              asm.label("rt_set_cell_room")
-              asm.move(:w, asm.d(4), asm.d(5)) # six bytes a note: the count three times over, doubled
-              asm.add(:w, asm.d(4), asm.d(4))
-              asm.add(:w, asm.d(5), asm.d(4))
-              asm.add(:w, asm.d(4), asm.d(4))
-              asm.lea(asm.abs_l(memory[CELLS]), asm.a(0))
-              asm.add(:w, asm.d(4), asm.a(0))
-              asm.move(:w, asm.d(0), asm.post(0))
-              asm.lsl(:w, shift, asm.d(2))
-              asm.add(:w, asm.d(1), asm.d(2))
-              asm.add(:w, asm.d(2), asm.d(2)) # two bytes a cell
-              asm.and(:w, asm.imm(1), asm.d(0))
-              asm.ror(:w, 3, asm.d(0)) # plane B's map is 8K past plane A's
-              asm.or(:w, asm.d(0), asm.d(2))
-              asm.or(:w, asm.imm(cell_command >> 16), asm.d(2))
-              asm.move(:w, asm.d(2), asm.post(0))
-              asm.move(:w, asm.d(3), asm.post(0))
+              asm.label("rt_note_cell_room")
               asm.addq(:w, 1, at.call(CELL_COUNT))
+              asm.add(:w, asm.d(4), asm.d(4)) # four bytes a note
+              asm.add(:w, asm.d(4), asm.d(4))
+              asm.lea(at.call(CELLS), asm.a(0))
+              asm.move(:w, asm.d(1), asm.idx(0, 0, 4, :w))
+              asm.move(:w, asm.d(3), asm.idx(0, 2, 4, :w))
               asm.rts
             end
 
             # THE COMMAND THAT POINTS THE CHIP AT A CELL is two words: the first holds the low fourteen
             # bits of the cell's address in video memory, and the second its top two, which are the same
             # for every cell of both maps. So a cell is noted with its first word worked out
-            # (rt_set_cell), and the blank writes that word, then this command's second, then the cell.
+            # (Lowering::Picture#emit_cell_command_word), and the blank writes that word, then this
+            # command's second, then the cell.
             def cell_command
               h = Console::GenesisHardware
               h.command(h::WRITE_VRAM, PLANE_A_AT)
             end
 
-            # The cells noted for plane D0 taken out of the queue, the rest kept in their order.
+            # The cells noted for plane D0 taken out of the queue, the rest kept in their order. A note
+            # names its plane in its command word: plane B's map is 8K past plane A's, which is bit 13
+            # of a cell's place, turned round here into bit 0. D1 is used.
             def emit_cells_of_plane_let_go(asm, memory, at)
               asm.move(:w, at.call(CELL_COUNT), asm.d(4))
               asm.branch(:eq, "rt_cells_let_go_done")
@@ -278,14 +271,13 @@ module VBlank
               asm.label("rt_cells_let_go_cell")
               asm.move(:w, asm.post(1), asm.d(6))
               asm.move(:w, asm.post(1), asm.d(7))
-              asm.cmp(:w, asm.d(0), asm.d(6))
-              asm.branch(:ne, "rt_cells_let_go_keep")
-              asm.addq(:l, 2, asm.a(1))
-              asm.bra("rt_cells_let_go_next")
-              asm.label("rt_cells_let_go_keep")
+              asm.move(:w, asm.d(6), asm.d(1))
+              asm.rol(:w, 3, asm.d(1))
+              asm.and(:w, asm.imm(1), asm.d(1))
+              asm.cmp(:w, asm.d(0), asm.d(1))
+              asm.branch(:eq, "rt_cells_let_go_next")
               asm.move(:w, asm.d(6), asm.post(2))
               asm.move(:w, asm.d(7), asm.post(2))
-              asm.move(:w, asm.post(1), asm.post(2))
               asm.addq(:w, 1, asm.d(5))
               asm.label("rt_cells_let_go_next")
               asm.dbra(asm.d(4), "rt_cells_let_go_cell")
@@ -608,7 +600,6 @@ module VBlank
               asm.move(:w, asm.imm(cell_command & 0xFFFF), asm.d(0))
               asm.subq(:w, 1, asm.d(7))
               asm.label("rt_upload_cell")
-              asm.addq(:l, 2, asm.a(1)) # its plane, which the command's first word has in it already
               asm.move(:w, asm.post(1), asm.ind(3))
               asm.move(:w, asm.d(0), asm.ind(3))
               asm.move(:w, asm.post(1), asm.ind(2))

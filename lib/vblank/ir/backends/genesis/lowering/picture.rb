@@ -731,20 +731,79 @@ module VBlank
               return emit_set_picked_tile_of(bg, node) if node.picked?
               return if node.tile && node.tile >= bg.tiles.length
 
-              columns, rows = TileMap.size_of(bg.every_map.first)
               word = cell_word_of(bg, node.tile)
-              column = keep_local(:column)
-              row = keep_local(:row)
-              value(node.col)
-              store(column)
-              value(node.row)
-              store(row)
+              emit_cell_noted(bg, node) { |_outside| @asm.move(:w, @asm.imm(word), @asm.d(3)) }
+            end
+
+            # THE CELL AT +node+'s COLUMN AND ROW OF +bg+ NOTED TO CHANGE IN THE BLANK (Runtime::Tiles's
+            # rt_note_cell), to the word the block leaves in D3; the block is handed the label to jump
+            # to when the cell is to be left alone, and may use D0 and A0.
+            #
+            # A retail game stores the word in its copy of the plane in four or five instructions,
+            # because it knows where the cell is. So what is known here is worked out here: a column
+            # or a row written in the program is tested now and takes no instruction, one that is a
+            # variable is tested where it is kept, and the first word of the command that points the
+            # chip at the cell (Runtime::Tiles.cell_command) is put together from them in D1, with
+            # the plane and everything else that is a number folded into one sum.
+            def emit_cell_noted(bg, node)
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              column = cell_place_operand(node.col, :column)
+              row = cell_place_operand(node.row, :row)
+              return if place_off_map?(column, columns) || place_off_map?(row, rows)
+
               outside = fresh("cell_outside")
-              emit_jump_unless_below(column, columns, outside)
-              emit_jump_unless_below(row, rows, outside)
-              runtime_call("rt_set_cell", [Build.int(layer_of(bg)), Build.var_ref(column), Build.var_ref(row), Build.int(word)])
+              emit_jump_unless_below(column, columns, outside) unless column.is_a?(Integer)
+              emit_jump_unless_below(row, rows, outside) unless row.is_a?(Integer)
+              yield outside
+              emit_cell_command_word(bg, column, row)
+              call_routine("rt_note_cell")
               @asm.label(outside)
             end
+
+            # Where a column or row of a cell can be read with nothing worked out: the number itself
+            # for one written in the program, or the variable it is. Any other is worked out now into
+            # a number of the lowering's own, one for every cell the game changes, each used only
+            # until its cell is noted.
+            def cell_place_operand(node, what)
+              known = folded(node)
+              return known if known
+
+              name = variable_named(node)
+              return name if name
+
+              local = (@cell_place_locals ||= {})[what] ||= keep_local(what)
+              value(node)
+              store(local)
+              local
+            end
+
+            def place_off_map?(place, limit) = place.is_a?(Integer) && !place.between?(0, limit - 1)
+
+            # D1 the first word of the command for the cell at +column+ and +row+ of +bg+'s plane,
+            # each a number or the variable holding one, both inside the map. A cell is two bytes and
+            # a row of the plane its cells across, so the place is the row shifted, plus the column,
+            # doubled; plane B's map is 8K past plane A's.
+            def emit_cell_command_word(bg, column, row)
+              shift = plane_size.first == 64 ? 6 : 5
+              fixed = (Runtime::Tiles.cell_command >> 16) + (layer_of(bg).odd? ? Runtime::Tiles::PLANE_B_AT - Runtime::Tiles::PLANE_A_AT : 0)
+              fixed += row << (shift + 1) if row.is_a?(Integer)
+              fixed += column << 1 if column.is_a?(Integer)
+              d1 = @asm.d(1)
+              return @asm.move(:w, @asm.imm(fixed), d1) if row.is_a?(Integer) && column.is_a?(Integer)
+
+              if row.is_a?(Integer)
+                @asm.move(:w, low_word_of(column), d1)
+              else
+                @asm.move(:w, low_word_of(row), d1)
+                @asm.lsl(:w, shift, d1)
+                @asm.add(:w, low_word_of(column), d1) unless column.is_a?(Integer)
+              end
+              @asm.add(:w, d1, d1)
+              @asm.add(:w, @asm.imm(fixed), d1)
+            end
+
+            # The low half of the variable +name+, which is the whole of a number tested to be small.
+            def low_word_of(name) = at(place_of(name), 2)
 
             # The word a cell of +bg+ showing its tile +tile+ holds in the plane's map: the tile's number
             # in video memory and its palette, and nought for no tile.
@@ -767,33 +826,20 @@ module VBlank
               words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
               return if words.all?(NO_CELL)
 
-              columns, rows = TileMap.size_of(bg.every_map.first)
               table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
-              column = keep_local(:column)
-              row = keep_local(:row)
-              value(node.col)
-              store(column)
-              value(node.row)
-              store(row)
-              outside = fresh("cell_outside")
-              emit_jump_unless_below(column, columns, outside)
-              emit_jump_unless_below(row, rows, outside)
-              value(node.picked_by)
-              @asm.sub(:l, @asm.imm(node.picks_from), @asm.d(0)) unless node.picks_from.zero?
-              @asm.cmp(:l, @asm.imm(words.length), @asm.d(0))
-              @asm.branch(:cc, outside)
-              @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
-              @asm.lea(@asm.abs_l(table), @asm.a(0))
-              @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(3))
-              if words.include?(NO_CELL)
-                @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(3))
-                @asm.branch(:eq, outside)
+              emit_cell_noted(bg, node) do |outside|
+                value(node.picked_by)
+                @asm.sub(:l, @asm.imm(node.picks_from), @asm.d(0)) unless node.picks_from.zero?
+                @asm.cmp(:l, @asm.imm(words.length), @asm.d(0))
+                @asm.branch(:cc, outside)
+                @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
+                @asm.lea(@asm.abs_l(table), @asm.a(0))
+                @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(3))
+                if words.include?(NO_CELL)
+                  @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(3))
+                  @asm.branch(:eq, outside)
+                end
               end
-              @asm.moveq(layer_of(bg), @asm.d(0))
-              @asm.move(:l, var(column), @asm.d(1))
-              @asm.move(:l, var(row), @asm.d(2))
-              call_routine("rt_set_cell")
-              @asm.label(outside)
             end
 
             # A jump to +outside+ unless the number kept in +local+ is from nought up to +limit+, which

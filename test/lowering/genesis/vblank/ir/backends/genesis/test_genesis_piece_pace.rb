@@ -196,9 +196,11 @@ end
 # either way.
 class TestGenesisPiecePace < Minitest::Test
   # How much of a frame the pass that writes the line may take, and an ordinary pass with pieces
-  # against the same pass with flat pictures. Measured, the first is about half a frame and the
-  # second about a fifth more: three rows of the table a sprite where the flat picture takes fewer.
-  MOST_OF_A_FRAME = 0.56
+  # against the same pass with flat pictures. Measured, the first is under half a frame, of which
+  # the sprites are most and the line of letters the rest: each letter's cell is a word read from a
+  # table of the told cells, not found by a test for each told cell. The second is about a fifth
+  # more: three rows of the table a sprite where the flat picture takes fewer.
+  MOST_OF_A_FRAME = 0.46
   MOST_OVER_FLAT = 1.25
 
   PASSES = 32
@@ -239,7 +241,7 @@ class TestGenesisPiecePace < Minitest::Test
     game_player.run(game.program(console: :genesis), frames: 6)
   end
 
-  def test_every_pass_fits_a_frame_and_the_line_takes_about_half_of_one
+  def test_every_pass_fits_a_frame_and_the_line_takes_under_half_of_one
     Dir.mktmpdir do |folder|
       rom = cartridge(folder, pieces: true)
       still = rom.profile(out: StringIO.new, frames: PASSES)
