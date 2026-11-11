@@ -67,6 +67,7 @@ module VBlank
         @streams = streams # its maps are brought into view a strip at a time (see IR::TileMap.streams?)
         @map_names = map_names || [name]
         @lists_allowed_undrawn = [] # see #allow_undrawn_lists
+        @pack_cells = nil # see #allow_set_cells
       end
 
       # LISTS `draw_with` TAKES THOUGH NO TILE MAY BE DRAWN FROM THEM. Which lists a background's
@@ -79,6 +80,16 @@ module VBlank
       # Called by Builder::PackBackgrounds as it declares the background, with every bank of its slot.
       def allow_undrawn_lists(names)
         @lists_allowed_undrawn = names
+        self
+      end
+
+      # THE CELLS `set_cell` MAY WRITE, each as the original's own cell number (a PackCells), or nil
+      # for none.
+      #
+      # Called by Builder::PackBackgrounds as it declares the background, with the cells its
+      # `set_cells:` named.
+      def allow_set_cells(cells)
+        @pack_cells = cells
         self
       end
 
@@ -162,6 +173,32 @@ module VBlank
         which.open_no_side
         set_tile_between(col, row, number, upper, now, first: first + lower.length)
         which.close_side(nil)
+      end
+
+      # WRITE ONE CELL AS THE ORIGINAL'S OWN CELL NUMBER, on a background drawn from the data pack.
+      #
+      #   face = background :face, tiles: pack[:video], map: pack[:face_map], colors: pack[:palette],
+      #                            across: 40, set_cells: 0xE500..0xE553
+      #   face.set_cell 12, 20, 0xE500 + letters[at]    # a letter of the font, as the original writes it
+      #
+      # The original puts words on a screen by storing a cell number in the map: which tile,
+      # turned how, from which bank of colours, in its console's layout. +word+ is that number,
+      # written in the game or worked out as it plays, and it is one of the cells the background
+      # was told (`set_cells:`), whose pictures the build made. +col+ and +row+ count the
+      # original's cells, as `across:` does.
+      #
+      # It is a changed cell as #set_tile's is: it lasts until the map is put up again, and a
+      # place outside the map is left alone. A number written in the game that the background was
+      # not told is refused here. One worked out as the game plays that it was not told leaves the
+      # cell alone, since no picture was made for it (PackCells#write).
+      def set_cell(col, row, word)
+        if @pack_cells.nil?
+          raise ArgumentError,
+                "background :#{@name} was not told any cells that set_cell can write. To fix this, draw it from the " \
+                "data pack and name the cells in `set_cells:`, or use set_tile with a key of its tileset."
+        end
+        @pack_cells.write(self, col, row, word)
+        self
       end
 
       # THE WALLS FOLLOW THE CELL. A mover is stopped by the walls the tileset's `solid:` tiles

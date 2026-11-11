@@ -48,6 +48,7 @@ require_relative "dsl/score_list"
 require_relative "dsl/song_list"
 require_relative "dsl/sound_effect_list"
 VBlank.require_game_file "dsl/background"
+require_relative "dsl/pack_cells"          # The cells a background from the data pack may be written later
 VBlank.require_game_file "dsl/status_bar"
 require_relative "dsl/tile_run"            # Tiles whose pixels the game paints, in a list of its own
 require_relative "dsl/tile_picture_group"  # Tiles taking turns through pictures in the cartridge

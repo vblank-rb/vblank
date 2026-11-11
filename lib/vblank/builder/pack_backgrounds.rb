@@ -45,7 +45,8 @@ module VBlank
       # The background +name+ from +tiles+, +map+ and +colors+ (DSL::PackSlot handles), +across+
       # cells to a row of the map, each cell +cell+ pixels square. +others+ are the background's
       # own settings, handed on.
-      def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, **others)
+      def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, **others)
+        refuse_set_cells_read_at_start!(name, set_cells)
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_halves!(name, map)
@@ -71,12 +72,73 @@ module VBlank
             end
           end
         end
+        cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists) do |tile, number|
+          pack_background_tile(name, tile, tile_places, bank_lists, number)
+        end
         drawn = pictures.values.compact
         refuse_pack_background_drawing_nothing!(name) if drawn.empty?
         tileset = :"background :#{name} tiles"
         tiles(tileset, drawn.to_h { |picture| [picture, picture] })
         # Which banks the map uses is in the player's copy, so the game may name any bank of the slot.
-        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(bank_lists)
+        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(bank_lists).allow_set_cells(cells)
+      end
+
+      # THE CELLS THE BACKGROUND MAY BE WRITTEN LATER (`set_cells:`), each the original's own cell
+      # number: a list of them, a Range (a run of tiles in one bank, turned one way), or a list of
+      # both. The original writes words onto a screen by storing font cells in its map, and no
+      # cell of the map names a font tile until then, so the pictures the map needs do not hold
+      # them. Each told cell's tiles are made pictures here as the map's were and kept in +pictures+
+      # with them, by tile as drawn, so a tile the map also draws is one picture. The block makes
+      # the picture of a tile, given the tile and its number.
+      #
+      # A tile that draws nothing is left empty in the map, and `set_tile` has no key for an empty
+      # cell. So a told tile that draws nothing is given a picture, see-through all over: the
+      # font's space, which the original writes to take its words away again.
+      #
+      # Hands back a DSL::PackCells for the background's handle, or nil where none are told.
+      def declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists)
+        return nil if set_cells.nil?
+
+        tiles_by_word = {}
+        cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: tiles_by_word)
+        pack_cell_words!(name, set_cells).each do |word|
+          tiles_by_word[cells.read_part(word)] ||= Array.new(tiles_a_side * tiles_a_side) do |at|
+            tile = words.cell_tile(word, at % tiles_a_side, at / tiles_a_side, tiles_a_side)
+            pictures[tile] = yield(tile, pictures.length) unless pictures.key?(tile)
+            pictures[tile] || (pictures[[:blank, tile.bank]] ||= pack_background_blank_tile(name, tile.bank, bank_lists))
+          end
+        end
+        cells
+      end
+
+      # The cell numbers +set_cells+ names, in the order given.
+      def pack_cell_words!(name, set_cells)
+        parts = set_cells.is_a?(Array) ? set_cells : [set_cells]
+        told = parts.flat_map { |part| pack_cell_run?(part) ? part.to_a : [part] }
+        return told if !told.empty? && told.all? { |word| word.is_a?(Integer) && word.between?(0, 0xFFFF) }
+
+        raise ArgumentError, "background :#{name} was given set_cells: #{set_cells.inspect}. It takes the cell numbers that " \
+                             "set_cell can write later, each a number of two bytes as the original's map holds them: a " \
+                             "list like `[0xE500, 0xE501]`, or a range like `0xE500..0xE553`."
+      end
+
+      # Is +part+ of a `set_cells:` a run of cell numbers, written as a Range of them?
+      def pack_cell_run?(part)
+        part.is_a?(Range) && part.begin.is_a?(Integer) && part.end.is_a?(Integer) && part.begin >= 0 && part.end <= 0xFFFF
+      end
+
+      # A picture that draws nothing, for a told cell whose tile is see-through all over. It is
+      # drawn from the list of +bank+ as the tile it stands for is, so it brings no colours of its own.
+      def pack_background_blank_tile(name, bank, bank_lists)
+        list = bank_lists.fetch(bank) do
+          raise ArgumentError, "background :#{name} was told a cell drawn from bank #{bank} of colors, and its colors: " \
+                               "slot holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank " \
+                               "its cells use."
+        end
+        side = Original::Slot::TILE_SIDE
+        picture = :"background :#{name} blank tile #{bank}"
+        image picture, width: side, height: side, places: Array.new(side * side, 0), colors: list
+        picture
       end
 
       # The most tiles a background read as the game starts can be: each cell's tile is a tile of
@@ -239,6 +301,17 @@ module VBlank
           raise ArgumentError, "background :#{name} reads a map from the data pack, and VBlank does not know how a cell of " \
                                "this original's maps is kept. A map from the pack is read in the layout of the Advance, " \
                                "the Super Nintendo or the Genesis."
+      end
+
+      # The cells written later are worked out from what the slots hold, which a build that reads
+      # its pack as the game starts does not have. With none told the background has no cells
+      # `set_cell` can write, so no `set_cell` reaches a background read at start either.
+      def refuse_set_cells_read_at_start!(name, set_cells)
+        return if set_cells.nil? || !pack_left_out?
+
+        raise ArgumentError, "background :#{name} was given set_cells:, and this build reads its pack as the game starts. " \
+                             "A background's cells written later are not made that way yet. To fix this, build the game " \
+                             "all-in-one."
       end
 
       def refuse_bad_pack_background_shape!(name, map, across, cell, words)

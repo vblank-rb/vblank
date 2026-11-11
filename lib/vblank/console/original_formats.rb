@@ -49,6 +49,12 @@ module VBlank
       def flipped?(word) = word[flip_bit] == 1
       def bank_of(word) = (word >> bank_at) & ((1 << bank_bits) - 1)
 
+      # The bits of a cell that are read: its tile, its turn and its bank of colours. Two cells
+      # that differ only in a bit outside these are drawn alike.
+      def read_bits
+        ((1 << tile_bits) - 1) | (1 << mirror_bit) | (1 << flip_bit) | (((1 << bank_bits) - 1) << bank_at)
+      end
+
       # The tile drawn at +along+ and +down+ (in tiles, from the cell's top left as drawn) of the
       # cell +word+ stands for, a cell +side+ tiles square. A cell turned over turns each of its
       # tiles and swaps them about, as the console turns the whole cell. The build reads a map so,
