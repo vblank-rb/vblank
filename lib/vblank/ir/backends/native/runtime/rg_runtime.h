@@ -213,7 +213,30 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
  * (RG_COLOR_FORMAT_NUMBERS numbers, as above). These are the colours that are no part of a
  * picture (IR::StartFile::Color): the game keeps them in an array of its own and reads an entry
- * where a game holding its data writes a colour, as a screen's backdrop does. */
+ * where a game holding its data writes a colour, as a screen's backdrop does.
+ *
+ * A RECORDING'S SETTINGS IN THE FILE (IR::StartFile::RecordingSettings): the rate it was recorded
+ * at, the sample a held note reads back to, and its envelope. The game works a play and a note
+ * out from them as it is built, so it holds a stand-in for each number worked out, and these
+ * write the number again from the file. Each writes entries of +into+: the game's own array for
+ * the numbers of its plays, or the table of recordings or of note rows (rg_mix.h, rg_music.h).
+ * A number in the file is four of +rules+: where it is, how many bytes, 1 for the high byte
+ * first, and 1 where it can be below zero. The file is the player's, and the game plays on
+ * whatever it holds.
+ *
+ * rg_start_file_fill_steps: the step a voice reads the recording at (IR::Mixing.step), from its
+ * rate. +rules+: the rate's four numbers, the rate the mix runs at as two halves of a number with
+ * a fraction (the high half first), how many steps, and for each the entry of +into+ and, as two
+ * halves, the note it sounds against the note the recording was made at. A rate below 1 is 1.
+ *
+ * rg_start_file_fill_holds: how far back a held note reads at the recording's end, from the
+ * sample it holds from. +rules+: that sample's four numbers, the recording's length, how many
+ * entries, and each entry of +into+. A sample outside the recording is its first or its last.
+ *
+ * rg_start_file_fill_shapes: an envelope, from four bytes of the file (attack, decay, sustain,
+ * release). +rules+: where they are, how they are kept (0, those four bytes), the most a level
+ * is, how many entries, and each entry of +into+, where five numbers start: 1 and the four for a
+ * shape, all 0 for the one that is no shape at all. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
@@ -225,5 +248,8 @@ void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
+void rg_start_file_fill_steps(int32_t *into, const int32_t *rules);
+void rg_start_file_fill_holds(int32_t *into, const int32_t *rules);
+void rg_start_file_fill_shapes(int32_t *into, const int32_t *rules);
 
 #endif

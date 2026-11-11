@@ -512,6 +512,62 @@ void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, in
   for (int32_t place = 0; place < count; place++) colors[first + place] = start_file_color(at, format, place);
 }
 
+/* The number of a recording's setting: +where+ is where it is in the file, how many bytes it is,
+ * 1 for the high byte first, and 1 where it can be below zero (RG_FILE_NUMBER_NUMBERS numbers). */
+enum { RG_FILE_NUMBER_NUMBERS = 4 };
+static int64_t start_file_setting(const int32_t *where) {
+  uint32_t number = start_file_number(where[0], where[1], where[2]);
+  if (!where[3]) return (int64_t)number;
+  if (where[1] == 1) return (int64_t)(int8_t)number;
+  return where[1] == 2 ? (int64_t)(int16_t)number : (int64_t)(int32_t)number;
+}
+
+/* The number with a fraction that two of the game's numbers hold, the high half first (IEEE 754). */
+static double number_of_halves(int32_t high, int32_t low) {
+  uint64_t bits = ((uint64_t)(uint32_t)high << 32) | (uint64_t)(uint32_t)low;
+  double number;
+  memcpy(&number, &bits, sizeof number);
+  return number;
+}
+
+void rg_start_file_fill_steps(int32_t *into, const int32_t *rules) {
+  int64_t rate = start_file_setting(rules);
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
+  double mix_rate = number_of_halves(rest[0], rest[1]);
+  int32_t count = rest[2];
+  if (rate < 1) rate = 1;
+  for (int32_t i = 0; i < count; i++) {
+    const int32_t *entry = rest + 3 + (i * 3);
+    /* IR::Mixing.step's sum, in its order, rounded to the nearest whole step. */
+    double step = (((double)rate / mix_rate) * number_of_halves(entry[1], entry[2])) * 65536.0;
+    into[entry[0]] = step >= 2147483647.0 ? INT32_MAX : step < 1.0 ? 1 : (int32_t)(step + 0.5);
+  }
+}
+
+void rg_start_file_fill_holds(int32_t *into, const int32_t *rules) {
+  int64_t holds_from = start_file_setting(rules);
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
+  int32_t length = rest[0], count = rest[1];
+  if (holds_from < 0) holds_from = 0;
+  if (holds_from > length - 1) holds_from = length - 1;
+  for (int32_t i = 0; i < count; i++) into[rest[2 + i]] = length - (int32_t)holds_from;
+}
+
+void rg_start_file_fill_shapes(int32_t *into, const int32_t *rules) {
+  int32_t at = rules[0], full = rules[2], count = rules[3];
+  int32_t attack = start_file[at], decay = start_file[at + 1], sustain = start_file[at + 2], release = start_file[at + 3];
+  /* A shape that climbs at once, holds at full and stops dead is no shape (Audio::Envelope#plain?). */
+  int32_t shaped = !(attack == full && sustain == full && release == 0);
+  for (int32_t i = 0; i < count; i++) {
+    int32_t *shape = into + rules[4 + i];
+    shape[0] = shaped;
+    shape[1] = shaped ? attack : 0;
+    shape[2] = shaped ? decay : 0;
+    shape[3] = shaped ? sustain : 0;
+    shape[4] = shaped ? release : 0;
+  }
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];

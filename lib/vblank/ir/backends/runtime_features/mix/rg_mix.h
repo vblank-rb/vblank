@@ -17,7 +17,13 @@
 /* What the lowering writes (see rg_mix.c for the layouts): how the mix runs, and every recording
  * the game declares, with its bytes. */
 extern const int32_t rg_game_mix[];
+/* A game with a recording that reads its envelope from the start file writes its shape into this
+ * table as it starts, and says so before this header (RG_RECORDINGS_WRITABLE). */
+#ifdef RG_RECORDINGS_WRITABLE
+extern int32_t rg_game_recordings[];
+#else
 extern const int32_t rg_game_recordings[];
+#endif
 /* A game whose recordings read their samples from the start file writes this array as it starts,
  * and says so before this header (RG_RECORDING_SAMPLES_WRITABLE). */
 #ifdef RG_RECORDING_SAMPLES_WRITABLE

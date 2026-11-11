@@ -308,7 +308,7 @@ module VBlank
             art = picture_data
             start_file_routines = build_start_file_routines
             [Statements::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
-             *recording_samples_define,
+             *written_sound_array_defines,
              Statements::Include.new("rg_int32.h"), Statements::Include.new("rg_runtime.h"), Statements::Include.new("rg_list.h"),
              Statements::Include.new("rg_screen.h"), Statements::Include.new("rg_sound.h"),
              Statements::Include.new("rg_save.h"), Statements::Include.new("rg_state.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },
@@ -384,7 +384,7 @@ module VBlank
               refuse_picture_from_start_file!(data.name, "a piece of data read a byte at a time")
               bytes = data.kind == :data ? data.bytes : data.pixels
               Statements::ConstArray.new(name: @names.of(:data, data.name), type: "uint8_t", values: bytes.bytes)
-            end + start_file_color_arrays
+            end + start_file_color_arrays + start_file_sound_number_arrays
           end
 
           # The names of the tables and the data a run reads, by an entry or by copying a run of them.

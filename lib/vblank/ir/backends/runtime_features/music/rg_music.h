@@ -12,7 +12,13 @@
 /* Every song the game has and every sound effect it makes, as numbers (the lowering writes them;
  * see rg_music.c for the layouts). */
 extern const int32_t rg_game_music[];
+/* A game with a recording that reads its settings from the start file writes the note rows worked
+ * out from them as it starts, and says so before this header (RG_NOTE_SOUNDS_WRITABLE). */
+#ifdef RG_NOTE_SOUNDS_WRITABLE
+extern int32_t rg_game_note_sounds[];
+#else
 extern const int32_t rg_game_note_sounds[];
+#endif
 extern const int32_t rg_game_effects[];
 
 /* Song number +song+ is the tune playing now, taken up at the next frame; naming the tune already

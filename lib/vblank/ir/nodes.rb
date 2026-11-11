@@ -1531,7 +1531,12 @@ module VBlank
         declaration!
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
-                 envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape
+                 envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape,
+                 settings_from_file: :file_recording_settings
+
+        # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in
+        # the file the program is handed as it starts (a StartFile::RecordingSettings), for those
+        # it reads from there: +rate+, +holds_from+ and +envelope+ are then stand-ins. Nil otherwise.
 
         # +chip_envelope+ is the same shape as one console's sound chip keeps it, for a recording
         # whose settings came from a game for that console. A backend for that console may hand it

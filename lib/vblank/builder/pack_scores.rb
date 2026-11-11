@@ -24,8 +24,12 @@ module VBlank
     # Super Nintendo's sound chip keeps it is three bytes of a slot (`pack[:adsr].snes_envelope(0)`).
     #
     # BUILT ALL-IN-ONE, the notes and the numbers are read here, and the song is the Score a port
-    # would have written by hand, so every console and build plays it as any Score. With the pack
-    # left out nothing here can be known, and the build says so.
+    # would have written by hand, so every console and build plays it as any Score.
+    #
+    # WITH THE PACK LEFT OUT nothing here can be known. An instrument's rate, the sample it holds
+    # from and its envelope of four bytes are then read as the game starts: the recording keeps
+    # where each is in the start file (#recording_settings_in_start_file) and a stand-in for the
+    # number. A part's notes and a chip envelope are not made that way yet, and the build says so.
     module PackScores
       private
 
@@ -69,29 +73,74 @@ module VBlank
       end
 
       # +value+ for an instrument's setting, a number of the pack read here (DSL::PackNumber) or the
-      # game's own.
-      def pack_setting_value(value, subject)
+      # game's own. With the pack left out a number of the pack is +stand_in+, which the recording
+      # holds until the file is read (#recording_settings_in_start_file says where from).
+      def pack_setting_value(value, subject, stand_in)
         return value unless value.is_a?(DSL::PackNumber)
 
-        refuse_pack_read_while_left_out!(subject)
+        if pack_left_out?
+          refuse_slot_from_elsewhere!(value.slot, subject)
+          return stand_in
+        end
         pack_slot_values(value.slot, :numbers, subject).fetch(value.index)
       end
 
       # +envelope+ for an instrument, an envelope of the pack read here (DSL::PackEnvelope) as the
-      # four numbers an Audio::Envelope keeps, or the game's own.
+      # four numbers an Audio::Envelope keeps, or the game's own. With the pack left out it is a
+      # stand-in, as a number is.
       # A DSL::PackSNESEnvelope is read as the three bytes an Audio::SNESEnvelope keeps.
       def pack_envelope_value(envelope, subject)
         case envelope
         when DSL::PackEnvelope
-          refuse_pack_read_while_left_out!(subject)
+          if pack_left_out?
+            refuse_slot_from_elsewhere!(envelope.slot, subject)
+            return IR::StartFile.recording_stand_in_envelope
+          end
           attack, decay, sustain, release = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 4, 4)
           Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
         when DSL::PackSNESEnvelope
-          refuse_pack_read_while_left_out!(subject)
+          refuse_chip_envelope_left_out!(subject)
           adsr1, adsr2, gain = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 3, 3)
           Audio::SNESEnvelope.new(adsr1: adsr1, adsr2: adsr2, gain: gain)
         else envelope
         end
+      end
+
+      # WHERE A RECORDING'S SETTINGS ARE IN THE START FILE (an IR::StartFile::RecordingSettings),
+      # for those of +rate+, +holds_from+ and +envelope+ that are numbers of the pack, with the pack
+      # left out; nil for a recording that reads none of them from there. A slot's place and the
+      # width of its numbers are the game's own words, so the build knows where each number will
+      # be without knowing it.
+      def recording_settings_in_start_file(rate:, holds_from:, envelope:)
+        return nil unless pack_left_out?
+
+        shape = if envelope.is_a?(DSL::PackEnvelope)
+                  IR::StartFile::EnvelopeBytes.new(at: @pack_slot_starts.fetch(envelope.slot.layout.name) + (envelope.index * 4),
+                                                   kept_as: :envelope)
+                end
+        settings = IR::StartFile::RecordingSettings.new(rate: pack_number_in_start_file(rate),
+                                                        holds_from: pack_number_in_start_file(holds_from), envelope: shape)
+        settings unless settings.to_h.values.all?(&:nil?)
+      end
+
+      def pack_number_in_start_file(value)
+        return nil unless value.is_a?(DSL::PackNumber)
+
+        slot = value.slot.layout
+        IR::StartFile::Number.new(at: @pack_slot_starts.fetch(slot.name) + (value.index * slot.item_bytes),
+                                  width: slot.width, signed: slot.signed, format: slot.format)
+      end
+
+      # An envelope as the Super Nintendo's sound chip keeps it is turned into the nearest ordinary
+      # envelope as the game is built (Audio::SNESEnvelope#closest_envelope), from bytes a build
+      # that leaves its pack out does not hold.
+      def refuse_chip_envelope_left_out!(subject)
+        return unless pack_left_out?
+
+        raise ArgumentError, "#{subject} reads a Super Nintendo sound chip envelope from the data pack, and this build " \
+                             "reads its pack as the game starts. A chip envelope from the pack is not made that way " \
+                             "yet. To fix this, build the game all-in-one, or give the instrument four bytes with " \
+                             "`pack[:slot].envelope(0)`."
       end
 
       def refuse_pack_read_while_left_out!(subject)

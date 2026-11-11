@@ -40,8 +40,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack[:adsr].snes_envelope(3)`: three bytes of a slot of bytes, ADSR1, ADSR2 and GAIN, envelope 0 from
     byte 0, read as a `VBlank::Audio::SNESEnvelope` (`sound.md`), so the unpacking routine copies the
     original's bytes and converts nothing. An envelope past the end of its slot is a friendly error.
-    Built all-in-one these are read as the game is built; a build that leaves its pack out refuses them
-    for now. Worked examples: `test/all/vblank/builder/test_pack_scores.rb` and
+    Built all-in-one these are read as the game is built. A build that leaves its pack out reads an
+    instrument's `rate:`, `holds_from:` and four-byte `envelope:` as the game starts (below), and refuses
+    a part's notes and a chip envelope from the pack for now. Worked examples:
+    `test/all/vblank/builder/test_pack_scores.rb`, `test/pack_sound_tests.rb` and
     `test/snes_envelope_tests.rb`.
 
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
@@ -269,6 +271,18 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   console draws it in follow the box of its size, not the see-through pixels in it, so a game that
   wants a tighter box says `hitbox:`.
 - `sample`/`instrument` with `pcm: pack[:sounds]` — the recording's samples, filled from the file at power-on.
+- `sample`/`instrument` with `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)` or `envelope:
+  pack[:shapes].envelope(3)` — the recording's settings. The build works a play and a note out from them (how fast a
+  voice reads the recording, how far back a held note reads, the shape's four numbers), so the program holds a
+  stand-in for each number worked out and the runtime writes it again from the file at power-on
+  (`IR::StartFile::RecordingSettings`, `rg_start_file_fill_steps`, `_holds` and `_shapes`). It sounds as the
+  all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
+  where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
+  still, and a hold outside the recording is its first sample or its last. **`rate:` from the pack needs a console
+  whose recordings play at one rate** (the Super Nintendo, the PlayStation): on the Advance the sound is mixed at
+  the rate most recordings have, which the build must know, so that build is refused naming the recording, and
+  `holds_from:` and `envelope:` work there. `envelope: pack[:adsr].snes_envelope(3)` is refused at the line for
+  now. Worked example: `test/pack_sound_tests.rb`.
 - `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
   original's own tiles, map and colours (`backgrounds.md`). The program holds a tile for each cell of the map,
   see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank

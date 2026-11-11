@@ -33,6 +33,9 @@ module VBlank
     #   the program holds a picture of the size the game gave, and each piece is painted into it.
     # - a recording (Nodes::Sample#from_file): its samples, one byte each, 8-bit signed, as many as the
     #   zeros of its bytes; the program holds zeros until the file is read.
+    # - a recording's settings (Nodes::Sample#settings_from_file, a RecordingSettings): the rate it
+    #   was recorded at, the sample a held note reads back to and its envelope, each a number or
+    #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
     # - a background (Nodes::Background#from_file, a Background): its map, one number of two bytes
     #   a cell in the layout the original's console keeps a map in (Console::MapWordFormat), and
     #   the tiles and the banks of colours those numbers pick from. Which tiles there are and what
@@ -133,6 +136,51 @@ module VBlank
       # The fifteen bits of the colour +where+ (a Color) names in +bytes+, the file.
       def self.color_in(bytes, where) = FormatReading.colors(bytes.byteslice(where.at, 2), where.format).first & 0x7FFF
 
+      # ONE NUMBER IN THE FILE: +width+ (:byte, :half or :word) from +at+ on, below zero only where
+      # +signed+, kept as +format+ (a Console::NumberFormat).
+      Number = Data.define(:at, :width, :signed, :format)
+
+      # The number +where+ (a Number) names in +bytes+, the file.
+      def self.number_in(bytes, where)
+        kept = bytes.byteslice(where.at, Build::ELEMENT_BYTES.fetch(where.width))
+        FormatReading.numbers(kept, where.format, width: where.width, signed: where.signed).first
+      end
+
+      # AN ENVELOPE IN THE FILE: the bytes from +at+ on, kept as +kept_as+ names. :envelope is the
+      # four bytes an Audio::Envelope keeps, in its order (attack, decay, sustain, release); another
+      # way of keeping one is another name here and a branch in .envelope_in and in each runtime's
+      # rg_start_file_fill_shapes.
+      EnvelopeBytes = Data.define(:at, :kept_as)
+
+      # The Audio::Envelope +where+ (an EnvelopeBytes) names in +bytes+, the file.
+      def self.envelope_in(bytes, where)
+        raise ArgumentError, "an envelope kept as #{where.kept_as.inspect} is not read from the file" unless where.kept_as == :envelope
+
+        attack, decay, sustain, release = bytes.byteslice(where.at, 4).bytes
+        Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
+      end
+
+      # WHAT OF A RECORDING'S SETTINGS IS IN THE FILE, each nil where the game wrote it: +rate+ and
+      # +holds_from+ a Number, +envelope+ an EnvelopeBytes.
+      #
+      # The file is the player's, so nothing in it stops the game, where the build that holds the
+      # same numbers refuses them (.rate_held, .hold_held): a rate below 1 plays as 1, so the
+      # recording all but stands still, and a held note that would read back to a sample outside
+      # the recording reads back to its first sample or its last.
+      RecordingSettings = Data.define(:rate, :holds_from, :envelope) do
+        def initialize(rate: nil, holds_from: nil, envelope: nil) = super
+      end
+
+      def self.rate_held(rate) = [rate, 1].max
+      def self.hold_held(holds_from, length) = holds_from.clamp(0, length - 1)
+
+      # WHAT A RECORDING HOLDS FOR A SETTING IT READS FROM THE FILE, until the file is read:
+      # numbers a build can lay a recording out with and must work nothing out from. The envelope
+      # is one with a shape, so a build makes room for a shape.
+      RECORDING_STAND_IN_RATE = 1
+      RECORDING_STAND_IN_HOLD = 0
+      def self.recording_stand_in_envelope = Audio::Envelope.new(attack: 0, decay: 0, sustain: 0, release: 0)
+
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
       # nothing (.place_in_file).
@@ -142,7 +190,11 @@ module VBlank
       def self.place_in_file(node)
         return nil unless READ_KINDS.include?(node.kind)
 
-        node.kind == :screen ? node.backdrop_from_file : node.from_file
+        case node.kind
+        when :screen then node.backdrop_from_file
+        when :sample then node.from_file || node.settings_from_file
+        else node.from_file
+        end
       end
 
       # BANK COLOURS: a list of colours that names a bank of the file's colours and holds none of
@@ -267,9 +319,20 @@ module VBlank
 
       # A recording's samples, read from the place it names: one byte each, as long as the zeros the
       # program holds for them.
+      #
+      # Then its settings, each read from the place it names and held as RecordingSettings says:
+      # the numbers a `sample` keeps when the game is built holding its data.
       def self.fill_recording(node, bytes)
-        node.bytes = bytes.byteslice(node.from_file, node.bytes.bytesize)
-        node.from_file = nil
+        if node.from_file
+          node.bytes = bytes.byteslice(node.from_file, node.bytes.bytesize)
+          node.from_file = nil
+        end
+        settings = node.settings_from_file or return
+
+        node.rate = rate_held(number_in(bytes, settings.rate)) if settings.rate
+        node.holds_from = hold_held(number_in(bytes, settings.holds_from), node.bytes.bytesize) if settings.holds_from
+        node.envelope = envelope_in(bytes, settings.envelope) if settings.envelope
+        node.settings_from_file = nil
       end
 
       # A table's entries, read from the place it names.

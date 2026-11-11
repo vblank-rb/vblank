@@ -34,9 +34,11 @@ module VBlank
                                ":#{name}_tone."
         end
 
-        # A setting may be a number of the data pack, read here (PackScores).
-        rate = pack_setting_value(rate, "sample :#{name}'s rate:")
-        holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:")
+        # A setting may be a number of the data pack, read here (PackScores), or, in a build that
+        # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
+        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope)
+        rate = pack_setting_value(rate, "sample :#{name}'s rate:", IR::StartFile::RECORDING_STAND_IN_RATE)
+        holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:", IR::StartFile::RECORDING_STAND_IN_HOLD)
         envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
         # The Super Nintendo's sound chip's own settings: its build writes them to the chip, and
         # every other build plays the ordinary envelope nearest them (Audio::SNESEnvelope).
@@ -53,7 +55,8 @@ module VBlank
         record(IR::Build.sample(name, bytes, rate, note: note,
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate),
-                                                   from_file: start_file_offset, chip_envelope: chip_envelope))
+                                                   from_file: start_file_offset, chip_envelope: chip_envelope,
+                                                   settings_from_file: settings_from_file))
         DSL::Sample.new(self, name)
       end
 

@@ -17,7 +17,9 @@ module VBlank
         # it is drawn in, into the image pixels (a pose that is a frame of the original's is such a
         # picture, its pieces painted in, #start_file_pose_rules); and each background whose map is read from it, a
         # tile for every cell; and each colour that is no part of a picture, a screen's backdrop,
-        # into an array of the game's own. That routine is written last, once the art is laid out
+        # into an array of the game's own; and each number worked out from a recording's rate, the
+        # sample it holds from or its envelope, where the file has those
+        # (Sound#build_start_file_sound_fills). That routine is written last, once the art is laid out
         # and it is known where in the pixels each picture is.
         #
         # So the game as C, JavaScript or Ruby holds none of the original's bytes, and a game that
@@ -52,7 +54,7 @@ module VBlank
             [Statements::Function.new(name: start_file_routine,
                                       body: build_start_file_table_fills + build_start_file_picture_fills +
                                             build_start_file_background_fills + build_start_file_recording_fills +
-                                            build_start_file_color_fills)]
+                                            build_start_file_sound_fills + build_start_file_color_fills)]
           end
 
           # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE (IR::StartFile::Color): a
