@@ -229,6 +229,9 @@ module VBlank
           # Removes the kept programs nothing has built or used for KEEP_PROGRAM_SECONDS, at most
           # once every PRUNE_EVERY_SECONDS across every process (a stamp file holds the time). A
           # program another process removes first, or one it is writing, is no reason to stop.
+          # The folders of C a game was written into are kept here too (Native#write_source), and
+          # a build that uses one again touches it. Each folder is renamed before it is removed, so
+          # a build looking for it finds a whole folder or none, never one with half its files gone.
           def prune_compiled_programs
             dir = compiled_programs_dir
             stamp = File.join(dir, ".pruned")
@@ -239,7 +242,11 @@ module VBlank
             cutoff = Time.now - KEEP_PROGRAM_SECONDS
             Dir.children(dir).each do |name|
               path = File.join(dir, name)
-              FileUtils.rm_rf(path) if path != stamp && File.mtime(path) < cutoff
+              next if path == stamp || File.mtime(path) >= cutoff
+
+              removing = "#{path}.removing.#{Process.pid}"
+              File.rename(path, removing)
+              FileUtils.rm_rf(removing)
             rescue SystemCallError
               next
             end

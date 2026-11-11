@@ -35,6 +35,30 @@ class TestNativeZig < Minitest::Test
     assert_match(/windows, linux, linux_arm/, error.message)
   end
 
+  # A game's C is kept in a folder named for what it holds and used again by the next build of the
+  # same game, and folders nothing has used for hours are cleared away now and then. A folder made
+  # hours ago and used again now is in use: clearing it took game.c from under the compiler, which
+  # failed a test in one run in a few and passed when played again.
+  def test_a_source_folder_used_again_is_not_cleared_from_under_the_compile
+    name = :"kept_#{Process.pid}_#{rand(1 << 30)}"
+    program = program_of do
+      screen :bitmap
+      n = var name, 0
+      game_loop { n += 1 }
+    end
+    Native.new.build_headless(program, mode: :checked)
+    kept = File.join(Dir.tmpdir, "vblank-native")
+    folder = Dir.glob(File.join(kept, "src-*", "game.c")).find { |file| File.read(file).include?(name.to_s) }.then { |file| File.dirname(file) }
+    long_ago = Time.now - Zig::KEEP_PROGRAM_SECONDS - 60
+    File.utime(long_ago, long_ago, folder)
+    FileUtils.rm_f(File.join(kept, ".pruned")) # so the next build clears what is old
+
+    exe = Native.new.build_headless(program, mode: :fast)
+
+    assert_path_exists File.join(folder, "game.c")
+    assert_match(/^frame 1$/, Computer::ProgramRun.run(exe, args: [1], input: "0\n", seconds: 15))
+  end
+
   # A PROGRAM'S RUN DOES NOT WAIT ON RUBY. Ruby runs one thread at a time, and a thread reading
   # what a program prints as it prints it takes its turn again for every piece, behind every
   # thread that is busy. A native run puts tests side by side, so a program that ends in a
