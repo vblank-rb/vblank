@@ -890,7 +890,6 @@ module VBlank
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
           refuse_samples_without_vblank!
-          refuse_following_several_lists!(program)
           register_timers(program) # assign each named timer its hardware timer index(es)
           prepare_pixel_masks(program) # solid-pixel tables for any per-pixel collision test
           resolve_modes(program)
@@ -1267,20 +1266,6 @@ module VBlank
           raise LoweringError,
                 "this program plays samples but never waits for vblank, so the sound mixer has no " \
                 "frame to refill on — play sound from inside a `game_loop` (with `wait_vblank`)."
-        end
-
-        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS OF COLOURS THE GAME CHANGES
-        # (Nodes::Background#follows_each) has no sets and no write of its own: each list's write is
-        # to change the tiles drawn from it. This lowering writes a list's colours into its sprite
-        # group only, and does not yet copy them into the group of sixteen those tiles read, so it
-        # refuses the game where the cartridge would show the tiles' declared colours for good.
-        def refuse_following_several_lists!(program)
-          background = program.walk.find { |node| node.kind == :background && node.follows_several? } or return
-
-          raise LoweringError,
-                "The background #{background.name.inspect} draws with #{background.lists_followed.length} lists of colors that " \
-                "the game changes with `recolor`. The Game Boy Advance build does not make that yet. To fix this, tell the " \
-                "background to draw with one of those lists only."
         end
 
         # The registers the dispatcher saves around a handler body: r4-r11 (callee-saved,

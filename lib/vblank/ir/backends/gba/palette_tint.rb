@@ -300,6 +300,25 @@ module VBlank
             end
           end
 
+          # PUT THE SET A CHANGING LIST NOW HOLDS INTO EACH GROUP OF BACKGROUND COLOURS THAT FOLLOWS
+          # IT (see ScreenLayout::FollowedColors), through whatever tint is in force. The variable
+          # +followed+ names already holds where the set starts.
+          #
+          # A GROUP OF A BACKGROUND ONE SCENE OWNS is that background's only while the scene's
+          # scenery is up, and holds another scene's colours the rest of the time. So the write
+          # waits, as a scene's sprite list does: the variable is kept either way, and the set goes
+          # in as the scene sends its background colours (#emit_send_bg_colors), which puts every
+          # such group back.
+          def emit_followed_list_colors(followed)
+            followed.groups.each do |group|
+              next emit_list_colors_into(group.group_at, followed.source_var) unless group.scene
+
+              @drawing.scene_entry.emit_if_scene_up(:scenery, group.scene) do
+                emit_list_colors_into(group.group_at, followed.source_var)
+              end
+            end
+          end
+
           def emit_list_colors_into(dest, source_var)
             @primitives.load_var(ACC, source_var)
             emit_colors_into_bank(dest, COLORS_IN_A_BANK)
@@ -999,7 +1018,15 @@ module VBlank
             @primitives.store_var(ACC, TINT_STATE)
             tint_tables(mode).each { |blob, dest, units| emit_restore_palette_table(blob, dest, units) }
             emit_changed_obj_lists_again(up: :unknown) if walks_obj_table?(mode)
+            # The copy put the declared colours back over the groups that follow a list the game
+            # changes: those are written again.
+            emit_changed_bg_lists_again if walks_bg_table?(mode) && @layout.screen.followed_colors.any?
             @emitter.place_label(skip)
+          end
+
+          # Is the table of background colours every layer shares one a tint on this screen moves?
+          def walks_bg_table?(mode)
+            tint_tables(mode).any? { |blob, _dest, _units| blob == BG_SHARED_PAL }
           end
 
           # Copy a table's originals back into place, from wherever #emit_table_source finds them.

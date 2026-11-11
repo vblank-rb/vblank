@@ -255,6 +255,25 @@ module VBlank
           # instead — one colour, from this blob, on the frame the list's own are.
           BackdropColors = Data.define(:name, :blob, :count)
 
+          # A LIST OF COLOURS THAT CHANGES, FOLLOWED BY A BACKGROUND DRAWN WITH SEVERAL SUCH LISTS
+          # (IR::Nodes::Background#follows_each). The console keeps two tables of colours, one the
+          # backgrounds read and one the sprites read, and a list's colours are written into a
+          # group of the sprites' (ChangingColors). A background's tiles cannot read that group, so
+          # the tiles drawn from the list have a group of their own in the backgrounds' table, and
+          # the list's colours are copied there as well, each time the list is told what to hold.
+          # That is all a console's own game does to fade a screen: it writes palette entries.
+          #
+          # +blob+, +count+ and +source_var+ are the list's own, as a ChangingColors has them: its
+          # sets end to end sixteen colours each, the declared colours last, and the variable
+          # holding where the set in force starts. So nothing of the list is kept twice, and a
+          # list no sprite is drawn with still has them. +groups+ is each group to write.
+          FollowedColors = Data.define(:blob, :count, :source_var, :groups)
+
+          # One such group: where it sits in the table of background colours, and the scene its
+          # background belongs to, nil for one every scene shows. Another scene's colours sit in
+          # a scene's group while that scene is up.
+          FollowedGroup = Data.define(:group_at, :scene)
+
           # The variable holding where in its blob the backdrop's colour in force is: nought until
           # the list is told anything, while the colour table already holds the declared one.
           BACKDROP_AT = :__backdrop_at
@@ -371,6 +390,8 @@ module VBlank
             # one a sprite draws with landed (see #place_changing_color_lists).
             @color_list_nodes = program.walk.select { |node| node.kind == :color_list }.to_h { |node| [node.name, node] }
             @color_lists = {}
+            @followed_groups = {} # changing list -> the background groups that follow it (see FollowedColors)
+            @followed_colors = {}
             # The sets of picture groups, and what the cartridge needs to bring each set's groups up
             # (see GroupedPictures).
             @grouped_pictures = GroupedPictures.new(program)
@@ -400,10 +421,24 @@ module VBlank
             @sprites_over_picture = IR::SpritesOverPicture.any?(program) || @border_tiles.positive?
             prepare_objects(program) if program.walk.any? { |node| node.kind == :object }
             @backdrop_colors = place_backdrop_colors
+            @followed_colors = place_followed_colors
           end
 
           # Where the backdrop's colours are, in a game whose backdrop follows a list; nil otherwise.
           attr_reader :backdrop_colors
+
+          # Each changing list a background drawn with several follows, by name (see
+          # FollowedColors). Empty in a game with no such background.
+          attr_reader :followed_colors
+
+          # Lay out the sets of each list a background follows, the sprites' own blob where a
+          # sprite is drawn with the list too.
+          private def place_followed_colors
+            @followed_groups.to_h do |name, groups|
+              [name, FollowedColors.new(blob: color_sets_blob(name), count: @color_list_nodes.fetch(name).recolors.length,
+                                        source_var: IR::Nodes::ColorList.source_var(name), groups: groups)]
+            end
+          end
 
           private def place_backdrop_colors
             node = @color_list_nodes.each_value.find(&:backdrop_place) or return nil
@@ -422,6 +457,9 @@ module VBlank
           # for one every scene shows) — since another scene's colours sit in that group while
           # that scene is up.
           #
+          # A group that follows a changing list (FollowedColors) is put back the same way, from the
+          # set that list holds now.
+          #
           # A backdrop that follows a list is one more, last since it is the first colour of the
           # first group and a layer's group may be that one: one colour, read from its own blob.
           def bg_recolor_restore_banks
@@ -435,7 +473,14 @@ module VBlank
                  at * BackgroundDrawing::COLOR_LIST_BYTES, node.scene]
               end
             end
+            layers += followed_restore_banks
             @backdrop_colors ? layers + [[BG_PALETTE, BACKDROP_AT, 0, nil, 1]] : layers
+          end
+
+          def followed_restore_banks
+            @followed_colors.each_value.flat_map do |list|
+              list.groups.map { |group| [group.group_at, list.source_var, 0, group.scene] }
+            end
           end
 
           # ...and for a layer that walks between areas, the groups of each area, each with a sixth
@@ -1260,10 +1305,16 @@ module VBlank
           # Whose bank tile +index+ of a recoloured layer keeps to: the layer's, and the list's by
           # name (IR::Nodes::Background#recolored_list_of). Nil for a layer only ever drawn in its
           # own colours.
+          #
+          # A layer that follows several changing lists keeps a bank to itself and each list it
+          # follows, for the same reason: the list's colours are written into that bank (see
+          # FollowedColors). Its tiles drawn from any other list share banks as they always did.
           def recolored_bank_owner(node, index)
+            drawn = @bitmaps.fetch(node.tiles[index]).list_drawn_from
+            return node.list_followed_by(drawn)&.then { |list| [node.name, list] } if node.follows_several?
             return nil if node.recolors.empty?
 
-            [node.name, node.recolored_list_of(@bitmaps.fetch(node.tiles[index]).list_drawn_from)&.first]
+            [node.name, node.recolored_list_of(drawn)&.first]
           end
 
           # Whose group tile +index+ of a walking layer keeps to: as #recolored_bank_owner, but only
@@ -1517,6 +1568,36 @@ module VBlank
               colors: background_color_lists(node, banks, small),
               stream: stream
             ))
+            note_followed_groups(node, banks, small)
+          end
+
+          # Keep which group of background colours each changing list +node+ follows is written
+          # into (see FollowedColors). Nothing for a background that follows one list or none.
+          def note_followed_groups(node, banks, small)
+            return unless node.follows_several?
+
+            raise LoweringError, followed_colors_message(node) unless small
+            raise LoweringError, followed_while_walking_message(node) if node.several_sets?
+
+            node.drawn_lists.zip(node.follows_each).each do |drawn, list|
+              next if list.nil?
+
+              at = BG_PALETTE + (bank_drawn_from(node, drawn, banks) * PaletteBanks::BANK_SIZE * 2)
+              (@followed_groups[list] ||= []) << FollowedGroup.new(group_at: at, scene: node.scene)
+            end
+          end
+
+          def followed_colors_message(node)
+            "background :#{node.name} draws with #{node.lists_followed.length} lists of colors that the game changes " \
+              "with `recolor`. On the Advance, each of its tiles must read one group of 16 colors for that, and they " \
+              "do not: a tile is drawn from more than 15 colors, or the other backgrounds on its screen use every " \
+              "group. To fix this, draw each tile from 15 colors or fewer, or draw the other backgrounds from fewer colors."
+          end
+
+          def followed_while_walking_message(node)
+            "background :#{node.name} walks between areas, and it draws with #{node.lists_followed.length} lists of " \
+              "colors that the game changes with `recolor`. The Game Boy Advance build does not make that yet. To fix " \
+              "this, give the background one set of tiles, or tell it to draw with one of those lists only."
           end
 
           # Keep where +node+ landed, by its name and by its declaration (see #declared_background).
@@ -2511,14 +2592,23 @@ module VBlank
           def place_changing_color_lists(homes)
             homes.each do |name, scene|
               node = @color_list_nodes.fetch(name)
-              blob = :"__color_sets_#{name}"
-              @blobs[blob] = (node.recolors + [node.colors]).flat_map { |set| pad_to_bank(set) }.pack("v*")
-              keep_unpacked!(blob) # picked out of by a number the game works out, so it stays where it is put
               bank = @obj_banks.fetch(scene).placement(color_list_key(name)).bank
-              @color_lists[name] = ChangingColors.new(blob: blob, count: node.recolors.length,
+              @color_lists[name] = ChangingColors.new(blob: color_sets_blob(name), count: node.recolors.length,
                                                       group_at: OBJ_PALETTE + (bank * PaletteBanks::BANK_SIZE * 2),
                                                       source_var: IR::Nodes::ColorList.source_var(name), scene: scene)
             end
+          end
+
+          # The sets the changing list +name+ can hold, laid end to end in the cartridge sixteen
+          # colours each with its declared colours last, made the first time it is asked for.
+          def color_sets_blob(name)
+            blob = :"__color_sets_#{name}"
+            return blob if @blobs.key?(blob)
+
+            node = @color_list_nodes.fetch(name)
+            @blobs[blob] = (node.recolors + [node.colors]).flat_map { |set| pad_to_bank(set) }.pack("v*")
+            keep_unpacked!(blob) # picked out of by a number the game works out, so it stays where it is put
+            blob
           end
 
           # What a changing list's group is asked for by.
