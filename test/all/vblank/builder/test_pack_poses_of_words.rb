@@ -5,13 +5,11 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A POSE READ FROM AN ORIGINAL THAT KEEPS A FRAME AS THE CONSOLE'S OWN SPRITE ENTRIES
-# (Original::FrameLayout's parts of two bytes, and its pieces of several tiles each way). The
-# made-up original keeps a frame as a Genesis game does: a word that counts the pieces, then eight
-# bytes a piece, which are y as a word, a size byte, a byte the picture does not use, the tile
-# word and x as a word. The answer key is the same pieces painted by hand, a tile at a time,
-# worked out here from what the video chip does with such an entry.
-class TestPackPosesOfWords < Minitest::Test
+# The made-up original these tests read and the games that show its frame, shared with the tests
+# of the same game built with its pack left out (test/pack_pose_at_start_tests.rb).
+module PackPoseOfWordsGames
+  include SharedConstants
+
   # Tiles of four colours, so the Game Boy Color can show them too, each different from every
   # other and from itself turned.
   TILE_COUNT = 20
@@ -50,6 +48,14 @@ class TestPackPosesOfWords < Minitest::Test
 
   TILES_AT = 0x100
   FRAMES_AT = 0x20
+  # The picture the frame's pieces reach: seven tiles across and four down.
+  REACH = [56, 32].freeze
+
+  # The video chip reads a sprite's tiles down a column before it goes across.
+  DOWN_COLUMNS = ->(piece, column, row) { piece.tile + (column * piece.rows) + row }
+  ACROSS_ROWS = ->(piece, column, row) { piece.tile + (row * piece.columns) + column }
+
+  constants.each { |name| Ractor.make_shareable(const_get(name)) }
 
   private def frame_bytes(high_byte_first)
     word, signed = high_byte_first ? ["n", "s>"] : ["v", "s<"]
@@ -73,9 +79,10 @@ class TestPackPosesOfWords < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # A game showing a pose as a sprite at (40, 40). +pose+ declares the picture :pose.
-  private def game_showing(&pose)
-    b = Builder.new
+  # A game showing a pose as a sprite at (40, 40), and the pack file its build made (nil for a
+  # game with no pack, or a build that leaves its pack out). +pose+ declares the picture :pose.
+  private def game_showing_and_file(options: VBlank::Cartridge::Options.new, &pose)
+    b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       colors :hero, [:transparent, *COLORS.drop(1)]
@@ -84,19 +91,34 @@ class TestPackPosesOfWords < Minitest::Test
       game_loop { wait_vblank }
     end
     b.finalize_program
-    b.program
+    [b.program, b.made_data_pack_file]
   end
 
-  private def pose_from_pack(from, layout: FRAME)
+  private def game_showing(...) = game_showing_and_file(...).first
+
+  private def pose_from_pack_and_file(from, layout: FRAME, options: VBlank::Cartridge::Options.new, **pose_options)
     frame_length = 2 + (PIECES.length * 8)
-    game_showing do
+    game_showing_and_file(options: options) do
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :sprites, at: TILES_AT, count: TILE_COUNT
         slots.numbers :frames, at: FRAMES_AT, count: frame_length, width: :byte, signed: false
       end
-      image :pose, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: layout), origin: ORIGIN, colors: :hero
+      image :pose, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: layout), origin: ORIGIN, colors: :hero,
+                   **pose_options
     end
   end
+
+  private def pose_from_pack(...) = pose_from_pack_and_file(...).first
+end
+
+# A POSE READ FROM AN ORIGINAL THAT KEEPS A FRAME AS THE CONSOLE'S OWN SPRITE ENTRIES
+# (Original::FrameLayout's parts of two bytes, and its pieces of several tiles each way). The
+# made-up original keeps a frame as a Genesis game does: a word that counts the pieces, then eight
+# bytes a piece, which are y as a word, a size byte, a byte the picture does not use, the tile
+# word and x as a word. The answer key is the same pieces painted by hand, a tile at a time,
+# worked out here from what the video chip does with such an entry.
+class TestPackPosesOfWords < Minitest::Test
+  include PackPoseOfWordsGames
 
   # THE SAME PIECES PAINTED BY HAND, one tile of 8x8 at a time. +tile_of+ is the tile a piece
   # holds at a column and row of itself. A piece that is mirrored shows its last column first,
@@ -115,10 +137,6 @@ class TestPackPosesOfWords < Minitest::Test
     end
     game_showing { image :pose, pieces: painted, colors: :hero }
   end
-
-  # The video chip reads a sprite's tiles down a column before it goes across.
-  DOWN_COLUMNS = ->(piece, column, row) { piece.tile + (column * piece.rows) + row }
-  ACROSS_ROWS = ->(piece, column, row) { piece.tile + (row * piece.columns) + column }
 
   def test_a_frame_of_words_draws_its_pieces_of_mixed_sizes_as_painted_by_hand
     Dir.mktmpdir do |folder|

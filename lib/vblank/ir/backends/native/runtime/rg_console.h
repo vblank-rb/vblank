@@ -72,11 +72,36 @@
 #define RG_CONSOLE_PLAYS_BIOS_START_UP 0
 #endif
 
-/* Where each number of a picture's tile and colour layouts sits in the rules a start-file fill is
- * handed (Computer::StartFileNumbers, which writes them into every build). These are the same numbers,
- * for a file of the runtime read on its own, as an editor's checker reads it; a test holds them to
- * StartFileNumbers::NAMES. */
+/* Where each number of a picture's tile and colour layouts, and of a pose's frame layout, sits in
+ * the rules a start-file fill is handed (Computer::StartFileNumbers, which writes them into every
+ * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
+ * checker reads it; a test holds them to StartFileNumbers::NAMES. */
 #ifndef RG_TILE_BYTES_AT
+#define RG_FILL_POSE_HEADER_NUMBERS 16
+#define RG_FRAME_PIECE_BYTES_AT 0
+#define RG_FRAME_COUNT_BYTES_AT 1
+#define RG_FRAME_HIGH_BYTE_FIRST_AT 2
+#define RG_FRAME_X_AT 3
+#define RG_FRAME_Y_AT 4
+#define RG_FRAME_POSITION_BYTES_AT 5
+#define RG_FRAME_TILE_AT 6
+#define RG_FRAME_TILE_BYTES_AT 7
+#define RG_FRAME_TILE_BITS_AT 8
+#define RG_FRAME_TILE_ROW_AT 9
+#define RG_FRAME_ROW_TILES_AT 10
+#define RG_FRAME_FLAGS_AT 11
+#define RG_FRAME_FLAGS_BYTES_AT 12
+#define RG_FRAME_MIRRORED_BIT_AT 13
+#define RG_FRAME_UPSIDE_DOWN_BIT_AT 14
+#define RG_FRAME_BIG_BIT_AT 15
+#define RG_FRAME_SIZE_AT 16
+#define RG_FRAME_COLUMNS_BIT_AT 17
+#define RG_FRAME_ROWS_BIT_AT 18
+#define RG_FRAME_SIZE_BITS_AT 19
+#define RG_FRAME_TILE_ORDER_AT 20
+#define RG_FRAME_LAYOUT_NUMBERS 21
+#define RG_FRAME_TILES_DOWN_COLUMNS 1
+#define RG_FRAME_TILES_ACROSS_ROWS 2
 #define RG_TILE_BYTES_AT 0
 #define RG_TILE_PLANES_AT 1
 #define RG_TILE_PLANE_BITS_AT 2

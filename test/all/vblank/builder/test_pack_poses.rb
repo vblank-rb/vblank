@@ -5,10 +5,11 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A POSE THAT IS ONE OF THE ORIGINAL'S OWN FRAMES (Builder::PackPoses), read from a made-up original
-# that keeps its frames as many retail games do: a count, then five bytes a piece. The answer key is
-# the made-up frame itself: each piece's tile, turned as it says, where it says from the origin.
-class TestPackPoses < Minitest::Test
+# The made-up original these tests read and the game that shows its frame, shared with the tests
+# of the same game built with its pack left out (test/pack_pose_at_start_tests.rb).
+module PackPoseGames
+  include SharedConstants
+
   # Four colours a tile, so the Game Boy Color can show them too. No row or column reads the same
   # both ways.
   PLACES = [
@@ -35,11 +36,18 @@ class TestPackPoses < Minitest::Test
 
   TILES_AT = 0x100
   FRAMES_AT = 0x20
+  COLORS_AT = 0x60
+  # The picture the frame's pieces reach: two tiles across and three down.
+  REACH = [16, 24].freeze
 
-  private def original(folder)
+  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
+  # The made-up original, its frames the bytes +frame_bytes+.
+  private def original(folder, frame_bytes: FRAME_BYTES)
     tiles = VIDEO.map(&MadeUpOriginalLayouts::FOUR_PLANES).join
     copy = "\0".b * (TILES_AT + tiles.bytesize)
-    copy[FRAMES_AT, FRAME_BYTES.length] = FRAME_BYTES.pack("C*")
+    copy[FRAMES_AT, frame_bytes.length] = frame_bytes.pack("C*")
+    copy[COLORS_AT, 32] = MadeUpOriginalLayouts::PALETTE.pack("v*")
     copy[TILES_AT, tiles.bytesize] = tiles
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
@@ -48,25 +56,41 @@ class TestPackPoses < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # A game showing the frame at byte 1 of the slot (byte 0 is another frame's) as a sprite at (40, 40).
-  private def pose_game(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, &more)
-    b = Builder.new
+  # A game showing the frame at byte 1 of the slot (byte 0 is another frame's) as a sprite at
+  # (40, 40), and the pack file its build made (nil for a build that leaves its pack out).
+  # +pose_options+ are more of the pose's own (`size:`), +pose_colors+ makes its `colors:` of the
+  # pack where it is not the game's own list, and +turned+ shows the pose turned (:mirror or
+  # :upside_down). +more+ is handed the sprite and the builder declares what it says before the loop.
+  private def pose_game_and_file(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, frames_count: FRAME_BYTES.length,
+                                 options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, **pose_options, &more)
+    b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       colors :hero, [:transparent, *COLORS.drop(1)]
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :sprites, at: TILES_AT, count: 32, colors: 16
-        slots.numbers :frames, at: FRAMES_AT, count: FRAME_BYTES.length, width: :byte, signed: false
+        slots.numbers :frames, at: FRAMES_AT, count: frames_count, width: :byte, signed: false
+        slots.colors :palette, at: COLORS_AT, count: 16
       end
       image :pose, tiles: pack[:sprites], frame: pack[:frames].frame(frame_at, layout: layout, count: count),
-                   origin: origin, colors: :hero
-      hero = sprite :hero, image: :pose, at: [40, 40]
+                   origin: origin, colors: pose_colors ? pose_colors.call(pack) : :hero, **pose_options
+      shown = { mirror: -> { mirror(:pose) }, upside_down: -> { upside_down(:pose) } }.fetch(turned, -> { :pose }).call
+      hero = sprite :hero, image: shown, at: [40, 40]
       instance_exec(hero, &more) if more
       game_loop { wait_vblank }
     end
     b.finalize_program
-    b.program
+    [b.program, b.made_data_pack_file]
   end
+
+  private def pose_game(...) = pose_game_and_file(...).first
+end
+
+# A POSE THAT IS ONE OF THE ORIGINAL'S OWN FRAMES (Builder::PackPoses), read from a made-up original
+# that keeps its frames as many retail games do: a count, then five bytes a piece. The answer key is
+# the made-up frame itself: each piece's tile, turned as it says, where it says from the origin.
+class TestPackPoses < Minitest::Test
+  include PackPoseGames
 
   # The picture the frame makes, worked out from the made-up data: 16 wide and 24 tall.
   private def expected_places
@@ -119,6 +143,37 @@ class TestPackPoses < Minitest::Test
       place = expected_places[0][1]
 
       assert_equal other.fetch(place), screen.pixel(41, 40), "the pose's pixel at (1, 0), drawn with :other"
+    end
+  end
+
+  # `size:` makes the picture that big, see-through past its pieces, so every pose of a sprite can
+  # be one size. The pose stands where it stood, and turned round it turns about the size given.
+  def test_a_pose_given_a_size_is_a_picture_of_that_size
+    Dir.mktmpdir do |folder|
+      as_reached = game_player.run(pose_game(original(folder)), frames: 4).screen
+      sized = game_player.run(pose_game(original(folder), size: [32, 32]), frames: 4).screen
+      turned = game_player.run(pose_game(original(folder), size: [32, 32], turned: :mirror), frames: 4).screen
+      place = expected_places[0][1]
+
+      assert_equal as_reached.to_a, sized.to_a
+      refute_equal 0, place, "the pixel this test reads must not be see-through"
+      assert_equal COLORS.fetch(place), turned.pixel(40 + 31 - 1, 40), "the pose's pixel at (1, 0), turned about 32 pixels"
+    end
+  end
+
+  def test_a_size_the_pieces_reach_past_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { pose_game(original(folder), size: [16, 16]) }
+
+      assert_includes error.message, "size:"
+    end
+  end
+
+  def test_a_size_that_is_not_whole_pieces_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { pose_game(original(folder), size: [20, 24]) }
+
+      assert_includes error.message, "size:"
     end
   end
 

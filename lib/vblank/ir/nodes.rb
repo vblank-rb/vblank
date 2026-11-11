@@ -448,8 +448,9 @@ module VBlank
         # original keeps them (Assets::Image#places_from_pack).
         #
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
-        # picture's colours and places are, for a picture read from there; it holds zeros until
-        # then. Absent on every other picture.
+        # picture's colours and places are (a StartFile::Picture), or the frame of the original's
+        # that is its pieces (a StartFile::Pose), for a picture read from there; it holds zeros
+        # until then. Absent on every other picture.
 
         # The list of colours it was drawn from, as a background's recolouring keeps them apart
         # (Assets::Image#list_drawn_from).

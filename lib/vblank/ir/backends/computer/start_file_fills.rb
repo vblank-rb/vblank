@@ -14,7 +14,8 @@ module VBlank
         # read from it: each table, written as its size alone (Statements::StartFileArray), from where its
         # first entry is; and each picture read from it, into the runtime's pixels: a background's
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
-        # it is drawn in, into the image pixels; and each background whose map is read from it, a
+        # it is drawn in, into the image pixels (a pose that is a frame of the original's is such a
+        # picture, its pieces painted in, #start_file_pose_rules); and each background whose map is read from it, a
         # tile for every cell; and each colour that is no part of a picture, a screen's backdrop,
         # into an array of the game's own. That routine is written last, once the art is laid out
         # and it is known where in the pixels each picture is.
@@ -183,8 +184,50 @@ module VBlank
           def build_start_file_picture_fills
             @start_file_fills.map do |fill|
               total = fill.kind == :tile ? @tile_pixel_count : @image_pixel_count
+              if fill.from.is_a?(IR::StartFile::Pose)
+                next eval_call("rg_start_file_fill_pose", drawing_array("start_file_pose", "int32_t", start_file_pose_rules(fill, total)))
+              end
+
               eval_call("rg_start_file_fill_picture", drawing_array("start_file_fill", "int32_t", start_file_fill_rules(fill, total)))
             end
+          end
+
+          # A POSE WHOSE PIECES ARE READ FROM THE FILE (IR::StartFile::Pose) is a picture like any
+          # other read from it: zeros of the size the game gave, laid out wherever the picture is
+          # drawn and in each list of colours it is drawn with, and filled by the routine. Only
+          # what fills it differs, since its places are not tiles side by side but the pieces of
+          # a frame, painted where each says.
+          #
+          # The numbers rg_start_file_fill_pose reads (rg_runtime.h has what each is).
+          def start_file_pose_rules(fill, total)
+            where = fill.from
+            turn = TURN_BITS.sum { |way, bit| where.turns.count(way).odd? ? bit : 0 }
+            swapped = fill.swapped || []
+            header = [FILL_KINDS.fetch(fill.kind), total, fill.start, fill.width, fill.height, turn,
+                      where.colors_at || -1, where.colors_count, swapped.length, where.frame_at, where.frame_end,
+                      where.count || -1, where.origin_x, where.origin_y, where.tiles_at, where.tile_count]
+            unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
+              raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
+                                   "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."
+            end
+
+            [*header, *frame_layout_rules(where.layout), *tile_format_rules(where.tile_format),
+             *color_format_rules(where.color_format), *(fill.colors unless where.colors_at), *swapped]
+          end
+
+          # The numbers of a frame's layout (Original::FrameLayout), in the order StartFileNumbers
+          # names: -1 for a part the layout does not have, and 0 tile bits where the whole number
+          # is the tile.
+          def frame_layout_rules(layout)
+            rules = [layout.piece_bytes, layout.count_bytes, layout.high_byte_first ? 1 : 0, layout.x_at, layout.y_at,
+                     layout.position_bytes, layout.tile_at, layout.tile_bytes, layout.tile_bits || 0, layout.tile_row_at || -1,
+                     layout.row_tiles, layout.flags_at, layout.flags_bytes, layout.mirrored_bit || -1,
+                     layout.upside_down_bit || -1, layout.big_bit || -1, layout.size_at || -1, layout.columns_bit || 0,
+                     layout.rows_bit || 0, layout.size_bits, StartFileNumbers::FRAME_TILE_ORDERS.fetch(layout.tile_order)]
+            return rules if rules.length == StartFileNumbers::FRAME_LAYOUT_NUMBERS
+
+            raise ArgumentError, "A frame layout's rules have #{rules.length} numbers, and StartFileNumbers::" \
+                                 "FRAME_LAYOUT_NUMBERS says #{StartFileNumbers::FRAME_LAYOUT_NUMBERS}. Change both together."
           end
 
           # The numbers rg_start_file_fill_picture reads (rg_runtime.h has what each is).

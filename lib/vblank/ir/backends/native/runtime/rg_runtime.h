@@ -182,6 +182,31 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * naming a tile past the file's draws nothing, and one naming a bank past its colours is drawn in
  * colour 0: the file is the player's, and the game plays on.
  *
+ * rg_start_file_fill_pose: the pixels of a picture that is one frame of the original's sprites
+ * (IR::StartFile::Pose): a list of pieces, each a few bytes saying where it sits from the object's
+ * place, which tile it starts at, how it is turned and how many tiles it is each way. How many
+ * pieces there are and what each is is in the file, so the game holds a picture of the size it
+ * was given and this paints each piece into it, the earlier in front where two overlap. +rules+
+ * are RG_FILL_POSE_HEADER_NUMBERS numbers: what is filled, +total+, where the picture's pixels
+ * start, its width and height and how it is turned once painted, as rg_start_file_fill_picture
+ * has them; where its colours are in the file (-1 where the game holds them), how many colours,
+ * how many colours of another list it is drawn with; where the frame starts in the file and where
+ * the slot it is in ends; how many pieces it has (-1 where the frame starts with its count); where
+ * the object's place is in the picture, across and down; and where the tiles are in the file and
+ * how many. Then the frame's layout, RG_FRAME_LAYOUT_NUMBERS numbers (Original::FrameLayout, each
+ * by its name in Computer::StartFileNumbers): the bytes a piece takes, the bytes of the count, 1
+ * for the high byte of a part of two bytes first, where x and y are in a piece and how many bytes
+ * each is, where the tile is, its bytes and how many of its low bits are the tile (0 for all),
+ * where the byte naming a row of video memory is (-1 for none) and how many tiles a row holds,
+ * where the flags are and their bytes, the bits for mirrored, upside down and big (-1 for none),
+ * where the size byte is (-1 for none), the lowest bit of its columns and of its rows and how
+ * many bits each is, and how a piece's tiles follow its first (RG_FRAME_TILES_DOWN_COLUMNS,
+ * RG_FRAME_TILES_ACROSS_ROWS, or 0 for along rows of video memory). Then the two layouts, the
+ * game's own colours where the file has none, and the other list, as rg_start_file_fill_picture
+ * has them. Place 0 is see-through. The file is the player's, and the game plays on whatever it
+ * holds: pieces are read while they end inside the slot, a piece or the part of one outside the
+ * picture is not painted, and a tile past the file's paints nothing.
+ *
  * rg_start_file_fill_colors: +count+ entries of +colors+ from entry +first+ on, each the fifteen
  * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
  * (RG_COLOR_FORMAT_NUMBERS numbers, as above). These are the colours that are no part of a
@@ -196,6 +221,7 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
+void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 
 #endif

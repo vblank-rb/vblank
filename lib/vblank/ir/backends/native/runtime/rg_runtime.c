@@ -548,6 +548,100 @@ void rg_start_file_fill_picture(const int32_t *rules) {
 /* How many pixels a tile has, and how many a side. */
 enum { RG_FILL_TILE_SIDE = 8, RG_FILL_TILE_PIXELS = 64 };
 
+/* The number +width+ bytes (1 or 2) from +at+ in the file hold, below zero where its top bit is set. */
+static int32_t start_file_signed(int32_t at, int32_t width, int32_t high_byte_first) {
+  uint32_t number = start_file_number(at, width, high_byte_first);
+  return width == 1 ? (int32_t)(int8_t)number : (int32_t)(int16_t)number;
+}
+
+/* One piece of a pose's frame, its bytes from +at+ in the file, painted into +places+ (a picture
+ * +width+ by +height+) behind what is there already. +frame+ is the frame's layout
+ * (RG_FRAME_LAYOUT_NUMBERS numbers), and the rest are rg_start_file_fill_pose's. */
+static void start_file_paint_piece(int32_t *places, int32_t width, int32_t height, int32_t at, const int32_t *frame,
+                                   const int32_t *tile_format, int32_t origin_x, int32_t origin_y, int32_t tiles_at,
+                                   int32_t tile_count) {
+  int32_t high_byte_first = frame[RG_FRAME_HIGH_BYTE_FIRST_AT], position_bytes = frame[RG_FRAME_POSITION_BYTES_AT];
+  int32_t row_tiles = frame[RG_FRAME_ROW_TILES_AT], order = frame[RG_FRAME_TILE_ORDER_AT];
+  uint32_t flags = start_file_number(at + frame[RG_FRAME_FLAGS_AT], frame[RG_FRAME_FLAGS_BYTES_AT], high_byte_first);
+  int32_t left = origin_x + start_file_signed(at + frame[RG_FRAME_X_AT], position_bytes, high_byte_first);
+  int32_t top = origin_y + start_file_signed(at + frame[RG_FRAME_Y_AT], position_bytes, high_byte_first);
+  int32_t first_tile = (int32_t)start_file_number(at + frame[RG_FRAME_TILE_AT], frame[RG_FRAME_TILE_BYTES_AT], high_byte_first);
+  if (frame[RG_FRAME_TILE_BITS_AT] > 0) first_tile &= (1 << frame[RG_FRAME_TILE_BITS_AT]) - 1;
+  if (frame[RG_FRAME_TILE_ROW_AT] >= 0) first_tile += start_file[at + frame[RG_FRAME_TILE_ROW_AT]] * row_tiles;
+  int32_t columns = 1, rows = 1;
+  if (frame[RG_FRAME_SIZE_AT] >= 0) {
+    int32_t size = start_file[at + frame[RG_FRAME_SIZE_AT]], mask = (1 << frame[RG_FRAME_SIZE_BITS_AT]) - 1;
+    columns = ((size >> frame[RG_FRAME_COLUMNS_BIT_AT]) & mask) + 1;
+    rows = ((size >> frame[RG_FRAME_ROWS_BIT_AT]) & mask) + 1;
+  } else if (frame[RG_FRAME_BIG_BIT_AT] >= 0 && ((flags >> frame[RG_FRAME_BIG_BIT_AT]) & 1u)) {
+    columns = 2;
+    rows = 2;
+  }
+  int32_t mirrored = frame[RG_FRAME_MIRRORED_BIT_AT] >= 0 && ((flags >> frame[RG_FRAME_MIRRORED_BIT_AT]) & 1u);
+  int32_t upside_down = frame[RG_FRAME_UPSIDE_DOWN_BIT_AT] >= 0 && ((flags >> frame[RG_FRAME_UPSIDE_DOWN_BIT_AT]) & 1u);
+  int32_t across = columns * RG_FILL_TILE_SIDE, tall = rows * RG_FILL_TILE_SIDE;
+  for (int32_t y = 0; y < tall; y++) {
+    int32_t down = top + y;
+    if (down < 0 || down >= height) continue;
+    for (int32_t x = 0; x < across; x++) {
+      int32_t along = left + x;
+      if (along < 0 || along >= width || places[(down * width) + along] != 0) continue;
+      int32_t from_x = mirrored ? across - 1 - x : x, from_y = upside_down ? tall - 1 - y : y;
+      int32_t column = from_x / RG_FILL_TILE_SIDE, row = from_y / RG_FILL_TILE_SIDE;
+      int32_t tile = order == RG_FRAME_TILES_DOWN_COLUMNS   ? first_tile + (column * rows) + row
+                     : order == RG_FRAME_TILES_ACROSS_ROWS ? first_tile + (row * columns) + column
+                                                           : first_tile + (row * row_tiles) + column;
+      if (tile >= tile_count) continue;
+      places[(down * width) + along] = start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
+                                                        from_y % RG_FILL_TILE_SIDE, from_x % RG_FILL_TILE_SIDE);
+    }
+  }
+}
+
+void rg_start_file_fill_pose(const int32_t *rules) {
+  int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
+  int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], frame_at = rules[9], frame_end = rules[10];
+  int32_t count = rules[11], origin_x = rules[12], origin_y = rules[13], tiles_at = rules[14], tile_count = rules[15];
+  const int32_t *frame = rules + RG_FILL_POSE_HEADER_NUMBERS;
+  const int32_t *tile_format = frame + RG_FRAME_LAYOUT_NUMBERS;
+  const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
+  const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
+  const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
+  int32_t piece_bytes = frame[RG_FRAME_PIECE_BYTES_AT];
+  int32_t first = frame_at;
+  if (count < 0) {
+    count = (int32_t)start_file_number(frame_at, frame[RG_FRAME_COUNT_BYTES_AT], frame[RG_FRAME_HIGH_BYTE_FIRST_AT]);
+    first += frame[RG_FRAME_COUNT_BYTES_AT];
+  }
+  if (count > (frame_end - first) / piece_bytes) count = (frame_end - first) / piece_bytes;
+  int32_t *places = calloc((size_t)(width * height), sizeof *places);
+  if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
+  for (int32_t piece = 0; piece < count; piece++)
+    start_file_paint_piece(places, width, height, first + (piece * piece_bytes), frame, tile_format, origin_x, origin_y, tiles_at,
+                           tile_count);
+  uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
+  int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
+  for (int32_t row = 0; row < height; row++) {
+    for (int32_t column = 0; column < width; column++) {
+      int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+      int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+      int32_t place = places[(from_row * width) + from_column];
+      uint16_t color = 0xFFFFu;
+      if (place != 0) {
+        color = 0;
+        if (place < swapped_count) {
+          color = (uint16_t)swapped[place];
+        } else if (place < colors_count) {
+          color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+        }
+      }
+      if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
+      else image_pixels[start + (row * width) + column] = (int16_t)color;
+    }
+  }
+  free(places);
+}
+
 void rg_start_file_fill_background(const int32_t *rules) {
   int32_t total = rules[0], start = rules[1], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
   int32_t map_high_byte_first = rules[6], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];

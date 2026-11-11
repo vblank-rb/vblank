@@ -64,7 +64,7 @@ module VBlank
         chip_shape: ->(v) { v.is_a?(Audio::SNESEnvelope) },           # ...as a console's sound chip keeps it
         start_file: ->(v) { v.is_a?(StartFile)&& v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
         number_format: ->(v) { v.is_a?(Console::NumberFormat) },      # ...how a table's numbers are kept in it
-        file_picture: ->(v) { v.is_a?(StartFile::Picture) },          # ...where a picture is in it
+        file_picture: ->(v) { v.is_a?(StartFile::Picture) || v.is_a?(StartFile::Pose) }, # ...where a picture is in it, or a pose's frame
         file_background: ->(v) { v.is_a?(StartFile::Background) },    # ...where a background's map, tiles and colours are
         file_color: ->(v) { v.is_a?(StartFile::Color) },              # ...and where one colour is
       })

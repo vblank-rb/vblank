@@ -104,7 +104,7 @@ module VBlank
         if block
           define_ascii_image(name, opts, colors_name: colors_name, &block)
         elsif opts[:pieces]
-          define_pieced_image(name, pieces: opts[:pieces], colors: opts[:colors], colors_name: colors_name)
+          define_pieced_image(name, pieces: opts[:pieces], colors: opts[:colors], colors_name: colors_name, size: opts[:size])
         elsif opts.key?(:shading)
           define_shaded_image(name, places: opts[:places], width: opts[:width], height: opts[:height],
                                     shading: opts[:shading], colors: opts[:colors])
@@ -662,17 +662,21 @@ module VBlank
       # kept: a list of pieces, each [dx, dy, places] — where its top left sits in the picture, and
       # its 64 pixels row by row as places in the `colors:` list, nought see-through. Pieces may
       # overlap; where they do, the one earlier in the list is in front, as a console draws its
-      # sprites. The picture is as wide and tall as its pieces reach, to a whole piece. A console that draws sprites
+      # sprites. The picture is as wide and tall as its pieces reach, to a whole piece, or as
+      # +size+ says ([width, height], whole pieces each way) where the game gives one, so
+      # pictures of different pieces can be one size. A console that draws sprites
       # from pieces draws it from these ones, rather than cutting the picture on an 8-pixel grid,
       # which can put more pieces on one line than it shows.
-      def define_pieced_image(name, pieces:, colors:, colors_name: nil)
+      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil)
         refuse_bad_pieces!(name, pieces, colors)
+        refuse_bad_pieced_size!(name, size)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
         # picture into pieces itself takes one of whole pieces.
         side = ->(own) { Integer.sqrt(own.length) }
         reach = ->(far) { (far + PIECE_SIZE - 1) / PIECE_SIZE * PIECE_SIZE }
         width = reach.call(pieces.map { |dx, _, own| dx + side.call(own) }.max)
         height = reach.call(pieces.map { |_, dy, own| dy + side.call(own) }.max)
+        width, height = refuse_pieces_past_size!(name, [width, height], size) if size
         places = Array.new(width * height, 0)
         pieces.each do |dx, dy, own|
           across = side.call(own)
@@ -689,6 +693,27 @@ module VBlank
       PIECE_SIZE = IR::Assets::PIECE_SIZE
       BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
       PICTURE_REACH = 255 # A pose table holds where a piece sits as a byte each way
+      MOST_PIECED_SIDE = 256 # Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
+
+      # The size a picture of pieces was given (`size: [width, height]`), or nil where it was given none.
+      def refuse_bad_pieced_size!(name, size)
+        return nil if size.nil?
+
+        whole = ->(side) { side.is_a?(Integer) && side.between?(PIECE_SIZE, MOST_PIECED_SIDE) && (side % PIECE_SIZE).zero? }
+        return size if size.is_a?(Array) && size.length == 2 && size.all?(&whole)
+
+        raise ArgumentError, "image :#{name} was given size: #{size.inspect}. It takes size: [width, height], each a " \
+                             "whole number of pieces: #{PIECE_SIZE}, #{PIECE_SIZE * 2}, #{PIECE_SIZE * 3} and so on, " \
+                             "up to #{MOST_PIECED_SIDE}."
+      end
+
+      # +size+ where the pieces, which reach +reach+ ([width, height]), fit inside it.
+      def refuse_pieces_past_size!(name, reach, size)
+        return size if reach[0] <= size[0] && reach[1] <= size[1]
+
+        raise ArgumentError, "image :#{name} was given size: #{size.inspect}, and its pieces reach #{reach[0]} pixels " \
+                             "across and #{reach[1]} down. To fix this, give a larger size:."
+      end
 
       def refuse_bad_pieces!(name, pieces, colors)
         unless pieces.is_a?(Array) && !pieces.empty?

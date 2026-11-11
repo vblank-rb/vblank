@@ -387,12 +387,14 @@ module VBlank
 
       # A picture turned +way+ (:mirrored, :upside_down) from +source+, which is read from the file
       # the program is handed: it is read from the same place and turned as it is read. Places the
-      # game holds are turned here already, in +node+, and are not turned again.
+      # game holds are turned here already, in +node+, and are not turned again. A pose's pieces
+      # are always in the file (IR::StartFile::Pose).
       def read_turned_picture_from_start_file(node, source, way)
         return unless picture_from_start_file?(source)
 
         from = @pictures_from_start_file.fetch(source)
-        node.from_file = from.places_at ? from.turned(way) : from
+        places_in_file = from.is_a?(IR::StartFile::Pose) || from.places_at
+        node.from_file = places_in_file ? from.turned(way) : from
         @pictures_from_start_file[node.name] = node.from_file
       end
 

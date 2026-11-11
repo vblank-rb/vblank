@@ -284,6 +284,14 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   the line, since the slot's size is the game's own word. Worked examples:
   `test/pack_backdrop_at_start_tests.rb`, and for each scene's own under a tint,
   `test/console/gba/vblank/builder/test_pack_backdrops_at_start_on_the_advance.rb`.
+- `image :balloon_0, tiles: pack[:sprites], frame: pack[:frames].frame(at, layout: FRAME), origin: [32, 48], colors: :balloon,
+  size: [64, 64]` — a pose that is one of the original's own frames (`sprites.md`). How many pieces the frame has and what
+  each is is in the pack, so the game gives `size:`, the picture's size, and a pose with none is refused at the line. The
+  program holds zeros of that size and where the frame and its tiles are in the file (`IR::StartFile::Pose`), and the
+  runtime paints each piece into the picture at power-on (`rg_start_file_fill_pose`), the earlier in front where two
+  overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. Nothing the file holds stops the
+  game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
+  slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
 
   Any other verb that reads a slot's bytes is refused at the line.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
