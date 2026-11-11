@@ -75,15 +75,18 @@ module VBlank
       # +settle+ passes run before the +frames+ passes measured.
       #
       # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each read
-      # by itself (Diagnostics::TapeProfile).
+      # by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the game's and
+      # the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::PS1Profiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "PlayStation")
         Diagnostics::TimeByRoutine.refuse_press!(press, "PlayStation")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::PS1Profiler, tape: tape, frames: frames, keys: keys,
-                                                                                  settle: settle, format: format, out: out)
+                                                                                  settle: settle, format: format, out: out,
+                                                                                  routines: routines)
         end
+        Diagnostics::TapeProfile.refuse_routines_without_tape!(routines)
 
         result = Diagnostics::PS1Profiler.run(self, frames: frames, settle: settle || Diagnostics::PS1Profiler::SETTLE,
                                                     keys: keys)

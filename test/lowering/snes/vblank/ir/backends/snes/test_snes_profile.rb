@@ -184,6 +184,22 @@ class TestSNESProfile < Minitest::Test
     assert_match(/slowest pass took \d+ frames/, out.string)
   end
 
+  # The frames the profile names for its slowest pass are that pass's own: read one by one with a
+  # tape, one pass ends in them, on the last, and every one after the first shows no new picture.
+  def test_the_frames_named_for_the_slowest_pass_are_the_ones_a_tape_reads_it_on
+    rom = rom_of(HEAVY_NOW_AND_THEN)
+    out = StringIO.new
+    still = rom.profile(out: out, frames: 20)
+    frames = still.slowest_pass_frames
+    tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: HEAVY 0x00000000\nstarts from: power-on\n")
+    readings = rom.profile(out: StringIO.new, tape: tape, frames: frames).readings
+
+    assert_equal still.slowest_frames, frames.size
+    assert_includes out.string, "frames #{frames.begin} to #{frames.end} from power-on"
+    assert_equal [0] * (frames.size - 1) + [1], readings.map(&:passes_ended)
+    assert_equal [:pass], readings.drop(1).map(&:picture_held_by).uniq
+  end
+
   def test_the_report_comes_as_data_too
     out = StringIO.new
     rom_of(LIGHT).profile(format: :json, out: out, frames: 5)

@@ -109,14 +109,18 @@ module VBlank
       # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each
       # read by itself (Diagnostics::TapeProfile). That is how a moment past a menu is reached: the
       # Advance's profile can be told a scene or a saved moment to measure, and the Color's cannot.
+      # Each frame keeps its +routines+ busiest routines, the game's and the runtime's each (three
+      # where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GBCProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Game Boy Color")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Game Boy Color")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GBCProfiler, tape: tape, frames: frames, keys: keys,
-                                                                                  settle: settle, format: format, out: out)
+                                                                                  settle: settle, format: format, out: out,
+                                                                                  routines: routines)
         end
+        Diagnostics::TapeProfile.refuse_routines_without_tape!(routines)
 
         result = Diagnostics::GBCProfiler.run(self, frames: frames, settle: settle || Diagnostics::GBCProfiler::SETTLE,
                                                     keys: keys)

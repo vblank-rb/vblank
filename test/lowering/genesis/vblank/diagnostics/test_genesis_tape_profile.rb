@@ -49,5 +49,54 @@ class TestGenesisTapeProfile < Minitest::Test
     assert_equal still.game.first.routine, taped.readings.first.game.first.routine
   end
 
+  def test_a_frame_keeps_as_many_routines_as_the_profile_is_told
+    one = rom.profile(out: StringIO.new, tape: PRESSES, frames: 110..110, routines: 1).frame(110)
+    many = rom.profile(out: StringIO.new, tape: PRESSES, frames: 110..110, routines: 8).frame(110)
+
+    assert_equal 1, one.game.length
+    assert_equal 1, one.runtime.length
+    assert_operator many.game.length, :>, VBlank::Diagnostics::TapeProfile::ROUTINES_KEPT
+    assert_equal one.game.first, many.game.first
+  end
+
+  def test_a_number_of_routines_that_is_not_one_or_more_is_refused
+    error = assert_raises(ArgumentError) { rom.profile(out: StringIO.new, tape: PRESSES, frames: 110..110, routines: 0) }
+
+    assert_includes error.message, "routines:"
+  end
+
+  def test_routines_without_a_tape_is_refused
+    error = assert_raises(ArgumentError) { rom.profile(out: StringIO.new, frames: 20, routines: 5) }
+
+    assert_includes error.message, "tape"
+  end
+
+  # Every fourth pass does far more work than a frame holds.
+  HEAVY_NOW_AND_THEN = VBlank.game("HEAVY", consoles: %i[genesis]) do
+    total = 0
+    pass = 0
+    game_loop do
+      pass += 1
+      repeat(9000) { total += 3 } if (pass & 3) == 0
+    end
+  end
+
+  # The frames the profile names for its slowest pass are that pass's own: read one by one, one
+  # pass ends in them, on the last, and every one after the first shows no new picture, since the
+  # pass is still running. The first shows the picture of the pass before.
+  def test_the_frames_named_for_the_slowest_pass_are_the_ones_a_tape_reads_it_on
+    heavy = HEAVY_NOW_AND_THEN.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
+    out = StringIO.new
+    still = heavy.profile(out: out, frames: 20)
+    frames = still.slowest_pass_frames
+    readings = heavy.profile(out: StringIO.new, tape: EMPTY, frames: frames).readings
+
+    assert_equal still.slowest_frames, frames.size
+    assert_includes out.string, "frames #{frames.begin} to #{frames.end} from power-on"
+    assert_equal [0] * (frames.size - 1) + [1], readings.map(&:passes_ended)
+    assert_equal [:pass], readings.drop(1).map(&:picture_held_by).uniq
+    assert_predicate readings.first, :new_picture?
+  end
+
   private def rom = WALKER.build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
 end

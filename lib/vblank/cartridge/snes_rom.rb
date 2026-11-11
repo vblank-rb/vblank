@@ -188,15 +188,18 @@ module VBlank
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       #
       # With a +tape+, the tape is played from power-on and +frames+ is a range of its frames, each
-      # read by itself (Diagnostics::TapeProfile).
+      # read by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the
+      # game's and the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::SNESProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Super Nintendo")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Super Nintendo")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::SNESProfiler, tape: tape, frames: frames, keys: keys,
-                                                                                   settle: settle, format: format, out: out)
+                                                                                   settle: settle, format: format, out: out,
+                                                                                   routines: routines)
         end
+        Diagnostics::TapeProfile.refuse_routines_without_tape!(routines)
 
         result = Diagnostics::SNESProfiler.run(self, frames: frames, settle: settle || Diagnostics::SNESProfiler::SETTLE,
                                                      keys: keys)
