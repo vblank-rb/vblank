@@ -161,11 +161,16 @@ module VBlank
       end
 
       # The unpacking stopped itself: its Outcome kept, or the error it stopped with raised as it
-      # was (also where its game could not be made, before any picture).
+      # was (also where its game could not be made, before any picture), its class, words and
+      # backtrace from the Ractor.
+      #
+      # Must raise it with no cause: raised inside this rescue, it would take the RemoteError
+      # as its cause, while the RemoteError has it as its own, and Ruby refuses that circle with an
+      # ArgumentError of its own ("circular causes") in place of the error.
       def collect_outcome
         @outcome = @ractor.value
       rescue Ractor::RemoteError => e
-        raise e.cause
+        raise e.cause, cause: nil
       ensure
         stop_receiving
       end
