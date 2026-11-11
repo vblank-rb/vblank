@@ -7,9 +7,10 @@ require "tmpdir"
 
 # BUILDING THE EMULATORS WHEN THE GEM IS INSTALLED.
 #
-# VBlank is one gem. ruby-gba-emulator/ and ruby-snes-emulator/ are folders inside it, and each
-# holds source that has to be compiled on the machine it runs on: a C extension over libmgba, and
-# bsnes itself. They are built in place, into the same folders a checkout builds them in, so
+# VBlank is one gem. ruby-gba-emulator/, ruby-snes-emulator/ and ruby-dos-emulator/ are folders inside
+# it, and each holds source that has to be compiled on the machine it runs on: a C extension over
+# libmgba, bsnes, and DOSBox (the last two downloaded at the install, at the commit each names). They
+# are built in place, into the same folders a checkout builds them in, so
 # everything that finds an emulator finds it the same way in a checkout and in an installed gem.
 #
 # AN EMULATOR THAT CANNOT BE BUILT DOES NOT STOP THE INSTALL. Building a cartridge is plain Ruby,
@@ -27,6 +28,7 @@ module EmulatorBuilds
   def build_all(root: ROOT)
     attempt(File.join(root, "ruby-gba-emulator")) { build_advance_emulator(File.join(root, "ruby-gba-emulator")) }
     attempt(File.join(root, "ruby-snes-emulator")) { build_snes_core(File.join(root, "ruby-snes-emulator")) }
+    attempt(File.join(root, "ruby-dos-emulator")) { build_dos_core(File.join(root, "ruby-dos-emulator")) }
   end
 
   # Runs the block and leaves NOT_BUILT in +folder+ saying why if it raised, or no such file if not.
@@ -75,6 +77,12 @@ module EmulatorBuilds
   def build_snes_core(folder)
     require File.join(folder, "lib", "ruby_snes_emulator", "core_build")
     RubySNESEmulator::CoreBuild.make(File.join(folder, "core", "build", "bsnes_libretro.so"))
+  end
+
+  def build_dos_core(folder)
+    require File.join(folder, "lib", "ruby_dos_emulator", "core_library")
+    require File.join(folder, "lib", "ruby_dos_emulator", "core_build")
+    RubyDOSEmulator::CoreBuild.make(RubyDOSEmulator::CoreLibrary::BUILT)
   end
 
   def on_path?(tool)

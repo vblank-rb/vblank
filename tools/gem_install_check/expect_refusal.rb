@@ -4,7 +4,8 @@ require "vblank"
 
 # With no tools on the machine, each emulator must refuse with the reason and the fix.
 { "walk.gba" => -> { VBlank::Diagnostics::Emulator.open("walk.gba") },
-  "walk.sfc" => -> { VBlank::Diagnostics::Emulator.open_snes("walk.sfc") } }.each do |cartridge, open|
+  "walk.sfc" => -> { VBlank::Diagnostics::Emulator.open_snes("walk.sfc") },
+  "drift.exe" => -> { VBlank::Diagnostics::Emulator.open_dos("drift.exe") } }.each do |cartridge, open|
   begin
     open.call
     abort "#{cartridge} played on a machine with no emulator"

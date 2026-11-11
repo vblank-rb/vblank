@@ -6,11 +6,13 @@ module RubyDOSEmulator
   # and palette, and its mode. A core built without the patch has none of the probe's functions, and
   # Core refuses it saying so (Core#load_library).
   #
-  # VBLANK_DOS_CORE names the library when it is set. Otherwise this gem's own build is used, which
-  # `rake compile_core` in this gem's folder makes (see the Rakefile for the steps).
+  # VBLANK_DOS_CORE names the library when it is set. Otherwise it is the build beside this code, which
+  # `gem install vblank` makes (ext/vblank/Rakefile), and `rake compile_core` in a checkout. An install
+  # that could not make one says why in NOT_BUILT.
   module CoreLibrary
     SETTING = "VBLANK_DOS_CORE"
     BUILT = File.expand_path("../../core/build/dosbox_svn_libretro.so", __dir__)
+    NOT_BUILT = File.expand_path("../../NOT_BUILT", __dir__)
 
     module_function
 
@@ -20,7 +22,19 @@ module RubyDOSEmulator
       return named if named && File.file?(named)
       return BUILT if File.file?(BUILT)
 
-      raise LoadError, missing_message(named)
+      raise LoadError, missing_message(named, not_built: (File.read(NOT_BUILT) if File.file?(NOT_BUILT)))
+    end
+
+    def not_installed_message(reason)
+      <<~MESSAGE
+        A DOS program is played in DOSBox. This copy of VBlank was installed without it:
+
+            #{reason.strip}
+
+        To fix this, install what is missing, then run:
+
+            gem pristine vblank
+      MESSAGE
     end
 
     # What Core says of a library that is a core and lacks the probe patch's functions.
@@ -33,7 +47,9 @@ module RubyDOSEmulator
       MESSAGE
     end
 
-    def missing_message(named)
+    def missing_message(named, not_built: nil)
+      return not_installed_message(not_built) if not_built && !named
+
       where = named ? "#{SETTING} names #{named}, and there is no file there." : "There is no DOSBox core built."
       <<~MESSAGE
         A DOS program is played in DOSBox, built as a libretro core with this gem's probe
