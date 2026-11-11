@@ -51,6 +51,7 @@ require_relative "builder/game_effects"        # uses: a game's own effect packs
 require_relative "builder/data_packs"          # data_pack: the original's data, read through the pack made from the copy
 require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
 require_relative "builder/pack_poses"          # image frame: pack[...]: a pose that is one of the original's frames
+require_relative "builder/pack_scores"         # notes: pack[...]: the original's songs as notes, and its instruments' settings
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -110,6 +111,7 @@ module VBlank
     include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
     include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
     include PackPoses  # image frame: pack[...] (a pose that is one of the original's own frames)
+    include PackScores # notes: pack[...] (the original's songs as notes, and its instruments' settings)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.

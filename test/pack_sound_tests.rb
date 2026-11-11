@@ -93,6 +93,51 @@ module PackSoundTests
     end
   end
 
+  # Where an instrument's rate (a number of two bytes) and the sample it holds from (one byte) are
+  # in the made-up copy: its filler bytes, read here as the answer key, at places where they make a
+  # rate of 7929 and a hold from sample 8.
+  SETTINGS_AT = 0x1D6
+  HOLDS_AT = 0x1F9
+
+  # A game playing an instrument from the pack on the A button, its rate and the sample it holds
+  # from read from the pack when +from_pack+, or given by hand as the numbers the copy holds there.
+  private def instrument_settings_game(folder, from_pack:)
+    rate = COPY.byteslice(SETTINGS_AT, 2).unpack1("v")
+    holds = COPY.getbyte(HOLDS_AT)
+    from = original(folder)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT
+        slots.numbers :tuning, at: SETTINGS_AT, count: 1, width: :half, signed: false
+        slots.numbers :holds, at: HOLDS_AT, count: 1, width: :byte, signed: false
+      end
+      tone = if from_pack
+               instrument :tone, pcm: pack[:bang], rate: pack[:tuning].number(0), holds_from: pack[:holds].number(0)
+             else
+               instrument :tone, pcm: pack[:bang], rate: rate, holds_from: holds
+             end
+      game_loop do
+        wait_vblank
+        tone.play(:E4) if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_an_instruments_rate_and_hold_read_from_the_pack_sound_as_the_same_numbers_given
+    Dir.mktmpdir do |folder|
+      wanted = game_player.hold(:a).run(instrument_settings_game(folder, from_pack: false), frames: 20).mixed_sound
+      heard = game_player.hold(:a).run(instrument_settings_game(folder, from_pack: true), frames: 20).mixed_sound
+
+      assert wanted.flatten.any? { |level| level != 0 }, "the instrument given its numbers sounds"
+      assert_equal wanted, heard
+    end
+  end
+
   # A slot whose recording is shorter than the slot: the game's unpacking writes eight samples and
   # the rest of the slot stays zero, so the recording ends in silence.
   SHORT_COUNT = 8

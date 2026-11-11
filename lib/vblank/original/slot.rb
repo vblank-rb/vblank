@@ -57,6 +57,7 @@ module VBlank
                              IR::FormatReading.numbers(bytes, slot.format, width: slot.width, signed: slot.signed)
                            }),
         pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes }),
+        notes: Shape.new(item_bytes: ->(_slot) { PackNote::BYTES }, decode: ->(_slot, bytes) { PackNote.list_in(bytes) }),
         samples: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.unpack("c*") })
       })
 
@@ -83,6 +84,13 @@ module VBlank
       # recording's `pcm:` (`sample :bang, pcm: pack[:bang], rate: 7000`). The rate is the game's to
       # name, since a sound's speed is not part of its bytes. A byte is a byte in every layout.
       def self.samples(name, count:, at: nil, cost: 1) = of_bytes(:samples, name, count, at, cost)
+
+      # +count+ notes of music, each a PackNote record, for a part of a Score (`notes: pack[:theme]`).
+      # The record is VBlank's own, the same whatever the original, so the port's unpacking routine
+      # writes the notes its original's sound driver plays into it.
+      def self.notes(name, count:, at: nil, cost: 1)
+        new(name: name.to_sym, shape: :notes, at: at, count: count, width: nil, signed: nil, format: nil, cost: cost)
+      end
 
       # A slot of one-byte items that no layout changes: pixels or samples.
       def self.of_bytes(shape, name, count, at, cost)

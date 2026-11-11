@@ -68,6 +68,10 @@ module VBlank
       # (`sample :bang, pcm: pack[:bang], rate: 7000`, or `pack[:sounds].samples(first, count)`).
       def samples(name, count:, at: nil, cost: 1) = add(Original::Slot.samples(name, at: at, count: count, cost: cost))
 
+      # +count+ notes of music, each an Original::PackNote, which the unpacking routine writes from
+      # the original's songs, for a Score's part (`notes: pack[:theme].notes(instruments: %i[horn])`).
+      def notes(name, count:, at: nil, cost: 1) = add(Original::Slot.notes(name, at: at, count: count, cost: cost))
+
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
       # takes a third argument, the name of the release it unpacks, a plain String as the game is
@@ -155,6 +159,14 @@ module VBlank
     # (+piece_layout+, an Original::FrameLayout). An image reads it (Builder::PackPoses).
     PackFrame = Data.define(:slot, :at, :count, :piece_layout)
 
+    # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names (PackSlot#notes).
+    PackNotes = Data.define(:slot, :instruments)
+
+    # ONE NUMBER OF A SLOT OF NUMBERS (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
+    # (PackSlot#envelope), each read as the game is built.
+    PackNumber = Data.define(:slot, :index)
+    PackEnvelope = Data.define(:slot, :index)
+
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
@@ -220,6 +232,41 @@ module VBlank
         end
 
         with(first_color: index * size, color_count: size)
+      end
+
+      # A handle on a slot of notes as a part of a Score plays them (`Score::Part.new(notes: ...)`):
+      # +instruments+ names the recordings a note's instrument number counts through, 0 first.
+      def notes(instruments: [])
+        unless shape == :notes
+          raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `notes` reads a slot of notes. To fix this, call " \
+                               "it on a slot like `slots.notes :theme, count: 400`."
+        end
+
+        DSL::PackNotes.new(slot: self, instruments: instruments)
+      end
+
+      # A handle on number +index+ (0 first) of a slot of numbers, for a setting read as the game is
+      # built: an instrument's `rate:` or `holds_from:`.
+      def number(index)
+        unless shape == :numbers && index.is_a?(Integer) && index.between?(0, layout.count - 1)
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `number` picks one number of a slot " \
+                               "of numbers, 0 to #{layout.count - 1}. Got #{index.inspect}."
+        end
+
+        DSL::PackNumber.new(slot: self, index: index)
+      end
+
+      # A handle on envelope +index+ (0 first) of a slot of bytes, four bytes each in the order an
+      # Audio::Envelope keeps them (attack, decay, sustain, release), for an instrument's `envelope:`.
+      def envelope(index)
+        unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
+               (index + 1) * 4 <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `envelope` picks four bytes of a " \
+                               "slot of numbers one byte wide, envelope 0 from byte 0. There is no envelope " \
+                               "#{index.inspect} in it."
+        end
+
+        DSL::PackEnvelope.new(slot: self, index: index)
       end
 
       # A handle on the frame of a sprite from byte +at+ (0 first) of a slot of bytes, kept as

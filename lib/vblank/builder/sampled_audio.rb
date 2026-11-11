@@ -34,6 +34,10 @@ module VBlank
                                ":#{name}_tone."
         end
 
+        # A setting may be a number of the data pack, read here (PackScores).
+        rate = pack_setting_value(rate, "sample :#{name}'s rate:")
+        holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:")
+        envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
         bytes, rate = sample_data(name, pcm, from, rate)
         start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)

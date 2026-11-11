@@ -26,6 +26,18 @@ from that copy. The game's code says each piece's shape and size; it never depen
     at power-on from the start file, so every verb a recording plays in (`play`, songs, sound effects)
     works in a shell. A recording given as `pcm:` bytes beside it stays as it was. Worked example:
     `test/pack_sound_tests.rb`.
+  - `slots.notes :title_0, count: 200` — **notes of music, eight bytes each in a record of VBlank's own**
+    (`Original::PackNote`): the tick it starts on and how many it lasts (two bytes each, low byte first,
+    0 for until the next note), a MIDI key (255 a rest), which of the part's instruments (255 the part's
+    own), and a loudness 0 to 15 (255 the part's own), then a byte of 0. A note starting on tick 65535
+    ends the part, so the slot holds the most notes a part can have. A retail game keeps its music in its
+    own sound driver's commands, so the unpacking routine runs those forward and writes the notes they
+    play. A Score's part takes the slot as its notes: `Score::Part.new(plays: :horn, notes:
+    pack[:title_0].notes(instruments: %i[horn bass]))` (`sound.md`). An instrument's numbers can come
+    from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
+    `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
+    Built all-in-one these are read as the game is built; a build that leaves its pack out refuses them
+    for now. Worked example: `test/all/vblank/builder/test_pack_scores.rb`.
 
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
   (a whole number, 1 or more; 1 when not named). It changes only the shell's progress bar (below):

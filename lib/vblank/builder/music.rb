@@ -144,6 +144,7 @@ module VBlank
       # {VBlank::DSL::SongList}.
       def songs(name, scores)
         turn_sound_on
+        scores = scores_with_pack_notes(scores, "songs :#{name}")
         keys, members = record_scores(name: name, scores: scores, verb: :songs, entry: "Song") do |key, score|
           refuse_song_keeping_voices!(name, key, score)
           next unless score.group
@@ -175,6 +176,7 @@ module VBlank
       # the higher `priority:` sounds on it. Returns a {VBlank::DSL::SoundEffectList}.
       def sound_effects(name, scores)
         turn_sound_on
+        scores = scores_with_pack_notes(scores, "sound_effects :#{name}")
         keys, members = record_scores(name: name, scores: scores, verb: :sound_effects,
                                       entry: "Sound effect") do |key, score|
           refuse_looping_sound_effect!(effect: "Sound effect #{key.inspect} of :#{name}", score: score)

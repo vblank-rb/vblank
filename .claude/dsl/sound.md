@@ -8,8 +8,8 @@ verb here; the entries after it tell each one in full.
 - `enable_sound`; `define_sound :name, …` + `beep :name`; `noise`, `wave` / `stop_wave`.
 - `song(:name) { … }` + `play_song`, `stop_music`; `hold_music` / `release_music`; `music_volume`, `fade_music_out` / `fade_music_in`.
 - `sample :name, from: "clip.wav"` → `Sample`, recorded sound, mixed.
-- `songs :music, [score, …]`, `sound_effects :sfx, {…}` — music and effects as `Audio::Score` data.
-- `instrument :piano, from:, note:` → `Instrument`.
+- `songs :music, [score, …]`, `sound_effects :sfx, {…}` — music and effects as `Audio::Score` data; a part's `notes:` may be a slot of the data pack's notes (`original.md`).
+- `instrument :piano, from:, note:` → `Instrument`; `rate:`, `holds_from:` and `envelope:` may be numbers of the data pack.
 
 ## In full
 
