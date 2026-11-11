@@ -223,11 +223,12 @@ module VBlank
           # Is +scene+ one a switching light is on in, so the light alone writes the blend unit?
           def light_owns_blend_in?(scene) = switches_light? && light_darkens? && !@dark_scenes.include?(scene)
 
-          # Is +scene+ one that a light showing nothing outside it comes back on in, after a scene
-          # that faded under a layer? The light writes nothing to the blend unit, so the scene
-          # itself puts away the fade the scene before left there (see Drawing#emit_scene_blend),
-          # as a darkening light's own write does.
-          def light_shuts_out_after_placed_fade?(scene)
+          # Is +scene+ one that a light showing nothing outside it is on in, in a game where that
+          # light takes turns with a fade placed in the stack? A lit scene takes such a fade off,
+          # where any other scene leaves a fade as the game set it (Reference#lift_placed_fade_for_light).
+          # A darkening light's own write to the blend unit does that; this light writes nothing
+          # there, so the scene itself tells the unit to mix nothing (see Drawing#emit_scene_blend).
+          def shut_out_light_lifts_fade?(scene)
             switches_light? && light_shuts_out? && !@dark_scenes.include?(scene)
           end
 

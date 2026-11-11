@@ -636,12 +636,14 @@ module VBlank
           # write replaces, and an interrupt landing between the two would leave rows of the
           # picture drawn from it: the light's window right, and nothing outside it darkened.
           #
-          # A scene whose light shows nothing outside it, in a game where that light takes turns
-          # with a fade placed in the stack, mixes nothing unless it has an answer of its own: the
+          # A FADE PLACED IN THE STACK IS LEFT IN THE REGISTER by a scene that takes over, since it
+          # is the game's and stays until the game lifts it. The one scene that takes it off is a
+          # scene the light is on in, which the fade takes turns with. A scene whose light shows
+          # nothing outside it therefore mixes nothing unless it has an answer of its own: that
           # light leaves the register alone, and the fade of the scene before would stay in it.
           def emit_scene_blend(name)
             wanted = @layout.scene_blend[name]
-            wanted ||= BLD_OFF if @raster.light_shuts_out_after_placed_fade?(name)
+            wanted ||= BLD_OFF if @raster.shut_out_light_lifts_fade?(name)
             if wanted && @raster.light_owns_blend_in?(name)
               @layer_blend.emit_remember_scene_blend_control(wanted)
             elsif wanted
