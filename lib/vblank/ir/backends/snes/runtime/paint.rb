@@ -66,6 +66,10 @@ module VBlank
           # arrives; a pass that changes more than a blank holds of such tiles still shows them
           # coming in down the screen.
           #
+          # ON A SUPER FX CARTRIDGE THE SCREEN IS OFF WHERE THE PICTURE'S TOP AND BOTTOM ARE BLACK
+          # (Letterbox), and the copy has those lines as well as the blank's: a first-person view in
+          # the middle of the screen arrives in one frame's worth of them.
+          #
           # A TILE KEEPS ITS PIXELS IN PLANES. A pixel's colour is a place in the colour memory, eight
           # bits; a tile keeps the first bit of each of its 64 pixels together, a row of eight pixels
           # to a byte, leftmost pixel in the top bit, then the second bit of each, and so on. Its 64
@@ -366,6 +370,7 @@ module VBlank
               asm.cpx(ROWS * 4)
               asm.bne("rt_paint_start_row")
               PaintLog.emit_start(asm, memory) if logged
+              Letterbox.emit_start(asm, memory) if Letterbox.kept?(memory)
               asm.rtl
             end
 
@@ -798,6 +803,7 @@ module VBlank
               # its planes, kept for making tiles ready, and its 64 bytes, for the blank to send.
               asm.label("rt_paint_clear_whole")
               asm.inc(asm.abs(memory[CLEARS]))
+              Letterbox.emit_cleared(asm, memory) if Letterbox.kept?(memory)
               PaintLog.emit_clear_deferred(asm, memory) if logged
               asm.jsr(asm.abs("rt_paint_layer_clear_all")) if TextLayer.kept?(memory)
               asm.lda(asm.direct(R.call(0)))
@@ -1914,6 +1920,7 @@ module VBlank
                 asm.rtl
                 asm.label("rt_paint_prepare_cleared")
               end
+              asm.jsr(asm.abs("rt_letterbox_rows")) if Letterbox.kept?(memory) # before the rows are marked unchanged
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.lda(MOST_RUNS * 4)
               asm.sta(asm.abs(memory[IN_PLACE_START]))
@@ -1952,31 +1959,7 @@ module VBlank
               asm.phx
               asm.lda(0xFFFF) # no run started
               asm.sta(asm.direct(s.chunk))
-              asm.label("rt_paint_prepare_tile")
-              asm.ldx(asm.direct(s.tile))
-              logged ? emit_prepare_kind_logged(asm, memory, s) : emit_prepare_kind(asm, memory, s)
-              # A run of the other kind is ended first.
-              asm.lda(asm.direct(s.chunk))
-              asm.bmi("rt_paint_prepare_start")
-              asm.lda(asm.direct(s.not_mask))
-              asm.cmp(asm.direct(s.mask))
-              asm.beq("rt_paint_prepare_next_tile")
-              asm.jsr(asm.abs("rt_paint_run_end"))
-              asm.label("rt_paint_prepare_start")
-              asm.lda(asm.direct(s.tile))
-              asm.sta(asm.direct(s.chunk))
-              asm.lda(asm.direct(s.not_mask))
-              asm.sta(asm.direct(s.mask))
-              asm.bra("rt_paint_prepare_next_tile")
-              asm.label("rt_paint_prepare_older")
-              asm.lda(asm.direct(s.chunk))
-              asm.bmi("rt_paint_prepare_next_tile") # no run to end
-              asm.jsr(asm.abs("rt_paint_run_end"))
-              asm.label("rt_paint_prepare_next_tile")
-              asm.lda(asm.direct(s.tile))
-              asm.cmp(asm.direct(s.last))
-              asm.inc(asm.direct(s.tile)) # INC leaves the carry as the comparison set it
-              asm.branch_long(:bcc, "rt_paint_prepare_tile")
+              logged ? emit_prepare_row_tiles_logged(asm, memory, s) : emit_prepare_row_tiles(asm, memory, s)
               asm.jsr(asm.abs("rt_paint_run_end"))
               asm.plx
               asm.label("rt_paint_prepare_next_row")
@@ -2123,19 +2106,31 @@ module VBlank
               asm.inc(asm.direct(s.temp)) # all of it with the map
             end
 
-            # The tile X of the pass, +tile+ (rt_paint_prepare): to +older+ when it is not sent, or
-            # +not_mask+ its kind. Here a tile of this generation is sent, and it is on the screen if
-            # it was sent in the generation the screen shows (SHOWN_IN).
-            def emit_prepare_kind(asm, memory, s)
+            # In rt_paint_prepare on a Super FX cartridge: a row's tiles from +tile+ to +last+, each
+            # of this generation put on a run of its kind, +tile+ left one past +last+. A tile of this
+            # generation is sent, and it is on the screen if it was sent in the generation the screen
+            # shows (SHOWN_IN), or held back with the map in a pass that is not split (+temp+).
+            #
+            # The tile's number stays in X and A is a byte wide throughout, since everything asked
+            # of a tile is a byte: this runs once for every tile a pass painted, from a ROM read at
+            # the slow speed (Boot), and a first-person view paints hundreds.
+            def emit_prepare_row_tiles(asm, memory, s)
+              asm.stz(asm.direct(s.mask))
+              asm.stz(asm.direct(s.not_mask))
+              asm.ldx(asm.direct(s.tile))
+              asm.sep(0x20)
+              asm.label("rt_paint_prepare_tile")
               asm.lda(asm.long_x(memory[GENERATIONS]))
-              asm.and_a(0x00FF)
               asm.cmp(asm.abs(memory[GENERATION]))
-              asm.branch_long(:bne, "rt_paint_prepare_older")
+              asm.bne("rt_paint_prepare_older")
               asm.lda(asm.direct(s.temp))
               asm.bne("rt_paint_prepare_kind")
+              # On the screen: the generation it was last sent in is the one shown, which is a
+              # byte unless nothing is shown yet.
               asm.lda(asm.long_x(memory[SHOWN_IN]))
-              asm.and_a(0x00FF)
               asm.cmp(asm.abs(memory[SHOWN_GENERATION]))
+              asm.bne("rt_paint_prepare_off_screen")
+              asm.lda(asm.abs(memory[SHOWN_GENERATION] + 1))
               asm.bne("rt_paint_prepare_off_screen")
               asm.lda(1)
               asm.bra("rt_paint_prepare_kind")
@@ -2143,10 +2138,72 @@ module VBlank
               asm.lda(0)
               asm.label("rt_paint_prepare_kind")
               asm.sta(asm.direct(s.not_mask))
-              asm.sep(0x20)
               asm.lda(asm.abs(memory[GENERATION]))
               asm.sta(asm.long_x(memory[SHOWN_IN]))
+              # A run of the other kind is ended first.
+              asm.lda(asm.direct(s.chunk + 1))
+              asm.bmi("rt_paint_prepare_start")
+              asm.lda(asm.direct(s.not_mask))
+              asm.cmp(asm.direct(s.mask))
+              asm.beq("rt_paint_prepare_next_tile")
+              asm.jsr(asm.abs("rt_paint_run_end_at_x"))
+              asm.label("rt_paint_prepare_start")
+              asm.stx(asm.direct(s.chunk))
+              asm.lda(asm.direct(s.not_mask))
+              asm.sta(asm.direct(s.mask))
+              asm.bra("rt_paint_prepare_next_tile")
+              asm.label("rt_paint_prepare_older")
+              asm.lda(asm.direct(s.chunk + 1))
+              asm.bmi("rt_paint_prepare_next_tile") # no run to end
+              asm.jsr(asm.abs("rt_paint_run_end_at_x"))
+              asm.label("rt_paint_prepare_next_tile")
+              asm.cpx(asm.direct(s.last))
+              asm.beq("rt_paint_prepare_row_tiles_done")
+              asm.inx
+              asm.bra("rt_paint_prepare_tile")
+
+              # rt_paint_run_end_at_x (JSR, A a byte wide): the run ended before tile X; keeps X.
+              asm.label("rt_paint_run_end_at_x")
+              asm.stx(asm.direct(s.tile))
               asm.rep(0x20)
+              asm.jsr(asm.abs("rt_paint_run_end"))
+              asm.sep(0x20)
+              asm.ldx(asm.direct(s.tile))
+              asm.rts
+
+              asm.label("rt_paint_prepare_row_tiles_done")
+              asm.inx
+              asm.stx(asm.direct(s.tile))
+              asm.rep(0x20)
+            end
+
+            # The same on a plain cartridge, a tile at a time through its kind (#emit_prepare_kind_logged).
+            def emit_prepare_row_tiles_logged(asm, memory, s)
+              asm.label("rt_paint_prepare_tile")
+              asm.ldx(asm.direct(s.tile))
+              emit_prepare_kind_logged(asm, memory, s)
+              # A run of the other kind is ended first.
+              asm.lda(asm.direct(s.chunk))
+              asm.bmi("rt_paint_prepare_start")
+              asm.lda(asm.direct(s.not_mask))
+              asm.cmp(asm.direct(s.mask))
+              asm.beq("rt_paint_prepare_next_tile")
+              asm.jsr(asm.abs("rt_paint_run_end"))
+              asm.label("rt_paint_prepare_start")
+              asm.lda(asm.direct(s.tile))
+              asm.sta(asm.direct(s.chunk))
+              asm.lda(asm.direct(s.not_mask))
+              asm.sta(asm.direct(s.mask))
+              asm.bra("rt_paint_prepare_next_tile")
+              asm.label("rt_paint_prepare_older")
+              asm.lda(asm.direct(s.chunk))
+              asm.bmi("rt_paint_prepare_next_tile") # no run to end
+              asm.jsr(asm.abs("rt_paint_run_end"))
+              asm.label("rt_paint_prepare_next_tile")
+              asm.lda(asm.direct(s.tile))
+              asm.cmp(asm.direct(s.last))
+              asm.inc(asm.direct(s.tile)) # INC leaves the carry as the comparison set it
+              asm.branch_long(:bcc, "rt_paint_prepare_tile")
             end
 
             # The same on a plain cartridge (PaintLog): a tile is sent when its copy changed since its
@@ -2261,6 +2318,12 @@ module VBlank
               asm.cpx(MOST_RUNS * 4)
               asm.bcs("rt_paint_upload_counted")
               emit_add_run_bytes(asm, memory, s)
+              unless logged
+                # Past what a blank holds, the count has told all it is asked for: a first-person
+                # view has a run for every row, and the window it is sent in is open meanwhile.
+                asm.cmp(Blank::BLANK_BYTES + 1)
+                asm.bcs("rt_paint_upload_counted")
+              end
               asm.bra("rt_paint_upload_count_in_place")
               asm.label("rt_paint_upload_counted")
               # Nothing to copy, the camera alone moved: a line of the blank for its registers.
@@ -2296,7 +2359,11 @@ module VBlank
               asm.lda(MOST_RUNS * 4)
               asm.sta(asm.abs(memory[IN_PLACE_START]))
               whole = [[CLEAR_CHANGED, CLEAR_TILE_COPY, CLEAR_TILE_AT, TILE_BYTES]]
-              whole << [MAP_CHANGED, MAP_COPY, MAP, MAP_BYTES] unless logged
+              if Letterbox.kept?(memory)
+                emit_map_rows_upload(asm, memory, s)
+              elsif !logged
+                whole << [MAP_CHANGED, MAP_COPY, MAP, MAP_BYTES]
+              end
               PaintLog.emit_map_runs_upload(asm, memory) if logged
               asm.jsr(asm.abs("rt_paint_layer_upload")) if TextLayer.kept?(memory)
               whole.each do |flag, from, to, bytes|
@@ -2334,6 +2401,42 @@ module VBlank
               asm.rep(0x20)
               asm.label("rt_paint_upload_done")
               asm.rts
+            end
+
+            # In rt_paint_upload where the screen is off above and below the picture (Letterbox): the
+            # map's rows of the band in force, if the map changed. The band is the last pass's rows
+            # and this one's, so every row outside it showed the clear tile before and shows it
+            # still, and video RAM holds that already.
+            def emit_map_rows_upload(asm, memory, s)
+              h = Console::SNESHardware
+              asm.lda(asm.abs(memory[MAP_CHANGED]))
+              asm.beq("rt_paint_upload_map_rows_sent")
+              asm.stz(asm.abs(memory[MAP_CHANGED]))
+              # The band's first row of tiles, and its rows: a row is 32 cells, 64 bytes.
+              asm.lda(asm.abs(memory[Letterbox::FIRST]))
+              asm.dec
+              3.times { asm.lsr }
+              asm.sta(asm.direct(s.temp))
+              asm.lda(asm.abs(memory[Letterbox::LAST]))
+              3.times { asm.lsr }
+              asm.sec
+              asm.sbc(asm.direct(s.temp))
+              6.times { asm.asl }
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.lda(asm.direct(s.temp))
+              5.times { asm.asl }
+              asm.clc
+              asm.adc(MAP)
+              asm.sta(asm.abs(h::VMADDL))
+              asm.lda(asm.direct(s.temp))
+              6.times { asm.asl }
+              asm.clc
+              asm.adc(memory[MAP_COPY] & 0xFFFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
+              asm.sep(0x20)
+              asm.lda(memory[MAP_COPY] >> 16)
+              emit_copy_to_video_ram(asm)
+              asm.label("rt_paint_upload_map_rows_sent")
             end
 
             # rt_paint_send_runs (JSR): the runs of RUNS from X up to +last+, as many at a time as

@@ -247,7 +247,13 @@ module VBlank
               asm.sta(at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
               asm.label("rt_show_pass_on")
-              asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ?"rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
+              if Letterbox.kept?(memory)
+                # The copy starts wherever the screen is off, and the blank's interrupt is waited
+                # for after it (rt_show_pass_shown).
+                asm.jsr(asm.abs("rt_letterbox_wait"))
+              else
+                asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ?"rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
+              end
               asm.jsl(asm.long("rt_upload"))
               # After it, since a big change takes several blanks and the brightness belongs to
               # the picture it arrives with, as the colours do.
@@ -260,6 +266,7 @@ module VBlank
                 asm.rep(0x20)
               end
               asm.label("rt_show_pass_shown")
+              asm.jsr(asm.abs("rt_letterbox_shown")) if Letterbox.kept?(memory)
               asm.lda(at.call(PASSES))
               asm.sta(at.call(SHOWN))
               asm.lda(at.call(PASSES, 2))

@@ -19,6 +19,7 @@ require_relative "runtime/chip_fill"
 require_relative "runtime/chip_blit"
 require_relative "runtime/chip_sums"
 require_relative "runtime/chip_columns"
+require_relative "runtime/letterbox"
 require_relative "runtime/saving"
 require_relative "runtime/sound"
 require_relative "runtime/music"
@@ -55,6 +56,7 @@ module VBlank
                                     scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Letterbox.reserve(memory) if c.letterboxes?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes) if c.samples
@@ -98,6 +100,7 @@ module VBlank
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places) if c.letterboxes?
             if c.saves
               saving = Saving.scratch(memory)
               Saving.emit(asm, memory, saving, bank: c.board.save_bank)

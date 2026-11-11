@@ -76,6 +76,11 @@ module VBlank
             # A Super FX on the board (Chip).
             def chip? = board.name == :super_fx
 
+            # A painted screen on a Super FX switched off above and below its picture (Letterbox).
+            # Not where the game changes its colours as it runs or fades to black: the black of the
+            # bars would have to follow, and the display's brightness is the fade's to set.
+            def letterboxes? = chip? && painted && !dims && !changing_colors
+
             # A line table for TM to carry: a status bar's, or the same for a background held above a row.
             def bar? = status_bar || row_held
           end

@@ -27,7 +27,8 @@ module VBlank
 
       # The labels of what runs while the game has nothing to do but wait for the screen.
       WAITS = /\Art_(sleep_until_vblank|sleep_unless_in_blank|stopped|sound_send_queued|sound_move_ahead|sound_front_counted|
-                     sound_entry_into_writes|recordings_voice_|recordings_loudness)/x
+                     sound_entry_into_writes|recordings_voice_|recordings_loudness|
+                     letterbox_wait_window|letterbox_now|letterbox_next|letterbox_shown)/x
 
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is,
       # the frames the slowest took, which pass of the game it was and which frames from power-on it

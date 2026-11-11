@@ -138,6 +138,9 @@ module VBlank
             Ink.new(place: @colors.length - 1)
           end
 
+          # The places that hold black, of those the game paints in.
+          def black_places = @colors.each_index.select { |place| @colors[place] == BLACK }
+
           # How many places are left in the colour list.
           def places_left = COLORS - @colors.length
 
