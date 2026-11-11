@@ -87,7 +87,10 @@ plays.
 A file of game code is loaded with `VBlank.require_game_file "walker"`, never `require_relative`. It
 is read as game code as a whole: its locals stay its own, and its constants and methods are shared.
 Its methods and blocks are checked as a game block is (no `system`, no constant from outside the
-game); its other lines run once as it loads, as the lines above a game block do.
+game); its other lines run once as it loads, as the lines above a game block do. A constant read
+through an object (`self::BOX`, `kind.class::LIFTED`) is that object's own and is not checked: what
+the object is cannot be known from the source. A path that starts from a name (`File::SEPARATOR`,
+`::File`) is checked by that name.
 
 ## What is refused, and what to write instead
 

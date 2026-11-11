@@ -30,6 +30,34 @@ class TestPlainRubyPartRefusals < Minitest::Test
     assert_includes error.message, "`File`"
   end
 
+  def test_a_part_naming_a_constant_from_outside_the_game_from_the_top_is_refused_naming_it
+    error = assert_raises(Refused) { bring_in("uses_outside_constant_from_top") }
+
+    assert_includes error.message, "`File`"
+  end
+
+  def test_a_part_reading_inside_a_constant_from_outside_the_game_is_refused_naming_it
+    error = assert_raises(Refused) { bring_in("uses_outside_constant_path") }
+
+    assert_includes error.message, "`File`"
+  end
+
+  def test_a_part_reading_through_an_object_made_from_a_constant_outside_the_game_is_refused_naming_it
+    error = assert_raises(Refused) { bring_in("uses_outside_constant_in_expression") }
+
+    assert_includes error.message, "`File`"
+  end
+
+  # What an expression answers cannot be known from the source, so a constant read through it is
+  # that object's own, and is left alone.
+  def test_a_part_reading_its_own_constants_through_objects_is_brought_in
+    bring_in("own_constants_through_objects")
+
+    assert_equal 4, PartReadingThroughObjects.own_box
+    assert_equal 6, PartReadingThroughObjects::Crate.new.box
+    assert_equal 6, PartReadingThroughObjects.box_of(PartReadingThroughObjects::Crate.new)
+  end
+
   def test_a_part_in_a_folder_of_its_own_naming_a_constant_of_the_games_project_is_brought_in
     bring_in("deep/names_project_constant")
 

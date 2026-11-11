@@ -220,14 +220,22 @@ module VBlank
         def constants_named(node = @block_node)
           case node
           when Prism::ConstantReadNode then [[node.name, node.location.start_line]]
-          when Prism::ConstantPathNode then [[first_name_of(node), node.location.start_line]]
+          when Prism::ConstantPathNode then constants_named_by_path(node)
           else node.compact_child_nodes.flat_map { |child| constants_named(child) }
           end
         end
 
-        def first_name_of(path)
-          path = path.parent while path.is_a?(Prism::ConstantPathNode) && path.parent
-          path.is_a?(Prism::ConstantReadNode) ? path.name : :Object
+        # A path's first name is the one it reaches out by: `File` in `File::SEPARATOR`, and in
+        # `::File` too. A path that starts from an expression (`self::BOX`, `kind.class::LIFTED`)
+        # reads a constant of whatever the expression answers, which the source cannot say, so
+        # only the constants the expression itself names are checked.
+        def constants_named_by_path(path)
+          path = path.parent while path.parent.is_a?(Prism::ConstantPathNode)
+          case path.parent
+          when nil then [[path.name, path.location.start_line]]
+          when Prism::ConstantReadNode then [[path.parent.name, path.location.start_line]]
+          else constants_named(path.parent)
+          end
         end
 
         def refuse_call!(node)
