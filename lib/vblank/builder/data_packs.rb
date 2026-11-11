@@ -742,6 +742,40 @@ module VBlank
                              "build the game all-in-one."
       end
 
+      # THE COLOUR OF A BACKDROP TAKEN FROM THE PACK (`screen :tiled, backdrop: pack[:palette]`): the
+      # colour at +place+ of +slot+ (a DSL::PackSlot on a slot of colours, or on one bank of it),
+      # the first when +place+ is nil, as a `screen` keeps a backdrop's colour.
+      #
+      # A console shows the first colour of its background colours wherever no tile draws, so a
+      # retail game's screen shows there whatever its colours hold first: a white field behind a
+      # logo, a sky. That colour is data of the player's copy like the rest, and no picture can
+      # show it, since the first place of a bank is see-through to one. Read here, it is the
+      # backdrop a game would get by writing the colour out, on its own `screen` line or a
+      # scene's, and builds the same bytes.
+      def pack_backdrop_color(slot, place)
+        where = "`screen ... backdrop:`"
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        refuse_pack_backdrop_left_out!(slot)
+        colors = pack_slot_values(slot, :colors, where)
+        place = 0 if place.nil?
+        return Graphics::Color.resolve(colors.fetch(place)) & 0x7FFF if place.is_a?(Integer) && place.between?(0, colors.length - 1)
+
+        raise ArgumentError, "`screen ... backdrop_place: #{place.inspect}` asks for a place that the backdrop's colors " \
+                             "do not have. backdrop: was given #{colors.length} colors of slot :#{slot.layout.name}, at " \
+                             "places 0 to #{colors.length - 1}. To fix this, use a place in that range."
+      end
+
+      # A build that leaves its pack out holds none of the original's colours, and a backdrop's
+      # colour is part of the program every lowering writes. Reading it at power-on is not made yet.
+      def refuse_pack_backdrop_left_out!(slot)
+        return unless pack_left_out?
+
+        raise ArgumentError, "`screen ... backdrop:` reads its color from slot :#{slot.layout.name} of the data pack, " \
+                             "and this build reads its pack as the game starts. A backdrop from the pack is not made " \
+                             "that way yet. To fix this, build the game all-in-one."
+      end
+
       # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.
       def refuse_slot_read_while_left_out!(handle, where)
         return unless pack_left_out?

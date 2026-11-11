@@ -79,6 +79,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
   (take one bank), a slot that does not hold colours, a slot of another game's pack. Worked example:
   `test/all/vblank/builder/test_pack_color_lists.rb`, where a sprite is recoloured through three banks.
 
+- `screen :tiled, backdrop: pack[:logo_colors]` — **a screen's backdrop from a slot of colours**: the
+  colour the slot holds first, which the original's own screen shows wherever none of its tiles draws.
+  `pack[:logo_colors].bank(2)` is that bank's first colour, and `backdrop_place:` picks another place.
+  It goes on the game's own `screen` line or a scene's, as a colour written in the game does, and
+  builds the same bytes as that colour written out (`screen.md`). Built all-in-one, the build reads
+  the slot. **A build that reads its pack as the game starts refuses it for now**, naming the slot.
+  Worked example: `test/all/vblank/builder/test_pack_backdrops.rb`.
+
   **Releases that keep the data at different places**: a slot's `at:` may be a Hash by release name,
   `slots.colors :palette, at: { "US" => 0x10, "EU" => 0x30 }, count: 16`. The keys are the release names
   as the original lists them, Strings. Name every release the game reads. Do not name a release that

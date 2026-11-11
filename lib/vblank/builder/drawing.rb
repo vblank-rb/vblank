@@ -109,6 +109,17 @@ module VBlank
       #   screen :tiled, backdrop: :screen_colors
       #   recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
       #
+      # +backdrop:+ also takes a slot of colours of the data pack, or one bank of it, and is then
+      # the colour the slot holds first (+backdrop_place:+ picks another): the colour the original's
+      # own screen shows wherever none of its tiles draws (see DataPacks#pack_backdrop_color). It
+      # is a colour like one written in the game, so a scene's own `screen` line takes it.
+      #
+      # @example A scene whose backdrop is the first colour its original loaded
+      #   scene(:logos) do
+      #     screen :tiled, backdrop: pack[:logo_colors]
+      #     background :logos, tiles: pack[:logo_video], map: pack[:logo_map], colors: pack[:logo_colors], across: 32
+      #   end
+      #
       # +pixel_size: 2+ shows each pixel of a painted screen twice as wide and twice as tall: the
       # game draws a picture half the screen's width and height, and the console shows it filling
       # the screen. Everything the game draws costs a quarter of what it did — the old games that
@@ -149,6 +160,11 @@ module VBlank
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
         late_rows = resolve_late_pages(late, tear_free)
+        if backdrop.is_a?(DSL::PackSlot)
+          refuse_backdrop_on_painted_screen!(mode)
+          backdrop = pack_backdrop_color(backdrop, backdrop_place)
+          backdrop_place = nil
+        end
         followed = followed_backdrop_list(backdrop, backdrop_place, mode)
         node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
                                          late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
