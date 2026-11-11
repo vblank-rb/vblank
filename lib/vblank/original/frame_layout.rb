@@ -3,8 +3,9 @@
 module VBlank
   module Original
     # ONE PIECE OF A FRAME, as its record says (FrameLayout#piece_of): where it sits from the
-    # object's place, which tile it starts at, turned how, and how many tiles it is across and down.
-    FramePiece = Data.define(:x, :y, :tile, :mirrored, :upside_down, :columns, :rows)
+    # object's place, which tile it starts at, turned how, how many tiles it is across and down, and
+    # which bank of the original's colours it is drawn from (0 where its layout names none).
+    FramePiece = Data.define(:x, :y, :tile, :mirrored, :upside_down, :columns, :rows, :bank)
 
     # HOW AN ORIGINAL KEEPS ONE FRAME OF A SPRITE: a list of pieces, each a few bytes saying where
     # the piece sits, which tile it shows, and whether it is turned or big. A retail game copies a
@@ -26,8 +27,16 @@ module VBlank
     # The byte at +flags_at+ holds the bits: +mirrored_bit+ and +upside_down_bit+ (nil for an
     # original whose pieces never turn), and +big_bit+ for a piece of 16x16, which is the tiles t,
     # t + 1, t + row_tiles and t + row_tiles + 1 (nil for an original whose pieces are all 8x8).
-    # Other bits are not read: a piece's bank of colours is the pose's `colors:` list, as a retail
-    # game takes its sprite's colours from the object.
+    # Other bits are not read, and a piece's colours are the pose's `colors:` list, as a retail
+    # game takes its sprite's colours from the object, unless the layout names a bank (below).
+    #
+    # A PIECE THAT NAMES ITS BANK OF COLOURS. A console's sprite entry says which of its banks of
+    # colours the piece is drawn from, and an original that keeps the entry keeps that too (a
+    # Genesis game in bits 13 and 14 of the tile word, its four lines of colours). +bank_bit+ is
+    # the lowest bit of that number at +flags_at+ and +bank_bits+ how many bits it is:
+    # `bank_bit: 13, bank_bits: 2`. A pose given a whole slot of colours then takes its colours
+    # from the bank its pieces name (Builder::PackPoses); one given a list is drawn in that list,
+    # and the bank is not read.
     #
     # A PART THAT IS TWO BYTES. Many originals keep a frame as the console's own sprite table
     # entries, with the object's place taken off, and those entries hold words:
@@ -59,11 +68,11 @@ module VBlank
     FrameLayout = Data.define(:piece_bytes, :counted, :x_at, :y_at, :tile_at, :tile_row_at, :row_tiles, :flags_at,
                               :mirrored_bit, :upside_down_bit, :big_bit, :high_byte_first, :count_bytes,
                               :position_bytes, :tile_bytes, :tile_bits, :flags_bytes, :size_at, :columns_bit,
-                              :rows_bit, :size_bits, :tile_order) do
+                              :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits) do
       def initialize(piece_bytes:, counted:, x_at:, y_at:, tile_at:, flags_at:, mirrored_bit: nil, upside_down_bit: nil,
                      tile_row_at: nil, row_tiles: 16, big_bit: nil, high_byte_first: nil, count_bytes: 1,
                      position_bytes: 1, tile_bytes: 1, tile_bits: nil, flags_bytes: 1, size_at: nil, columns_bit: nil,
-                     rows_bit: nil, size_bits: 2, tile_order: nil)
+                     rows_bit: nil, size_bits: 2, tile_order: nil, bank_bit: nil, bank_bits: nil)
         widths = [count_bytes, position_bytes, tile_bytes, flags_bytes]
         refuse_bad_widths!(widths, high_byte_first)
         refuse_bad_places!(piece_bytes, { x_at => position_bytes, y_at => position_bytes, tile_at => tile_bytes,
@@ -71,8 +80,12 @@ module VBlank
         refuse_bad_bits!(counted, [mirrored_bit, upside_down_bit, big_bit].compact, flags_bytes, row_tiles, tile_bits,
                          tile_bytes)
         refuse_bad_size!(size_at, [columns_bit, rows_bit], size_bits, tile_order, big_bit)
+        refuse_bad_bank!(bank_bit, bank_bits, flags_bytes)
         super
       end
+
+      # Whether a piece of this layout names the bank of colours it is drawn from.
+      def names_bank? = !bank_bit.nil?
 
       # How many bytes of a frame come before its first piece: its count, where it has one.
       def count_bytes_before_pieces = counted ? count_bytes : 0
@@ -87,7 +100,8 @@ module VBlank
         FramePiece.new(x: number_at(record, x_at, position_bytes, signed: true),
                        y: number_at(record, y_at, position_bytes, signed: true), tile: first_tile(record),
                        mirrored: flag?(flags, mirrored_bit), upside_down: flag?(flags, upside_down_bit),
-                       columns: columns, rows: rows)
+                       columns: columns, rows: rows,
+                       bank: names_bank? ? (flags >> bank_bit) & ((1 << bank_bits) - 1) : 0)
       end
 
       # The tile +piece+ shows at +column+ and +row+ of itself (0 first), before it is turned.
@@ -160,6 +174,19 @@ module VBlank
 
         raise ArgumentError, "A frame layout needs tile_bits: from 1 to #{tile_bytes * 8}, the low bits that are the " \
                              "tile's number. Got #{tile_bits.inspect}."
+      end
+
+      def refuse_bad_bank!(bank_bit, bank_bits, flags_bytes)
+        return if bank_bit.nil? && bank_bits.nil?
+
+        top_bit = (flags_bytes * 8) - 1
+        return if bank_bit.is_a?(Integer) && bank_bits.is_a?(Integer) && bank_bits.positive? && !bank_bit.negative? &&
+                  bank_bit + bank_bits - 1 <= top_bit
+
+        raise ArgumentError, "A frame layout that names a piece's bank of colors needs bank_bit:, the lowest bit of the " \
+                             "bank's number at flags_at:, and bank_bits:, how many bits the number is. The number must " \
+                             "end at bit #{top_bit} or lower. Got bank_bit: #{bank_bit.inspect} and bank_bits: " \
+                             "#{bank_bits.inspect}."
       end
 
       TILE_ORDERS = %i[down_columns across_rows].freeze

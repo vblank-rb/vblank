@@ -22,6 +22,14 @@ module VBlank
     # turned as it says: a piece of several tiles is the tiles its layout names, turned as one. So every
     # console draws it from those pieces, and every build draws it as any pose.
     #
+    # COLOURS FROM THE FRAME. A console's sprite entry names the bank of colours a piece is drawn
+    # from, and which bank a frame uses is in the player's copy. Where the frame's layout says
+    # where that is (`bank_bit:`) and `colors:` is a whole slot of colours, the pose is drawn from
+    # the list of its pieces' bank, `:<slot>_<bank>` (#pose_bank_list!):
+    #
+    #   image :part_12, tiles: pack[:video], frame: pack[:frames].frame(at, layout: FRAME),
+    #                   origin: [32, 48], colors: pack[:title_colors]
+    #
     # THE PICTURE'S SIZE is as far as its pieces reach, or `size: [width, height]` where the game
     # gives one: see-through past the pieces, so every pose of a sprite can be one size.
     #
@@ -44,16 +52,88 @@ module VBlank
         refuse_slot_from_elsewhere!(frame.slot, "image :#{name}'s frame:")
         origin = refuse_bad_origin!(name, opts[:origin])
         size = refuse_bad_pieced_size!(name, opts[:size])
+        from_banks = pose_colors_from_banks?(frame, opts[:colors])
+        refuse_bank_without_bank_colors!(name) if opts.key?(:bank) && !from_banks
+        refuse_bank_colors_at_start!(name) if from_banks
         return define_pack_pose_read_at_start(name, opts, origin, size) if pack_left_out?
 
         tile_places = pack_tile_places(opts[:tiles], "image :#{name}")
-        pieces = frame_pieces(name, frame).flat_map do |piece|
+        read = frame_pieces(name, frame)
+        colors = opts[:colors]
+        if from_banks
+          read = pieces_of_bank(name, read, opts[:bank]) if opts.key?(:bank)
+          colors = pose_bank_list!(name, opts, read)
+        end
+        pieces = read.flat_map do |piece|
           pack_piece_blocks(name, piece, frame.piece_layout, tile_places).map do |left, top, places|
             [origin[0] + piece.x + left, origin[1] + piece.y + top, places]
           end
         end
         refuse_piece_left_of_origin!(name, pieces)
-        image name, pieces: pieces, colors: opts[:colors], **(size ? { size: size } : {})
+        image name, pieces: pieces, colors: colors, **(size ? { size: size } : {})
+      end
+
+      # Whether the pose takes its colours from the bank its frame's pieces name: its layout says
+      # where a piece's bank is, and `colors:` is a whole slot of colours and not one list of them.
+      def pose_colors_from_banks?(frame, colors)
+        frame.piece_layout.names_bank? && colors.is_a?(DSL::PackSlot) && colors.shape == :colors && !colors.bank?
+      end
+
+      # THE LIST A POSE IS DRAWN FROM WHERE ITS FRAME NAMES ITS BANK: the name of the list of the
+      # one bank +pieces+ (FramePieces) are in. Each bank of the slot is the list `:<slot>_<bank>`,
+      # the same lists a background from the slot is drawn from (PackBackgrounds), sized as the
+      # tiles' own colours are counted. So the pose is a picture of one named list, as one a game
+      # wrote with `colors: :title_colors_2` would be, and every console draws it as any picture.
+      #
+      # A sprite's picture is drawn from one list, as a console's sprite piece is from one bank,
+      # so a frame with pieces in two banks is not one picture: the game is told, and makes a pose
+      # of each bank's pieces with `bank:`.
+      def pose_bank_list!(name, opts, pieces)
+        subject = "image :#{name}'s colors:"
+        bank_lists = declare_pack_color_banks(opts[:colors], opts[:tiles].layout.format.colors, subject)
+        banks = pieces.map(&:bank).uniq.sort
+        refuse_frame_of_several_banks!(name, opts[:frame], banks) if banks.length > 1
+        bank_lists.fetch(banks.first) do
+          raise ArgumentError, "image :#{name} has a piece drawn from bank #{banks.first} of colors, and its colors: slot " \
+                               "holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank its " \
+                               "frames use."
+        end
+      end
+
+      # The pieces of +pieces+ in bank +bank+, for a pose told `bank:`.
+      def pieces_of_bank(name, pieces, bank)
+        kept = pieces.select { |piece| piece.bank == bank }
+        return kept unless kept.empty?
+
+        banks = pieces.map(&:bank).uniq.sort
+        raise ArgumentError, "image :#{name} was given bank: #{bank.inspect}, and no piece of its frame is drawn from " \
+                             "bank #{bank.inspect}. Its pieces are drawn from bank #{banks.join(' and ')}. To fix this, " \
+                             "give a bank that the frame uses, or leave out bank:."
+      end
+
+      def refuse_frame_of_several_banks!(name, frame, banks)
+        named = "banks #{banks[0..-2].join(', ')} and #{banks.last}"
+        raise ArgumentError, "image :#{name} reads the frame at byte #{frame.at} of slot :#{frame.slot.layout.name}, and " \
+                             "its pieces are drawn from #{named} of colors. A picture is drawn from one list of colors. " \
+                             "To fix this, make a pose for each bank with bank:, like `image :#{name}_#{banks.first}, " \
+                             "..., bank: #{banks.first}`. Then show each pose with a sprite of its own at the same place."
+      end
+
+      def refuse_bank_without_bank_colors!(name)
+        raise ArgumentError, "image :#{name} was given bank:, and its pieces do not take their colors from their bank. " \
+                             "bank: is for a pose whose frame layout names a bank (bank_bit:) and whose colors: is a " \
+                             "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out bank:."
+      end
+
+      # WITH THE PACK LEFT OUT the build does not hold the frame, so it does not know which bank
+      # its pieces name, and so not which list the picture is drawn from: the name `draw_with` and
+      # `recolor` go by.
+      def refuse_bank_colors_at_start!(name)
+        return unless pack_left_out?
+
+        raise ArgumentError, "image :#{name} takes its colors from the bank its frame names, and this build reads its " \
+                             "pack as the game starts. A pose in the colors of its frame's bank is not made that way " \
+                             "yet. To fix this, build the game all-in-one."
       end
 
       # THE SAME POSE WITH THE PACK LEFT OUT (see the top of this file). The picture holds zeros of
@@ -161,7 +241,7 @@ module VBlank
         end
       end
 
-      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size].freeze
+      POSE_FROM_PACK_OPTIONS = %i[tiles frame origin colors size bank].freeze
 
       def refuse_pack_pose_options!(name, opts)
         others = opts.keys - POSE_FROM_PACK_OPTIONS

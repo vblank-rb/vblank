@@ -27,13 +27,15 @@ module VBlank
           PLAIN_NAME = "a sprite whose pictures have different lists of colors"
 
           def detect(program)
-            lists = program.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, node.colors] }
+            pictures = program.walk.select { |node| node.kind == :bitmap }
+            lists = pictures.to_h { |node| [node.name, node.colors] }
+            list_names = pictures.to_h { |node| [node.name, node.colors_name] }
             sprites = Stacking.objects_in_draw_order(program).uniq { |node| [node.declared || node.name, node.poses] }
             sprites.filter_map do |node|
               by_list = picture_for_each_list(node, lists)
               next if by_list.size < 2
 
-              Finding.new(check: NAME, severity: :error, node: node, message: message(node, by_list))
+              Finding.new(check: NAME, severity: :error, node: node, message: message(node, by_list, list_names))
             end
           end
 
@@ -51,17 +53,20 @@ module VBlank
             node.poses.uniq.select { |pose| lists.key?(pose) }.group_by { |pose| lists[pose] }.transform_values(&:first)
           end
 
-          def message(node, by_list)
-            "#{SpriteWords.owner_capitalized(node)} #{disagreement_sentence(by_list)} The console draws all " \
+          def message(node, by_list, list_names)
+            "#{SpriteWords.owner_capitalized(node)} #{disagreement_sentence(by_list, list_names)} The console draws all " \
               "the pictures of one sprite from one list of colors.#{pool_note(node)} To fix this, give all " \
               "its pictures the same `colors:` list. Or give none of them a `colors:` list. Then the " \
-              "framework makes the list. To change the colors of one #{SpriteWords.member_word(node)}, tell " \
+              "framework makes the list. Or use one #{SpriteWords.member_word(node)} for the pictures of each list. " \
+              "To change the colors of one #{SpriteWords.member_word(node)}, tell " \
               "it to `draw_with` a list that `colors` declares."
           end
 
           # A picture with a list beside one with none is given as that, since "different lists"
-          # would send the author looking for a second list that is not there.
-          def disagreement_sentence(by_list)
+          # would send the author looking for a second list that is not there. Pictures whose
+          # lists all have names are given with them, since the game may not have written the
+          # name down: a pose from a data pack takes its list from the bank its frame names.
+          def disagreement_sentence(by_list, list_names)
             bare = by_list[nil]
             listed = by_list.except(nil).values
             if bare
@@ -69,8 +74,12 @@ module VBlank
                      "none (:#{bare})."
             end
 
-            named = listed.first(3).map { |picture| ":#{picture}" }.join(" and ")
-            "shows pictures that have different `colors:` lists (#{named})."
+            shown = listed.first(3)
+            named = shown.map { |picture| ":#{picture}" }.join(" and ")
+            return "shows pictures that have different `colors:` lists (#{named})." unless shown.all? { |picture| list_names[picture] }
+
+            drawn = shown.map { |picture| ":#{picture} is drawn from :#{list_names[picture]}" }.join(" and ")
+            "shows pictures that have different `colors:` lists (#{named}): #{drawn}."
           end
 
           def pool_note(node)

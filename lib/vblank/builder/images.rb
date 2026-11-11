@@ -284,6 +284,25 @@ module VBlank
         name
       end
 
+      # THE NAME OF THE LIST A PICTURE IS DRAWN FROM, for a picture whose list the game did not
+      # write down itself: a pose that takes its colours from the bank its frame names (PackPoses),
+      # which is in the player's copy.
+      #
+      #   part = sprite :part_12, at: [80, 40]
+      #   part.draw_with colors_name_of(:part_12)      # so it follows `recolor` of that list
+      #
+      # @param picture [Symbol] a picture declared with `image` and given a list by name
+      # @return [Symbol] the list's name, as `colors` declared it
+      def colors_name_of(picture)
+        image = @pictures.fetch(picture) do
+          raise ArgumentError, "colors_name_of :#{picture} names no picture. Declare it first with `image :#{picture}, ...`."
+        end
+        image.colors_name or
+          raise ArgumentError, "colors_name_of needs a picture drawn from a list that has a name, and image :#{picture} " \
+                               "was given its colors themselves. To fix this, declare the list with `colors` and give " \
+                               "the picture its name, like `image :#{picture}, ..., colors: :hero`."
+      end
+
       # The colours of the `colors` lists +names+, for a sprite showing +poses+ to be drawn
       # with — checked against the sprite, since a list is matched to its pictures by place.
       # Called by a sprite or a pool told `draw_with`; +subject+ is what the error calls it.

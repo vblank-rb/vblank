@@ -289,7 +289,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   each is is in the pack, so the game gives `size:`, the picture's size, and a pose with none is refused at the line. The
   program holds zeros of that size and where the frame and its tiles are in the file (`IR::StartFile::Pose`), and the
   runtime paints each piece into the picture at power-on (`rg_start_file_fill_pose`), the earlier in front where two
-  overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. Nothing the file holds stops the
+  overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. A pose that takes its colours from the bank
+  its frame names (a layout with `bank_bit:` and `colors:` a whole slot, `sprites.md`) is refused at the line for now: the
+  bank is in the file, so the build cannot name the pose's list. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
 
