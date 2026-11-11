@@ -11,7 +11,8 @@ module VBlank
         # the lowering that writes the rules is the only other place that knows the order.
         module StartFileNumbers
           # The most bit planes a tile has (Console::TileFormat#plane_bits); the unused ones are 0.
-          MOST_PLANES = 4
+          # Eight is a tile of 256 colours, a byte a pixel (Console::BYTE_A_PIXEL_TILES).
+          MOST_PLANES = 8
 
           # Where each number of a tile's layout is, counted from where the layout starts.
           TILE_BYTES_AT = 0
@@ -37,8 +38,9 @@ module VBlank
           # The numbers before the tile layout in a background's rules
           # (StartFileFills#start_file_background_rules): the totals, where its map is and how its
           # cells are kept, where its tiles and its banks of colours are, how many sets of colours
-          # its tiles are written in, and how many tiles the game holds before the map's in each.
-          BACKGROUND_HEADER_NUMBERS = 20
+          # its tiles are written in, how many tiles the game holds before the map's in each, and
+          # how many bytes a cell of its map is.
+          BACKGROUND_HEADER_NUMBERS = 21
 
           # The numbers before the frame's layout in a pose's rules (StartFileFills#start_file_pose_rules):
           # what is filled, the totals, the turn, the colours, where the frame is and where its slot

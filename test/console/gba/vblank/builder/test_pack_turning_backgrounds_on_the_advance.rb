@@ -130,6 +130,90 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
     assert_operator pictures.fetch(9).to_a.flatten.uniq.length, :>, 4, "shown, it is the layer"
   end
 
+  # WITH THE PACK LEFT OUT (`pack_at_start: true`) the program holds none of the map, the tiles or
+  # the table, and reads them from the file it is handed as it starts. Only a build for a
+  # computer leaves its pack out, so these are played by the interpreter and by the game as C,
+  # JavaScript and Ruby built for the Advance. The answer key is still the background the game
+  # draws itself, which holds its pictures and is handed no file.
+  LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+
+  private def assert_read_at_start_shows_as_the_drawn_one(what, frames: [2, 4], **how, &more)
+    Dir.mktmpdir do |folder|
+      from = turning_original(folder)
+      _whole, file = turning_pack_game_and_file(from, **how, &more)
+      left_out, = turning_pack_game_and_file(from, options: LEFT_OUT, **how, &more)
+      drawn = turning_drawn_game(&more)
+
+      frames.to_h do |count|
+        shown = game_player.run(drawn, frames: count).screen
+        assert_operator shown.to_a.flatten.uniq.length, :>, 4, "#{what}: the drawn one shows the layer"
+        assert_equal shown.to_a, game_player.hand_file(file).run(left_out, frames: count).screen.to_a,
+                     "#{what}: after #{count} frames the layer read as the game starts shows what the drawn one shows"
+        [count, shown]
+      end
+    end
+  end
+
+  def test_read_at_start_at_its_own_size_it_shows_as_the_drawn_one
+    assert_read_at_start_shows_as_the_drawn_one("at its own size") { |_layer| game_loop { wait_vblank } }
+  end
+
+  def test_read_at_start_scaled_up_about_a_point_it_shows_as_the_drawn_one
+    assert_read_at_start_shows_as_the_drawn_one("twice the size") do |layer|
+      layer.turns_around(*PIVOT, map_point: MIDDLE).scale(2.0)
+      game_loop { wait_vblank }
+    end
+  end
+
+  def test_read_at_start_scaled_down_about_a_point_it_shows_as_the_drawn_one
+    assert_read_at_start_shows_as_the_drawn_one("half the size") do |layer|
+      layer.turns_around(*PIVOT, map_point: MIDDLE).scale(0.5)
+      game_loop { wait_vblank }
+    end
+  end
+
+  def test_read_at_start_resized_and_turned_as_the_game_runs_it_shows_as_the_drawn_one
+    assert_read_at_start_shows_as_the_drawn_one("easing", frames: [2, 3, 5, 8, 12]) do |layer|
+      layer.turns_around(*PIVOT, map_point: MIDDLE).scale(4.0)
+      spin = var :spin, 0
+      game_loop do
+        layer.scale.approach! 1.0, 0.25
+        spin += 7
+        layer.rotate spin
+      end
+    end
+  end
+
+  def test_read_at_start_hidden_and_then_shown_it_shows_as_the_drawn_one
+    Dir.mktmpdir do |folder|
+      from = turning_original(folder)
+      game = lambda do |layer|
+        layer.turns_around(*PIVOT, map_point: MIDDLE).scale(2.0)
+        layer.show_only_inside(0, 0, 0, 0)
+        pass = var :pass, 0
+        game_loop do
+          pass += 1
+          layer.show_everywhere if pass == 5
+        end
+      end
+      _whole, file = turning_pack_game_and_file(from, &game)
+      left_out, = turning_pack_game_and_file(from, options: LEFT_OUT, &game)
+      drawn = turning_drawn_game(&game)
+
+      [3, 9].each do |count|
+        assert_equal game_player.run(drawn, frames: count).screen.to_a,
+                     game_player.hand_file(file).run(left_out, frames: count).screen.to_a, "after #{count} frames"
+      end
+    end
+  end
+
+  def test_read_at_start_a_map_that_is_a_run_of_a_slot_over_tiles_from_a_tile_on_shows_as_the_drawn_one
+    assert_read_at_start_shows_as_the_drawn_one("from runs", from_runs: true) do |layer|
+      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate(30)
+      game_loop { wait_vblank }
+    end
+  end
+
   # The map as a run of a bigger slot, and the tiles from a tile of their slot on.
   def test_a_map_that_is_a_run_of_a_slot_over_tiles_from_a_tile_on_shows_as_the_drawn_one
     assert_shows_as_the_drawn_one("from runs", from_runs: true) do |layer|

@@ -156,7 +156,7 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bytes to the next (its width, or the width of the wider picture it is a piece of, as a letter is
  * of a strip of them). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
  * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Computer::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
- * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
+ * is (eight, the unused ones 0), the bits from one row to the next, and where each of the eight
  * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its
  * colours are kept in, RG_COLOR_FORMAT_NUMBERS numbers (Console::ColorFormat): 1 for the high byte
  * first, where red, green and blue are in the two bytes, and how many bits each has. Each is all 0
@@ -173,14 +173,17 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * where this background's start, where its map is in the file, how many cells the map has, how many
  * to a row, how many tiles a side a cell is, 1 where a cell's two bytes are high byte first; then
  * how a cell is read (Console::MapWordFormat): how many bits name its tile, the bit for mirrored,
- * the bit for upside down, where its bank starts and how many bits that is, and how many tiles a
+ * the bit for upside down (each a bit past the cell's last, which is never set, for a cell that
+ * cannot turn its tile), where its bank starts and how many bits that is (none for a cell whose
+ * tiles all draw from the first bank), and how many tiles a
  * row of video memory holds, by which a cell of several tiles finds its lower ones (0 for a cell of
  * one); then where the tiles are in the file and how many, where the colours are, how many banks
  * and how many colours a bank; and how many sets of colours the tiles are written in, the first
  * their own and one more for each step of other colours the background can be told; and how many
  * tiles the game holds for the background before the map's in each set (a stand-in for each bank,
  * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
- * cell's tile is that many on from the set's first. Then the two
+ * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
+ * a map of bytes, each a tile's number, as a layer that turns keeps its map. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell

@@ -234,10 +234,13 @@ module VBlank
           def start_file_background_rules(fill)
             from = fill.from
             words = from.map_words
+            # A cell that cannot turn its tile has no bit for a turn, and the runtime reads a bit for
+            # each: it is handed one past the cell's last, which is never set.
             header = [@tile_pixel_count, fill.start, from.map_at, from.cells, from.across, from.cell_tiles,
-                      from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit, words.flip_bit,
-                      words.bank_at, words.bank_bits, words.row_tiles || 0, from.tiles_at, from.tile_count,
-                      from.colors_at, from.bank_count, from.bank_size, fill.lists.length, fill.held]
+                      from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit || words.unset_bit,
+                      words.flip_bit || words.unset_bit, words.bank_at, words.bank_bits, words.row_tiles || 0,
+                      from.tiles_at, from.tile_count, from.colors_at, from.bank_count, from.bank_size, fill.lists.length,
+                      fill.held, words.cell_bytes]
             unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
               raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."

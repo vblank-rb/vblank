@@ -541,7 +541,7 @@ end
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_background(rules)
   _total, start, map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
-    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held = rules
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held, cell_bytes = rules
   tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   lists = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -550,7 +550,11 @@ def rg_start_file_fill_background(rules)
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
   @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
   pixels = @rg_game_tile_pixels
-  words = @rg_start_file.byteslice(map_at, cells * 2).unpack(map_high_byte_first == 1 ? "n*" : "v*")
+  # A cell is two bytes, or one: a map of bytes, each a tile's number.
+  kept_as = if cell_bytes == 1 then "C*"
+            else map_high_byte_first == 1 ? "n*" : "v*"
+            end
+  words = @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as)
   words.each_with_index do |word, cell|
     first_tile = word & ((1 << tile_bits) - 1)
     mirrored = word[mirror_bit] == 1

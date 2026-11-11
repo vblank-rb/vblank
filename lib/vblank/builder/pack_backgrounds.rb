@@ -18,6 +18,23 @@ module VBlank
     # keeps them. Each number of the map is a cell in the layout of the console the original is for
     # (Console::MapWordFormat): which tile, mirrored or upside down, and which bank of colours.
     #
+    # A MAP OF ONE BYTE A CELL OVER TILES OF A BYTE A PIXEL is the other way a console keeps a
+    # background: the layer it turns and resizes (the Advance's turning layer, the Super
+    # Nintendo's Mode 7). The console reads such a layer a pixel at a time, working back from the
+    # screen through the turn, so a cell is a tile's number and nothing else (Console::
+    # BYTE_MAP_CELLS) and a pixel is a whole byte, a place in one table of 256 colours
+    # (Console::BYTE_A_PIXEL_TILES). The same three are given, as those:
+    #
+    #   slots.tiles   :sword_pictures, count: 256, colors: 256
+    #   slots.numbers :sword_map,      count: 1024, width: :byte, signed: false
+    #   sword = background :sword, tiles: pack[:sword_pictures], map: pack[:sword_map],
+    #                              colors: pack[:title_colors], across: 32
+    #   sword.turns_around(120, 72, map_point: [128, 128]).scale(16.0)
+    #
+    # What is declared is a background like any other, so it turns as one the game draws itself
+    # does. Its tiles pick from the whole table and not from a bank, so there is no list of
+    # colours to name (#drawn_from_whole_table?).
+    #
     # THE COLOURS ARE NAMED LISTS, a bank each. Bank +n+ of the slot is the list `:<slot>_<n>`
     # (`:title_colors_0`), so a game fades the background or draws it with other colours by those
     # names, as it would a background of its own (`city.draw_with color_walk(:title_colors_0, from:
@@ -194,12 +211,13 @@ module VBlank
       # all-in-one. The tiles the map draws come after them, made as the game starts.
       def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, set_cells: nil, **others)
         subject = "background :#{name}"
-        refuse_byte_cells_read_at_start!(name, tiles, words)
         [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
           refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
         end
         bank_size = tiles.layout.format.colors
         first_tile = tiles.tile_index || 0
+        # Tiles drawn from the whole table have no list of colours, so no bank has a name.
+        whole_table = drawn_from_whole_table?(tiles)
         where = IR::StartFile::Background.new(
           # A run of a slot starts so many numbers into it; a whole slot, none.
           map_at: @pack_slot_starts.fetch(map.layout.name) + (map.first_pixel * map.layout.item_bytes),
@@ -209,9 +227,13 @@ module VBlank
           tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
           colors_at: @pack_slot_starts.fetch(colors.layout.name), bank_count: colors.count / bank_size, bank_size: bank_size,
           color_format: colors.layout.format,
-          bank_names: Array.new(colors.count / bank_size) { |bank| :"#{colors.layout.name}_#{bank}" }
+          bank_names: whole_table ? [].freeze : Array.new(colors.count / bank_size) { |bank| :"#{colors.layout.name}_#{bank}" }
         )
-        stand_ins = where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, where, subject) }
+        stand_ins = if whole_table
+                      [declare_table_stand_in(name)]
+                    else
+                      where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, where, subject) }
+                    end
         told = {}
         cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
           declare_told_tile_read_at_start(name, tile, where, number)
@@ -222,18 +244,21 @@ module VBlank
         tiles(tileset, held.to_h { |picture| [picture, picture] })
         handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
         @backgrounds.fetch(name).node.from_file = where
+        return handle.allow_undrawn_lists([]) if whole_table
+
         # Which bank the map uses is in the file, so one list given alone is every bank's.
         handle.allow_one_list_for_every_bank.allow_set_cells(cells)
       end
 
-      # A map of bytes, and tiles of 256 colours, are read as the game is built only: the routines
-      # that fill a background as the game starts read cells of two bytes and tiles of four planes.
-      def refuse_byte_cells_read_at_start!(name, tiles, words)
-        return unless words.cell_bytes == 1 || drawn_from_whole_table?(tiles)
-
-        raise ArgumentError, "background :#{name} has a map of cells one byte wide, or tiles of 256 colors. This build " \
-                             "reads its data pack as the game starts, and it does not read such a background then. " \
-                             "To fix this, build the game all-in-one."
+      # THE ONE TILE THE BUILD HOLDS FOR A BACKGROUND DRAWN FROM THE WHOLE TABLE, read as the game
+      # starts: a background has a tile, and its map names one, until the file is read and each
+      # cell has a tile of its own. Nothing draws it. It holds a colour of its own and no list,
+      # since tiles of 256 colours have no bank to name (#drawn_from_whole_table?).
+      def declare_table_stand_in(name)
+        side = Original::Slot::TILE_SIDE
+        picture = :"background :#{name} stand-in"
+        image picture, width: side, height: side, data: Array.new(side * side, :black)
+        picture
       end
 
       # THE PICTURE OF A TOLD TILE (a Console::CellTile) of a background read as the game starts

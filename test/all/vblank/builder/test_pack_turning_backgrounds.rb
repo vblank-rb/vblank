@@ -95,12 +95,13 @@ class TestPackTurningBackgrounds < Minitest::Test
     assert_includes error.message, "end inside the slot"
   end
 
-  def test_a_map_of_bytes_read_as_the_game_starts_is_refused
+  # A build that reads its pack as the game starts refuses the same things as it is built.
+  def test_cells_written_later_on_tiles_of_256_colors_read_as_the_game_starts_are_refused
     options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
     error = refusal(BYTES, options: options) do |pack|
-      background :layer, tiles: pack[:pictures], map: pack[:cells], colors: pack[:table], across: SIDE
+      background :layer, tiles: pack[:pictures], map: pack[:cells], colors: pack[:table], across: SIDE, set_cells: [1]
     end
 
-    assert_includes error.message, "as the game starts"
+    assert_includes error.message, "set_cells:"
   end
 end
