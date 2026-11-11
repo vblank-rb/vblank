@@ -495,11 +495,17 @@ def rg_start_file_choose_colors(colors, first, count, rules)
   end
 end
 
+# The bank a frame's front piece names (rg_runtime.h, rg_start_file_frame_bank).
+def rg_start_file_frame_bank(entry_at, records_at)
+  pieces, first_piece = rg_start_file_frame_pieces(entry_at, records_at)
+  pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
+end
+
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
   kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, entry_at, records_at, origin_x, origin_y,
-    tiles_at, tile_count = rules
+    tiles_at, tile_count, only_bank = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -507,8 +513,10 @@ def rg_start_file_fill_pose(rules)
   count, first = rg_start_file_frame_pieces(entry_at, records_at)
   places = Array.new(width * height, 0)
   count.times do |piece|
-    rg_start_file_paint_piece(places, width, height, first + (piece * RG_FRAME_PIECE_BYTES), rules, tile_format, origin_x, origin_y,
-                              tiles_at, tile_count)
+    at = first + (piece * RG_FRAME_PIECE_BYTES)
+    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+
+    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
   end
   if kind == RG_FILL_TILE
     @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?

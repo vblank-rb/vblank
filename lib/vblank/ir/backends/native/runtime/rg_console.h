@@ -88,7 +88,7 @@
  * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
  * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
-#define RG_FILL_POSE_HEADER_NUMBERS 15
+#define RG_FILL_POSE_HEADER_NUMBERS 16
 #define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
 #define RG_FRAME_ENTRY_BYTES 4
 #define RG_FRAME_HEADER_BYTES 4

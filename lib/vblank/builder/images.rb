@@ -293,13 +293,16 @@ module VBlank
       #   part = sprite :part_12, at: [80, 40]
       #   part.draw_with colors_name_of(:part_12)      # so it follows `recolor` of that list
       #
+      # A build that reads its pack as the game starts does not know which list that is, and
+      # hands back a name standing for it (PackPoses#pose_list_stand_in): a sprite told to
+      # draw_with it follows whichever list the player's file picks.
+      #
       # @param picture [Symbol] a picture declared with `image` and given a list by name
       # @return [Symbol] the list's name, as `colors` declared it
       def colors_name_of(picture)
         image = @pictures.fetch(picture) do
           raise ArgumentError, "colors_name_of :#{picture} names no picture. Declare it first with `image :#{picture}, ...`."
         end
-        refuse_naming_frame_bank_list!(picture, "colors_name_of :#{picture}")
         image.colors_name or
           raise ArgumentError, "colors_name_of needs a picture drawn from a list that has a name, and image :#{picture} " \
                                "was given its colors themselves. To fix this, declare the list with `colors` and give " \
@@ -344,7 +347,10 @@ module VBlank
                                "this, leave out showing:."
         end
         refuse_swapping_unplaced_pixels!(poses, subject)
-        poses.each { |pose| refuse_naming_frame_bank_list!(pose, "#{subject} was told to draw_with a list for each of its lists. That") }
+        if poses.any? { |pose| @poses_in_frame_bank_colors&.include?(pose) }
+          return follow_lists_chosen_at_start(node, lists, poses: poses, subject: subject)
+        end
+
         drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
         named = drawn.compact.map { |name| ":#{name}" }
         lists.each do |own, with|

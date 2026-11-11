@@ -667,10 +667,17 @@ void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, 
     colors[first + entry] = list < lists ? start_file_color(colors_at + (list * list_colors * 2), format, first_place + entry) : 0;
 }
 
+int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
+  int32_t first_piece = 0;
+  return start_file_frame_pieces(entry_at, records_at, &first_piece) > 0
+             ? (int32_t)start_file_number(first_piece + RG_PIECE_BANK_AT, 2, 0)
+             : 0;
+}
+
 void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
   int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], entry_at = rules[9], records_at = rules[10];
-  int32_t origin_x = rules[11], origin_y = rules[12], tiles_at = rules[13], tile_count = rules[14];
+  int32_t origin_x = rules[11], origin_y = rules[12], tiles_at = rules[13], tile_count = rules[14], only_bank = rules[15];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -678,9 +685,11 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first);
   int32_t *places = calloc((size_t)(width * height), sizeof *places);
   if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
-  for (int32_t piece = 0; piece < count; piece++)
-    start_file_paint_piece(places, width, height, first + (piece * RG_FRAME_PIECE_BYTES), tile_format, origin_x, origin_y, tiles_at,
-                           tile_count);
+  for (int32_t piece = 0; piece < count; piece++) {
+    int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
+    if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
+    start_file_paint_piece(places, width, height, at, tile_format, origin_x, origin_y, tiles_at, tile_count);
+  }
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
   for (int32_t row = 0; row < height; row++) {

@@ -243,6 +243,10 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * sprite entry names the bank of colours it is drawn from, so a pose drawn in its frame's bank is
  * drawn in these. The file is the player's: a bank past the lists is colour 0.
  *
+ * rg_start_file_frame_bank: that bank itself, of the frame whose entry is at +entry_at+, the
+ * frames' records starting at +records_at+: 0 for a frame with no piece. The game writes with it
+ * which list a pose drawn in its frame's bank follows (IR::StartFile::Pose#bank_lists).
+ *
  * A COLOUR OF SUCH A LIST IS WRITTEN IN THE GAME AS A MARKER wherever the game would hold the
  * colour (IR::StartFile, "MARKERS"): a number of sixteen bits above RG_MARKED_COLOR, never all
  * sixteen, which names entry (marker - RG_MARKED_COLOR - 1) of +colors+.
@@ -275,6 +279,7 @@ void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
 void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
+int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at);
 void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);
 void rg_start_file_fill_marked_numbers(const int32_t *colors, void *table, int32_t kept, int32_t start, int32_t count);
 int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color);

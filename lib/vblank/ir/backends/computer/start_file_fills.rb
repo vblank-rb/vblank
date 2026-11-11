@@ -61,8 +61,40 @@ module VBlank
                                             build_start_file_picture_fills + build_start_file_background_fills +
                                             build_start_file_marked_pixel_fills + build_start_file_marked_number_fills +
                                             build_start_file_recording_fills +
-                                            build_start_file_sound_fills)]
+                                            build_start_file_sound_fills + start_file_pose_list_choices)]
           end
+
+          # THE LIST A FOLLOWING SPRITE'S POSE IS DRAWN FROM, WHERE ITS FRAME PICKS IT
+          # (Picture#lists_chosen_by_frame). +chosen+ is, for each pose of +obj+, that pose's
+          # followed list of each bank or nil; +starts+ where each pose's pictures start, and +lists+
+          # the lists the sprite follows, in the order +pose_lists+ numbers them. The routine reading
+          # the file reads the bank each such pose's frame names (rg_start_file_frame_bank) and
+          # writes, into +pose_starts+ and +pose_lists+, where that bank's pictures start and which
+          # list it follows: its own picture and none for a bank the sprite does not follow, or one
+          # past the slot's banks.
+          def record_pose_lists_chosen_by_frames(obj, chosen, starts, lists, pose_lists, pose_starts)
+            chosen.each_with_index do |banks, pose|
+              next unless banks&.any?
+
+              where = picture_from_start_file(obj.poses[pose]).from_file
+              firsts = banks.each_with_object([starts[pose] + 1]) do |list, so_far|
+                so_far << (so_far.last + (list ? sets_held_by(list).length : 0))
+              end
+              starts_by_bank = [starts[pose], *banks.each_with_index.map { |list, bank| list ? firsts[bank] : starts[pose] }]
+              lists_by_bank = [-1, *banks.map { |list| list ? lists.index(list) : -1 }]
+              bank = call("rg_place_of_choice", call("rg_start_file_frame_bank", Statements::Int.new(where.entry_at),
+                                                     Statements::Int.new(where.records_at)), Statements::Int.new(banks.length))
+              at = Statements::Int.new(pose)
+              start_file_pose_list_choices.push(
+                Statements::Assign.new(Statements::Index.new(pose_starts, at),
+                                       Statements::Index.new(drawing_array("chosen_pose_starts", "int32_t", starts_by_bank), bank)),
+                Statements::Assign.new(Statements::Index.new(pose_lists, at),
+                                       Statements::Index.new(drawing_array("chosen_pose_lists", "int32_t", lists_by_bank), bank))
+              )
+            end
+          end
+
+          def start_file_pose_list_choices = @start_file_pose_list_choices ||= []
 
           # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE READ FROM IT: a screen's
           # backdrop (IR::StartFile::Color), and every colour of a list of colours the game
@@ -417,7 +449,7 @@ module VBlank
             swapped = fill.swapped || []
             header = [FILL_KINDS.fetch(fill.kind), total, fill.start, fill.width, fill.height, turn,
                       where.colors_at || -1, where.colors_count, swapped.length, where.entry_at, where.records_at,
-                      where.origin_x, where.origin_y, where.tiles_at, where.tile_count]
+                      where.origin_x, where.origin_y, where.tiles_at, where.tile_count, where.bank || -1]
             unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
               raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."

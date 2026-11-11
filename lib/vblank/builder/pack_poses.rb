@@ -142,28 +142,65 @@ module VBlank
                              "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out bank:."
       end
 
-      # WITH THE PACK LEFT OUT A POSE OF ONE BANK'S PIECES (`bank:`) IS NOT MADE YET: which pieces
-      # of the frame are in that bank is in the file, and the routine that paints a pose as the
-      # game starts paints every piece.
-      def refuse_bank_option_at_start!(name)
-        raise ArgumentError, "image :#{name} was given bank:, and this build reads its pack as the game starts. A pose " \
-                             "of the pieces of one bank is not made that way yet. To fix this, build the game all-in-one."
+      # WITH THE PACK LEFT OUT A POSE OF ONE BANK'S PIECES (`bank:`) is drawn from that bank's list,
+      # `:<slot>_<bank>`, known as the game is built, and the routine that paints it as the game
+      # starts paints only the pieces whose record names that bank (IR::StartFile::Pose#bank).
+      # Which pieces those are is the file's: where none is, the pose is see-through, where the
+      # build that holds the pack refuses the bank (#pieces_of_bank). Hands back the list's name.
+      def bank_list_read_at_start(name, bank, bank_lists)
+        return bank_lists.fetch(bank) if bank.is_a?(Integer) && bank.between?(0, bank_lists.length - 1)
+
+        raise ArgumentError, "image :#{name} was given bank: #{bank.inspect}, and its colors: slot holds banks 0 to " \
+                             "#{bank_lists.length - 1}. To fix this, give a bank from 0 to #{bank_lists.length - 1}."
       end
 
       # WITH THE PACK LEFT OUT THE BUILD CANNOT NAME THE LIST OF A POSE DRAWN IN ITS FRAME'S BANK:
-      # which bank that is is in the file. The pose is drawn in the right colours all the same
-      # (#frame_bank_colors_read_at_start); what needs the name while the game is built is refused
-      # here: `colors_name_of`, and a sprite told to follow the lists its poses are drawn from.
-      # +asked+ is what the game wrote, as a sentence's start.
-      def refuse_naming_frame_bank_list!(picture, asked)
-        return unless @poses_in_frame_bank_colors&.include?(picture)
-
-        raise ArgumentError, "#{asked} needs the name of the list of colors that image :#{picture} is drawn from. " \
-                             "image :#{picture} takes its colors from the bank its frame names, and this build reads " \
-                             "its pack as the game starts. So the build does not know which bank that is. To fix " \
-                             "this, give the pose one list, like `colors: pack[:palette].bank(1)`. Or build the " \
-                             "game all-in-one."
+      # which bank that is is in the file. So the pose's list is named for the pose's frame (a
+      # STAND-IN), and the names of the lists it can be (+bank_lists+, by bank) are kept under it.
+      # `colors_name_of` hands back the stand-in, and a sprite told to draw with it, or to follow
+      # it, follows whichever of those lists the file picks (#follow_lists_chosen_at_start).
+      # Hands back the stand-in.
+      def pose_list_stand_in(name, slot, record, bank_lists)
+        stand_in = :"#{pack_colors_name(slot)} bank of frame #{record}"
+        (@lists_chosen_at_start ||= {})[stand_in] = bank_lists
+        (@poses_in_frame_bank_colors ||= Set.new) << name
+        stand_in
       end
+
+      public
+
+      # Whether +name+ is the stand-in for the list a pose's frame picks as the game starts
+      # (#pose_list_stand_in). Asked by a sprite told to `draw_with` it, which then follows it.
+      def list_chosen_at_start?(name) = !@lists_chosen_at_start.nil? && @lists_chosen_at_start.key?(name)
+
+      # A SPRITE TOLD TO FOLLOW ITS POSES' LISTS WHERE A POSE'S LIST IS PICKED BY ITS FRAME AS THE
+      # GAME STARTS (Images#follow_pose_lists, with the pack left out). Each name of +lists+ is a
+      # stand-in, which the sprite follows as every list it can be, or a list a pose is drawn from;
+      # each is followed and never drawn with another list. The object +node+ then names every list
+      # it follows (IR::Nodes::Object#follows_each), and a pose shows what the list its frame picks
+      # holds now. This is what the build that holds the pack makes of the same game: a sprite of
+      # one list drawn with that list, or one of several that follows each.
+      #
+      # A frame whose pieces name two banks is drawn, and followed, in its front piece's: the
+      # file is the player's, so nothing in it stops the game (#frame_bank_colors_read_at_start).
+      def follow_lists_chosen_at_start(node, lists, poses:, subject:)
+        drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
+        followed = lists.flat_map do |own, with|
+          chosen = @lists_chosen_at_start[own]
+          unless (chosen || drawn.include?(own) || @lists_chosen_at_start.values.any? { |names| names.include?(own) }) && with == own
+            raise ArgumentError, "#{subject} was told to draw_with #{own.inspect} => #{with.inspect}, and this build reads " \
+                                 "its pack as the game starts. Such a sprite can follow each list its pictures are drawn " \
+                                 "from, like `#{own.inspect} => #{own.inspect}`. To fix this, follow the list and change its " \
+                                 "colors with `recolor`. Or build the game all-in-one."
+          end
+          chosen || [own]
+        end
+        node.follows_each = ((node.follows_each || []) + followed).uniq
+        (@pose_list_followers ||= []) << node
+        nil
+      end
+
+      private
 
       # THE SAME POSE WITH THE PACK LEFT OUT (see the top of this file). The picture holds zeros of
       # the size the game gave, and its places are all 1, so the build treats it as a solid box.
@@ -173,7 +210,6 @@ module VBlank
       # of that bank (#frame_bank_colors_read_at_start).
       def define_pack_pose_read_at_start(name, opts, origin, size, from_banks: false)
         refuse_pose_without_size!(name) unless size
-        refuse_bank_option_at_start!(name) if opts.key?(:bank)
         tiles = opts[:tiles]
         colors = opts[:colors]
         record = pack_frame_number(frame_source(name, opts[:frame]))
@@ -184,11 +220,15 @@ module VBlank
           refuse_slot_read_wrongly!(colors, :colors, "image :#{name}'s colors:")
           refuse_too_many_pack_colors!(name, colors) unless from_banks
         end
-        colors_name = if from_banks then :"#{pack_colors_name(colors)} bank of frame #{record}"
+        bank_lists = (declare_bank_lists_read_at_start(colors, tiles.layout.format.colors, "image :#{name}'s colors:") if from_banks)
+        one_bank = (bank_list_read_at_start(name, opts[:bank], bank_lists) if opts.key?(:bank))
+        colors_name = if one_bank then one_bank
+                      elsif from_banks then pose_list_stand_in(name, colors, record, bank_lists)
                       else colors_from_file ? pack_colors_name(colors) : (colors if colors.is_a?(Symbol))
                       end
-        table = if from_banks
-                  (@poses_in_frame_bank_colors ||= Set.new) << name
+        table = if one_bank
+                  color_table(name, declared_colors_for_image!(name, one_bank)).map { |value| value || 0 }
+                elsif from_banks
                   frame_bank_colors_read_at_start(name, opts, IR::StartFile::FrameBank.new(entry_at: entry_at, records_at: @pack_frames_at))
                 elsif colors_from_file
                   Array.new(colors.count, 0)
@@ -205,7 +245,8 @@ module VBlank
           tiles_at: @pack_slot_starts.fetch(tiles.layout.name) + (first_tile * tiles.layout.item_bytes),
           tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
           colors_at: (colors_in_pack(colors) if colors_from_file), colors_count: table.length,
-          color_format: (colors.layout.format if colors_from_file)
+          color_format: (colors.layout.format if colors_from_file),
+          bank: (opts[:bank] if one_bank), bank_lists: (bank_lists if from_banks && !one_bank)
         )
         record_picture(node)
         (@pictures_from_start_file ||= {})[name] = node.from_file
@@ -219,15 +260,15 @@ module VBlank
       # and the pose is filled as any pose that holds its colours is. The first place is
       # see-through, as in any picture's list.
       #
-      # Each bank of the slot is declared as the list `:<slot>_<bank>` here too, as built
-      # all-in-one (#pose_bank_list!), so a game that recolours or walks one by that name builds.
+      # Each bank of the slot is declared as the list `:<slot>_<bank>` too, as built all-in-one
+      # (#pose_bank_list!), so a game that recolours or walks one by that name builds.
       #
-      # The file is the player's, so nothing in it stops the game: a frame whose pieces name two
-      # banks, which the build that holds the pack refuses, is drawn whole in its front piece's.
+      # A FRAME OF TWO BANKS. The file is the player's, so nothing in it stops the game: a frame
+      # whose pieces name two banks, which the build that holds the pack refuses, is drawn whole
+      # in its front piece's bank, and a sprite following its list follows that bank's.
       def frame_bank_colors_read_at_start(name, opts, choice)
         slot = opts[:colors]
         size = opts[:tiles].layout.format.colors
-        declare_bank_lists_read_at_start(slot, size, "image :#{name}'s colors:")
         chosen = IR::StartFile::ChosenColor.new(choice: choice, at: colors_in_pack(slot), list_colors: size, lists: slot.count / size,
                                                 place: 0, format: slot.layout.format)
         [0, *(1...size).map { |place| start_file_color_marker(chosen.with(place: place)) }]

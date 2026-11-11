@@ -108,14 +108,27 @@ module VBlank
       # +color_format+, or held by the picture where +colors_at+ is nil. Place 0 is see-through.
       # +turns+ are the ways the whole picture is turned once it is painted, as a Picture's.
       #
+      # +bank+, for a pose of one bank's pieces (`image ..., bank:`), is the bank a piece must name
+      # in its record to be painted; nil paints every piece.
+      #
+      # +bank_lists+, for a pose drawn in the bank its frame names (its colours ChosenColor
+      # markers), are the names of the lists of the slot's banks, bank 0 first. Which of them the
+      # pose is drawn from is the file's, so the build names it for the pose alone; once the file is
+      # read the pose is a picture of the list its frame picks, as built holding the pack
+      # (.fill_pose), and a sprite told to follow that list follows it. A bank past them is no
+      # list: the pose is drawn in colour 0 and follows nothing.
+      #
       # The file is the player's, so nothing in it stops the game. Pieces are read while they
       # end inside the file, however many the record says it holds. A piece, or the part of one,
       # outside the picture is not painted, and a tile past +tile_count+ paints nothing. Where
       # two pieces overlap the earlier one is in front, as a console draws its sprites.
       Pose = Data.define(:entry_at, :records_at, :origin_x, :origin_y, :tiles_at, :tile_count, :tile_format,
-                         :colors_at, :colors_count, :color_format, :turns) do
+                         :colors_at, :colors_count, :color_format, :turns, :bank, :bank_lists) do
         def initialize(entry_at:, records_at:, origin_x:, origin_y:, tiles_at:, tile_count:, tile_format:, colors_count:,
-                       colors_at: nil, color_format: nil, turns: [].freeze) = super
+                       colors_at: nil, color_format: nil, turns: [].freeze, bank: nil, bank_lists: nil) = super
+
+        # The bank its frame names, which picks its list: the bank of the frame's front piece.
+        def frame_bank = FrameBank.new(entry_at: entry_at, records_at: records_at)
 
         # The same pose turned +way+ once it is painted.
         def turned(way) = with(turns: [*turns, way].freeze)
@@ -556,17 +569,19 @@ module VBlank
                  else
                    node.colors
                  end
+        node.colors_name = where.bank_lists[frame_bank_in(bytes, where.frame_bank)] || node.colors_name if where.bank_lists
         hold_read_picture(node, pose_places(where, node.width, node.height, bytes), colors, see_through: 0)
       end
 
       # The places of a picture +width+ by +height+ with the pieces of the frame at +where+ (a
-      # Pose) painted into it, row by row. What the file asks for past what the build holds is
-      # left out (Pose says what).
+      # Pose) painted into it, row by row: every piece, or those of its bank where it names one.
+      # What the file asks for past what the build holds is left out (Pose says what).
       def self.pose_places(where, width, height, bytes)
         places = Array.new(width * height, 0)
         tiles = {}
         frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
-        frame.pieces.each { |piece| paint_pose_piece(places, width, height, piece, where, bytes, tiles) }
+        pieces = where.bank ? frame.pieces.select { |piece| piece.bank == where.bank } : frame.pieces
+        pieces.each { |piece| paint_pose_piece(places, width, height, piece, where, bytes, tiles) }
         places
       end
 

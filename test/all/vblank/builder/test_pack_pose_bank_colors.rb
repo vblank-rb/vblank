@@ -358,23 +358,8 @@ class TestPackPoseBankColors < Minitest::Test
   end
 
   # THE BANK IS IN THE PLAYER'S COPY, which a build that reads its pack as the game starts does not
-  # hold. It draws the pose in that bank's colours all the same (PackGames::PosesInBankColors
-  # holds it to the all-in-one build), and refuses only what needs the list's name while the game
-  # is built.
-  def test_the_name_of_a_frames_list_is_refused_with_the_pack_left_out
-    options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-    Dir.mktmpdir do |folder|
-      error = assert_raises(ArgumentError) do
-        game_of(folder, options: options) do |pack|
-          image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
-                        colors: pack[:palette], size: [16, 8]
-          colors_name_of(:first)
-        end
-      end
-
-      assert_includes error.message, "colors_name_of :first"
-      assert_includes error.message, "as the game starts"
-      assert_includes error.message, "all-in-one"
-    end
-  end
+  # hold. Such a build draws the pose in that bank's colours all the same, and a sprite told to draw
+  # with its list follows the list the file picks: PackGames::PosesInBankColors (test/pack_games.rb)
+  # holds those games to this build, and PackPoseBankColorsAtStartTests
+  # (test/pack_pose_bank_colors_at_start_tests.rb) plays the rest.
 end

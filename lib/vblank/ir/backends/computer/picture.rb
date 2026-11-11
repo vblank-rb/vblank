@@ -1096,18 +1096,41 @@ module VBlank
           # where the pose's pictures start plus the set its own list holds now, which is nothing
           # for a pose that follows no list.
           def picture_following_pose_lists(obj, pose)
-            followed = obj.poses.map { |name| obj.list_followed_by_pose(picture_named(name).colors_name) }
-            pictures = obj.poses.zip(followed).map do |name, list|
-              list ? sets_held_by(list).map { |colors| image_number(name, colors) } : [image_number(name)]
+            chosen = obj.poses.map { |name| lists_chosen_by_frame(obj, name) }
+            followed = obj.poses.zip(chosen).map { |name, banks| obj.list_followed_by_pose(picture_named(name).colors_name) unless banks }
+            pictures = obj.poses.zip(followed, chosen).map do |name, list, banks|
+              next [image_number(name), *banks.compact.flat_map { |each| pictures_held_by(name, each) }] if banks
+
+              list ? pictures_held_by(name, list) : [image_number(name)]
             end
             starts = pictures.each_with_object([0]) { |held, so_far| so_far << (so_far.last + held.length) }.first(pictures.length)
-            lists = followed.compact.uniq
-            list_of_pose = Statements::Index.new(drawing_array("pose_lists", "int32_t", followed.map { |list| lists.index(list) || -1 }), pose)
-            at = lists.each_with_index.reduce(Statements::Index.new(drawing_array("pose_starts", "int32_t", starts), pose)) do |so_far, (list, number)|
+            lists = (followed + chosen.compact.flatten).compact.uniq
+            writable = chosen.any? { |banks| banks&.any? }
+            pose_lists = drawing_array("pose_lists", "int32_t", followed.map { |list| lists.index(list) || -1 }, writable: writable)
+            pose_starts = drawing_array("pose_starts", "int32_t", starts, writable: writable)
+            record_pose_lists_chosen_by_frames(obj, chosen, starts, lists, pose_lists, pose_starts) if writable
+            list_of_pose = Statements::Index.new(pose_lists, pose)
+            at = lists.each_with_index.reduce(Statements::Index.new(pose_starts, pose)) do |so_far, (list, number)|
               held = call("rg_place_of_choice", held_colors(list), Statements::Int.new(sets_held_by(list).length - 1))
               call("rg_add", so_far, call("rg_mul", call("rg_eq", list_of_pose, Statements::Int.new(number)), held))
             end
             Statements::Index.new(drawing_array("pose_pictures", "int32_t", pictures.flatten), at)
+          end
+
+          # The pictures of the pose +name+ in every set of colours the list +list+ can hold, the
+          # declared one first.
+          def pictures_held_by(name, list) = sets_held_by(list).map { |colors| image_number(name, colors) }
+
+          # A POSE WHOSE LIST ITS FRAME PICKS AS THE GAME STARTS (IR::StartFile::Pose#bank_lists): for
+          # each bank, the list of that bank where +obj+ follows it, or nil; nil for any other pose.
+          # Such a pose has its own picture, in its frame's bank's colours, and then the pictures of
+          # each followed bank's list; which of them it starts at, and which list it follows, are
+          # written as the game starts (StartFileFills#record_pose_lists_chosen_by_frames).
+          def lists_chosen_by_frame(obj, name)
+            where = picture_from_start_file(name)&.from_file
+            return nil unless where.is_a?(IR::StartFile::Pose) && where.bank_lists
+
+            where.bank_lists.map { |list| list if obj.follows_each.include?(list) }
           end
 
           # Which row of its pictures a sprite is on: the first row of the list it is drawn with

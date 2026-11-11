@@ -1038,9 +1038,9 @@ module PackGames
           recolor :palette_2, :other
         end
       end,
-      # With the pack left out the build cannot name the list a pose's frame picks.
-      game(:pose_in_its_frames_bank_followed_by_its_lists_name, passes: 5,
-                                                                refused: refused_by_builder("needs the name of the list")) do |folder, options|
+      # With the pack left out the list a pose's frame picks is named for the pose, and the sprite
+      # follows whichever bank's list the file picks.
+      game(:pose_in_its_frames_bank_followed_by_its_lists_name, passes: 5) do |folder, options|
         other = OTHER_LIST
         poses_in_bank_colors(folder, options) do |_pack|
           colors :other, other
@@ -1049,8 +1049,18 @@ module PackGames
           recolor :palette_1, :other
         end
       end,
-      # Which pieces of a frame are in one bank is in the file, and the fill paints every piece.
-      game(:pose_of_one_banks_pieces, passes: 3, refused: refused_by_builder("bank:")) do |folder, options|
+      # Told to follow its pose's list by a hash, as a sprite of several poses is.
+      game(:pose_in_its_frames_bank_following_its_list, passes: 5) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          second = sprite :second, at: [80, 40]
+          second.draw_with({ colors_name_of(:second) => colors_name_of(:second) })
+          recolor :palette_2, :other
+        end
+      end,
+      # Only the pieces of the bank given are painted, the file saying which those are.
+      game(:pose_of_one_banks_pieces, passes: 3) do |folder, options|
         program, file = game_and_file_of(folder, options: options) do |pack|
           frame = pack[:frames].frame(IN_TWO_BANKS, layout: FRAME)
           image :near, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:palette], bank: 1, size: SIZE

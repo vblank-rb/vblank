@@ -58,10 +58,18 @@ module VBlank
           # ON A CONSOLE WHOSE BUILD SHOWS EACH POSE IN ITS OWN LIST'S COLORS, what is left to refuse
           # is a sprite told to follow those lists (Object#follows_each), where the build cannot
           # do that yet (Console::Description#pose_lists).
+          #
+          # A sprite of ONE picture following its list is a sprite drawn with that list, which every
+          # console's build makes, so it is not refused. A build that reads its pack as the game
+          # starts makes one of a pose whose list its frame picks (Builder::PackPoses
+          # #follow_lists_chosen_at_start), where the build that holds the pack draws the sprite with
+          # the list. A sprite of several such poses is still refused, since the build cannot know
+          # whether their frames pick one list.
           def sprites_following_lists(program, console)
             return [] if console.poses_follow_lists?
 
-            Stacking.objects_in_draw_order(program).select(&:follows_each).map do |node|
+            following = Stacking.objects_in_draw_order(program).select(&:follows_each)
+            following.reject { |node| node.poses.uniq.one? }.map do |node|
               Finding.new(check: NAME, severity: :error, node: node, message: following_message(node, console))
             end
           end

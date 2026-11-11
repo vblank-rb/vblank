@@ -424,9 +424,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   bank is a number in the file, so the pose's list holds a marker for each place of "the bank this frame names"
   (`IR::StartFile::ChosenColor`, picked by an `IR::StartFile::FrameBank`), which the runtime fills at power-on from the bank the
   frame's front piece keeps in its record (`rg_start_file_choose_colors`); the pose is then filled as any pose that holds its
-  colours. The build cannot NAME that list, so `colors_name_of` of such a pose, a sprite told to follow its poses' lists
-  (`draw_with` given a hash) and `bank:` are refused at the line there, saying to give the pose one list or build all-in-one. A
-  frame of two banks in the player's file, which the all-in-one build refuses, is drawn whole in its front piece's bank. On a
+  colours. The build cannot NAME that list, so `colors_name_of` of such a pose is a name standing for it
+  (`IR::StartFile::Pose#bank_lists` keeps the bank lists' names): once the file is read the pose is a picture of the list
+  `:<slot>_<bank>` its frame picks, and a sprite told `draw_with` that name, or to follow its poses' lists (`draw_with` given a
+  hash), follows that list, the runtime writing which one as it starts (`rg_start_file_frame_bank`). `bank:` paints only the
+  pieces whose record names that bank, drawn from that bank's list. A frame of two banks in the player's file, which the
+  all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. On a
   console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
   all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
   pose is drawn in its own frame's bank. Nothing the file holds stops the

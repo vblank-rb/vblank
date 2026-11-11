@@ -404,6 +404,9 @@ module VBlank
       #   part.draw_with({ title_1: :title_1, title_2: :title_2 })
       #   part.draw_with(poses.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
       def draw_with(which, showing: nil)
+        # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
+        # followed, as the build that holds the pack draws the sprite with the list it names.
+        which = { which => which } if which.is_a?(Symbol) && @builder.list_chosen_at_start?(which)
         if which.is_a?(Hash)
           subject = "The sprite :#{@object_node.declared || @poses.first}"
           one_list = @builder.follow_pose_lists(@object_node, which, poses: @poses, showing: showing, subject: subject)
