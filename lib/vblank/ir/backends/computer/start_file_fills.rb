@@ -190,13 +190,20 @@ module VBlank
           # names them in order. The tiles are written again for each step of other colours the
           # background can be told, as any background's are.
           #
-          # +start+ is where its tiles' pixels start in the tile pixels, +from+ where it is in the
+          # THE TILES THE GAME HOLDS FOR IT COME FIRST in each step's tiles, laid out as any
+          # background's (Picture#background_arrays): a stand-in for each bank, and the tiles of
+          # the cells it was told it may be written later, each a picture read from the file
+          # itself (#record_start_file_fill). A `set_tile` names one of those by its number, so
+          # they keep the numbers the program gave them and the map's tiles follow.
+          #
+          # +start+ is where its tiles' pixels start in the tile pixels, +held+ how many tiles the
+          # game holds before the map's in each step, +from+ where it is in the
           # file, and +lists+ the colours of each bank at each step, the step it is drawn in its own
           # colours first: a BankFromFile for a bank drawn as the file has it, or the colours of
           # the list it is drawn with. Those are the game's, or markers where the list is read
           # from the file too (another bank, a walk of one), which the tiles are then filled with
           # and put in their colours with every other marker (#record_marked_pixels).
-          StartFileBackgroundFill = Data.define(:start, :from, :lists)
+          StartFileBackgroundFill = Data.define(:start, :held, :from, :lists)
           BankFromFile = Data.define(:bank)
 
           def record_start_file_background_fill(start, bg, steps)
@@ -208,11 +215,12 @@ module VBlank
                 drawn_with || BankFromFile.new(bank: bank)
               end
             end
-            @start_file_background_fills << StartFileBackgroundFill.new(start: start, from: from, lists: lists)
+            held = bg.tiles.length
+            @start_file_background_fills << StartFileBackgroundFill.new(start: start, held: held, from: from, lists: lists)
             return unless lists.flatten.any? { |color| IR::StartFile.marker?(color) }
 
             @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start,
-                                                          count: from.tiles_drawn * Picture::RUN_TILE_PIXELS * lists.length)
+                                                          count: (held + from.tiles_drawn) * Picture::RUN_TILE_PIXELS * lists.length)
           end
 
           def build_start_file_background_fills
@@ -229,7 +237,7 @@ module VBlank
             header = [@tile_pixel_count, fill.start, from.map_at, from.cells, from.across, from.cell_tiles,
                       from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit, words.flip_bit,
                       words.bank_at, words.bank_bits, words.row_tiles || 0, from.tiles_at, from.tile_count,
-                      from.colors_at, from.bank_count, from.bank_size, fill.lists.length]
+                      from.colors_at, from.bank_count, from.bank_size, fill.lists.length, fill.held]
             unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
               raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."

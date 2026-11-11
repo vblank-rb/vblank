@@ -308,7 +308,15 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   with another all show what the all-in-one build shows. One list given alone (`city.draw_with walk, showing:
   step`) draws every bank, since the build cannot tell which bank the map uses. A background that follows more
   than one bank the game recolours is refused when the game is written out, for now.
-  Worked example: `test/pack_background_tests.rb`.
+  **The cells it is told it may be written later (`set_cells:`) work as built all-in-one**: a told number names
+  its tile, turn and bank, so the build knows everything of a told tile but its pixels. Each is a picture of the
+  background's own, read from the file at power-on as any picture of a tile from the pack is
+  (`rg_start_file_fill_picture`) and drawn in its bank's list, and `set_cell` writes it. A told tile that draws
+  nothing is a picture that is see-through all over. The program's tiles for such a background are a stand-in
+  for each bank, then the told tiles, then the map's. Plain `set_tile` on it stays a friendly error, since which
+  tiles the map draws is in the file.
+  Worked examples: `test/pack_background_tests.rb`, and `test/pack_background_set_cell_at_start_tests.rb` for the
+  cells written later.
 - `screen :tiled, backdrop: pack[:palette]` (also `.bank(n)` and `backdrop_place:`) — the screen's backdrop,
   on the game's own `screen` line or a scene's. The program holds no colour for it: the screen keeps where
   the colour is in the file (`IR::StartFile::Color`), and the runtime reads it at power-on into an array of

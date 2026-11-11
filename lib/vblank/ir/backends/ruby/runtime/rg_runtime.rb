@@ -541,12 +541,12 @@ end
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_background(rules)
   _total, start, map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
-    tiles_at, tile_count, colors_at, bank_count, bank_size, sets = rules
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held = rules
   tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   lists = color_format + RG_COLOR_FORMAT_NUMBERS
   columns = across * side
-  tiles_drawn = columns * (cells / across) * side
+  set_tiles = held + (columns * (cells / across) * side)
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
   @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
   pixels = @rg_game_tile_pixels
@@ -570,7 +570,7 @@ def rg_start_file_fill_background(rules)
         end
         sets.times do |set|
           list = lists + (((set * bank_count) + bank) * (1 + bank_size))
-          drawn = start + (((set * tiles_drawn) + number) * 64)
+          drawn = start + (((set * set_tiles) + held + number) * 64)
           places.each_with_index do |place, at|
             pixels[drawn + at] = if place.zero?
                                    RG_SEE_THROUGH

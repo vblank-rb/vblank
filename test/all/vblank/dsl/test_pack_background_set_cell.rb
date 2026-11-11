@@ -6,17 +6,11 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "differential"
 
-# A CELL OF A BACKGROUND FROM THE DATA PACK WRITTEN AS THE ORIGINAL'S OWN CELL NUMBER
-# (DSL::Background#set_cell), on a made-up original in the layout of the console it is for.
-#
-# A retail game puts words on a screen by storing font cells in the map its picture is in. The
-# font's tiles are in video memory beside the picture's and no cell of the map names one until
-# then. So the background is told the cells it may be written (`set_cells:`), and the answer key
-# is the made-up data: the cell must show the font tile's places in its bank's colours, turned
-# as the cell number says, and every other cell must show what the map held.
-class TestPackBackgroundSetCell < Minitest::Test
-  include Differential
-
+# MADE-UP ORIGINALS WHOSE SCREEN HAS A FONT BESIDE ITS PICTURE, in the layout of the console each
+# is for, and the games that write the font's cells onto the screen with `set_cell`. Each game is
+# handed back with the pack file its build made (nil for a build that leaves its pack out), so the
+# same games are played with the pack left out (test/pack_background_set_cell_at_start_tests.rb).
+module PackBackgroundSetCellGames
   # Four colours a tile, so the Game Boy Color can show every tile here too.
   BLANK = Array.new(64, 0).freeze
   ART_A = (0...64).map { |at| ((at % 8) + (2 * (at / 8))) % 4 }.freeze
@@ -57,6 +51,21 @@ class TestPackBackgroundSetCell < Minitest::Test
   # The picture's map, four cells to a row: the cell at (2, 1) draws nothing.
   MAP_TILES = [[1, 2, 1, 2], [2, 1, 0, 1]].freeze
 
+  # The Super Nintendo original's video memory: a cell of 16x16 pixels is the four tiles t, t + 1,
+  # t + 16 and t + 17. Its picture's cell is tile 0 and its font's letter tile 2.
+  SNES_VIDEO = Array.new(20) { BLANK }.tap do |video|
+    video[0] = ART_A
+    video[1] = ART_B
+    video[16] = ART_B
+    video[17] = ART_A
+    video[2] = FONT_A
+    video[3] = FONT_B
+    video[18] = FONT_B
+    video[19] = FONT_A
+  end.freeze
+
+  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
   # A made-up original for +platform+: +tiles+ (bytes) at TILES_AT, the two banks at COLORS_AT and
   # +words+, the map, at MAP_AT.
   private def original(folder, platform, tiles, words)
@@ -74,9 +83,9 @@ class TestPackBackgroundSetCell < Minitest::Test
   end
 
   # A game showing one background from the pack, told +set_cells+, and whatever the block does
-  # with it. +options+ are the builder's.
-  private def pack_game(from, tile_count, words, across:, cell: 8, set_cells: nil, options: nil, &more)
-    b = options ? Builder.new(options: options) : Builder.new
+  # with it, and the pack file its build made. +options+ are the builder's.
+  private def pack_game_and_file(from, tile_count, words, across:, cell: 8, set_cells: nil, options: nil, &more)
+    b = options ? VBlank::Builder.new(options: options) : VBlank::Builder.new
     told = set_cells ? { set_cells: set_cells } : {}
     b.instance_eval do
       screen :tiled
@@ -89,15 +98,17 @@ class TestPackBackgroundSetCell < Minitest::Test
       instance_exec(world, &more) if more
     end
     b.finalize_program
-    b.program
+    [b.program, b.made_data_pack_file]
   end
+
+  private def pack_game(...) = pack_game_and_file(...).first
 
   # THE GAME OF THE TESTS: on its second pass it writes the font's first letter over the picture at
   # (1, 1), written in the game, and its second into the empty cell at (2, 1), worked out from a
   # table and a base as the original works its text out. On pass +blank_at+ it writes the font's
   # space into both. The cell at (0, 0) is written a number the background was not told.
-  private def text_game(from, tiles, words, base, set_cells, blank_at: 99)
-    pack_game(from, tiles, words, across: 4, set_cells: set_cells) do |world|
+  private def text_game(from, tiles, words, base, set_cells, blank_at: 99, options: nil)
+    pack_game_and_file(from, tiles, words, across: 4, set_cells: set_cells, options: options) do |world|
       letters = table :letters, [0, 1, 2, 9]
       pass = var :pass, 0
       game_loop do
@@ -115,6 +126,135 @@ class TestPackBackgroundSetCell < Minitest::Test
       end
     end
   end
+
+  # The game of the tests on the Genesis original, the font's three cells told as a range.
+  private def genesis_text_game(folder, **settings)
+    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
+    base = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
+    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
+    text_game(from, PLACES.length, words, base, base..(base + 2), **settings)
+  end
+
+  # The Advance's layout, the cells told as a list, one of them a letter back to front and upside
+  # down: on its second pass the game writes the second letter at (2, 1), and the turned one, kept
+  # in a variable, at (3, 0).
+  private def advance_turned_cell_game(folder, options: nil)
+    words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
+    base = ADVANCE_CELL.(FIRST_FONT_TILE, bank: 1)
+    turned = ADVANCE_CELL.(FIRST_FONT_TILE, mirrored: true, upside_down: true)
+    from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
+    pack_game_and_file(from, PLACES.length, words, across: 4, set_cells: [base, base + 1, turned], options: options) do |world|
+      which = var :which, turned
+      pass = var :pass, 0
+      game_loop do
+        wait_vblank
+        pass += 1
+        if pass == 2
+          world.set_cell 2, 1, base + 1
+          world.set_cell pass + 1, 0, which
+        end
+      end
+    end
+  end
+
+  # The Super Nintendo's layout with cells of 16x16 pixels: on its second pass the game writes the
+  # letter mirrored at (0, 0), written in the game, and the letter in the other bank, kept in a
+  # variable, at (1, 0).
+  private def snes_big_cell_game(folder, options: nil)
+    words = [SNES_CELL.(0), SNES_CELL.(0)]
+    letter = SNES_CELL.(2, bank: 1)
+    turned = SNES_CELL.(2, mirrored: true)
+    from = original(folder, :snes, SNES_VIDEO.map(&MadeUpOriginalLayouts::FOUR_PLANES).join, words)
+    pack_game_and_file(from, 20, words, across: 2, cell: 16, set_cells: [letter, turned], options: options) do |world|
+      which = var :which, letter
+      pass = var :pass, 0
+      game_loop do
+        wait_vblank
+        pass += 1
+        if pass == 2
+          world.set_cell 0, 0, turned
+          world.set_cell pass - 1, pass - 2, which
+        end
+      end
+    end
+  end
+
+  # A game showing the Genesis original with the cells +told+, which on its second pass writes each
+  # of +numbers+, read from a table, into the cells of the top row from the left.
+  private def numbered_game(folder, told, numbers, options: nil)
+    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
+    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
+    pack_game_and_file(from, PLACES.length, words, across: 4, set_cells: told, options: options) do |world|
+      line = table :line, numbers
+      pass = var :pass, 0
+      at = var :at, 0
+      game_loop do
+        wait_vblank
+        pass += 1
+        if pass == 2
+          at = 0
+          while at < numbers.length
+            world.set_cell at, 0, line[at]
+            at += 1
+          end
+        end
+      end
+    end
+  end
+
+  # A background a scene declares, written by a line of that scene, as the title screen of a port is.
+  private def scene_text_game(folder, options: nil)
+    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
+    base = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
+    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
+    b = options ? VBlank::Builder.new(options: options) : VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
+        slots.numbers :map, at: MAP_AT, count: words.length, width: :half, signed: false
+        slots.colors :palette, at: COLORS_AT, count: 32
+      end
+      letters = table :letters, [0, 1]
+      var :state, 0
+      pass = var :pass, 0
+      scene :title do
+        face = background :face, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4,
+                                 set_cells: base..(base + 1)
+        if pass == 2
+          face.set_cell 1, 1, base
+          face.set_cell 2, 1, base + letters[1]
+        end
+      end
+      game_loop do
+        wait_vblank
+        pass += 1
+        case_var(:state) { when_val 0, :title }
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # A game showing the Advance original, its background given +told+ and whatever the block does.
+  private def advance_game(folder, **told, &more)
+    words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
+    from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
+    pack_game(from, PLACES.length, words, across: 4, **told, &more)
+  end
+end
+
+# A CELL OF A BACKGROUND FROM THE DATA PACK WRITTEN AS THE ORIGINAL'S OWN CELL NUMBER
+# (DSL::Background#set_cell), on a made-up original in the layout of the console it is for.
+#
+# A retail game puts words on a screen by storing font cells in the map its picture is in. The
+# font's tiles are in video memory beside the picture's and no cell of the map names one until
+# then. So the background is told the cells it may be written (`set_cells:`), and the answer key
+# is the made-up data: the cell must show the font tile's places in its bank's colours, turned
+# as the cell number says, and every other cell must show what the map held.
+class TestPackBackgroundSetCell < Minitest::Test
+  include Differential
+  include PackBackgroundSetCellGames
 
   private def assert_cell(screen, places, at_x, at_y, bank, side: 8, mirrored: false, upside_down: false)
     side.times do |y|
@@ -145,16 +285,9 @@ class TestPackBackgroundSetCell < Minitest::Test
     assert_cell(screen, ART_A, 24, 8, 0)
   end
 
-  private def genesis_text_game(folder, **timing)
-    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
-    base = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
-    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
-    text_game(from, PLACES.length, words, base, base..(base + 2), **timing)
-  end
-
   def test_a_genesis_originals_font_cells_show_once_written
     Dir.mktmpdir do |folder|
-      screen = game_player.run(genesis_text_game(folder), frames: 5).screen
+      screen = game_player.run(genesis_text_game(folder).first, frames: 5).screen
 
       assert_cell(screen, FONT_A, 8, 8, 1)
       assert_cell(screen, FONT_B, 16, 8, 1)
@@ -164,7 +297,7 @@ class TestPackBackgroundSetCell < Minitest::Test
 
   def test_a_genesis_originals_font_cells_are_gone_once_blanked
     Dir.mktmpdir do |folder|
-      screen = game_player.run(genesis_text_game(folder, blank_at: 4), frames: 8).screen
+      screen = game_player.run(genesis_text_game(folder, blank_at: 4).first, frames: 8).screen
 
       assert_cell_empty(screen, 8, 8)
       assert_cell_empty(screen, 16, 8)
@@ -175,16 +308,16 @@ class TestPackBackgroundSetCell < Minitest::Test
   # --- the console draws the same thing ---
 
   def test_both_backends_agree_once_the_cells_are_written
-    Dir.mktmpdir { |folder| assert_backends_agree(genesis_text_game(folder), frames: 5) }
+    Dir.mktmpdir { |folder| assert_backends_agree(genesis_text_game(folder).first, frames: 5) }
   end
 
   def test_both_backends_agree_once_the_cells_are_blanked
-    Dir.mktmpdir { |folder| assert_backends_agree(genesis_text_game(folder, blank_at: 4), frames: 8) }
+    Dir.mktmpdir { |folder| assert_backends_agree(genesis_text_game(folder, blank_at: 4).first, frames: 8) }
   end
 
   def test_the_picture_is_as_the_map_held_it_before_a_cell_is_written
     Dir.mktmpdir do |folder|
-      screen = game_player.run(genesis_text_game(folder), frames: 1).screen
+      screen = game_player.run(genesis_text_game(folder).first, frames: 1).screen
 
       assert_cell(screen, ART_A, 8, 8, 0)
       assert_cell_empty(screen, 16, 8)
@@ -195,23 +328,7 @@ class TestPackBackgroundSetCell < Minitest::Test
   # The Advance's layout, the cells told as a list, one of them a letter back to front.
   def test_an_advance_originals_cells_are_told_as_a_list_and_show_their_turn
     Dir.mktmpdir do |folder|
-      words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
-      base = ADVANCE_CELL.(FIRST_FONT_TILE, bank: 1)
-      turned = ADVANCE_CELL.(FIRST_FONT_TILE, mirrored: true, upside_down: true)
-      from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
-      program = pack_game(from, PLACES.length, words, across: 4, set_cells: [base, base + 1, turned]) do |world|
-        which = var :which, turned
-        pass = var :pass, 0
-        game_loop do
-          wait_vblank
-          pass += 1
-          if pass == 2
-            world.set_cell 2, 1, base + 1
-            world.set_cell pass + 1, 0, which
-          end
-        end
-      end
-      screen = game_player.run(program, frames: 5).screen
+      screen = game_player.run(advance_turned_cell_game(folder).first, frames: 5).screen
 
       assert_cell(screen, FONT_B, 16, 8, 1)
       assert_cell(screen, FONT_A, 24, 0, 0, mirrored: true, upside_down: true)
@@ -223,61 +340,13 @@ class TestPackBackgroundSetCell < Minitest::Test
   # memory, so writing one writes all four, turned as one cell.
   def test_a_super_nintendo_originals_big_cell_is_written_whole
     Dir.mktmpdir do |folder|
-      video = Array.new(20) { BLANK }
-      video[0] = ART_A
-      video[1] = ART_B
-      video[16] = ART_B
-      video[17] = ART_A
-      video[2] = FONT_A
-      video[3] = FONT_B
-      video[18] = FONT_B
-      video[19] = FONT_A
-      words = [SNES_CELL.(0), SNES_CELL.(0)]
-      letter = SNES_CELL.(2, bank: 1)
-      turned = SNES_CELL.(2, mirrored: true)
-      from = original(folder, :snes, video.map(&MadeUpOriginalLayouts::FOUR_PLANES).join, words)
-      program = pack_game(from, 20, words, across: 2, cell: 16, set_cells: [letter, turned]) do |world|
-        which = var :which, letter
-        pass = var :pass, 0
-        game_loop do
-          wait_vblank
-          pass += 1
-          if pass == 2
-            world.set_cell 0, 0, turned
-            world.set_cell pass - 1, pass - 2, which
-          end
-        end
-      end
-      screen = game_player.run(program, frames: 5).screen
+      screen = game_player.run(snes_big_cell_game(folder).first, frames: 5).screen
       big = Array.new(16) do |y|
-        Array.new(16) { |x| video.fetch(2 + ((y / 8) * 16) + (x / 8)).fetch(((y % 8) * 8) + (x % 8)) }
+        Array.new(16) { |x| SNES_VIDEO.fetch(2 + ((y / 8) * 16) + (x / 8)).fetch(((y % 8) * 8) + (x % 8)) }
       end.flatten
 
       assert_cell(screen, big, 0, 0, 0, side: 16, mirrored: true)
       assert_cell(screen, big, 16, 0, 1, side: 16)
-    end
-  end
-
-  # A game showing the Genesis original with the cells +told+, which on its second pass writes each
-  # of +numbers+, read from a table, into the cells of the top row from the left.
-  private def numbered_game(folder, told, numbers)
-    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
-    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
-    pack_game(from, PLACES.length, words, across: 4, set_cells: told) do |world|
-      line = table :line, numbers
-      pass = var :pass, 0
-      at = var :at, 0
-      game_loop do
-        wait_vblank
-        pass += 1
-        if pass == 2
-          at = 0
-          while at < numbers.length
-            world.set_cell at, 0, line[at]
-            at += 1
-          end
-        end
-      end
     end
   end
 
@@ -287,7 +356,7 @@ class TestPackBackgroundSetCell < Minitest::Test
     Dir.mktmpdir do |folder|
       first = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
       told = [first, first + 2]
-      program = numbered_game(folder, told, [first + 2, first + 1, first - 1, first + 3])
+      program, = numbered_game(folder, told, [first + 2, first + 1, first - 1, first + 3])
       screen = game_player.run(program, frames: 5).screen
 
       assert_cell_empty(screen, 0, 0)
@@ -305,7 +374,7 @@ class TestPackBackgroundSetCell < Minitest::Test
       plain = GENESIS_CELL.(FIRST_FONT_TILE)
       turned = GENESIS_CELL.(FIRST_FONT_TILE, mirrored: true)
       other_bank = GENESIS_CELL.(FIRST_FONT_TILE + 1, bank: 1)
-      program = numbered_game(folder, [other_bank, plain, turned], [turned, other_bank, plain + 0x400, plain])
+      program, = numbered_game(folder, [other_bank, plain, turned], [turned, other_bank, plain + 0x400, plain])
       screen = game_player.run(program, frames: 5).screen
 
       assert_cell(screen, FONT_A, 0, 0, 0, mirrored: true)
@@ -320,7 +389,7 @@ class TestPackBackgroundSetCell < Minitest::Test
   def test_a_number_differing_only_in_the_consoles_own_bit_is_the_told_cell
     Dir.mktmpdir do |folder|
       first = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
-      program = numbered_game(folder, first..(first + 1), [first & 0x7FFF, (first + 1) & 0x7FFF])
+      program, = numbered_game(folder, first..(first + 1), [first & 0x7FFF, (first + 1) & 0x7FFF])
       screen = game_player.run(program, frames: 5).screen
 
       assert_cell(screen, FONT_A, 0, 0, 1)
@@ -333,47 +402,12 @@ class TestPackBackgroundSetCell < Minitest::Test
   # port is.
   def test_a_scenes_background_is_written_from_the_scene
     Dir.mktmpdir do |folder|
-      words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
-      base = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
-      from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
-      b = Builder.new
-      b.instance_eval do
-        screen :tiled
-        pack = data_pack from: from, version: "1" do |slots|
-          slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
-          slots.numbers :map, at: MAP_AT, count: words.length, width: :half, signed: false
-          slots.colors :palette, at: COLORS_AT, count: 32
-        end
-        letters = table :letters, [0, 1]
-        var :state, 0
-        pass = var :pass, 0
-        scene :title do
-          face = background :face, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4,
-                                   set_cells: base..(base + 1)
-          if pass == 2
-            face.set_cell 1, 1, base
-            face.set_cell 2, 1, base + letters[1]
-          end
-        end
-        game_loop do
-          wait_vblank
-          pass += 1
-          case_var(:state) { when_val 0, :title }
-        end
-      end
-      b.finalize_program
-      screen = game_player.run(b.program, frames: 6).screen
+      screen = game_player.run(scene_text_game(folder).first, frames: 6).screen
 
       assert_cell(screen, FONT_A, 8, 8, 1)
       assert_cell(screen, FONT_B, 16, 8, 1)
       assert_picture_unchanged(screen)
     end
-  end
-
-  private def advance_game(folder, **told, &more)
-    words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
-    from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
-    pack_game(from, PLACES.length, words, across: 4, **told, &more)
   end
 
   def test_a_cell_number_the_background_was_not_told_is_refused_where_it_is_written
@@ -425,18 +459,8 @@ class TestPackBackgroundSetCell < Minitest::Test
     assert_includes error.message, "set_cells:"
   end
 
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
-    Dir.mktmpdir do |folder|
-      options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-      error = assert_raises(ArgumentError) { advance_game(folder, set_cells: [ADVANCE_CELL.(3)], options: options) }
-
-      assert_includes error.message, "set_cells:"
-      assert_includes error.message, "not made that way yet"
-    end
-  end
-
-  # Such a background is told no cells, so no `set_cell` reaches one read as the game starts.
-  def test_a_background_read_as_the_game_starts_refuses_set_cell
+  # Such a background told no cells has none `set_cell` can write, whichever way it is built.
+  def test_a_background_read_as_the_game_starts_told_no_cells_refuses_set_cell
     Dir.mktmpdir do |folder|
       options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
       error = assert_raises(ArgumentError) do

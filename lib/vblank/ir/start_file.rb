@@ -43,7 +43,9 @@ module VBlank
     #   the tiles and the banks of colours those numbers pick from. Which tiles there are and what
     #   the map holds is known only once the file is read, so the program holds a tile for each
     #   bank and a map of the right size that names the first, and its lists of colours hold a
-    #   marker for each colour of a bank (below).
+    #   marker for each colour of a bank (below). The tiles of the cells it was told it may be
+    #   written later are known but for their pixels, so the program holds each after the banks'
+    #   as a picture of its own read from the file, and the map's tiles follow them.
     # - a screen's backdrop (Nodes::Screen#backdrop_from_file, a Color): the one colour the screen
     #   shows wherever nothing is drawn. The program holds no colour for it.
     # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
@@ -600,8 +602,13 @@ module VBlank
             end
           end
         end
-        node.tiles = pictures.values.compact
-        numbers = node.tiles.each_with_index.to_h
+        # The tiles the program held come first and keep their numbers, since a `set_tile` of the
+        # program names one by its number: a stand-in for each bank, which nothing draws, and
+        # the tiles of the cells the background was told it may be written, each a picture read
+        # from the file itself (.fill_picture).
+        held = node.tiles
+        node.tiles = [*held, *pictures.values.compact]
+        numbers = pictures.values.compact.each_with_index.to_h { |picture, at| [picture, held.length + at] }
         node.map = drawn.map { |row| row.map { |picture| picture && numbers.fetch(picture) } }
         node.from_file = nil
       end

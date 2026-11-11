@@ -177,7 +177,10 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * row of video memory holds, by which a cell of several tiles finds its lower ones (0 for a cell of
  * one); then where the tiles are in the file and how many, where the colours are, how many banks
  * and how many colours a bank; and how many sets of colours the tiles are written in, the first
- * their own and one more for each step of other colours the background can be told. Then the two
+ * their own and one more for each step of other colours the background can be told; and how many
+ * tiles the game holds for the background before the map's in each set (a stand-in for each bank,
+ * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
+ * cell's tile is that many on from the set's first. Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell

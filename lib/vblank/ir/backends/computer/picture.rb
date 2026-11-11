@@ -420,31 +420,31 @@ module VBlank
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tile_pixels.length
               steps = color_swaps(bg)
-              tile_count = bg.from_file ? bg.from_file.tiles_drawn : bg.tiles.length
-              if bg.from_file
-                # Its map is read from the start file: a tile for every cell, see-through until then
-                # (StartFileFills#record_start_file_background_fill).
-                record_start_file_background_fill(tiles_start, bg, steps)
-                tile_pixels.concat(Array.new(tile_count * RUN_TILE_PIXELS * (steps.length + 1), 0xFFFF))
-              else
-                [nil, *steps].each do |swaps|
-                  bg.tiles.each do |tile|
-                    if (read_at_start = picture_from_start_file(tile))
-                      record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
-                    end
-                    drawn = tile_colors(tile, swaps)
-                    record_marked_pixels(:tile, tile_pixels.length, drawn)
-                    tile_pixels.concat(drawn)
+              # A background whose map is read from the start file has, after the tiles the game
+              # holds for it, a tile for every cell of the map, see-through until the file is read
+              # (StartFileFills#record_start_file_background_fill).
+              cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
+              tile_count = bg.tiles.length + cell_tiles
+              record_start_file_background_fill(tiles_start, bg, steps) if bg.from_file
+              [nil, *steps].each do |swaps|
+                bg.tiles.each do |tile|
+                  if (read_at_start = picture_from_start_file(tile))
+                    record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
                   end
+                  drawn = tile_colors(tile, swaps)
+                  record_marked_pixels(:tile, tile_pixels.length, drawn)
+                  tile_pixels.concat(drawn)
                 end
+                tile_pixels.concat(Array.new(cell_tiles * RUN_TILE_PIXELS, 0xFFFF))
               end
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
               bg.every_map.each do |map|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
-                # Read from the start file, each cell names its own tile, in order.
-                cells.concat(bg.from_file ? (0...tile_count).to_a : map_cells(map))
+                # Read from the start file, each cell names its own tile, in order, after the tiles
+                # the game holds.
+                cells.concat(bg.from_file ? (bg.tiles.length...tile_count).to_a : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
@@ -670,7 +670,8 @@ module VBlank
           # was drawn in and once for each step (#background_arrays).
           def tile_pixel_total
             @stacking.scenery.sum do |bg|
-              tiles = bg.from_file ? bg.from_file.tiles_drawn * RUN_TILE_PIXELS : bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
+              tiles = bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
+              tiles += bg.from_file.tiles_drawn * RUN_TILE_PIXELS if bg.from_file
               tiles * (color_swaps(bg).length + 1)
             end
           end
