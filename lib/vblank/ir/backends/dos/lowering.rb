@@ -122,6 +122,7 @@ module VBlank
             reserve_variables
             @palette = palette_of(@program)
             make_art
+            DOS.refuse_too_much_art!(@art.bytesize)
             keep_loop_running
             keep_clock_readings
             keep_patches
@@ -222,7 +223,8 @@ module VBlank
             colors |= recolored_sprite_colors - [0]
             if colors.size >= TRANSPARENT_ENTRY
               raise LoweringError, "This game paints with #{colors.size} colours besides black. DOS shows " \
-                                   "#{TRANSPARENT_ENTRY - 1} at once. To fix this, use fewer colours."
+                                   "#{TRANSPARENT_ENTRY - 1} at once, and every list a sprite is drawn with adds its colours. " \
+                                   "To fix this, use fewer colours."
             end
             [0, *colors]
           end
@@ -716,10 +718,10 @@ module VBlank
           def emit_draw_column_at(node)
             emit_values_into(%i[eax ecx edx ebx], [node.x, node.top, node.height, node.slice].map { |operand| value_node(operand) })
             @asm.mov(:si, @art_places.fetch(node.name))
-            @asm.mov(:di, node.width || 1)
+            @asm.mov(:edi, node.width || 1)
             @asm.call("rt_draw_column")
           end
-          
+
           # The picture at +place+ in the art segment, drawn at the node's x and y.
           def emit_picture_at(place, node)
             @asm.mov(:si, place)

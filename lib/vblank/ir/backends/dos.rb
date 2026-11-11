@@ -142,7 +142,7 @@ module VBlank
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
-          refuse_too_much_art!(art.bytesize)
+          DOS.refuse_too_much_art!(art.bytesize)
           data_segment = art_segment + (art.bytesize / 16)
           shown = DOS.picture_shown_after_data(memory.screen, second: second)
           after_pictures = shown + Runtime::Rows.picture_paragraphs(memory.screen)
@@ -180,7 +180,9 @@ module VBlank
 
         private
 
-        def refuse_too_much_art!(bytes)
+        # Also asked by the lowering as soon as the art is made, before any instruction names a place in it:
+        # a place past the segment's end fits no 16-bit offset.
+        def self.refuse_too_much_art!(bytes)
           return if bytes <= MOST_CODE_BYTES
 
           raise LoweringError, "This game's pictures are #{bytes} bytes, and a DOS program keeps them in one segment of " \

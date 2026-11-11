@@ -78,4 +78,14 @@ class TestDOSColumns < Minitest::Test
 
     assert_equal 121, run[:tall]
   end
+
+  # A strip far wider than the screen, begun far to its left, is cut to the screen as any strip is.
+  def test_a_strip_wider_than_the_screen_is_cut_to_it
+    run = checked do
+      draw_column_at :bars, slice: 1, x: -69_000, top: 10, height: 4, width: 70_000
+      halt
+    end
+
+    assert_equal colors(:yellow, :yellow, :gray), [[0, 10], [319, 10], [319, 14]].map { |x, y| run.screen.pixel(x, y) }
+  end
 end

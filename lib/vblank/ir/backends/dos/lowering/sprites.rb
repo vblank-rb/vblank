@@ -37,13 +37,13 @@ module VBlank
             # was declared with, and one more than the set's number for each other.
             SET_HELD = "color list set held"
 
-            def self.set_held(name) = [SET_HELD, name]
+            def self.set_held_place(name) = [SET_HELD, name]
 
             # The lists of colours +program+ changes as it runs, by name.
             def self.color_lists_in(program) = program.walk.select { |node| node.kind == :color_list }.to_h { |node| [node.name, node] }
 
             # A place for each such list's number.
-            def self.reserve(memory, program) = color_lists_in(program).each_key { |name| memory.reserve(set_held(name), 4) }
+            def self.reserve(memory, program) = color_lists_in(program).each_key { |name| memory.reserve(set_held_place(name), 4) }
 
             # How many sprites +program+ has: none for a game that needs none of the runtime's sprites.
             def self.count_in(program) = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
@@ -83,9 +83,9 @@ module VBlank
             # THE SETS OF COLOURS +sprite+ CAN BE DRAWN IN, in the order its table keeps them: nil for its
             # own, then for each list it can be told to draw with, that list's colours, or for a list the
             # game changes its declared colours and then each set it can hold.
-            def color_sets(sprite) = [nil] + sprite.recolors.to_a.flat_map { |list| sets_of(list) }
+            def color_sets(sprite) = [nil] + sprite.recolors.to_a.flat_map { |list| color_sets_of_list(list) }
 
-            def sets_of(list)
+            def color_sets_of_list(list)
               return [list] unless list.is_a?(Symbol)
 
               declared = color_lists.fetch(list) { raise LoweringError, "a sprite is drawn with the list #{list.inspect}, which is never declared" }
@@ -141,7 +141,7 @@ module VBlank
             end
 
             # The bytes of one set's rows in a sprite's table.
-            def set_bytes(sprite) = sprite.poses.size * 4
+            def color_set_bytes(sprite) = sprite.poses.size * 4
 
             # Reference#exec_color_list_holds: the set a list holds from now on, kept as SET_HELD keeps it. A
             # number that names no set is the colours the list was declared with.
@@ -154,13 +154,13 @@ module VBlank
               @asm.mov(:eax, -1)
               @asm.label(inside)
               @asm.inc(:eax)
-              @asm.mov(runtime_at(Sprites.set_held(node.name)), :eax)
+              @asm.mov(runtime_at(Sprites.set_held_place(node.name)), :eax)
             end
 
             # Reference#object_color_list, for a sprite that can be drawn in more than its own colours: how
-            # far into its table the rows of the set it is drawn in now begin, into EAX. A number that picks
-            # none of its lists is its own colours.
-            def emit_color_set_rows(sprite)
+            # far into its table, in bytes, the rows of the set it is drawn in now begin, into EAX. A number that
+            # picks none of its lists is its own colours. Changes EDX.
+            def emit_color_set_offset(sprite)
               chosen = fresh_label("color_set_chosen")
               emit_value(sprite.recolor)
               first = 1 # the set after the sprite's own
@@ -169,18 +169,18 @@ module VBlank
                 @asm.cmp(:eax, which)
                 @asm.jne(other)
                 if list.is_a?(Symbol)
-                  @asm.mov(:eax, runtime_at(Sprites.set_held(list)))
+                  @asm.mov(:eax, runtime_at(Sprites.set_held_place(list)))
                   @asm.add(:eax, first)
                 else
                   @asm.mov(:eax, first)
                 end
                 @asm.jmp(chosen)
                 @asm.label(other)
-                first += sets_of(list).size
+                first += color_sets_of_list(list).size
               end
               @asm.xor(:eax, :eax)
               @asm.label(chosen)
-              @asm.mov(:edx, set_bytes(sprite))
+              @asm.mov(:edx, color_set_bytes(sprite))
               @asm.imul(:eax, :edx)
             end
 
@@ -205,7 +205,7 @@ module VBlank
               @asm.cmp(:eax, 1)
               @asm.jne(skip)
               if recolored
-                emit_color_set_rows(sprite)
+                emit_color_set_offset(sprite)
                 @asm.push(:ax)
               end
               emit_value(sprite.pose)

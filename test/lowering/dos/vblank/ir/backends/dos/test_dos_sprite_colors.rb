@@ -86,4 +86,23 @@ class TestDOSSpriteColors < Minitest::Test
 
     assert_equal [colors(:blue, :white), colors(:yellow, :orange), colors(:gray, :magenta), colors(:blue, :white)], seen
   end
+
+  # Each set of colours keeps the pictures again, so a big sprite with many lists is more art than the one
+  # segment holds: the build says so in plain words, before any instruction names a place past its end.
+  def test_more_art_than_a_segment_holds_is_refused_in_plain_words
+    game = VBlank.game("DOSGAME", consoles: %i[dos]) do
+      screen :bitmap
+      image :wall, width: 128, height: 128, data: [:red] * (128 * 128), colors: %i[transparent red]
+      names = %i[blue green yellow white cyan].map do |color|
+        colors(:"in_#{color}", [:transparent, color])
+        :"in_#{color}"
+      end
+      wall = sprite :wall, at: [0, 0], over_picture: true
+      wall.draw_with names, showing: 2
+      game_loop {}
+    end
+    error = assert_raises(DOS::LoweringError) { DOS.new.build(game.program(console: :dos)) }
+
+    assert_match(/pictures are \d+ bytes/, error.message)
+  end
 end
