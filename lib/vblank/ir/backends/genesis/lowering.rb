@@ -212,7 +212,6 @@ module VBlank
             @scenes = @plan.scenes
             @lists = {}
             @lists_dropped_from_front = lists_dropped_from_front(program)
-            @direct_slot_sizes = [] # the slot sizes the game reads or writes directly (#list_routine)
             @variables = {}
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
@@ -258,10 +257,6 @@ module VBlank
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the
           # routines that work them out (Runtime::Int32.emit_fractions).
           def fractions? = @program.walk.any? { |node| %i[mul_fix div_fix].include?(node.kind) }
-
-          # The slot sizes, in bytes, whose direct routines the game calls, so the runtime carries
-          # only those (Runtime::Lists#emit_fixed_front_access). Known once #sections has run.
-          def direct_slot_sizes = @direct_slot_sizes.sort
 
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
@@ -760,20 +755,134 @@ module VBlank
           # return. A draw order sets the number of each of its things this way every pass.
           def emit_list_set(node)
             slot = fixed_slot(node)
-            return list_call(list_routine("rt_list_set", node), node, node.index, node.value) unless slot
+            if slot
+              value(node.value)
+              return @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot.last), @asm.d(0), @asm.abs_l(slot.first))
+            end
+            return list_call("rt_list_set", node, node.index, node.value) if @lists_dropped_from_front.include?(node.name)
 
-            value(node.value)
-            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot.last), @asm.d(0), @asm.abs_l(slot.first))
+            emit_value_and_index(node.value, node.index)
+            emit_slot_address(node, 1, fault: "rt_list_index_fault_of_d1")
+            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot_bytes(node)), @asm.d(0), slot_operand(node, 1))
           end
 
           def value_of_list_get(node)
             slot = fixed_slot(node)
-            return list_call(list_routine("rt_list_get", node), node, node.index) unless slot
+            if slot
+              address, bytes = slot
+              @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(address), @asm.d(0))
+              return emit_slot_widening(bytes)
+            end
+            return list_call("rt_list_get", node, node.index) if @lists_dropped_from_front.include?(node.name)
 
-            address, bytes = slot
-            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(address), @asm.d(0))
+            value(node.index)
+            emit_slot_address(node, 0, fault: "rt_list_index_fault_of_d0")
+            @asm.move(Runtime::Lists::SLOT_SIZES.fetch(slot_bytes(node)), slot_operand(node, 0), @asm.d(0))
+            emit_slot_widening(slot_bytes(node))
+          end
+
+          # A LIST WHOSE FIRST ITEM IS ALWAYS IN ITS FIRST SLOT, READ OR WRITTEN WHERE THE GAME DOES.
+          # Every list is one unless the game takes items from its front (#lists_dropped_from_front),
+          # and then the item an index names is in the slot of that number: A0 is pointed at the
+          # list, the index is scaled to the slot's size, and one MOVE reads or writes the slot
+          # through the two. A call of a runtime routine for the same spends more on handing over
+          # the list's place and the index, the call and the return than on the slot.
+          #
+          # The index is checked first, as the interpreter checks it (an index outside the list
+          # stops the game): against the list's capacity as a number, for a list that always holds
+          # that many, or against the length its header keeps. One compare catches an index below
+          # nought too, since as a number that cannot be negative it is past any length. NO CHECK is
+          # written where the index is a loop's variable known to stay below the capacity of a list
+          # that is always full (ControlFlow#index_below).
+          #
+          # D(+index+) holds the index and is left holding the slot's distance; D(index + 1) is
+          # worked with.
+          def emit_slot_address(node, index, fault:)
+            place, = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
+            full = always_full_lists[node.name]
+            @asm.lea(at(place), @asm.a(0))
+            unless full && index_inside?(node.index, full)
+              emit_list_length(full, index + 1)
+              @asm.cmp(:l, @asm.d(index + 1), @asm.d(index))
+              @asm.branch_over(:cs, LIST_FAULT_JUMP_BYTES)
+              @asm.jmp(@asm.abs_l(fault))
+            end
+            emit_slot_scaling(node, index)
+          end
+
+          # JMP to a whole address: the instruction's word and the address's two.
+          LIST_FAULT_JUMP_BYTES = 6
+
+          # D(+into+) = how many items the list A0 points at holds: +full+ where it always holds
+          # that many, or else what its header keeps.
+          def emit_list_length(full, into)
+            return @asm.moveq(full, @asm.d(into)) if full&.between?(0, 127)
+            return @asm.move(:l, @asm.imm(full), @asm.d(into)) if full
+
+            @asm.moveq(0, @asm.d(into))
+            @asm.move(:w, @asm.disp(0, Runtime::Lists::LENGTH), @asm.d(into))
+          end
+
+          # Is +index+ known, while building, to be a place in a list of +count+ items: a loop's
+          # variable that stays below a count no bigger than that?
+          def index_inside?(index, count)
+            name = variable_named(index)
+            below = name && index_below(name)
+            !below.nil? && below <= count
+          end
+
+          # The index in D(+index+) made the slot's distance in bytes. A list whose slots end within
+          # 32K is scaled as a word, which is quicker: the index is known to be inside it by now.
+          def emit_slot_scaling(node, index)
+            size = slots_within_word?(node) ? :w : :l
+            (slot_bytes(node).bit_length - 1).times { @asm.add(size, @asm.d(index), @asm.d(index)) }
+          end
+
+          # The slot of the list A0 points at that the distance in D(+index+) names.
+          def slot_operand(node, index)
+            @asm.idx(0, Runtime::Lists::HEADER, index, slots_within_word?(node) ? :w : :l)
+          end
+
+          def slot_bytes(node) = @lists.fetch(node.name)[2]
+
+          def slots_within_word?(node)
+            _place, capacity, bytes = @lists.fetch(node.name)
+            capacity * bytes <= 0x7FFF
+          end
+
+          # D0, just read from a slot of +bytes+ bytes, widened by its sign.
+          def emit_slot_widening(bytes)
             @asm.ext(:w, @asm.d(0)) if bytes == 1
             @asm.ext(:l, @asm.d(0)) if bytes < 4
+          end
+
+          # +value+ worked out into D0 and +index+ into D1, the index first where both need working
+          # out, as a runtime routine's numbers are (#runtime_call).
+          def emit_value_and_index(value_node, index_node)
+            index = operand_of(index_node)
+            if index
+              value(value_node)
+              return emit_operand_load(index, 1)
+            end
+
+            if operand_of(value_node)
+              value(index_node)
+              @asm.move(:l, @asm.d(0), @asm.d(1))
+              return value(value_node)
+            end
+
+            push_value(index_node)
+            value(value_node)
+            @asm.move(:l, @asm.post(M68000::SP), @asm.d(1))
+          end
+
+          # A number or a variable (#operand_of) into D(+register+).
+          def emit_operand_load(source, register)
+            if source.mode == :imm && source.value.is_a?(Integer) && source.value.between?(-128, 127)
+              @asm.moveq(source.value, @asm.d(register))
+            else
+              @asm.move(:l, source, @asm.d(register))
+            end
           end
 
           # [the address of the slot, its bytes] that +node+'s index names, when the index is a number
@@ -803,17 +912,6 @@ module VBlank
             end
           end
           def value_of_list_len(node) = list_call("rt_list_length", node)
-
-          # The routine that reads or writes an item of the list +node+ names: for a list whose first
-          # item is always in its first slot, the one for its slots' size, which goes straight to
-          # the slot (Runtime::Lists#emit_fixed_front_access); for any other, +routine+ itself.
-          def list_routine(routine, node)
-            return routine if @lists_dropped_from_front.include?(node.name)
-
-            bytes = @lists.fetch(node.name)[2]
-            @direct_slot_sizes |= [bytes]
-            "#{routine}_#{Runtime::Lists::SLOT_SUFFIXES.fetch(bytes)}"
-          end
 
           # The lists the game ever takes an item from the front of, which are the only lists whose
           # first item can be anywhere but their first slot: every other way a list changes leaves it

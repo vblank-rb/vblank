@@ -130,8 +130,7 @@ module VBlank
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
-                                             scene_tiles: scene_tiles,
-                                             direct_slot_sizes: lowering.direct_slot_sizes)
+                                             scene_tiles: scene_tiles)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

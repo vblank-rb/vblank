@@ -128,11 +128,35 @@ module VBlank
           place_label(top)
           emit_copy_variable(counter, node.index) if node.index && !in_index
           jump_if(node.stop_when, done)
-          children_of(node).first.each { |child| statement(child) }
+          with_index_below(in_index && known ? counter : nil, known) do
+            children_of(node).first.each { |child| statement(child) }
+          end
           emit_increment(counter)
           jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
           statement(Build.sub(counter, Build.int(1))) if in_index
           place_label(done)
+        end
+
+        # WHAT A LOOP'S VARIABLE IS KNOWN TO BE BELOW while the loop's own statements are written: a
+        # loop that counts in its variable to a count written in the program holds 0 to one less
+        # than the count there, through every statement of its body, since nothing else writes it.
+        # So a lowering reading a table or a list at that variable can tell, while building, that
+        # the place is inside it, and leave out the test it would make as the game runs. A
+        # statement cut off into a routine of its own (RoutineCuts) is written outside the loop,
+        # and is told nothing.
+        #
+        # The count +name+ is below, or nil where nothing is known of it.
+        def index_below(name) = (@indexes_below ||= {})[name]
+
+        def with_index_below(name, count)
+          return yield unless name
+
+          (@indexes_below ||= {})[name] = count
+          begin
+            yield
+          ensure
+            @indexes_below.delete(name)
+          end
         end
 
         # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.

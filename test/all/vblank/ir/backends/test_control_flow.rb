@@ -24,6 +24,7 @@ class TestControlFlow < Minitest::Test
     # +program+ is everything the walk is over: what names a loop's variable is read from it.
     def initialize(program)
       @written = []
+      @known_below = []
       @labels = Hash.new(0)
       @loop_form = VBlank::IR::Backends::LoopForm.new(program)
     end
@@ -56,7 +57,11 @@ class TestControlFlow < Minitest::Test
       return emit_control_flow_statement(node) if VBlank::IR::Backends::ControlFlow::STATEMENT_KINDS.include?(node.kind)
 
       @written << [:statement, node.kind, node.var]
+      @known_below << index_below(:i)
     end
+
+    # What the walk knew the variable :i to be below, at each statement written down.
+    attr_reader :known_below
 
     private
 
@@ -163,6 +168,26 @@ class TestControlFlow < Minitest::Test
     kinds = written.map(&:first)
 
     assert_operator kinds.index(:copy), :<, kinds.index(:jump_if)
+  end
+
+  # A lowering reading a list at the loop's variable can leave out its check of the index where
+  # the variable is known, while building, to stay inside the list.
+  def test_a_loops_variable_is_known_to_be_below_a_count_written_in_the_game_while_its_body_is_written
+    program = program(repeat(40, :i, set(:a, 1)), set(:b, 2))
+    chip = RecordingChip.new(program)
+    program.children.each { |node| chip.statement(node) }
+
+    # The body's statement, the loop's own taking back of its variable, and the statement after.
+    assert_equal [40, nil, nil], chip.known_below
+  end
+
+  def test_nothing_is_known_of_a_variable_whose_count_the_game_works_out_or_that_something_else_writes
+    [repeat(var_ref(:n), :i, set(:a, 1)), repeat(40, :i, set(:i, 7))].each do |node|
+      chip = RecordingChip.new(node)
+      chip.statement(node)
+
+      assert_empty chip.known_below.compact
+    end
   end
 
   def test_a_loop_inside_a_loop_has_labels_of_its_own

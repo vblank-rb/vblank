@@ -32,20 +32,17 @@ module VBlank
             # byte, an unsigned byte, a signed half, an unsigned half, a whole word.
             KEPT = { signed_byte: 0, byte: 1, signed_half: 2, half: 3, word: 4 }.freeze
 
-            # A slot's size in bytes, by the end of the name of the routines that read and write
-            # slots of that size directly (#emit_fixed_front_access), and the size a MOVE names.
-            SLOT_SUFFIXES = { 1 => "byte", 2 => "half", 4 => "long" }.freeze
+            # A slot's size in bytes, as the size a MOVE names.
             SLOT_SIZES = { 1 => :b, 2 => :w, 4 => :l }.freeze
 
             module_function
 
-            def emit(asm, memory, direct_slot_sizes: [])
+            def emit(asm, memory)
               emit_start(asm)
               emit_empty(asm)
               emit_push(asm)
               emit_drop(asm)
               emit_get_and_set(asm)
-              emit_fixed_front_access(asm, direct_slot_sizes)
               emit_fill(asm)
               emit_copy(asm)
               emit_slot_access(asm)
@@ -147,49 +144,6 @@ module VBlank
               asm.jsr(asm.abs_l("rt_list_slot_of_index"))
               asm.jsr(asm.abs_l("rt_list_write_slot"))
               asm.rts
-            end
-
-            # rt_list_get_byte (and _half, _long): rt_list_get for a list whose first item is always in
-            # its first slot, with slots of that size. Every list is one, unless the game takes items
-            # from its front (Lowering#list_routine), and then the item an index names is in the slot
-            # of that number, so the routine checks the index and reads the slot itself: no ring to
-            # go round, no size to look up, and no further routine to call. rt_list_set_byte (and the
-            # rest) write the same way. These are the reads and writes a game makes most — every
-            # field of every pool's thing, each frame — so a read is one call where it was three,
-            # and a third of the instructions. Only the sizes in +slot_sizes+ are made: those the
-            # game's lists have.
-            def emit_fixed_front_access(asm, slot_sizes)
-              SLOT_SUFFIXES.slice(*slot_sizes).each do |bytes, suffix|
-                asm.label("rt_list_get_#{suffix}")
-                emit_index_check(asm)
-                emit_index_scaling(asm, bytes)
-                asm.move(SLOT_SIZES.fetch(bytes), asm.idx(0, HEADER, 1), asm.d(0))
-                asm.ext(:w, asm.d(0)) if bytes == 1
-                asm.ext(:l, asm.d(0)) if bytes < 4
-                asm.rts
-
-                asm.label("rt_list_set_#{suffix}")
-                emit_index_check(asm)
-                emit_index_scaling(asm, bytes)
-                asm.move(SLOT_SIZES.fetch(bytes), asm.d(2), asm.idx(0, HEADER, 1))
-                asm.rts
-              end
-            end
-
-            # A0 = the list in D0; an index in D1 outside the list stops the game, as
-            # rt_list_slot_of_index has it.
-            def emit_index_check(asm)
-              asm.movea(:l, asm.d(0), asm.a(0))
-              asm.moveq(0, asm.d(3))
-              asm.move(:w, asm.disp(0, LENGTH), asm.d(3))
-              asm.cmp(:l, asm.d(3), asm.d(1))
-              asm.branch(:cc, "rt_list_index_fault")
-            end
-
-            # The index in D1 made the slot's distance in bytes.
-            def emit_index_scaling(asm, bytes)
-              asm.add(:l, asm.d(1), asm.d(1)) if bytes >= 2
-              asm.add(:l, asm.d(1), asm.d(1)) if bytes == 4
             end
 
             # rt_list_fill(list, from, count, value): count items from +from+ set to the value. A count
@@ -376,6 +330,12 @@ module VBlank
               asm.moveq(Frame::LIST_EMPTY, asm.d(0))
               asm.jmp(asm.abs_l("rt_fault"))
 
+              # The same for a read or a write made where the game makes it
+              # (Lowering#emit_slot_address), which has the list in A0 and the index in D0 or D1.
+              asm.label("rt_list_index_fault_of_d0")
+              asm.move(:l, asm.d(0), asm.d(1))
+              asm.label("rt_list_index_fault_of_d1")
+              asm.move(:l, asm.a(0), asm.d(0))
               asm.label("rt_list_index_fault")
               asm.move(:l, asm.d(0), at.call(Frame::FAULT_LIST))
               asm.move(:l, asm.d(1), at.call(Frame::FAULT_FIRST))
