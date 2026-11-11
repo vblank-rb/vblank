@@ -607,13 +607,7 @@ module VBlank
             emit(ASM.bic_imm(ACC, ACC, BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE))
             emit(ASM.store_halfword(ACC, TMP))
 
-            emit_number(TMP, swap.stride)
-            emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
-            emit_load_data_address(TMP, swap.tiles)
-            emit(ASM.add_reg(ACC, ACC, TMP))
-            @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(swap.routine), swap.stride)
-            emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
-                                   control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
+            emit_copy_set_tiles(swap)
             emit_set_char_base(bg, swap) if swap.char_base_table
             emit_walking_runs_again(swap)
 
@@ -626,6 +620,27 @@ module VBlank
             load_var(ACC, SET_SWAP_DISPLAY)
             emit_number(TMP, REG_DISPCNT)
             emit(ASM.store_halfword(ACC, TMP))
+          end
+
+          # Copy the tiles of the set in SET_PICKED over the stretch of tile memory every set of
+          # that background sits in.
+          #
+          # Must copy nothing for sets that hold no tiles of their own. The build keeps two tiles
+          # of the same pixels once, so a walking background declared after one that stays can
+          # find every tile of every area in video memory already, and its sets are then empty.
+          # The copy engine reads a count of nought as its biggest count, not as nothing: asked
+          # for no words it copies more than all of video memory holds, from past the end of the
+          # sets, over every tile and every map on the screen.
+          def emit_copy_set_tiles(swap)
+            return if swap.stride.zero?
+
+            emit_number(TMP, swap.stride)
+            emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
+            emit_load_data_address(TMP, swap.tiles)
+            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(swap.routine), swap.stride)
+            emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
+                                   control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
           end
 
           # A walking background put up as declared is back in its first area, tiles and all, so

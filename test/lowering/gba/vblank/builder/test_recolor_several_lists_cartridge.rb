@@ -122,21 +122,18 @@ class TestRecolorSeveralListsCartridge < Minitest::Test
     builder.program
   end
 
-  # A GROUND THAT WALKS BETWEEN TWO AREAS BEHIND THE BACKGROUND, below its row of tiles. Walking
-  # into an area sends that area's whole table of background colours, over the groups the
+  # A GROUND THAT WALKS BETWEEN TWO AREAS IN FRONT OF THE BACKGROUND, below its row of tiles.
+  # Walking into an area sends that area's whole table of background colours, over the groups the
   # background's lists were written into. With +tinted+ a tint is in force from the third pass.
-  #
-  # The ground is declared first. Declared after a background that stays, a walking background
-  # leaves the cartridge's screen blank once it walks, in a game with no list that changes too.
   private def walking_game(tinted: false)
     two_lists_game do |sets|
       tiles :field_tiles, "g" => :menu_tile
       tiles :house_tiles, "f" => :other_tile
+      title = background :title, tiles: :title_set, map: ["sws"]
+      title.draw_with({ sign: :sign, words: :words })
       ground = background :ground, tiles: { field: :field_tiles, house: :house_tiles },
                                    map: { field: { meadow: [" " * 30, " " * 30, "g" * 30] },
                                           house: { hall: [" " * 30, " " * 30, "f" * 30] } }
-      title = background :title, tiles: :title_set, map: ["sws"]
-      title.draw_with({ sign: :sign, words: :words })
       pass = var :pass, 0
       room = var :room, 0
       game_loop do
