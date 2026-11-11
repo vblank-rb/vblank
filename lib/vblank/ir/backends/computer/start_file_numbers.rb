@@ -42,56 +42,33 @@ module VBlank
           # how many bytes a cell of its map is.
           BACKGROUND_HEADER_NUMBERS = 21
 
-          # The numbers before the frame's layout in a pose's rules (StartFileFills#start_file_pose_rules):
-          # what is filled, the totals, the turn, the colours, where the frame is and where its slot
-          # ends, its count, the origin, and where the tiles are.
-          POSE_HEADER_NUMBERS = 16
+          # The numbers before the tile layout in a pose's rules (StartFileFills#start_file_pose_rules):
+          # what is filled, the totals, the turn, the colours, where the frame's entry is in the
+          # file and where the frames' records start, the origin, and where the tiles are. How the
+          # original keeps a frame is not among them: the file holds a record of VBlank's own for
+          # each (Original::FrameRecord), which each runtime reads by that record's fixed layout.
+          POSE_HEADER_NUMBERS = 15
 
-          # Where each number of a frame's layout (Original::FrameLayout) is, counted from where the
-          # layout starts. A part the layout does not have is -1, but for the tile's bits, which
-          # are 0 where the whole number is the tile.
-          FRAME_PIECE_BYTES_AT = 0
-          FRAME_COUNT_BYTES_AT = 1
-          FRAME_HIGH_BYTE_FIRST_AT = 2
-          FRAME_X_AT = 3
-          FRAME_Y_AT = 4
-          FRAME_POSITION_BYTES_AT = 5
-          FRAME_TILE_AT = 6
-          FRAME_TILE_BYTES_AT = 7
-          FRAME_TILE_BITS_AT = 8
-          FRAME_TILE_ROW_AT = 9
-          FRAME_ROW_TILES_AT = 10
-          FRAME_FLAGS_AT = 11
-          FRAME_FLAGS_BYTES_AT = 12
-          FRAME_MIRRORED_BIT_AT = 13
-          FRAME_UPSIDE_DOWN_BIT_AT = 14
-          FRAME_BIG_BIT_AT = 15
-          FRAME_SIZE_AT = 16
-          FRAME_COLUMNS_BIT_AT = 17
-          FRAME_ROWS_BIT_AT = 18
-          FRAME_SIZE_BITS_AT = 19
-          FRAME_TILE_ORDER_AT = 20
-          FRAME_LAYOUT_NUMBERS = 21
+          # THE LAYOUT OF A FRAME'S RECORD, as each runtime reads it: how many bytes a directory
+          # entry, a frame's header and a piece are, and where each part of a piece is. They are
+          # Original::FrameRecord's own numbers, the one place the layout is written down, handed on
+          # under the names the runtimes know them by. That module loads after this one, so they are
+          # asked for as a build is written and not as this file loads.
+          def self.frame_record_names
+            record = Original::FrameRecord
+            { "RG_FRAME_ENTRY_BYTES" => record::ENTRY_BYTES, "RG_FRAME_HEADER_BYTES" => record::HEADER_BYTES,
+              "RG_FRAME_PIECE_BYTES" => record::PIECE_BYTES, "RG_PIECE_X_AT" => record::X_AT, "RG_PIECE_Y_AT" => record::Y_AT,
+              "RG_PIECE_TILE_AT" => record::TILE_AT, "RG_PIECE_COLUMN_STEP_AT" => record::COLUMN_STEP_AT,
+              "RG_PIECE_ROW_STEP_AT" => record::ROW_STEP_AT, "RG_PIECE_COLUMNS_AT" => record::COLUMNS_AT,
+              "RG_PIECE_ROWS_AT" => record::ROWS_AT, "RG_PIECE_TURNS_AT" => record::TURNS_AT,
+              "RG_PIECE_MIRRORED" => record::MIRRORED, "RG_PIECE_UPSIDE_DOWN" => record::UPSIDE_DOWN }
+          end
 
-          # How a piece's tiles follow its first (Original::FrameLayout#tile_order): along rows of
-          # video memory where the layout names no order, down columns, or across rows.
-          FRAME_TILE_ORDERS = Ractor.make_shareable({ nil => 0, down_columns: 1, across_rows: 2 })
+          # Every number written ahead of a runtime: NAMES, and the layout of a frame's record.
+          def self.names = NAMES.merge(frame_record_names)
 
           NAMES = Ractor.make_shareable({
             "RG_FILL_POSE_HEADER_NUMBERS" => POSE_HEADER_NUMBERS,
-            "RG_FRAME_PIECE_BYTES_AT" => FRAME_PIECE_BYTES_AT, "RG_FRAME_COUNT_BYTES_AT" => FRAME_COUNT_BYTES_AT,
-            "RG_FRAME_HIGH_BYTE_FIRST_AT" => FRAME_HIGH_BYTE_FIRST_AT, "RG_FRAME_X_AT" => FRAME_X_AT, "RG_FRAME_Y_AT" => FRAME_Y_AT,
-            "RG_FRAME_POSITION_BYTES_AT" => FRAME_POSITION_BYTES_AT, "RG_FRAME_TILE_AT" => FRAME_TILE_AT,
-            "RG_FRAME_TILE_BYTES_AT" => FRAME_TILE_BYTES_AT, "RG_FRAME_TILE_BITS_AT" => FRAME_TILE_BITS_AT,
-            "RG_FRAME_TILE_ROW_AT" => FRAME_TILE_ROW_AT, "RG_FRAME_ROW_TILES_AT" => FRAME_ROW_TILES_AT,
-            "RG_FRAME_FLAGS_AT" => FRAME_FLAGS_AT, "RG_FRAME_FLAGS_BYTES_AT" => FRAME_FLAGS_BYTES_AT,
-            "RG_FRAME_MIRRORED_BIT_AT" => FRAME_MIRRORED_BIT_AT, "RG_FRAME_UPSIDE_DOWN_BIT_AT" => FRAME_UPSIDE_DOWN_BIT_AT,
-            "RG_FRAME_BIG_BIT_AT" => FRAME_BIG_BIT_AT, "RG_FRAME_SIZE_AT" => FRAME_SIZE_AT,
-            "RG_FRAME_COLUMNS_BIT_AT" => FRAME_COLUMNS_BIT_AT, "RG_FRAME_ROWS_BIT_AT" => FRAME_ROWS_BIT_AT,
-            "RG_FRAME_SIZE_BITS_AT" => FRAME_SIZE_BITS_AT, "RG_FRAME_TILE_ORDER_AT" => FRAME_TILE_ORDER_AT,
-            "RG_FRAME_LAYOUT_NUMBERS" => FRAME_LAYOUT_NUMBERS,
-            "RG_FRAME_TILES_DOWN_COLUMNS" => FRAME_TILE_ORDERS.fetch(:down_columns),
-            "RG_FRAME_TILES_ACROSS_ROWS" => FRAME_TILE_ORDERS.fetch(:across_rows),
             "RG_TILE_BYTES_AT" => TILE_BYTES_AT, "RG_TILE_PLANES_AT" => TILE_PLANES_AT,
             "RG_TILE_PLANE_BITS_AT" => TILE_PLANE_BITS_AT, "RG_TILE_ROW_BITS_AT" => TILE_ROW_BITS_AT,
             "RG_TILE_COLUMN_BITS_AT" => TILE_COLUMN_BITS_AT, "RG_TILE_FORMAT_NUMBERS" => TILE_FORMAT_NUMBERS,

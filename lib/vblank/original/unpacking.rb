@@ -40,10 +40,16 @@ module VBlank
     #
     # +copy_bytes+ is the copy where the build read one (an all-in-one build), handed to the program
     # as its file whenever it is played (#run_on); nil for a shell's, which is handed the player's.
-    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes)
+    #
+    # THE FRAMES A GAME NAMES ARE WRITTEN LAST (+frames+, a FrameRecord::Section). Once every slot
+    # is filled, the routine reads each frame of a sprite the game names from its slot and writes
+    # it after the last slot as a record of VBlank's own (FrameRewrite), which is all that anything
+    # drawing a pose reads. That is so for a slot copied as it is too, in a pack with no routine.
+    # BYTES is the slots and then those records, as the pack's file is after its header.
+    Unpacking = Data.define(:program, :slots, :copy_size, :format_words, :copy_bytes, :frames)
 
     class Unpacking
-      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil) = super
+      def initialize(program:, slots:, copy_size:, format_words:, copy_bytes: nil, frames: FrameRecord::Section.new(sources: [])) = super
 
       # A run of the program on +player+ (the interpreter, or any computer runtime's player), handed
       # the copy the build read where it read one. +options+ are the player's `run`'s.
@@ -203,13 +209,22 @@ module VBlank
       # Where each slot starts in the list of the pack's bytes, by name.
       def places = Unpacking.places_of(slots)
 
-      # How many bytes the whole pack holds.
+      # How many bytes the pack's slots hold between them.
       def byte_size = slots.sum(&:byte_size)
 
       # Each slot's bytes, by name, in what +run+ (a run of #program, on any backend) wrote.
       def slot_bytes_in(run)
-        bytes = run.is_a?(RubyRun) ? run.list_bytes(BYTES) : run.list(BYTES).map { |item| item & 0xFF }.pack("C*")
+        bytes = bytes_in(run)
         places.to_h { |name, start| [name, bytes.byteslice(start, slot_named(name).byte_size)] }
+      end
+
+      # The frame records +run+ wrote after the slots (none for a game that names no frame).
+      def frame_records_in(run) = bytes_in(run).byteslice(byte_size, frames.size)
+
+      # The pack file +run+ made, for the copy whose SHA-1 is +sha1+ and the build +build_version+:
+      # what a shell writes on a player's machine.
+      def pack_file_in(run, sha1:, build_version:)
+        Pack.holding(slot_bytes_in(run), sha1: sha1, build_version: build_version, frame_records: frame_records_in(run)).to_bytes
       end
 
       # How many bytes +run+ has unpacked so far, of #byte_size.
@@ -227,6 +242,9 @@ module VBlank
       private
 
       def slot_named(name) = slots.find { |slot| slot.name == name }
+
+      # Everything +run+ wrote of the pack: the list BYTES, as a binary String.
+      def bytes_in(run) = run.is_a?(RubyRun) ? run.list_bytes(BYTES) : run.list(BYTES).map { |item| item & 0xFF }.pack("C*")
 
       def start_watchdog(player, play_thread, stuck_after)
         error = StuckRoutine.new(

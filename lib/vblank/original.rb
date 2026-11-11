@@ -18,13 +18,15 @@ require_relative "original/decompilation"  # The decompilation, built and proven
 require_relative "original/pack_note"      # One note of music in a data pack, a record of VBlank's own
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
 require_relative "original/frame_layout"   # How the original keeps one frame of a sprite, piece by piece
-require_relative "original/pack"           # The data pack holding every slot
+require_relative "original/frame_record"   # One frame of a sprite in a data pack, a record of VBlank's own
+require_relative "original/pack"          # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console
 # The unpacking routine's handles do their work in game words, so they come in as a part of a game does.
 VBlank.require_game_file "original/copy_reader"  # The copy and the pack as the unpacking routine sees them
+VBlank.require_game_file "original/frame_rewrite"  # Each frame a game names, written again as a record of VBlank's own
 require_relative "original/shell_facts"    # What every runtime is told about a shell
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history

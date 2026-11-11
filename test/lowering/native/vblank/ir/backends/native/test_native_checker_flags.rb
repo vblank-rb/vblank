@@ -37,13 +37,15 @@ class TestNativeCheckerFlags < Minitest::Test
   end
 
   # A file of the runtime read on its own has no build's numbers beside it, so rg_console.h gives
-  # the start file's layout numbers itself, and they must be the ones every build writes.
+  # the start file's layout numbers itself, and they must be the ones every build writes: the
+  # layouts a console keeps its tiles and colours in, and the layout of a frame's record
+  # (Original::FrameRecord), which is the same for every original.
   def test_the_start_file_numbers_a_file_read_alone_sees_are_the_builds
     header = File.read(File.join(Zig::RUNTIME_DIR, "rg_console.h"))
     defined = header.scan(/^#define (RG_\w+) (\d+)$/).to_h { |name, value| [name, Integer(value)] }
+    written = VBlank::IR::Backends::Computer::StartFileNumbers.names
 
-    assert_equal VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.to_h,
-                 defined.slice(*VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.keys)
+    assert_equal written, defined.slice(*written.keys)
   end
 
   # The C the tests compile beside the runtime (a harness that drives one header on its own) is

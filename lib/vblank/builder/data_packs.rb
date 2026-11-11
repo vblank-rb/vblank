@@ -101,13 +101,15 @@ module VBlank
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
         slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, cache) : copied
-        @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
-        @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
+        @data_pack_contents = Original::Pack.from_bytes(Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
+        made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list,
                                        make_unpacking: lambda { |_release|
-                                         unpacking || unpacking_program(bytes, copy_release_slots, nil, reading, release: copy_release)
+                                         frames = pack_frame_section
+                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, slots.routine, reading,
+                                                                            release: copy_release, frames: frames)
                                        })
       end
 
@@ -151,12 +153,16 @@ module VBlank
         layout = Original::Pack.layout(slots.list, build_version: version)
         @program.start_file = IR::StartFile.new(called: PACK_FILE_TITLE, size: layout.size, checks: layout.checks)
         @pack_slot_starts = layout.slot_starts
+        # The records of the frames the game goes on to name follow the last slot (PackPoses).
+        @pack_frames_at = layout.size
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
+        made = {}
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
-                                         unpacking_program(nil, slots_in_release(slots, release.name), slots.routine, reading,
-                                                           release: release)
+                                         frames = pack_frame_section
+                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routine,
+                                                                                       reading, release: release, frames: frames)
                                        })
       end
 
@@ -167,8 +173,18 @@ module VBlank
       def declared_data_pack = @data_pack
 
       # The data pack file this build made from the copy, its bytes, or nil for a build that made
-      # none (a game with no data pack, or a build that leaves its pack out).
-      def made_data_pack_file = @data_pack_file
+      # none (a game with no data pack, or a build that leaves its pack out): its slots, and the
+      # record of each frame the game has named by now (PackPoses#pack_frame_section), so it is the
+      # whole file once the game is declared. The same game built with its pack left out reads this file.
+      def made_data_pack_file
+        return nil unless @data_pack_contents
+
+        frames = pack_frame_section
+        (@made_data_pack_files ||= {})[frames] ||= Original::Pack.holding(
+          @data_pack_contents.slots, sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
+          frame_records: frames.bytes(@data_pack_contents.slots)
+        ).to_bytes.freeze
+      end
 
       private
 
@@ -474,12 +490,16 @@ module VBlank
       # the player's machine, so it shows how far it has got (#define_unpacking_progress). Both are
       # built for the game's console. +reading+ (a CopyReading) says which packed formats the copy
       # offers the routine.
-      def unpacking_program(bytes, slots, routine, reading, release:)
+      #
+      # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
+      # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
+      def unpacking_program(bytes, slots, routine, reading, release:, frames: Original::FrameRecord::Section.new(sources: []))
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
           copy_table = declare_copy_table_from_start_file(maker, slots, copy_size)
-          list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
+          slots_size = slots.sum(&:byte_size)
+          list = maker.list(Original::Unpacking::BYTES, capacity: slots_size + frames.size, width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
@@ -500,6 +520,11 @@ module VBlank
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
           maker.instance_exec(reader, pack, release.name, &routine) if routine
+          wait = lambda do
+            maker.call(progress) if progress
+            maker.wait_vblank
+          end
+          Original::FrameRewrite.new(maker, pack: list, section: frames, section_at: slots_size, slot_places: places, wait: wait).emit
           finished.store!(1)
           if progress
             maker.call(progress)
@@ -508,7 +533,7 @@ module VBlank
           maker.halt
           maker.finalize_program
           Original::Unpacking.new(program: maker.program, slots: slots, copy_size: copy_size,
-                                  format_words: reader.format_words, copy_bytes: bytes&.b)
+                                  format_words: reader.format_words, copy_bytes: bytes&.b, frames: frames)
         end
       end
 

@@ -28,9 +28,10 @@ module VBlank
     #   colours or only its places from the file, and hold the other list itself; and it can be
     #   turned round or upside down, as `mirror` and `upside_down` turn one.
     # - a pose that is one of the original's frames (Nodes::Bitmap#from_file, a Pose): the frame's
-    #   pieces, each a few bytes kept as the port's Original::FrameLayout says, and the tiles they
-    #   name. How many pieces there are and what each is is known only once the file is read, so
-    #   the program holds a picture of the size the game gave, and each piece is painted into it.
+    #   pieces, a record of VBlank's own that the pack's unpacking wrote (Original::FrameRecord),
+    #   and the tiles they name. How many pieces there are and what each is is known only once the
+    #   file is read, so the program holds a picture of the size the game gave, and each piece is
+    #   painted into it.
     # - a recording (Nodes::Sample#from_file): its samples, one byte each, 8-bit signed, as many as the
     #   zeros of its bytes; the program holds zeros until the file is read.
     # - a recording's settings (Nodes::Sample#settings_from_file, a RecordingSettings): the rate it
@@ -95,24 +96,25 @@ module VBlank
         def piece_from(left, whole_width:) = with(places_at: places_at + left, row_bytes: row_bytes || whole_width)
       end
 
-      # Where a pose's frame and the tiles its pieces name are in the file, as the original keeps
-      # them. The frame starts at +frame_at+, in a slot that ends before +frame_end+, and is kept
-      # as +layout+ (an Original::FrameLayout); +count+ is how many pieces it has, or nil for a
-      # layout whose frames start with their count. A piece sits from the object's place, which
-      # is +origin_x+ and +origin_y+ in the picture. Its tiles are counted from the tile at
+      # Where a pose's frame and the tiles its pieces name are in the file. The frame is a record of
+      # VBlank's own (Original::FrameRecord), which the pack's unpacking wrote from the original's
+      # frame, so nothing here says how the original keeps one. The records follow the pack's last
+      # slot from +records_at+ on, and the four bytes at +entry_at+ say where this frame's starts,
+      # counted from there (Original::FrameRecord::Section). A piece sits from the object's place,
+      # which is +origin_x+ and +origin_y+ in the picture. Its tiles are counted from the tile at
       # +tiles_at+, of +tile_count+ tiles kept as +tile_format+ (a Console::TileFormat). The
       # colours are as a Picture's: +colors_count+ of them from +colors_at+ kept as
       # +color_format+, or held by the picture where +colors_at+ is nil. Place 0 is see-through.
       # +turns+ are the ways the whole picture is turned once it is painted, as a Picture's.
       #
       # The file is the player's, so nothing in it stops the game. Pieces are read while they
-      # end inside the slot, however many the frame says it has. A piece, or the part of one,
+      # end inside the file, however many the record says it holds. A piece, or the part of one,
       # outside the picture is not painted, and a tile past +tile_count+ paints nothing. Where
       # two pieces overlap the earlier one is in front, as a console draws its sprites.
-      Pose = Data.define(:frame_at, :frame_end, :count, :layout, :origin_x, :origin_y, :tiles_at, :tile_count, :tile_format,
+      Pose = Data.define(:entry_at, :records_at, :origin_x, :origin_y, :tiles_at, :tile_count, :tile_format,
                          :colors_at, :colors_count, :color_format, :turns) do
-        def initialize(frame_at:, frame_end:, layout:, origin_x:, origin_y:, tiles_at:, tile_count:, tile_format:, colors_count:,
-                       count: nil, colors_at: nil, color_format: nil, turns: [].freeze) = super
+        def initialize(entry_at:, records_at:, origin_x:, origin_y:, tiles_at:, tile_count:, tile_format:, colors_count:,
+                       colors_at: nil, color_format: nil, turns: [].freeze) = super
 
         # The same pose turned +way+ once it is painted.
         def turned(way) = with(turns: [*turns, way].freeze)
@@ -529,22 +531,16 @@ module VBlank
       # Pose) painted into it, row by row. What the file asks for past what the build holds is
       # left out (Pose says what).
       def self.pose_places(where, width, height, bytes)
-        layout = where.layout
-        first = where.frame_at + layout.count_bytes_before_pieces
-        count = where.count || layout.count_of(bytes.byteslice(where.frame_at, layout.count_bytes).bytes)
-        count = [count, (where.frame_end - first) / layout.piece_bytes].min
         places = Array.new(width * height, 0)
         tiles = {}
-        count.times do |at|
-          piece = layout.piece_of(bytes.byteslice(first + (at * layout.piece_bytes), layout.piece_bytes).bytes)
-          paint_pose_piece(places, width, height, piece, where, bytes, tiles)
-        end
+        frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
+        frame.pieces.each { |piece| paint_pose_piece(places, width, height, piece, where, bytes, tiles) }
         places
       end
 
-      # One piece painted into +places+, behind what is there already: each of its pixels from
-      # the tile its layout names there, the whole piece turned as it says. +tiles+ keeps each
-      # tile read, by its number.
+      # One piece (an Original::FrameRecord::Piece) painted into +places+, behind what is there
+      # already: each of its pixels from the tile it names there, the whole piece turned as it
+      # says. +tiles+ keeps each tile read, by its number.
       def self.paint_pose_piece(places, width, height, piece, where, bytes, tiles)
         side = FormatReading::TILE_SIDE
         across = piece.columns * side
@@ -560,7 +556,7 @@ module VBlank
 
             from_x = piece.mirrored ? across - 1 - x : x
             from_y = piece.upside_down ? tall - 1 - y : y
-            tile = where.layout.piece_tile(piece, from_x / side, from_y / side)
+            tile = piece.tile_at(from_x / side, from_y / side)
             next unless tile < where.tile_count
 
             tiles[tile] ||= FormatReading.tiles(bytes.byteslice(where.tiles_at + (tile * tile_bytes), tile_bytes), where.tile_format).first

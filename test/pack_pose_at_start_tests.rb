@@ -38,6 +38,10 @@ module PackPoseAtStartTests
   # game. Here the file's frame says it has six pieces: the first two as the original's, one whose
   # tiles are past the slot, one that sits wholly outside the picture, and two more that the slot
   # ends before. The game shows the first two, as an all-in-one build of a frame of those two does.
+  #
+  # The file is the one the pack's unpacking makes of such a copy: the frame's record, written
+  # after the slots (Original::FrameRecord::Section), holds the four pieces that end inside the
+  # slot, and the game paints of them what its picture and its tiles have.
   def test_a_frame_of_the_file_that_asks_for_more_than_the_build_holds_draws_what_fits
     wild = [0xFF, 6, *PIECES.first(2).flatten, *PIECE.(-8, 0, 40, big: true), *PIECE.(60, 0, 1)]
     held = [0xFF, 2, *PIECES.first(2).flatten]
@@ -48,7 +52,10 @@ module PackPoseAtStartTests
       slots = { sprites: VIDEO.map(&MadeUpOriginalLayouts::FOUR_PLANES).join, frames: wild.pack("C*"),
                 palette: MadeUpOriginalLayouts::PALETTE.pack("v*") }
       sha1 = Digest::SHA1.hexdigest(File.binread(File.join(folder, "made_up.bin")))
-      file = VBlank::Original::Pack.holding(slots, sha1: sha1, build_version: "1").to_bytes
+      slot = VBlank::Original::Slot.numbers(:frames, at: FRAMES_AT, count: wild.length, width: :byte, signed: false, layout: :snes)
+      frame = VBlank::Original::FrameRecord::Source.new(slot: slot, at: 1, count: nil, layout: FRAME)
+      records = VBlank::Original::FrameRecord::Section.new(sources: [frame]).bytes(slots)
+      file = VBlank::Original::Pack.holding(slots, sha1: sha1, build_version: "1", frame_records: records).to_bytes
 
       assert_equal game_player.run(whole, frames: 2).screen.to_a, game_player.hand_file(file).run(left_out, frames: 2).screen.to_a
     end

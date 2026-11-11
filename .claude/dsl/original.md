@@ -352,13 +352,23 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
 - `image :balloon_0, tiles: pack[:sprites], frame: pack[:frames].frame(at, layout: FRAME), origin: [32, 48], colors: :balloon,
   size: [64, 64]` — a pose that is one of the original's own frames (`sprites.md`). How many pieces the frame has and what
   each is is in the pack, so the game gives `size:`, the picture's size, and a pose with none is refused at the line. The
-  program holds zeros of that size and where the frame and its tiles are in the file (`IR::StartFile::Pose`), and the
+  program holds zeros of that size and where the frame's record and its tiles are in the file (`IR::StartFile::Pose`), and the
   runtime paints each piece into the picture at power-on (`rg_start_file_fill_pose`), the earlier in front where two
   overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. A pose that takes its colours from the bank
   its frame names (a layout with `bank_bit:` and `colors:` a whole slot, `sprites.md`) is refused at the line for now: the
   bank is in the file, so the build cannot name the pose's list. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
+  **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's
+  `Original::FrameLayout` says how the original keeps a frame. Once every slot is filled, copied as it is or by
+  `slots.fill_from_copy`, the unpacking reads each frame the game names and writes it after the pack's last slot as a
+  record of VBlank's own, one layout whatever the original (`Original::FrameRecord`, whose file says the layout;
+  `Original::FrameRewrite` writes it, as game code). A piece of a record names its tiles and its bank of colours and
+  holds no pixel. The build that holds the pack, the interpreter and each runtime read that record and know no
+  layout, so a way of keeping a frame that no layout says yet is added to `FrameLayout#piece_from` alone, in Ruby.
+  The game's source does not change: the
+  slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
+  `test/frame_record_unpacking_tests.rb`.
 
   Any other verb that reads a slot's bytes is refused at the line. So is a verb that works out its data from a
   picture's pixels as the game is built, where the picture's places are in the pack: `sprite_tiles ... copy_from
@@ -370,8 +380,10 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   same picture and sound on every pass, or to its refusal (`test/pack_parity_tests.rb`; `.claude/testing/lowerings.md`,
   "A game that reads a data pack"). A game's own suite does the same with `VBlank::Testing::PackParity`.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
-  `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
-  after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.
+  `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and
+  `pack_file_in(run, sha1:, build_version:)` after its halt is the pack file: `slot_bytes_in(run)`, each slot's bytes,
+  and `frame_records_in(run)`, the record of each frame of a sprite the game names. Ask for it once the game is
+  declared, since it writes a record for each frame named by then.
   Built so, it draws a progress bar as it goes (game code, so every runtime shows it), by bytes, or by
   work where a slot names its `cost:`. Worked example: `test/pack_at_start_tests.rb` (`bar_widths`).
 - `game.data_pack_file` (a `Cartridge::Game`, `settings:`, `console:`) — the pack file the all-in-one
@@ -512,5 +524,9 @@ names no copy fails with `NotSet`'s words. Worked example: `test/lowering/ruby/v
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a
-length byte and the text) and size (4 bytes), then each slot's bytes. A file that is not a pack, is cut
-short or is in another format is refused with `Original::WrongPack`.
+length byte and the text) and size (4 bytes), then each slot's bytes, then to the end of the file the
+record of each frame of a sprite the game names (`Original::FrameRecord::Section`: a directory of four
+bytes a frame, then each frame as four bytes and sixteen a piece; nothing for a game that names no
+frame). A file that is not a pack, is cut short or is in another format is refused with
+`Original::WrongPack`. **The format is 2.** A pack kept by a build before the frame records is format 1,
+so a shell's check refuses it and the player's copy is read again, as the menu says.

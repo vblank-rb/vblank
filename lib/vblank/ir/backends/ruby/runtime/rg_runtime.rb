@@ -413,51 +413,29 @@ def rg_start_file_fill_picture(rules)
   end
 end
 
-# The number +width+ bytes (1 or 2) from +at+ in the file hold, in the byte order +high_byte_first+
-# names (1 or 0), below zero where +signed+ and its top bit is set (rg_runtime.c's start_file_number
-# and start_file_signed).
-def rg_start_file_part(at, width, high_byte_first, signed)
-  number = @rg_start_file.getbyte(at)
-  if width == 2
-    other = @rg_start_file.getbyte(at + 1)
-    number = high_byte_first == 1 ? (number << 8) | other : number | (other << 8)
-  end
-  top = 1 << ((width * 8) - 1)
-  signed && number >= top ? number - (top * 2) : number
-end
+# The number the two bytes from +at+ in the file hold, low byte first, 0 or more.
+def rg_start_file_half(at) = @rg_start_file.getbyte(at) | (@rg_start_file.getbyte(at + 1) << 8)
 
-# One piece of a pose's frame painted into +places+, behind what is there already (rg_runtime.c's
-# start_file_paint_piece). +frame+ and +tile_format+ are where those layouts start in +rules+.
-def rg_start_file_paint_piece(places, width, height, at, rules, frame, tile_format, origin_x, origin_y, tiles_at, tile_count)
-  high_byte_first = rules[frame + RG_FRAME_HIGH_BYTE_FIRST_AT]
-  position_bytes = rules[frame + RG_FRAME_POSITION_BYTES_AT]
-  row_tiles = rules[frame + RG_FRAME_ROW_TILES_AT]
-  order = rules[frame + RG_FRAME_TILE_ORDER_AT]
-  flags = rg_start_file_part(at + rules[frame + RG_FRAME_FLAGS_AT], rules[frame + RG_FRAME_FLAGS_BYTES_AT], high_byte_first, false)
-  left = origin_x + rg_start_file_part(at + rules[frame + RG_FRAME_X_AT], position_bytes, high_byte_first, true)
-  top = origin_y + rg_start_file_part(at + rules[frame + RG_FRAME_Y_AT], position_bytes, high_byte_first, true)
-  first_tile = rg_start_file_part(at + rules[frame + RG_FRAME_TILE_AT], rules[frame + RG_FRAME_TILE_BYTES_AT], high_byte_first, false)
-  tile_bits = rules[frame + RG_FRAME_TILE_BITS_AT]
-  first_tile &= (1 << tile_bits) - 1 if tile_bits.positive?
-  tile_row_at = rules[frame + RG_FRAME_TILE_ROW_AT]
-  first_tile += @rg_start_file.getbyte(at + tile_row_at) * row_tiles unless tile_row_at.negative?
-  columns = 1
-  rows = 1
-  size_at = rules[frame + RG_FRAME_SIZE_AT]
-  big_bit = rules[frame + RG_FRAME_BIG_BIT_AT]
-  if !size_at.negative?
-    size = @rg_start_file.getbyte(at + size_at)
-    mask = (1 << rules[frame + RG_FRAME_SIZE_BITS_AT]) - 1
-    columns = ((size >> rules[frame + RG_FRAME_COLUMNS_BIT_AT]) & mask) + 1
-    rows = ((size >> rules[frame + RG_FRAME_ROWS_BIT_AT]) & mask) + 1
-  elsif !big_bit.negative? && flags[big_bit] == 1
-    columns = 2
-    rows = 2
-  end
-  mirrored_bit = rules[frame + RG_FRAME_MIRRORED_BIT_AT]
-  upside_down_bit = rules[frame + RG_FRAME_UPSIDE_DOWN_BIT_AT]
-  mirrored = !mirrored_bit.negative? && flags[mirrored_bit] == 1
-  upside_down = !upside_down_bit.negative? && flags[upside_down_bit] == 1
+# A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+# lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and its
+# numbers (RG_FRAME_, RG_PIECE_) are written ahead of this file from there. Every number is low
+# byte first: a frame is the pieces it holds and the pieces the original names, two bytes each,
+# then RG_FRAME_PIECE_BYTES a piece.
+#
+# One piece of a pose's frame, its record from +at+ in the file, painted into +places+, behind what
+# is there already (rg_runtime.c's start_file_paint_piece). +tile_format+ is where that layout
+# starts in +rules+.
+def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+  left = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
+  top = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
+  first_tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
+  column_step = rg_start_file_half(at + RG_PIECE_COLUMN_STEP_AT)
+  row_step = rg_start_file_half(at + RG_PIECE_ROW_STEP_AT)
+  columns = @rg_start_file.getbyte(at + RG_PIECE_COLUMNS_AT)
+  rows = @rg_start_file.getbyte(at + RG_PIECE_ROWS_AT)
+  turns = @rg_start_file.getbyte(at + RG_PIECE_TURNS_AT)
+  mirrored = turns.anybits?(RG_PIECE_MIRRORED)
+  upside_down = turns.anybits?(RG_PIECE_UPSIDE_DOWN)
   across = columns * 8
   tall = rows * 8
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
@@ -473,13 +451,7 @@ def rg_start_file_paint_piece(places, width, height, at, rules, frame, tile_form
       from_y = upside_down ? tall - 1 - y : y
       column = from_x / 8
       row = from_y / 8
-      tile = if order == RG_FRAME_TILES_DOWN_COLUMNS
-               first_tile + (column * rows) + row
-             elsif order == RG_FRAME_TILES_ACROSS_ROWS
-               first_tile + (row * columns) + column
-             else
-               first_tile + (row * row_tiles) + column
-             end
+      tile = first_tile + (column * column_step) + (row * row_step)
       next if tile >= tile_count
 
       places[(down * width) + along] = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
@@ -490,23 +462,25 @@ end
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
-  kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, frame_at, frame_end, count, origin_x, origin_y,
+  kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, entry_at, records_at, origin_x, origin_y,
     tiles_at, tile_count = rules
-  frame = RG_FILL_POSE_HEADER_NUMBERS
-  tile_format = frame + RG_FRAME_LAYOUT_NUMBERS
+  tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
   swapped = held_colors + (colors_at.negative? ? colors_count : 0)
-  piece_bytes = rules[frame + RG_FRAME_PIECE_BYTES_AT]
-  first = frame_at
-  if count.negative?
-    count = rg_start_file_part(frame_at, rules[frame + RG_FRAME_COUNT_BYTES_AT], rules[frame + RG_FRAME_HIGH_BYTE_FIRST_AT], false)
-    first += rules[frame + RG_FRAME_COUNT_BYTES_AT]
+  # The frame's entry says where its record starts, counted from +records_at+; 0 is a frame with
+  # no record. The file is the player's: a record is read while it is inside the file.
+  size = @rg_start_file.bytesize
+  offset = entry_at + RG_FRAME_ENTRY_BYTES <= size ? rg_start_file_half(entry_at) | (rg_start_file_half(entry_at + 2) << 16) : 0
+  count = 0
+  first = 0
+  if offset != 0 && records_at + offset + RG_FRAME_HEADER_BYTES <= size
+    first = records_at + offset + RG_FRAME_HEADER_BYTES
+    count = [rg_start_file_half(first - RG_FRAME_HEADER_BYTES), (size - first) / RG_FRAME_PIECE_BYTES].min
   end
-  count = [count, (frame_end - first) / piece_bytes].min
   places = Array.new(width * height, 0)
   count.times do |piece|
-    rg_start_file_paint_piece(places, width, height, first + (piece * piece_bytes), rules, frame, tile_format, origin_x, origin_y,
+    rg_start_file_paint_piece(places, width, height, first + (piece * RG_FRAME_PIECE_BYTES), rules, tile_format, origin_x, origin_y,
                               tiles_at, tile_count)
   end
   if kind == RG_FILL_TILE

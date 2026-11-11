@@ -25,21 +25,34 @@ module VBlank
     #   slot count           2 bytes
     #   each slot            1 byte of length and its name, then 4 bytes: how many bytes it holds
     #   each slot's bytes    in the order the slots are listed
+    #   the frame records    to the end of the file: each frame of a sprite the game names, written
+    #                        again as a record of VBlank's own (FrameRecord::Section); none for a
+    #                        game that names no frame
     #
     # The three at the top are what shows whether a pack kept on a player's machine can still be
     # read: a format this build does not know, another copy, or another build of the game each
     # mean the pack is made again.
-    Pack = Data.define(:format_version, :rom_sha1, :build_version, :slots)
+    #
+    # The frame records are no slot. A slot is named, shaped and sized by the game's `data_pack`
+    # block, which is read before the game names a frame, and a build that leaves its pack out
+    # fixes where each slot starts in the file there and then. So the records follow the last slot,
+    # where nothing before them moves, and the file's size, which such a build checks, is what
+    # says they are there.
+    Pack = Data.define(:format_version, :rom_sha1, :build_version, :slots, :frame_records)
 
     class Pack
       MAGIC = "VBLANKPK".b.freeze
-      FORMAT_VERSION = 1
+      # 2: the frame records after the last slot. A pack of format 1 kept a frame only as the
+      # original's bytes, which nothing draws from now.
+      FORMAT_VERSION = 2
 
       # A pack holding +slot_bytes+ (each slot's bytes by name, in the pack's order), cut from the
       # copy (Slot#cut_from) or written by the game's unpacking routine (Unpacking), made from the
-      # copy whose SHA-1 is +sha1+; +build_version+ names the build that made it.
-      def self.holding(slot_bytes, sha1:, build_version:)
-        new(format_version: FORMAT_VERSION, rom_sha1: sha1, build_version: build_version.to_s, slots: slot_bytes)
+      # copy whose SHA-1 is +sha1+; +build_version+ names the build that made it. +frame_records+
+      # are the bytes of its frames' records (FrameRecord::Section#bytes), where the game names frames.
+      def self.holding(slot_bytes, sha1:, build_version:, frame_records: "")
+        new(format_version: FORMAT_VERSION, rom_sha1: sha1, build_version: build_version.to_s, slots: slot_bytes,
+            frame_records: frame_records)
       end
 
       # The pack in the file at +path+.
@@ -47,7 +60,9 @@ module VBlank
 
       # WHERE EVERYTHING IS IN THE FILE of a pack of +slots+ (Original::Slot), made for
       # +build_version+, worked out from the slots' names, shapes and sizes alone: a game built with
-      # its pack left out knows this much and no more. +size+ is the whole file's, +slot_starts+
+      # its pack left out knows this much and no more. +size+ is the file's up to the end of its last
+      # slot, which is where its frame records start (the game adds their size as it names frames,
+      # Builder::PackPoses#finalize_pack_frames), +slot_starts+
       # where each slot's bytes start, by name, and +checks+ the bytes (IR::StartFile::Check) every such
       # pack holds and a pack for another build or another format does not: the mark and the
       # format, and the build version with the list of slots. Only the copy's SHA-1, between the
@@ -74,7 +89,7 @@ module VBlank
         build_version = reader.bytes(reader.number(1)).force_encoding(Encoding::UTF_8)
         sizes = Array.new(reader.number(2)) { [reader.bytes(reader.number(1)).to_sym, reader.number(4)] }
         new(format_version: version, rom_sha1: sha1, build_version: build_version,
-            slots: sizes.to_h { |name, size| [name, reader.bytes(size)] })
+            slots: sizes.to_h { |name, size| [name, reader.bytes(size)] }, frame_records: reader.rest)
       end
 
       # The longest text the file can hold for the build's version or a slot's name, and the most
@@ -84,7 +99,7 @@ module VBlank
 
       # Everything is checked as the pack is made, so a pack that exists can always be written as a
       # file that reads back the same. The SHA-1 is kept in lower case, as the file reads it back.
-      def initialize(format_version:, rom_sha1:, build_version:, slots:)
+      def initialize(format_version:, rom_sha1:, build_version:, slots:, frame_records: "")
         refuse_unwritable_sha1!(rom_sha1)
         refuse_long_text!("The build version #{build_version.inspect}", build_version)
         slots.each_key { |name| refuse_long_text!("The slot name :#{name}", name.to_s) }
@@ -93,7 +108,7 @@ module VBlank
         end
 
         super(format_version: format_version, rom_sha1: rom_sha1.downcase.freeze, build_version: build_version.freeze,
-              slots: slots.transform_values { |bytes| bytes.b.freeze }.freeze)
+              slots: slots.transform_values { |bytes| bytes.b.freeze }.freeze, frame_records: frame_records.b.freeze)
       end
 
       # The bytes slot +name+ holds.
@@ -118,7 +133,7 @@ module VBlank
       # The pack as its file holds it.
       def to_bytes
         header = Pack.header_bytes(sha1: rom_sha1, build_version: build_version, sizes: slots.transform_values(&:bytesize))
-        [header, *slots.values].join.b
+        [header, *slots.values, frame_records].join.b
       end
 
       # The pack written to the file at +path+.
@@ -172,6 +187,9 @@ module VBlank
         end
 
         def number(size) = bytes(size).unpack1(NUMBER_READS.fetch(size))
+
+        # Every byte not read yet.
+        def rest = @bytes.byteslice(@at..).tap { @at = @bytes.bytesize }
       end
     end
   end

@@ -119,15 +119,14 @@ module VBlank
       # +rom_sha1+ is the SHA-1 of the copy the build made the pack from (nil for a build that
       # leaves the pack out, which reads no copy), +build_version+ the build it names, +slots+ the
       # Original::Slot list. +make_unpacking+ makes the Original::Unpacking that fills such a pack,
-      # handed the copy's size, the first time something asks for it: a pack whose every slot is
-      # copied as it is never needs its program built as the game is. +original+ is what `from:`
+      # handed the release, when something asks for it, and keeps what it made: a pack whose every
+      # slot is copied as it is never needs its program built as the game is. +original+ is what `from:`
       # named (an Original::Game, or an Original::Copy), which a shell reads the releases of.
       def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil)
         @rom_sha1 = rom_sha1
         @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
-        @unpackings = {}
         @original = original
       end
 
@@ -144,7 +143,11 @@ module VBlank
       # +release+ (an Original::Release), which it is handed as it starts; an all-in-one build's
       # holds the copy it read, and needs no release. Each release has a program of its own, since
       # the slots' places or the routine can differ by release.
-      def unpacking(release: nil) = @unpackings[release] ||= @make_unpacking.call(release)
+      #
+      # The program writes a record of each frame of a sprite the game has named by the time it is
+      # asked for (Original::FrameRewrite), so ask once the game is declared: asked again after
+      # the game names another frame, it is made again.
+      def unpacking(release: nil) = @make_unpacking.call(release)
 
       # The handle of the slot named +name+.
       def [](name)

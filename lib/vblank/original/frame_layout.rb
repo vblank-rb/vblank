@@ -2,16 +2,16 @@
 
 module VBlank
   module Original
-    # ONE PIECE OF A FRAME, as its record says (FrameLayout#piece_of): where it sits from the
-    # object's place, which tile it starts at, turned how, how many tiles it is across and down, and
-    # which bank of the original's colours it is drawn from (0 where its layout names none).
-    FramePiece = Data.define(:x, :y, :tile, :mirrored, :upside_down, :columns, :rows, :bank)
-
     # HOW AN ORIGINAL KEEPS ONE FRAME OF A SPRITE: a list of pieces, each a few bytes saying where
     # the piece sits, which tile it shows, and whether it is turned or big. A retail game copies a
     # frame's pieces into the console's sprite table each time a pose changes, adding the object's
     # place. The record is the game's own, so the port describes it here, by where each part is,
     # and a pose is read from it (`image ..., frame: pack[:frames].frame(at, layout: FRAME)`).
+    #
+    # ONLY THE PACK'S UNPACKING READS A FRAME THIS WAY. It writes each frame a game names again as
+    # a record of VBlank's own (FrameRecord), one layout whatever the original's, and the build,
+    # the interpreter and every runtime read that. So a way of keeping a frame that no original
+    # here has had before is taught to this class alone (#piece_from), and to nothing that draws.
     #
     #   FRAME = VBlank::Original::FrameLayout.new(
     #     piece_bytes: 5, counted: true,
@@ -90,56 +90,84 @@ module VBlank
       # How many bytes of a frame come before its first piece: its count, where it has one.
       def count_bytes_before_pieces = counted ? count_bytes : 0
 
-      # How many pieces a frame has, from the bytes it starts with (+count_bytes_before_pieces+ of them).
-      def count_of(bytes) = number_at(bytes, 0, count_bytes, signed: false)
+      # WHAT READS A FRAME'S BYTES. The two methods below are the whole of how a layout is read,
+      # and they are handed the bytes one at a time by a block: byte +at+ of the frame (#count_from)
+      # or of the piece (#piece_from), 0 to 255. The build that holds the pack hands them numbers.
+      # The pack's unpacking (FrameRewrite) hands them values of the game's, read from the pack as
+      # it runs, and so gets back the sums that work each part out, as game code. So everything
+      # here is arithmetic that reads the same on a number and on a game's value: shifts, masks and
+      # sums, a value on the left of each, and never a test of what a byte holds. A part read twice
+      # asks the block twice, since a game's value is made for one place in the routine.
 
-      # The piece +record+ (its +piece_bytes+ bytes, as Integers) holds (a FramePiece).
-      def piece_of(record)
-        flags = number_at(record, flags_at, flags_bytes, signed: false)
-        columns, rows = piece_size(record, flags)
-        FramePiece.new(x: number_at(record, x_at, position_bytes, signed: true),
-                       y: number_at(record, y_at, position_bytes, signed: true), tile: first_tile(record),
-                       mirrored: flag?(flags, mirrored_bit), upside_down: flag?(flags, upside_down_bit),
-                       columns: columns, rows: rows,
-                       bank: names_bank? ? (flags >> bank_bit) & ((1 << bank_bits) - 1) : 0)
-      end
+      # How many pieces a frame says it has, from the bytes it starts with.
+      def count_from(&byte) = part(0, count_bytes, &byte)
 
-      # The tile +piece+ shows at +column+ and +row+ of itself (0 first), before it is turned.
-      def piece_tile(piece, column, row)
-        case tile_order
-        when :down_columns then piece.tile + (column * piece.rows) + row
-        when :across_rows then piece.tile + (row * piece.columns) + column
-        else piece.tile + (row * row_tiles) + column
-        end
+      # One piece as the pack keeps it (a FrameRecord::Piece).
+      def piece_from(&byte)
+        FrameRecord::Piece.new(
+          x: signed(part(x_at, position_bytes, &byte), position_bytes), y: signed(part(y_at, position_bytes, &byte), position_bytes),
+          tile: first_tile(&byte), column_step: column_step(&byte), row_step: row_step(&byte),
+          columns: columns(&byte), rows: rows(&byte),
+          turns: sum_of(flag(mirrored_bit, FrameRecord::MIRRORED, &byte), flag(upside_down_bit, FrameRecord::UPSIDE_DOWN, &byte)),
+          bank: names_bank? ? (flags(&byte) >> bank_bit) & ((1 << bank_bits) - 1) : 0
+        )
       end
 
       private
 
-      def first_tile(record)
-        tile = number_at(record, tile_at, tile_bytes, signed: false)
+      def first_tile(&byte)
+        tile = part(tile_at, tile_bytes, &byte)
         tile &= (1 << tile_bits) - 1 if tile_bits
-        tile + (tile_row_at ? record.fetch(tile_row_at) * row_tiles : 0)
+        tile += yield(tile_row_at) * row_tiles if tile_row_at
+        tile.clamp(0, FrameRecord::MOST)
       end
 
-      # How many tiles a piece is across and down.
-      def piece_size(record, flags)
-        return (flag?(flags, big_bit) ? [2, 2] : [1, 1]) unless size_at
+      # HOW A PIECE'S TILES FOLLOW ITS FIRST, as the two steps a record keeps: how many tiles on
+      # the tile one column to the right is, and the tile one row down.
+      def column_step(&byte) = tile_order == :down_columns ? rows(&byte) : 1
 
-        size = record.fetch(size_at)
-        mask = (1 << size_bits) - 1
-        [((size >> columns_bit) & mask) + 1, ((size >> rows_bit) & mask) + 1]
+      def row_step(&byte)
+        case tile_order
+        when :down_columns then 1
+        when :across_rows then columns(&byte)
+        else [row_tiles, FrameRecord::MOST].min
+        end
       end
 
-      # The number of +width+ bytes from byte +at+ of +bytes+, in the original's byte order.
-      def number_at(bytes, at, width, signed:)
-        parts = bytes[at, width]
-        parts = parts.reverse unless high_byte_first
-        value = parts.reduce(0) { |sum, byte| (sum << 8) | byte }
+      # How many tiles a piece is across, and down.
+      def columns(&byte) = size_at ? size_number(columns_bit, &byte) : big_or_one(&byte)
+      def rows(&byte) = size_at ? size_number(rows_bit, &byte) : big_or_one(&byte)
+
+      def size_number(bit) = ((yield(size_at) >> bit) & ((1 << size_bits) - 1)) + 1
+
+      # Two tiles a side where the piece's big bit is set, and one where it is not or there is none.
+      def big_or_one(&byte) = big_bit ? ((flags(&byte) >> big_bit) & 1) + 1 : 1
+
+      def flags(&byte) = part(flags_at, flags_bytes, &byte)
+
+      # +worth+ where bit +bit+ of the flags is set, and 0 where it is not or the layout has no such bit.
+      def flag(bit, worth, &byte) = bit ? ((flags(&byte) >> bit) & 1) * worth : 0
+
+      # The number of +width+ bytes (1 or 2) from byte +at+, in the original's byte order, 0 or more.
+      def part(at, width)
+        return yield(at) if width == 1
+
+        high, low = high_byte_first ? [at, at + 1] : [at + 1, at]
+        (yield(high) << 8) | yield(low)
+      end
+
+      # +number+ (0 or more, +width+ bytes wide) read as one that can be below zero.
+      def signed(number, width)
         top = 1 << ((width * 8) - 1)
-        signed && value >= top ? value - (top * 2) : value
+        (number ^ top) - top
       end
 
-      def flag?(flags, bit) = !bit.nil? && flags[bit] == 1
+      # The sum of +terms+, each a number or a game's value, with a value on the left of every sum.
+      def sum_of(*terms)
+        numbers, values = terms.partition { |term| term.is_a?(Integer) }
+        # Must fold with +, not Array#sum: sum starts from Ruby's 0, and a term may be a game's value.
+        [*values, numbers.sum].reduce { |sum, term| sum + term }
+      end
 
       def refuse_bad_widths!(widths, high_byte_first)
         unless widths.all? { |width| [1, 2].include?(width) }
