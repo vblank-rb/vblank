@@ -70,11 +70,18 @@ module VBlank
       end
 
       # A declared picture's pixels, row by row: each one's colour, or nil where it is see-through.
+      # A pixel in a colour read from the data pack as the game starts is the marker it is
+      # (IR::StartFile), which the canvas's own list of such colours holds too: masked to fifteen
+      # bits it would be a colour that is no colour of the list.
       def image_pixels(image)
         image_size(image)
         node = @program.walk.find { |each| each.kind == :bitmap && each.name == image }
         picture = IR::Assets::Image.of(node)
-        (0...(picture.width * picture.height)).map { |i| picture.drawn_at?(i) ? picture.color_at(i) : nil }
+        (0...(picture.width * picture.height)).map do |i|
+          next nil unless picture.drawn_at?(i)
+
+          IR::StartFile.marker?(picture.raw_at(i)) ? picture.raw_at(i) : picture.color_at(i)
+        end
       end
 
       private
