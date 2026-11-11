@@ -204,6 +204,39 @@ module PackSoundTests
     end
   end
 
+  # Two recordings of one length from two stretches of the slot. With the pack left out the build
+  # holds the same zeros for both, and they are still two: each is filled from its own place.
+  private def two_stretches_game(folder, options: VBlank::Cartridge::Options.new)
+    from = options.pack_at_start ? original_nowhere(folder) : original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") { |slots| slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT }
+      early = sample :early, pcm: pack[:bang].samples(0, 16), rate: SOUND_RATE
+      late = sample :late, pcm: pack[:bang].samples(16, 16), rate: SOUND_RATE
+      game_loop do
+        wait_vblank
+        early.play if pressed(:a)
+        late.play if pressed(:b)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_two_recordings_of_one_length_from_the_pack_each_sound_their_own_samples
+    Dir.mktmpdir do |folder|
+      whole = two_stretches_game(folder)
+      left_out = two_stretches_game(folder, options: PACK_AT_START)
+      early, late = %i[a b].map { |button| heard_playing(button, whole).mixed_sound }
+
+      refute_equal early, late, "the two stretches hold different samples"
+      assert_equal early, heard_playing(:a, left_out, file: sound_pack_file).mixed_sound
+      assert_equal late, heard_playing(:b, left_out, file: sound_pack_file).mixed_sound
+    end
+  end
+
   def test_the_game_without_its_pack_holds_none_of_the_recordings_bytes
     Dir.mktmpdir do |folder|
       program = sound_game(folder, options: PACK_AT_START)

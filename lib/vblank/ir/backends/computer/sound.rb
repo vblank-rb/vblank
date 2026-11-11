@@ -142,20 +142,42 @@ module VBlank
           # game's sound.
           def recordings_tables
             recordings = @sound_log.recordings
-            at = 0
             heads = recordings.map do |sample|
               info = Assets::Sample.of(sample)
               shape = info.envelope && !info.envelope.plain? ? info.envelope : nil
-              head = [at, info.length, shape ? 1 : 0,
-                      *(shape ? [shape.attack, shape.decay, shape.sustain, shape.release] : [0, 0, 0, 0])]
-              at += info.length
-              head
+              [recording_starts.fetch(sample.name), info.length, shape ? 1 : 0,
+               *(shape ? [shape.attack, shape.decay, shape.sustain, shape.release] : [0, 0, 0, 0])]
             end
-            samples = recordings.flat_map { |sample| sample.bytes.unpack("c*") }
+            samples = kept_recordings.flat_map { |sample| sample.bytes.unpack("c*") }
             [sound_table("recordings", [recordings.size, *heads.flatten]),
              Statements::ConstArray.new(name: recording_samples_name, type: "int8_t", values: samples, exported: true,
                                         writable: recordings_read_from_start_file?)]
           end
+
+          # WHERE EACH RECORDING'S SAMPLES START in the array of them all, by its name. A recording's
+          # seven numbers carry where its samples are and everything else about it (its length and
+          # its shape), so recordings declared under several names with the same samples, as one
+          # instrument's recording shaped several ways is, start at the same place and the array
+          # holds those samples once. Two that read their samples from the start file are the same
+          # only when they read the same place in it: what the build holds for both is zeros.
+          def recording_starts
+            @recording_starts ||= begin
+              at = 0
+              starts = {}
+              @sound_log.recordings.to_h do |sample|
+                kept = [sample.bytes, sample.from_file]
+                unless starts.key?(kept)
+                  starts[kept] = at
+                  at += sample.bytes.bytesize
+                end
+                [sample.name, starts.fetch(kept)]
+              end
+            end
+          end
+
+          # The recordings whose samples the array holds, in its order: the first of each that start
+          # at one place (#recording_starts).
+          def kept_recordings = @sound_log.recordings.uniq { |sample| recording_starts.fetch(sample.name) }
 
           def recording_samples_name = @names.own("recording_samples")
 
@@ -172,12 +194,10 @@ module VBlank
           # Each recording that reads its samples from the file, written into its place in the array of
           # every recording's samples, as long as the zeros it holds.
           def build_start_file_recording_fills
-            at = 0
-            @sound_log.recordings.filter_map do |sample|
-              start = at
-              at += sample.bytes.bytesize
+            kept_recordings.filter_map do |sample|
               next unless sample.from_file
 
+              start = recording_starts.fetch(sample.name)
               eval_call("rg_start_file_fill_bytes", recording_samples_name, Statements::Int.new(start),
                         Statements::Int.new(sample.bytes.bytesize), Statements::Int.new(sample.from_file))
             end

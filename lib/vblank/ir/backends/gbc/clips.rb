@@ -125,19 +125,20 @@ module VBlank
             table = SM83.new("clips", home: :fixed, holds: RECORDINGS)
             table.label(TABLE)
             @clips.each do |clip|
-              table.data_words(clip.label)
-              table.data_bank_of(clip.label)
+              label = clip_kept_as(clip).label
+              table.data_words(label)
+              table.data_bank_of(label)
               table.data_words(clip.bytes.bytesize)
               table.data_bytes(clip.recording)
               table.data_bytes(clip.part_way ? 1 : 0)
               table.data_words(clip.frames)
               next unless @loops
 
-              table.data_words("#{clip.label}_hold")
+              table.data_words("#{label}_hold")
               table.data_words(clip.bytes.bytesize - clip.hold_byte)
               clip.laps.to_h.each_value { |number| table.data_bytes(Array.new(LAP_BYTES) { |k| (number >> (8 * k)) & 0xFF }) }
             end
-            clips = @clips.map do |clip|
+            clips = @clips.map { |clip| clip_kept_as(clip) }.uniq.map do |clip|
               asm = SM83.new(clip.label, home: :banked, holds: RECORDINGS)
               asm.label(clip.label)
               asm.bytes_of(clip.bytes.byteslice(0, clip.hold_byte))
@@ -147,6 +148,12 @@ module VBlank
             end
             [table.section, *clips]
           end
+
+          # THE CLIP WHOSE BITS THE CARTRIDGE KEEPS FOR +clip+: the first with the same bits, held from
+          # the same byte. A clip's entry in the table carries the rest (which recording it is to the
+          # game, its frames and its laps), so recordings declared under several names with the same
+          # samples, played at the same rate and note, read one section.
+          def clip_kept_as(clip) = @clips.find { |other| other.bytes == clip.bytes && other.hold_byte == clip.hold_byte }
 
           # HOW NEAR THE MIDDLE A SAMPLE IS STILL. A bit is all or nothing, so a sample's sign alone
           # turns the quiet between a recording's words — a little noise either side of nought — into

@@ -64,11 +64,21 @@ module VBlank
                                                     name: @samples.keys.index(name), step: step)
               end
               table.data_words(0) if @plays.empty? # a label has to be somewhere
-              [table.section, *@plays.map(&:first).uniq.map { |name| recording_section(name) }]
+              [table.section, *@plays.map { |name, *| recording_kept_as(name) }.uniq.map { |name| recording_section(name) }]
             end
-            
-            def recording_label(name) = "recording #{name}"
-            
+
+            # The label of the bytes a play of recording +name+ reads.
+            def recording_label(name) = "recording #{recording_kept_as(name)}"
+
+            # THE RECORDING WHOSE BYTES THE CARTRIDGE KEEPS FOR +name+: the first one declared with the
+            # same samples. A row of the table carries everything else about a play (how fast it is
+            # read, where it goes back to, and which recording it is to the game), so recordings
+            # declared under several names with the same samples read one copy of them.
+            def recording_kept_as(name)
+              bytes = @samples.fetch(name).bytes
+              @samples.each_key.find { |other| @samples.fetch(other).bytes == bytes }
+            end
+
             def recording_section(name)
               asm = M68000.new(recording_label(name), holds: PLAYS)
               asm.label(recording_label(name))

@@ -69,7 +69,7 @@ module VBlank
             # every way it is played — through to its end, or round from where it holds — in the
             # order their source numbers follow the waves'.
             def sound_recordings
-              @recordings.map { |name, back| Samples.recording(@samples.fetch(name).bytes, back) }
+              @recordings.map { |bytes, back| Samples.recording(bytes, back) }
             end
 
             # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
@@ -125,9 +125,9 @@ module VBlank
               back = info.loop_length
               step = IR::Mixing.step(info, frequency, clock.rate)
               refuse_unreadable_play!(name, step, back)
-              @recordings << [name, back] unless @recordings.include?([name, back])
+              source = source_of_recording(declared, back)
               row = Runtime::Recordings.row(
-                source: Samples::FIRST_WAVE + @sound_waves.size + @recordings.index([name, back]),
+                source: source,
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
                 volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
@@ -151,9 +151,25 @@ module VBlank
               verb_waves = @program.walk.select { |node| node.kind == :wave }.map { |node| wave_params(node) }
               @sound_waves = (verb_waves + @music.waves).map { |params| DSPWrites.wave_steps(params) }.uniq
               @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
-              @recordings = [] # [name, read-back] for each way a recording is played
+              @recordings = [] # [samples, read-back] for each recording the sound unit keeps (#source_of_recording)
               @plays = []      # each play's row of "recording_plays"
               @chip_envelopes = [Runtime::Recordings::NO_CHIP_ENVELOPE] # each row of "recording_chip_envelopes"
+            end
+
+            # THE SOURCE NUMBER A PLAY OF THE RECORDING +declared+ READS, going +back+ at its end: the
+            # next one the first time those samples are played that way.
+            #
+            # What the sound unit keeps of a recording is its samples and where it reads back to, and
+            # nothing else: the rate it was recorded at and the note it plays are the voice's pitch
+            # register, and its shape the voice's envelope registers, both written for each note
+            # (Runtime::Recordings' row). So recordings declared under several names with the same
+            # samples, as one instrument's recording played with several envelopes is, are kept
+            # once, and every one of them reads the same source. Which recording a place holds is
+            # still each one's own name (the row's NAME).
+            def source_of_recording(declared, back)
+              kept = [declared.bytes, back]
+              @recordings << kept unless @recordings.include?(kept)
+              Samples::FIRST_WAVE + @sound_waves.size + @recordings.index(kept)
             end
 
             # The row of "recording_chip_envelopes" the recording +declared+ was given (its
@@ -177,10 +193,10 @@ module VBlank
               back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
               step = IR::Mixing.step(info, frequency, clock.rate)
               refuse_unreadable_play!(node.name, step, back)
-              @recordings << [node.name, back] unless @recordings.include?([node.name, back])
+              source = source_of_recording(declared, back)
               loudness = VBlank::Audio::Sound::MIX_LEVELS.fetch(node.volume, VBlank::Audio::Sound::MIX_LEVELS[:full])
               row = Runtime::Recordings.row(
-                source: Samples::FIRST_WAVE + @sound_waves.size + @recordings.index([node.name, back]),
+                source: source,
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
                 volume: (loudness * DSPWrites::MAIN_VOLUME / VBlank::Audio::Sound::MIX_LEVELS[:full].to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
