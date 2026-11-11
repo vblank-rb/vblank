@@ -6,7 +6,7 @@
       "data": 0
     },
     "animate@genesis": {
-      "code": 4144,
+      "code": 4260,
       "data": 1122
     },
     "bird": {
@@ -86,7 +86,7 @@
       "data": 0
     },
     "fonts@genesis": {
-      "code": 3726,
+      "code": 3842,
       "data": 826
     },
     "grid_cursor": {
@@ -94,7 +94,7 @@
       "data": 0
     },
     "grid_cursor@genesis": {
-      "code": 4212,
+      "code": 4328,
       "data": 44
     },
     "hero": {
@@ -158,7 +158,7 @@
       "data": 0
     },
     "pixels@genesis": {
-      "code": 4022,
+      "code": 4138,
       "data": 44
     },
     "pong": {
@@ -222,7 +222,7 @@
       "data": 0
     },
     "sprite_mover@genesis": {
-      "code": 4552,
+      "code": 4668,
       "data": 134
     },
     "tiles": {

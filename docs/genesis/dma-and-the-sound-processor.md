@@ -173,12 +173,136 @@ frames.
 The stop itself is about 77 cycles a copy. It changes the recording's pitch by a quarter of one
 percent or less in the tiled game, either way.
 
-**The recording was already late, and still is.** The pitch falls as the copy grows with or without
-the guard, because a Z80 that wants the cartridge during a copy waits for the copy to end (S2, and
-both emulators). Eighty sprites cost one percent. A painted screen whose copies run past the blank,
-where the chip copies far more slowly, plays the recording a tenth flat, nearly two semitones. The
-console's own games have the same loss and do not hide it; SGDK's read-ahead driver is the known
-way to hide it, and is not built here.
+**The recording was late, with or without the guard.** The pitch in that table falls as the copy
+grows, because a Z80 that wants the cartridge during a copy waits for the copy to end (S2, and both
+emulators). Eighty sprites cost one percent. A painted screen whose copies ran past the blank, where
+the chip copies far more slowly, played the recording a tenth flat, nearly two semitones. The next
+section is what was done about it.
+
+## Keeping a recording's pitch through the stops
+
+Measured the same day, the same way (Genesis Plus GX at `f27655b5`, the same games, 120 frames, the
+pitch from the first upward crossing of the sound's middle to the last).
+
+### Where the time went
+
+The Z80's program counted its own cycles from one sample to the next, so every stop made the
+recording late by its length, and nothing made it up.
+
+- **The program itself was slow.** A sample took it 280 cycles with the emulator's three for a read
+  of the cartridge, against the 275 that 13000 samples a second asks: 425.7 Hz for 433.3 with
+  nothing else going on.
+- **The sprite table's copy** holds the Z80 for the copy's length, once a frame, in the blank:
+  about three lines of the screen for eighty sprites (640 bytes at the blank's 205 bytes a line),
+  which is the one percent.
+- **A painted screen's copies were not in the blank at all.** Looking through the marks of 1120
+  tiles for the changed ones took the 68000 about 27000 cycles, 56 lines, and the blank is 38. So
+  the sixteen copies began as the picture was being drawn, where the chip copies 18 bytes a line,
+  and held the Z80 for about 50 lines each time the picture was sent.
+- **Every FM register the 68000 writes stops the Z80 too**, for the write and the chip's three
+  waits round it. A song's note is some thirty registers. Measured with a wave part playing a note
+  every two frames: 398 Hz for 433. This one is not fixed here; see "Not done".
+
+### What others do, and what it costs
+
+- **Count cycles and lose the time.** Sonic 3 & Knuckles (above). Costs nothing; plays flat.
+- **Read ahead, and keep off the bus.** SGDK's XGM driver (`src/snd/drv_xgm.s80` at `2a8ddf55`)
+  keeps 1024 bytes of the Z80's 8192 as a ring of samples (`PCM_BUFFER0`-`PCM_BUFFER3`, `$1800`-
+  `$1BFF`), fills it from the cartridge between samples, and sounds one sample from it every 254
+  cycles, 14 kHz. The 68000 sets a byte in the Z80's memory before its copies and clears it after
+  (`PROTECT_ARG`, `Z80_setBusProtection` in `src/z80_ctrl.c`, called round `DMA_flushQueue` in
+  `src/sys.c`), and while it is set the driver sounds what it has and reads nothing. `inc/z80_ctrl.h`
+  says of it: "the success of the operation is not 100% garantee". Mega PCM 2
+  (<https://github.com/vladikcomper/MegaPCM>, README) does the same with no flag: "Zero-config DMA
+  protection (no extra flags to set and unset, simply don't stop Z80 on DMA's)", and "can survive up
+  to 24 Kb (!) of DMA transfers".
+  **Both need the Z80 running through the copy**, which is what S1 says not to allow. SGDK's own
+  default stops it (`HALT_Z80_ON_DMA 1`, `inc/config.h`: turning it off is "at your own risk"), and
+  a Z80 that is stopped sounds nothing from any buffer. So reading ahead buys nothing while the
+  guard stands, and costs an eighth of the Z80's memory.
+- **Time the samples by a clock that runs through a stop.** The FM chip has two timers. Sega's
+  manual gives their lengths ("Genesis Sound Software Manual", from page 88 of S2's scan: timer A lasts
+  "18 * (1024 - TIMER A) microseconds", timer B "288 * (256 - TIMER B ) microseconds", register
+  `$27` starts them and clears their flags, and "No one at Sega has used the timer feature"). The
+  figures are for a round 8 MHz; the tick is 144 cycles of the chip's clock (Genesis Plus GX,
+  `core/sound/ym2612.c`, `INTERNAL_TIMER_A`, counted once a sample of the chip's), which is the
+  68000's, 53693175 / 7 Hz on NTSC (`MCLOCK_NTSC`, `core/system.h`): 18.77 microseconds, and timer
+B's is sixteen of those. They are
+  read at the chip's own address in the Z80's memory, not through the 68000's bus.
+- **Count the screen's lines.** The Z80 can read the video chip's line counter, but through the
+  68000's bus, which is the access S1 and S3 are about. Not taken.
+
+### What VBlank does now
+
+**The Z80 sounds a sample on each tick of timer A**, set to four ticks: 13316.8 samples a second.
+A play's step is worked out for that rate, so a recording keeps the rate it was recorded at. The
+gap between two samples no longer depends on how long the work between them took.
+
+**The samples a stop covered are passed over.** A timer's flag says a tick came, not how many. Timer
+B is set to come round with every 256th tick of timer A; the program counts the samples it sounds in
+a byte, and what the byte is short of 256 when timer B's flag shows is the number of ticks a stop
+covered. It moves on that many samples without sounding them. The DAC holds its last sample through
+a stop, as it does in the console's own games, and the recording is back where the clock says within
+256 samples (19 ms). A shortfall over 127 is not believed, so a stop of more than about 9 ms in one
+round is not made up.
+
+**The guard is unchanged**: a bus request round every copy, as S1 says. The program still reads each
+sample from the cartridge as it sounds it, so when it reads has not changed and nothing about S1
+has. A read-ahead that kept off the bus during a copy would still be bound by S1, which makes no
+exception for a Z80 that promises not to look.
+
+**The Z80 now writes two FM registers** (the DAC's and `$27`), and the 68000 can stop it between
+naming one and writing it. The Z80 notes the register it is on in its mailbox before naming it, and
+the 68000 names that one again before letting go (`Recordings#emit_bus_given_back`).
+
+**The chip's busy time.** Genesis Plus GX holds the chip busy for 32 of its cycles after each value
+written (`core/sound/sound.c`, `YM2612_Write`), a third of a sample. The program's two values a
+sample are laid out more than that apart, and it does not test the busy bit between them. Whether a
+real chip takes both every time is not known from anything read.
+
+**A painted screen's changed tiles are found before the blank and only copied in it**
+(`Paint#emit_upload_find`): each run of tiles is queued as the seven words the video chip is sent,
+as the console's own games queue theirs (`Add_To_DMA_Queue` in the Sonic 3 & Knuckles disassembly,
+`DMA_queueDma` in SGDK), up to 32 runs and 100 tiles a blank. Sending sixteen runs takes about 18
+lines of the blank with a recording playing and 13 without.
+
+### What it costs
+
+| | before | after |
+|---|---|---|
+| the Z80's program | 206 bytes | 422 bytes, of 8192 |
+| the Z80's mailbox | 20 bytes | 22 bytes |
+| the Z80's time for a sample | 280 cycles, measured | at most 254 of the 269 between two ticks, by a count of its instructions |
+| work RAM, a painted game | | 452 bytes more (the queue) |
+| cartridge code, a painted game (`animate`, `fonts`, `grid_cursor`, `pixels`, `sprite_mover`) | | 116 bytes more each |
+| 68000 cycles a frame, painted, sixteen tiles a pass, recording | 89304.426 | 89386.635 |
+| 68000 cycles a frame, painted, no recording | 85289.143 | 85789.143 |
+| 68000 cycles a frame, 80 sprites, recording | 44764.813 | 44765.921 |
+
+A game with no recordings and no painted screen builds the same cartridge as before.
+
+### The pitch, before and after
+
+| | before | after |
+|---|---|---|
+| 1 sprite, recording | 425.681 Hz | 433.484 Hz |
+| 24 sprites, recording | 424.012 Hz | 433.500 Hz |
+| 80 sprites, recording | 420.461 Hz | 433.529 Hz |
+| painted, sixteen tiles a pass, recording | 384.262 Hz | 433.119 Hz |
+
+The recording is 433.333 Hz. `test_genesis_sound.rb` holds the first, third and fourth to within
+2 Hz.
+
+### Not done
+
+- **A song's FM writes still hold the Z80 long enough to hear.** The timers make the time up, but a
+  note's thirty writes are thirty stops in a row, some milliseconds with the DAC standing still. The
+  fix is on the 68000's side: one stop for a note's writes, or fewer waits inside it
+  (`Sound`'s `rt_fm_write`).
+- **PAL.** The chip's clock is a little slower there (53203424 / 7 Hz, `MCLOCK_PAL`), so a recording plays about
+  one percent flat. The step is worked out for NTSC.
+- **The answers table still says 13000 samples a second**, which is the rate the interpreter counts
+  a recording's place at. The Z80 sounds 13316.8.
 
 ## How to see it
 

@@ -64,6 +64,16 @@ module VBlank
             # changes almost nothing, and this is how the clear knows it (rt_paint_clear).
             SOLID = "rt paint solid"
             ANY_DIRTY = "rt paint any dirty"
+            # The runs of changed tiles the next blank copies (rt_upload_find), how many, and the tile
+            # the looking stopped at. How many runs one blank's copy holds: each costs the blank a
+            # little to start, whatever its length. And what a run is in the queue: the five words
+            # that set the video chip's registers for the copy, and the two of the command that starts it.
+            QUEUE = "rt paint queue"
+            QUEUED = "rt paint queued"
+            FIND_FROM = "rt paint find from"
+            RUNS_A_BLANK = 32
+            QUEUED_REGISTERS = 5
+            QUEUED_RUN_BYTES = (QUEUED_REGISTERS * 2) + 4
             AREA = "rt paint area"
             COLORS = "rt paint colors"
 
@@ -90,6 +100,9 @@ module VBlank
               memory.reserve_last(DIRTY, TILES)
               memory.reserve_last(SOLID, TILES)
               memory.reserve(ANY_DIRTY, 2)
+              memory.reserve(QUEUE, RUNS_A_BLANK * QUEUED_RUN_BYTES)
+              memory.reserve(QUEUED, 2)
+              memory.reserve(FIND_FROM, 2)
               memory.reserve(AREA, AREA_BYTES)
               memory.reserve(SCRATCH, 4)
               memory.reserve(CAMERA, 4)
@@ -157,7 +170,7 @@ module VBlank
               asm.rts
 
               asm.label("rt_picture_prepare")
-              asm.rts
+              asm.jmp(asm.abs_l("rt_upload_find"))
               asm.label("rt_tint_prepare")
               asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
               asm.rts unless colors
@@ -278,15 +291,16 @@ module VBlank
             end
 
             # How many tiles one blank's copy holds, with room to spare: the blank's lines are not all
-            # the copy's by the time the interrupt has run and the tiles are found, and a copy still
-            # going when the picture starts is half a picture on the screen. A whole screen is several
-            # blanks' worth, and the game waits through them.
+            # the copy's by the time the interrupt has run, and a copy still going when the picture
+            # starts is half a picture on the screen. A whole screen is several blanks' worth, and the
+            # game waits through them.
             TILES_A_BLANK = 100
 
-            # rt_upload: every tile marked as changed copied to video RAM by DMA, and its mark taken off,
-            # a run of neighbouring tiles at a time and TILES_A_BLANK in a blank. The marks are looked at
-            # four at a time, so a pass that changed nothing near most of the screen skips most of it
-            # in a few instructions. rt_upload_whole: the whole picture, while the screen is still off.
+            # rt_upload: the queued runs of changed tiles (rt_upload_find) copied to video RAM by DMA,
+            # a queue in a blank, until no tile is marked as changed. Each run goes as the words queued
+            # for it, the command's last word starting its copy (Picture#emit_dma_started, which stops
+            # the sound processor for it in a game that plays recordings, +samples+).
+            # rt_upload_whole: the whole picture, while the screen is still off.
             #
             # A game with sprites over its picture (+sprites+) writes its sprite table first, before the
             # tiles: a pass that changed many tiles takes several blanks, and the sprites then show on the
@@ -297,55 +311,30 @@ module VBlank
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               asm.jsr(asm.abs_l("rt_sprite_table_written")) if sprites
+              asm.label("rt_upload_queue")
+              asm.move(:w, at.call(QUEUED), asm.d(0))
+              asm.branch(:eq, "rt_upload_done")
+              asm.lea(asm.abs_l(memory[QUEUE]), asm.a(0))
+              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(2))
+              asm.subq(:w, 1, asm.d(0))
+              asm.label("rt_upload_queue_run")
+              QUEUED_REGISTERS.times { asm.move(:w, asm.post(0), asm.ind(2)) }
+              asm.move(:l, asm.post(0), asm.d(1))
+              Picture.emit_dma_started(asm, asm.d(1), asm.ind(2), samples: samples)
+              asm.dbra(asm.d(0), "rt_upload_queue_run")
+              asm.clr(:w, at.call(QUEUED))
               asm.tst(:w, at.call(ANY_DIRTY))
               asm.branch(:eq, "rt_upload_done")
-              asm.clr(:w, at.call(ANY_DIRTY))
-              asm.lea(asm.abs_l(memory[DIRTY]), asm.a(1))
-              asm.moveq(0, asm.d(6)) # the tile looked at
-              asm.move(:w, asm.imm(TILES_A_BLANK), asm.d(4)) # how many more this blank can take
-
-              asm.label("rt_upload_find")
-              asm.cmp(:w, asm.imm(TILES), asm.d(6))
-              asm.branch(:cc, "rt_upload_done")
-              asm.move(:b, asm.d(6), asm.d(0))
-              asm.and(:b, asm.imm(3), asm.d(0))
-              asm.branch(:ne, "rt_upload_look")
-              asm.tst(:l, asm.ind(1))
-              asm.branch(:ne, "rt_upload_look")
-              asm.addq(:l, 4, asm.a(1))
-              asm.addq(:w, 4, asm.d(6))
-              asm.bra("rt_upload_find")
-              asm.label("rt_upload_look")
-              asm.tst(:b, asm.ind(1))
-              asm.branch(:ne, "rt_upload_run")
-              asm.addq(:l, 1, asm.a(1))
-              asm.addq(:w, 1, asm.d(6))
-              asm.bra("rt_upload_find")
-
-              asm.label("rt_upload_run")
-              asm.move(:w, asm.d(6), asm.d(3)) # the run's first tile
-              asm.moveq(0, asm.d(2)) # how many it has
-              asm.label("rt_upload_run_tile")
-              asm.clr(:b, asm.post(1))
-              asm.addq(:w, 1, asm.d(6))
-              asm.addq(:w, 1, asm.d(2))
-              asm.subq(:w, 1, asm.d(4))
-              asm.branch(:eq, "rt_upload_send")
-              asm.cmp(:w, asm.imm(TILES), asm.d(6))
-              asm.branch(:cc, "rt_upload_send")
-              asm.tst(:b, asm.ind(1))
-              asm.branch(:ne, "rt_upload_run_tile")
-              asm.label("rt_upload_send")
-              asm.jsr(asm.abs_l("rt_upload_dma"))
-              asm.tst(:w, asm.d(4))
-              asm.branch(:ne, "rt_upload_find")
+              asm.jsr(asm.abs_l("rt_upload_find")) # more changed than one blank takes: the next lot, found while the picture is drawn
+              asm.tst(:w, at.call(QUEUED))
+              asm.branch(:eq, "rt_upload_done")
               asm.jsr(asm.abs_l("rt_sleep_until_vblank"))
-              asm.move(:w, asm.imm(TILES_A_BLANK), asm.d(4))
-              asm.bra("rt_upload_find")
+              asm.bra("rt_upload_queue")
               asm.label("rt_upload_done")
               asm.rts
 
-              emit_upload_dma(asm, memory, samples: samples)
+              emit_upload_find(asm, memory, at)
+              emit_run_queued(asm, memory)
 
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_camera_written")) if camera
@@ -361,24 +350,99 @@ module VBlank
               asm.rts
             end
 
-            # rt_upload_dma: D2 tiles from tile D3 (counted from nought) of the copy into video RAM. The
-            # video chip is told how many words, where they are in work RAM (halved, since it counts in
-            # words), and then where they go, and that last write starts it (Picture#emit_dma_started,
-            # which stops the sound processor for it in a game that plays recordings, +samples+). The
-            # copy is all of it in work RAM, so a run never crosses one of the chip's 128K blocks.
-            def emit_upload_dma(asm, memory, samples: false)
+            # rt_upload_find: the next changed tiles found and queued, a run of neighbouring tiles at a
+            # time, their marks taken off: as many as one blank takes (TILES_A_BLANK tiles in
+            # RUNS_A_BLANK runs), from where the last lot stopped. ANY_DIRTY stays set while there are
+            # marks not yet looked at. Nothing is done while a queue waits to be copied. The marks are
+            # looked at four at a time, so a pass that changed nothing near most of the screen skips
+            # most of it in a few instructions.
+            #
+            # THE CHANGED TILES ARE FOUND BEFORE THE BLANK, AND ONLY COPIED IN IT. Looking through the
+            # marks of a whole screen takes the 68000 longer than a blank lasts, so a copy that waited
+            # for it began as the picture was already being drawn, where the video chip copies at a
+            # tenth of the speed: it was seen as half a picture, and it held the sound processor off
+            # the cartridge for most of a frame (Picture#emit_dma_started). The wait calls this as the
+            # pass ends, before it sleeps (rt_picture_prepare), and each run is queued as the very words
+            # the video chip is to be sent, so the blank has only to send them, as the console's own
+            # games queue theirs.
+            def emit_upload_find(asm, memory, at)
+              asm.label("rt_upload_find")
+              asm.tst(:w, at.call(QUEUED))
+              asm.branch(:ne, "rt_upload_found")
+              asm.tst(:w, at.call(ANY_DIRTY))
+              asm.branch(:eq, "rt_upload_found")
+              asm.lea(asm.abs_l(memory[QUEUE]), asm.a(2))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, at.call(FIND_FROM), asm.d(6)) # the tile looked at
+              asm.lea(asm.abs_l(memory[DIRTY]), asm.a(1))
+              asm.lea(asm.idx(1, 0, 6), asm.a(1))
+              asm.move(:w, asm.imm(TILES_A_BLANK), asm.d(4)) # how many more tiles this blank can take
+
+              asm.label("rt_upload_find_next")
+              asm.cmp(:w, asm.imm(TILES), asm.d(6))
+              asm.branch(:cc, "rt_upload_find_all")
+              asm.move(:b, asm.d(6), asm.d(0))
+              asm.and(:b, asm.imm(3), asm.d(0))
+              asm.branch(:ne, "rt_upload_look")
+              asm.tst(:l, asm.ind(1))
+              asm.branch(:ne, "rt_upload_look")
+              asm.addq(:l, 4, asm.a(1))
+              asm.addq(:w, 4, asm.d(6))
+              asm.bra("rt_upload_find_next")
+              asm.label("rt_upload_look")
+              asm.tst(:b, asm.ind(1))
+              asm.branch(:ne, "rt_upload_run")
+              asm.addq(:l, 1, asm.a(1))
+              asm.addq(:w, 1, asm.d(6))
+              asm.bra("rt_upload_find_next")
+
+              asm.label("rt_upload_run")
+              asm.move(:w, asm.d(6), asm.d(3)) # the run's first tile
+              asm.moveq(0, asm.d(2)) # how many it has
+              asm.label("rt_upload_run_tile")
+              asm.clr(:b, asm.post(1))
+              asm.addq(:w, 1, asm.d(6))
+              asm.addq(:w, 1, asm.d(2))
+              asm.subq(:w, 1, asm.d(4))
+              asm.branch(:eq, "rt_upload_run_found")
+              asm.cmp(:w, asm.imm(TILES), asm.d(6))
+              asm.branch(:cc, "rt_upload_run_found")
+              asm.tst(:b, asm.ind(1))
+              asm.branch(:ne, "rt_upload_run_tile")
+              asm.label("rt_upload_run_found")
+              asm.jsr(asm.abs_l("rt_upload_run_queued"))
+              asm.addq(:w, 1, at.call(QUEUED))
+              asm.tst(:w, asm.d(4))
+              asm.branch(:eq, "rt_upload_find_later")
+              asm.cmp(:w, asm.imm(RUNS_A_BLANK), at.call(QUEUED))
+              asm.branch(:cs, "rt_upload_find_next")
+              asm.label("rt_upload_find_later")
+              asm.move(:w, asm.d(6), at.call(FIND_FROM))
+              asm.rts
+              asm.label("rt_upload_find_all")
+              asm.clr(:w, at.call(ANY_DIRTY))
+              asm.clr(:w, at.call(FIND_FROM))
+              asm.label("rt_upload_found")
+              asm.rts
+            end
+
+            # rt_upload_run_queued: D2 tiles from tile D3 (counted from nought) of the copy, queued at A2
+            # as what the video chip is told to copy them into video RAM: how many words, where they
+            # are in work RAM (halved, since it counts in words), and then where they go, which is the
+            # command whose last word starts the copy (Picture#emit_dma_started). The copy is all of it
+            # in work RAM, so a run never crosses one of the chip's 128K blocks. A2 is left past it.
+            def emit_run_queued(asm, memory)
               h = Console::GenesisHardware
               register = ->(number) { h::VDP_REGISTER | (number << 8) }
-              asm.label("rt_upload_dma")
-              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(2))
+              asm.label("rt_upload_run_queued")
               asm.move(:w, asm.d(2), asm.d(0))
               asm.lsl(:w, 4, asm.d(0)) # sixteen words to a tile
               asm.move(:w, asm.imm(register.call(h::REG_DMA_LENGTH_LOW)), asm.d(1))
               asm.move(:b, asm.d(0), asm.d(1))
-              asm.move(:w, asm.d(1), asm.ind(2))
+              asm.move(:w, asm.d(1), asm.post(2))
               asm.lsr(:w, 8, asm.d(0))
               asm.or(:w, asm.imm(register.call(h::REG_DMA_LENGTH_HIGH)), asm.d(0))
-              asm.move(:w, asm.d(0), asm.ind(2))
+              asm.move(:w, asm.d(0), asm.post(2))
               asm.moveq(0, asm.d(5))
               asm.move(:w, asm.d(3), asm.d(5))
               asm.lsl(:l, 5, asm.d(5)) # the tile's place in the copy, and in video RAM past tile 0
@@ -388,12 +452,12 @@ module VBlank
               [h::REG_DMA_SOURCE_LOW, h::REG_DMA_SOURCE_MIDDLE].each do |number|
                 asm.move(:w, asm.imm(register.call(number)), asm.d(1))
                 asm.move(:b, asm.d(0), asm.d(1))
-                asm.move(:w, asm.d(1), asm.ind(2))
+                asm.move(:w, asm.d(1), asm.post(2))
                 asm.lsr(:l, 8, asm.d(0))
               end
               asm.and(:w, asm.imm(0x7F), asm.d(0))
               asm.or(:w, asm.imm(register.call(h::REG_DMA_SOURCE_HIGH)), asm.d(0))
-              asm.move(:w, asm.d(0), asm.ind(2))
+              asm.move(:w, asm.d(0), asm.post(2))
               asm.add(:l, asm.imm(FIRST_TILE_AT), asm.d(5))
               asm.move(:l, asm.d(5), asm.d(1))
               asm.and(:l, asm.imm(0x3FFF), asm.d(1))
@@ -402,11 +466,11 @@ module VBlank
               asm.lsr(:l, 6, asm.d(5))
               asm.or(:l, asm.d(5), asm.d(1))
               asm.or(:l, asm.imm(h::WRITE_VRAM | h::COMMAND_DMA), asm.d(1))
-              Picture.emit_dma_started(asm, asm.d(1), asm.ind(2), samples: samples)
+              asm.move(:l, asm.d(1), asm.post(2))
               asm.rts
             end
 
-            # Every mark taken off, for the copy the whole picture made.
+            # Every mark taken off, and nothing queued, for the copy the whole picture made.
             def emit_dirty_cleared(asm, memory, at)
               asm.lea(asm.abs_l(memory[DIRTY], TILES), asm.a(0))
               asm.moveq(0, asm.d(0))
@@ -415,6 +479,8 @@ module VBlank
               asm.move(:l, asm.d(0), asm.pre(0))
               asm.dbra(asm.d(1), "rt_upload_whole_clean")
               asm.clr(:w, at.call(ANY_DIRTY))
+              asm.clr(:w, at.call(QUEUED))
+              asm.clr(:w, at.call(FIND_FROM))
             end
 
             # rt_paint_clear(color): the whole screen one colour — or, where painting is held to an

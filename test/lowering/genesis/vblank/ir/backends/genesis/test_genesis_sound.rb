@@ -153,6 +153,14 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta RECORDED_HZ, heard, 2
   end
 
+  def test_a_recording_keeps_its_pitch_while_a_painted_screen_sends_tiles_every_pass
+    heard = pitch_while(:bitmap) do
+      game_loop { 16.times { |k| fill_rect 8 + (k * 16), 100, 8, 8, :red } }
+    end
+
+    assert_in_delta RECORDED_HZ, heard, 2
+  end
+
   private
 
   # CLIP at 13000 samples a second: fifteen up and fifteen down.
