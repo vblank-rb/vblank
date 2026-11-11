@@ -122,12 +122,13 @@ class TestNativeShell < Minitest::Test
   end
 
   # SETTINGS plays the menu again with the window's menu open. The script it plays with then closes
-  # that menu with its first line and chooses LOAD ROM; had the window's menu been shut, that line
-  # would open it, and the A after it would never reach the shell's menu.
+  # that menu with its first line and chooses LOAD ROM, one line up from SETTINGS, where the cursor
+  # was left; had the window's menu been shut, that line would open it, and the A after it would
+  # never reach the shell's menu.
   private def assert_settings_opens_the_window_menu(shell, dir)
     FileUtils.rm_rf(File.join(dir, "kept"))
     choose_settings = keys_file(dir, "settings-menu.keys", %w[0 0 128 0 1])
-    close_and_load = keys_file(dir, "settings-open.keys", ["0 hotkey:menu", "0", "0", "1"])
+    close_and_load = keys_file(dir, "settings-open.keys", ["0 hotkey:menu", "0", "64", "0", "1"])
     play(shell_exe(shell), dir, "settings", options: ["--pack-folder", File.join(dir, "kept"), "--shell-menu-keys", choose_settings,
                                                       "--shell-settings-keys", close_and_load, "--shell-copy", copy_at(dir)])
 

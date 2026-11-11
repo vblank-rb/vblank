@@ -97,6 +97,7 @@ module VBlank
                                                   wrong_check: text(rules.wrong_check) }),
               menu_part: text(menu_part), choice_variable: text(facts.menu.choice_variable),
               load_rom: Statements::Int.new(value: facts.menu.load_rom), settings: Statements::Int.new(value: facts.menu.settings),
+              line_variable: text(facts.menu.line_variable),
               bytes_list: text(facts.unpacking.bytes), finished_variable: text(facts.unpacking.finished),
               fault_kind_variable: text(facts.unpacking.fault_kind),
               kept_pack_refused_words: text(facts.words.kept_pack_refused),

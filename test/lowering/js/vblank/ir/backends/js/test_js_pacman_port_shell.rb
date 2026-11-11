@@ -15,7 +15,7 @@ class TestJSPacmanPortShell < Minitest::Test
   include PacmanShellTests
 
   JS = VBlank::IR::Backends::JS
-  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "settle"].freeze
+  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "play 12", "settle"].freeze
   # The unpacking plays in one browser frame, and the game starts after it.
   AFTER_CHOOSING = ["play 2", "settle"].freeze
 

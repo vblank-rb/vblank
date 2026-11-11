@@ -37,8 +37,13 @@ module VBlank
         def initialize(name:, sha1:, size:, read:, unpacking:, files: nil) = super
       end
 
-      # The variable the menu sets as it halts, and the number for each line chosen.
-      Menu = Data.define(:choice_variable, :load_rom, :settings)
+      # The variable the menu sets as it halts, and the number for each line chosen; and
+      # +line_variable+, the variable holding the line under the cursor, from 0, which the menu is
+      # handed back as its start file (#menu_start_file) the next time it plays.
+      Menu = Data.define(:choice_variable, :load_rom, :settings, :line_variable)
+
+      # The menu's start file for a cursor on +line+: that one byte.
+      def self.menu_start_file(line) = [line].pack("C")
 
       # The names in an unpacking a shell reads its answer from (Original::Unpacking): the list of
       # the pack's bytes, and the variables set when it gets to its end and when something went wrong.

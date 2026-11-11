@@ -62,6 +62,7 @@ typedef struct {
   const char *choice_variable; /* the menu's variable, and what each number in it means */
   int load_rom;
   int settings;
+  const char *line_variable; /* the menu's variable for the line under the cursor, handed back as its start file */
   const char *bytes_list; /* the unpacking's list of the pack's bytes, and its two variables */
   const char *finished_variable;
   const char *fault_kind_variable;

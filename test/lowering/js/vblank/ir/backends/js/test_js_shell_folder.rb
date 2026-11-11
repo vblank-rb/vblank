@@ -23,7 +23,7 @@ class TestJSShellFolder < Minitest::Test
   JS = VBlank::IR::Backends::JS
 
   # The menu's first line, LOAD ROM, chosen with A (the page's X key).
-  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "settle"].freeze
+  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "play 12", "settle"].freeze
 
   private def open_shell(folder, steps)
     path = File.join(folder, "shell.html")

@@ -24,8 +24,41 @@ class TestJSShell < Minitest::Test
   # How many frames of the game each test watches.
   GAME_FRAMES = 6
 
-  # The menu's first line chosen with A (the page's X key).
-  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "settle"].freeze
+  # The menu's first line chosen with A (the page's X key), and the frames it then shows as chosen
+  # before the menu ends.
+  CHOOSE_LOAD_ROM = ["settle", "play 3", "down KeyX", "play 3", "up KeyX", "play 12", "settle"].freeze
+
+  # The rows of the picture LOAD ROM and SETTINGS are drawn on, and the colours a line is drawn in:
+  # gray, white under the cursor, yellow once chosen (Original::Shell.menu_program).
+  WIDTH = 240
+  LOAD_ROM_ROWS = (80...88)
+  SETTINGS_ROWS = (92...100)
+  GRAY, WHITE, YELLOW = %i[gray white yellow].map { |name| VBlank::Graphics::Color.resolve(name) }
+
+  # The colours of the words on +rows+ of +picture+ (its pixels, a row at a time), black left out.
+  private def colors_on(picture, rows) = rows.flat_map { |row| picture[row * WIDTH, WIDTH] }.uniq - [0]
+
+  # The picture up as the picker opens has LOAD ROM shown as chosen, and stays up behind it.
+  def test_the_chosen_line_shows_as_chosen_as_the_picker_opens
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, [*CHOOSE_LOAD_ROM, "picker", "picture"])
+
+      assert_includes out, "picker 1"
+      assert_equal [YELLOW], colors_on(pictures_in(out).last, LOAD_ROM_ROWS)
+      assert_equal [GRAY], colors_on(pictures_in(out).last, SETTINGS_ROWS)
+    end
+  end
+
+  # A picker closed with no file shows the menu as it was, from its first frame: LOAD ROM under the
+  # cursor and no longer shown as chosen.
+  def test_closing_the_picker_shows_the_menu_on_the_same_line
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, [*CHOOSE_LOAD_ROM, "cancel-pick", "settle", "play 1", "picture"])
+
+      assert_equal [WHITE], colors_on(pictures_in(out).last, LOAD_ROM_ROWS)
+      assert_equal [GRAY], colors_on(pictures_in(out).last, SETTINGS_ROWS)
+    end
+  end
 
   # What the unpacking and the game after it show: the unpacking plays in one browser frame.
   private def unpack_and_play = ["play 2", "settle", "play #{GAME_FRAMES}", "picture"]
@@ -130,7 +163,7 @@ class TestJSShell < Minitest::Test
   # A picker closed with no file leaves the menu to be played again.
   def test_closing_the_picker_with_no_file_shows_the_menu_again
     Dir.mktmpdir do |folder|
-      out = open_shell(folder, [*CHOOSE_LOAD_ROM, "cancel-pick", "settle", "play 3", "down KeyX", "play 3", "up KeyX", "settle", "picker"])
+      out = open_shell(folder, [*CHOOSE_LOAD_ROM, "cancel-pick", *CHOOSE_LOAD_ROM, "picker"])
 
       assert_includes out, "picker 2"
     end

@@ -536,6 +536,13 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
   return ok;
 }
 
+/* A file of this program's own beside the pack, at +path+ (from SDL_asprintf, or NULL), removed and
+ * its name freed. */
+static void forget_file(char *path) {
+  if (path) SDL_RemovePath(path);
+  SDL_free(path);
+}
+
 char *rg_shell_pack_path(const rg_shell_asked *asked) {
   const rg_shell_description *shell = rg_shell_facts;
   char *folder = asked->pack_folder ? SDL_strdup(asked->pack_folder) : SDL_GetPrefPath("vblank", shell->folder);
@@ -554,18 +561,26 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
     SDL_free(result);
     return pack_path;
   }
-  /* SETTINGS plays the menu again with the window's menu open, where the settings are. */
+  /* SETTINGS plays the menu again with the window's menu open, where the settings are. The menu is
+   * handed the line its cursor starts on as its start file, one byte, and its answer says the line
+   * it was left on, so a menu played again comes back as it was left. */
   int settings_open = 0;
+  int32_t line = 0;
+  char *menu_start = NULL;
+  if (SDL_asprintf(&menu_start, "%s.menu", pack_path) < 0) menu_start = NULL;
   for (;;) {
     int32_t choice = 0;
     size_t answer_size = 0;
     const char *keys = settings_open && asked->settings_keys ? asked->settings_keys : asked->menu_keys;
-    int played = run_part(shell->menu_part, NULL, keys, result, 0, settings_open);
+    uint8_t start_line = (uint8_t)line;
+    int played = menu_start && SDL_SaveFile(menu_start, &start_line, 1) &&
+                 run_part(shell->menu_part, menu_start, keys, result, 0, settings_open);
     char *answer = played ? SDL_LoadFile(result, &answer_size) : NULL;
     if (!answer || !result_variable(answer, shell->choice_variable, &choice)) {
       SDL_free(answer);
       break; /* the player closed the menu */
     }
+    result_variable(answer, shell->line_variable, &line);
     SDL_free(answer);
     settings_open = choice == shell->settings;
     if (choice != shell->load_rom) continue;
@@ -577,11 +592,13 @@ char *rg_shell_pack_path(const rg_shell_asked *asked) {
     SDL_free(named);
     SDL_free(picked);
     if (made) {
+      forget_file(menu_start);
       SDL_free(result);
       return pack_path;
     }
     if (asked->copy) exit(2); /* a test names one copy; asking again would ask for it for ever */
   }
+  forget_file(menu_start);
   SDL_free(result);
   SDL_free(pack_path);
   return NULL;

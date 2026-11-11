@@ -24,6 +24,10 @@ module VBlank
       # A file a player picked that is not a copy the game reads, or one whose unpacking went wrong.
       class Refused < StandardError; end
 
+      # What the menu was left with: +choice+, :load_rom or :settings (nil for a number this shell
+      # does not know), and +line+, the line under the cursor, from 0.
+      MenuChoice = Data.define(:choice, :line)
+
       # +facts+ are the Original::ShellFacts every runtime is made from. +game+, +menu+ and each of
       # +unpackings+ (in the order of their numbers) are the programs as Ruby
       # (Backends::Ruby#live_source), each made a LiveGame afresh every time it plays.
@@ -60,8 +64,11 @@ module VBlank
       def play(device, folder_path:, choose_copy:, refused:, open_settings: -> {}, play_game: nil)
         play_game ||= ->(game) { Session.new(game: game).play(device) }
         pack = kept_pack(folder_path, refused)
+        line = 0
         until pack
-          case play_menu(device)
+          chosen = play_menu(device, line) or return nil
+          line = chosen.line
+          case chosen.choice
           when :load_rom then pack = load_copy(device, folder_path, choose_copy, refused)
           when :settings then open_settings.call
           else return nil
@@ -133,14 +140,17 @@ module VBlank
         nil
       end
 
-      # Which line the player chose on the menu, :load_rom or :settings, or nil when the device
-      # stopped it.
-      def play_menu(device)
-        menu = IR::Backends::Ruby::LiveGame.new(@menu)
+      # What the player chose on the menu, played with its cursor starting on +line+: a MenuChoice,
+      # or nil when the device stopped it. The menu's last picture, the line shown as chosen, stays
+      # on the device until the next thing is shown.
+      def play_menu(device, line)
+        menu = IR::Backends::Ruby::LiveGame.new(@menu).hand_file(Original::ShellFacts.menu_start_file(line))
         rate = Session.new(game: menu, keep_last_picture: false).play(device)
         return nil unless rate.stopped_itself?
 
-        { @facts.menu.load_rom => :load_rom, @facts.menu.settings => :settings }[menu.state.vars.fetch(@facts.menu.choice_variable)]
+        vars = menu.state.vars
+        choice = { @facts.menu.load_rom => :load_rom, @facts.menu.settings => :settings }[vars.fetch(@facts.menu.choice_variable)]
+        MenuChoice.new(choice: choice, line: vars.fetch(@facts.menu.line_variable))
       end
 
       # The pack made from the file +choose_copy+ picks and written to +folder_path+, or nil when

@@ -14,7 +14,8 @@ module VBlank
     #
     # - +game+, the game built with its pack left out (Builder::DataPacks), which reads the pack from
     #   the file it is handed as it starts (IR::StartFile);
-    # - +menu+, what shows while there is no pack: the game's title, LOAD ROM and SETTINGS (#menu_program);
+    # - +menu+, what shows while there is no pack: the game's title, LOAD ROM and SETTINGS (#menu_program),
+    #   handed the line its cursor starts on as its start file;
     # - +unpackings+, the game's unpacking routine built for each release the game reads, in the
     #   order of their numbers (ShellFacts::Release#unpacking), each showing a progress bar as it goes;
     # - +facts+ (ShellFacts), everything else a runtime is told: the releases a picked file must be
@@ -60,10 +61,26 @@ module VBlank
         Part.new(role: :unpacking, number: number, program: unpacking.program, window_menu: false)
       end
 
-      # The variable the menu sets as it halts, and what each number means.
+      # The variable the menu sets as it halts, and what each number means. A line a game adds one
+      # day takes a number after these two, which never change.
       MENU_CHOICE = :shell_choice
       LOAD_ROM = 1
       SETTINGS = 2
+
+      # The variable holding the line under the cursor, from 0, which a runtime reads as the menu
+      # halts and hands back as the menu's start file when it plays the menu again.
+      MENU_LINE = :shell_line
+
+      # The menu's start file: one byte, the line the cursor starts on.
+      MENU_START = :shell_start
+      MENU_START_TITLE = "menu line"
+
+      # The menu's routine that draws its picture.
+      MENU_PICTURE = :shell_menu_picture
+
+      # How many frames the chosen line shows as chosen before the menu halts: long enough to see,
+      # short enough that the file chooser seems to open at once.
+      CHOSEN_FRAMES = 8
 
       # The shell of +game+ (a Cartridge::Game), built for +console+: the game with its pack left out
       # and the rest as the top of this class has it. Built with every copy of every original hidden
@@ -99,7 +116,8 @@ module VBlank
           release_words: releases.words,
           pack_before_sha1: header.byteslice(0, Pack::SHA1_AT).b, pack_after_sha1: header.byteslice(Pack::BUILD_VERSION_AT..).b,
           pack_rules: program.start_file.rules,
-          menu: ShellFacts::Menu.new(choice_variable: MENU_CHOICE.to_s, load_rom: LOAD_ROM, settings: SETTINGS),
+          menu: ShellFacts::Menu.new(choice_variable: MENU_CHOICE.to_s, load_rom: LOAD_ROM, settings: SETTINGS,
+                                     line_variable: MENU_LINE.to_s),
           unpacking: ShellFacts::UnpackingNames.new(bytes: Unpacking::BYTES.to_s, finished: Unpacking::FINISHED.to_s,
                                                     fault_kind: Unpacking::FAULT_KIND.to_s),
           words: ShellFacts.words_for(title.to_s)
@@ -121,33 +139,61 @@ module VBlank
       # Letters the menu's font has; anything else in a title is left out of the menu.
       MENU_LETTERS = %r{[^A-Z0-9 !.:%,'?/-]}
 
+      # The menu's lines, top to bottom. The line at place n sets MENU_CHOICE to n + 1.
+      MENU_LINES = ["LOAD ROM", "SETTINGS"].freeze
+
       # THE MENU, a small game of the library's own built for the console +game+ (the game's
       # program) is built for: the title, a line naming what the game needs, and two lines picked with
-      # up and down and chosen with A or Start. Choosing one sets MENU_CHOICE and halts, and the
-      # runtime does what was chosen. Game code, so each runtime plays it as it plays any game.
+      # up and down and chosen with A or Start. Game code, so each runtime plays it as it plays any game.
+      #
+      # THE LINE CHOSEN SHOWS AS CHOSEN, in yellow, for CHOSEN_FRAMES frames in which no button
+      # does anything. Then the menu sets MENU_CHOICE and halts, and the runtime does what was
+      # chosen with that picture still up, so a file chooser opens over a menu that shows what
+      # the player did.
+      #
+      # THE CURSOR STARTS WHERE THE RUNTIME PUTS IT. The menu ends each time a line is chosen, and
+      # plays again from its start when a chooser is closed with nothing picked, a file is refused or
+      # the settings are shut. So the line under the cursor (MENU_LINE) is read as it halts and
+      # handed back as its start file, one byte, and the menu comes back as it was left. A game
+      # is handed its data pack the same way (IR::StartFile), so every runtime has the means already.
       def self.menu_program(title, game)
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
         named = title.to_s.upcase.gsub(MENU_LETTERS, "").strip
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: options)
+          maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: 1, checks: [])
           maker.instance_eval do
             screen :bitmap
-            line = var :shell_line, 0
+            start = table MENU_START, DSL::StartFileEntries.new(at: 0, count: 1), width: :byte, signed: false
+            line = var MENU_LINE, 0
             choice = var MENU_CHOICE, 0
+            chosen_for = var :shell_chosen_for, 0 # frames the chosen line has shown as chosen; 0 while none is
             middle = screen_height / 2
-            game_loop do
+            line.store!(start[0].clamp(0, MENU_LINES.length - 1))
+            func(MENU_PICTURE) do
               clear_screen :black
               draw_text named, :center, middle - 40, :white unless named.empty?
               draw_text "LOAD YOUR COPY OF THE GAME", :center, middle - 24, :gray
-              draw_text "LOAD ROM", :center, middle, %i[gray white], showing: line == 0
-              draw_text "SETTINGS", :center, middle + 12, %i[gray white], showing: line == 1
-              pressed(:down).record_branch { line.store!(1 - line) }
-              pressed(:up).record_branch { line.store!(1 - line) }
-              %i[a start].each do |button|
-                pressed(button).record_branch do
+              MENU_LINES.each_with_index do |words, place|
+                draw_text words, :center, middle + (12 * place), %i[gray white], showing: line == place
+                ((chosen_for > 0) & (line == place)).record_branch { draw_text words, :center, middle + (12 * place), :yellow }
+              end
+            end
+            # Drawn before the loop's first wait too, so the menu's first picture is the menu and a
+            # menu played again shows no empty frame between its last picture and its first.
+            call MENU_PICTURE
+            game_loop do
+              call MENU_PICTURE
+              (chosen_for > 0).record_branch do
+                chosen_for.store!(chosen_for + 1)
+                (chosen_for > CHOSEN_FRAMES).record_branch do
                   choice.store!(line + 1)
                   halt
                 end
+              end.else do
+                pressed(:down).record_branch { line.store!(1 - line) }
+                pressed(:up).record_branch { line.store!(1 - line) }
+                %i[a start].each { |button| pressed(button).record_branch { chosen_for.store!(1) } }
               end
             end
             finalize_program
