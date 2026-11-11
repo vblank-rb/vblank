@@ -28,7 +28,11 @@ class TestPS1PlaceFloorPace < Minitest::Test
   # The most frames a pass takes in each perspective. Without perspective it is the floor of the place
   # cost tests (test/lowering/gba/vblank/ir/test_place_geometry_cost.rb). In perspective every face
   # costs a divide's worth more at each corner, and the near faces are cut into squares.
-  MOST_FRAMES = { none: 4, every_8_pixels: 5 }.freeze
+  #
+  # In perspective the processor is at work for nearly all of its four frames, so a change that costs
+  # the floor a few thousand cycles a pass takes it to five: the profile's lines for the runtime and
+  # for the face statements say where they went.
+  MOST_FRAMES = { none: 3, every_8_pixels: 4 }.freeze
 
   GAMES = MOST_FRAMES.keys.to_h { |perspective| [perspective, floor_game(perspective)] }
 
