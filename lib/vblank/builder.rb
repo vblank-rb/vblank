@@ -1871,6 +1871,12 @@ module VBlank
 
     # --- IR tree construction ---
 
+    # Note that the game wrote +verb+, for a verb that is written in other verbs and leaves no step
+    # of its own (IR::Nodes::Program#verbs_written). Called by the verb itself, first thing.
+    def note_verb_written(verb)
+      @program.verbs_written = (@program.verbs_written || []) | [verb]
+    end
+
     # Attach a freshly built IR node to the open container and return it — the route
     # every flat DSL verb takes, so it's also where an open `layer` block gets its say
     # about what was just written.

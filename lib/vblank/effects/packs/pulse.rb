@@ -45,6 +45,7 @@ module VBlank
         # @param from [Numeric] the size at the bottom of it
         # @param over [Numeric] seconds for one full grow and shrink
         def pulse(sprite, to:, from: RESTING, over: DEFAULT_SECONDS)
+          note_verb_written(:pulse)
           half = pulse_half_cycle(over)
           pulse_sizes!(from, to)
           sprite.scale(from) # start where the rhythm starts, so the first frame is right

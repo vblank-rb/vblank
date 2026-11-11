@@ -19,7 +19,38 @@ module VBlank
       # console has the part asked for, or nil where the verb's own answer decides.
       Question = Data.define(:verb, :words, :can)
 
+      # A VERB WRITTEN IN OTHER VERBS leaves no step of its own: a `pulse` is a sprite's size walked
+      # every frame, an iris is the game's light closing. The steps alone would have a console
+      # answer for the verb underneath, in words about a sprite that resizes or a light, which is
+      # not what the author wrote. So the program notes that the verb was written
+      # (IR::Nodes::Program#verbs_written), and the question is asked of that verb's own answer.
+      #
+      # For each: what the game asks for in words, and the verb its steps are made of, whose
+      # questions a refusal of this one stands in for (Answers#refusals).
+      WrittenVerb = Data.define(:words, :made_of)
+      WRITTEN_VERBS = Ractor.make_shareable({
+        pulse: WrittenVerb.new("This game makes a sprite grow and shrink (`pulse`)", :sprite),
+        iris_out: WrittenVerb.new("This game closes a circle on the screen (`iris_out`)", :spotlight),
+        iris_in: WrittenVerb.new("This game opens a circle on the screen (`iris_in`)", :spotlight),
+        iris_shut?: WrittenVerb.new("This game asks whether the circle has closed (`iris_shut?`)", :spotlight),
+        pixelate_out: WrittenVerb.new("This game breaks the picture into blocks over time (`pixelate_out`)", :pixelate),
+        pixelate_in: WrittenVerb.new("This game brings the picture back from blocks over time (`pixelate_in`)", :pixelate),
+        instrument: WrittenVerb.new("This game has an instrument (`instrument`)", :sample)
+      })
+
       module_function
+
+      # The Question each verb +program+ (the program's own step) notes as written asks: of that
+      # verb's own answer, which decides.
+      def verb_questions(program)
+        (program.verbs_written || []).filter_map do |verb|
+          written = WRITTEN_VERBS[verb] or next
+          Question.new(verb, written.words, nil)
+        end
+      end
+
+      # The verb whose steps +verb+ is made of, or nil for a verb with steps of its own.
+      def made_of(verb) = WRITTEN_VERBS[verb]&.made_of
 
       # The Question +node+ asks of +console+ (a Console::Description), or nil for a line that asks
       # for nothing a console could lack.

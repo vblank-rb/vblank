@@ -65,6 +65,7 @@ module VBlank
         # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
         # @param under [Symbol, nil] a layer left as drawn with everything in front of it
         def pixelate_out(frames: nil, duration: nil, under: nil)
+          note_verb_written(:pixelate_out)
           start_pixelate_walk(FULL, frames, duration, under: under)
         end
 
@@ -76,6 +77,7 @@ module VBlank
         # @param frames [Integer, nil] how long it takes, in frames
         # @param duration [Numeric, nil] how long it takes, in seconds
         def pixelate_in(frames: nil, duration: nil)
+          note_verb_written(:pixelate_in)
           start_pixelate_walk(0.0, frames, duration, default: nil)
         end
 

@@ -55,16 +55,44 @@ module VBlank
       # A line a console cannot do, and the words it is refused in.
       Refusal = Data.define(:node, :words)
 
+      # An answer that only points at another verb's: "see `pixelate`."
+      SEE_ANOTHER = /\Asee `([a-z_]+\??)`\.\z/
+
+      # The words +verb+ is answered in. An answer that only points at another verb's (SEE_ANOTHER)
+      # is that verb's words, so a refusal says why and never "see" something the author cannot
+      # look up from a build's output.
+      def words_of(verb)
+        words = answer(verb).words
+        pointed = words[SEE_ANOTHER, 1]
+        pointed && answer(pointed) ? words_of(pointed) : words
+      end
+
       # EVERY LINE OF +nodes+ (a program's steps) THAT +console+ CANNOT DO, as Refusals in this
       # table's words, in the program's order. Empty for a program the console plays.
+      #
+      # A verb the game wrote that is made of another verb's steps (Questions::WRITTEN_VERBS) is
+      # refused first, in its own answer's words, and the lines of the verb underneath are then
+      # passed over: they would say the same thing again in words about something the author did
+      # not write.
       def refusals(nodes, console)
-        nodes.filter_map do |node|
+        nodes = nodes.to_a
+        written = nodes.select { |node| node.kind == :program }.flat_map do |program|
+          Questions.verb_questions(program).reject { |question| answer(question.verb).works? }
+                   .map { |question| [question.verb, Refusal.new(program, refusal_words(question, console))] }
+        end
+        stood_in_for = written.filter_map { |verb, _| Questions.made_of(verb) }
+        written.map(&:last) + nodes.filter_map do |node|
           question = Questions.question_for(node, console) or next
           verdict = answer(question.verb)
           next if question.can.nil? ? verdict.works? : question.can
+          next if stood_in_for.include?(question.verb)
 
-          Refusal.new(node, "#{question.words}, and a #{console.title} cannot: #{verdict.words}")
+          Refusal.new(node, refusal_words(question, console))
         end
+      end
+
+      def refusal_words(question, console)
+        "#{question.words}, and a #{console.title} cannot: #{words_of(question.verb)}"
       end
 
       # The reference's line for the answer to each verb in +verbs+, in the order ANSWERS gives them.

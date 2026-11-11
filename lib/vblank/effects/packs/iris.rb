@@ -68,6 +68,7 @@ module VBlank
         # @param from [Integer, DSL::Value, nil] the size the circle starts at, in pixels
         # @param by [Integer, DSL::Value, nil] how many pixels it shrinks each frame (instead of frames)
         def iris_out(at: nil, frames: nil, duration: nil, from: nil, by: nil)
+          note_verb_written(:iris_out)
           refuse_walk_in_pixels_and_frames!(by, frames, duration)
           light = spotlight
           state = iris_state(light)
@@ -117,6 +118,7 @@ module VBlank
         # @param by [Integer, DSL::Value, nil] how many pixels it grows each frame (instead of frames)
         # @param to [Integer, DSL::Value, nil] the size it opens to before it lets the light go
         def iris_in(frames: nil, duration: nil, radius: nil, dark: nil, by: nil, to: nil)
+          note_verb_written(:iris_in)
           refuse_walk_in_pixels_and_frames!(by, frames, duration)
           light = spotlight
           state = iris_state(light)
@@ -157,6 +159,7 @@ module VBlank
         #
         #   if iris_shut? then room.show_map next_room; iris_in end
         def iris_shut?
+          note_verb_written(:iris_shut?)
           iris_state(spotlight)[:shut] == 1
         end
 

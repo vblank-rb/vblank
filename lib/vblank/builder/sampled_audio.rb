@@ -63,6 +63,7 @@ module VBlank
       #
       # @return [Instrument]
       def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil)
+        note_verb_written(:instrument)
         DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note,
                                           envelope: envelope, holds_from: holds_from))
       end

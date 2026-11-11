@@ -9,9 +9,10 @@ module VBlank
     #
     # Measuring, quick memory and the ROM validation are the Advance's and are not asked for, and a
     # build that sets one of the Advance's settings is refused before it gets here
-    # (Cartridge::AdvanceBuild::SETTINGS). A routine asked to be listed (`dump_func`) is listed by
-    # the lister the kit names (Console::Kit#routine_lister), and refused in the words of the
-    # console's own answers where it names none.
+    # (Cartridge::AdvanceBuild::SETTINGS). A routine asked to be listed (`dump_func`) is refused
+    # where the console's answers refuse it, in their words, and listed otherwise by the lister the
+    # kit names (Console::Kit#routine_lister). A request to list is the build's and not a step of
+    # the program, so it is asked here and not with the program's lines (Console::Answers#refusals).
     LoweredBuild = Data.define(:kit) do
       # These consoles have no setting of their own: what they are built with every console has.
       def console_settings = []
@@ -21,9 +22,9 @@ module VBlank
       # what it decided joins the findings, so it is printed with the rest.
       def build(request)
         dumps = request.evaluated.dump_requests
-        unless dumps.empty? || kit.routine_lister
+        if !dumps.empty? && kit.answers.answer(:dump_func).refused?
           raise ROMError, "This game lists a routine's code (`dump_func #{dumps.first.inspect}`), and a " \
-                          "#{kit.title} cannot: #{kit.answers.answer(:dump_func).words} Take out " \
+                          "#{kit.title} cannot: #{kit.answers.words_of(:dump_func)} Take out " \
                           "`dump_func`, or build for the Game Boy Advance alone to see it."
         end
 

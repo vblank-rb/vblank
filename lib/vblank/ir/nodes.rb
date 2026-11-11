@@ -1316,13 +1316,20 @@ module VBlank
       # as (`screen :bitmap, pixel_size: 2`), or nil for one. It is the whole game's, so it is the
       # program's: the game is laid out and played on a screen that many times smaller
       # (#described_console), and each console's build shows that picture bigger.
+      #
+      # +verbs_written+ is the names of the verbs the game wrote that are written in other verbs
+      # and leave no step of their own: a `pulse` is a sprite's size walked every frame, an iris a
+      # light's. The steps say what the program does, which is all a backend needs, but not which
+      # verb the author wrote. A console that cannot do one says so in that verb's words
+      # (Console::Questions.verb_questions), where the steps alone would have it answer for the verb
+      # underneath. Absent for a game that wrote none; no backend reads it to run the game.
       class Program
         include Node
         kind :program
         category :root
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
-                 players: :list,
+                 players: :list, verbs_written: :list,
                  for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
                  start_file: :start_file
 
