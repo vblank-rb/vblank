@@ -812,6 +812,14 @@ module VBlank
       @inline_color_nodes << node if node
     end
 
+    # Undo {#defer_recolor_write}: +name+ has no colours of its own to write between frames. A
+    # {Background} calls this once it is known to follow several lists the game changes, whose
+    # own writes change its tiles (DSL::Background#follow_changing_lists!).
+    def forget_recolor_write(name)
+      declared_background(name).shown_colors = nil
+      declared_background(name).live_colors = nil
+    end
+
     # The affine counterpart to {#defer_scroll_write}: remember that +name+ turns or
     # resizes, so its matrix is written once a frame in the gap between frames rather
     # than wherever the game happened to change its angle or size. Called once, as soon

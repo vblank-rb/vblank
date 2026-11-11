@@ -90,10 +90,33 @@ module VBlank
         # counts them, and its colours are what the list holds: a target whose backgrounds and
         # sprites read one table of colours can draw it from the list's own place in that table.
         # Absent on every other background.
+        #
+        # +follows_each+, on a background drawn with SEVERAL lists the game changes, names for each
+        # of +palettes+, at the same place, the ColorList its tiles show the colours of, nil where
+        # they stay as drawn. Such a background has no +recolors+ and no number of its own: a tile
+        # drawn from a followed list shows what that list holds now, each list counted by its own
+        # number, and changes when the list is told what to hold (ColorListHolds), as a sprite
+        # drawn with it does. Sets of every pair of lists would multiply with each list added, so
+        # none are kept. Absent on every other background.
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, boxed: :name, follows: :name, from_file: :file_background
+                 above_row: :int, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+
+        # Whether it follows several lists the game changes (see +follows_each+).
+        def follows_several? = !follows_each.nil? && !follows_each.empty?
+
+        # The lists it follows where it follows several, each once.
+        def lists_followed = follows_several? ? follows_each.compact : []
+
+        # The list a tile drawn from +drawn+ (its name and colours) follows, where the background
+        # follows several, or nil for a tile that stays as drawn.
+        def list_followed_by(drawn)
+          return nil unless follows_several?
+
+          at = drawn_lists.index(recolored_list_of(drawn))
+          at && follows_each[at]
+        end
 
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
         # background's map, tiles and colours are (a StartFile::Background), or absent for one the
@@ -120,8 +143,18 @@ module VBlank
 
         # Each list a tile can be drawn from to the list it is drawn with at step +step+ of
         # +recolors+, a tile given the colours themselves included (#recolored_list_of).
-        def list_swaps(step)
-          swaps = drawn_lists.zip(recolors.fetch(step)).to_h
+        def list_swaps(step) = swaps_drawing_with(recolors.fetch(step))
+
+        # The same for a background that follows several lists (+follows_each+): each list a tile
+        # can be drawn from to what the list it follows holds now, +held+ giving that by the
+        # followed list's name, and to its own colours where it follows none.
+        def followed_list_swaps(held)
+          swaps_drawing_with(follows_each.each_with_index.map { |list, at| list ? held.fetch(list) : palettes.fetch(at) })
+        end
+
+        # Each list a tile can be drawn from to the one of +lists+ at its place in #drawn_lists.
+        def swaps_drawing_with(lists)
+          swaps = drawn_lists.zip(lists).to_h
           drawn_lists.each { |_, colors| swaps[[nil, colors]] ||= swaps[recolored_list_of([nil, colors])] }
           swaps
         end

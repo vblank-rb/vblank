@@ -667,6 +667,9 @@ module VBlank
               # and by name so scroll_background can re-window that one.
               @bg_nodes << n
               @bg_by_name[n.name] = n
+              # One that follows several lists the game changes looks different whenever one of
+              # them is told what to hold, so it is rebuilt from the map as a recoloured one is.
+              @repaints = true if n.follows_several?
             when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
@@ -2318,6 +2321,8 @@ module VBlank
         # for the ones they were drawn in, which is also what a number naming no step means, so
         # a counter that has run off the end looks right.
         def background_swap(bg)
+          return followed_background_swap(bg) if bg.follows_several?
+
           lists = bg.recolors
           return nil if lists.empty?
 
@@ -2328,6 +2333,15 @@ module VBlank
           # name with lists of their own, and the number the game tells the name picks out of
           # whichever is painted.
           @bg_swaps[[bg.name, bg.scene, which]] ||= bg.list_swaps(which)
+        end
+
+        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each): each
+        # of its own lists to what the list it follows holds now, each list by its own number.
+        # Kept by those numbers, so a screen walking its lists makes each picture's swap once.
+        def followed_background_swap(bg)
+          numbers = bg.lists_followed.map { |list| @held_colors.fetch(list, Build::NO_RECOLOR) }
+          @bg_swaps[[bg.name, bg.scene, numbers]] ||=
+            bg.followed_list_swaps(bg.lists_followed.to_h { |list| [list, colors_held_by(list)] })
         end
 
         # Draw this background's tiles from the list of colours numbered +which+ from now on
@@ -3082,9 +3096,11 @@ module VBlank
         # A list of colours holds the set numbered +which+ from now on. Nothing is painted
         # here: everything drawn with the list reads it as it is next drawn. The backdrop is the
         # exception, being no drawing: one that follows the list (ColorList#backdrop_place) is
-        # given the colour at its place now.
+        # given the colour at its place now. A background that follows the list beside others
+        # (Background#follows_each) is scenery, built again only when asked, so it is asked.
         def exec_color_list_holds(node)
           @held_colors[node.name] = eval_value(node.which)
+          request_repaint if @bg_nodes.any? { |bg| bg.lists_followed.include?(node.name) }
           place = @color_lists.fetch(node.name).backdrop_place
           show_backdrop(colors_held_by(node.name).fetch(place) & 0x7FFF) if place
         end

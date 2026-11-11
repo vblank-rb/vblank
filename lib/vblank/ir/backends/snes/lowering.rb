@@ -345,6 +345,7 @@ module VBlank
           def refuse_unlowered_kinds!
             @plan.refuse_hardware_only_kinds!
             @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
+            @plan.refuse_unmade_followed_lists!(NotMadeYet)
           end
 
           # What a Super Nintendo cannot do at all, as a game's build refuses it

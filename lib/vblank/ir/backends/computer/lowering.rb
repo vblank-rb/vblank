@@ -274,6 +274,12 @@ module VBlank
           # here. A global is a field of one number, "game." and its name; a list is "list." and the
           # game's name for it. Then each patch of picture the game keeps under a sprite, "patch." and
           # its name, which the runtime keeps but only the build knows the size of.
+          #
+          # Last, the tiles of each background that follows several lists the game changes are copied
+          # again from what each list holds (Picture#followed_tile_copies_again): the image holds the
+          # number each list holds and not the tiles copied for it, and a picture owed as the state
+          # was written is built from the tiles before the game runs another statement. Writing a
+          # state, the tiles are as they should be already and nothing is copied.
           def visit_state(items)
             fields = items.flat_map do |item|
               case item
@@ -284,10 +290,11 @@ module VBlank
               else []
               end
             end
-            fields + @patches.map do |name, buffer|
+            patches = @patches.map do |name, buffer|
               eval_call("rg_patch_visit_state", Statements::Text.new("patch.#{name}"), Statements::Int.new(@patch_numbers.fetch(name)),
                         Statements::Int.new(buffer.width), Statements::Int.new(buffer.height))
             end
+            fields + patches + followed_tile_copies_again
           end
 
           def top_level_items

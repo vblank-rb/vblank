@@ -71,7 +71,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds 256 places on a PlayStation, the first see-through.
-- `recolor` — works: the same as on the Advance.
+- `recolor` — works: a background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.

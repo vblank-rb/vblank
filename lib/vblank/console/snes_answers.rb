@@ -110,7 +110,8 @@ module VBlank
                       "memory with a copy of their pictures for each list they wear with `draw_with`, the " \
                       "build keeps one set of pictures for all those lists."),
         recolor: works("a list told to hold other colours keeps a palette to itself, so a game can change " \
-                       "eight lists of backgrounds on each screen and eight of sprites."),
+                       "eight lists of backgrounds on each screen and eight of sprites. A background that draws " \
+                       "with more than one list the game changes is not made yet: the build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,

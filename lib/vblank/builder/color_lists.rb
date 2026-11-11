@@ -211,11 +211,24 @@ module VBlank
       #
       # A background with tiles drawn from a changing list that was never told to draw with it
       # would show the list's power-on colours whatever it holds, so it is refused, naming the list.
+      #
+      # A BACKGROUND DRAWN WITH SEVERAL CHANGING LISTS is told all of them at once and keeps no sets:
+      # each list's own write changes its tiles (DSL::Background#follow_changing_lists!).
       def link_backgrounds_to_changing_lists
-        @changing_color_lists.each do |name, list|
-          following = @lists_backgrounds_draw_with.fetch(name, [])
+        followers = @changing_color_lists.keys.to_h { |name| [name, @lists_backgrounds_draw_with.fetch(name, [])] }
+        followers.each do |name, following|
           (@background_handles - following).each { |background| background.refuse_unfollowed_changing_list!(name) }
-          following.each do |background|
+        end
+        followed = followers.each_with_object({}) do |(name, following), lists|
+          following.each { |background| (lists[background] ||= []) << name }
+        end
+        followed.each { |background, lists| background.follow_changing_lists!(lists) if lists.length > 1 }
+
+        @changing_color_lists.each do |name, list|
+          followers.fetch(name).each do |background|
+            next if followed.fetch(background).length > 1
+
+
             background.follow_changing_list!(name, list.recolors.names_by_number, list.shown)
             next unless @frame_boundaries.empty?
 

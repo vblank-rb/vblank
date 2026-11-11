@@ -575,7 +575,11 @@ module VBlank
               @cells_made[[bg.object_id, tile]] ||= begin
                 image = @cache.image(picture_named(bg.tiles.fetch(tile)))
                 @art.with_tiles_of(tiles_scene_of(bg)) do
-                  bg.recolors.empty? ? @art.background_cell(image) : @art.background_cell(image, palette: recolored_palette(bg, image))
+                  if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+                    @art.background_cell(image)
+                  else
+                    @art.background_cell(image, palette: recolored_palette(bg, image))
+                  end
                 end
               end
             end
@@ -590,6 +594,11 @@ module VBlank
             # sprites together, four palettes of sixteen, so a title whose picture and sprites step through any
             # number of sets of colours costs one palette, written over in the blank, and leaves three for the rest.
             #
+            # A BACKGROUND THAT FOLLOWS SEVERAL SUCH LISTS (Background#follows_each) is the same thing for each of
+            # them: its tiles of each list are drawn from that list's palette, and each list's own write changes
+            # them. So a screen whose palettes all walk to black fades whole, as a Genesis game's does, and the
+            # background has no table of sets and no write of its own.
+            #
             # A LIST THAT HOLDS THE SAME COLOURS WHATEVER THE GAME SETS needs no writing over: a background told
             # `draw_with :machine` and drawn in :machine's own colours shows those colours at every step. So its
             # palette is the list's in the list's order (Art#ordered_palette), which a sprite drawn with the
@@ -600,10 +609,10 @@ module VBlank
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
               colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
-              followed = index == bg.followed_list_index
+              followed = bg.follows_several? ? bg.follows_each.fetch(index) : (bg.follows if index == bg.followed_list_index)
               return @art.ordered_palette(colors) if !followed && unchanging_colors?(bg, index, colors)
 
-              key = followed ? [:sprites, bg.follows] : [:background, bg.object_id, index]
+              key = followed ? [:sprites, followed] : [:background, bg.object_id, index]
               @art.reserve_held_palette(key, colors)
             end
 

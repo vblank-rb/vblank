@@ -480,6 +480,26 @@ def rg_background_draw_with(background, which)
   rg_request_repaint
 end
 
+# rg_tiled.c's rg_background_follow: the tiles a background draws from one of several lists it
+# follows are copied from set number +set+ of its tiles over the ones the picture is drawn from.
+def rg_background_follow(rules, set)
+  background = rules[1]
+  tile_size = rg_background_field(background, RG_BG_TILE_W) * rg_background_field(background, RG_BG_TILE_H)
+  start = rg_background_field(background, RG_BG_TILES_START)
+  set_size = rg_background_field(background, RG_BG_TILES) * tile_size
+  changed = false
+  rules[2].times do |i|
+    to = start + (rules[3 + i] * tile_size)
+    wanted = @rg_game_tile_pixels[to + (set * set_size), tile_size]
+    next if @rg_game_tile_pixels[to, tile_size] == wanted
+
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    @rg_game_tile_pixels[to, tile_size] = wanted
+    changed = true
+  end
+  rg_request_repaint if changed
+end
+
 # Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
 # which is on the screen, mixed and faded as whatever is in force sets.
 def rg_lay_scenery(px, py, color)

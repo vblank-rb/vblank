@@ -595,7 +595,77 @@ module VBlank
           # Reference#background_swap, for every step a background can be told: each of the lists
           # its tiles were drawn from, to the list that step draws it with instead, or to nil
           # where that list stays as drawn.
-          def color_swaps(bg) = Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
+          def color_swaps(bg)
+            return followed_color_swaps(bg) if bg.follows_several?
+
+            Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
+          end
+
+          # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each) has its
+          # tiles written again for every set each of those lists can hold, list after list, the set
+          # a list was declared with first, and every other list as declared in each. No set is a
+          # pair of two lists' sets, which would be one list's sets times the other's. The picture is
+          # drawn from the tiles as declared, and when a list is told what to hold, the tiles drawn
+          # from it alone are copied over those from the set it names (#followed_tile_copies).
+          def followed_color_swaps(bg)
+            (@followed_color_swaps ||= {})[bg.object_id] ||= begin
+              declared = bg.lists_followed.to_h { |list| [list, sets_held_by(list).first] }
+              bg.lists_followed.flat_map do |list|
+                sets_held_by(list).map { |set| bg.followed_list_swaps(declared.merge(list => set)) }
+              end
+            end
+          end
+
+          # Reference#followed_background_swap, for the list +name+: on each background that follows
+          # it beside other lists, the tiles drawn from it are copied from the set it holds now.
+          # The rules rg_background_follow reads are how many tile pixels the game has, the
+          # background's entry, how many of its tiles are drawn from the list, and those tiles.
+          #
+          # Written where the list is told what to hold, and again where a state is read
+          # (Lowering#visit_state).
+          def followed_tile_copies(name)
+            (@lists_copied_to_followers ||= []) << name
+            @stacking.scenery.select { |bg| bg.lists_followed.include?(name) }.filter_map do |bg|
+              rules = followed_tile_rules(bg, name) or next
+              first = 1 + bg.lists_followed.take_while { |list| list != name }.sum { |list| sets_held_by(list).length }
+              held = call("rg_place_of_choice", held_colors(name), Statements::Int.new(sets_held_by(name).length - 1))
+              eval_call("rg_background_follow", rules, call("rg_add", Statements::Int.new(first), held))
+            end
+          end
+
+          # The copies of every list a statement of the game tells what to hold, made again: their
+          # rules are written already, so this adds no array after the arrays are written out.
+          def followed_tile_copies_again = (@lists_copied_to_followers || []).uniq.flat_map { |name| followed_tile_copies(name) }
+
+          # The rules for one background and one list it follows, made once, or nil where none of
+          # its tiles is drawn from the list.
+          def followed_tile_rules(bg, name)
+            (@followed_tile_rules ||= {})[[bg.object_id, name]] ||= begin
+              refuse_followed_lists_from_file!(bg)
+              tiles = bg.tiles.each_index.select { |at| bg.list_followed_by(tile_image(bg.tiles[at]).list_drawn_from) == name }
+              tiles.empty? ? :none : drawing_array("followed_tiles", "int32_t", [tile_pixel_total, entry_of(bg), tiles.length, *tiles])
+            end
+            @followed_tile_rules[[bg.object_id, name]].then { |rules| rules == :none ? nil : rules }
+          end
+
+          # Which tile each cell of a background read from the start file shows is known only once
+          # the file is read, so which tiles are drawn from which list is not known here.
+          def refuse_followed_lists_from_file!(bg)
+            return unless bg.from_file
+
+            raise LoweringError, "The background #{bg.name.inspect} is read from the data pack as the game starts, and it " \
+                                 "draws with more than one list of colors that the game changes with `recolor`. This " \
+                                 "build does not make that yet. To fix this, tell it to draw with one of those lists."
+          end
+
+          # How many pixels the tiles of every background take, each written once for the colors it
+          # was drawn in and once for each step (#background_arrays).
+          def tile_pixel_total
+            @stacking.scenery.sum do |bg|
+              tiles = bg.from_file ? bg.from_file.tiles_drawn * RUN_TILE_PIXELS : bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
+              tiles * (color_swaps(bg).length + 1)
+            end
+          end
 
           # Reference#tile_colors: a tile's pixels as colors, or as the colors +swaps+ gives the
           # list it was drawn from. A swap goes by place, and is read off the pixel as drawn, so
@@ -1014,13 +1084,14 @@ module VBlank
           # one colour in each set, the declared set first as rg_place_of_choice counts them.
           def lower_color_list_holds(node)
             held = Statements::Assign.new(held_colors(node.name), value(node.which))
+            followers = followed_tile_copies(node.name)
             place = @color_lists.fetch(node.name).backdrop_place
-            return [held] unless place
+            return [held, *followers] unless place
 
             sets = sets_held_by(node.name)
             colors = drawing_array("backdrop_colors", "int32_t", sets.map { |set| set.fetch(place) & 0x7FFF })
             choice = call("rg_place_of_choice", held_colors(node.name), Statements::Int.new(sets.length - 1))
-            [held, eval_call("rg_screen_show_backdrop", Statements::Index.new(colors, choice))]
+            [held, eval_call("rg_screen_show_backdrop", Statements::Index.new(colors, choice)), *followers]
           end
 
           # Reference#pixels_overlap?: each side's picture now, and where it is.

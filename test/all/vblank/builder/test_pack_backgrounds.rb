@@ -170,6 +170,52 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
+  # Every pixel of the 8x8 cell at (+at_x+, 0) drawn from +places+ shows +list+'s colour at its place.
+  private def assert_cell_drawn_with(screen, places, at_x, list, message)
+    64.times do |at|
+      next if places.fetch(at).zero?
+
+      assert_equal list.fetch(places.fetch(at)), screen.pixel(at_x + (at % 8), at / 8), "#{message}, at (#{at % 8}, #{at / 8})"
+    end
+  end
+
+  # A SCREEN THAT FADES EVERY BANK AT ONCE: a map with cells in two banks, both told `recolor`, each
+  # on a pass of its own. The background follows both, a cell showing what its own bank holds.
+  def test_a_background_follows_two_banks_the_game_recolors
+    Dir.mktmpdir do |folder|
+      first = see_through_first(OTHER)
+      second = see_through_first(LATER)
+      words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1)]
+      program = pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 2, cell: 8) do |world|
+        colors :first, first
+        colors :second, second
+        world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+        %i[palette_0 palette_1].each_with_index do |bank, at|
+          image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+          sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+        end
+        pass = var :pass, 0
+        game_loop do
+          pass += 1
+          recolor :palette_0, :first if pass >= 3
+          recolor :palette_1, :second if pass >= 5
+        end
+      end
+      shown_after = ->(pass) { game_player.run(program, frames: pass + framework_drawing_lag).screen }
+
+      early = shown_after.(2)
+      assert_cell(early, PLACES[1], 8, 0, 0, 0)
+      assert_cell(early, PLACES[2], 8, 8, 0, 1)
+      between = shown_after.(3)
+      assert_cell_drawn_with(between, PLACES[1], 0, first, "bank 0's cell once bank 0 holds :first")
+      assert_cell(between, PLACES[2], 8, 8, 0, 1)
+      late = shown_after.(5)
+      assert_cell_drawn_with(late, PLACES[1], 0, first, "bank 0's cell, still :first")
+      assert_cell_drawn_with(late, PLACES[2], 8, second, "bank 1's cell once bank 1 holds :second")
+      assert_equal [first.fetch(2), second.fetch(2)], [late.pixel(41, 41), late.pixel(61, 41)], "the sprites drawn with each bank"
+    end
+  end
+
   def test_a_list_that_is_not_a_bank_of_the_slot_is_still_refused
     Dir.mktmpdir do |folder|
       other = see_through_first(OTHER)

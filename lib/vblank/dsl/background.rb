@@ -356,6 +356,33 @@ module VBlank
         self
       end
 
+      # DRAWN WITH SEVERAL LISTS OF COLOURS THE GAME CHANGES, FOR GOOD: `draw_with({ sign: :sign,
+      # words: :words })`, each of +lists+ told `recolor`. A tile then shows what its own list holds
+      # now, each list counted by its own number, as a sprite drawn with that list does.
+      #
+      # WHY IT IS NOT #follow_changing_list! TWICE. A layer that follows one list keeps the sets
+      # that list can hold as its own other colours, and reads the list's number for which to show:
+      # one number, one row of sets. Two lists have two numbers, and a row for every pair of them
+      # is one list's sets times the other's, for every list added. A console's own games keep
+      # no such rows: fading a screen, they write each palette's colours as that palette changes.
+      # So this layer keeps no other colours and no number at all. It names the list each of its
+      # own lists follows (IR::Nodes::Background#follows_each), and the write that tells a list
+      # what to hold is what changes the tiles drawn from it, on the frame it changes the sprites.
+      #
+      # Called once the whole program is declared (Builder::ColorLists), in place of
+      # #follow_changing_list!, for a layer told `draw_with` more than one changing list.
+      def follow_changing_lists!(lists)
+        followed = lists.to_h { |list| [refuse_tiles_not_drawn_in!(list), list] }
+        raise ArgumentError, following_beside_other_colors_message(lists) unless told_only_to_follow?(followed)
+
+        @colors_node.recolors = []
+        @colors_node.follows_each = Array.new(drawn_lists.length) { |at| followed[at] }
+        # The layer has no colours of its own to write: the lists' writes are its writes.
+        @colors_writes.each { |node| node.parent&.children&.delete(node) }
+        @builder.forget_recolor_write(@name)
+        self
+      end
+
       # TILES DRAWN FROM A LIST THE GAME CHANGES, ON A LAYER NOT TOLD TO DRAW WITH IT, would show
       # the colours the list was declared with on every frame, whatever the game sets it to hold: a
       # picture wrong in silence. Called once the whole program is declared (Builder::ColorLists),
@@ -743,16 +770,34 @@ module VBlank
       # and no colours of its own to go back to. Its other lists, where its tiles are drawn from
       # several, stay as drawn. Returns which of #drawn_lists follows the list.
       def refuse_following_beside_other_colors!(list)
-        followed = followed_list_index(list)
-        unless followed
-          raise ArgumentError,
-                "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
-                "So the background shows the colors :#{list} holds, from power-on. Its tiles must be drawn in " \
-                "the colors of :#{list}, and they are not. To fix this, give its tiles `image ..., colors: :#{list}`."
-        end
-        return followed if !@told_own && recolors.names == [Array.new(drawn_lists.length) { |at| list if at == followed }]
+        followed = refuse_tiles_not_drawn_in!(list)
+        return followed if told_only_to_follow?({ followed => list })
 
-        raise ArgumentError, following_beside_other_colors_message(list)
+        raise ArgumentError, following_beside_other_colors_message([list])
+      end
+
+      # Whether all the layer was ever told is to draw each of +followed+ (a place in #drawn_lists
+      # to the changing list there) with that list. A list that does not change, told to draw with
+      # itself beside them (`draw_with({ text: :text, logo: :logo })`, only :text recoloured), is
+      # as drawn, so a game can name every list of a screen it fades without knowing which change.
+      def told_only_to_follow?(followed)
+        return false if @told_own || !recolors.names.one?
+
+        recolors.names.first.each_with_index.all? do |name, at|
+          followed.key?(at) ? name == followed[at] : name.nil? || name == drawn_lists[at].first
+        end
+      end
+
+      # Which of #drawn_lists follows the changing list +list+, refusing a layer none of whose
+      # tiles is drawn in the list's own colours.
+      def refuse_tiles_not_drawn_in!(list)
+        followed = followed_list_index(list)
+        return followed if followed
+
+        raise ArgumentError,
+              "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
+              "So the background shows the colors :#{list} holds, from power-on. Its tiles must be drawn in " \
+              "the colors of :#{list}, and they are not. To fix this, give its tiles `image ..., colors: :#{list}`."
       end
 
       # Which of #drawn_lists follows the changing list +list+: the only one, in its colours, or,
@@ -764,7 +809,10 @@ module VBlank
         drawn_lists.index { |name, colors| name == list && colors == declared }
       end
 
-      def following_beside_other_colors_message(list)
+      def following_beside_other_colors_message(lists)
+        return following_several_beside_other_colors_message(lists) unless lists.one?
+
+        list = lists.first
         start = "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
                 "So the tiles drawn from :#{list} are drawn with :#{list} for good."
         if drawn_lists.one?
@@ -775,6 +823,15 @@ module VBlank
         "#{start} Its tiles from other lists keep the colors they were drawn in. They cannot draw with other lists, " \
           "and the background cannot draw with :own. To fix this, tell the background only " \
           "`draw_with({ #{list}: :#{list} })`, and say what :#{list} holds with `recolor :#{list}, ...`."
+      end
+
+      def following_several_beside_other_colors_message(lists)
+        named = lists.map { |list| ":#{list}" }.join(", ")
+        "#{error_subject} draws with #{named}, and they were told to hold other colors with `recolor`. So the " \
+          "tiles drawn from each of them are drawn with that list for good. Its tiles from other lists keep the " \
+          "colors they were drawn in. They cannot draw with other lists, and the background cannot draw with :own. " \
+          "To fix this, tell the background only `draw_with({ #{lists.map { |list| "#{list}: :#{list}" }.join(', ')} })`, " \
+          "and say what each list holds with `recolor`."
       end
 
       # The lists this layer's tiles were drawn from, each once, in the order first met: the

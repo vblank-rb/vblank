@@ -18,6 +18,7 @@ and a test fails when the two differ.
 - `border` — works: with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at its own size in the middle of the screen, and the border fills the 40 columns at each side and the 8 rows above and below. Without `border`, the build draws a border of its own. A fade or a tint does not change the border. That build does not make a status bar, a light, a fade held to a rectangle or under a layer, a background bent row by row or one that turns, `pixelate`, `hide_sprites` or `read_scanline` yet, and refuses each. It gives the game 32 fewer sprites, which draw the border. Without the variant, `border` does nothing.
 - `draw_place` — works: on `screen :bitmap, tear_free: true` only. The processor turns each point and fills each face a pixel at a time. Each `perspective:` setting is made.
 - `shading` — works: the processor finds each lit pixel's colour in a table the build makes from the shading, one load a pixel. Each pixel is the colour the shading gives, exactly.
+- `recolor` — works: a background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `sprite` — works: a sprite with `over_picture: true` on a painted screen is the console's own sprite. The painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K.
 - `background` — works: `above_row:` is refused: this build does not make it yet. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
@@ -42,14 +43,14 @@ These work as their group files say:
 `keep_showing`, `place`, `viewer`, `screen_spot`, `change_picture`, `fade`, `tint`, `fade_in`,
 `fade_out`, `flash_screen`, `fade_level`, `shake_screen`, `pixelate`, `pixelate_in`,
 `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`,
-`camera_follows`, `image`, `color`, `rgb`, `rgb8`, `colors`, `recolor`, `colors_in_use`,
-`color_walk`, `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`,
-`picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`,
-`layer`, `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`,
-`save_data`, `clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`,
-`sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
-`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
-`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`,
-`stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
+`camera_follows`, `image`, `color`, `rgb`, `rgb8`, `colors`, `colors_in_use`, `color_walk`,
+`mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`, `picture_groups`, `pool`,
+`box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_text`,
+`draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`, `clock`,
+`saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`, `sub_var`,
+`copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`,
+`clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`, `case_var`,
+`most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `enable_sound`,
+`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`,
+`hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
 `sound_effects`, `sample`, `instrument`.

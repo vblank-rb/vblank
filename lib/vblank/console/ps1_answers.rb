@@ -112,7 +112,8 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds 256 places on a PlayStation, the first see-through."),
-        recolor: works,
+        recolor: works("a background that draws with more than one list the game changes is not made yet: the " \
+                       "build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,

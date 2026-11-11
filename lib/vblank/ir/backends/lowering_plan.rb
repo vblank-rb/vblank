@@ -226,6 +226,21 @@ module VBlank
           )
         end
 
+        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS OF COLOURS THE GAME CHANGES (Nodes::Background
+        # #follows_each) keeps no sets and no write of its own: each list's write changes the tiles
+        # drawn from it. How that is done is each console's own (a Genesis draws those tiles from
+        # the list's own palette), so a lowering that does not make it yet refuses it here, with
+        # +not_made_yet+, before it draws the background in its declared colours for good.
+        def refuse_unmade_followed_lists!(not_made_yet)
+          background = @program.walk.find { |node| node.kind == :background && node.follows_several? } or return
+
+          raise not_made_yet.new(
+            "The background #{background.name.inspect} draws with #{background.lists_followed.length} lists of colors that " \
+            "the game changes with `recolor`. The #{@console.title} build does not make that yet. To fix this, tell the " \
+            "background to draw with one of those lists only.", part: "a background that follows several lists of colours"
+          )
+        end
+
         # What the console cannot do at all, and the layers one screen cannot have, refused in the
         # words a game's build refuses them in (Console::Answers#refusals, Checks::LayerRefusals). A
         # program handed straight to a lowering, as a test's is, never passes the build's checks;

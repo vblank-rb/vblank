@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "all/vblank/builder/test_recolor_several_lists"
 
 # THE STATE IMAGE OF THE C, JAVASCRIPT AND RUBY BUILDS (runtime/rg_state.h, Computer::StateFields):
 # a game's whole state written at a frame boundary and read into a fresh run of the same build,
@@ -13,6 +14,8 @@ require "test_helper"
 # starts at a pass the interpreter never reached by itself. Until the sound's half of the state is
 # in, these games make no sound.
 module StateImageTests
+  include RecolorSeveralListsGames # a background that follows several lists the game changes
+
   STATE_AFTER = 40  # the frame the state is written after
   FRAMES_ON = 120   # how many frames the run read from it plays on
   SPEAKERS = %i[left right].freeze
@@ -314,6 +317,29 @@ module StateImageTests
       assert_plays_on_from(state, program, unbroken)
       other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
     end
+  end
+
+  # SCENERY THAT FOLLOWS SEVERAL LISTS THE GAME CHANGED LONG BEFORE THE STATE: two of its lists hold
+  # other sets from early passes on and are never told again, and the background scrolls, so every
+  # frame after the state is built from the tiles. The state holds the number each list holds and
+  # not the tiles copied for it (rg_background_follow), so the run read from it shows the lists'
+  # colours only if it copies them again.
+  def test_scenery_following_several_lists_comes_back_from_the_state
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    program = several_lists_game(builder: builder) do |sets, title|
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        recolor :words, sets.fetch(:words), showing: 1 if pass >= 5
+        recolor :trim, sets.fetch(:trim), showing: 2 if pass >= 8
+        title.scroll_by 1, 0
+      end
+    end
+    unbroken, state = unbroken_with_state(program)
+
+    assert_operator unbroken.map(&:last).uniq.length, :>, 5, "the game's picture moves"
+    assert_plays_on_from(state, program, unbroken)
+    other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
   end
 
   # A GAME OF SPRITES THE FRAMEWORK DRAWS over scenery: a row of a dozen that crowds one line of

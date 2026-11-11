@@ -502,6 +502,29 @@ void rg_background_draw_with(int32_t background, int32_t which) {
   request_repaint();
 }
 
+/* Reference#followed_background_swap, a list at a time. A background that follows several lists
+ * the game changes is drawn from its tiles as declared, and its tiles as each list's sets draw
+ * them come after those, a whole set of tiles each. So when a list is told what to hold, the tiles
+ * drawn from that list are copied from set number +set+ over the ones the picture is drawn from,
+ * and the other lists' tiles stay as they are. A tile that holds those colors already is left, and
+ * the picture is asked for only when one changed. The game asks again as a state is read or
+ * written (its visit_state): a state holds the number each list holds and not these copies, so a
+ * run read from one copies them then, and a run writing one finds them made and copies nothing. */
+void rg_background_follow(const int32_t *rules, int32_t set) {
+  int32_t background = rules[1], count = rules[2], changed = 0;
+  size_t tile_size = (size_t)background_field(background, RG_BG_TILE_W) * (size_t)background_field(background, RG_BG_TILE_H);
+  size_t start = (size_t)background_field(background, RG_BG_TILES_START);
+  size_t set_size = (size_t)background_field(background, RG_BG_TILES) * tile_size;
+  for (int32_t i = 0; i < count; i++) {
+    size_t to = start + (size_t)rules[3 + i] * tile_size, from = to + (size_t)set * set_size;
+    if (!memcmp(tile_pixels_drawn + to, tile_pixels_drawn + from, tile_size * sizeof *tile_pixels_drawn)) continue;
+    uint16_t *pixels = rg_screen_tile_pixels_to_fill(rules[0]);
+    memcpy(pixels + to, pixels + from, tile_size * sizeof *pixels);
+    changed = 1;
+  }
+  if (changed) request_repaint();
+}
+
 /* Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
  * which is on the screen, mixed and faded as whatever is in force sets. */
 static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
