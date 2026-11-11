@@ -481,7 +481,7 @@ module VBlank
 
               backgrounds_declared.reject(&:scene).each do |bg|
                 shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
-                changed = @set_tiles_by_name.fetch(bg.name, []).map(&:tile)
+                changed = @set_tiles_by_name.fetch(bg.name, []).flat_map(&:tiles_named)
                 (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
               end
               @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
@@ -1100,8 +1100,8 @@ module VBlank
                 @layers[bar] = THIRD_LAYER
                 refuse_unmade_third_layer_bar!(bar)
                 bar.every_map.each_index { |which| grid_of(bar, which) }
-                @set_tiles_by_name.fetch(bar.name, []).select { |node| node.tile.is_a?(Integer) }
-                        .each { |node| cell_of(bar, node.tile) if node.tile < bar.tiles.length }
+                @set_tiles_by_name.fetch(bar.name, []).flat_map(&:tiles_named).grep(Integer)
+                        .each { |tile| cell_of(bar, tile) if tile < bar.tiles.length }
               end
               @art.reserve_bar_palettes
             end
@@ -1248,7 +1248,16 @@ module VBlank
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.
-            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_on(node, bg) }
+            #
+            # A tile picked as the program runs is written as the tests it stands for
+            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
+            # background's cells to index yet.
+            def emit_set_tile(node)
+              return for_background(node) { |bg| emit_set_tile_on(node, bg) } unless node.picked?
+
+              tests = PickedTile.tests(node)
+              statement(tests) if tests
+            end
 
             def emit_set_tile_on(node, bg)
               return if node.tile && node.tile >= bg.tiles.length

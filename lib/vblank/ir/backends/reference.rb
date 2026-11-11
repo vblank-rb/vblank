@@ -1730,20 +1730,34 @@ module VBlank
         # A HELD CHANGE (Nodes::SetTile#held) waits instead, with its cell worked out now, until
         # the frame boundary's show_held_tiles. With the queue full, everything waiting goes in
         # first, there and then.
+        #
+        # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by) is worked out here, a held
+        # one too, and a number that stands for no tile changes nothing.
         def exec_set_tile(node)
-          return unless tile_of_declaration_up?(node)
+          tile = node.tile
+          if node.picked?
+            tile = tile_picked(node)
+            return if tile.nil?
+          end
+          return unless tile_of_declaration_up?(node, tile)
 
           col = eval_value(node.col)
           row = eval_value(node.row)
-          return change_cell(node, col, row) unless node.held
+          return change_cell(node, col, row, tile) unless node.held
 
           show_held_tiles if @held_tiles.length >= Nodes::ShowHeldTiles::MOST_CELLS
-          @held_tiles << [node, col, row]
+          @held_tiles << [node, col, row, tile]
+        end
+
+        # The tile the number +node+ is picked by stands for now, or nil for none.
+        def tile_picked(node)
+          at = eval_value(node.picked_by) - node.picks_from
+          node.picks[at] if at >= 0
         end
 
         # A tile only another scene's declaration of the name has, from a line written for that
         # scene, changes nothing here.
-        def tile_of_declaration_up?(node) = node.tile.nil? || node.tile < background_up(node.name).tiles.length
+        def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
         # EVERY HELD CHANGE, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles
@@ -1751,15 +1765,15 @@ module VBlank
         def show_held_tiles
           waiting = @held_tiles
           @held_tiles = []
-          waiting.each { |node, col, row| change_cell(node, col, row) if tile_of_declaration_up?(node) }
+          waiting.each { |node, col, row, tile| change_cell(node, col, row, tile) if tile_of_declaration_up?(node, tile) }
         end
 
-        def change_cell(node, col, row)
+        def change_cell(node, col, row, tile)
           map = mutable_map(node.name)
           return unless row >= 0 && row < map.length && col >= 0 && col < map[row].length
-          return if map[row][col] == node.tile
+          return if map[row][col] == tile
 
-          map[row][col] = node.tile
+          map[row][col] = tile
           # The picture this backend shows is painted, not composed by a display reading
           # the map as it goes — so a changed cell has to be painted again for anything
           # to see it. Repainting the lot is the same over-approximation a scroll makes,

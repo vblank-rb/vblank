@@ -322,9 +322,9 @@ module VBlank
             def make_background_art(bg)
               bg.every_map.each_index { |which| grid_of(bg, which) }
               @program.walk.each do |node|
-                next unless node.kind == :set_tile && node.name == bg.name && node.tile && node.tile < bg.tiles.length
+                next unless node.kind == :set_tile && node.name == bg.name
 
-                cell_of(bg, node.tile)
+                node.tiles_named.each { |tile| cell_of(bg, tile) if tile && tile < bg.tiles.length }
               end
             end
 
@@ -728,11 +728,11 @@ module VBlank
             def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_of(bg, node) }
 
             def emit_set_tile_of(bg, node)
+              return emit_set_picked_tile_of(bg, node) if node.picked?
               return if node.tile && node.tile >= bg.tiles.length
 
               columns, rows = TileMap.size_of(bg.every_map.first)
-              cell = cell_of(bg, node.tile)
-              word = cell ? cell[0] | (cell[1] << Art::PALETTE_SHIFT) : 0
+              word = cell_word_of(bg, node.tile)
               column = keep_local(:column)
               row = keep_local(:row)
               value(node.col)
@@ -743,6 +743,56 @@ module VBlank
               emit_jump_unless_below(column, columns, outside)
               emit_jump_unless_below(row, rows, outside)
               runtime_call("rt_set_cell", [Build.int(layer_of(bg)), Build.var_ref(column), Build.var_ref(row), Build.int(word)])
+              @asm.label(outside)
+            end
+
+            # The word a cell of +bg+ showing its tile +tile+ holds in the plane's map: the tile's number
+            # in video memory and its palette, and nought for no tile.
+            def cell_word_of(bg, tile)
+              cell = cell_of(bg, tile)
+              cell ? cell[0] | (cell[1] << Art::PALETTE_SHIFT) : 0
+            end
+
+            # A word no cell holds, since no tile has the top number with every other bit set: what
+            # an entry of a table of cells holds for a number that stands for no tile.
+            NO_CELL = 0xFFFF
+
+            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A WORD READ FROM A TABLE, as
+            # a console's own game writes its text: the number, less the one the list starts at, is a
+            # place in a table of the words those tiles' cells hold, kept in the cartridge. One
+            # comparison holds the number to the table, since read with no sign a number below the
+            # first is far past the last. A number that stands for no tile reads NO_CELL, and the
+            # cell is left alone, as is a tile only another scene's background of the name has.
+            def emit_set_picked_tile_of(bg, node)
+              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
+              return if words.all?(NO_CELL)
+
+              columns, rows = TileMap.size_of(bg.every_map.first)
+              table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
+              column = keep_local(:column)
+              row = keep_local(:row)
+              value(node.col)
+              store(column)
+              value(node.row)
+              store(row)
+              outside = fresh("cell_outside")
+              emit_jump_unless_below(column, columns, outside)
+              emit_jump_unless_below(row, rows, outside)
+              value(node.picked_by)
+              @asm.sub(:l, @asm.imm(node.picks_from), @asm.d(0)) unless node.picks_from.zero?
+              @asm.cmp(:l, @asm.imm(words.length), @asm.d(0))
+              @asm.branch(:cc, outside)
+              @asm.add(:l, @asm.d(0), @asm.d(0)) # two bytes a word
+              @asm.lea(@asm.abs_l(table), @asm.a(0))
+              @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(3))
+              if words.include?(NO_CELL)
+                @asm.cmp(:w, @asm.imm(NO_CELL), @asm.d(3))
+                @asm.branch(:eq, outside)
+              end
+              @asm.moveq(layer_of(bg), @asm.d(0))
+              @asm.move(:l, var(column), @asm.d(1))
+              @asm.move(:l, var(row), @asm.d(2))
+              call_routine("rt_set_cell")
               @asm.label(outside)
             end
 

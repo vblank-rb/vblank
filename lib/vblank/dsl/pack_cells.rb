@@ -44,12 +44,51 @@ module VBlank
 
       # A NUMBER THE GAME WORKS OUT, as the original works its text out: a letter read from a
       # table, plus a base. Which picture a number stands for was settled when the game was built,
-      # so the number is kept once and found among the told ones by tests that halve them, as
-      # Background#set_tile finds a tile picked by a number. A number not told matches none, and
-      # the cell is left alone.
+      # and the told numbers are mostly a run (a font's cells, one after another), so the number
+      # is kept once and picks its tile from the run's list (Background#set_tile_picked): what a
+      # console's own game does, where the number is the tile. A number not told stands for no
+      # tile, and the cell is left alone.
+      #
+      # Told numbers far apart (two fonts, a letter turned another way) are several runs, and
+      # tests that halve the runs find which one the number is in.
+      #
+      # A background whose walls follow its tiles keeps the tests that halve the told numbers,
+      # each with a `set_tile` of its own, since the wall goes with the tile.
       def write_picked_by(background, col, row, word)
         kept = (word & format.read_bits).hidden_copy
-        write_between(background, col, row, kept, tiles_by_word.keys.sort)
+        words = tiles_by_word.keys.sort
+        return write_between(background, col, row, kept, words) if background.walls_follow_tiles?
+
+        write_run_between(background, col, row, kept, runs_of(words))
+      end
+
+      # How far apart two told numbers can be and still be in one run. The numbers between them
+      # that were not told each take an entry of the run's list that stands for no tile.
+      MOST_GAP_IN_RUN = 16
+
+      # +words+, sorted, as runs: each a list of numbers no further apart than MOST_GAP_IN_RUN.
+      def runs_of(words) = words.slice_when { |before, after| after - before > MOST_GAP_IN_RUN }.to_a
+
+      def write_run_between(background, col, row, kept, runs)
+        return write_from_run(background, col, row, kept, runs.first) if runs.one?
+
+        lower, upper = runs.each_slice(runs.length.ceildiv(2)).to_a
+        which = PlainRuby::Steps::GameTest.new(kept < upper.first.first)
+        which.open_yes_side
+        write_run_between(background, col, row, kept, lower)
+        which.close_side(nil)
+        which.open_no_side
+        write_run_between(background, col, row, kept, upper)
+        which.close_side(nil)
+      end
+
+      # The cell's tiles, each picked from the list of what the numbers of +run+ put there.
+      def write_from_run(background, col, row, kept, run)
+        (side * side).times do |at|
+          keys = (run.first..run.last).map { |word| tiles_by_word[word]&.fetch(at) }
+          background.set_tile_picked(side == 1 ? col : (col * side) + (at % side), side == 1 ? row : (row * side) + (at / side),
+                                     kept, keys, from: run.first)
+        end
       end
 
       def write_between(background, col, row, kept, words)

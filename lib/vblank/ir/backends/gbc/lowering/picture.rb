@@ -382,7 +382,9 @@ module VBlank
                   cells = Array(row)
                   cells.length < cols || cells.first(cols).any? { |tile| tile.nil? || tile.negative? }
                 end
-              end || @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name && !tile_index_known?(node.tile) }
+              end || @reachable.any? do |node|
+                node.kind == :set_tile && node.name == bg.name && !node.tiles_named.all? { |tile| tile_index_known?(tile) }
+              end
             end
 
             # Whether a background's view moves, or a status bar's top: any of them past the screen's
@@ -1337,7 +1339,15 @@ module VBlank
             #
             # A big map's cell is changed where the map is kept while it is up (Runtime::BigMaps's
             # rt_big_set).
+            #
+            # A tile picked as the program runs is written as the tests it stands for
+            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
+            # background's cells to index yet.
             def emit_set_tile(node)
+              if node.picked?
+                tests = PickedTile.tests(node)
+                return tests && statement(tests)
+              end
               each_declaration(node) do |bg|
                 # A tile only another scene's declaration of this name has, from a line written for
                 # that scene: this declaration's part of the line writes nothing.

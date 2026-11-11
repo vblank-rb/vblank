@@ -258,6 +258,77 @@ class TestPackBackgroundSetCell < Minitest::Test
     end
   end
 
+  # A game showing the Genesis original with the cells +told+, which on its second pass writes each
+  # of +numbers+, read from a table, into the cells of the top row from the left.
+  private def numbered_game(folder, told, numbers)
+    words = MAP_TILES.flatten.map { |tile| GENESIS_CELL.(tile) }
+    from = original(folder, :genesis, PLACES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join, words)
+    pack_game(from, PLACES.length, words, across: 4, set_cells: told) do |world|
+      line = table :line, numbers
+      pass = var :pass, 0
+      at = var :at, 0
+      game_loop do
+        wait_vblank
+        pass += 1
+        if pass == 2
+          at = 0
+          while at < numbers.length
+            world.set_cell at, 0, line[at]
+            at += 1
+          end
+        end
+      end
+    end
+  end
+
+  # The font's two letters are told and its space, between them in the original's numbers, is not:
+  # a number in the gap, one below the lowest told and one above the highest leave their cells alone.
+  def test_a_number_in_a_gap_of_the_told_cells_and_one_outside_them_leave_the_cell_alone
+    Dir.mktmpdir do |folder|
+      first = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
+      told = [first, first + 2]
+      program = numbered_game(folder, told, [first + 2, first + 1, first - 1, first + 3])
+      screen = game_player.run(program, frames: 5).screen
+
+      assert_cell_empty(screen, 0, 0)
+      assert_cell(screen, ART_B, 8, 0, 0)
+      assert_cell(screen, ART_A, 16, 0, 0)
+      assert_cell(screen, ART_B, 24, 0, 0)
+      assert_cell(screen, ART_B, 0, 8, 0)
+    end
+  end
+
+  # Told cells far apart in the original's numbers: a letter, the same letter back to front, and
+  # one from the other bank of colours. A number between two of them leaves its cell alone.
+  def test_told_cells_far_apart_each_show_their_own_tile
+    Dir.mktmpdir do |folder|
+      plain = GENESIS_CELL.(FIRST_FONT_TILE)
+      turned = GENESIS_CELL.(FIRST_FONT_TILE, mirrored: true)
+      other_bank = GENESIS_CELL.(FIRST_FONT_TILE + 1, bank: 1)
+      program = numbered_game(folder, [other_bank, plain, turned], [turned, other_bank, plain + 0x400, plain])
+      screen = game_player.run(program, frames: 5).screen
+
+      assert_cell(screen, FONT_A, 0, 0, 0, mirrored: true)
+      assert_cell(screen, FONT_B, 8, 0, 1)
+      assert_cell(screen, ART_A, 16, 0, 0)
+      assert_cell(screen, FONT_A, 24, 0, 0)
+    end
+  end
+
+  # The Genesis keeps bit 15 of a cell for itself, so a number that differs from a told one only
+  # there is the same cell.
+  def test_a_number_differing_only_in_the_consoles_own_bit_is_the_told_cell
+    Dir.mktmpdir do |folder|
+      first = GENESIS_CELL.(FIRST_FONT_TILE, bank: 1)
+      program = numbered_game(folder, first..(first + 1), [first & 0x7FFF, (first + 1) & 0x7FFF])
+      screen = game_player.run(program, frames: 5).screen
+
+      assert_cell(screen, FONT_A, 0, 0, 1)
+      assert_cell(screen, FONT_B, 8, 0, 1)
+      assert_cell(screen, ART_A, 16, 0, 0)
+    end
+  end
+
   # A background a scene declares is written by a line of that scene, as the title screen of a
   # port is.
   def test_a_scenes_background_is_written_from_the_scene

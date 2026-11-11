@@ -853,7 +853,13 @@ module VBlank
             [eval_call("rg_background_scroll", background_number(node), value(node.x), value(node.y))]
           end
 
+          # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
+          # the runtimes take a tile's number, and keep no table of a background's cells to index.
           def lower_set_tile(node)
+            if node.picked?
+              tests = PickedTile.tests(node)
+              return tests ? lower(tests) : []
+            end
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
                                 Statements::Int.new(node.tile), Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]

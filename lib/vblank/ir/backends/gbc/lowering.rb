@@ -671,7 +671,7 @@ module VBlank
             # The tiles each background's `set_tile`s put in its cells, by the background's name.
             def tiles_set_in
               @tiles_set_in ||= @cache.plan.reachable.select { |node| node.kind == :set_tile }.group_by(&:name)
-                                      .transform_values { |nodes| nodes.map(&:tile) }
+                                      .transform_values { |nodes| nodes.flat_map(&:tiles_named) }
             end
 
             # How each screen of the program is shown (Modes.resolve).

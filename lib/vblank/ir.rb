@@ -22,6 +22,7 @@ require_relative "ir/save_layout"           # Where save data lives in save memo
 require_relative "ir/save_image"            # Save memory held in Ruby, laid out the same way
 require_relative "ir/tile_map"              # How big a grid a background scrolls over, for every backend
 require_relative "ir/build"
+require_relative "ir/picked_tile"           # A tile picked as the program runs, as the tests it stands for
 require_relative "ir/save_list_moves"       # A whole list moved to or from save memory, as the loops it stands for
 require_relative "ir/place_drawing"        # How a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/viewer_motion"         # How the viewer moves and turns

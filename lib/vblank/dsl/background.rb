@@ -175,6 +175,29 @@ module VBlank
         which.close_side(nil)
       end
 
+      # A TILE PICKED FROM A LIST OF KEYS BY A NUMBER THE GAME WORKS OUT: +keys+ are the tileset's
+      # keys the numbers from +from+ up stand for, nil for a number that stands for none, which
+      # leaves the cell alone, as does a number before +from+ or past the last key. It is one step
+      # of the program however many keys there are (IR::Nodes::SetTile#picked_by): a console's
+      # build keeps the keys' cells as a table and indexes it, where it can.
+      #
+      # The walls do not follow such a cell, so a background whose walls follow its tiles
+      # (#walls_follow_tiles?) is not written this way.
+      #
+      # Called by PackCells, for a cell written as the original's own cell number.
+      def set_tile_picked(col, row, number, keys, from: 0)
+        refuse_on_bitmap_screen!("set_cell", instead: "Draw over the spot with `blit`")
+        refuse_set_tile_on_streamed_map!
+        tiles = keys.map { |key| key && @tile_index.fetch(key) }
+        node = record(Build.set_tile_picked(@name, Value.node_for(col), Value.node_for(row), Value.node_for(number), tiles,
+                                            from: from, held: (true if @held)))
+        @builder.note_held_tile_change(node) if @held
+        self
+      end
+
+      # Whether a cell given another tile takes that tile's wall (#record_wall_change).
+      def walls_follow_tiles? = !@solid_tiles.nil? && !solid_lookup.nil?
+
       # WRITE ONE CELL AS THE ORIGINAL'S OWN CELL NUMBER, on a background drawn from the data pack.
       #
       #   face = background :face, tiles: pack[:video], map: pack[:face_map], colors: pack[:palette],

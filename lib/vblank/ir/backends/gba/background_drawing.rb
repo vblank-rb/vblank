@@ -337,7 +337,15 @@ module VBlank
           #
           # ...and a background declared `held: true` asks for the other bargain: its changes
           # wait for the gap between frames and go in together (see HeldTiles).
+          #
+          # A tile picked as the program runs is written as the tests it stands for
+          # (IR::PickedTile), each with a store of its own: this lowering keeps no table of a
+          # background's cells to index yet.
           def emit_set_tile(node)
+            if node.picked?
+              tests = PickedTile.tests(node)
+              return tests && @lowering.statement(tests)
+            end
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? # a background with no tiled layer (a bitmap-mode program)
 

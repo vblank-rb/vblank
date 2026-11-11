@@ -411,11 +411,29 @@ module VBlank
       # what the program means: a console showing every pass whole shows the cell the same.
       # +held+ keeps the change for the next ShowHeldTiles instead, for a background declared
       # `held: true`: its cell shows on the frame every other change of the pass shows on.
+      #
+      # A TILE PICKED AS THE PROGRAM RUNS is +picked_by+, a number it works out, and +picks+, the
+      # tiles that number can stand for: entry 0 is the tile for the number +picks_from+, entry 1
+      # for the one after, and so on, each one of the background's own tiles as +tile+ is. A
+      # number before the first entry or past the last, or one whose entry is nil, stands for no
+      # tile, and the cell is left alone. Such a node has no +tile+. This is how a game writes
+      # text from numbers it reads: which tiles there are is settled while the program is
+      # written, so a backend can keep the list as a table and index it.
+      #
+      # Must be a number a backend can read more than once: a backend with no table of its own
+      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable.
       class SetTile
         include Node
         kind :set_tile
         category :draw
-        operands name: :name, col: :value, row: :value, tile: :int, now: :flag, held: :flag
+        operands name: :name, col: :value, row: :value, tile: :int, now: :flag, held: :flag,
+                 picked_by: :maybe_value, picks_from: :int, picks: :list
+
+        # Whether the tile is picked as the program runs (+picked_by+), not written in it (+tile+).
+        def picked? = !picked_by.nil?
+
+        # Every tile this step can put in its cell. A tile of nil is the empty cell.
+        def tiles_named = picked? ? picks.compact.uniq : [tile]
       end
 
       class BackingBuffer

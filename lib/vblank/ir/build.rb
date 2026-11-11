@@ -984,6 +984,14 @@ module VBlank
                                held: held)
       end
 
+      # The same with the tile picked as the program runs: +tiles+ are the background's tiles that
+      # the numbers from +from+ up stand for, nil for a number that stands for none, and
+      # +picked_by+ is the number (see Nodes::SetTile).
+      def set_tile_picked(name, col, row, picked_by, tiles, from: 0, now: nil, held: nil)
+        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), now: now, held: held,
+                               picked_by: to_value_node(picked_by), picks_from: from, picks: tiles)
+      end
+
       # Show every held cell change at once (see Nodes::ShowHeldTiles).
       def show_held_tiles(cells: Nodes::ShowHeldTiles::MOST_CELLS)
         Nodes.build(:show_held_tiles, cells: cells)

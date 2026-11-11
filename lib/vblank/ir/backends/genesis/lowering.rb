@@ -217,6 +217,7 @@ module VBlank
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
+            @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_of) -> their table's label
             @section_routines = {}
             @pictures = by_kind(:bitmap)
             prepare_paint
@@ -398,6 +399,10 @@ module VBlank
             @routine_tables.each do |targets, label|
               asm.label(label)
               asm.data_longs(targets.map { |name| self.class.routine_label(name) })
+            end
+            @cell_tables.each do |words, label|
+              asm.label(label)
+              asm.data_words(words)
             end
             asm.section
           end
