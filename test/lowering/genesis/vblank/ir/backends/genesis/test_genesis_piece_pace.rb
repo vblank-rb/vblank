@@ -197,16 +197,17 @@ end
 class TestGenesisPiecePace < Minitest::Test
   # How much of a frame the pass that writes the line may take, how much an ordinary pass may, and
   # an ordinary pass with pieces against the same pass with flat pictures. Measured, the first is
-  # about a third of a frame, of which the line of letters is a third: each letter's cell is a
+  # under a third of a frame, of which the line of letters is a third: each letter's cell is a
   # word read from a table of the told cells, not found by a test for each told cell, and the
   # loop and its table reads test and branch as a 68000 routine written by hand would. The second
-  # is about a fifth, the sprites being half of it: the walk that places them keeps its place
+  # is about a fifth, the sprites being over half of it: the walk that places them keeps its place
   # in registers, a sprite wholly on the screen is two compares and two long words copied a
-  # piece, and the video chip copies the table in by itself. The third is about a sixth more:
-  # three rows of the table a sprite where the flat picture takes fewer.
-  MOST_OF_A_FRAME = 0.34
-  MOST_OF_AN_ORDINARY_FRAME = 0.23
-  MOST_OVER_FLAT = 1.2
+  # piece, the video chip copies the table in by itself, and the sums that say where each stands
+  # are added to in place. The third is about a fifth more: three rows of the table a sprite
+  # where the flat picture takes fewer, against a pass that is itself a sixth of a frame.
+  MOST_OF_A_FRAME = 0.32
+  MOST_OF_AN_ORDINARY_FRAME = 0.21
+  MOST_OVER_FLAT = 1.25
 
   PASSES = 32
 

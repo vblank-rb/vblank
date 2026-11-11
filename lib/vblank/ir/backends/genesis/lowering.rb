@@ -1539,14 +1539,58 @@ module VBlank
 
             return runtime_call(CALLED_SUMS.fetch(node.op), [node.lhs, node.rhs]) if CALLED_SUMS.key?(node.op)
 
-            with_right_operand(node.lhs, node.rhs) do |right|
+            left, right = sides_in_cheapest_order(node)
+            with_right_operand(left, right) do |operand|
+              next if emit_sum_with_number(node.op, operand)
+
               # EOR takes only a register or a number as its source.
-              if node.op == :^ && right.mode != :dn && right.mode != :imm
-                @asm.move(:l, right, @asm.d(1))
-                right = @asm.d(1)
+              if node.op == :^ && operand.mode != :dn && operand.mode != :imm
+                @asm.move(:l, operand, @asm.d(1))
+                operand = @asm.d(1)
               end
-              emit_long_sum(node.op, right, @asm.d(0))
+              emit_long_sum(node.op, operand, @asm.d(0))
             end
+          end
+
+          # The sums that come to the same whichever side is worked out first.
+          EITHER_WAY_ROUND = %i[+ & | ^].freeze
+
+          # [left, right] of the sum +node+, the other way round where that is the same sum and only
+          # the left side is a number or a variable: `4 + (t & 31)` is then `t & 31` worked out and 4
+          # added to it, where as written the right side is worked out, pushed, and pulled back to be
+          # added to a 4 loaded for it. Neither order changes what is read: a side that needs working
+          # out is worked out first as written too (#with_right_operand).
+          def sides_in_cheapest_order(node)
+            return [node.lhs, node.rhs] unless EITHER_WAY_ROUND.include?(node.op) && operand_of(node.lhs) && !operand_of(node.rhs)
+
+            [node.rhs, node.lhs]
+          end
+
+          # D0 and a number written in the program (+operand+), the short ways: nothing at all for a
+          # sum that changes nothing (`+ 0`, which the builder's own sums are full of), ADDQ or SUBQ
+          # for 1 to 8, and for any other number that fits MOVEQ, the number put in D1 and the sum
+          # made from there, a word shorter and a quarter quicker than the number as a long word in
+          # the instruction. True when it was done so.
+          def emit_sum_with_number(operator, operand)
+            return false unless operand.mode == :imm && operand.value.is_a?(Integer) && operand.plus.to_i.zero?
+
+            number = operand.value
+            return true if number.zero? && %i[+ - | ^].include?(operator)
+            return true if number == -1 && operator == :&
+
+            number = -number if operator == :- && number.between?(-8, 8)
+            operator = :+ if operator == :- && number.between?(-8, 8)
+            if operator == :+ && number.between?(1, 8)
+              @asm.addq(:l, number, @asm.d(0))
+            elsif operator == :+ && number.between?(-8, -1)
+              @asm.subq(:l, -number, @asm.d(0))
+            elsif number.between?(-128, 127)
+              @asm.moveq(number, @asm.d(1))
+              emit_long_sum(operator, @asm.d(1), @asm.d(0))
+            else
+              return false
+            end
+            true
           end
 
           # A comparison as a 1 when it holds and a 0 when it does not.

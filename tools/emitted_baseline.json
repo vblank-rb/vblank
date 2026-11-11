@@ -114,7 +114,7 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4530,
+      "code": 4208,
       "data": 2404
     },
     "lit_corridor": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 4052,
+      "code": 3772,
       "data": 2108
     },
     "meadow": {
@@ -242,7 +242,7 @@
       "data": 16880
     },
     "tower@genesis": {
-      "code": 7086,
+      "code": 6230,
       "data": 3740
     },
     "two_rooms": {
