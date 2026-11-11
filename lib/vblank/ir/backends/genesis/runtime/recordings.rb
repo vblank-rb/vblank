@@ -92,8 +92,9 @@ module VBlank
             WINDOW = 0x8000 # Where the window starts in the Z80's memory, and how much it shows
 
             # The program's cycles between one sample and the next, and how many times the wait in it goes
-            # round to make that come to Console::GENESIS's recording_voice_hz.
-            WAIT_ROUNDS = 7
+            # round to make that come to Console::GENESIS's recording_voice_hz, with every sample taking
+            # the time of one in the recording's last 256 bytes (the program's :not_near_end).
+            WAIT_ROUNDS = 6
 
             module_function
 
@@ -441,7 +442,7 @@ module VBlank
                 z.label(:same_window)
                 z.word(0x3A, mail.call(END_HIGH_NOW)) # LD A,(end's high byte, on the last bank)
                 z.bytes(0xBC) # CP H
-                z.jump(0xC2, :timing) # JP NZ
+                z.jump(0xC2, :not_near_end) # JP NZ
                 z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
                 z.bytes(0xBD) # CP L
                 z.jump(0xCA, :ended) # JP Z
@@ -462,6 +463,17 @@ module VBlank
                 z.bytes(0xB8) # CP B
                 z.jump(0xC2, :new_play) # JP NZ
                 z.jump(0xC3, :loop) # JP
+
+                # EVERY SAMPLE TAKES THE SAME TIME, wherever it lies. A sample in the recording's last
+                # 256 bytes is tested against the end's low byte as well, four instructions more; one
+                # anywhere else comes here and spends the same 37 cycles doing nothing (a read and
+                # two loads of A, which the wait loads again, and the jump back). Without it a
+                # recording played faster than it was recorded up to its last 256 bytes and slower
+                # inside them, so a short one and a long one were heard at different pitches.
+                z.label(:not_near_end)
+                z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
+                z.bytes(0x3E, 0x00, 0x3E, 0x00) # LD A,0 ; LD A,0
+                z.jump(0xC3, :timing) # JP
 
                 # The bank in HL shown in the window and noted, END_HIGH_NOW set for it. HL is lost. The
                 # window's bank register is one bit wide and takes nine writes, the lowest bit first.
