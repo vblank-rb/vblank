@@ -226,8 +226,8 @@ class TestDOSCheckedRun < Minitest::Test
   def test_a_step_the_build_does_not_make_yet_is_refused_by_name
     error = assert_raises(DOS::Lowering::NotMadeYet) do
       checked(frames: 2) do
-        things = list :things, capacity: 4
-        things.push 3
+        enable_sound
+        beep 440
         game_loop { wait_vblank }
       end
     end

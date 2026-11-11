@@ -223,4 +223,21 @@ class TestDOSDrawing < Minitest::Test
     assert_equal [VBlank::Graphics::Color.resolve(:red)] * 2, seen
     assert_equal DOS.new.build(game.call(false)).bytes, DOS.new.build(game.call(true)).bytes
   end
+
+  # Where a picture goes can be worked out by a routine of the runtime's, a fraction divided or a list read,
+  # which use the registers for themselves: the picture's place is kept round the working out.
+  def test_a_picture_placed_by_a_number_the_runtime_works_out
+    run = checked(frames: 4) do
+      screen :bitmap
+      image :bars, width: 2, height: 4, data: BARS
+      wide = var :wide, 30.0
+      part = var :part, 1.5
+      rows = list :rows, capacity: 3
+      rows.push 40
+      clear_screen :gray
+      game_loop { blit :bars, (wide / part).to_i, rows[0] }
+    end
+
+    assert_equal VBlank::Graphics::Color.resolve(:red), run.screen.pixel(20, 40)
+  end
 end

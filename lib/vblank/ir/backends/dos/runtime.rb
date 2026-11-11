@@ -115,17 +115,6 @@ module VBlank
                      KEY_EXTENDED, KEY_SKIP].freeze
           end
 
-          # WHERE A LIST KEEPS ITS COUNTS, which every cartridge's reader asks (CartridgeHeadlessRun#read_lists):
-          # a header of three 16-bit words (how many it can hold, where the front is, how many it holds) and
-          # then its slots, a ring from the front. No list is made yet, so no program has one; the reader
-          # asks for the layout whatever the program.
-          module Lists
-            CAPACITY = 0
-            FRONT = 2
-            LENGTH = 4
-            HEADER = 8
-          end
-
           # The timer's interrupts in one frame, a power of two so the ticks are made frames by a shift, and
           # the number the timer chip counts down from to make them: a frame's worth of its clock, in parts.
           TICKS_A_FRAME = 8
@@ -184,7 +173,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false, fractions: false, frame_begins: nil)
+                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -200,6 +189,7 @@ module VBlank
             emit_timer(asm, memory)
             emit_number_routines(asm)
             emit_fraction_divide(asm) if fractions
+            Lists.emit(asm, memory, sorts: sorts) if lists
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
             emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns

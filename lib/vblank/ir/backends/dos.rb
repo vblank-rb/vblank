@@ -22,11 +22,13 @@ require_relative "dos/runtime/mode_x"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
+require_relative "dos/runtime/lists"
 require_relative "dos/runtime/turning"
 require_relative "dos/runtime/view"
 require_relative "dos/runtime/regions"
 require_relative "dos/runtime/fades"
 require_relative "dos/lowering/sprites"
+require_relative "dos/lowering/lists"
 require_relative "dos/lowering/clock"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
@@ -140,7 +142,8 @@ module VBlank
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
                                     sprites: sprites.positive?, regions: lowering.regions?,
                                     walks: walks, view: view, columns: Lowering.draws_columns?(program),
-                                    fractions: Lowering.divides_fractions?(program), frame_begins: lowering.frame_begins)
+                                    fractions: Lowering.divides_fractions?(program), frame_begins: lowering.frame_begins,
+                                    lists: Lowering::Lists.used_in?(program), sorts: Lowering::Lists.sorted_in?(program))
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
@@ -150,7 +153,7 @@ module VBlank
           after_pictures = shown + Runtime::Rows.picture_paragraphs(memory.screen)
           assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
                                    shown: data_segment + shown, save: data_segment + after_pictures)
-          places = Places.new(variables: lowering.variables, lists: {},
+          places = Places.new(variables: lowering.variables, lists: lowering.lists,
                               runtime: Runtime.places(memory, sprites: sprites.positive?, view: view),
                               source_program: program, code: asm.here,
                               bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])

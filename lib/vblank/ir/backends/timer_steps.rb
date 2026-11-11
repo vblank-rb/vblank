@@ -26,9 +26,10 @@ module VBlank
       #   emit_own_routine(label) { }       a routine of the lowering's own: the label, what the block
       #                                     writes, and a return
       #   call_routine(label)               a call of one
-      #   keeping_interrupted_numbers(handler) { }
-      #                                     what the block writes, a handler's statements, with whatever a
-      #                                     routine the handler calls keeps of its own put back after. A
+      #   with_interrupted_numbers_kept(handler) { }
+      #                                     what the block writes, a handler's statements, with whatever its
+      #                                     run could leave changed for whoever it interrupted put back after
+      #                                     (@timer_crossed among them, for a handler that waits a frame). A
       #                                     handler runs inside the game's wait, which can be in the middle
       #                                     of one of the game's routines, and the interpreter gives each
       #                                     run of a routine its own count and place in a loop
@@ -39,7 +40,7 @@ module VBlank
       #
       # and what it does with them: #keep_timer_numbers before any code, #emit_timer_statement and
       # #timer_ticks_variable where a game names a timer, and #emit_timer_routines once, whose answer is the
-      # label of the routine its runtime runs at each frame boundary, once the buttons are read and unless
+      # label of the routine its runtime runs at each frame boundary, before the buttons are read and unless
       # the reader has taken the last pass it compares (Reference#advance_frame moves no timer on after it).
       module TimerSteps
         STATEMENT_KINDS = %i[timer_start timer_stop on_timer].freeze
@@ -97,7 +98,7 @@ module VBlank
 
         private
 
-        def keeping_interrupted_numbers(_handler) = yield
+        def with_interrupted_numbers_kept(_handler) = yield
 
         def timers = @plan.timers
         def timer_number(name, what) = @timer_numbers.fetch(timers.fetch(name)).fetch(what)
@@ -141,7 +142,7 @@ module VBlank
             done = fresh_label("ticks_done")
             place_label(top)
             jump_unless(Build.binop(:>, Build.var_ref(@timer_crossed), Build.int(0)), done)
-            keeping_interrupted_numbers(handler) { handler.children.each { |child| statement(child) } }
+            with_interrupted_numbers_kept(handler) { handler.children.each { |child| statement(child) } }
             emit_sum(@timer_crossed, :-, Build.int(1))
             jump(top)
             place_label(done)

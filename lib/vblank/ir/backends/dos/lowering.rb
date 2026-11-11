@@ -27,6 +27,7 @@ module VBlank
           include TimerSteps
           include Clock
           include Sprites
+          include Lists
 
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
@@ -39,10 +40,11 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
-          ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Lists::STATEMENT_KINDS +
+            Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix chance data_byte table_get
-                            held pressed save_read save_sum] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS).freeze
+                            held pressed save_read save_sum] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS + Lists::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -135,6 +137,7 @@ module VBlank
             make_art
             DOS.refuse_too_much_art!(@art.bytesize)
             @scene = keep_local(:scene, start: -1) unless @plan.scenes.empty?
+            reserve_lists
             keep_timer_numbers
             keep_loop_running
             keep_clock_readings
@@ -385,6 +388,7 @@ module VBlank
             when :clamp then emit_clamp(node)
             when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when *TimerSteps::STATEMENT_KINDS then emit_timer_statement(node)
+            when *Lists::STATEMENT_KINDS then emit_list_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt
@@ -496,18 +500,34 @@ module VBlank
           def emit_store_number(name, number) = emit_number_into(name, number)
           def call_routine(label) = @asm.call(label)
 
-          # A handler's statements (TimerSteps), with the numbers of every routine it can call kept on the
-          # stack while it runs and put back after. The game may be waiting in the middle of one of those
-          # routines, part way through a loop whose count is in the data segment: the handler's own call of
-          # it would leave the count where its loop ended. Every routine is written before any handler, so
-          # the numbers each keeps are all known here.
-          def keeping_interrupted_numbers(handler)
-            kept = routines_called_from(handler).flat_map { |name| @locals_of_routine.fetch(Lowering.routine_label(name), []) }
+          # A handler's statements (TimerSteps), with every number its run could leave changed for whoever it
+          # interrupted kept on the stack while it runs and put back after:
+          #
+          #   - the numbers of every routine it can call. The game may be waiting in the middle of one of them,
+          #     part way through a loop whose count is in the data segment, and the handler's own call of it
+          #     would leave the count where its loop ended;
+          #   - the handler's own, and the count of ticks still to answer. A handler that waits a frame is
+          #     in the middle of its own loops when the next frame's ticks run it again.
+          #
+          # The handler's own numbers are not known until its statements are written, so the keeping is
+          # written after them and jumped to first.
+          def with_interrupted_numbers_kept(handler)
+            keep = fresh_label("keep_numbers")
+            run = fresh_label("run_handler")
+            put_back = fresh_label("put_numbers_back")
+            @asm.jmp(keep)
+            @asm.label(run)
+            yield
+            @asm.jmp(put_back)
+            @asm.label(keep)
+            called = routines_called_from(handler).flat_map { |name| @locals_of_routine.fetch(Lowering.routine_label(name), []) }
+            kept = called + @locals_of_routine.fetch(@routine, []) + [@timer_crossed]
             kept.each do |name|
               @asm.mov(:eax, number_at(name))
               @asm.push(:eax)
             end
-            yield
+            @asm.jmp(run)
+            @asm.label(put_back)
             kept.reverse_each do |name|
               @asm.pop(:eax)
               @asm.mov(number_at(name), :eax)
@@ -533,11 +553,12 @@ module VBlank
 
           # A routine of the lowering's own, named for itself as a game's routine is.
           def emit_own_routine(label)
+            outer = @routine
             @routine = label
             @asm.label(label)
             yield
             @asm.ret
-            @routine = MAIN
+            @routine = outer
           end
 
           def emit_call(node)
@@ -832,9 +853,13 @@ module VBlank
           end
 
           # rt_blit with the picture's place already in SI: the node's x into EAX and its y into ECX. Working
-          # them out never touches SI.
+          # one out can call a routine that changes SI (a list read), so SI is kept round any that is worked.
           def emit_blit_call(node)
-            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            operands = [value_node(node.x), value_node(node.y)]
+            worked = !operands.all? { |operand| simple?(operand) }
+            @asm.push(:si) if worked
+            emit_values_into(%i[eax ecx], operands)
+            @asm.pop(:si) if worked
             @asm.call("rt_blit")
           end
 
@@ -894,6 +919,7 @@ module VBlank
               @asm.not(:eax)
             when :shift_right then emit_shift_right(node)
             when :mul_fix then emit_mul_fix(node)
+            when *Lists::VALUE_KINDS then emit_list_value(node)
             when :chance then emit_chance(node)
             when :data_byte then @asm.mov(:eax, data_byte(node))
             when :table_get then emit_table_get(node)
@@ -993,12 +1019,16 @@ module VBlank
             @asm.mov_segment(:cx, :art)
             @asm.push(:ds)
             @asm.mov(:ds, :cx)
-            entry = X86.mem(:bx, 0, size: bytes * 8)
+            emit_table_entry_read(X86.mem(:bx, 0, size: bytes * 8), bytes, signed)
+            @asm.pop(:ds)
+          end
+
+          # EAX from a table's +entry+ of +bytes+ bytes, widened by its sign or with noughts as the table keeps it.
+          def emit_table_entry_read(entry, bytes, signed)
             if bytes == 4 then @asm.mov(:eax, entry)
             elsif signed then @asm.movsx(:eax, entry)
             else @asm.movzx(:eax, entry)
             end
-            @asm.pop(:ds)
           end
 
           # Int32.shift_right by a count settled as the game is built: the bits moved down with the sign filling

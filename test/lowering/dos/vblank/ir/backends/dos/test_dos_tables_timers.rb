@@ -101,4 +101,41 @@ class TestDOSTablesTimers < Minitest::Test
     assert_equal 10, run[:slow_ticks]
     assert_includes 20..24, run[:fast_ticks], "three ticks every four frames, for the thirty passes before it was stopped"
   end
+
+  # A handler that waits a frame is in the middle of its own loop, and of the frame's ticks, when the next
+  # frame's ticks run it again: its loop's count and the ticks still to answer are its own each time.
+  def test_a_handler_that_waits_a_frame_carries_on_where_it_was
+    in_a_loop = checked(frames: 6) do
+      screen :bitmap
+      beat = timer :beat, per_second: 60
+      n = var :n, 0
+      beat.on_tick do
+        repeat(3) do
+          n += 1
+          wait_vblank if n == 2
+        end
+      end
+      game_loop {}
+    end
+    many_a_frame = checked(frames: 5) do
+      screen :bitmap
+      beat = timer :beat, per_second: 150
+      n = var :n, 0
+      k = var :k, 0
+      busy = var :busy, 0
+      beat.on_tick do
+        n += 1
+        if busy == 0 && n % 4 == 1
+          busy = 1
+          wait_vblank
+          k += 7
+          busy = 0
+        end
+      end
+      game_loop {}
+    end
+
+    assert_operator in_a_loop[:n], :>=, 6
+    assert_operator many_a_frame[:k], :>=, 7
+  end
 end
