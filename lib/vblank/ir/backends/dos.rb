@@ -180,16 +180,19 @@ module VBlank
         # The save memory of a game that saves, in a segment of its own after those (Runtime::Saving).
         SAVE_PARAGRAPHS = Runtime::Saving::SIZE / 16
 
-        private
+        # The most art a program can have: its pictures are one segment too. Asked by the lowering as soon as
+        # the art is made, before any instruction names a place in it, since a place past the segment's end
+        # fits no 16-bit offset, and again here once the art is rounded up to whole paragraphs.
+        MOST_ART_BYTES = Console::DOSHardware::SEGMENT_SIZE
 
-        # Also asked by the lowering as soon as the art is made, before any instruction names a place in it:
-        # a place past the segment's end fits no 16-bit offset.
         def self.refuse_too_much_art!(bytes)
-          return if bytes <= MOST_CODE_BYTES
+          return if bytes <= MOST_ART_BYTES
 
           raise LoweringError, "This game's pictures are #{bytes} bytes, and a DOS program keeps them in one segment of " \
-                               "#{MOST_CODE_BYTES}. To fix this, use fewer or smaller pictures."
+                               "#{MOST_ART_BYTES}. To fix this, use fewer or smaller pictures."
         end
+
+        private
 
         def refuse_too_much_code!(bytes)
           return if bytes <= MOST_CODE_BYTES

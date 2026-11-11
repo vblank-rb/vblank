@@ -27,9 +27,9 @@ module VBlank
             SINES = Ractor.make_shareable((0...360).map { |degrees| Affine.sine(degrees) })
 
             # The numbers the routine keeps on the stack while it draws, a place each of four bytes.
-            KEPT = %i[across_by_column across_by_row down_by_column down_by_row width height half_width half_height left top
+            FRAME = %i[across_by_column across_by_row down_by_column down_by_row width height half_width half_height left top
                       row_across row_down row rows pixels count].each_with_index.to_h { |name, i| [name, i * 4] }.freeze
-            KEPT_BYTES = KEPT.size * 4
+            FRAME_BYTES = FRAME.size * 4
 
             module_function
 
@@ -42,7 +42,7 @@ module VBlank
 
             # rt_sprite_turned: the sprite just placed turns. Its angle in EAX and its size in ECX, its picture's
             # width in DX, and the first row of its patch it can reach and the row after the last in BX and SI.
-            # Changes BP.
+            # Called straight after rt_sprite_place, whose row of the table it adds to. Changes BP.
             def emit_turned(asm, memory)
               entry = ->(part, size) { X86.mem(:bp, part, size: size) }
               asm.label("rt_sprite_turned")
@@ -64,32 +64,32 @@ module VBlank
             def emit_blit(asm, memory)
               screen = memory.screen
               entry = ->(part, size) { X86.mem(:bx, part, size: size) }
-              kept = ->(name, size = 32) { X86.mem(:bp, KEPT.fetch(name), size: size) }
+              frame = ->(name, size = 32) { X86.mem(:bp, FRAME.fetch(name), size: size) }
               asm.label("rt_sprite_turned_blit")
               asm.mov(:bx, :bp)
               asm.push(:ds)
-              asm.sub(:sp, KEPT_BYTES)
+              asm.sub(:sp, FRAME_BYTES)
               asm.mov(:bp, :sp)
               # The picture's size, half of it, and where the patch stands: half a picture out on every side.
               asm.xor(:eax, :eax)
               asm.mov(:ax, entry.call(Sprites::WIDTH, 16))
-              asm.mov(kept.call(:width), :eax)
+              asm.mov(frame.call(:width), :eax)
               asm.shr(:eax, 1)
-              asm.mov(kept.call(:half_width), :eax)
+              asm.mov(frame.call(:half_width), :eax)
               asm.xor(:eax, :eax)
               asm.mov(:ax, entry.call(Sprites::HEIGHT, 16))
-              asm.mov(kept.call(:height), :eax)
+              asm.mov(frame.call(:height), :eax)
               asm.mov(:ecx, :eax)
               asm.shl(:ecx, 1)
-              asm.mov(kept.call(:rows), :ecx)
+              asm.mov(frame.call(:rows), :ecx)
               asm.shr(:eax, 1)
-              asm.mov(kept.call(:half_height), :eax)
+              asm.mov(frame.call(:half_height), :eax)
               asm.mov(:eax, entry.call(Sprites::X, 32))
-              asm.sub(:eax, kept.call(:half_width))
-              asm.mov(kept.call(:left), :eax)
+              asm.sub(:eax, frame.call(:half_width))
+              asm.mov(frame.call(:left), :eax)
               asm.mov(:eax, entry.call(Sprites::Y, 32))
-              asm.sub(:eax, kept.call(:half_height))
-              asm.mov(kept.call(:top), :eax)
+              asm.sub(:eax, frame.call(:half_height))
+              asm.mov(frame.call(:top), :eax)
               # Not drawn at all unless the rows it can reach meet the screen (TurnedBox.rows_shown).
               asm.movsx(:ecx, entry.call(Sprites::REACH_END, 16))
               asm.add(:ecx, :eax)
@@ -101,7 +101,7 @@ module VBlank
               asm.jge("rt_sprite_turned_done")
               asm.mov(:ax, entry.call(Sprites::ART, 16))
               asm.add(:ax, 4)
-              asm.mov(kept.call(:pixels, 16), :ax)
+              asm.mov(frame.call(:pixels, 16), :ax)
               # The angle as degrees from 0 to 359, whichever way round the game counted it.
               asm.mov(:eax, entry.call(Sprites::ANGLE, 32))
               asm.cdq
@@ -136,9 +136,9 @@ module VBlank
               asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
               asm.imul(:eax, :ecx)
               asm.sar(:eax, 8)
-              asm.mov(kept.call(:across_by_row), :eax)
+              asm.mov(frame.call(:across_by_row), :eax)
               asm.neg(:eax)
-              asm.mov(kept.call(:down_by_column), :eax)
+              asm.mov(frame.call(:down_by_column), :eax)
               asm.pop(:bx)
               asm.add(:bx, 90) # the cosine is the sine a quarter turn on
               asm.cmp(:bx, 360)
@@ -150,26 +150,27 @@ module VBlank
               asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
               asm.imul(:eax, :ecx)
               asm.sar(:eax, 8)
-              asm.mov(kept.call(:across_by_column), :eax)
-              asm.mov(kept.call(:down_by_row), :eax)
+              asm.mov(frame.call(:across_by_column), :eax)
+              asm.mov(frame.call(:down_by_row), :eax)
               # Where in the picture the patch's first pixel is, in 256ths from the picture's middle: a picture's
               # width to the left of it and a height above.
-              [[:row_across, :across_by_column, :across_by_row], [:row_down, :down_by_column, :down_by_row]].each do |start, by_column, by_row|
-                asm.mov(:eax, kept.call(by_column))
-                asm.imul(:eax, kept.call(:width))
-                asm.mov(:ecx, kept.call(by_row))
-                asm.imul(:ecx, kept.call(:height))
+              starts = [[:row_across, :across_by_column, :across_by_row], [:row_down, :down_by_column, :down_by_row]]
+              starts.each do |start, by_column, by_row|
+                asm.mov(:eax, frame.call(by_column))
+                asm.imul(:eax, frame.call(:width))
+                asm.mov(:ecx, frame.call(by_row))
+                asm.imul(:ecx, frame.call(:height))
                 asm.add(:eax, :ecx)
                 asm.neg(:eax)
-                asm.mov(kept.call(start), :eax)
+                asm.mov(frame.call(start), :eax)
               end
-              asm.mov(kept.call(:row), 0)
+              asm.mov(frame.call(:row), 0)
               asm.mov_segment(:ax, :art)
               asm.mov(:ds, :ax)
 
               asm.label("rt_sprite_turned_row")
-              asm.mov(:eax, kept.call(:top))
-              asm.add(:eax, kept.call(:row))
+              asm.mov(:eax, frame.call(:top))
+              asm.add(:eax, frame.call(:row))
               asm.and(:eax, Reference::TurnedBox::LINES - 1)
               asm.cmp(:eax, screen.height)
               asm.jae("rt_sprite_turned_row_done")
@@ -181,12 +182,12 @@ module VBlank
                 asm.imul(:eax, :ecx)
                 asm.mov(:di, :ax)
               end
-              asm.mov(:ebx, kept.call(:row_across))
-              asm.mov(:edx, kept.call(:row_down))
-              asm.mov(:esi, kept.call(:left))
-              asm.mov(:ax, kept.call(:width, 16))
+              asm.mov(:ebx, frame.call(:row_across))
+              asm.mov(:edx, frame.call(:row_down))
+              asm.mov(:esi, frame.call(:left))
+              asm.mov(:ax, frame.call(:width, 16))
               asm.shl(:ax, 1)
-              asm.mov(kept.call(:count, 16), :ax)
+              asm.mov(frame.call(:count, 16), :ax)
               # A pixel of the patch: on the screen, inside the picture, and something drawn there. EBX and EDX
               # are where it is in the picture across and down, ESI its x on the screen, DI the row's start.
               asm.label("rt_sprite_turned_pixel")
@@ -194,17 +195,17 @@ module VBlank
               asm.jae("rt_sprite_turned_pixel_done")
               asm.mov(:eax, :ebx)
               asm.sar(:eax, 8)
-              asm.add(:eax, kept.call(:half_width))
-              asm.cmp(:eax, kept.call(:width))
+              asm.add(:eax, frame.call(:half_width))
+              asm.cmp(:eax, frame.call(:width))
               asm.jae("rt_sprite_turned_pixel_done")
               asm.mov(:ecx, :edx)
               asm.sar(:ecx, 8)
-              asm.add(:ecx, kept.call(:half_height))
-              asm.cmp(:ecx, kept.call(:height))
+              asm.add(:ecx, frame.call(:half_height))
+              asm.cmp(:ecx, frame.call(:height))
               asm.jae("rt_sprite_turned_pixel_done")
-              asm.imul(:ecx, kept.call(:width))
+              asm.imul(:ecx, frame.call(:width))
               asm.add(:cx, :ax)
-              asm.add(:cx, kept.call(:pixels, 16))
+              asm.add(:cx, frame.call(:pixels, 16))
               asm.push(:bx)
               asm.mov(:bx, :cx)
               asm.mov(:al, X86.mem(:bx, 0, size: 8))
@@ -216,23 +217,23 @@ module VBlank
               asm.mov(X86.mem(:di, 0, seg: :es, size: 8), :al)
               asm.mov(:di, :cx)
               asm.label("rt_sprite_turned_pixel_done")
-              asm.add(:ebx, kept.call(:across_by_column))
-              asm.add(:edx, kept.call(:down_by_column))
+              asm.add(:ebx, frame.call(:across_by_column))
+              asm.add(:edx, frame.call(:down_by_column))
               asm.inc(:esi)
-              asm.dec(kept.call(:count, 16))
+              asm.dec(frame.call(:count, 16))
               asm.jne("rt_sprite_turned_pixel")
               asm.label("rt_sprite_turned_row_done")
-              asm.mov(:eax, kept.call(:across_by_row))
-              asm.add(kept.call(:row_across), :eax)
-              asm.mov(:eax, kept.call(:down_by_row))
-              asm.add(kept.call(:row_down), :eax)
-              asm.mov(:eax, kept.call(:row))
+              asm.mov(:eax, frame.call(:across_by_row))
+              asm.add(frame.call(:row_across), :eax)
+              asm.mov(:eax, frame.call(:down_by_row))
+              asm.add(frame.call(:row_down), :eax)
+              asm.mov(:eax, frame.call(:row))
               asm.inc(:eax)
-              asm.mov(kept.call(:row), :eax)
-              asm.cmp(:eax, kept.call(:rows))
+              asm.mov(frame.call(:row), :eax)
+              asm.cmp(:eax, frame.call(:rows))
               asm.jb("rt_sprite_turned_row")
               asm.label("rt_sprite_turned_done")
-              asm.add(:sp, KEPT_BYTES)
+              asm.add(:sp, FRAME_BYTES)
               asm.pop(:ds)
               asm.ret
             end
