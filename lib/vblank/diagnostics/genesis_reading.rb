@@ -26,6 +26,20 @@ module VBlank
       # is off the screen.
       SPRITE_PLACE_OFFSET = 128
 
+      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # AdvanceReading#video_memories gives it: the 64 colours, the sprite table by its bytes, the
+      # vertical scroll memory by its words (two for each pair of columns, one for each of the two
+      # scrolling layers), and the video chip's 24 registers by their numbers, which the emulator
+      # keeps though the console cannot read them back. How far each layer is scrolled across is a
+      # table in video memory a register points at, among the tiles' pictures, so it is not here.
+      def video_memories
+        ensure_rendered!
+        { colors: palette.each_with_index.to_h { |color, at| [at, color] },
+          sprite_table: @probe.sprite_table.bytes.each_with_index.to_h { |byte, at| [at, byte] },
+          scroll: @probe.scroll_ram.unpack("n*").each_with_index.to_h { |word, at| [at, word] },
+          registers: @probe.video_registers.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
+      end
+
       def sprites(_name = nil) = refuse_genesis_reader!(:sprites)
       def music_playing = refuse_genesis_reader!(:music_playing)
 
