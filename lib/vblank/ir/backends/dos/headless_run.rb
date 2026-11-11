@@ -48,9 +48,32 @@ module VBlank
               frames += 1
               refuse_stuck_game! if frames > LONGEST_PASS_FRAMES
             end
+            press_before_first_pass
             @core.release_gate
-            set_buttons(@held)
+            set_buttons(buttons_sent(1))
           end
+
+          # A KEY PRESSED NOW IS READ AT THE RETRACE AFTER THE NEXT. The emulator's frame ends as the card
+          # finishes the picture's last line, a few lines before the retrace at which the program takes its
+          # buttons, and a key takes longer than those lines to reach the program through the keyboard's
+          # interrupt. So the keys sent before a frame is played are the buttons of the frame after it, which
+          # is what a person's key is too: down some time in one frame, read as the next begins. The first
+          # frame's are sent as the gate opens (#power_on), after the program has taken the ones held from
+          # power-on for its first pass.
+          def next_screen_frame = super + 1
+
+          # The buttons held from power-on are down before the game's first pass begins, as a console's are:
+          # the keys are pressed while the program waits at its gate, and a frame is played there for the
+          # keyboard to tell the program of them.
+          def press_before_first_pass
+            return if @held.empty?
+
+            set_buttons(@held)
+            KEY_FRAMES.times { @core.run_frame }
+          end
+
+          # The frames a key pressed takes to reach a program waiting at its gate, with one to spare.
+          KEY_FRAMES = 2
 
           # The buttons a game names, as keys. One the keyboard has no key for is one no program for it can
           # read, so it is not pressed.

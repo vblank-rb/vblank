@@ -88,7 +88,7 @@ diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
  }
  
  /* Stubs */
-@@ -1663,3 +1688,82 @@
+@@ -1663,3 +1688,100 @@
  }
  
  #endif
@@ -111,10 +111,28 @@ diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
 +static retro_keyboard_event_t vblank_keyboard_event;
 +static void RETRO_CALLCONV vblank_log(enum retro_log_level, const char*, ...) { }
 +VBLANK_EXPORT void vblank_set_directory(const char* path) { vblank_directory = path; }
-+/* A key going down (1) or up (0), told to the core the way a frontend does: through the callback it asked for. */
++/* A key going down (1) or up (0), told to the core the way a frontend does: through the callback it asked for.
++
++   WHEN THE KEYBOARD HEARS OF IT. The harness presses keys between two frames, and a frame ends as the card
++   finishes the picture's last line, a few lines before the vertical retrace begins. A program reads its
++   keys as the retrace begins, and the keyboard takes about as long as those few lines to send one byte: a
++   key of one byte would be read in this frame and a key of two (an arrow) in the next. So the keys wait
++   until the retrace has ended, and reach the keyboard then: each has a whole frame to arrive, and all are
++   read at the next retrace, whichever key and however many. The keyboard's own timing is untouched. */
++static std::vector<std::pair<bool, unsigned> > vblank_keys_waiting;
++static void vblank_keys_reach_keyboard(Bitu)
++{
++    for (size_t i = 0; i != vblank_keys_waiting.size(); i++)
++        if (vblank_keyboard_event) vblank_keyboard_event(vblank_keys_waiting[i].first, vblank_keys_waiting[i].second, 0, 0);
++    vblank_keys_waiting.clear();
++}
 +VBLANK_EXPORT void vblank_key_event(int down, unsigned code)
 +{
-+    if (vblank_keyboard_event) vblank_keyboard_event(down != 0, code, 0, 0);
++    /* From the picture's last line to the end of the retrace, in milliseconds; a card not drawing yet has none. */
++    float until_retrace_ends = (float)(vga.draw.delay.vrend - vga.draw.delay.vdend);
++    if (!(until_retrace_ends > 0)) until_retrace_ends = 1.0f;
++    if (vblank_keys_waiting.empty()) PIC_AddEvent(vblank_keys_reach_keyboard, until_retrace_ends);
++    vblank_keys_waiting.push_back(std::make_pair(down != 0, code));
 +}
 +VBLANK_EXPORT bool vblank_environment(unsigned cmd, void* data)
 +{

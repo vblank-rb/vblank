@@ -73,6 +73,13 @@ module VBlank
       # --- keyboard: the scan codes the keyboard port (60h) says, from IBM's set 1 ---
       KEYBOARD_PORT = 0x60
       KEYBOARD_IRQ = 1
+      # Where the processor finds the keyboard interrupt's routine: interrupt 9 (IRQ 1 is the second of the
+      # eight that start at 8), whose offset and segment are the two words at four times its number.
+      KEYBOARD_VECTOR = 9 * 4
+      # The interrupt controller's command port, and the command that tells it an interrupt was served,
+      # without which it sends no more.
+      INTERRUPT_CONTROLLER = 0x20
+      END_OF_INTERRUPT = 0x20
       EXTENDED_KEY = 0xE0
       # A key is let go with its scan code plus this.
       RELEASE_BIT = 0x80

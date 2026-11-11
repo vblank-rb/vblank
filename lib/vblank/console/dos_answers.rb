@@ -251,11 +251,9 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy]
+                                               var set add add_var sub sub_var copy held pressed]
       })
 
-      # What the page says of the steps the DOS build does not make yet: for each part, the
-      # verbs that wait on it and the steps it names in a refusal.
       # The screens of the variants the build does not make yet (Lowering#refuse_unmade_variant!), +part+
       # being the words for them, or nothing once every variant is made.
       def self.screens_not_made_words(part)
@@ -264,6 +262,8 @@ module VBlank
         "\n- #{part}: a game that names one is refused."
       end
 
+      # What the page says of the steps the DOS build does not make yet: for each part, the
+      # verbs that wait on it and the steps it names in a refusal.
       def self.not_yet_words(not_yet)
         return "The build for DOS makes every kind of step that the answers above do not refuse." if
           not_yet.empty?

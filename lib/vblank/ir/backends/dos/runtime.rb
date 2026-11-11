@@ -20,6 +20,14 @@ module VBlank
         # the wait still takes one: FRAMES moves on by one a pass. (Counting the retraces a long pass missed
         # takes a timer interrupt, which is part of the input and time work.)
         #
+        # THE KEYBOARD. Each key going down or up interrupts the program (IRQ 1), and the routine the runtime
+        # hands the processor for it (rt_keyboard) reads the key's scan code from port 60h and keeps two sets
+        # of the game's buttons, a bit each in IR::Buttons's order: the ones down now, and the ones that went
+        # down since the last pass ended. A key held down sends its code again and again, so only a key that
+        # was up counts as going down. The wait at a pass's end hands both to the game (HELD and PRESSED) and
+        # empties the second, so a tap that goes down and up inside one slow pass is still one press. The
+        # BIOS's own routine is not called: it would fill its buffer of typed keys and beep when it is full.
+        #
         # What the run is doing is kept where a reader finds it (DOS::HeadlessRun), by the names every cartridge
         # console's runtime keeps: how many passes have ended, which pass the screen shows, whether the game is
         # waiting, and whether it stopped or went wrong.
@@ -51,6 +59,9 @@ module VBlank
             FRAMES = "rt frames" # frames counted since the game began
             STEP_TAKEN = "rt step"
             FRAMES_TAKEN = "rt frames taken"
+            # The buttons as the keyboard's interrupt keeps them: down now, and gone down since the last wait ended.
+            KEY_HELD = "rt key held"
+            KEY_PRESSED = "rt key pressed"
             # How many frames each of the last STEPS_KEPT passes took, a byte each.
             STEPS = "rt steps"
             STEPS_KEPT = 16
@@ -59,7 +70,7 @@ module VBlank
             END_SHOWN = 0xFFFF_FFFF
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES, STEP_TAKEN,
-                     FRAMES_TAKEN].freeze
+                     FRAMES_TAKEN, KEY_HELD, KEY_PRESSED].freeze
           end
 
           # WHERE A LIST KEEPS ITS COUNTS, which every cartridge's reader asks (CartridgeHeadlessRun#read_lists):
@@ -99,6 +110,7 @@ module VBlank
           def emit(asm, memory, palette:, starts:, pictures:)
             emit_start(asm, memory, palette, starts)
             emit_frame(asm, memory)
+            emit_keyboard(asm, memory)
             emit_number_routines(asm)
             emit_drawing_routines(asm)
             emit_blit_routine(asm) if pictures
@@ -130,17 +142,15 @@ module VBlank
             asm.xor(:cx, :cx)
             asm.mov(:es, :cx)
             asm.mov(X86.mem(nil, ica::DATA_SEGMENT_AT, seg: :es), :ax)
-            asm.cmp(:bl, "H".ord)
-            asm.jne("rt_no_gate")
-            asm.mov(X86.mem(nil, ica::START_GATE_AT, seg: :es, size: 8), 1)
-            asm.label("rt_no_gate")
             asm.mov(:es, :ax)
             asm.xor(:di, :di)
             asm.mov(:cx, memory.cleared_bytes / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
+            asm.push(:bx) # the letter, kept from whatever the BIOS does with BX
             asm.mov(:ax, Console::DOSHardware::MODE_13H)
             asm.int(0x10)
+            asm.pop(:bx)
             asm.mov(:dx, Console::DOSHardware::DAC_WRITE_INDEX)
             asm.xor(:al, :al)
             asm.out_to_dx(:al)
@@ -152,14 +162,35 @@ module VBlank
               end
             end
             starts.each { |offset, number| asm.mov(X86.mem(nil, offset, size: 32), number & 0xFFFF_FFFF) }
-            # THE GATE, after everything that takes DOSBox time (the mode, the palette), so the game's first pass
-            # starts at the moment a reader lets go.
-            asm.xor(:bx, :bx)
-            asm.mov(:es, :bx)
+            # The keyboard's interrupt is handed to rt_keyboard: its offset and this code's segment, written
+            # with interrupts off so none comes while the two words are half changed.
+            asm.xor(:cx, :cx)
+            asm.mov(:es, :cx)
+            asm.cli
+            asm.mov_offset(:ax, "rt_keyboard")
+            asm.mov(X86.mem(nil, Console::DOSHardware::KEYBOARD_VECTOR, seg: :es), :ax)
+            asm.mov(X86.mem(nil, Console::DOSHardware::KEYBOARD_VECTOR + 2, seg: :es), :cs)
+            asm.sti
+            # THE GATE, for a program a reader asked to hold: shut and waited at after everything that takes
+            # DOSBox time (the mode, the palette), so a reader that finds it shut finds the program waiting
+            # there, and the game starts at the moment the reader lets go.
+            asm.cmp(:bl, "H".ord)
+            asm.jne("rt_gate_open")
+            asm.mov(X86.mem(nil, ica::START_GATE_AT, seg: :es, size: 8), 1)
             asm.label("rt_start_gate")
             asm.mov(:al, X86.mem(nil, ica::START_GATE_AT, seg: :es))
             asm.test(:al, :al)
             asm.jne("rt_start_gate")
+            asm.label("rt_gate_open")
+            # A button down as the game starts is held through its first pass, and is a press when the first
+            # pass ends, as on every console (Reference#read_buttons).
+            asm.mov(:eax, X86.mem(nil, memory[Frame::KEY_HELD], size: 32))
+            asm.mov(X86.mem(nil, memory[Frame::HELD], size: 32), :eax)
+            # THE FIRST PASS BEGINS AS A RETRACE DOES. The program is started at any moment of a frame, and a
+            # pass that began part way through one would end at a retrace nobody could name ahead of time:
+            # the next, or the one after if the pass ran past it. Begun at a retrace, every pass that fits a
+            # frame ends at the next one.
+            asm.call("rt_sleep_until_retrace")
             asm.mov(:ax, VIDEO)
             asm.mov(:es, :ax)
             asm.call("main")
@@ -191,16 +222,16 @@ module VBlank
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
             asm.mov(at.call(Frame::WAITING), 1)
-            # THE FIRST WAIT TAKES TWO RETRACES. The first pass starts at an unknown moment of a frame, so the
-            # retrace that follows may be a frame's whole length away or a hair: skipping it makes the first
-            # pass end a whole frame later in either case, and a reader that looks once a frame finds the first
-            # pass waiting, as it finds each pass after it.
-            asm.mov(:eax, at.call(Frame::PASSES))
-            asm.cmp(:eax, 1)
-            asm.jne("rt_wait_once")
             asm.call("rt_sleep_until_retrace")
-            asm.label("rt_wait_once")
-            asm.call("rt_sleep_until_retrace")
+            # The buttons, taken from the keyboard's interrupt with interrupts off, so a key cannot go down
+            # between the two halves and be lost.
+            asm.cli
+            asm.mov(:eax, at.call(Frame::KEY_PRESSED))
+            asm.mov(at.call(Frame::PRESSED), :eax)
+            asm.mov(at.call(Frame::KEY_PRESSED), 0)
+            asm.mov(:eax, at.call(Frame::KEY_HELD))
+            asm.mov(at.call(Frame::HELD), :eax)
+            asm.sti
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.mov(at.call(Frame::SHOWN), :eax)
             asm.mov(:eax, at.call(Frame::HOLD))
@@ -224,6 +255,52 @@ module VBlank
             asm.mov(at.call(Frame::SHOWN), Frame::END_SHOWN)
             asm.label("rt_stopped")
             asm.jmp("rt_stopped")
+          end
+
+          # rt_keyboard, the keyboard's interrupt (see THE KEYBOARD above). It keeps every register it uses,
+          # since it runs in the middle of whatever the game was doing. A scan code's low seven bits are the
+          # key and its top bit says the key was let go; the arrows send a byte of E0h first, which is no
+          # key of the game's and falls through. The buttons' bits fit the low word of each set.
+          def emit_keyboard(asm, memory)
+            h = Console::DOSHardware
+            held = X86.mem(nil, memory[Frame::KEY_HELD], size: 16)
+            pressed = X86.mem(nil, memory[Frame::KEY_PRESSED], size: 16)
+            asm.label("rt_keyboard")
+            asm.push(:ax)
+            asm.push(:bx)
+            asm.push(:ds)
+            asm.mov_segment(:ax, :data)
+            asm.mov(:ds, :ax)
+            asm.in_byte(h::KEYBOARD_PORT)
+            asm.mov(:ah, :al)
+            asm.and(:al, h::RELEASE_BIT - 1)
+            Console::DOS.buttons.each do |button|
+              asm.cmp(:al, h::SCAN_CODES.fetch(button))
+              asm.jne("rt_keyboard_not_#{button}")
+              asm.mov(:bx, Buttons.mask(button))
+              asm.jmp("rt_keyboard_button")
+              asm.label("rt_keyboard_not_#{button}")
+            end
+            asm.jmp("rt_keyboard_done")
+            asm.label("rt_keyboard_button")
+            asm.test(:ah, h::RELEASE_BIT)
+            asm.jne("rt_keyboard_up")
+            asm.mov(:ax, held)
+            asm.test(:ax, :bx)
+            asm.jne("rt_keyboard_done")
+            asm.or(held, :bx)
+            asm.or(pressed, :bx)
+            asm.jmp("rt_keyboard_done")
+            asm.label("rt_keyboard_up")
+            asm.not(:bx)
+            asm.and(held, :bx)
+            asm.label("rt_keyboard_done")
+            asm.mov(:al, h::END_OF_INTERRUPT)
+            asm.out_byte(h::INTERRUPT_CONTROLLER)
+            asm.pop(:ds)
+            asm.pop(:bx)
+            asm.pop(:ax)
+            asm.iret
           end
 
           # IR::Int32 for the operations the processor does differently. Each takes the left number in EAX and

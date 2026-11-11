@@ -17,7 +17,7 @@ module VBlank
         # instruction on a game's number whose answer Int32 gives otherwise.
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
-        # its conditions and halting, and a painted screen of one page with a cleared screen, pixels,
+        # its conditions and halting, the keyboard's keys as buttons, and a painted screen of one page with a cleared screen, pixels,
         # rectangles, pictures (`blit`), text and numbers, in a palette of the colours the game names.
         # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
         # all is refused in the words its answers have (Console::Answers#refusals).
@@ -35,7 +35,7 @@ module VBlank
             draw_rect_at blit draw_text draw_digit
           ] + Nodes.of_role(:declaration)).freeze
 
-          VALUE_KINDS = %i[int var_ref binop neg].freeze
+          VALUE_KINDS = %i[int var_ref binop neg held pressed].freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -513,8 +513,20 @@ module VBlank
             when :neg
               emit_value(node.operand)
               @asm.neg(:eax)
+            when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
+            when :pressed then emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
+          end
+
+          # 1 where +button+ is in the set the runtime keeps at +which+ (held through the pass, or pressed
+          # in it), a bit each in IR::Buttons's order; any of the keyboard's for Buttons::ANY.
+          def emit_button_down_flag(which, button)
+            mask = button == Buttons::ANY ? Buttons.mask(CONSOLE.buttons) : Buttons.mask(button)
+            @asm.mov(:eax, runtime_at(which))
+            @asm.test(:eax, mask)
+            @asm.setne(:al)
+            @asm.movzx(:eax, :al)
           end
 
           # The left in EAX and the right in ECX, then one instruction on the pair, or a call to the runtime

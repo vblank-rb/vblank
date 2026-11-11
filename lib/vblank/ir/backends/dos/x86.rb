@@ -139,6 +139,14 @@ module VBlank
             word(0)
           end
 
+          # mov register, OFFSET label: a 16-bit register loaded with where +label+ is in the code segment,
+          # for a routine handed over by its address (an interrupt's).
+          def mov_offset(register, label)
+            emit([0xB8 + REGISTERS_16.index(register)].pack("C"))
+            fixup(:offset, label)
+            word(0)
+          end
+
           def lea(register, memory) = emit_modrm(0x8D, register, nil, memory)
 
           def movzx(destination, source)
@@ -268,6 +276,8 @@ module VBlank
               case kind
               when :near
                 bytes[at, 2] = [offset_of(name) - (at + 2)].pack("s<")
+              when :offset
+                bytes[at, 2] = [offset_of(name)].pack("v")
               when :segment
                 bytes[at, 2] = [segments.fetch(name) { raise Error, "no segment is named #{name.inspect}" }].pack("v")
                 words << at

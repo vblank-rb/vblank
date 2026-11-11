@@ -120,6 +120,17 @@ class TestX86 < Minitest::Test
     assert_equal [2], assembled.segment_words
   end
 
+  # A routine handed over by its address (an interrupt's): B8 + the register, then where the label is.
+  def test_a_label_s_offset_is_loaded_as_a_number
+    asm = X86.new
+    asm.nop
+    asm.mov_offset(:ax, "routine")
+    asm.nop
+    asm.label("routine")
+
+    assert_equal "90 b8 05 00 90", hex(asm.assemble.bytes)
+  end
+
   def test_a_label_that_is_never_placed_is_refused
     asm = X86.new
     asm.jmp("nowhere")
