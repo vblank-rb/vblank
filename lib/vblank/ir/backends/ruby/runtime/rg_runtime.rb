@@ -459,6 +459,33 @@ def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, ori
   end
 end
 
+# How many pieces the frame whose entry is at +entry_at+ holds, and where the first of them is in
+# the file: [count, first] (rg_runtime.c's start_file_frame_pieces). The frame's entry says where
+# its record starts, counted from +records_at+; 0 is a frame with no record. The file is the
+# player's: a record is read while it is inside the file.
+def rg_start_file_frame_pieces(entry_at, records_at)
+  size = @rg_start_file.bytesize
+  offset = entry_at + RG_FRAME_ENTRY_BYTES <= size ? rg_start_file_half(entry_at) | (rg_start_file_half(entry_at + 2) << 16) : 0
+  return [0, 0] unless offset != 0 && records_at + offset + RG_FRAME_HEADER_BYTES <= size
+
+  first = records_at + offset + RG_FRAME_HEADER_BYTES
+  [[rg_start_file_half(first - RG_FRAME_HEADER_BYTES), (size - first) / RG_FRAME_PIECE_BYTES].min, first]
+end
+
+# Colours of a list the file chooses (rg_runtime.h, rg_start_file_choose_colors).
+def rg_start_file_choose_colors(colors, first, count, rules)
+  entry_at, records_at, colors_at, list_colors, lists, first_place = rules
+  pieces, first_piece = rg_start_file_frame_pieces(entry_at, records_at)
+  list = pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
+  count.times do |entry|
+    colors[first + entry] = if list < lists
+                              rg_start_file_color(colors_at + (list * list_colors * 2), rules, RG_CHOSEN_COLORS_HEADER_NUMBERS, first_place + entry)
+                            else
+                              0
+                            end
+  end
+end
+
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
@@ -468,16 +495,7 @@ def rg_start_file_fill_pose(rules)
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
   swapped = held_colors + (colors_at.negative? ? colors_count : 0)
-  # The frame's entry says where its record starts, counted from +records_at+; 0 is a frame with
-  # no record. The file is the player's: a record is read while it is inside the file.
-  size = @rg_start_file.bytesize
-  offset = entry_at + RG_FRAME_ENTRY_BYTES <= size ? rg_start_file_half(entry_at) | (rg_start_file_half(entry_at + 2) << 16) : 0
-  count = 0
-  first = 0
-  if offset != 0 && records_at + offset + RG_FRAME_HEADER_BYTES <= size
-    first = records_at + offset + RG_FRAME_HEADER_BYTES
-    count = [rg_start_file_half(first - RG_FRAME_HEADER_BYTES), (size - first) / RG_FRAME_PIECE_BYTES].min
-  end
+  count, first = rg_start_file_frame_pieces(entry_at, records_at)
   places = Array.new(width * height, 0)
   count.times do |piece|
     rg_start_file_paint_piece(places, width, height, first + (piece * RG_FRAME_PIECE_BYTES), rules, tile_format, origin_x, origin_y,

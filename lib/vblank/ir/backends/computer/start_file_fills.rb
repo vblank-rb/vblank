@@ -109,26 +109,51 @@ module VBlank
           end
 
           # One call for each run of entries: colours one after another in the file, kept one
-          # way, or colours made from entries before them. The entries are filled in their order,
-          # since a colour is made from one before it.
+          # way; colours made from entries before them; or the colours of a list the file chooses,
+          # place after place. The entries are filled in their order, since a colour is made from
+          # one before it.
           def build_start_file_color_fills
             formats = {}
-            runs = start_file_colors.each_with_index.chunk_while do |(before, _), (after, _)|
-              next after.is_a?(IR::StartFile::WalkedColor) if before.is_a?(IR::StartFile::WalkedColor)
-
-              after.is_a?(IR::StartFile::Color) && after.format == before.format && after.at == before.at + START_FILE_COLOR_BYTES
-            end
+            runs = start_file_colors.each_with_index.chunk_while { |(before, _), (after, _)| start_file_colors_in_one_run?(before, after) }
             runs.map do |run|
               where, first = run.first
-              if where.is_a?(IR::StartFile::WalkedColor)
+              filled = [start_file_colors_name, Statements::Int.new(first), Statements::Int.new(run.length)]
+              case where
+              when IR::StartFile::WalkedColor
                 made = drawing_array("start_file_walked_colors", "int32_t", run.flat_map { |walked, _| [walked.of, walked.far, walked.steps] })
-                next eval_call("rg_start_file_walk_colors", start_file_colors_name, Statements::Int.new(first), Statements::Int.new(run.length), made)
+                eval_call("rg_start_file_walk_colors", *filled, made)
+              when IR::StartFile::ChosenColor
+                eval_call("rg_start_file_choose_colors", *filled, drawing_array("start_file_chosen_colors", "int32_t", chosen_color_rules(where)))
+              else
+                format = formats[where.format] ||= drawing_array("start_file_color_format", "int32_t", color_format_rules(where.format))
+                eval_call("rg_start_file_fill_colors", *filled, Statements::Int.new(where.at), format)
               end
-
-              format = formats[where.format] ||= drawing_array("start_file_color_format", "int32_t", color_format_rules(where.format))
-              eval_call("rg_start_file_fill_colors", start_file_colors_name, Statements::Int.new(first), Statements::Int.new(run.length),
-                        Statements::Int.new(where.at), format)
             end
+          end
+
+          # Whether the entry +after+ is filled by the call that fills +before+, the entry before it.
+          def start_file_colors_in_one_run?(before, after)
+            case before
+            when IR::StartFile::WalkedColor then after.is_a?(IR::StartFile::WalkedColor)
+            when IR::StartFile::ChosenColor then after == before.with(place: before.place + 1)
+            else after.is_a?(IR::StartFile::Color) && after.format == before.format && after.at == before.at + START_FILE_COLOR_BYTES
+            end
+          end
+
+          # The numbers rg_start_file_choose_colors reads for a run of colours of a list the file
+          # chooses, +first+ being the run's first (an IR::StartFile::ChosenColor): where the
+          # frame's entry is and where the frames' records start, which is what names the list
+          # (IR::StartFile::FrameBank); where the lists' colours are, how many colours a list is
+          # and how many lists there are; the run's first place; then how the colours are kept.
+          def chosen_color_rules(first)
+            choice = first.choice
+            header = [choice.entry_at, choice.records_at, first.at, first.list_colors, first.lists, first.place]
+            unless header.length == StartFileNumbers::CHOSEN_COLORS_HEADER_NUMBERS
+              raise ArgumentError, "A chosen colour fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
+                                   "CHOSEN_COLORS_HEADER_NUMBERS says #{StartFileNumbers::CHOSEN_COLORS_HEADER_NUMBERS}. Change both together."
+            end
+
+            [*header, *color_format_rules(first.format)]
           end
 
           # How many bytes of the file a colour is.

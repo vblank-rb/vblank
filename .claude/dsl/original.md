@@ -345,6 +345,10 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   or a sprite's `colors: :logo_cycle_3`, `draw_with`, `recolor`, `screen :tiled, backdrop: :logo_cycle_3`. The
   runtime reads the colours at power-on into the same array a backdrop's colour is in
   (`rg_start_file_fill_colors`) and puts each where a marker is (`rg_start_file_fill_marked_pixels`).
+  **A marker names a recipe for one colour** (an entry of `IR::StartFile#colors`): a colour at a place of the file
+  (`Color`), a step of a walk of one (`WalkedColor`), or a colour of a list that a number in the file picks
+  (`ChosenColor`). So whatever of a picture's colours is the player's data rides on markers, and no verb is taught it:
+  the 256 colours of a picture of pixels, and the bank a pose's frame names, are these too.
   **`color_walk` of such a list makes its steps at power-on**, each colour from the file's by the sum the build
   uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`). Place 0 keeps the slot's colour, as
   built all-in-one. The build cannot compare two colours it does not hold, so it refuses at the line: a
@@ -357,9 +361,16 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   each is is in the pack, so the game gives `size:`, the picture's size, and a pose with none is refused at the line. The
   program holds zeros of that size and where the frame's record and its tiles are in the file (`IR::StartFile::Pose`), and the
   runtime paints each piece into the picture at power-on (`rg_start_file_fill_pose`), the earlier in front where two
-  overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. A pose that takes its colours from the bank
-  its frame names (a layout with `bank_bit:` and `colors:` a whole slot, `sprites.md`) is refused at the line for now: the
-  bank is in the file, so the build cannot name the pose's list. Nothing the file holds stops the
+  overlap. `colors:` is the game's own list, or a slot or bank of the pack's colours. **A pose that takes its colours from the bank
+  its frame names** (a layout with `bank_bit:` and `colors:` a whole slot, `sprites.md`) **is drawn in that bank's colours**: which
+  bank is a number in the file, so the pose's list holds a marker for each place of "the bank this frame names"
+  (`IR::StartFile::ChosenColor`, picked by an `IR::StartFile::FrameBank`), which the runtime fills at power-on from the bank the
+  frame's front piece keeps in its record (`rg_start_file_choose_colors`); the pose is then filled as any pose that holds its
+  colours. The build cannot NAME that list, so `colors_name_of` of such a pose, a sprite told to follow its poses' lists
+  (`draw_with` given a hash) and `bank:` are refused at the line there, saying to give the pose one list or build all-in-one. A
+  frame of two banks in the player's file, which the all-in-one build refuses, is drawn whole in its front piece's bank. On a
+  console whose build keeps one list for a whole sprite (the Advance), one sprite that shows two such poses is refused in that
+  build even where their frames name one bank, since the build cannot tell. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
   **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's

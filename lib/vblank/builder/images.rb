@@ -299,6 +299,7 @@ module VBlank
         image = @pictures.fetch(picture) do
           raise ArgumentError, "colors_name_of :#{picture} names no picture. Declare it first with `image :#{picture}, ...`."
         end
+        refuse_naming_frame_bank_list!(picture, "colors_name_of :#{picture}")
         image.colors_name or
           raise ArgumentError, "colors_name_of needs a picture drawn from a list that has a name, and image :#{picture} " \
                                "was given its colors themselves. To fix this, declare the list with `colors` and give " \
@@ -342,6 +343,7 @@ module VBlank
                                "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
                                "this, leave out showing:."
         end
+        poses.each { |pose| refuse_naming_frame_bank_list!(pose, "#{subject} was told to draw_with a list for each of its lists. That") }
         drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
         named = drawn.compact.map { |name| ":#{name}" }
         lists.each do |own, with|

@@ -84,10 +84,12 @@
  * pieces the original names, two bytes each, then RG_FRAME_PIECE_BYTES a piece: x and y from the
  * object's place, two bytes each and signed; its first tile, two bytes; how many tiles on the tile
  * one column to the right is, and the tile one row down, two bytes each; how many tiles it is
- * across and down, a byte each; and how it is turned, a byte of RG_PIECE_MIRRORED and
- * RG_PIECE_UPSIDE_DOWN. */
+ * across and down, a byte each; how it is turned, a byte of RG_PIECE_MIRRORED and
+ * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
+ * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
 #define RG_FILL_POSE_HEADER_NUMBERS 15
+#define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
 #define RG_FRAME_ENTRY_BYTES 4
 #define RG_FRAME_HEADER_BYTES 4
 #define RG_FRAME_PIECE_BYTES 16
@@ -99,6 +101,7 @@
 #define RG_PIECE_COLUMNS_AT 10
 #define RG_PIECE_ROWS_AT 11
 #define RG_PIECE_TURNS_AT 12
+#define RG_PIECE_BANK_AT 14
 #define RG_PIECE_MIRRORED 1
 #define RG_PIECE_UPSIDE_DOWN 2
 #define RG_TILE_BYTES_AT 0

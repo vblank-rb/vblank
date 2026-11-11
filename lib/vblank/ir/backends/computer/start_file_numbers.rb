@@ -49,6 +49,12 @@ module VBlank
           # each (Original::FrameRecord), which each runtime reads by that record's fixed layout.
           POSE_HEADER_NUMBERS = 15
 
+          # The numbers before the colour layout in the rules of colours of a list the file chooses
+          # (StartFileFills#chosen_color_rules): where the frame's entry is and where the frames'
+          # records start, where the lists' colours are, how many colours a list is, how many
+          # lists there are, and the first place filled.
+          CHOSEN_COLORS_HEADER_NUMBERS = 6
+
           # THE LAYOUT OF A FRAME'S RECORD, as each runtime reads it: how many bytes a directory
           # entry, a frame's header and a piece are, and where each part of a piece is. They are
           # Original::FrameRecord's own numbers, the one place the layout is written down, handed on
@@ -61,6 +67,7 @@ module VBlank
               "RG_PIECE_TILE_AT" => record::TILE_AT, "RG_PIECE_COLUMN_STEP_AT" => record::COLUMN_STEP_AT,
               "RG_PIECE_ROW_STEP_AT" => record::ROW_STEP_AT, "RG_PIECE_COLUMNS_AT" => record::COLUMNS_AT,
               "RG_PIECE_ROWS_AT" => record::ROWS_AT, "RG_PIECE_TURNS_AT" => record::TURNS_AT,
+              "RG_PIECE_BANK_AT" => record::BANK_AT,
               "RG_PIECE_MIRRORED" => record::MIRRORED, "RG_PIECE_UPSIDE_DOWN" => record::UPSIDE_DOWN }
           end
 
@@ -69,6 +76,7 @@ module VBlank
 
           NAMES = Ractor.make_shareable({
             "RG_FILL_POSE_HEADER_NUMBERS" => POSE_HEADER_NUMBERS,
+            "RG_CHOSEN_COLORS_HEADER_NUMBERS" => CHOSEN_COLORS_HEADER_NUMBERS,
             "RG_TILE_BYTES_AT" => TILE_BYTES_AT, "RG_TILE_PLANES_AT" => TILE_PLANES_AT,
             "RG_TILE_PLANE_BITS_AT" => TILE_PLANE_BITS_AT, "RG_TILE_ROW_BITS_AT" => TILE_ROW_BITS_AT,
             "RG_TILE_COLUMN_BITS_AT" => TILE_COLUMN_BITS_AT, "RG_TILE_FORMAT_NUMBERS" => TILE_FORMAT_NUMBERS,

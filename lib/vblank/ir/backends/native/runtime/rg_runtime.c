@@ -627,6 +627,33 @@ static void start_file_paint_piece(int32_t *places, int32_t width, int32_t heigh
   }
 }
 
+/* How many pieces the frame whose entry is at +entry_at+ holds, and, in +first+, where the first of
+ * them is in the file. The frame's entry says where its record starts, counted from +records_at+;
+ * 0 is a frame with no record. The file is the player's: a record is read while it is inside the
+ * file. */
+static int32_t start_file_frame_pieces(int32_t entry_at, int32_t records_at, int32_t *first) {
+  uint32_t offset = entry_at + RG_FRAME_ENTRY_BYTES <= start_file_size ? start_file_number(entry_at, 4, 0) : 0;
+  int32_t count = 0, room = start_file_size - records_at - RG_FRAME_HEADER_BYTES;
+  *first = 0;
+  if (offset != 0 && room >= 0 && offset <= (uint32_t)room) {
+    *first = records_at + (int32_t)offset + RG_FRAME_HEADER_BYTES;
+    count = (int32_t)start_file_number(*first - RG_FRAME_HEADER_BYTES, 2, 0);
+    if (count > (start_file_size - *first) / RG_FRAME_PIECE_BYTES) count = (start_file_size - *first) / RG_FRAME_PIECE_BYTES;
+  }
+  return count;
+}
+
+void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules) {
+  int32_t entry_at = rules[0], records_at = rules[1], colors_at = rules[2], list_colors = rules[3], lists = rules[4];
+  int32_t first_place = rules[5], first_piece = 0;
+  const int32_t *format = rules + RG_CHOSEN_COLORS_HEADER_NUMBERS;
+  int32_t list = start_file_frame_pieces(entry_at, records_at, &first_piece) > 0
+                     ? (int32_t)start_file_number(first_piece + RG_PIECE_BANK_AT, 2, 0)
+                     : 0;
+  for (int32_t entry = 0; entry < count; entry++)
+    colors[first + entry] = list < lists ? start_file_color(colors_at + (list * list_colors * 2), format, first_place + entry) : 0;
+}
+
 void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
   int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], entry_at = rules[9], records_at = rules[10];
@@ -635,15 +662,7 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
   const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
-  /* The frame's entry says where its record starts, counted from +records_at+; 0 is a frame with
-   * no record. The file is the player's: a record is read while it is inside the file. */
-  uint32_t offset = entry_at + RG_FRAME_ENTRY_BYTES <= start_file_size ? start_file_number(entry_at, 4, 0) : 0;
-  int32_t first = 0, count = 0, room = start_file_size - records_at - RG_FRAME_HEADER_BYTES;
-  if (offset != 0 && room >= 0 && offset <= (uint32_t)room) {
-    first = records_at + (int32_t)offset + RG_FRAME_HEADER_BYTES;
-    count = (int32_t)start_file_number(first - RG_FRAME_HEADER_BYTES, 2, 0);
-    if (count > (start_file_size - first) / RG_FRAME_PIECE_BYTES) count = (start_file_size - first) / RG_FRAME_PIECE_BYTES;
-  }
+  int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first);
   int32_t *places = calloc((size_t)(width * height), sizeof *places);
   if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
   for (int32_t piece = 0; piece < count; piece++)

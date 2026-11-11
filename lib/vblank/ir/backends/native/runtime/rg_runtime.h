@@ -225,6 +225,16 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * moved toward that colour's, and no further. It is one step of a walk of a list read from the
  * file, which the build works out itself for a list it holds (Graphics::Color.walked_toward).
  *
+ * rg_start_file_choose_colors: +count+ entries of +colors+ from entry +first+ on, each a colour of
+ * a list the file chooses (IR::StartFile::ChosenColor). +rules+ are RG_CHOSEN_COLORS_HEADER_NUMBERS
+ * numbers: where a frame's entry is in the file and where the frames' records start, as
+ * rg_start_file_fill_pose has them; where the lists' colours are in the file, how many colours a
+ * list is, and how many lists there are; and the place of the first entry filled, the next entry
+ * being the next place. Then the layout the colours are kept in. The list is the bank the frame's
+ * front piece names in its record (RG_PIECE_BANK_AT), bank 0 for a frame with no piece. A console's
+ * sprite entry names the bank of colours it is drawn from, so a pose drawn in its frame's bank is
+ * drawn in these. The file is the player's: a bank past the lists is colour 0.
+ *
  * A COLOUR OF SUCH A LIST IS WRITTEN IN THE GAME AS A MARKER wherever the game would hold the
  * colour (IR::StartFile, "MARKERS"): a number of sixteen bits above RG_MARKED_COLOR, never all
  * sixteen, which names entry (marker - RG_MARKED_COLOR - 1) of +colors+.
@@ -251,6 +261,7 @@ void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
+void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
 void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);
 int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color);
 const uint8_t *rg_start_file_bytes(void);

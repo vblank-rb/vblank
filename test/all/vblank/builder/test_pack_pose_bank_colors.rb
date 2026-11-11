@@ -99,9 +99,9 @@ module PackPoseBankColorGames
 
   # The poses :first (the frame of bank 1) and :second (the frame of bank 2), declared in +game+.
   # Public, since a game's block calls back through it.
-  def declare_poses_for(game, pack, colors: pack[:palette])
-    game.image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN, colors: colors
-    game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors
+  def declare_poses_for(game, pack, colors: pack[:palette], **told)
+    game.image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN, colors: colors, **told
+    game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors, **told
   end
 
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
@@ -358,17 +358,21 @@ class TestPackPoseBankColors < Minitest::Test
   end
 
   # THE BANK IS IN THE PLAYER'S COPY, which a build that reads its pack as the game starts does not
-  # hold, so it cannot name the pose's list.
-  def test_a_pose_that_takes_its_bank_from_its_frame_is_refused_with_the_pack_left_out
+  # hold. It draws the pose in that bank's colours all the same (PackGames::PosesInBankColors
+  # holds it to the all-in-one build), and refuses only what needs the list's name while the game
+  # is built.
+  def test_the_name_of_a_frames_list_is_refused_with_the_pack_left_out
     options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
     Dir.mktmpdir do |folder|
       error = assert_raises(ArgumentError) do
         game_of(folder, options: options) do |pack|
           image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
                         colors: pack[:palette], size: [16, 8]
+          colors_name_of(:first)
         end
       end
 
+      assert_includes error.message, "colors_name_of :first"
       assert_includes error.message, "as the game starts"
       assert_includes error.message, "all-in-one"
     end

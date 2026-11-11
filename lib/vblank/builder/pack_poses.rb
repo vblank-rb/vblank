@@ -62,8 +62,7 @@ module VBlank
         size = refuse_bad_pieced_size!(name, opts[:size])
         from_banks = pose_colors_from_banks?(frame, opts[:colors])
         refuse_bank_without_bank_colors!(name) if opts.key?(:bank) && !from_banks
-        refuse_bank_colors_at_start!(name) if from_banks
-        return define_pack_pose_read_at_start(name, opts, origin, size) if pack_left_out?
+        return define_pack_pose_read_at_start(name, opts, origin, size, from_banks: from_banks) if pack_left_out?
 
         tile_places = pack_tile_places(opts[:tiles], "image :#{name}")
         read = frame_pieces(name, frame)
@@ -143,34 +142,55 @@ module VBlank
                              "whole slot of colors, like `colors: pack[:palette]`. To fix this, leave out bank:."
       end
 
-      # WITH THE PACK LEFT OUT the build does not hold the frame, so it does not know which bank
-      # its pieces name, and so not which list the picture is drawn from: the name `draw_with` and
-      # `recolor` go by.
-      def refuse_bank_colors_at_start!(name)
-        return unless pack_left_out?
+      # WITH THE PACK LEFT OUT A POSE OF ONE BANK'S PIECES (`bank:`) IS NOT MADE YET: which pieces
+      # of the frame are in that bank is in the file, and the routine that paints a pose as the
+      # game starts paints every piece.
+      def refuse_bank_option_at_start!(name)
+        raise ArgumentError, "image :#{name} was given bank:, and this build reads its pack as the game starts. A pose " \
+                             "of the pieces of one bank is not made that way yet. To fix this, build the game all-in-one."
+      end
 
-        raise ArgumentError, "image :#{name} takes its colors from the bank its frame names, and this build reads its " \
-                             "pack as the game starts. A pose in the colors of its frame's bank is not made that way " \
-                             "yet. To fix this, build the game all-in-one."
+      # WITH THE PACK LEFT OUT THE BUILD CANNOT NAME THE LIST OF A POSE DRAWN IN ITS FRAME'S BANK:
+      # which bank that is is in the file. The pose is drawn in the right colours all the same
+      # (#frame_bank_colors_read_at_start); what needs the name while the game is built is refused
+      # here: `colors_name_of`, and a sprite told to follow the lists its poses are drawn from.
+      # +asked+ is what the game wrote, as a sentence's start.
+      def refuse_naming_frame_bank_list!(picture, asked)
+        return unless @poses_in_frame_bank_colors&.include?(picture)
+
+        raise ArgumentError, "#{asked} needs the name of the list of colors that image :#{picture} is drawn from. " \
+                             "image :#{picture} takes its colors from the bank its frame names, and this build reads " \
+                             "its pack as the game starts. So the build does not know which bank that is. To fix " \
+                             "this, give the pose one list, like `colors: pack[:palette].bank(1)`. Or build the " \
+                             "game all-in-one."
       end
 
       # THE SAME POSE WITH THE PACK LEFT OUT (see the top of this file). The picture holds zeros of
       # the size the game gave, and its places are all 1, so the build treats it as a solid box.
       # Its colours are the game's own list, or a slot or bank of colours read from the file with
-      # the frame, named for the slot as a picture's are (DataPacks#pack_colors_name).
-      def define_pack_pose_read_at_start(name, opts, origin, size)
+      # the frame, named for the slot as a picture's are (DataPacks#pack_colors_name), or, where
+      # the pose takes them from the bank its frame names (+from_banks+), a marker for each colour
+      # of that bank (#frame_bank_colors_read_at_start).
+      def define_pack_pose_read_at_start(name, opts, origin, size, from_banks: false)
         refuse_pose_without_size!(name) unless size
+        refuse_bank_option_at_start!(name) if opts.key?(:bank)
         tiles = opts[:tiles]
         colors = opts[:colors]
         record = pack_frame_number(frame_source(name, opts[:frame]))
-        colors_from_file = colors.is_a?(DSL::PackSlot)
-        if colors_from_file
+        entry_at = @pack_frames_at + (record * Original::FrameRecord::ENTRY_BYTES)
+        colors_from_file = colors.is_a?(DSL::PackSlot) && !from_banks
+        if colors.is_a?(DSL::PackSlot)
           refuse_slot_from_elsewhere!(colors, "image :#{name}'s colors:")
           refuse_slot_read_wrongly!(colors, :colors, "image :#{name}'s colors:")
-          refuse_too_many_pack_colors!(name, colors)
+          refuse_too_many_pack_colors!(name, colors) unless from_banks
         end
-        colors_name = colors_from_file ? pack_colors_name(colors) : (colors if colors.is_a?(Symbol))
-        table = if colors_from_file
+        colors_name = if from_banks then :"#{pack_colors_name(colors)} bank of frame #{record}"
+                      else colors_from_file ? pack_colors_name(colors) : (colors if colors.is_a?(Symbol))
+                      end
+        table = if from_banks
+                  (@poses_in_frame_bank_colors ||= Set.new) << name
+                  frame_bank_colors_read_at_start(name, opts, IR::StartFile::FrameBank.new(entry_at: entry_at, records_at: @pack_frames_at))
+                elsif colors_from_file
                   Array.new(colors.count, 0)
                 else
                   color_table(name, colors_name ? declared_colors_for_image!(name, colors_name) : colors).map { |value| value || 0 }
@@ -180,7 +200,7 @@ module VBlank
         node = Build.bitmap(name, width: width, height: height, pixels: Array.new(width * height, 0).pack("v*"), transparent: nil,
                                   colors: table, places: Array.new(width * height, 1).pack("C*"), colors_name: colors_name)
         node.from_file = IR::StartFile::Pose.new(
-          entry_at: @pack_frames_at + (record * Original::FrameRecord::ENTRY_BYTES), records_at: @pack_frames_at,
+          entry_at: entry_at, records_at: @pack_frames_at,
           origin_x: origin[0], origin_y: origin[1],
           tiles_at: @pack_slot_starts.fetch(tiles.layout.name) + (first_tile * tiles.layout.item_bytes),
           tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
@@ -190,6 +210,45 @@ module VBlank
         record_picture(node)
         (@pictures_from_start_file ||= {})[name] = node.from_file
         record_visible_bounds(name: name, width: width, height: height, cells: [], transparent: nil)
+      end
+
+      # THE COLOURS OF A POSE DRAWN IN THE BANK ITS FRAME NAMES, WITH THE PACK LEFT OUT. Which bank
+      # that is is a number in the file: the bank the frame's front piece keeps in its record
+      # (+choice+, an IR::StartFile::FrameBank). So the pose's list holds, for each place, a marker
+      # of the colour at that place of whichever bank the file names (IR::StartFile::ChosenColor),
+      # and the pose is filled as any pose that holds its colours is. The first place is
+      # see-through, as in any picture's list.
+      #
+      # Each bank of the slot is declared as the list `:<slot>_<bank>` here too, as built
+      # all-in-one (#pose_bank_list!), so a game that recolours or walks one by that name builds.
+      #
+      # The file is the player's, so nothing in it stops the game: a frame whose pieces name two
+      # banks, which the build that holds the pack refuses, is drawn whole in its front piece's.
+      def frame_bank_colors_read_at_start(name, opts, choice)
+        slot = opts[:colors]
+        size = opts[:tiles].layout.format.colors
+        declare_bank_lists_read_at_start(slot, size, "image :#{name}'s colors:")
+        chosen = IR::StartFile::ChosenColor.new(choice: choice, at: colors_in_pack(slot), list_colors: size, lists: slot.count / size,
+                                                place: 0, format: slot.layout.format)
+        [0, *(1...size).map { |place| start_file_color_marker(chosen.with(place: place)) }]
+      end
+
+      # Each bank of +slot+ (a whole slot of colours), +size+ colours to a bank, as the list
+      # `:<slot>_<bank>` of a marker for each colour, which is what a background from the slot
+      # declares in such a build (PackBackgrounds#declare_bank_stand_in). Hands back the names.
+      def declare_bank_lists_read_at_start(slot, size, subject)
+        first = colors_in_pack(slot)
+        Array.new(slot.count / size) do |bank|
+          list = :"#{slot.layout.name}_#{bank}"
+          held = Array.new(size) do |place|
+            at = first + (((bank * size) + place) * slot.layout.item_bytes)
+            start_file_color_marker(IR::StartFile::Color.new(at: at, format: slot.layout.format))
+          end
+          refuse_pack_color_list_taken!(subject, list) if @color_lists.key?(list) && @color_lists[list] != held
+          @color_lists[list] = held
+          (@color_lists_read_at_start ||= {})[list] = bank
+          list
+        end
       end
 
       # THE FRAME +frame+ (a DSL::PackFrame) AS THE PACK'S UNPACKING IS TOLD OF IT (an

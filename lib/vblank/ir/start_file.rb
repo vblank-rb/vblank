@@ -51,9 +51,10 @@ module VBlank
     # - a screen's backdrop (Nodes::Screen#backdrop_from_file, a Color): the one colour the screen
     #   shows wherever nothing is drawn. The program holds no colour for it.
     # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
-    #   walk of either): +colors+ names each colour of it once (a Color in the file, or a
-    #   WalkedColor made from one), and wherever the program would hold the colour it holds a
-    #   MARKER naming that entry (.marker_of). See "MARKERS" below.
+    #   walk of either, the colours of a picture of pixels, the bank a pose's frame names):
+    #   +colors+ names each colour of it once (a Color in the file, a WalkedColor made from one,
+    #   or a ChosenColor, whose list a number in the file picks), and wherever the program would
+    #   hold the colour it holds a MARKER naming that entry (.marker_of). See "MARKERS" below.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -278,6 +279,36 @@ module VBlank
       # work out. +of+ always names an entry before this one, so the entries are made in order.
       WalkedColor = Data.define(:of, :far, :steps)
 
+      # A COLOUR OF A LIST THE FILE CHOOSES: the colour at +place+ of one of +lists+ lists of
+      # +list_colors+ colours each, kept one after another as +format+ from byte +at+ on. Which
+      # list is a number the file holds, named by +choice+ (a FrameBank). It is what a marker
+      # names for a colour whose LIST is data of the player's copy: a console's sprite entry names
+      # the bank of colours it is drawn from, so a pose drawn in the bank its frame names is drawn
+      # in these (Builder::PackPoses#frame_bank_colors_read_at_start).
+      #
+      # The file is the player's, so nothing in it stops the game: a number past the lists is
+      # colour 0.
+      ChosenColor = Data.define(:choice, :at, :list_colors, :lists, :place, :format)
+
+      # THE BANK OF COLOURS A FRAME NAMES: the bank its front piece keeps in the frame's record
+      # (Original::FrameRecord, BANK_AT), the record found as a Pose finds its own, from the
+      # four bytes at +entry_at+ and where the records start, +records_at+. A frame with no piece
+      # names bank 0.
+      FrameBank = Data.define(:entry_at, :records_at)
+
+      # The number +where+ (a FrameBank) names in +bytes+, the file.
+      def self.frame_bank_in(bytes, where)
+        Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at).pieces.first&.bank || 0
+      end
+
+      # The fifteen bits of the colour +where+ (a ChosenColor) names in +bytes+, the file.
+      def self.chosen_color_in(bytes, where)
+        list = frame_bank_in(bytes, where.choice)
+        return 0 unless list < where.lists
+
+        color_in(bytes, Color.new(at: where.at + (((list * where.list_colors) + where.place) * 2), format: where.format))
+      end
+
       # MARKERS: A COLOUR KNOWN ONLY AS THE GAME STARTS, WHEREVER THE PROGRAM WOULD HOLD IT. A
       # program built with its pack left out names lists of colours it does not hold: it knows a
       # sprite is recoloured with bank 2 and not what bank 2 holds. Its lists are still compared
@@ -305,6 +336,7 @@ module VBlank
         colors.each_with_object([]) do |source, held|
           held << case source
                   when Color then StartFile.color_in(bytes, source)
+                  when ChosenColor then StartFile.chosen_color_in(bytes, source)
                   when WalkedColor then Graphics::Color.walked_toward(held.fetch(source.of), source.far, source.steps)
                   else raise ArgumentError, "#{source.inspect} is not a colour read from the file"
                   end

@@ -886,13 +886,68 @@ module PackGames
   class PosesInBankColors < Kit
     include PackPoseBankColorGames
 
+    SIZE = [16, 8].freeze
+    OTHER_LIST = OTHER.each_with_index.map { |color, at| at.zero? ? :transparent : color }.freeze
+
+    # A game of the poses :first (a frame of bank 1) and :second (a frame of bank 2), each given
+    # the size of its two pieces, and whatever the block, run on the builder, declares.
+    private def poses_in_bank_colors(folder, options, &more)
+      test = self
+      program, file = game_and_file_of(folder, options: options) do |pack|
+        test.declare_poses_for(self, pack, size: SIZE)
+        instance_exec(pack, &more)
+      end
+      built(program, file)
+    end
+
     GAMES = [
-      game(:poses_in_the_banks_their_frames_name, passes: 3, refused: refused_by_builder("the bank its frame names")) do |folder, options|
-        test = self
-        program, file = game_and_file_of(folder, options: options) do |pack|
-          test.declare_poses_for(self, pack)
+      game(:poses_in_the_banks_their_frames_name, passes: 3) do |folder, options|
+        poses_in_bank_colors(folder, options) do |_pack|
           sprite :first, at: [40, 40]
           sprite :second, at: [80, 40]
+        end
+      end,
+      # A swap by place needs no name: the pose's own list is the file's, the other the game's.
+      game(:pose_in_its_frames_bank_drawn_with_another_list, passes: 3) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          sprite :first, at: [40, 40]
+          second = sprite :second, at: [80, 40]
+          second.draw_with :other
+        end
+      end,
+      # A list of a bank, declared by the pose, is recoloured by its name whichever way it is built.
+      game(:bank_list_beside_poses_in_bank_colors_recolored, passes: 5) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          sprite :first, at: [40, 40]
+          image :dot, width: 8, height: 8, places: Array.new(64, 2), colors: :palette_2
+          dot = sprite :dot, at: [80, 60]
+          dot.draw_with :palette_2
+          recolor :palette_2, :other
+        end
+      end,
+      # With the pack left out the build cannot name the list a pose's frame picks.
+      game(:pose_in_its_frames_bank_followed_by_its_lists_name, passes: 5,
+                                                                refused: refused_by_builder("needs the name of the list")) do |folder, options|
+        other = OTHER_LIST
+        poses_in_bank_colors(folder, options) do |_pack|
+          colors :other, other
+          first = sprite :first, at: [40, 40]
+          first.draw_with colors_name_of(:first)
+          recolor :palette_1, :other
+        end
+      end,
+      # Which pieces of a frame are in one bank is in the file, and the fill paints every piece.
+      game(:pose_of_one_banks_pieces, passes: 3, refused: refused_by_builder("bank:")) do |folder, options|
+        program, file = game_and_file_of(folder, options: options) do |pack|
+          frame = pack[:frames].frame(IN_TWO_BANKS, layout: FRAME)
+          image :near, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:palette], bank: 1, size: SIZE
+          image :far, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:palette], bank: 3, size: SIZE
+          sprite :near, at: [40, 40]
+          sprite :far, at: [40, 40]
         end
         built(program, file)
       end
