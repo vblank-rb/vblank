@@ -32,6 +32,7 @@ module VBlank
       #   children_of(node)               [what runs, what runs otherwise] of a statement with a body
       #   loop_statements(node)           what a game loop runs every pass, in the console's order
       #   console_loop(node), game_loops  the plan's (LoweringPlan)
+      #   loop_form                       the plan's too: which shape a repeat can take (LoopForm)
       #   emit_scene(scene)               a scene's routine run, with what its arrival owes
       #
       # What a statement means is Reference's (#exec_if, #exec_repeat, #exec_case), and each console's
@@ -91,31 +92,46 @@ module VBlank
           @loop_running = keep_local(:loop_running) if loops_ending_passes.any?
         end
 
-        # Reference#exec_repeat: the count worked out once, before the first pass; the index
-        # counting 0, 1, 2... and stored in the game's variable at the top of each pass; and
-        # +stop_when+ asked BEFORE the body, so a loop already finished on its first pass runs the
+        # Reference#exec_repeat: the count worked out once, before the first turn; the index
+        # counting 0, 1, 2... and in the game's variable from the top of each turn; and
+        # +stop_when+ asked BEFORE the body, so a loop already finished on its first turn runs the
         # body no times.
         #
         # A count written in the program is compared as the number it is, with no variable of its
         # own to work out and read back each time round.
+        #
+        # THE TEST IS AT THE END OF A TURN: one more, compare, and a jump back while there are turns
+        # left. A test at the top spends a jump out of the loop that is not taken and a jump back
+        # besides, every turn. A test at the end cannot see a loop with no turns, so a count of
+        # nought or less is caught before the first: none is written for a count known to be one,
+        # and no test for a count known to be more.
+        #
+        # THE GAME'S VARIABLE IS THE COUNT where only the loop writes it (LoopForm#counts_in_index?),
+        # so no turn copies a count of the loop's own into it. A loop that runs out has then counted
+        # one past its last turn, and the variable is taken back by one, to the last turn's number,
+        # which is what the interpreter's holds.
         def emit_repeat(node)
-          index = keep_local(:index)
           known = folded(node.count)
+          return if known && known <= 0
+
+          in_index = loop_form.counts_in_index?(node)
+          counter = in_index ? node.index : keep_local(:index)
           limit = known ? Build.int(known) : Build.var_ref(keep_local(:count))
+          top = fresh_label("repeat")
+          done = fresh_label("end_repeat")
           unless known
             emit_value(node.count)
             emit_store(limit.name)
+            jump_unless(Build.binop(:>, limit, Build.int(0)), done)
           end
-          emit_store_zero(index)
-          top = fresh_label("repeat")
-          done = fresh_label("end_repeat")
+          emit_store_zero(counter)
           place_label(top)
-          jump_unless(Build.binop(:<, Build.var_ref(index), limit), done)
-          emit_copy_variable(index, node.index) if node.index
+          emit_copy_variable(counter, node.index) if node.index && !in_index
           jump_if(node.stop_when, done)
           children_of(node).first.each { |child| statement(child) }
-          emit_increment(index)
-          jump(top)
+          emit_increment(counter)
+          jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
+          statement(Build.sub(counter, Build.int(1))) if in_index
           place_label(done)
         end
 

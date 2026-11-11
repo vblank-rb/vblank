@@ -19,7 +19,7 @@
     },
     "breakout@gbc": {
       "code": 11693,
-      "data": 47950
+      "data": 47982
     },
     "buffered_bounce": {
       "code": 4942,
@@ -35,7 +35,7 @@
     },
     "chip_band@gbc": {
       "code": 13575,
-      "data": 13960
+      "data": 13976
     },
     "clock": {
       "code": 25526,
@@ -171,7 +171,7 @@
     },
     "pong_gbc@gbc": {
       "code": 13764,
-      "data": 28080
+      "data": 28096
     },
     "raycaster": {
       "code": 6112,

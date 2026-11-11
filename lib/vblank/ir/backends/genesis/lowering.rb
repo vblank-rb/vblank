@@ -632,6 +632,7 @@ module VBlank
           def emit_increment(name) = emit_sum(name, :+, Build.int(1))
           def loop_statements(node) = children_of(node).first
           def game_loops = @plan.game_loops
+          def loop_form = @plan.loop_form
 
           def emit_copy_variable(from, to)
             value(from)

@@ -730,6 +730,9 @@ module VBlank
           # Every game loop of the program.
           def game_loops = @plan.game_loops
 
+          # Which shape each `repeat` can take (ControlFlow asks).
+          def loop_form = @plan.loop_form
+
           def emit_nothing(_node) = nil
           def emit_children(node) = node.children.each { |child| statement(child) }
 

@@ -526,6 +526,7 @@ module VBlank
           def children_of(node) = [node.children, (node.else&.children if node.kind == :if) || []]
           def loop_statements(node) = console_loop(node).each_time
           def game_loops = @plan.game_loops
+          def loop_form = @plan.loop_form
 
           def emit_copy_variable(from, to)
             emit_load_variable(from)

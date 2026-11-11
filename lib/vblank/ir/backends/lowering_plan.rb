@@ -189,6 +189,9 @@ module VBlank
           end
         end
 
+        # Which shape each `repeat` of the program can take (LoopForm).
+        def loop_form = @loop_form ||= LoopForm.new(@program)
+
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
 

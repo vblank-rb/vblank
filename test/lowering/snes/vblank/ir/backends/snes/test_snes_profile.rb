@@ -18,7 +18,7 @@ class TestSNESProfile < Minitest::Test
     pass = 0
     game_loop do
       pass += 1
-      repeat(9000) { total += 3 } if (pass & 3) == 0
+      repeat(10_000) { total += 3 } if (pass & 3) == 0
     end
   end
 
