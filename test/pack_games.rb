@@ -236,8 +236,8 @@ module PackGames
           end
         end
       end,
-      # A picture drawn in characters is made of colours as the game is built, so its list is read then.
-      game(:drawn_picture_in_pack_colors, passes: 2, refused: refused_by_builder("as the game is built")) do |folder, options|
+      # A picture drawn in characters is made of the game's own colours, and only its list is the pack's.
+      game(:drawn_picture_in_pack_colors, passes: 2) do |folder, options|
         pictures(folder, options) do |pack|
           image(:ship, { "." => :transparent, "#" => :red, "*" => :green, colors: pack[:palette] }) { "..#..\n.#*#.\n#####" }
           game_loop do
@@ -782,8 +782,8 @@ module PackGames
       game(:picture_drawn_in_a_list_from_the_pack_blitted, passes: 2) do |folder, options|
         built(*blitting_game_and_file(layout_original(folder, GENESIS), options: options))
       end,
-      # What the game paints from a list as it runs is not put in colours read as the game starts yet.
-      game(:tiles_painted_from_a_list_in_pack_colors, passes: 4, refused: refused_by_builder("gets its pixels from a list")) do |folder, options|
+      # What the game paints from a list as it runs, in a list of colours from the pack.
+      game(:tiles_painted_from_a_list_in_pack_colors, passes: 4) do |folder, options|
         from = layout_original(folder, GENESIS)
         test = self
         builder = Builder.new(options: options)
@@ -807,9 +807,55 @@ module PackGames
         builder.finalize_program
         built(builder.program, builder.made_data_pack_file)
       end,
-      # A picture given as colours holds no places, so no place of a list read at start can be
-      # found for its pixels.
-      game(:picture_of_colors_drawn_in_a_list_from_the_pack, passes: 2, refused: refused_by_builder("places:")) do |folder, options|
+      # A sprite's picture the game paints from a list, in a list of colours from the pack, and
+      # the same sprite drawn with another bank of the pack once the game says so.
+      game(:sprite_picture_painted_from_a_list_in_pack_colors, passes: 6) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :ink, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :other_ink, pack[:palette].bank(2, size: BANK_SIZE)
+          canvas = list :canvas, capacity: 32, width: :byte
+          repeat(32) { canvas.push 0x21 }
+          letter = image :letter, from: canvas, width: 8, height: 8, colors: :ink
+          tag = sprite :letter, at: [40, 20]
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            tag.draw_with :other_ink if pass >= 4
+            if pass == 2
+              canvas[0] = 0x13
+              letter.changed
+            end
+          end
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
+      # Drawn with another list, a picture given as colours is swapped by finding each pixel's
+      # place in its own list, which a build that does not hold the list cannot do.
+      game(:picture_of_colors_in_a_pack_list_drawn_with_another_list, passes: 3, refused: refused_by_builder("places:")) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+          image :ship, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          ship = sprite :ship, at: [40, 40]
+          ship.draw_with :bank_2
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
+      # A picture given as colours is drawn in them, whatever its list holds.
+      game(:picture_of_colors_drawn_in_a_list_from_the_pack, passes: 2) do |folder, options|
         from = layout_original(folder, GENESIS)
         test = self
         builder = Builder.new(options: options)

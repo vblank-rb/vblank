@@ -237,6 +237,7 @@ module VBlank
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
             @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
             @start_file_marked_pixels = [] # ...and the pixels written as markers, put in their colours then
+            @start_file_marked_numbers = [] # ...and the numbers of a table of colours written as markers
             @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound
@@ -312,7 +313,7 @@ module VBlank
             art = picture_data
             start_file_routines = build_start_file_routines
             [Statements::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
-             *written_sound_array_defines,
+             *written_sound_array_defines, *marked_table_defines,
              Statements::Include.new("rg_int32.h"), Statements::Include.new("rg_runtime.h"), Statements::Include.new("rg_list.h"),
              Statements::Include.new("rg_screen.h"), Statements::Include.new("rg_sound.h"),
              Statements::Include.new("rg_save.h"), Statements::Include.new("rg_state.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },

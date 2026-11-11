@@ -221,25 +221,13 @@ module VBlank
           raise ArgumentError, "#{what} :#{name} needs `colors:`: a list of 2 to #{Images::PICTURE_COLORS} colors, " \
                                "the first meaning see-through. Each four bits of the list's bytes picks one."
         end
-        refuse_painted_in_marked_colors!(name, colors, list, what)
+        # A colour read from the data pack as the game starts is the marker it is (IR::StartFile),
+        # which a build for a computer puts the file's colour in place of as it starts.
         list.map do |color|
           next color if color.is_a?(Integer) # a `colors` list, already resolved
 
           color == :transparent ? 0 : Graphics::Color.resolve(color)
         end
-      end
-
-      # WHAT THE GAME PAINTS FROM A LIST AS IT RUNS, IN COLOURS READ AS THE GAME STARTS, IS NOT MADE
-      # YET. A build for a computer keeps the colour of each place of a painted picture where the
-      # game cannot write, and puts no colour of the data pack there as it starts. Pictures
-      # drawn ahead of time take such a list (DataPacks#pack_colors_read_at_start).
-      def refuse_painted_in_marked_colors!(name, colors, list, what)
-        return unless list.any? { |color| IR::StartFile.marker?(color) }
-
-        raise ArgumentError, "#{what} :#{name} gets its pixels from a list, and its colors :#{colors} are read from the " \
-                             "data pack as the game starts. What the game paints from a list is not made in such " \
-                             "colors yet. To fix this, give it a list of colors that the game writes, or build the " \
-                             "game all-in-one."
       end
 
       def refuse_tile_run_on_bitmap_screen!(name, what: "tiles")

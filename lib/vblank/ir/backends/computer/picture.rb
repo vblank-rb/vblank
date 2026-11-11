@@ -170,7 +170,10 @@ module VBlank
           end
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).
-          def runtime_array(what, type, values) = Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true)
+          # +writable+ is for one the routine that reads the start file writes into.
+          def runtime_array(what, type, values, writable: false)
+            Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true, writable: writable)
+          end
 
           # Every picture a sprite can show, once for each list of colors it is drawn with. A pixel
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
@@ -378,11 +381,15 @@ module VBlank
               first = images.length / (PLACES_IN_RUN_COLORS + 1)
               shown_as = @images.select { |(name, _), _| name == run.picture }
               shown_as.each do |(_, colors), number|
-                images.push(number, *refuse_painted_in_marked_colors!(sprite_pixels(every_place_of(run), colors), run.picture))
+                shown = sprite_pixels(every_place_of(run), colors)
+                # A place in a colour read as the game starts is its marker until then (StartFileFills).
+                record_marked_numbers(:run_images, images.length + 1, shown)
+                images.push(number, *shown)
               end
               [0, run.width, run.height, start, first, shown_as.size, planes]
             end
-            [runtime_array("tile_runs", "int32_t", runs), runtime_array("run_images", "int32_t", images)]
+            [runtime_array("tile_runs", "int32_t", runs),
+             runtime_array("run_images", "int32_t", images, writable: marked_numbers_in?(:run_images))]
           end
 
           # Reference#exec_copy_tiles and what a scene arriving does with each run it shows.
@@ -457,7 +464,8 @@ module VBlank
             @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file
             [runtime_array("tile_pixels", "uint16_t", tile_pixels), runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
-             runtime_array("painted_tiles", "int32_t", painted_tiles), runtime_array("run_colors", "uint16_t", run_colors)]
+             runtime_array("painted_tiles", "int32_t", painted_tiles),
+             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
           end
 
           # A background's tiles the game paints, added to the two arrays rg_screen.c finds them
@@ -476,7 +484,9 @@ module VBlank
             end
             [nil, *steps].each do |swaps|
               @tile_runs.each_value do |run|
-                run_colors.concat(refuse_painted_in_marked_colors!(colors_as_tile(every_place_of(run), swaps), run.name))
+                shown = colors_as_tile(every_place_of(run), swaps)
+                record_marked_numbers(:run_colors, run_colors.length, shown)
+                run_colors.concat(shown)
               end
             end
             starts

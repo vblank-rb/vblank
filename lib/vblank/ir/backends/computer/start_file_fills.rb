@@ -59,7 +59,8 @@ module VBlank
             [Statements::Function.new(name: start_file_routine,
                                       body: build_start_file_color_fills + build_start_file_table_fills +
                                             build_start_file_picture_fills + build_start_file_background_fills +
-                                            build_start_file_marked_pixel_fills + build_start_file_recording_fills +
+                                            build_start_file_marked_pixel_fills + build_start_file_marked_number_fills +
+                                            build_start_file_recording_fills +
                                             build_start_file_sound_fills)]
           end
 
@@ -197,16 +198,41 @@ module VBlank
           # set, is the number below zero of the same bits.
           def image_pixel_kept(pixel) = IR::StartFile.marker?(pixel) ? pixel - 0x1_0000 : pixel
 
-          # WHAT THE GAME PAINTS FROM A LIST AS IT RUNS IS NOT PUT IN COLOURS READ AS THE GAME STARTS
-          # YET: the colour of each place of a painted picture is kept where the routine reading the
-          # file does not write. +colors+ are those colours, handed back where none is a marker.
-          def refuse_painted_in_marked_colors!(colors, name)
-            return colors unless marks_colors? && colors.any? { |color| IR::StartFile.marker?(color) }
+          # NUMBERS OF A TABLE OF COLOURS WRITTEN AS MARKERS, put in their colours as the game starts:
+          # +count+ numbers from +start+ in +table+. What the game paints from a list as it runs is
+          # drawn through tables of the colour each place shows, which the art writes (:run_images
+          # for a painted picture a sprite shows, :run_colors for painted tiles on a background),
+          # and a place in a colour read from the file is its marker there. Such a table is then
+          # written where the routine reading the file can write (MARKED_TABLES), and the routine
+          # puts the entry's colour where each marker is, as it does among the pixels.
+          MarkedNumbers = Data.define(:table, :start, :count)
 
-            raise LoweringError, "#{name.inspect} is painted from a list as the game runs, and it is drawn with colors " \
-                                 "that are read from the #{@program.start_file.called} as the game starts. #{build_name} " \
-                                 "does not make that yet. To fix this, draw it with a list of colors that the game " \
-                                 "writes, or build the game all-in-one."
+          # Each such table: the type its numbers are kept as, and what the game says ahead of the
+          # runtime's headers so that they declare the table as one that is written.
+          MarkedTable = Data.define(:type, :define)
+          MARKED_TABLES = Ractor.make_shareable({ run_images: MarkedTable.new(type: "int32_t", define: "RG_RUN_IMAGES_WRITABLE"),
+                                                  run_colors: MarkedTable.new(type: "uint16_t", define: "RG_RUN_COLORS_WRITABLE") })
+
+          # +colors+, the numbers about to be written at +start+ of +table+, noted if any is a marker.
+          def record_marked_numbers(table, start, colors)
+            return unless marks_colors? && colors.any? { |color| IR::StartFile.marker?(color) }
+
+            @start_file_marked_numbers << MarkedNumbers.new(table: table, start: start, count: colors.length)
+          end
+
+          # Whether any number noted so far is in +table+, which is then written as one the routine can write.
+          def marked_numbers_in?(table) = @start_file_marked_numbers.any? { |noted| noted.table == table }
+
+          def marked_table_defines
+            MARKED_TABLES.filter_map { |table, kept| Statements::Define.new(kept.define) if marked_numbers_in?(table) }
+          end
+
+          def build_start_file_marked_number_fills
+            @start_file_marked_numbers.map do |noted|
+              eval_call("rg_start_file_fill_marked_numbers", start_file_colors_name, @names.own(noted.table.to_s),
+                        Statements::Int.new(Lowering::TABLE_KEPT_AS.fetch(MARKED_TABLES.fetch(noted.table).type)),
+                        Statements::Int.new(noted.start), Statements::Int.new(noted.count))
+            end
           end
 
           # A BACKGROUND WHOSE MAP, TILES AND COLOURS ARE READ FROM THE FILE (IR::StartFile::Background).

@@ -273,10 +273,15 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # The build cannot find a pixel's place in colours it does not hold.
-  def test_a_picture_of_colors_drawn_from_a_bank_read_as_the_game_starts_is_refused
+  # The build cannot find a pixel's place in colours it does not hold, which drawing a picture
+  # given as colours with another list needs. Drawn as it is, such a picture shows its own
+  # colours (PackGames::ColorLists holds that to the all-in-one build).
+  def test_a_picture_of_colors_in_a_bank_read_as_the_game_starts_drawn_with_another_list_is_refused
     Dir.mktmpdir do |folder|
-      error = left_out_refusal(folder) { |_world| image :mark, width: 2, height: 1, colors: :palette_1, data: %i[red green] }
+      error = left_out_refusal(folder) do |_world|
+        image :mark, width: 8, height: 8, colors: :palette_1, data: Array.new(64, :red)
+        sprite(:mark, at: [40, 40]).draw_with :palette_0
+      end
 
       assert_includes error.message, "image :mark"
       assert_includes error.message, "as the game starts"

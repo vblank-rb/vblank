@@ -131,7 +131,14 @@ enum {
 extern const int32_t rg_game_backgrounds[];
 #define RG_NOT_PAINTED (-1)
 extern const int32_t rg_game_painted_tiles[];
+/* A game that paints tiles in colours read from the start file writes those colours into this table
+ * as it starts (rg_start_file_fill_marked_numbers), and says so before this header
+ * (RG_RUN_COLORS_WRITABLE). */
+#ifdef RG_RUN_COLORS_WRITABLE
+extern uint16_t rg_game_run_colors[];
+#else
 extern const uint16_t rg_game_run_colors[];
+#endif
 
 /* Each map is RG_MAP_FIELDS numbers in rg_game_maps: where its cells start in rg_game_map_cells,
  * how many columns and rows it has, and the grid it comes round at (nought each way for a

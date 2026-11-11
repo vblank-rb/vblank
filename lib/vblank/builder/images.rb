@@ -343,6 +343,7 @@ module VBlank
                                "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
                                "this, leave out showing:."
         end
+        refuse_swapping_unplaced_pixels!(poses, subject)
         poses.each { |pose| refuse_naming_frame_bank_list!(pose, "#{subject} was told to draw_with a list for each of its lists. That") }
         drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
         named = drawn.compact.map { |name| ":#{name}" }
@@ -375,6 +376,7 @@ module VBlank
       # list of the layer that holds them, where one does (IR::Nodes::Background#recolored_list_of);
       # where two named apart hold them, nothing names which, and the game is told.
       def lists_drawn_from(poses, subject:)
+        refuse_swapping_unplaced_pixels!(poses, subject)
         unless poses.all? { |pose| colors_drawn_from(pose) }
           raise ArgumentError,
                 "#{subject} was told to draw_with other colors, but some of its tiles have no `colors:` list. " \
@@ -480,6 +482,7 @@ module VBlank
       # by place. Pictures with no list were given their places by the framework, so no
       # other list can line up with them.
       def shared_pose_colors!(poses, subject)
+        refuse_swapping_unplaced_pixels!(poses, subject)
         lists = poses.map { |pose| colors_drawn_from(pose) }.uniq
         return lists.first if lists.length == 1 && lists.first
 
@@ -928,7 +931,11 @@ module VBlank
         return nil if colors.nil?
 
         table = color_table(name, colors)
-        refuse_pixels_in_marked_colors!(name, table)
+        # A list read from the data pack as the game starts holds a marker for each colour
+        # (IR::StartFile), so no pixel can be held to it here. The picture's pixels are the
+        # game's own colours, and it is drawn in them.
+        return table.map { |value| value || 0x0000 } if table.any? { |color| IR::StartFile.marker?(color) }
+
         drawn = pixels.unpack("v*").uniq
         drawn.each do |value|
           next if transparent && value == transparent
@@ -949,17 +956,22 @@ module VBlank
         table.map { |value| value || 0x0000 }
       end
 
-      # A PICTURE GIVEN AS COLOURS, DRAWN FROM A LIST READ AS THE GAME STARTS. Such a picture is
-      # checked against its list colour by colour, and swapped onto another list by finding each
-      # pixel's colour in its own. The build does not hold the list's colours (+table+ holds
-      # markers, IR::StartFile), so it cannot say which place a pixel is.
-      def refuse_pixels_in_marked_colors!(name, table)
-        return unless table.any? { |color| IR::StartFile.marker?(color) }
+      # A PICTURE GIVEN AS COLOURS, IN A LIST READ AS THE GAME STARTS, DRAWN WITH ANOTHER LIST. Such
+      # a picture is drawn as it is: its pixels are the game's own colours. Drawn with another
+      # list it is swapped by finding each pixel's colour in its own list, and the build does not
+      # hold that list's colours (it holds markers, IR::StartFile), so it cannot say which place
+      # a pixel is. +poses+ are the pictures +subject+ shows, told other colours.
+      def refuse_swapping_unplaced_pixels!(poses, subject)
+        picture = poses.find do |pose|
+          image = @pictures[pose]
+          image && !@painted_colors.key?(pose) && image.places.nil? && image.colors&.any? { |color| IR::StartFile.marker?(color) }
+        end
+        return unless picture
 
-        raise ArgumentError, "image :#{name} gives its pixels as colors, and its colors: list is read from the data " \
-                             "pack as the game starts. So the build cannot find the place of each pixel in the list. " \
-                             "To fix this, give the pixels as places: `image :#{name}, ..., colors: ..., places: [...]`. " \
-                             "Or build the game all-in-one."
+        raise ArgumentError, "#{subject} was told to draw_with other colors. image :#{picture} gives its pixels as " \
+                             "colors, and its colors: list is read from the data pack as the game starts. So the build " \
+                             "cannot find the place of each pixel in the list. To fix this, give the pixels as places: " \
+                             "`image :#{picture}, ..., colors: ..., places: [...]`. Or build the game all-in-one."
       end
 
       # A picture's own list, resolved to colors. The see-through entry is kept as nil so

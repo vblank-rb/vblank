@@ -243,7 +243,14 @@ uint16_t *rg_screen_tile_pixels_to_fill(int32_t count);
 enum { RG_RUN_TILES, RG_RUN_WIDTH, RG_RUN_HEIGHT, RG_RUN_PLACES, RG_RUN_FIRST_IMAGE, RG_RUN_IMAGES, RG_RUN_PLANES, RG_RUN_FIELDS };
 enum { RG_RUN_IMAGE_FIELDS = 17 };
 extern const int32_t rg_game_tile_runs[];
+/* A game that paints a picture in colours read from the start file writes those colours into this
+ * table as it starts (rg_start_file_fill_marked_numbers), and says so before this header
+ * (RG_RUN_IMAGES_WRITABLE). */
+#ifdef RG_RUN_IMAGES_WRITABLE
+extern int32_t rg_game_run_images[];
+#else
 extern const int32_t rg_game_run_images[];
+#endif
 
 /* [how many backgrounds, how many depths the picture is built at, how many backgrounds every
  * screen drawn from tiles shows, 1 for a game whose whole view is rebuilt from its layers, how

@@ -351,10 +351,15 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   the 256 colours of a picture of pixels, and the bank a pose's frame names, are these too.
   **`color_walk` of such a list makes its steps at power-on**, each colour from the file's by the sum the build
   uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`). Place 0 keeps the slot's colour, as
-  built all-in-one. The build cannot compare two colours it does not hold, so it refuses at the line: a
-  picture given as colours (`data:`, `from:`, art in characters) drawn in such a list, which must be given
-  `places:`; and a picture or tiles the game paints from a list as it runs (`image ..., from: list`, `tiles ...,
-  from: list`, `sprite_tiles`) in such colours, which is not made yet. A game may read 32766 such colours,
+  built all-in-one. **What the game paints from a list as it runs** (`image ..., from: list`, `tiles ..., from:
+  list`, `canvas`, `sprite_tiles`) **takes such a list too**: a build for a computer draws those through tables of
+  the colour each place shows, which it writes with their markers and fills at power-on
+  (`rg_start_file_fill_marked_numbers`). **A picture given as colours** (`data:`, `from:`, art in characters, the
+  last with `colors: pack[:palette]` on its line too) **is drawn as it is**, since its pixels are the game's own
+  colours; the build cannot hold them to a list it does not hold, so a pixel in a colour the list lacks is not
+  told there. The build cannot compare two colours it does not hold, so one thing is refused at the line: such a
+  picture drawn with another list (`draw_with`, `recolor` of its list, a background told other colours), which
+  swaps by each pixel's place in its own list; give it `places:`. A game may read 32766 such colours,
   the steps of its walks among them. Worked example: `test/pack_color_list_at_start_tests.rb`.
 - `image :balloon_0, tiles: pack[:sprites], frame: pack[:frames].frame(at, layout: FRAME), origin: [32, 48], colors: :balloon,
   size: [64, 64]` — a pose that is one of the original's own frames (`sprites.md`). How many pieces the frame has and what

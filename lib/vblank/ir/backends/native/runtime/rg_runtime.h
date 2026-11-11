@@ -242,6 +242,10 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * pixels from +start+ on, of the +kind+ of pixels (RG_FILL_TILE or RG_FILL_IMAGE), of which there
  * are +total+. The game calls it once the colours are filled and every picture read from the file
  * is, since one of those drawn in such a list is filled with markers.
+ * rg_start_file_fill_marked_numbers does the same among +count+ numbers from +start+ on of +table+,
+ * a table of colours of the game's own kept as +kept+ (RG_TABLE_UINT16 or RG_TABLE_INT32): the
+ * colour each place of what the game paints as it runs shows (rg_game_run_images,
+ * rg_game_run_colors), which the game then writes where it can be written.
  * rg_start_file_marked_color is +color+, or the entry it names where it is a marker, for a colour
  * a statement picks from a table as the game runs.
  *
@@ -263,6 +267,7 @@ void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, in
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
 void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
 void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);
+void rg_start_file_fill_marked_numbers(const int32_t *colors, void *table, int32_t kept, int32_t start, int32_t count);
 int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color);
 const uint8_t *rg_start_file_bytes(void);
 uint32_t rg_start_file_number(int32_t at, int32_t width, int32_t high_byte_first);

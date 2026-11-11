@@ -763,11 +763,27 @@ module VBlank
       end
 
       # +opts+ for `image`, each handle in colors: or places: replaced by what its slot holds.
+      #
+      # With the pack left out a slot of colours is a marker for each colour, as a list declared
+      # from the pack is (#pack_colors_read_at_start): what a picture drawn in characters takes,
+      # whose pixels are the game's own colours.
       def opts_with_pack_slots_read(name, opts)
         read = opts.dup
-        read[:colors] = pack_slot_values(opts[:colors], :colors, "image :#{name}'s colors:") if opts[:colors].is_a?(DSL::PackSlot)
+        if opts[:colors].is_a?(DSL::PackSlot)
+          where = "image :#{name}'s colors:"
+          read[:colors] = pack_left_out? ? picture_colors_read_at_start(name, opts[:colors], where) : pack_slot_values(opts[:colors], :colors, where)
+        end
         read[:places] = pack_slot_values(opts[:places], :tile, "image :#{name}'s places:") if opts[:places].is_a?(DSL::PackSlot)
         read
+      end
+
+      # The colours of the picture +name+ given the slot +slot+ of colours, in a build that leaves
+      # its pack out: a marker for each, sixteen at most, as a picture's own list is.
+      def picture_colors_read_at_start(name, slot, where)
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        refuse_too_many_pack_colors!(name, slot)
+        pack_colors_read_at_start(slot)
       end
 
       # THE COLOURS OF A LIST DECLARED FROM THE PACK (`colors :name, pack[:palette].bank(2)`): what
@@ -889,9 +905,12 @@ module VBlank
                              "places 0 to #{slot.count - 1}. To fix this, use a place in that range."
       end
 
-      # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.
+      # A verb that reads what a slot holds as the game is built, in a build that holds no pack
+      # because it leaves its pack out. Every verb that takes a handle today is made for such a
+      # build, or refuses it in words of its own, before it reads a slot, so no game reaches this.
+      # It is what a verb added later meets if it reads a slot without being made for that build.
       def refuse_slot_read_while_left_out!(handle, where)
-        return unless pack_left_out?
+        return if @data_pack_contents
 
         raise ArgumentError, "#{where} reads what slot :#{handle.layout.name} holds as the game is built, and this " \
                              "build reads its data pack as the game starts. Read the slot with `table` or with " \

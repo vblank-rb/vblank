@@ -556,6 +556,19 @@ void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32
   }
 }
 
+void rg_start_file_fill_marked_numbers(const int32_t *colors, void *table, int32_t kept, int32_t start, int32_t count) {
+  for (int32_t at = start; at < start + count; at++) {
+    if (kept == RG_TABLE_UINT16) {
+      uint16_t *numbers = table;
+      if (start_file_marked(numbers[at])) numbers[at] = (uint16_t)colors[numbers[at] - RG_MARKED_COLOR - 1];
+    } else {
+      int32_t *numbers = table;
+      if (numbers[at] > 0 && numbers[at] <= 0xFFFF && start_file_marked((uint16_t)numbers[at]))
+        numbers[at] = colors[numbers[at] - RG_MARKED_COLOR - 1];
+    }
+  }
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
