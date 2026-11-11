@@ -263,6 +263,14 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   console draws it in follow the box of its size, not the see-through pixels in it, so a game that
   wants a tighter box says `hitbox:`.
 - `sample`/`instrument` with `pcm: pack[:sounds]` — the recording's samples, filled from the file at power-on.
+- `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
+  original's own tiles, map and colours (`backgrounds.md`). The program holds a tile for each cell of the map,
+  see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank
+  (`IR::StartFile::Background`, `rg_start_file_fill_background`). Each bank of the slot is a list named
+  `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.
+  The build does not know a bank's colours, so what needs them while the game is built is refused at the line.
+  Worked example: `test/pack_background_tests.rb`.
+
   Any other verb that reads a slot's bytes is refused at the line.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
   `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`

@@ -416,12 +416,20 @@ module VBlank
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tile_pixels.length
               steps = color_swaps(bg)
-              [nil, *steps].each do |swaps|
-                bg.tiles.each do |tile|
-                  if (read_at_start = picture_from_start_file(tile))
-                    record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
+              tile_count = bg.from_file ? bg.from_file.tiles_drawn : bg.tiles.length
+              if bg.from_file
+                # Its map is read from the start file: a tile for every cell, see-through until then
+                # (StartFileFills#record_start_file_background_fill).
+                record_start_file_background_fill(tiles_start, bg, steps)
+                tile_pixels.concat(Array.new(tile_count * RUN_TILE_PIXELS * (steps.length + 1), 0xFFFF))
+              else
+                [nil, *steps].each do |swaps|
+                  bg.tiles.each do |tile|
+                    if (read_at_start = picture_from_start_file(tile))
+                      record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
+                    end
+                    tile_pixels.concat(tile_colors(tile, swaps))
                   end
-                  tile_pixels.concat(tile_colors(tile, swaps))
                 end
               end
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
@@ -429,14 +437,15 @@ module VBlank
               bg.every_map.each do |map|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
-                cells.concat(map_cells(map))
+                # Read from the start file, each cell names its own tile, in order.
+                cells.concat(bg.from_file ? (0...tile_count).to_a : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
                bg.scene ? @scenes.fetch(bg.scene, NEVER_ARRIVES) : EVERY_SCENE, bg.bar? ? NOT_A_BAR : @stacking.depths.of_scenery(bg),
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
                see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
-               bg.tiles.length, steps.length, shown_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
+               tile_count, steps.length, shown_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR]
             end
             @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file

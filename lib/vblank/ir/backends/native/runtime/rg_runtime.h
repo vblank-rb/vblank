@@ -161,7 +161,26 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * where the game holds that list. Then the game's own places (one for each pixel) where the file has
  * none, its own colours where the file has none, and the other list. A place is the see-through one,
  * or a place in the colours: its fifteen bits, the other list's colour at that place where it has one,
- * and 0 for a place past the colours. */
+ * and 0 for a place past the colours.
+ *
+ * rg_start_file_fill_background: the tiles of a background whose map, tiles and colours are all in
+ * the file (IR::StartFile::Background), as the original's console keeps them. Which tiles the map
+ * names is in the file, so the game holds a tile for every cell of the map, in the map's order, and
+ * this fills each: the cell's tile, turned as the cell says, in the colours of the cell's bank.
+ * +rules+ are RG_FILL_BACKGROUND_HEADER_NUMBERS numbers: how many tile pixels there are in all,
+ * where this background's start, where its map is in the file, how many cells the map has, how many
+ * to a row, how many tiles a side a cell is, 1 where a cell's two bytes are high byte first; then
+ * how a cell is read (Console::MapWordFormat): how many bits name its tile, the bit for mirrored,
+ * the bit for upside down, where its bank starts and how many bits that is, and how many tiles a
+ * row of video memory holds, by which a cell of several tiles finds its lower ones (0 for a cell of
+ * one); then where the tiles are in the file and how many, where the colours are, how many banks
+ * and how many colours a bank; and how many sets of colours the tiles are written in, the first
+ * their own and one more for each step of other colours the background can be told. Then the two
+ * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
+ * of the file they are, or -1, and then a colour for each place, which the game holds, where it
+ * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
+ * naming a tile past the file's draws nothing, and one naming a bank past its colours is drawn in
+ * colour 0: the file is the player's, and the game plays on. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
@@ -170,5 +189,6 @@ void rg_start_file_open(const int32_t *rules, const char *missing, const char *w
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first);
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
+void rg_start_file_fill_background(const int32_t *rules);
 
 #endif

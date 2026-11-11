@@ -93,7 +93,13 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, boxed: :name, follows: :name
+                 above_row: :int, boxed: :name, follows: :name, from_file: :file_background
+
+        # +from_file+ is where in the file the program is handed as it starts (StartFile) this
+        # background's map, tiles and colours are (a StartFile::Background), or absent for one the
+        # program holds. Its +tiles+ are then a tile for each bank of colours, its +map+ names the
+        # first in every cell, and each of its +palettes+ names a bank (StartFile.bank_colors):
+        # the size and the lists' names are true, and nothing else of them is.
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.

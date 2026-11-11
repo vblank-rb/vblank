@@ -63,7 +63,8 @@ module VBlank
         shape:   ->(v) { v.is_a?(Audio::Envelope) },                  # how a note starts and how it ends
         start_file: ->(v) { v.is_a?(StartFile) && v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
         number_format: ->(v) { v.is_a?(Console::NumberFormat) },      # ...how a table's numbers are kept in it
-        file_picture: ->(v) { v.is_a?(StartFile::Picture) },          # ...and where a picture is in it
+        file_picture: ->(v) { v.is_a?(StartFile::Picture) },          # ...where a picture is in it
+        file_background: ->(v) { v.is_a?(StartFile::Background) },    # ...and where a background's map, tiles and colours are
       })
 
       # Verify a whole program tree. Returns the node on success; raises

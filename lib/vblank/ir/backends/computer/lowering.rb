@@ -232,6 +232,7 @@ module VBlank
             @lists = by_name(@reachable.reverse, :list_new)
             @scenes = scene_numbers
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
+            @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
             prepare_picture
             prepare_sound
           end

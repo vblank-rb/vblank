@@ -361,6 +361,59 @@ def rg_start_file_fill_picture(rules)
   end
 end
 
+# The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
+# The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
+def rg_start_file_fill_background(rules)
+  _total, start, map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets = rules
+  tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
+  color_format = tile_format + RG_TILE_FORMAT_NUMBERS
+  lists = color_format + RG_COLOR_FORMAT_NUMBERS
+  columns = across * side
+  tiles_drawn = columns * (cells / across) * side
+  tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  pixels = @rg_game_tile_pixels
+  words = @rg_start_file.byteslice(map_at, cells * 2).unpack(map_high_byte_first == 1 ? "n*" : "v*")
+  words.each_with_index do |word, cell|
+    first_tile = word & ((1 << tile_bits) - 1)
+    mirrored = word[mirror_bit] == 1
+    upside_down = word[flip_bit] == 1
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    side.times do |down|
+      side.times do |along|
+        tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along)
+        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        places = Array.new(64) do |at|
+          next 0 unless tile < tile_count
+
+          row = at / 8
+          column = at % 8
+          rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1,
+                              upside_down ? 7 - row : row, mirrored ? 7 - column : column)
+        end
+        sets.times do |set|
+          list = lists + (((set * bank_count) + bank) * (1 + bank_size))
+          drawn = start + (((set * tiles_drawn) + number) * 64)
+          places.each_with_index do |place, at|
+            pixels[drawn + at] = if place.zero?
+                                   RG_SEE_THROUGH
+                                 elsif bank >= bank_count
+                                   0
+                                 elsif rules[list].negative?
+                                   rules[list + 1 + place]
+                                 elsif rules[list] < bank_count
+                                   rg_start_file_color(colors_at + (rules[list] * bank_size * 2), rules, color_format, place)
+                                 else
+                                   0
+                                 end
+          end
+        end
+      end
+    end
+  end
+end
+
 # --- timers (Reference @timers) ---
 
 # One timer: whether it has ever been started, whether it is running, its rate, and how far it has

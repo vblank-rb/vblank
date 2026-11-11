@@ -48,6 +48,27 @@ module VBlank
       def mirrored?(word) = word[mirror_bit] == 1
       def flipped?(word) = word[flip_bit] == 1
       def bank_of(word) = (word >> bank_at) & ((1 << bank_bits) - 1)
+
+      # The tile drawn at +along+ and +down+ (in tiles, from the cell's top left as drawn) of the
+      # cell +word+ stands for, a cell +side+ tiles square. A cell turned over turns each of its
+      # tiles and swaps them about, as the console turns the whole cell. The build reads a map so,
+      # the interpreter reads one from a file so (IR::StartFile), and each runtime for a computer
+      # does the same sum (rg_start_file_fill_background).
+      def cell_tile(word, along, down, side)
+        mirrored = mirrored?(word)
+        upside_down = flipped?(word)
+        from_along = mirrored ? side - 1 - along : along
+        from_down = upside_down ? side - 1 - down : down
+        CellTile.new(tile: tile_of(word) + (from_down * (row_tiles || 0)) + from_along, bank: bank_of(word),
+                     mirrored: mirrored, upside_down: upside_down)
+      end
+    end
+
+    # ONE TILE OF A CELL, as it is drawn: which tile of video memory, turned how, from which bank
+    # of colours (MapWordFormat#cell_tile).
+    CellTile = Data.define(:tile, :bank, :mirrored, :upside_down) do
+      # The ways it is turned, as a picture names a turn (IR::Assets::Image#turned).
+      def turns = [(:mirrored if mirrored), (:upside_down if upside_down)].compact
     end
 
     # Everything one console keeps in its own layout: the kinds of tile it keeps (a list of

@@ -33,6 +33,11 @@ module VBlank
           # colours counts, whether the places are one byte each, and the see-through place.
           RULES_HEADER_NUMBERS = 13
 
+          # The numbers before the tile layout in a background's rules
+          # (StartFileFills#start_file_background_rules): the totals, where its map is and how its
+          # cells are kept, and where its tiles and its banks of colours are.
+          BACKGROUND_HEADER_NUMBERS = 19
+
           NAMES = Ractor.make_shareable({
             "RG_TILE_BYTES_AT" => TILE_BYTES_AT, "RG_TILE_PLANES_AT" => TILE_PLANES_AT,
             "RG_TILE_PLANE_BITS_AT" => TILE_PLANE_BITS_AT, "RG_TILE_ROW_BITS_AT" => TILE_ROW_BITS_AT,
@@ -40,7 +45,8 @@ module VBlank
             "RG_COLOR_HIGH_BYTE_FIRST_AT" => COLOR_HIGH_BYTE_FIRST_AT, "RG_COLOR_RED_AT" => COLOR_RED_AT,
             "RG_COLOR_GREEN_AT" => COLOR_GREEN_AT, "RG_COLOR_BLUE_AT" => COLOR_BLUE_AT,
             "RG_COLOR_CHANNEL_BITS_AT" => COLOR_CHANNEL_BITS_AT, "RG_COLOR_FORMAT_NUMBERS" => COLOR_FORMAT_NUMBERS,
-            "RG_FILL_RULES_HEADER_NUMBERS" => RULES_HEADER_NUMBERS
+            "RG_FILL_RULES_HEADER_NUMBERS" => RULES_HEADER_NUMBERS,
+            "RG_FILL_BACKGROUND_HEADER_NUMBERS" => BACKGROUND_HEADER_NUMBERS
           })
         end
       end

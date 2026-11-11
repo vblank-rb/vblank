@@ -119,6 +119,7 @@ module VBlank
       # @param steps [Integer] how many steps from there to the list itself
       # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
       def color_walk(name, from:, steps: CHANNEL_STEPS)
+        refuse_color_list_read_at_start!(name, "color_walk :#{name}")
         own = @color_lists.fetch(name) do
           raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
                                "To fix this, declare it first with `colors :#{name}, [:transparent, ...]`."
@@ -298,6 +299,7 @@ module VBlank
       # third is a backend's own (see IR::Nodes::ColorList.source_var).
       def changing_color_list!(name)
         @changing_color_lists[name] ||= begin
+          refuse_color_list_read_at_start!(name, "`recolor`")
           declared = @color_lists.fetch(name) do
             raise ArgumentError,
                   "`recolor` names :#{name}, which is not a list of colors. " \
@@ -383,6 +385,7 @@ module VBlank
       def colors_to_hold(names, list:)
         places = @color_lists.fetch(list).length
         names.map do |name|
+          refuse_color_list_read_at_start!(name, "`recolor`")
           set = @color_lists.fetch(name) do
             raise ArgumentError,
                   "#{changing_list_subject(list)} was told to hold :#{name}, which is not a list of " \

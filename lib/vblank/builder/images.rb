@@ -290,6 +290,7 @@ module VBlank
       def colors_to_draw_with(names, poses:, subject:)
         own = shared_pose_colors!(poses, subject)
         names.map do |name|
+          refuse_color_list_read_at_start!(name, "#{subject} was told to draw_with :#{name}. This")
           list = @color_lists.fetch(name) do
             raise ArgumentError,
                   "#{subject} was told to draw_with :#{name}, which is not a list of colors. " \
@@ -439,6 +440,7 @@ module VBlank
       # A list declared with `colors`, as a picture's own list: its first entry still means
       # see-through, whatever colour it was written as.
       def declared_colors_for_image!(picture, name)
+        refuse_color_list_read_at_start!(name, "image :#{picture}")
         list = @color_lists.fetch(name) do
           raise ArgumentError,
                 "image :#{picture} is given colors: :#{name}, which is not a list of colors. " \
@@ -456,6 +458,7 @@ module VBlank
                 "colors cannot be named :#{name}. `draw_with :#{name}` means a sprite's own colors. " \
                 "Pick a different name."
         end
+        refuse_color_list_named_as_bank!(name)
         return unless @color_lists.key?(name)
 
         raise ArgumentError, "colors :#{name} is declared twice. Give each list of colors its own name."

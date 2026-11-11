@@ -672,13 +672,17 @@ module VBlank
       # list of its 64 places row by row, for a verb that draws the original's own tiles by number
       # (PackBackgrounds, PackPoses). +subject+ names the line for the error.
       def pack_tile_places(tiles, subject)
-        unless tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
-          raise ArgumentError, "#{subject} needs tiles:, a slot of tiles like `pack[:video]`, or the tiles from one tile " \
-                               "on, like `pack[:video].tile(256)`."
-        end
-
+        refuse_tiles_not_from_slot!(tiles, subject)
         refuse_slot_from_elsewhere!(tiles, "#{subject}'s tiles:")
         tiles.layout.decode(@data_pack_contents.bytes_of(tiles.layout.name)).drop(tiles.tile_index || 0)
+      end
+
+      # tiles: is a slot of tiles, or the tiles of one from a tile on.
+      def refuse_tiles_not_from_slot!(tiles, subject)
+        return if tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
+
+        raise ArgumentError, "#{subject} needs tiles:, a slot of tiles like `pack[:video]`, or the tiles from one tile " \
+                             "on, like `pack[:video].tile(256)`."
       end
 
       # Tile +at+ of +tile_places+ (#pack_tile_places), which +subject+ draws, or a friendly error.

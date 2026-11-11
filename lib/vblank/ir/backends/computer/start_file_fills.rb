@@ -14,8 +14,9 @@ module VBlank
         # read from it: each table, written as its size alone (Statements::StartFileArray), from where its
         # first entry is; and each picture read from it, into the runtime's pixels: a background's
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
-        # it is drawn in, into the image pixels. That routine is written last, once the art is laid
-        # out and it is known where in the pixels each picture is.
+        # it is drawn in, into the image pixels; and each background whose map is read from it, a
+        # tile for every cell. That routine is written last, once the art is laid out and it is
+        # known where in the pixels each picture is.
         #
         # So the game as C, JavaScript or Ruby holds none of the original's bytes, and a game that
         # reads no file is written as it was before there was one. The art here lays out a picture
@@ -46,7 +47,66 @@ module VBlank
           def build_start_file_routines
             return [] unless reads_start_file?
 
-            [Statements::Function.new(name: start_file_routine, body: build_start_file_table_fills + build_start_file_picture_fills + build_start_file_recording_fills)]
+            [Statements::Function.new(name: start_file_routine,
+                                      body: build_start_file_table_fills + build_start_file_picture_fills +
+                                            build_start_file_background_fills + build_start_file_recording_fills)]
+          end
+
+          # A BACKGROUND WHOSE MAP, TILES AND COLOURS ARE READ FROM THE FILE (IR::StartFile::Background).
+          # Which tiles its map names is known only once the file is read, so the art lays out a
+          # tile of its own for every cell, see-through until the routine fills it, and a map that
+          # names them in order. The tiles are written again for each step of other colours the
+          # background can be told, as any background's are.
+          #
+          # +start+ is where its tiles' pixels start in the tile pixels, +from+ where it is in the
+          # file, and +lists+ the colours of each bank at each step, the step it is drawn in its own
+          # colours first: a BankFromFile for a bank drawn as the file has it or as another bank of
+          # the file, or the colours of a list the game holds.
+          StartFileBackgroundFill = Data.define(:start, :from, :lists)
+          BankFromFile = Data.define(:bank)
+
+          def record_start_file_background_fill(start, bg, steps)
+            from = bg.from_file
+            lists = [nil, *steps].map do |swaps|
+              Array.new(from.bank_count) do |bank|
+                drawn_with = swaps && swaps[[from.bank_names[bank], IR::StartFile.bank_colors(bank, from.bank_size)]]
+                other_bank = IR::StartFile.bank_of(drawn_with)
+                drawn_with && !other_bank ? drawn_with : BankFromFile.new(bank: other_bank || bank)
+              end
+            end
+            @start_file_background_fills << StartFileBackgroundFill.new(start: start, from: from, lists: lists)
+          end
+
+          def build_start_file_background_fills
+            @start_file_background_fills.map do |fill|
+              eval_call("rg_start_file_fill_background",
+                        drawing_array("start_file_background", "int32_t", start_file_background_rules(fill)))
+            end
+          end
+
+          # The numbers rg_start_file_fill_background reads (rg_runtime.h has what each is).
+          def start_file_background_rules(fill)
+            from = fill.from
+            words = from.map_words
+            header = [@tile_pixel_count, fill.start, from.map_at, from.cells, from.across, from.cell_tiles,
+                      from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit, words.flip_bit,
+                      words.bank_at, words.bank_bits, words.row_tiles || 0, from.tiles_at, from.tile_count,
+                      from.colors_at, from.bank_count, from.bank_size, fill.lists.length]
+            unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
+              raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
+                                   "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."
+            end
+
+            [*header, *tile_format_rules(from.tile_format), *color_format_rules(from.color_format),
+             *fill.lists.flat_map { |banks| banks.flat_map { |list| bank_list_rules(list, from.bank_size) } }]
+          end
+
+          # One bank's colours at one step, as rg_start_file_fill_background reads them: the bank of
+          # the file they are, or -1 and then the colours the game holds, a colour for each place.
+          def bank_list_rules(list, bank_size)
+            return [list.bank, *Array.new(bank_size, 0)] if list.is_a?(BankFromFile)
+
+            [-1, *Array.new(bank_size) { |place| list[place] || 0 }]
           end
 
           # Each table the game reads that is read from the file: as many entries as it holds, kept

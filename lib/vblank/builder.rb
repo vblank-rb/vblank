@@ -644,6 +644,7 @@ module VBlank
       finalize_held_tiles # after the maps, so its write comes before theirs in the gap
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
+      refuse_set_tile_read_at_start!
       finalize_tile_copies
       link_backgrounds_to_changing_lists # before the colours: it sets what those backgrounds are drawn with
       finalize_background_colors

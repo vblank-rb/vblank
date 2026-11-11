@@ -29,7 +29,16 @@ module VBlank
     # have worked them out by hand: each different tile as drawn (a tile, its bank and its turn) a
     # picture of 8x8, and the map those pictures, a big cell its tiles. So the console, the
     # interpreter and every build draw it as any background, and a tile that draws nothing is
-    # left empty. With the pack left out nothing here can be known, and the build says so.
+    # left empty.
+    #
+    # WITH THE PACK LEFT OUT nothing of the slots is known here: not which tiles the map names, nor
+    # which bank each is drawn from, nor one colour. So the background is declared by where its
+    # map, tiles and colours are in the file the program is handed as it starts
+    # (IR::StartFile::Background), and each backend that plays such a program works the cells out
+    # as it starts, as they are worked out here. What the build must still know is true of it: its
+    # size, and the names of its lists, every bank of the slot, since any of them may be drawn
+    # from. A bank's colours are not known, so a line that needs them while the game is built is
+    # refused, naming the list (#refuse_color_list_read_at_start!).
     module PackBackgrounds
       private
 
@@ -37,21 +46,26 @@ module VBlank
       # cells to a row of the map, each cell +cell+ pixels square. +others+ are the background's
       # own settings, handed on.
       def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, **others)
-        refuse_pack_background_left_out!(name)
         subject = "background :#{name}"
-        tile_places = pack_tile_places(tiles, subject)
+        refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_halves!(name, map)
         refuse_colors_not_whole_slot!(name, colors)
         words = pack_map_word_format!(name)
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
+        tiles_a_side = cell / Original::Slot::TILE_SIDE
+        if pack_left_out?
+          return declare_pack_background_read_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
+                                                             tiles_a_side: tiles_a_side, words: words, **others)
+        end
+
+        tile_places = pack_tile_places(tiles, subject)
         bank_lists = declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
         pictures = {}
-        tiles_a_side = cell / Original::Slot::TILE_SIDE
         rows = pack_slot_values(map, :numbers, "#{subject}'s map:").each_slice(across).flat_map do |row|
           Array.new(tiles_a_side) do |down|
             row.flat_map do |word|
               Array.new(tiles_a_side) do |along|
-                tile = PackCellTile.of(word, words, along, down, tiles_a_side)
+                tile = words.cell_tile(word, along, down, tiles_a_side)
                 pictures.fetch(tile) { pictures[tile] = pack_background_tile(name, tile, tile_places, bank_lists, pictures.length) }
               end
             end
@@ -65,25 +79,100 @@ module VBlank
         background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(bank_lists)
       end
 
-      # ONE TILE OF A CELL, as it is drawn: which tile of the slot, turned how, from which bank. A
-      # cell bigger than a tile is drawn as its tiles, each a cell of the map built here, so every
-      # console draws it with the tiles it has; a cell turned over turns each of its tiles and
-      # swaps them about, as the console turns the whole cell.
-      PackCellTile = Data.define(:tile, :bank, :mirrored, :upside_down) do
-        # The tile at +along+ and +down+ (in tiles, from the cell's top left as drawn) of the cell
-        # +word+ stands for, in the layout +words+, a cell +side+ tiles square.
-        def self.of(word, words, along, down, side)
-          mirrored = words.mirrored?(word)
-          upside_down = words.flipped?(word)
-          from_along = mirrored ? side - 1 - along : along
-          from_down = upside_down ? side - 1 - down : down
-          new(tile: words.tile_of(word) + (from_down * (words.row_tiles || 0)) + from_along, bank: words.bank_of(word),
-              mirrored: mirrored, upside_down: upside_down)
-        end
+      # The most tiles a background read as the game starts can be: each cell's tile is a tile of
+      # its own, and a build for a computer keeps a cell's tile in sixteen signed bits.
+      MOST_TILES_READ_AT_START = 0x7FFF
+
+      # THE SAME BACKGROUND WITH THE PACK LEFT OUT (see the top of this file). It is declared as a
+      # background of the right size whose tiles are a picture for each bank of the slot, drawn
+      # from that bank's list, so `draw_with` finds every bank by its name; the pictures and the
+      # map's cells are stand-ins nothing draws, and the node says where in the file the real ones
+      # are. A bank's list holds no colours here, only which bank it is (IR::StartFile.bank_colors).
+      def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, **others)
+        subject = "background :#{name}"
+        [[tiles, "tiles:"], [map, "map:"], [colors, "colors:"]].each { |slot, what| refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}") }
+        bank_size = tiles.layout.format.colors
+        first_tile = tiles.tile_index || 0
+        where = IR::StartFile::Background.new(
+          map_at: @pack_slot_starts.fetch(map.layout.name), cells: map.count, across: across, cell_tiles: tiles_a_side,
+          number_format: map.layout.format, map_words: words,
+          tiles_at: @pack_slot_starts.fetch(tiles.layout.name) + (first_tile * tiles.layout.item_bytes),
+          tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
+          colors_at: @pack_slot_starts.fetch(colors.layout.name), bank_count: colors.count / bank_size, bank_size: bank_size,
+          color_format: colors.layout.format,
+          bank_names: Array.new(colors.count / bank_size) { |bank| :"#{colors.layout.name}_#{bank}" }
+        )
+        refuse_oversized_map_at_start!(name, where)
+        stand_ins = where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, bank_size, subject) }
+        tileset = :"background :#{name} tiles"
+        tiles(tileset, stand_ins.to_h { |picture| [picture, picture] })
+        handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
+        @backgrounds.fetch(name).node.from_file = where
+        handle
       end
 
-      # The picture of +tile+ (a PackCellTile), drawn from the list of its bank. Nil for a tile that
-      # draws nothing, left empty in the map.
+      # A picture standing in for the tiles drawn from bank +bank+ of a background read as the game
+      # starts: a tile of the list +list+, which names the bank. Nothing draws it. Registers the
+      # list as one read at start; a list of that name the game declared itself is refused.
+      def declare_bank_stand_in(name, list, bank, bank_size, subject)
+        refuse_pack_color_list_taken!("#{subject}'s colors:", list) if @color_lists.key?(list)
+        (@color_lists_read_at_start ||= {})[list] = bank
+        side = Original::Slot::TILE_SIDE
+        picture = :"background :#{name} bank #{bank}"
+        node = Build.bitmap(picture, width: side, height: side, pixels: Array.new(side * side, 0).pack("v*"), transparent: nil,
+                                     colors: IR::StartFile.bank_colors(bank, bank_size), places: Array.new(side * side, 1).pack("C*"),
+                                     colors_name: list)
+        record_picture(node)
+        record_visible_bounds(name: picture, width: side, height: side, cells: [], transparent: nil)
+        picture
+      end
+
+      # A LIST OF COLOURS READ AS THE GAME STARTS HOLDS NO COLOURS WHILE THE GAME IS BUILT, so a
+      # line that needs them is refused: a walk worked out from them, a picture drawn in them, a
+      # sprite or another list given them. +where+ names the line ("color_walk :title_0"). What
+      # still works is drawing a background's tiles of that bank with a list of the game's own.
+      def refuse_color_list_read_at_start!(name, where)
+        return unless @color_lists_read_at_start&.key?(name)
+
+        raise ArgumentError, "#{where} needs the colors of :#{name}. :#{name} is a bank of colors from the data pack, and " \
+                             "this build reads its pack as the game starts, so the build does not know those colors. " \
+                             "To fix this, use a list that the game declares with `colors`, or build the game all-in-one."
+      end
+
+      # `colors :name` for a name a bank read as the game starts has already.
+      def refuse_color_list_named_as_bank!(name)
+        return unless @color_lists_read_at_start&.key?(name)
+
+        raise ArgumentError, "colors :#{name} has the name of a bank of colors that a background reads from the data " \
+                             "pack. To fix this, give the game's own list another name."
+      end
+
+      # A CELL OF A BACKGROUND READ AS THE GAME STARTS CANNOT BE CHANGED WITH `set_tile`: the tile a
+      # line names is a number among the background's tiles, and which tiles those are is in the
+      # file. Checked once the whole program is declared, since a routine's lines are built last.
+      def refuse_set_tile_read_at_start!
+        return unless pack_left_out?
+
+        read = @program.walk.select { |node| node.kind == :background && node.from_file }.map(&:name)
+        changed = @program.walk.find { |node| node.kind == :set_tile && read.include?(node.name) }
+        return unless changed
+
+        raise ArgumentError, "background :#{changed.name} is told `set_tile`. Its tiles and map are read from the data " \
+                             "pack as the game starts, so the build does not know which tiles it has. To fix this, " \
+                             "build the game all-in-one."
+      end
+
+      def refuse_oversized_map_at_start!(name, where)
+        return if where.tiles_drawn <= MOST_TILES_READ_AT_START
+
+        raise ArgumentError, "background :#{name} has a map of #{where.columns} by #{where.rows} tiles, which is " \
+                             "#{where.tiles_drawn} cells. This build reads its pack as the game starts, and such a " \
+                             "background can have #{MOST_TILES_READ_AT_START} cells at most. To fix this, give it a " \
+                             "smaller map, or build the game all-in-one."
+      end
+
+      # The picture of +tile+ (a Console::CellTile), drawn from the list of its bank. Nil for a tile
+      # that draws nothing, left empty in the map.
       def pack_background_tile(name, tile, tile_places, bank_lists, number)
         side = Original::Slot::TILE_SIDE
         places = pack_tile_at(tile_places, tile.tile, "background :#{name}")
@@ -150,14 +239,6 @@ module VBlank
           raise ArgumentError, "background :#{name} reads a map from the data pack, and VBlank does not know how a cell of " \
                                "this original's maps is kept. A map from the pack is read in the layout of the Advance, " \
                                "the Super Nintendo or the Genesis."
-      end
-
-      def refuse_pack_background_left_out!(name)
-        return unless pack_left_out?
-
-        raise ArgumentError, "background :#{name} reads its tiles, map and colors from the data pack, and this build reads " \
-                             "its pack as the game starts. A background from the pack is not made that way yet. To fix " \
-                             "this, build the game all-in-one."
       end
 
       def refuse_bad_pack_background_shape!(name, map, across, cell, words)
