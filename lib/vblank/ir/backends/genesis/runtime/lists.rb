@@ -196,6 +196,8 @@ module VBlank
               asm.label("rt_list_copy_start")
               asm.clr(:w, asm.disp(0, FRONT))
               asm.move(:w, asm.d(5), asm.disp(0, LENGTH))
+              emit_copy_of_whole_run(asm)
+              asm.label("rt_list_copy_an_item_at_a_time")
               asm.movea(:l, asm.d(4), asm.a(3)) # where to start in the table
               asm.movea(:l, asm.d(2), asm.a(4)) # how the table keeps its entries
               asm.move(:l, asm.d(5), asm.d(7)) # how many to copy
@@ -218,6 +220,42 @@ module VBlank
 
               # rt_list_copy_entry: D5 = entry D2 of the table at A2, widened by how it is kept (D3).
               emit_copy_entry(asm)
+            end
+
+            # THE RUN COPIED WITH ONE INSTRUCTION AN ENTRY, which is what a console's own game does with
+            # a run of a table: the list starts at its first slot once it is copied into, so the
+            # entries go from the table to the slots in order, through two address registers that
+            # each move on as they are read and written, and DBRA counts them. That is for a table
+            # kept in entries the size of the list's slots, which is every pair a game can write (a
+            # build refuses a table and a list of different sizes, and a table's number that does
+            # not fit its size): an entry is moved as it lies, a byte, a half or a long word. Any
+            # other pair goes on to the loop below, an entry at a time through the slot routines.
+            #
+            # A0 is the list, A2 the table, D2 how the table keeps an entry (KEPT, two to a size),
+            # D4 the entry to start at and D5 how many, which the loop below needs kept as they are.
+            def emit_copy_of_whole_run(asm)
+              asm.tst(:l, asm.d(5))
+              asm.branch(:le, "rt_list_copy_done")
+              asm.move(:l, asm.d(2), asm.d(3))
+              asm.lsr(:l, 1, asm.d(3)) # the table's entries as a shift: 0, 1 or 2
+              asm.cmp(:w, asm.disp(0, SHIFT), asm.d(3)) # against the list's slots
+              asm.branch(:ne, "rt_list_copy_an_item_at_a_time")
+              asm.move(:l, asm.d(4), asm.d(7))
+              asm.lsl(:l, asm.d(3), asm.d(7))
+              asm.add(:l, asm.d(7), asm.a(2)) # the first entry
+              asm.lea(asm.disp(0, HEADER), asm.a(1)) # the first slot
+              asm.move(:l, asm.d(5), asm.d(7))
+              asm.subq(:l, 1, asm.d(7)) # DBRA counts down to -1
+              asm.tst(:w, asm.d(3))
+              asm.branch(:eq, "rt_list_copy_run_b")
+              asm.subq(:w, 1, asm.d(3))
+              asm.branch(:eq, "rt_list_copy_run_w")
+              %i[l w b].each do |size|
+                asm.label("rt_list_copy_run_#{size}")
+                asm.move(size, asm.post(2), asm.post(1))
+                asm.dbra(asm.d(7), "rt_list_copy_run_#{size}")
+                asm.rts
+              end
             end
 
             def emit_copy_entry(asm)

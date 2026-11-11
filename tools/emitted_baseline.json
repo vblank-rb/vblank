@@ -6,7 +6,7 @@
       "data": 0
     },
     "animate@genesis": {
-      "code": 4072,
+      "code": 4140,
       "data": 1122
     },
     "bird": {
@@ -62,7 +62,7 @@
       "data": 3408
     },
     "everywhere@genesis": {
-      "code": 4598,
+      "code": 4666,
       "data": 866
     },
     "floating_digits": {
@@ -86,7 +86,7 @@
       "data": 0
     },
     "fonts@genesis": {
-      "code": 3654,
+      "code": 3722,
       "data": 826
     },
     "grid_cursor": {
@@ -94,7 +94,7 @@
       "data": 0
     },
     "grid_cursor@genesis": {
-      "code": 4140,
+      "code": 4208,
       "data": 44
     },
     "hero": {
@@ -114,7 +114,7 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4438,
+      "code": 4506,
       "data": 2402
     },
     "lit_corridor": {
@@ -126,7 +126,7 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 3960,
+      "code": 4028,
       "data": 2106
     },
     "meadow": {
@@ -146,7 +146,7 @@
       "data": 0
     },
     "parallax@genesis": {
-      "code": 2920,
+      "code": 2988,
       "data": 4448
     },
     "piano": {
@@ -158,7 +158,7 @@
       "data": 0
     },
     "pixels@genesis": {
-      "code": 3950,
+      "code": 4018,
       "data": 44
     },
     "pong": {
@@ -194,7 +194,7 @@
       "data": 0
     },
     "scroll@genesis": {
-      "code": 2908,
+      "code": 2976,
       "data": 8472
     },
     "sheet": {
@@ -222,7 +222,7 @@
       "data": 0
     },
     "sprite_mover@genesis": {
-      "code": 4480,
+      "code": 4548,
       "data": 134
     },
     "tiles": {
@@ -230,7 +230,7 @@
       "data": 0
     },
     "tiles@genesis": {
-      "code": 3028,
+      "code": 3096,
       "data": 2776
     },
     "tower": {
@@ -242,7 +242,7 @@
       "data": 16880
     },
     "tower@genesis": {
-      "code": 6994,
+      "code": 7062,
       "data": 3738
     },
     "two_rooms": {
