@@ -9,8 +9,8 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
   Check = VBlank::IR::Guardrails::Checks::LightCannotShare
 
   # A tiled room with a light, and +said+ run before the loop. +loop+ false leaves the game
-  # with no frames.
-  private def findings(loop: true, &said)
+  # with no frames, and +outside+ is the light's (`outside: :nothing` shows nothing outside it).
+  private def findings(loop: true, outside: :darkened, &said)
     builder = Builder.new
     builder.instance_eval do
       screen :tiled
@@ -19,7 +19,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       tiles :set, "#" => :tile
       layer(:ground) { background :room, tiles: :set, map: ["#" * 32] * 20 }
       layer(:ui) { sprite :score, at: [8, 8], facing: { right: :tile } }
-      spotlight at: [120, 80], radius: 40
+      spotlight at: [120, 80], radius: 40, outside: outside
       instance_exec(&said) if said
       game_loop { nil } if loop
     end
@@ -40,6 +40,26 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
     assert_equal [:light_cannot_share], found.map(&:check)
     assert_predicate found.first, :error?
     assert_match(/:water is see-through/, found.first.message)
+    assert_match(/outside: :nothing/, found.first.message, "it names the light that can share")
+  end
+
+  # A LIGHT THAT SHOWS NOTHING OUTSIDE IT darkens nothing, so it never asks for the part of the
+  # display a see-through layer mixes with, and the two share a screen.
+  def test_a_light_that_shows_nothing_outside_it_beside_a_see_through_layer_is_fine
+    found = findings(outside: :nothing) do
+      layer(:water, transparency: 40) { background :pond, tiles: :set, map: ["#" * 32] * 20 }
+    end
+
+    assert_empty found
+  end
+
+  # ...and a fade placed in the stack is still refused beside it: the fade keeps some sprites out
+  # with a window of its own, which the light's window takes the place of.
+  def test_a_light_that_shows_nothing_outside_it_beside_a_placed_fade_is_an_error
+    found = findings(outside: :nothing) { fade :black, 50, under: :ui }
+
+    assert_equal [:light_cannot_share], found.map(&:check)
+    assert_match(/remove `under: :ui`/, found.first.message)
   end
 
   def test_a_light_beside_a_placed_fade_is_an_error
@@ -50,8 +70,8 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
   end
 
   # A game of two scenes, :title and :playing, on a tiled screen: +title+ and +playing+ are each
-  # scene's body.
-  private def scene_findings(title:, playing:)
+  # scene's body, and +before+ is run before either.
+  private def scene_findings(title:, playing:, before: nil)
     builder = Builder.new
     builder.instance_eval do
       screen :tiled
@@ -59,6 +79,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       image(:tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :tile
       layer(:ground) { background :room, tiles: :set, map: ["#" * 32] * 20 }
+      instance_exec(&before) if before
       var :mode, 0
       scene(:title) { instance_exec(&title) }
       scene(:playing) { instance_exec(&playing) }
@@ -106,6 +127,37 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
     assert_equal [:light_cannot_share], found.map(&:check)
     assert_match(/scene :title/, found.first.message)
     assert_match(/:water is see-through/, found.first.message)
+  end
+
+  # A scene that sees through a layer and closes a circle that shows nothing outside it: the
+  # game's light is declared so before the scenes.
+  def test_a_scene_that_sees_through_a_layer_and_closes_a_circle_showing_nothing_outside_is_fine
+    water = see_through_water
+    found = scene_findings(before: -> { spotlight outside: :nothing },
+                           title: -> { instance_exec(&water); iris_out from: 150, by: 4 }, playing: -> {})
+
+    assert_empty found
+  end
+
+  def test_a_whole_build_with_a_see_through_layer_and_a_circle_showing_nothing_outside_builds
+    water = see_through_water
+    rom = VBlank.build("SHUTS", console: :gba, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      layers :ground, :water
+      image(:tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :tile
+      layer(:ground) { background :room, tiles: :set, map: ["#" * 32] * 20 }
+      instance_exec(&water)
+      spotlight outside: :nothing
+      turn = var :turn, 0
+      game_loop do
+        turn += 1
+        iris_out from: 150, by: 4 if turn == 2
+        iris_in by: 4, to: 150 if turn == 90
+      end
+    end
+
+    refute_nil rom
   end
 
   def test_a_scene_that_fades_under_a_layer_and_uses_the_light_is_an_error

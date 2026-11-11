@@ -59,6 +59,8 @@ module VBlank
             @block = 1
             @spans = nil
             @shade_steps = 0
+            @shade_shuts_out = false
+            @backdrop = fill
             @light_off = false
           end
 
@@ -279,8 +281,13 @@ module VBlank
                       seen_x, seen_y = @block > 1 ? block_corner(x, y) : [x, y]
                       shown_color(seen_x + @camera_x, seen_y + @camera_y, fade_here: fade_reaches?(x, y))
                     end
-            displayed(lit?(x, y) ? color : darkened_by_display(color, @shade_steps))
+            displayed(lit?(x, y) ? color : outside_light(color, x, y))
           end
+
+          # THE COLOUR THE SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the game has it now: what is
+          # outside a light that shows nothing outside it. The display keeps that colour in its
+          # table with the rest, so a fade or tint that walks the colours reaches it too.
+          attr_writer :backdrop
 
           # WHAT IS SHOWN IN FRONT OF A PAINTED PICTURE: the sprites the console draws over it
           # (`sprite ..., over_picture: true`), one colour or nil for each place on the screen,
@@ -300,9 +307,15 @@ module VBlank
           # decides, pixel by pixel on its way to the screen, whether the darkening applies.
           # A block of a pixelated picture is lit or not by where the pixel is, not where its
           # block's colour came from, for the same reason.
-          def shade_outside(spans, steps)
+          #
+          # With +shuts_out+ nothing is darkened: while +steps+ is more than none, the rest of
+          # each row is not drawn at all, and shows the colour the screen shows wherever nothing
+          # is drawn (#backdrop=). The console draws no layer there, so
+          # nothing of the picture, mixed or not, reaches the screen outside the spans.
+          def shade_outside(spans, steps, shuts_out: false)
             @spans = spans
             @shade_steps = steps
+            @shade_shuts_out = shuts_out
           end
 
           # Whether the scene that just ran has the game's light switched off: then nothing is
@@ -475,6 +488,14 @@ module VBlank
           end
 
           private
+
+          # What a pixel outside the light's span shows, where the picture has +color+: that colour
+          # darkened, or for a light that shows nothing outside it, the colour of nothing drawn.
+          def outside_light(color, x, y)
+            return darkened_by_display(color, @shade_steps) unless @shade_shuts_out
+
+            faded(@backdrop, fade_here: fade_reaches?(x, y))
+          end
 
           # Room to keep the two sides of every cell mixed at +weights+ (see #shown_color). A
           # screen has one see-through layer, so one set of weights serves every mixed cell.

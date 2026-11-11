@@ -18,6 +18,11 @@ module VBlank
       # reaches past the screen and darkens nothing (see Builder#spotlight), which is what the
       # iris opens back to.
       #
+      # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (`spotlight outside: :nothing`) is closed the same
+      # way: the darkness of 100 a walk sets is that light switched on, and the darkness of 0 it
+      # opens back to is the light off. That light darkens nothing, so an iris on it shares a
+      # scene with a see-through layer (see Builder#spotlight).
+      #
       # WHAT IS WALKED IS THE RADIUS, held as a number with a fraction so a walk of any length
       # lands on the last frame asked for, as the pixelate's is. It runs between nothing and
       # about the farthest corner of the screen from the point — never short of it, and never

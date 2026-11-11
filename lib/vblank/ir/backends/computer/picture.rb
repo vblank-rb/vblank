@@ -556,8 +556,9 @@ module VBlank
 
           # The routines rg_screen.c calls to work the game's light out (Reference#work_out_shade):
           # where the lit span of one row starts and ends, the row going into the light's
-          # variable first, and then how dark the rest of every row goes. Empty for a game with
-          # no light, which never calls them.
+          # variable first, and then how dark the rest of every row goes, or for a light that
+          # shows nothing outside it, whether it is on. Empty for a game with no light, which
+          # never calls them.
           def shade_span
             body = if @shade
                      [assign(@shade.row, call("rg_shade_line")), *body_of(@shade),
@@ -570,7 +571,8 @@ module VBlank
           end
 
           def shade_amount
-            body = @shade ? [eval_call("rg_shade_darkness", value(@shade.amount))] : []
+            amount_call = @shade&.shuts_out ? "rg_shade_shut_out" : "rg_shade_darkness"
+            body = @shade ? [eval_call(amount_call, value(@shade.amount))] : []
             Statements::Function.new(name: @names.own("shade_amount"), body: body, exported: true)
           end
 

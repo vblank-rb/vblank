@@ -148,6 +148,10 @@ module VBlank
               @light = node if node.kind == :shade_outside
             end
             @dark_scenes = IR::LightScenes.switches?(program) ? IR::LightScenes.dark(program).keys : []
+            # A game that places a fade in the stack keeps the object window's field of the
+            # register switched on too (SpriteDrawing#emit_boot_object_windows).
+            places_fade = program.walk.any? { |node| IR::LightScenes.placed_fade?(node) }
+            @outside_window_shown = WIN_ALL_LAYERS | WIN_EFFECT | (places_fade ? WIN_ALL_LAYERS << WINOUT_OBJ_SHIFT : 0)
           end
 
           # What the blend unit is told while the light is on: darken every layer, the sprites
@@ -156,6 +160,17 @@ module VBlank
 
           # Does the light take turns with scenes it is off in (see IR::LightScenes)?
           def switches_light? = @light && !@dark_scenes.empty?
+
+          # A LIGHT THAT SHOWS NOTHING OUTSIDE IT IS THE WINDOW AND NOTHING ELSE
+          # (Nodes::ShadeOutside#shuts_out). Inside the window every layer shows and the colour
+          # effect applies, so whatever the game mixes there, a see-through layer or a fade, goes
+          # on as if there were no window. Outside it no layer is switched on, and the display
+          # shows its backdrop colour. The blend unit is never written for it: this is the circle
+          # the console's own games close a scene with.
+          def light_shuts_out? = !@light.nil? && @light.shuts_out
+
+          # Does the light darken, and so hold the blend unit while it is on?
+          def light_darkens? = !@light.nil? && !@light.shuts_out
 
           # WHETHER THE LAST GAP BETWEEN FRAMES SWITCHED THE LIGHT ON, 1 or 0. A lit scene's
           # pass reads it to tell the blend unit the same, so a scene arriving from one the light
@@ -177,6 +192,10 @@ module VBlank
             return unless switches_light? && @dark_scenes.include?(scene)
 
             @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS | WIN_EFFECT)
+            # A light that shows nothing outside it never held the blend unit: switching it off is
+            # switching the layers back on outside its window.
+            return @emitter.write_reg16(REG_WINOUT, @outside_window_shown) if light_shuts_out?
+
             kept = @emitter.gensym
             @emitter.emit_number(ADDR, REG_BLDCNT)
             @emitter.emit(ASM.load_halfword(ACC, ADDR))
@@ -190,7 +209,7 @@ module VBlank
           # Write the block's code so it runs only while the blend unit holds something other than
           # the light's darkening. What puts away a fade must not take the light for one.
           def emit_unless_light_holds_blend
-            return yield unless @light
+            return yield unless light_darkens?
 
             skip = @emitter.gensym
             @emitter.emit_number(TMP, REG_BLDCNT)
@@ -202,7 +221,15 @@ module VBlank
           end
 
           # Is +scene+ one a switching light is on in, so the light alone writes the blend unit?
-          def light_owns_blend_in?(scene) = switches_light? && !@dark_scenes.include?(scene)
+          def light_owns_blend_in?(scene) = switches_light? && light_darkens? && !@dark_scenes.include?(scene)
+
+          # Is +scene+ one that a light showing nothing outside it comes back on in, after a scene
+          # that faded under a layer? The light writes nothing to the blend unit, so the scene
+          # itself puts away the fade the scene before left there (see Drawing#emit_scene_blend),
+          # as a darkening light's own write does.
+          def light_shuts_out_after_placed_fade?(scene)
+            switches_light? && light_shuts_out? && !@dark_scenes.include?(scene)
+          end
 
           # ...and a scene the light is on in tells the blend unit what the last gap did: the
           # darkening if it switched the light on, nothing if the light is still off. It is the
@@ -341,12 +368,21 @@ module VBlank
           #
           # The window itself is switched on with the layers, in the display's control register
           # (see Drawing#tiled_bg_enable_bits), so a screen that is not drawn from tiles has none.
+          #
+          # A light that shows nothing outside it starts with every layer and the effect on both
+          # sides of the window, which is no light at all, and writes nothing to the blend unit;
+          # the frame switches the layers off outside (see #emit_light_shut_out).
           def emit_boot_light
             @emitter.write_reg16(REG_WIN0V, VISIBLE_LINES)
-            @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
-            @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
-            @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
-            @emitter.write_reg16(REG_BLDY, 0)
+            if light_shuts_out?
+              @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS | WIN_EFFECT)
+              @emitter.write_reg16(REG_WINOUT, @outside_window_shown)
+            else
+              @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
+              @emitter.write_reg16(REG_WINOUT, WIN_ALL_LAYERS | WIN_EFFECT)
+              @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
+              @emitter.write_reg16(REG_BLDY, 0)
+            end
             @primitives.store_word_immediate(0, @primitives.var_addr(LIGHT_ROWS_FILLED)) # no rows worked out yet
             return unless @light_staging
 
@@ -365,8 +401,10 @@ module VBlank
             @primitives.load_var(ACC, IR::LightScenes::ON)
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, off, cond: :eq)
-            @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
-            @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
+            if light_darkens?
+              @emitter.write_reg16(REG_WININ, WIN_ALL_LAYERS)
+              @emitter.write_reg16(REG_BLDCNT, LIGHT_CONTROL)
+            end
             emit_light_amount
             @primitives.store_word_immediate(1, @primitives.var_addr(LIGHT_SHOWN))
             @emitter.emit_branch(:b, done)
@@ -378,12 +416,28 @@ module VBlank
           # How dark outside the light is this frame: the program's amount, 0 to 100, turned
           # into the display's sixteenths the way a fade's is, and held to them.
           def emit_light_amount
+            return emit_light_shut_out if light_shuts_out?
+
             @lowering.value(FadeSteps.steps_value(@light.amount, fraction_bits: nil, walked: false))
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit(ASM.mov_imm_cond(:lt, ACC, 0))
             @emitter.emit(ASM.cmp_imm(ACC, BLD_MAX))
             @emitter.emit(ASM.mov_imm_cond(:gt, ACC, BLD_MAX))
             @primitives.store_halfword_acc(REG_BLDY)
+          end
+
+          # WHAT SHOWS OUTSIDE A LIGHT THAT SHOWS NOTHING THERE, this frame: no layer at all while
+          # the program's amount comes to a sixteenth or more, which is the light on, and every
+          # layer while it does not, which is the light off. One register, and the same amount in
+          # the same sixteenths the darkening light counts in, so on and off fall where the other
+          # backends put them.
+          def emit_light_shut_out
+            @lowering.value(FadeSteps.steps_value(@light.amount, fraction_bits: nil, walked: false))
+            @emitter.emit_number(TMP, @outside_window_shown)
+            @emitter.emit_number(ADDR, REG_WINOUT)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit(ASM.mov_imm_cond(:gt, TMP, 0))
+            @emitter.emit(ASM.store_halfword(TMP, ADDR))
           end
 
           # Point the engine back at the top of the table, in the gap between frames. It

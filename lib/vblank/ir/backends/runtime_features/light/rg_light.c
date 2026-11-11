@@ -27,6 +27,15 @@ void rg_shade_right(int32_t right) { shade_spans[shade_row][1] = right; }
 /* FadeSteps.sixteenths: the amount out of 100, in the display's sixteenths. */
 void rg_shade_darkness(int32_t amount) { shade_steps = whole_sixteenths(amount); }
 
+/* A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
+ * the same amount, which is then only on (more than no sixteenths) or off, and the rest of each
+ * row shows the colour of nothing drawn in place of the picture darkened. */
+static int32_t shade_shuts_out;
+void rg_shade_shut_out(int32_t amount) {
+  shade_steps = whole_sixteenths(amount);
+  shade_shuts_out = 1;
+}
+
 /* THE FILTER THE DARKENED PART OF THE PICTURE IS READ THROUGH: the table darkens a colour by the
  * light's steps, and each screen row says which of its pixels are dark, a pixel being changed when
  * +inverted+ XOR from <= x < to (see shown_filter). Worked out at the end of
@@ -64,12 +73,31 @@ void rg_shade_switch(int32_t on) { shade_off = on == 0; }
 /* Whether no light is darkening any of the picture. */
 static int32_t every_pixel_lit(void) { return shade_steps == 0 || shade_off; }
 
+/* The colour a light that shows nothing outside it shows there (Framebuffer#outside_light): the
+ * backdrop, through the fade or tint in force, as the console's display keeps that colour in the
+ * table a walked fade walks. */
+static uint16_t shown_backdrop(void) {
+  const shown_filter *fade = rg_hook_fade_filter();
+  return fade ? fade->table[(uint16_t)backdrop] : (uint16_t)backdrop;
+}
+
+/* The colour every entry of the table holds for a light that shows nothing outside it, or -1
+ * while the table is not such a table. */
+static int32_t dim_table_backdrop = -1;
+
 /* rg_hook_dim_filter (Framebuffer#shade_outside, #lit?): nothing while no light darkens any of the
  * picture, else the filter above, its table made again when the steps are not the ones it was
- * made for. */
+ * made for. For a light that shows nothing outside it, every colour reads as the colour of nothing
+ * drawn, and the table is made again when that colour changes. */
 static const shown_filter *rg_light_dim_filter(void) {
   if (every_pixel_lit()) return NULL;
-  if (dim_table_steps != shade_steps) {
+  if (shade_shuts_out) {
+    int32_t shows = shown_backdrop();
+    if (dim_table_backdrop != shows) {
+      for (uint32_t color = 0; color < 65536; color++) dim_table[color] = (uint16_t)shows;
+      dim_table_backdrop = shows;
+    }
+  } else if (dim_table_steps != shade_steps) {
     for (uint32_t color = 0; color < 65536; color++) dim_table[color] = darkened_by_display((uint16_t)color, shade_steps);
     dim_table_steps = shade_steps;
   }

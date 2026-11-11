@@ -386,8 +386,11 @@ module VBlank
         private :size_screen_for, :framebuffer_like_screen
 
         # The picture, painted up to date first if a repaint is owed (see #request_repaint).
+        # A light that shows nothing outside it shows the backdrop there as it stands when the
+        # picture is read (Framebuffer#backdrop=), as the console's display does.
         def screen
           paint_owed_repaint
+          @screen.backdrop = @backdrop
           @screen
         end
 
@@ -1149,7 +1152,8 @@ module VBlank
 
         # WHERE THE LIGHT IS ON EACH ROW, worked out in the gap before a frame, the moment the
         # console works its table out: every row's span from the program's own expressions,
-        # and how far the rest of the row is darkened, in the display's sixteenths.
+        # and how far the rest of the row is darkened, in the display's sixteenths. A light that
+        # shows nothing outside it is on while that is more than none.
         def work_out_shade
           return unless @shade
 
@@ -1158,7 +1162,7 @@ module VBlank
             @shade.children.each { |child| exec(child) } # what the light works out once a row, before its edges
             [eval_value(@shade.left), eval_value(@shade.right)]
           end
-          @screen.shade_outside(spans, FadeSteps.sixteenths(eval_value(@shade.amount)))
+          @screen.shade_outside(spans, FadeSteps.sixteenths(eval_value(@shade.amount)), shuts_out: @shade.shuts_out)
         end
 
         def exec_camera(node)

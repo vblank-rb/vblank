@@ -847,10 +847,11 @@ module VBlank
       # worked out from it: the columns from +left+ up to but not including +right+ are left
       # as drawn. A backend that composes the picture itself darkens per pixel as it reads
       # it; one with display hardware that can be told, row by row, where the darkening
-      # stops can hand the spans over and pay nothing per pixel.
-      def shade_outside(row:, left:, right:, amount:)
+      # stops can hand the spans over and pay nothing per pixel. With +shuts_out+ the rest of
+      # each row is not drawn at all while the amount is more than nothing (Nodes::ShadeOutside).
+      def shade_outside(row:, left:, right:, amount:, shuts_out: false)
         Nodes.build(:shade_outside, row: row, left: to_value_node(left), right: to_value_node(right),
-                                    amount: to_value_node(amount))
+                                    amount: to_value_node(amount), shuts_out: shuts_out)
       end
 
       # Work the light out again now, for the picture being drawn.

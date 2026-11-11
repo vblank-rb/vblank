@@ -112,15 +112,16 @@ module VBlank
       MIDPOINT_HALF_WIDTHS = (0..MIDPOINT_LARGEST).flat_map { |size| midpoint_half_widths(size) }.freeze
 
       # The statement that darkens the picture outside the circle +light+ gives. Its edges read
-      # the row's half width, which #work_out_half_width puts in HALF first.
-      def shade_node(builder, light)
+      # the row's half width, which #work_out_half_width puts in HALF first. With +shuts_out+ it
+      # shows nothing outside the circle, where it would darken (Nodes::ShadeOutside).
+      def shade_node(builder, light, shuts_out: false)
         half = builder.var(HALF, 0)
         screen = builder.console.screen_width
         left = (light.x - half).clamp(0, screen)
         right = (light.x + half).clamp(0, screen)
 
         Build.shade_outside(row: ROW, left: DSL::Value.node_for(left), right: DSL::Value.node_for(right),
-                            amount: DSL::Value.node_for(light.dark))
+                            amount: DSL::Value.node_for(light.dark), shuts_out: shuts_out)
       end
 
       # The three tables the circle is read from — the scaled half widths, one pixel as a share

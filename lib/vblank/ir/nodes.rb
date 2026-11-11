@@ -1654,11 +1654,16 @@ module VBlank
       # variable is set to each row of the screen in turn, and +left+ and +right+ give where
       # that row's span starts and ends (the end not included), both worked out from it.
       # +amount+ is how dark the rest of the row goes, 0 (as drawn) to 100 (black).
+      #
+      # A light that +shuts_out+ darkens nothing: the rest of each row is not drawn at all, so the
+      # colour the screen shows wherever nothing is drawn shows there, with whatever fade or tint
+      # walks the colours. Its +amount+ is then only on or off: nothing while it rounds to no
+      # darkness (Backends::FadeSteps.sixteenths), the whole of it otherwise.
       class ShadeOutside
         include Node
         kind :shade_outside
         category :draw
-        operands row: :name, left: :value, right: :value, amount: :value
+        operands row: :name, left: :value, right: :value, amount: :value, shuts_out: :flag
       end
 
       # The light worked out again where this is reached, so the picture of this pass shows it

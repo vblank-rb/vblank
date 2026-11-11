@@ -32,7 +32,8 @@ module VBlank
       # How far the light reaches from its middle, in pixels. 0 lights nothing at all.
       attr_reader :radius
 
-      # How dark the picture is outside the light, 0 (as drawn) to 100 (black).
+      # How dark the picture is outside the light, 0 (as drawn) to 100 (black). For a light that
+      # shows nothing outside it (`spotlight outside: :nothing`) it is a switch: 0 is off, 100 on.
       attr_reader :dark
 
       # Put the middle of the light at (+x+, +y+). Either may be worked out as the game runs.

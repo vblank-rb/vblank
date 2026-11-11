@@ -693,13 +693,30 @@ module VBlank
       # with no light yet gets one that reaches past every edge of the screen and darkens
       # nothing, so the picture is as drawn until something moves it.
       #
+      # `outside: :nothing` makes it a light that SHOWS NOTHING OUTSIDE IT, where a light
+      # otherwise darkens what is there: outside the circle no layer and no sprite is drawn, so
+      # the screen's backdrop colour shows, black unless the game gave the screen another. It
+      # is the circle a scene change closes, and the one light that shares a scene with a
+      # see-through layer, because it darkens nothing: the layer goes on mixing inside the
+      # circle. Its `dark` is then a switch, 0 for off and 100 for on, which is what
+      # `iris_out` and `iris_in` set. It is said once, where the game's light is declared:
+      #
+      #   spotlight outside: :nothing    # the game's light, off until an `iris_out` closes it
+      #   spotlight at: [120, 80], radius: 40, outside: :nothing
+      #
       # @param at [Array(Integer, Integer)] where the middle of the light starts, in screen pixels
       # @param radius [Integer] how far it reaches from its middle, in pixels
       # @param dark [Integer] how dark the picture is outside it, 0 to 100
+      # @param outside [Symbol, nil] :darkened (what a light does unless told) or :nothing
       # @return [DSL::Spotlight]
-      def spotlight(at: nil, radius: nil, dark: nil)
+      def spotlight(at: nil, radius: nil, dark: nil, outside: nil)
+        refuse_unknown_light_outside!(outside)
         said = !(at.nil? && radius.nil? && dark.nil?)
-        return @spotlight if @spotlight && !said
+        shuts_out = outside == :nothing
+        if @spotlight && !said
+          refuse_light_outside_changed!(shuts_out) unless outside.nil?
+          return @spotlight
+        end
 
         refuse_second_spotlight!
         refuse_spotlight_off_tiles!
@@ -713,11 +730,11 @@ module VBlank
                                    radius: var(Spotlights::RADIUS, radius), dark: var(Spotlights::DARK, dark),
                                    builder: self)
         @spotlight_tables = Spotlights.declare_tables(self)
-        shade = Spotlights.shade_node(self, light)
+        shade = Spotlights.shade_node(self, light, shuts_out: shuts_out)
         push_container(shade) { Spotlights.work_out_half_width(self, light, @spotlight_tables) }
         record(shade)
         @spotlight_shade = shade
-        @spotlight_unsaid = !said
+        @spotlight_unsaid = !said && outside.nil?
         @spotlight = light
       end
 
@@ -1062,6 +1079,38 @@ module VBlank
               "handle the first `spotlight` gives back. To fix this, keep the handle " \
               "(`light = spotlight at: [x, y], radius: r`) and change `light.x`, `light.y`, " \
               "`light.radius` and `light.dark` where the second light was."
+      end
+
+      LIGHT_OUTSIDES = %i[darkened nothing].freeze
+
+      def refuse_unknown_light_outside!(outside)
+        return if outside.nil? || LIGHT_OUTSIDES.include?(outside)
+
+        raise ArgumentError,
+              "`spotlight outside:` is what the picture is outside the light: `outside: :darkened` " \
+              "(what a light does unless told) or `outside: :nothing` (nothing is drawn there). " \
+              "You gave #{outside.inspect}."
+      end
+
+      # WHAT IS OUTSIDE THE LIGHT IS SETTLED AS THE CARTRIDGE IS BUILT, since it decides what
+      # the display is told at power-on and which scenes the light can share. So it is set where
+      # the game's one light is declared, and asking for the light again with the other answer
+      # is refused rather than quietly ignored.
+      def refuse_light_outside_changed!(shuts_out)
+        return if @spotlight_shade.shuts_out == shuts_out
+
+        wanted = shuts_out ? ":nothing" : ":darkened"
+        if @spotlight_unsaid
+          raise ArgumentError,
+                "This game asks for `spotlight outside: #{wanted}` after an `iris_out` (or a `spotlight` " \
+                "with nothing after it) already gave it a light. A game has one light. To fix this, " \
+                "write `spotlight outside: #{wanted}` before the first `iris_out`."
+        end
+
+        raise ArgumentError,
+              "This game asks for `spotlight outside: #{wanted}`, and its light was declared with the " \
+              "other answer. A game has one light, and what is outside it is set once. To fix this, " \
+              "give `outside: #{wanted}` to the `spotlight` that declares the light, and to no other."
       end
 
       # A light is a window in the picture the console composes from tiles. A bitmap screen
