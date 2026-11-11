@@ -1018,9 +1018,10 @@ module VBlank
             @primitives.store_var(ACC, TINT_STATE)
             tint_tables(mode).each { |blob, dest, units| emit_restore_palette_table(blob, dest, units) }
             emit_changed_obj_lists_again(up: :unknown) if walks_obj_table?(mode)
-            # The copy put the declared colours back over the groups that follow a list the game
-            # changes: those are written again.
-            emit_changed_bg_lists_again if walks_bg_table?(mode) && @layout.screen.followed_colors.any?
+            # The copy put the declared colours back over every group the game has written since
+            # (#bg_restore_banks): a layer drawn with another list, one that follows a list the
+            # game changes, the backdrop. Those are written again, with no tint in force now.
+            emit_changed_bg_lists_again if walks_bg_table?(mode)
             @emitter.place_label(skip)
           end
 
