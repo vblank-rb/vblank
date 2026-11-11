@@ -42,6 +42,22 @@ module VBlank
         # The statements written here (Lowering#statements_written_by), each by its own method.
         STATEMENT_KINDS = %i[if loop repeat every after case].freeze
 
+        # EVERY METHOD OF THIS MODULE A LOWERING WRITES ITS OWN WAY, by the method and then the
+        # console, with why its way is cheaper there. A lowering takes the walk as it is unless it is
+        # named here (.claude/rules/adding-a-backend.md); test_control_flow.rb holds the four
+        # lowerings to this list, both ways. The measurement behind each is in the commit that
+        # added it.
+        OWN_WAYS = Ractor.make_shareable(
+          {
+            with_counter_held: {
+              "Genesis" => "A 68000 instruction that counts or compares in a data register is a third of the time of " \
+                           "the same on a place in work RAM, and a body that reads its index reads it for a quarter. " \
+                           "Genesis::Lowering#with_counter_held keeps the count in D7, D6 or D5 through a loop whose " \
+                           "body is written with D0 to D2 and A0 alone, and puts it back as the loop ends."
+            }
+          }
+        )
+
         def emit_control_flow_statement(node)
           case node.kind
           when :if then emit_if(node)
@@ -119,23 +135,34 @@ module VBlank
           limit = known ? Build.int(known) : Build.var_ref(keep_local(:count))
           top = fresh_label("repeat")
           done = fresh_label("end_repeat")
+          none = known ? nil : fresh_label("no_turns")
           unless known
             emit_value(node.count)
             emit_store(limit.name)
-            jump_unless(Build.binop(:>, limit, Build.int(0)), done)
+            jump_unless(Build.binop(:>, limit, Build.int(0)), none)
           end
-          emit_store_zero(counter)
-          place_label(top)
-          emit_copy_variable(counter, node.index) if node.index && !in_index
-          jump_if(node.stop_when, done)
-          with_index_below(in_index && known ? counter : nil, known) do
-            children_of(node).first.each { |child| statement(child) }
+          with_counter_held(node, counter) do
+            emit_store_zero(counter)
+            place_label(top)
+            emit_copy_variable(counter, node.index) if node.index && !in_index
+            jump_if(node.stop_when, done)
+            with_index_below(in_index && known ? counter : nil, known) do
+              children_of(node).first.each { |child| statement(child) }
+            end
+            emit_increment(counter)
+            jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
+            statement(Build.sub(counter, Build.int(1))) if in_index
+            place_label(done)
           end
-          emit_increment(counter)
-          jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
-          statement(Build.sub(counter, Build.int(1))) if in_index
-          place_label(done)
+          place_label(none) if none
         end
+
+        # The loop +node+ written by the block, from its count +counter+ set to nought to the label
+        # every way out of it comes to. A lowering whose processor counts faster in a register than
+        # in memory writes this its own way (OWN_WAYS): it may keep +counter+ in a register while
+        # the block runs, where nothing the block writes can overwrite it, and put it back in its
+        # variable after. A loop that makes no turns does not come this way.
+        def with_counter_held(_node, _counter) = yield
 
         # WHAT A LOOP'S VARIABLE IS KNOWN TO BE BELOW while the loop's own statements are written: a
         # loop that counts in its variable to a count written in the program holds 0 to one less

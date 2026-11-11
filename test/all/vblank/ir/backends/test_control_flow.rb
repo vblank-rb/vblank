@@ -109,9 +109,28 @@ class TestControlFlow < Minitest::Test
   def test_a_count_the_game_works_out_is_worked_out_once_and_kept
     written = written_for(repeat(var_ref(:n), :i, set(:a, 1)))
 
-    assert_equal [[:value, :n], [:store, :own_count], [:jump_unless, [:own_count, :>, 0], "end_repeat1"], %i[zero i],
+    assert_equal [[:value, :n], [:store, :own_count], [:jump_unless, [:own_count, :>, 0], "no_turns1"], %i[zero i],
                   [:label, "repeat1"], [:statement, :set, :a], %i[one_more i], [:jump_if, %i[i < own_count], "repeat1"],
-                  [:statement, :sub, :i], [:label, "end_repeat1"]], written
+                  [:statement, :sub, :i], [:label, "end_repeat1"], [:label, "no_turns1"]], written
+  end
+
+  # A lowering may keep the count in a register from where it is set to nought to where every way
+  # out of the loop comes (#with_counter_held), so a loop that makes no turns must not come there.
+  def test_a_loop_with_no_turns_goes_past_where_its_count_is_held
+    chip = Class.new(RecordingChip) do
+      def with_counter_held(_node, counter)
+        @written << [:held, counter]
+        yield
+        @written << [:put_back, counter]
+      end
+    end.new(node = repeat(var_ref(:n), :i, set(:a, 1), stop_when: binop(:==, var_ref(:done), 1)))
+    chip.statement(node)
+    places = chip.written.each_with_index.to_h { |entry, at| [entry, at] }
+
+    assert_operator places.fetch(%i[held i]), :<, places.fetch(%i[zero i])
+    assert_operator places.fetch([:label, "end_repeat1"]), :<, places.fetch(%i[put_back i])
+    assert_operator places.fetch(%i[put_back i]), :<, places.fetch([:label, "no_turns1"])
+    assert_includes chip.written, [:jump_if, [:done, :==, 1], "end_repeat1"]
   end
 
   # ...and a count written in the game is compared as the number it is, with no variable of its own
@@ -224,5 +243,21 @@ class TestControlFlow < Minitest::Test
         assert_equal backends::ControlFlow, lowering.instance_method(writer).owner, "#{console.name}##{writer}"
       end
     end
+  end
+
+  # A lowering that writes a step of the walk its own way is named for it in ControlFlow::OWN_WAYS,
+  # with why; and nothing is named there that a lowering does not write.
+  def test_every_step_a_lowering_writes_its_own_way_is_listed_with_its_reason
+    backends = VBlank::IR::Backends
+    walk = backends::ControlFlow
+    steps = walk.instance_methods(false) + walk.private_instance_methods(false)
+    [backends::GBC, backends::SNES, backends::Genesis, backends::PS1].each do |console|
+      name = console.name.split("::").last
+      own = steps.reject { |step| console::Lowering.instance_method(step).owner == walk }
+      listed = walk::OWN_WAYS.select { |_step, consoles| consoles.key?(name) }.keys
+
+      assert_equal listed.sort, own.sort, "#{name}'s own ways of the walk, against ControlFlow::OWN_WAYS"
+    end
+    walk::OWN_WAYS.each_value { |consoles| consoles.each_value { |why| refute_empty why } }
   end
 end

@@ -64,14 +64,14 @@ class TestGenesisListLoopPace < Minitest::Test
   # How much of a frame the pass that runs the loop may take over a pass that does not: with the
   # count written in the game, and with a count the game keeps. Measured, each list read or
   # written is a few instructions where the game reads it, with no call, and a check of the index
-  # only where the count is not known.
-  MOST_OF_A_FRAME = 0.045
-  MOST_OF_A_FRAME_COUNTED = 0.056
+  # only where the count is not known; and the loop's count is kept in a register.
+  MOST_OF_A_FRAME = 0.034
+  MOST_OF_A_FRAME_COUNTED = 0.045
 
   # ...and a run of 64 entries copied from a table into a list. Measured, an entry is one
   # instruction and the count's, where a call for its place in the table and two for its slot
   # took a sixth of a frame for the run.
-  MOST_OF_A_FRAME_COPYING = 0.02
+  MOST_OF_A_FRAME_COPYING = 0.016
 
   PASSES = 32
 

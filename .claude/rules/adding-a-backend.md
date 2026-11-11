@@ -109,7 +109,11 @@ writing an instruction is shared, because two copies of a decision drift apart:
   the lowering and calls a dozen things of it written in that processor's instructions (a fresh
   label, a jump, a jump unless a condition holds, a load, a store), which the comment atop the module
   lists. `test/all/vblank/ir/backends/test_control_flow.rb` walks it over a chip that only writes
-  down what it was asked for.
+  down what it was asked for. A step of the walk a lowering writes its own way is listed in
+  `ControlFlow::OWN_WAYS` with its reason, and that test holds the lowerings to the list.
+  `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
+  variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
+  body is written, so a read of a table or a list there needs no check of the index.
 - `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
   the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
   `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.

@@ -460,8 +460,9 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
-          # The operand that names that place: a distance from A5.
-          def var(name) = at(place_of(name))
+          # The operand that names that place: a distance from A5; or the data register a loop is
+          # keeping it in while its body is written (#with_counter_held).
+          def var(name) = @counters_held&.fetch(name, nil) || at(place_of(name))
 
           def at(address, plus = 0) = @asm.disp(5, Memory.displacement(address) + plus)
 
@@ -536,9 +537,11 @@ module VBlank
 
           # A number written in the program, straight into the variable +name+.
           def store_number(name, number)
-            return @asm.clr(:l, var(name)) if number.zero?
+            place = var(name)
+            return @asm.moveq(number, place) if place.mode == :dn && number.between?(-128, 127)
+            return @asm.clr(:l, place) if number.zero?
 
-            @asm.move(:l, @asm.imm(number), var(name))
+            @asm.move(:l, @asm.imm(number), place)
           end
 
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
@@ -628,6 +631,89 @@ module VBlank
           def loop_statements(node) = children_of(node).first
           def game_loops = @plan.game_loops
           def loop_form = @plan.loop_form
+
+          # A LOOP'S COUNT KEPT IN A DATA REGISTER (ControlFlow::OWN_WAYS). The 68000 adds one to a
+          # register and compares it in a third of the time it takes on a place in work RAM, and a
+          # body reading the loop's index, as most do to find a slot of a list, reads a register in
+          # a quarter of the time. A console's own game keeps its count there for that reason.
+          #
+          # It is done only where nothing can overwrite the register or need the variable while the
+          # loop runs: every statement of the body, however deep, is one this lowering writes in
+          # place with D0, D1, D2 and A0 alone (#statement_keeps_counters?), so there is no call, of
+          # the game's routines or the runtime's, and no wait, where a pass could end and the
+          # variable be read. Any other loop counts in work RAM, as before. A loop inside one takes
+          # the next register, three deep. The count goes back to its variable as the loop ends,
+          # so what comes after reads what it always did.
+          COUNTER_REGISTERS = [7, 6, 5].freeze
+
+          def with_counter_held(node, counter)
+            @counters_held ||= {}
+            register = COUNTER_REGISTERS[@counters_held.size]
+            return yield unless register && children_of(node).first.all? { |child| statement_keeps_counters?(child) } &&
+                                (node.stop_when.nil? || value_keeps_counters?(node.stop_when))
+
+            @counters_held[counter] = @asm.d(register)
+            begin
+              yield
+            ensure
+              @counters_held.delete(counter)
+            end
+            @asm.move(:l, @asm.d(register), var(counter))
+          end
+
+          # Is +node+ a statement written in place with D0, D1, D2 and A0 alone, everything it holds
+          # too? A statement cut off into a routine of its own (RoutineCuts::PartCall) is a call.
+          def statement_keeps_counters?(node)
+            return false unless node.is_a?(Node)
+
+            case node.kind
+            when :set then value_keeps_counters?(node.value)
+            when :add, :sub then value_keeps_counters?(node.operand)
+            when :copy then value_keeps_counters?(node.src)
+            when :negate, :abs, :negate_abs then true
+            when :clamp then value_keeps_counters?(node.min) && value_keeps_counters?(node.max)
+            when :list_set
+              !@lists_dropped_from_front.include?(node.name) && value_keeps_counters?(node.index) && value_keeps_counters?(node.value)
+            when :if
+              value_keeps_counters?(node.cond) && children_of(node).flatten.all? { |child| statement_keeps_counters?(child) }
+            when :repeat
+              value_keeps_counters?(node.count) && (node.stop_when.nil? || value_keeps_counters?(node.stop_when)) &&
+                children_of(node).first.all? { |child| statement_keeps_counters?(child) }
+            else false
+            end
+          end
+
+          # Is +node+ a value worked out in place with D0, D1 and A0 alone?
+          def value_keeps_counters?(node)
+            return true if node.is_a?(Symbol) || folded(node)
+            return false unless node.is_a?(Node)
+
+            case node.kind
+            when :var_ref, :held, :pressed then true
+            when :neg, :bit_not, :absolute then value_keeps_counters?(node.operand)
+            when :clamped then [node.operand, node.min, node.max].all? { |part| value_keeps_counters?(part) }
+            when :shift_right then node.bits.is_a?(Integer) && node.bits.between?(0, 31) && value_keeps_counters?(node.operand)
+            when :list_get then !@lists_dropped_from_front.include?(node.name) && value_keeps_counters?(node.index)
+            when :table_get then value_keeps_counters?(node.index)
+            when :binop then sum_keeps_counters?(node)
+            else false
+            end
+          end
+
+          # A sum, a comparison, or a shift or a product by a number that is one shift: the ones
+          # written in place. A product, a quotient or a shift the runtime works out is a call.
+          def sum_keeps_counters?(node)
+            both = value_keeps_counters?(node.lhs) && value_keeps_counters?(node.rhs)
+            case node.op
+            when *IN_PLACE_OPS, *COMPARISONS, :and, :or then both
+            when :<<, :>> then both && folded(node.rhs)&.between?(0, 31) == true
+            when :* then both && [node.lhs, node.rhs].any? { |by| one_shift?(folded(by)) }
+            else false
+            end
+          end
+
+          # Is +number+ a power of two a product by which is one shift (#emit_product_by_power_of_two)?
+          def one_shift?(number) = !number.nil? && number.positive? && number.nobits?(number - 1) && number <= (1 << 30)
 
           def emit_copy_variable(from, to)
             value(from)
