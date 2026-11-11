@@ -37,6 +37,11 @@ module VBlank
           #   at the end of the range, as the interpreter holds it. That is also what makes the rest safe:
           #   the answer then fits 32 bits, and what is left over never reaches 32 bits.
           # - When the top half is nought, DIVU does the whole divide in one instruction.
+          # - When the divisor is below 2**16 (below 1.0, at the usual sixteen bits of fraction), it is one
+          #   digit of sixteen bits, and two DIVUs give the answer's two digits with nothing to guess.
+          # - When the fraction is the usual sixteen bits, one DIVU gives the answer's top digit from the
+          #   numerator as the game wrote it, and the bottom digit is one guess put right
+          #   (emit_division_at_sixteen_bits).
           # - Otherwise the long division of school, done with digits of sixteen bits rather than one bit
           #   at a time, so DIVU works out each digit of the answer (Hacker's Delight, `divlu`, figure 9-3).
           #   The divisor is first moved up until its top bit is set, and the numerator with it, which
@@ -75,11 +80,97 @@ module VBlank
               emit_widen_numerator(asm)
               asm.sltu(:t3, :t1, :a1)
               asm.beq(:t3, :zero, "rt_div_fix_too_big")
-              asm.bne(:t1, :zero, "rt_div_fix_long")
+              asm.bne(:t1, :zero, "rt_div_fix_wide")
               asm.divu(:t2, :a1)
               asm.b("rt_div_fix_signed") { asm.mflo(:t2) }
+              asm.label("rt_div_fix_wide")
+              asm.srl(:t0, :a1, 16)
+              asm.bne(:t0, :zero, "rt_div_fix_big_divisor")
+              emit_division_by_one_digit(asm)
+              emit_division_at_sixteen_bits(asm)
               emit_long_division(asm)
               emit_signed_answer(asm)
+            end
+
+            # a0 brought up sixteen bits over a1, a1 2**16 or more, into t2; any other count of bits goes on
+            # to the long division. The numerator as the game wrote it still fits DIVU, so one divide gives
+            # the answer's top digit (t8) and what is left over (t9), which is below the divisor. The bottom
+            # digit is what is left, brought up sixteen bits, over the divisor: a number of 48 bits over one
+            # of 32, but an answer of one digit. It is guessed from the top sixteen bits of each: the divisor
+            # moved up until its top bit is set (t3, by t4 places) and its top digit taken (t5), and what is
+            # left moved up as far. The guess (a3) is never too small and at most two too big, since leaving
+            # off the divisor's bottom digit makes it less than one part in 2**15 smaller. So the guess times
+            # the whole divisor is taken from what is left brought up (t1:t2, 64 bits), and while that is
+            # below nought the guess comes down by one and the divisor is added back.
+            #
+            # DIVU answers 36 cycles later and the processor goes on meanwhile, waiting only when LO or HI
+            # is asked for. So the divisor is moved up between the first divide and its answer.
+            def emit_division_at_sixteen_bits(asm)
+              asm.label("rt_div_fix_big_divisor")
+              asm.addiu(:t0, :a2, -16)
+              asm.bne(:t0, :zero, "rt_div_fix_long")
+              asm.divu(:a0, :a1)
+              emit_divisor_moved_up(asm, "rt_div_fix_sixteen")
+              asm.mflo(:t8)
+              asm.mfhi(:t9)
+              asm.srl(:t5, :t3, 16)
+              asm.sllv(:t0, :t9, :t4)
+              asm.divu(:t0, :t5)
+              asm.mflo(:a3)
+              asm.srl(:t1, :t9, 16)
+              asm.sll(:t2, :t9, 16)
+              asm.multu(:a3, :a1)
+              asm.mflo(:t0)
+              asm.mfhi(:t6)
+              asm.sltu(:v1, :t2, :t0)
+              asm.subu(:t2, :t2, :t0)
+              asm.subu(:t1, :t1, :t6)
+              asm.subu(:t1, :t1, :v1)
+              asm.label("rt_div_fix_sixteen_again")
+              asm.bgez(:t1, "rt_div_fix_sixteen_right")
+              asm.addiu(:a3, :a3, -1)
+              asm.addu(:t2, :t2, :a1)
+              asm.sltu(:v1, :t2, :a1)
+              asm.b("rt_div_fix_sixteen_again") { asm.addu(:t1, :t1, :v1) }
+              asm.label("rt_div_fix_sixteen_right")
+              asm.sll(:t8, :t8, 16)
+              asm.b("rt_div_fix_signed") { asm.addu(:t2, :t8, :a3) }
+            end
+
+            # The divisor in a1, 2**16 or more, moved up into t3 until its top bit is set, and by how many
+            # places into t4: at most fifteen, so the steps are of eight, four, two and one. +name+ starts
+            # the labels, which each caller needs its own of.
+            def emit_divisor_moved_up(asm, name)
+              asm.move(:t3, :a1)
+              asm.move(:t4, :zero)
+              [8, 4, 2, 1].each do |places|
+                kept = "#{name}_top#{places}"
+                asm.srl(:t0, :t3, 32 - places)
+                asm.bne(:t0, :zero, kept)
+                asm.sll(:t3, :t3, places)
+                asm.addiu(:t4, :t4, places)
+                asm.label(kept)
+              end
+            end
+
+            # t1:t2 over a1, t1 below a1 and a1 below 2**16, into t2. The top half is below the divisor,
+            # so with the numerator's next digit brought down beside it the number still fits 32 bits and
+            # its quotient is one digit: DIVU gives the answer's top digit, and what it leaves over, with
+            # the last digit brought down, gives the bottom one the same way.
+            def emit_division_by_one_digit(asm)
+              asm.sll(:t1, :t1, 16)
+              asm.srl(:t0, :t2, 16)
+              asm.or(:t1, :t1, :t0)
+              asm.divu(:t1, :a1)
+              asm.mflo(:a0)
+              asm.mfhi(:t1)
+              asm.sll(:t1, :t1, 16)
+              asm.andi(:t2, :t2, 0xFFFF)
+              asm.or(:t1, :t1, :t2)
+              asm.divu(:t1, :a1)
+              asm.mflo(:t2)
+              asm.sll(:a0, :a0, 16)
+              asm.b("rt_div_fix_signed") { asm.or(:t2, :t2, :a0) }
             end
 
             # The size of the number in +register+, in place: the lowest number's is 2**31, which only a
@@ -112,17 +203,7 @@ module VBlank
             # a2 is what each guess leaves over.
             def emit_long_division(asm)
               asm.label("rt_div_fix_long")
-              asm.move(:t3, :a1)
-              asm.move(:t4, :zero)
-              [16, 8, 4, 2, 1].each do |places|
-                kept = "rt_div_fix_top#{places}"
-                asm.srl(:t0, :t3, 32 - places)
-                asm.bne(:t0, :zero, kept)
-                asm.label("#{kept}_up")
-                asm.sll(:t3, :t3, places)
-                asm.addiu(:t4, :t4, places)
-                asm.label(kept)
-              end
+              emit_divisor_moved_up(asm, "rt_div_fix_long")
               asm.beq(:t4, :zero, "rt_div_fix_moved_up")
               asm.label("rt_div_fix_move_up")
               asm.sllv(:t1, :t1, :t4)
