@@ -34,11 +34,14 @@ module VBlank
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is,
       # the frames the slowest took and which pass of the game it was, and how many passes took
       # each number of frames; TimeByRoutine::Report's four; and +measured_frames+, the frames the
-      # time was read over, counted from 1 at power-on as a tape counts them.
+      # time was read over, counted from 1 at power-on as a tape counts them; and +video_tiles+, how
+      # many tiles the build put in video memory (IR::Backends::Genesis::VideoTiles), nil for a game
+      # that draws from none.
       Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :passes_by_frames,
-                           :idle_share, :fewest_lines_spare, :game, :runtime, :measured_frames) do
+                           :idle_share, :fewest_lines_spare, :game, :runtime, :measured_frames, :video_tiles) do
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
-                               measured_frames: [measured_frames.begin, measured_frames.end])
+                               measured_frames: [measured_frames.begin, measured_frames.end],
+                               video_tiles: video_tiles&.to_h)
       end
 
       FILE_NAME = "game.md"
@@ -50,7 +53,7 @@ module VBlank
         run = IR::Backends::Genesis::HeadlessRun.new.hold(*keys).run(built.source_program, frames: settle + frames + 1)
         took = ((settle + 1)..(settle + frames)).to_h { |pass| [pass, run.frames_took(pass)] }
         Emulator.load_genesis!
-        result_of(took, *time_of(rom, frames: frames, settle: settle, keys: keys))
+        result_of(took, *time_of(rom, frames: frames, settle: settle, keys: keys), built.video_tiles)
       end
 
       # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
@@ -83,13 +86,24 @@ module VBlank
       end
 
       # What the frames each pass took (+took+, by pass) and the +time+ come to, over +measured_frames+.
-      def self.result_of(took, time, measured_frames)
+      def self.result_of(took, time, measured_frames, video_tiles)
         frames = took.values.sum
         counted, slowest_frames = took.max_by { |pass, count| [count, -pass] }
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
                    slowest_frames: slowest_frames, slowest_pass: counted - 1, passes_by_frames: took.values.tally.sort.to_h,
-                   measured_frames: measured_frames, **time.to_h)
+                   measured_frames: measured_frames, video_tiles: video_tiles, **time.to_h)
+      end
+
+      # How many tiles the build put in video memory, a line for the game and one for each scene
+      # that brings tiles of its own in.
+      def self.render_video_tiles(tiles, out:)
+        return unless tiles
+
+        out.puts "Video memory holds #{tiles.every_screen} of #{tiles.room} tiles for the pictures every scene shows."
+        tiles.by_scene.each do |scene, count|
+          out.puts format("  %4d of them with the scene :%s", count, scene)
+        end
       end
 
       # The report, for a person.
@@ -103,6 +117,7 @@ module VBlank
         result.passes_by_frames.each do |frames, passes|
           out.puts format("  %4d of them took %d %s", passes, frames, frames == 1 ? "frame" : "frames")
         end
+        render_video_tiles(result.video_tiles, out: out)
         TimeByRoutine.render(result, out: out)
       end
     end

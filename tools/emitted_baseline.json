@@ -62,8 +62,8 @@
       "data": 3408
     },
     "everywhere@genesis": {
-      "code": 4550,
-      "data": 810
+      "code": 4640,
+      "data": 866
     },
     "floating_digits": {
       "code": 11656,
@@ -114,8 +114,8 @@
       "data": 0
     },
     "level@genesis": {
-      "code": 4518,
-      "data": 2370
+      "code": 4608,
+      "data": 2402
     },
     "lit_corridor": {
       "code": 41284,
@@ -126,8 +126,8 @@
       "data": 0
     },
     "maze@genesis": {
-      "code": 3992,
-      "data": 2098
+      "code": 4082,
+      "data": 2106
     },
     "meadow": {
       "code": 32908,
@@ -146,7 +146,7 @@
       "data": 0
     },
     "parallax@genesis": {
-      "code": 2856,
+      "code": 2946,
       "data": 4448
     },
     "piano": {
@@ -194,7 +194,7 @@
       "data": 0
     },
     "scroll@genesis": {
-      "code": 2842,
+      "code": 2932,
       "data": 8472
     },
     "sheet": {
@@ -230,7 +230,7 @@
       "data": 0
     },
     "tiles@genesis": {
-      "code": 3126,
+      "code": 3152,
       "data": 2776
     },
     "tower": {
@@ -242,8 +242,8 @@
       "data": 16880
     },
     "tower@genesis": {
-      "code": 7336,
-      "data": 3730
+      "code": 7362,
+      "data": 3738
     },
     "two_rooms": {
       "code": 37106,

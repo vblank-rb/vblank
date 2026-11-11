@@ -56,10 +56,25 @@ module VBlank
         # (Runtime::Recordings).
         # +bytes+ gives what the cartridge's sections come to, as :code (what the processor runs) and :data
         # (what it only reads), for the cost recorded in tools/emitted_baseline.json.
+        # +video_tiles+ is how many tiles the game's pictures put in video memory (VideoTiles), or nil
+        # for a game that draws from none.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing, :recording_names) do
+                             :sound_entries, :sound_voicing, :recording_names, :video_tiles) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+        end
+
+        # HOW MANY 8×8 TILES THE GAME'S PICTURES PUT IN VIDEO MEMORY, which the build knows and a
+        # running cartridge does not show: +room+ is how many fit, +every_screen+ how many the
+        # pictures every screen shows take, and +by_scene+ how many are there while each scene is up,
+        # its own and those, for a game whose scenes bring their own tiles in (empty for any other).
+        # The build refuses a game past the room (Art#refuse_too_many_tiles!); this is the count for
+        # one that fits.
+        VideoTiles = Data.define(:room, :every_screen, :by_scene) do
+          # The most in video memory at once.
+          def most = [every_screen, *by_scene.values].max
+
+          def to_h = { room: room, every_screen: every_screen, by_scene: by_scene.transform_keys(&:to_s) }
         end
 
         # What the build found to say about what it decided (Cartridge::LoweredBuild).
@@ -122,7 +137,8 @@ module VBlank
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
-                             sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names)
+                             sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
+                             video_tiles: lowering.video_tiles)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
         end
 

@@ -498,6 +498,15 @@ module VBlank
               end
             end
 
+            # How many tiles the game's pictures put in video memory (Genesis::VideoTiles), each scene by
+            # the name the game gave it; nil for a game that draws from no tiles.
+            public def video_tiles
+              return nil unless places_sprites?
+
+              by_scene = @art.tile_count_by_scene.transform_keys { |scene| Modes.strip_scene_prefix(scene) }
+              VideoTiles.new(room: @art.most_tiles, every_screen: @art.shared_tile_count, by_scene: by_scene)
+            end
+
             # The picture each picture of the art is, by number, as SpriteNames numbers it.
             def sprite_picture_names = @art.sprite_pictures.map { |name, _| @sprite_names.picture_number(name) }
 
@@ -515,11 +524,7 @@ module VBlank
               data.data_longs(@art.sprite_pictures.each_value.map { |picture| pieces_label(picture.number) })
               @art.sprite_pictures.each_value do |picture|
                 data.label(pieces_label(picture.number))
-                data.data_words(picture.pieces.length)
-                picture.pieces.each do |piece|
-                  data.data_words(piece.dx, piece.dy, (piece.tile + sprite_tiles_from) | (piece.palette << Art::PALETTE_SHIFT),
-                                  piece.size_bits)
-                end
+                data.data_words(Runtime::Tiles.picture_words(picture.pieces, sprite_tiles_from))
               end
               write_held_colors(data)
               write_backdrop_colors(data)
@@ -735,13 +740,17 @@ module VBlank
               value(node.row)
               store(row)
               outside = fresh("cell_outside")
-              inside = Build.binop(:and, Build.binop(:and, Build.binop(:>=, Build.var_ref(column), Build.int(0)),
-                                                         Build.binop(:<, Build.var_ref(column), Build.int(columns))),
-                                   Build.binop(:and, Build.binop(:>=, Build.var_ref(row), Build.int(0)),
-                                               Build.binop(:<, Build.var_ref(row), Build.int(rows))))
-              jump_unless(inside, outside)
+              emit_jump_unless_below(column, columns, outside)
+              emit_jump_unless_below(row, rows, outside)
               runtime_call("rt_set_cell", [Build.int(layer_of(bg)), Build.var_ref(column), Build.var_ref(row), Build.int(word)])
               @asm.label(outside)
+            end
+
+            # A jump to +outside+ unless the number kept in +local+ is from nought up to +limit+, which
+            # is one comparison: read as a number with no sign, one below nought is far past any limit.
+            def emit_jump_unless_below(local, limit, outside)
+              @asm.cmp(:l, @asm.imm(limit), operand_of(Build.var_ref(local)))
+              @asm.branch(:cc, outside)
             end
 
             # Reference#exec_show_map: a number naming no map leaves the cells alone; the view stays

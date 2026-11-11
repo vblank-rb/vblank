@@ -43,11 +43,13 @@ module VBlank
             TILES_AT = Art::TILE_BYTES
 
             MOST_SPRITES = Console::GENESIS.sprites
-            # The cells a game may change in one pass, each noted as its plane, its place in it and its tile.
+            # The cells a game may change in one pass, each noted as its plane, the first word of the
+            # command that points the chip at it (#cell_command) and its tile.
             MOST_CELLS = 64
             CELL_BYTES = 6
-            # A sprite piece's note: where it is on the screen as the chip counts (128 past the screen's
-            # corner), the tile and palette it is drawn with, and its size (Art::Piece#size_bits).
+            # A sprite piece's note, which is its row of the sprite table: how far down it is as the chip
+            # counts (128 past the screen's corner), its size (Art::Piece#size_bits) and its link, the
+            # tile and palette it is drawn with, and how far across it is.
             SPRITE_BYTES = 8
             # A sprite the reader of the running game is told of: whose, which picture, where.
             DRAWN = "rt drawn"
@@ -202,7 +204,8 @@ module VBlank
             # in the blank, and every cell the game changed on that plane before is let go, since the
             # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
             # (plane, x, y): where the view of the plane is. rt_set_cell(plane, column, row, cell): one
-            # cell noted to change, the game stopped when it changes more than a queue holds.
+            # cell noted to change, the game stopped when it changes more than a queue holds. The column
+            # and the row are inside the map: the game's line has tested them (Lowering::Picture#emit_set_tile_of).
             def emit_maps(asm, memory, at, columns)
               shift = columns == 64 ? 6 : 5
               asm.label("rt_background_put_up")
@@ -235,17 +238,33 @@ module VBlank
               asm.moveq(Frame::CELLS_FULL, asm.d(0))
               asm.jmp(asm.abs_l("rt_fault"))
               asm.label("rt_set_cell_room")
-              asm.and(:l, asm.imm(0xFFFF), asm.d(4))
-              asm.mulu(asm.imm(CELL_BYTES), asm.d(4))
+              asm.move(:w, asm.d(4), asm.d(5)) # six bytes a note: the count three times over, doubled
+              asm.add(:w, asm.d(4), asm.d(4))
+              asm.add(:w, asm.d(5), asm.d(4))
+              asm.add(:w, asm.d(4), asm.d(4))
               asm.lea(asm.abs_l(memory[CELLS]), asm.a(0))
-              asm.add(:l, asm.d(4), asm.a(0))
+              asm.add(:w, asm.d(4), asm.a(0))
               asm.move(:w, asm.d(0), asm.post(0))
-              asm.lsl(:l, shift, asm.d(2))
-              asm.add(:l, asm.d(1), asm.d(2))
+              asm.lsl(:w, shift, asm.d(2))
+              asm.add(:w, asm.d(1), asm.d(2))
+              asm.add(:w, asm.d(2), asm.d(2)) # two bytes a cell
+              asm.and(:w, asm.imm(1), asm.d(0))
+              asm.ror(:w, 3, asm.d(0)) # plane B's map is 8K past plane A's
+              asm.or(:w, asm.d(0), asm.d(2))
+              asm.or(:w, asm.imm(cell_command >> 16), asm.d(2))
               asm.move(:w, asm.d(2), asm.post(0))
               asm.move(:w, asm.d(3), asm.post(0))
               asm.addq(:w, 1, at.call(CELL_COUNT))
               asm.rts
+            end
+
+            # THE COMMAND THAT POINTS THE CHIP AT A CELL is two words: the first holds the low fourteen
+            # bits of the cell's address in video memory, and the second its top two, which are the same
+            # for every cell of both maps. So a cell is noted with its first word worked out
+            # (rt_set_cell), and the blank writes that word, then this command's second, then the cell.
+            def cell_command
+              h = Console::GenesisHardware
+              h.command(h::WRITE_VRAM, PLANE_A_AT)
             end
 
             # The cells noted for plane D0 taken out of the queue, the rest kept in their order.
@@ -310,24 +329,121 @@ module VBlank
               asm.move(:w, asm.post(0), asm.d(5))
               asm.subq(:w, 1, asm.d(5))
               asm.branch(:mi, "rt_sprite_place_done")
+              emit_pieces_all_on_screen(asm, memory, at)
               asm.label("rt_sprite_place_piece")
-              asm.moveq(0, asm.d(7))
               asm.move(:w, asm.post(0), asm.d(7))
-              asm.add(:l, asm.d(2), asm.d(7)) # the piece's left
-              asm.moveq(0, asm.d(1))
-              asm.move(:w, asm.post(0), asm.d(1))
-              asm.add(:l, asm.d(3), asm.d(1)) # its top
+              asm.ext(:l, asm.d(7))
+              asm.add(:l, asm.d(2), asm.d(7)) # the piece's left, as the chip counts it
               asm.move(:w, asm.post(0), asm.d(0)) # its tile and palette
               asm.move(:l, asm.a(4), asm.d(6))
               asm.branch(:mi, "rt_sprite_place_own_palette")
-              asm.and(:w, asm.imm(0x9FFF), asm.d(0))
+              asm.and(:w, asm.imm(PALETTE_CLEARED), asm.d(0))
               asm.or(:w, asm.d(6), asm.d(0))
               asm.label("rt_sprite_place_own_palette")
               asm.moveq(0, asm.d(6))
-              asm.move(:w, asm.post(0), asm.d(6)) # its size
+              asm.move(:w, asm.post(0), asm.d(6))
+              asm.lsr(:w, 8, asm.d(6)) # its size
+              asm.move(:w, asm.post(0), asm.d(1))
+              asm.ext(:l, asm.d(1))
+              asm.add(:l, asm.d(3), asm.d(1)) # its top
               emit_piece_written(asm, memory, at)
               asm.dbra(asm.d(5), "rt_sprite_place_piece")
               asm.label("rt_sprite_place_done")
+              asm.rts
+            end
+
+            # A piece's word with the two bits that name its palette cleared, for a sprite drawn in a list.
+            PALETTE_CLEARED = 0x9FFF
+
+            # A PICTURE'S PIECES, as rt_sprite_place reads them: how many, then the box they all lie in,
+            # then each piece as the row of the sprite table it becomes, last word first.
+            #
+            # The box is what lets a sprite standing wholly on the screen skip every test a piece
+            # otherwise takes: its left edge from the sprite's place and how many places across the
+            # screen keep the whole box on it, then the same for its top. A picture wider or taller
+            # than the screen has no such place, and says nought.
+            #
+            # A piece is its left as the chip counts it from the sprite's place (SPRITE_ORIGIN more),
+            # its tile and palette, its size in the high byte with the link's byte empty, and its top.
+            # +tiles_from+ is the tile in video memory the pictures' tile 0 is (Lowering::Picture#sprite_tiles_from).
+            def picture_words(pieces, tiles_from)
+              return [0, 0, 0, 0, 0] if pieces.empty?
+
+              left = pieces.map(&:dx).min
+              top = pieces.map(&:dy).min
+              across = pieces.map { |piece| piece.dx + (piece.columns * 8) }.max - left
+              down = pieces.map { |piece| piece.dy + (piece.rows * 8) }.max - top
+              [pieces.length, left, [Paint::WIDTH - across + 1, 0].max, top, [Paint::HEIGHT - down + 1, 0].max] +
+                pieces.flat_map do |piece|
+                  [piece.dx + SPRITE_ORIGIN, (piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT),
+                   piece.size_bits << 8, piece.dy + SPRITE_ORIGIN]
+                end
+            end
+
+            # THE PIECES OF A SPRITE THAT IS WHOLLY ON THE SCREEN, each copied into the table's notes
+            # with the sprite's place added, as a console's own games copy a frame's pieces: four words
+            # read, two of them added to, four written. Nothing of such a sprite is off the screen, so
+            # no piece is tested, and the rows it takes are counted once for all of them.
+            #
+            # A0 is at the picture's box (#picture_words) and D5 its pieces less one. A sprite any part
+            # of whose box is off the screen, or whose pieces the table has not rows enough for, goes
+            # on to the loop that tests each piece, with A0 at the first of them.
+            #
+            # THE NOTES ARE THE TABLE'S OWN ROWS, kept from the end of their room backwards: the piece
+            # noted first, which is drawn behind the rest, is the table's last row, and each row links to
+            # the row after it, the one noted before. So a row's link is known as it is noted, 80 less
+            # how many are noted already, and the blank copies the rows as they stand
+            # (#emit_sprite_table_written).
+            def emit_pieces_all_on_screen(asm, memory, at)
+              asm.movea(:w, asm.post(0), asm.a(1)) # the box's left from the sprite's place
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.post(0), asm.d(6))
+              asm.movea(:w, asm.post(0), asm.a(3)) # and its top
+              asm.moveq(0, asm.d(7))
+              asm.move(:w, asm.post(0), asm.d(7))
+              asm.move(:l, asm.d(2), asm.d(0))
+              asm.add(:l, asm.a(1), asm.d(0))
+              asm.cmp(:l, asm.d(6), asm.d(0))
+              asm.branch(:cc, "rt_sprite_place_piece")
+              asm.move(:l, asm.d(3), asm.d(0))
+              asm.add(:l, asm.a(3), asm.d(0))
+              asm.cmp(:l, asm.d(7), asm.d(0))
+              asm.branch(:cc, "rt_sprite_place_piece")
+              asm.move(:w, at.call(SPRITE_COUNT), asm.d(4))
+              asm.move(:w, asm.d(4), asm.d(0))
+              asm.add(:w, asm.d(5), asm.d(0))
+              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(0))
+              asm.branch(:cc, "rt_sprite_place_piece")
+              asm.addq(:w, 1, asm.d(0))
+              asm.move(:w, asm.d(0), at.call(SPRITE_COUNT))
+              asm.lea(asm.abs_l(memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)), asm.a(1))
+              asm.move(:w, asm.d(4), asm.d(0))
+              asm.lsl(:w, 3, asm.d(0))
+              asm.sub(:w, asm.d(0), asm.a(1)) # past the row the next piece is noted in
+              asm.neg(:w, asm.d(4))
+              asm.add(:w, asm.imm(MOST_SPRITES), asm.d(4)) # that row's link
+              asm.moveq(-1, asm.d(6)) # the bits of a piece's word that are kept, and the palette put in
+              asm.moveq(0, asm.d(7))
+              asm.move(:l, asm.a(4), asm.d(0))
+              asm.branch(:mi, "rt_sprite_place_on_screen")
+              asm.move(:w, asm.imm(PALETTE_CLEARED), asm.d(6))
+              asm.move(:w, asm.d(0), asm.d(7))
+              asm.label("rt_sprite_place_on_screen")
+              asm.move(:w, asm.post(0), asm.d(0))
+              asm.add(:w, asm.d(2), asm.d(0))
+              asm.move(:w, asm.d(0), asm.pre(1)) # across
+              asm.move(:w, asm.post(0), asm.d(0))
+              asm.and(:w, asm.d(6), asm.d(0))
+              asm.or(:w, asm.d(7), asm.d(0))
+              asm.move(:w, asm.d(0), asm.pre(1)) # its tile and palette
+              asm.move(:w, asm.post(0), asm.d(0))
+              asm.or(:w, asm.d(4), asm.d(0))
+              asm.move(:w, asm.d(0), asm.pre(1)) # its size, and its link
+              asm.move(:w, asm.post(0), asm.d(0))
+              asm.add(:w, asm.d(3), asm.d(0))
+              asm.move(:w, asm.d(0), asm.pre(1)) # up and down
+              asm.subq(:w, 1, asm.d(4))
+              asm.dbra(asm.d(5), "rt_sprite_place_on_screen")
               asm.rts
             end
 
@@ -367,32 +483,37 @@ module VBlank
               asm.label("rt_sprite_place_noted")
             end
 
-            # The piece at (D7, D1) with the tile and palette in D0 and the size in D6 into the table, if any
-            # of it is on the screen and the table has a row for it.
+            # The piece at (D7, D1), counted as the chip counts, with the tile and palette in D0 and the size in
+            # D6, into the table's notes (#emit_pieces_all_on_screen), if any of it is on the screen and the
+            # table has a row for it.
             def emit_piece_written(asm, memory, at)
               emit_piece_side(asm, 2) # its width, in pixels
               asm.add(:l, asm.d(7), asm.d(4))
+              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(4))
               asm.branch(:le, "rt_sprite_place_skip") # its right edge at or past the screen's left
-              asm.cmp(:l, asm.imm(Paint::WIDTH), asm.d(7))
+              asm.cmp(:l, asm.imm(Paint::WIDTH + SPRITE_ORIGIN), asm.d(7))
               asm.branch(:ge, "rt_sprite_place_skip")
               emit_piece_side(asm, 0) # its height
               asm.add(:l, asm.d(1), asm.d(4))
+              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(4))
               asm.branch(:le, "rt_sprite_place_skip")
-              asm.cmp(:l, asm.imm(Paint::HEIGHT), asm.d(1))
+              asm.cmp(:l, asm.imm(Paint::HEIGHT + SPRITE_ORIGIN), asm.d(1))
               asm.branch(:ge, "rt_sprite_place_skip")
-              asm.moveq(0, asm.d(4))
               asm.move(:w, at.call(SPRITE_COUNT), asm.d(4))
               asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(4))
               asm.branch(:cc, "rt_sprite_place_done")
-              asm.mulu(asm.imm(SPRITE_BYTES), asm.d(4))
-              asm.lea(asm.abs_l(memory[SPRITES]), asm.a(1))
-              asm.add(:l, asm.d(4), asm.a(1))
-              asm.add(:l, asm.imm(SPRITE_ORIGIN), asm.d(7))
-              asm.add(:l, asm.imm(SPRITE_ORIGIN), asm.d(1))
-              asm.move(:w, asm.d(7), asm.post(1))
-              asm.move(:w, asm.d(1), asm.post(1))
-              asm.move(:w, asm.d(0), asm.post(1))
-              asm.move(:w, asm.d(6), asm.post(1))
+              asm.lea(asm.abs_l(memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)), asm.a(1))
+              asm.lsl(:w, 3, asm.d(4))
+              asm.sub(:w, asm.d(4), asm.a(1))
+              asm.move(:w, asm.d(7), asm.pre(1))
+              asm.move(:w, asm.d(0), asm.pre(1))
+              asm.lsl(:w, 8, asm.d(6))
+              asm.lsr(:w, 3, asm.d(4))
+              asm.neg(:w, asm.d(4))
+              asm.add(:w, asm.imm(MOST_SPRITES), asm.d(4)) # the row's link
+              asm.or(:w, asm.d(4), asm.d(6))
+              asm.move(:w, asm.d(6), asm.pre(1))
+              asm.move(:w, asm.d(1), asm.pre(1))
               asm.addq(:w, 1, at.call(SPRITE_COUNT))
               asm.label("rt_sprite_place_skip")
             end
@@ -482,59 +603,58 @@ module VBlank
               asm.branch(:eq, "rt_upload_cells_done")
               asm.clr(:w, at.call(CELL_COUNT))
               asm.lea(asm.abs_l(memory[CELLS]), asm.a(1))
+              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(3))
+              asm.lea(asm.abs_l(h::VDP_DATA), asm.a(2))
+              asm.move(:w, asm.imm(cell_command & 0xFFFF), asm.d(0))
               asm.subq(:w, 1, asm.d(7))
               asm.label("rt_upload_cell")
-              asm.moveq(0, asm.d(0))
-              asm.move(:w, asm.post(1), asm.d(0))
-              asm.and(:l, asm.imm(1), asm.d(0))
-              asm.lsl(:l, 8, asm.d(0))
-              asm.lsl(:l, 5, asm.d(0)) # 8K a plane
-              asm.add(:l, asm.imm(PLANE_A_AT), asm.d(0))
-              asm.moveq(0, asm.d(3))
-              asm.move(:w, asm.post(1), asm.d(3))
-              asm.lsl(:l, 1, asm.d(3))
-              asm.add(:l, asm.d(3), asm.d(0))
-              asm.move(:w, asm.post(1), asm.d(2))
-              asm.jsr(asm.abs_l("rt_vram_write_at"))
-              asm.move(:w, asm.d(2), asm.abs_l(h::VDP_DATA))
+              asm.addq(:l, 2, asm.a(1)) # its plane, which the command's first word has in it already
+              asm.move(:w, asm.post(1), asm.ind(3))
+              asm.move(:w, asm.d(0), asm.ind(3))
+              asm.move(:w, asm.post(1), asm.ind(2))
               asm.dbra(asm.d(7), "rt_upload_cell")
               asm.label("rt_upload_cells_done")
             end
 
-            # The sprite table, the last sprite placed in the first row (see the note on the table above);
+            # The sprite table, the last sprite placed drawn first (see the note on the table above);
             # with no sprites, one row that is off the screen.
+            #
+            # The notes are rows already, each linked to the row after it and kept at the end of the
+            # table (#emit_pieces_all_on_screen), so they are copied as they stand, two long words a row.
+            # The chip starts at row 0 whatever is noted, so the row noted last, the one in front, is
+            # written there too, with the link it has: the row after its own. The row noted first is the
+            # table's last, and its link is cleared here, since 80 names no row.
             def emit_sprite_table_written(asm, memory, at)
               h = Console::GenesisHardware
+              notes_end = memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)
               asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT)), asm.abs_l(h::VDP_CONTROL))
-              asm.moveq(0, asm.d(5))
+              asm.lea(asm.abs_l(h::VDP_DATA), asm.a(2))
+              asm.moveq(0, asm.d(0))
               asm.move(:w, at.call(SPRITE_COUNT), asm.d(5))
               asm.branch(:ne, "rt_upload_sprites_some")
-              asm.moveq(0, asm.d(0))
-              4.times { asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) }
+              2.times { asm.move(:l, asm.d(0), asm.ind(2)) }
               asm.bra("rt_upload_sprites_done")
               asm.label("rt_upload_sprites_some")
-              asm.move(:l, asm.d(5), asm.d(0))
-              asm.mulu(asm.imm(SPRITE_BYTES), asm.d(0))
-              asm.lea(asm.abs_l(memory[SPRITES] - SPRITE_BYTES), asm.a(1))
-              asm.add(:l, asm.d(0), asm.a(1)) # the last row noted
-              asm.moveq(1, asm.d(6))
-              asm.label("rt_upload_sprite")
-              asm.move(:w, asm.disp(1, 2), asm.abs_l(h::VDP_DATA)) # up and down
-              asm.move(:w, asm.d(6), asm.d(0)) # the next row, or none after the last
-              asm.cmp(:w, asm.d(5), asm.d(6))
-              asm.branch(:ne, "rt_upload_sprite_linked")
-              asm.moveq(0, asm.d(0))
-              asm.label("rt_upload_sprite_linked")
-              asm.move(:w, asm.disp(1, 6), asm.d(1))
-              asm.lsl(:w, 8, asm.d(1))
-              asm.or(:w, asm.d(1), asm.d(0))
-              asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA)) # its size, and its link
-              asm.move(:w, asm.disp(1, 4), asm.abs_l(h::VDP_DATA)) # its tile and palette
-              asm.move(:w, asm.ind(1), asm.abs_l(h::VDP_DATA)) # across
-              asm.lea(asm.disp(1, -SPRITE_BYTES), asm.a(1))
-              asm.addq(:w, 1, asm.d(6))
-              asm.cmp(:w, asm.d(5), asm.d(6))
-              asm.branch(:ls, "rt_upload_sprite")
+              asm.clr(:b, asm.abs_l(notes_end - SPRITE_BYTES + 3))
+              asm.move(:w, asm.d(5), asm.d(0))
+              asm.lsl(:w, 3, asm.d(0))
+              asm.lea(asm.abs_l(notes_end), asm.a(1))
+              asm.sub(:w, asm.d(0), asm.a(1)) # the row noted last
+              2.times { asm.move(:l, asm.post(1), asm.ind(2)) }
+              asm.subq(:w, 1, asm.d(5))
+              asm.branch(:eq, "rt_upload_sprites_done")
+              # The chip pointed at the table's row for the note after that one. With D0 rows' worth of
+              # bytes noted it is that many bytes before the row past the table's end, and one row on;
+              # a command keeps its address in its high word.
+              asm.swap(asm.d(0))
+              asm.neg(:l, asm.d(0))
+              asm.add(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES))), asm.d(0))
+              asm.move(:l, asm.d(0), asm.abs_l(h::VDP_CONTROL))
+              asm.subq(:w, 1, asm.d(5))
+              asm.label("rt_upload_sprite_row")
+              asm.move(:l, asm.post(1), asm.ind(2))
+              asm.move(:l, asm.post(1), asm.ind(2))
+              asm.dbra(asm.d(5), "rt_upload_sprite_row")
               asm.label("rt_upload_sprites_done")
             end
 

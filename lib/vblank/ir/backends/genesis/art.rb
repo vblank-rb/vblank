@@ -80,6 +80,16 @@ module VBlank
 
           attr_reader :grids, :sprite_pictures
 
+          # How many tiles video memory has room for, the blank one not counted.
+          attr_reader :most_tiles
+
+          # How many tiles the pictures every screen shows put in video memory, the blank one not counted.
+          def shared_tile_count = @shared_tiles.length - 1
+
+          # For each scene that keeps tiles of its own (+scene_tiles+), how many are in video memory
+          # while it is up: its own and the ones every screen shows.
+          def tile_count_by_scene = @scene_stores.transform_values { |tiles| tiles.length - 1 }
+
           # The backdrop of a game that names none: black, as the interpreter's empty screen is.
           BACKDROP = 0
 
