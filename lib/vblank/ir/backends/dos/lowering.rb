@@ -110,8 +110,24 @@ module VBlank
             @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
+            refuse_unmade_variant!
             refuse_unmade_screens!
             refuse_unmade_text!
+          end
+
+          # The part of the build a game with a screen variant waits for, for a test run to count skips by.
+          VARIANT_PART = "the 320 × 240 and 640 × 480 screens (variants: { dos: :mode_x } and :vesa_640x480)"
+
+          # A variant's screen (Console::DOSKit::DOS_VARIANTS) is not made yet: the program would set mode 13h and
+          # draw 200 rows while the game is told it has the variant's. So a game that names one is refused.
+          def refuse_unmade_variant!
+            return unless @program.variant
+
+            variant = Console.for(:dos).variant(@program.variant)
+            raise NotMadeYet.new("This game is for #{CONSOLE.title} with #{variant.title}. The #{CONSOLE.title} build " \
+                                 "cannot make that screen yet. To fix this, remove dos: from variants: or from " \
+                                 "--variant. The game is then built for the 320 × 200 screen.",
+                                 part: VARIANT_PART)
           end
 
           # A screen drawn from tiles, or one that keeps two pictures (`tear_free: true`), is not made yet.

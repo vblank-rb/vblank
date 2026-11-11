@@ -212,7 +212,7 @@ module VBlank
       # WHAT .claude/dsl/dos.md SAYS: every answer, in the order ANSWERS gives them, and what the
       # DOS build does not make yet — +not_yet+, the lowering's own list of the program's kinds
       # it refuses for now, by what they are part of (Kit#answers_page).
-      def self.reference(not_yet: {})
+      def self.reference(not_yet: {}, screens_not_made: nil)
         <<~MARKDOWN
           # DOS — what every verb does there
 
@@ -236,7 +236,7 @@ module VBlank
 
           ## Not made yet
 
-          #{not_yet_words(not_yet)}
+          #{not_yet_words(not_yet)}#{screens_not_made_words(screens_not_made)}
         MARKDOWN
       end
 
@@ -256,6 +256,14 @@ module VBlank
 
       # What the page says of the steps the DOS build does not make yet: for each part, the
       # verbs that wait on it and the steps it names in a refusal.
+      # The screens of the variants the build does not make yet (Lowering#refuse_unmade_variant!), +part+
+      # being the words for them, or nothing once every variant is made.
+      def self.screens_not_made_words(part)
+        return "" unless part
+
+        "\n- #{part}: a game that names one is refused."
+      end
+
       def self.not_yet_words(not_yet)
         return "The build for DOS makes every kind of step that the answers above do not refuse." if
           not_yet.empty?

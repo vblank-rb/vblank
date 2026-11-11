@@ -30,9 +30,9 @@ module VBlank
     #
     # A FRAME is one vertical retrace: bit 3 of the card's status port (3DAh) is 1 while the electron
     # beam returns from the bottom of the screen to the top, and a program waits for it to be 0 and
-    # then 1 to start a frame on the first line of the retrace. Mode 13h and Mode X draw 449 lines of
-    # 800 dots at 25.175 MHz, which is 70.087 frames a second; the 640 × 480 mode draws 525 lines of
-    # 800 dots, which is 59.94.
+    # then 1 to start a frame on the first line of the retrace. A line is 800 dots of DOT_CLOCK. Mode 13h
+    # draws 449 lines a frame, about 70 frames a second; Mode X and the 640 × 480 mode draw 525, the
+    # 480-line timing, about 60 (LINES_A_FRAME).
     module DOSHardware
       # --- memory ---
       CONVENTIONAL_MEMORY = 640 * 1024

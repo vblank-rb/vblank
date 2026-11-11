@@ -513,7 +513,7 @@ module VBlank
     # EXE). The plain console is VGA mode 13h: 320 × 200 pixels of 256 colours, each colour six bits a
     # channel through the card's palette. The card has no sprites and no tiles: the processor draws
     # everything into memory, so a sprite is pixels the processor copies and the number of them is the
-    # framework's, not the hardware's. A frame is one vertical retrace, 70.087 a second. The keyboard is
+    # framework's, not the hardware's. A frame is one vertical retrace, about 70 a second. The keyboard is
     # the pad: the arrows, Ctrl and Alt for A and B, Enter and Right Shift for Start and Select, Z and X
     # for L and R. What each verb does on it is Console::DOSAnswers's to say; the design is written atop
     # Backends::DOS.
@@ -535,16 +535,19 @@ module VBlank
                           changes_cells_while_drawing: true,
                           # The card's palette changes what a number looks like, and nothing mixes two
                           # layers, so a fade is walked colour by colour, which the palette makes cheap.
-                          blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 256,
-                          color_bits: 5,
+                          blends: false, fades_by_brightness: false, mixes_by_half: false,
+                          # 256 colours at once, from the card's palette. Each palette entry holds six bits a
+                          # channel (DOSHardware::DAC_BITS), more than the five a game's colour has, so every
+                          # colour a game names is shown exactly as written.
+                          list_colors: 256, color_bits: 5,
                           # A tear-free painted screen is a second picture in memory, drawn while the first
                           # is shown, then copied to the card in the retrace.
                           painted_pages: 2,
                           # The PC's clock chip (the CMOS clock) keeps the date and the time.
                           clock_keeps_date: true,
-                          # The dots the card counts, and the dots one frame takes: 449 lines of 800
-                          # (DOSHardware), which is 70.087 frames a second, as DOSBox shows.
-                          cycles_a_second: DOSHardware::DOT_CLOCK, cycles_a_frame: 449 * DOSHardware::DOTS_A_LINE,
+                          # The dots the card counts, and the dots one frame takes: 449 lines of 800.
+                          cycles_a_second: DOSHardware::DOT_CLOCK,
+                          cycles_a_frame: DOSHardware::LINES_A_FRAME.fetch(:mode_13h) * DOSHardware::DOTS_A_LINE,
                           # The processor mixes recordings into one stream the Sound Blaster plays by DMA,
                           # so a recording can be shaped, and no sound chip's timer hands out samples.
                           samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,

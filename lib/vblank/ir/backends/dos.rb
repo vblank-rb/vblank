@@ -66,8 +66,9 @@ module VBlank
       # WHERE THE CODE PARTS FROM THE TABLE, AND WHY:
       #
       # - MODE X IS 60 HZ, NOT 70. The table said "about 70 Hz in 13h and Mode X". Mode 13h draws its 200 lines
-      #   with the card's 400-line timing (each line twice, 449 lines of 800 dots, 70.087 Hz). Mode X's 240
-      #   lines are drawn with 480-line timing (525 lines of 800 dots, 59.94 Hz), as the 640 x 480 mode is.
+      #   with the card's 400-line timing (each line twice, 449 lines of 800 dots). Mode X's 240 lines are
+      #   drawn with 480-line timing (525 lines of 800 dots), as the 640 x 480 mode is: more lines a frame
+      #   at the same dot clock, so fewer frames a second.
       #   Console::DOSHardware::LINES_A_FRAME has the numbers and the variants' descriptions use them.
       # - THE EMULATOR GEM IS PURE RUBY OVER FIDDLE, with a frontend written in C inside the core (see
       #   ruby-dos-emulator): the core runs the machine on a stack of its own and calls its frontend from
