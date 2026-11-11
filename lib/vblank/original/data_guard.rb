@@ -36,18 +36,19 @@ module VBlank
       # THE KINDS OF FILE A CONSOLE'S ORIGINALS ARE KEPT IN, by the suffixes the dumping tools give
       # them: the cartridge or disc, and the save the emulator keeps beside it. Players' copies come
       # from many tools, each with its own habits, so each console has several.
-      ORIGINAL_FILE_KINDS = {
-        gba: %w[gba agb sav],
-        gbc: %w[gb gbc cgb sgb sav],
-        snes: %w[sfc smc swc fig srm],
-        genesis: %w[gen md smd bin srm],
-        ps1: %w[bin cue iso img mcr]
-      }.freeze
+      # Shareable, since a game's tests make the guard on cores of their own.
+      ORIGINAL_FILE_KINDS = Ractor.make_shareable({
+                                                    gba: %w[gba agb sav],
+                                                    gbc: %w[gb gbc cgb sgb sav],
+                                                    snes: %w[sfc smc swc fig srm],
+                                                    genesis: %w[gen md smd bin srm],
+                                                    ps1: %w[bin cue iso img mcr]
+                                                  })
 
       # KINDS THAT ARE ALSO EVERYDAY TEXT: a Genesis dump is often .md, and so is every Markdown file
       # a repository keeps. Such a file is a cartridge only at a cartridge's size: no Genesis cartridge
       # was smaller than 128 KB, and no README is that big.
-      TEXT_KINDS_LEAST_CARTRIDGE_BYTES = { "md" => 128 * 1024 }.freeze
+      TEXT_KINDS_LEAST_CARTRIDGE_BYTES = Ractor.make_shareable({ "md" => 128 * 1024 })
 
       # The staged size past which a file is refused.
       MOST_BYTES = 512 * 1024
