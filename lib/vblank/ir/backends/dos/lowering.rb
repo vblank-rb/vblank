@@ -23,6 +23,7 @@ module VBlank
         # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
         # all is refused in the words its answers have (Console::Answers#refusals).
         class Lowering
+          include ControlFlow
           include Clock
           include Sprites
 
@@ -35,9 +36,9 @@ module VBlank
           # EVERY KIND THIS LOWERING WRITES, each by a method called by name in #emit_statement and
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
+            program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
-          ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + ControlFlow::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix held pressed save_read
                             save_sum] + Clock::VALUE_KINDS).freeze
@@ -127,6 +128,7 @@ module VBlank
             @palette = palette_of(@program)
             make_art
             DOS.refuse_too_much_art!(@art.bytesize)
+            @scene = keep_local(:scene, start: -1) unless @plan.scenes.empty?
             keep_loop_running
             keep_clock_readings
             keep_patches
@@ -134,6 +136,7 @@ module VBlank
             emit_clock_at_start
             @program.children.each { |node| emit_statement(node) }
             @asm.ret
+            emit_routines
             emit_clock_routines
           end
 
@@ -370,9 +373,9 @@ module VBlank
             when :abs then emit_sign_held(node.var, above_nought: true)
             when :negate_abs then emit_sign_held(node.var, above_nought: false)
             when :clamp then emit_clamp(node)
-            when :if then emit_if(node)
-            when :loop then emit_loop(node)
-            when :repeat then emit_repeat(node)
+            when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
+            when :call then emit_call(node)
+            when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt
             when :wait_vblank then emit_wait_vblank
             when :screen then nil # mode 13h is set at power-on, and a screen of one page is all there is
@@ -414,6 +417,9 @@ module VBlank
           def emit_set(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
 
+            known = folded(node.value)
+            return emit_number_into(node.var, known) if known # one instruction, where a load and a store are two
+
             emit_value(node.value)
             emit_store(node.var)
           end
@@ -433,65 +439,94 @@ module VBlank
 
           def emit_store(name) = @asm.mov(number_at(name), :eax)
 
-          def emit_if(node)
-            body = node.children
-            otherwise = node.else&.children || []
-            known = folded(node.cond)
-            return (known.zero? ? otherwise : body).each { |child| emit_statement(child) } if known
+          # --- what ControlFlow asks of a lowering, in the 386's instructions ---
 
-            other = fresh_label("else")
-            done = fresh_label("end_if")
-            emit_jump_unless(node.cond, other)
-            body.each { |child| emit_statement(child) }
-            @asm.jmp(done) unless otherwise.empty?
-            @asm.label(other)
-            otherwise.each { |child| emit_statement(child) }
-            @asm.label(done)
+          def place_label(label) = @asm.label(label)
+          def jump(label) = @asm.jmp(label)
+          def jump_unless(condition, label) = emit_jump_unless(condition, label)
+          def jump_if(condition, label) = (emit_jump_if(condition, label) unless condition.nil?)
+          def statement(node) = emit_statement(node)
+          def children_of(node) = [node.children, (node.else&.children if node.kind == :if) || []]
+          def loop_statements(node) = console_loop(node).each_time
+          def game_loops = @plan.game_loops
+          def emit_store_zero(name) = emit_number_into(name, 0)
+          def emit_increment(name) = emit_sum(name, :+, Build.int(1))
+
+          def emit_copy_variable(from, to)
+            @asm.mov(:eax, number_at(from))
+            emit_store(to)
           end
-
-          def emit_loop(node)
-            console_loop(node).before.each { |child| emit_statement(child) }
-            emit_number_into(@loop_running, (loops_ending_passes.index(node) || -1) + 1) if @loop_running
-            top = fresh_label("loop")
-            @asm.label(top)
-            console_loop(node).each_time.each { |child| emit_statement(child) }
-            @asm.jmp(top)
-          end
-
-          # The game loops that end each pass by placing the display's writes (IR::Frames::ConsoleLoop#pass_end),
-          # which a halt has to end as the running one does; and which of those is running, counted from 1.
-          def loops_ending_passes = (@loops_ending_passes ||= @plan.game_loops.select { |node| console_loop(node).pass_end.any? })
-
-          def keep_loop_running = (@loop_running = keep_local(:loop_running) if loops_ending_passes.any?)
 
           def emit_number_into(name, number)
             @asm.mov(number_at(name), Int32.wrap(number) & 0xFFFF_FFFF)
           end
 
-          # Reference#exec_repeat: the count worked out once, before the first pass; the index counting 0, 1,
-          # 2... and stored in the game's variable at the top of each pass; and +stop_when+ asked BEFORE the
-          # body, so a loop already finished on its first pass runs the body no times.
-          def emit_repeat(node)
-            known = folded(node.count)
-            index = keep_local(:index)
-            count = known ? Build.int(known) : Build.var_ref(keep_local(:count))
-            unless known
-              emit_value(node.count)
-              emit_store(count.name)
+          # --- routines and scenes ---
+
+          # The label of the routine the game names +name+ (a `func`, or a scene).
+          def self.routine_label(name) = "routine #{name}"
+
+          # Each routine a run can reach, after the program itself: its statements and a return. Its labels
+          # and the numbers of its own are named for it (#fresh_label, #keep_local), and those numbers are
+          # kept in the data segment and not on the stack, which is why a routine cannot call itself
+          # (LoweringPlan#refuse_routines_that_call_themselves!).
+          def emit_routines
+            @plan.called.each do |name|
+              @routine = Lowering.routine_label(name)
+              @asm.label(@routine)
+              @plan.funcs.fetch(name).children.each { |node| emit_statement(node) }
+              @asm.ret
             end
-            emit_number_into(index, 0)
-            top = fresh_label("repeat")
-            done = fresh_label("end_repeat")
-            @asm.label(top)
-            emit_jump_unless(Build.binop(:<, Build.var_ref(index), count), done)
-            if node.index
-              @asm.mov(:eax, number_at(index))
-              emit_store(node.index)
+            @routine = MAIN
+          end
+
+          def emit_call(node)
+            raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @plan.funcs.key?(node.target)
+
+            @asm.call(Lowering.routine_label(node.target))
+          end
+
+          # Reference#exec_call_one_of: the number worked out once, and the routine at that place of the list
+          # called; a number naming none, below nought or past the list's end, calls nothing. The lists are a
+          # few routines long, so each is asked in turn.
+          def emit_call_one_of(node)
+            done = fresh_label("called_one")
+            emit_value(node.which)
+            node.targets.each_with_index do |target, which|
+              other = fresh_label("calls_another")
+              @asm.cmp(:eax, which)
+              @asm.jne(other)
+              @asm.call(Lowering.routine_label(target))
+              @asm.jmp(done)
+              @asm.label(other)
             end
-            emit_jump_if(node.stop_when, done)
-            node.children.each { |child| emit_statement(child) }
-            emit_sum(index, :+, Build.int(1))
-            @asm.jmp(top)
+            @asm.label(done)
+          end
+
+          # A scene taking over is remembered, so what a scene does as it arrives happens on the pass it
+          # changes and not again while it stays. A scene that loads first and is handed over to has that
+          # pass to itself, and its routine runs from the pass after; the scene up at power-on, which
+          # nothing handed over to, runs on the first pass all the same
+          # (IR::SceneHandover::Arrival#loads_first?). Before any scene, the note holds -1.
+          def emit_scene(scene)
+            number = @plan.scenes.fetch(scene)
+            label = Lowering.routine_label(scene)
+            staying = fresh_label("scene_staying")
+            done = fresh_label("scene_done")
+            jump_unless(Build.binop(:!=, Build.var_ref(@scene), Build.int(number)), staying)
+            if @plan.handover.arrival(scene).loads_first?
+              at_power_on = keep_local(:at_power_on)
+              emit_value(Build.binop(:==, Build.var_ref(@scene), Build.int(-1)))
+              emit_store(at_power_on)
+              emit_number_into(@scene, number)
+              jump_unless(Build.var_ref(at_power_on), done)
+              @asm.call(label)
+              @asm.jmp(done)
+            else
+              emit_number_into(@scene, number)
+            end
+            @asm.label(staying)
+            @asm.call(label)
             @asm.label(done)
           end
 
