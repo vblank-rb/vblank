@@ -102,6 +102,7 @@ module VBlank
           raise ArgumentError, "sprite_tiles :#{name} was told to copy from #{source.inspect}. Give the name of an " \
                                "image, or a table of bytes."
         end
+        refuse_load_from_start_file_picture!(name, source)
         table_name = Messages::MadeNames.make(:sprite_tiles_source, picture: source)
         return table_name if (@sprite_tile_sources ||= {})[table_name]
 
@@ -109,6 +110,21 @@ module VBlank
         at_boot(Build.table(table_name, bytes, width: :byte, signed: false))
         @sprite_tile_sources[table_name] = true
         table_name
+      end
+
+      # WITH THE PACK LEFT OUT the build holds no pixel of a picture whose places are in the pack,
+      # only a stand-in where every place is 1. The tiles of a load are worked out here from the
+      # picture's places, so a load from such a picture would show one solid colour. A picture
+      # that takes only its colours from the pack holds its places, and loads as any other.
+      def refuse_load_from_start_file_picture!(name, source)
+        from = @pictures_from_start_file&.fetch(source, nil)
+        return unless from
+        return if from.is_a?(IR::StartFile::Picture) && from.places_at.nil?
+
+        raise ArgumentError, "sprite_tiles :#{name} was told to copy from image :#{source}. This build reads its pack as " \
+                             "the game starts, so the build does not hold the pixels of that picture. To fix this, copy " \
+                             "from a table of the bytes of the tiles, #{TILE_BYTES} bytes a tile, or build the game " \
+                             "all-in-one."
       end
 
       def sprite_tiles_table_source(name, table)
