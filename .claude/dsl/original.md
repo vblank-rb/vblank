@@ -74,7 +74,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
   sprite, `draw_column_at` (stretched columns), `mirror`, `upside_down`. Friendly errors at the line: a
   pixel of a place past the colours (unless it is the see-through place), a size that is not the slot's
   count, a `see_through:` that is not 0 to 255, and any other option. With the pack left out (below) its
-  pixels are filled from the file as the game starts, its colours held in the program. On a console it
+  pixels are filled from the file as the game starts. Its colours are held in the program where the game
+  gives them, and read from the file then where `colors:` is a slot, all 256 of it taken whole: the build
+  holds a marker for each (`colors` from the pack, below), so a port whose original keeps every colour in
+  its data ships none. On a console it
   is a picture of that many colours, so what the console does with one given `data:` it does with this.
   Worked examples: `test/all/vblank/builder/test_data_packs.rb` and `test/pack_at_start_tests.rb`.
 

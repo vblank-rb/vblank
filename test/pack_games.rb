@@ -207,7 +207,7 @@ module PackGames
       game(:tiles_and_a_table_from_the_pack, passes: 9) do |folder, options|
         built(game_program(through_pack(folder), options: options), made_up_pack_file)
       end,
-      game(:picture_of_pack_pixels_in_pack_colors, passes: 2, refused: refused_by_builder("a picture of pixels must hold its own colors")) do |folder, options|
+      game(:picture_of_pack_pixels_in_pack_colors, passes: 2) do |folder, options|
         from = original(folder)
         b = VBlank::Builder.new(options: options)
         b.instance_eval do
@@ -256,6 +256,52 @@ module PackGames
           game_loop do
             clear_screen :blue
             draw_text "ab", 10, 10, :red, font: :lettering
+          end
+        end
+        b.finalize_program
+        built(b.program, b.made_data_pack_file)
+      end
+    ].freeze
+  end
+
+  # A WHOLE SCREEN OF A COMPUTER GAME: a picture 320 by 200, one byte a pixel, in a table of 256
+  # colours, both in the original's data and neither in its program, as a DOS game keeps its
+  # title. It is wider and taller than some consoles' screens, and what is past an edge is not drawn.
+  class ScreenPictures < Kit
+    WIDTH = 320
+    HEIGHT = 200
+    COLORS_AT = 0x20
+    PIXELS_AT = 0x300
+    COPY_SIZE = PIXELS_AT + (WIDTH * HEIGHT)
+    # Every colour differs from the others, and every row of the picture from the rows beside it.
+    COLORS = Array.new(256) { |place| ((place * 131) + 7) & 0x7FFF }.freeze
+    PIXELS = Array.new(WIDTH * HEIGHT) { |at| ((at % WIDTH) + ((at / WIDTH) * 37) + (at / 4096)) & 0xFF }.freeze
+
+    private def screen_original(folder)
+      copy = "\0".b * COPY_SIZE
+      copy[COLORS_AT, COLORS.length * 2] = COLORS.pack("v*")
+      copy[PIXELS_AT, PIXELS.length] = PIXELS.pack("C*")
+      path = File.join(folder, "made_up_screen.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :pc,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => COPY_SIZE } })
+    end
+
+    GAMES = [
+      game(:whole_screen_picture_in_256_pack_colors, passes: 2) do |folder, options|
+        from = screen_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          pack = data_pack(from: from, version: "1") do |slots|
+            slots.colors :title_colors, at: COLORS_AT, count: 256, layout: :gba
+            slots.pixels :title_screen, at: PIXELS_AT, count: WIDTH * HEIGHT
+          end
+          image :title_screen, width: WIDTH, height: HEIGHT, colors: pack[:title_colors], places: pack[:title_screen]
+          game_loop do
+            wait_vblank
+            blit :title_screen, 0, 20
           end
         end
         b.finalize_program
@@ -980,7 +1026,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesInBankColors,
           Sounds, Scores].freeze
 
   # Every registered game.

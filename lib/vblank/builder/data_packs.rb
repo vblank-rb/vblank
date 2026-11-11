@@ -321,12 +321,13 @@ module VBlank
         define_pixel_image(name, width: width, height: height, data: data, transparent: see_through ? true : nil)
       end
 
-      # The same picture with the pack left out: its colours held in the program, its pixels zeros
-      # until they are filled from the file as the game starts (IR::StartFile::Picture, its places
-      # one byte each). Its places are held as all 1, so the build treats it as a solid box, as a
+      # The same picture with the pack left out: its colours held in the program (the game's own,
+      # or a marker for each colour of a slot, IR::StartFile "MARKERS"), its pixels zeros until
+      # they are filled from the file as the game starts (IR::StartFile::Picture, its places one
+      # byte each). Its places are held as all 1, so the build treats it as a solid box, as a
       # picture of tiles from the file.
       def define_pixels_picture_from_start_file(name, width, height, places, colors, see_through)
-        table = colors.map { |color| Graphics::Color.resolve(color) }
+        table = colors.map { |color| list_color(color) }
         count = width * height
         node = Build.bitmap(name, width: width, height: height, pixels: Array.new(count, 0).pack("v*"),
                                   transparent: nil, colors: table, places: Array.new(count, 1).pack("C*"))
@@ -340,20 +341,26 @@ module VBlank
       end
 
       # The colours of a picture of pixels: a list the game gives (names or numbers), or a slot of
-      # colours of the pack, read here, which a build that leaves its pack out cannot do.
+      # colours of the pack, up to 256 of them taken whole. The slot is read here; a build that
+      # leaves its pack out holds a marker for each of its colours instead, as a list declared
+      # from the pack does (#pack_colors_read_at_start), so the picture's pixels are filled as
+      # markers as the game starts and put in the file's colours with every other marker.
       def pixels_picture_colors(name, colors)
-        if colors.is_a?(DSL::PackSlot) && pack_left_out?
-          raise ArgumentError, "image :#{name} takes its colors from slot :#{colors.layout.name}. This build reads its pack " \
-                               "as the game starts, so a picture of pixels must hold its own colors. To fix this, give " \
-                               "the game's own list, like `colors: [:black, :white, ...]`. Or build the game all-in-one."
-        end
-
-        list = colors.is_a?(DSL::PackSlot) ? pack_slot_values(colors, :colors, "image :#{name}'s colors:") : colors
+        list = colors.is_a?(DSL::PackSlot) ? pixels_picture_pack_colors(name, colors) : colors
         return list.to_a if list.is_a?(Array) && list.length.between?(1, MOST_PIXEL_PLACES)
 
         raise ArgumentError, "image :#{name} takes its pixels from a slot of pixels. It needs colors: with 1 to " \
                              "#{MOST_PIXEL_PLACES} colors, place 0 first. To fix this, give the game's own list, like " \
                              "`colors: [:black, :white, ...]`."
+      end
+
+      def pixels_picture_pack_colors(name, slot)
+        where = "image :#{name}'s colors:"
+        return pack_slot_values(slot, :colors, where) unless pack_left_out?
+
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        pack_colors_read_at_start(slot)
       end
 
       def refuse_pixels_picture_options!(name, opts)

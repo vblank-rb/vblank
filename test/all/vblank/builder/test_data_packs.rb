@@ -438,25 +438,6 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # With its pack read as the game starts, a picture of pixels holds its own colours: a slot of
-  # colours read as the game is built would read bytes the build does not have.
-  def test_a_picture_of_pixels_taking_pack_colors_with_the_pack_left_out_is_refused
-    Dir.mktmpdir do |folder|
-      from = copy_of(folder, ([0] * 64).pack("C*"))
-      refused = assert_raises(ArgumentError) do
-        Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)).instance_eval do
-          pack = data_pack(from: from, version: "1") do |slots|
-            slots.colors :palette, at: 0, count: 4
-            slots.pixels :art, at: 8, count: 4
-          end
-          image :art, width: 2, height: 2, colors: pack[:palette], places: pack[:art]
-        end
-      end
-
-      assert_match "own colors", refused.message
-    end
-  end
-
   # A FONT WHOSE LETTERS ARE PIXELS OF THE PACK, as a computer game keeps its alphabet: each letter
   # its own run of bytes in a slot of pixels, row by row, lit where the byte is not nought, and drawn
   # in the colour draw_text asks. "A" is three pixels by two, "B" two by two; between them the
