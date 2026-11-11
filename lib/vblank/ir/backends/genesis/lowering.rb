@@ -1173,37 +1173,36 @@ module VBlank
           # Reference#exec_table_get: an index out of range made safe — a table whose length is a
           # power of two wraps it (what an angle wants), any other holds it to the ends. The entry is
           # read through the table's address and the index scaled to the entry's size.
+          #
+          # An index that is a loop's variable known to stay inside the table (ControlFlow#index_below)
+          # is read as it is, with nothing to make safe.
           def value_of_table_get(node)
             table = @tables.fetch(node.name) { raise LoweringError, "the table #{node.name.inspect} is read and never declared" }
             count = table.values.length
-            safe = if count.positive? && (count & (count - 1)).zero?
-                     Build.binop(:&, node.index, Build.int(count - 1))
-                   else
-                     Build.clamped(node.index, Build.int(0), Build.int(count - 1))
-                   end
             bytes, signed = table_keeping(table)
-            value(safe)
+            value(index_inside?(node.index, count) ? node.index : LoweringPlan.index_kept_in_range(node.index, count))
             @asm.lea(@asm.abs_l(table_label(table.name)), @asm.a(0))
-            emit_table_entry(bytes, signed)
+            emit_table_entry(bytes, signed, count * bytes <= 0x7FFF ? :w : :l)
           end
 
           # D0 the entry the index in D0 names in the table A0 points at, widened by its size and sign.
-          def emit_table_entry(bytes, signed)
-            case bytes
-            when 1
-              @asm.move(:b, @asm.idx(0, 0, 0), @asm.d(0))
-              return @asm.and(:l, @asm.imm(0xFF), @asm.d(0)) unless signed
+          # The index is inside the table by now, so one whose entries end within 32K is scaled and
+          # added as a word (+index_size+ :w), which is quicker. An entry with no sign is read into
+          # D1, emptied first, and moved across: fewer cycles than reading it into D0 and masking
+          # off what the index left above it.
+          def emit_table_entry(bytes, signed, index_size)
+            (bytes.bit_length - 1).times { @asm.add(index_size, @asm.d(0), @asm.d(0)) }
+            entry = @asm.idx(0, 0, 0, index_size)
+            return @asm.move(:l, entry, @asm.d(0)) if bytes == 4
 
-              @asm.ext(:w, @asm.d(0))
-              @asm.ext(:l, @asm.d(0))
-            when 2
-              @asm.lsl(:l, 1, @asm.d(0))
-              @asm.move(:w, @asm.idx(0, 0, 0), @asm.d(0))
-              signed ? @asm.ext(:l, @asm.d(0)) : @asm.and(:l, @asm.imm(0xFFFF), @asm.d(0))
-            else
-              @asm.lsl(:l, 2, @asm.d(0))
-              @asm.move(:l, @asm.idx(0, 0, 0), @asm.d(0))
+            size = Runtime::Lists::SLOT_SIZES.fetch(bytes)
+            unless signed
+              @asm.moveq(0, @asm.d(1))
+              @asm.move(size, entry, @asm.d(1))
+              return @asm.move(:l, @asm.d(1), @asm.d(0))
             end
+            @asm.move(size, entry, @asm.d(0))
+            emit_slot_widening(bytes)
           end
 
           # --- timers ---
@@ -1311,15 +1310,37 @@ module VBlank
 
           # --- tests: jump unless one holds ---
 
+          # Jump to +label+ when +condition+ holds. A comparison jumps on the flags it leaves, by the
+          # one branch that reads them; and a test that something is nought (`x == 0`, which is how a
+          # `while` asks whether its own test has stopped holding) is the jump unless that something
+          # holds, with no 1 or 0 made of it on the way.
           def jump_if(condition, label)
             known = folded(condition)
             return if known&.zero?
             return @asm.bra(label) if known
 
+            inner = operand_tested_for_nought(condition)
+            return jump_unless(inner, label) if inner
+
+            if comparison?(condition)
+              emit_compare(condition)
+              return @asm.branch(HOLDS_WHEN.fetch(condition.op), label)
+            end
+
             go_on = fresh("holds_not")
             jump_unless(condition, go_on)
             @asm.bra(label)
             @asm.label(go_on)
+          end
+
+          def comparison?(node) = node.is_a?(Node) && node.kind == :binop && COMPARISONS.include?(node.op)
+
+          # The X of a test `X == 0` (or `0 == X`), which holds exactly when X does not; or nil.
+          def operand_tested_for_nought(node)
+            return unless binop?(node, :==)
+            return node.lhs if folded(node.rhs)&.zero?
+
+            node.rhs if folded(node.lhs)&.zero?
           end
 
           # Jump to +label+ unless +condition+ holds. A comparison jumps on the flags it leaves, without
@@ -1328,6 +1349,9 @@ module VBlank
             known = folded(condition)
             return (@asm.bra(label) if known.zero?) if known
 
+            inner = operand_tested_for_nought(condition)
+            return jump_if(inner, label) if inner
+
             if binop?(condition, :and) && Unchanging.value?(condition.rhs) { |part| folded(part) }
               # The interpreter works both sides out (Reference#eval_binop); the second is skipped here
               # when the first does not hold only where working it out changes nothing (IR::Unchanging). A
@@ -1335,22 +1359,41 @@ module VBlank
               # whatever the first side gives, by the value below.
               jump_unless(condition.lhs, label)
               jump_unless(condition.rhs, label)
-            elsif condition.is_a?(Node) && condition.kind == :binop && COMPARISONS.include?(condition.op)
+            elsif comparison?(condition)
               emit_compare(condition)
               @asm.branch(FAILS_WHEN.fetch(condition.op), label)
             else
-              value(condition)
-              @asm.tst(:l, @asm.d(0))
+              emit_test_for_nought(condition)
               @asm.branch(:eq, label)
             end
+          end
+
+          # The flags of +operand+ against nought: a variable tested where it is kept, anything else
+          # worked out first.
+          def emit_test_for_nought(operand)
+            name = variable_named(operand)
+            return @asm.tst(:l, var(name)) if name
+
+            value(operand)
+            @asm.tst(:l, @asm.d(0))
           end
 
           def binop?(node, op) = node.is_a?(Node) && node.kind == :binop && node.op == op
 
           # The two sides of a comparison compared: the left side's flags against the right (CMP),
-          # which the branch that follows reads.
+          # which the branch that follows reads. A variable against a number written in the program
+          # is compared where it is kept, one instruction and no load; and anything against nought is
+          # a TST, which leaves the flags a CMP with nought does and has no number to read.
           def emit_compare(node)
-            with_right_operand(node.lhs, node.rhs) { |right| @asm.cmp(:l, right, @asm.d(0)) }
+            number = folded(node.rhs)
+            return with_right_operand(node.lhs, node.rhs) { |right| @asm.cmp(:l, right, @asm.d(0)) } unless number
+            return emit_test_for_nought(node.lhs) if number.zero?
+
+            name = variable_named(node.lhs)
+            return @asm.cmp(:l, @asm.imm(number), var(name)) if name
+
+            value(node.lhs)
+            @asm.cmp(:l, @asm.imm(number), @asm.d(0))
           end
 
           # --- values: each leaves its number in D0 ---
@@ -1462,6 +1505,9 @@ module VBlank
           # Reference#clamp_value: held at the floor, then at the ceiling.
           def value_of_clamped(node)
             value(node.operand)
+            most = folded(node.max)
+            return emit_hold_from_nought_to(most) if folded(node.min)&.zero? && most && !most.negative?
+
             [[node.min, :ge], [node.max, :le]].each do |bound, stays|
               right = operand_of(bound)
               unless right
@@ -1478,6 +1524,26 @@ module VBlank
               @asm.label(within)
             end
           end
+
+          # D0 HELD FROM NOUGHT TO +most+, a number written in the program: what a table's index is
+          # held to. Read with no sign, a number below nought is far past +most+, so one compare
+          # finds a number already inside, and that is all a number inside costs: the compare and a
+          # short branch over the rest. For one outside, D0 is made all ones if it was nought or
+          # more and nought if it was below, and that taken with +most+ is the end it is held to.
+          # D1 is worked with.
+          def emit_hold_from_nought_to(most)
+            emit_operand_load(@asm.imm(most), 1)
+            @asm.cmp(:l, @asm.d(1), @asm.d(0))
+            @asm.branch_over(:ls, HOLD_TO_END_BYTES)
+            @asm.tst(:l, @asm.d(0))
+            @asm.scc(:pl, @asm.d(0))
+            @asm.ext(:w, @asm.d(0))
+            @asm.ext(:l, @asm.d(0))
+            @asm.and(:l, @asm.d(1), @asm.d(0))
+          end
+
+          # The five instructions after the branch in #emit_hold_from_nought_to, a word each.
+          HOLD_TO_END_BYTES = 10
 
           # A shift right by a number written in the program is one instruction; any other count is
           # the runtime's shift.
