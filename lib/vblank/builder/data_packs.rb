@@ -900,10 +900,14 @@ module VBlank
                              numbers: "a slot of numbers", samples: "a slot of samples" }.freeze
 
       def refuse_slot_read_wrongly!(handle, wanted, where)
-        fits = wanted == :tile ? handle.one_tile? : handle.shape == wanted && !handle.one_tile?
+        # A run of a slot of numbers is a background's map alone (PackBackgrounds#pack_map_cells).
+        fits = wanted == :tile ? handle.one_tile? : handle.shape == wanted && !handle.one_tile? && !handle.run_of_numbers?
         return if fits
 
-        given = handle.one_tile? ? "one tile of slot :#{handle.layout.name}" : "slot :#{handle.layout.name}, which holds #{handle.shape}"
+        given = if handle.one_tile? then "one tile of slot :#{handle.layout.name}"
+                elsif handle.run_of_numbers? then "some of the numbers of slot :#{handle.layout.name}"
+                else "slot :#{handle.layout.name}, which holds #{handle.shape}"
+                end
         raise ArgumentError, "#{where} was given #{given}. It must be given #{SLOT_READING_WORDS.fetch(wanted)}."
       end
     end

@@ -48,6 +48,8 @@ module VBlank
       end
 
       # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
+      # `colors: 256` is a tile kept a byte a pixel, 64 bytes, in any layout: the pictures of a
+      # background that turns and resizes.
       def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1)
         add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform, cost: cost))
       end
@@ -215,6 +217,14 @@ module VBlank
       # sample is a byte as a pixel is.
       def samples(first, count) = bytes_run(:samples, first, count)
 
+      # A handle on +count+ numbers from number +first+ (0 first) of a slot of numbers, for a
+      # background's `map:` kept among other things in a bigger slot, as a console keeps a
+      # map in a block of its video memory. It shares the first and the count of a handle on pixels.
+      def numbers(first, count) = bytes_run(:numbers, first, count)
+
+      # Whether the handle is on a run of a slot of numbers, and not on the whole slot.
+      def run_of_numbers? = shape == :numbers && !pixel_count.nil?
+
       # Whether the handle is on a bank of colours.
       def bank? = !first_color.nil?
 
@@ -319,8 +329,8 @@ module VBlank
 
       private
 
-      # A handle on +count+ of the +kind+ (:pixels or :samples) of a slot of that kind, from number
-      # +first+: the one check both share.
+      # A handle on +count+ of the +kind+ (:pixels, :samples or :numbers) of a slot of that kind,
+      # from number +first+: the one check they share.
       def bytes_run(kind, first, count)
         unless shape == kind && pixel_count.nil?
           raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `#{kind}` picks #{kind} of a slot of #{kind}. " \

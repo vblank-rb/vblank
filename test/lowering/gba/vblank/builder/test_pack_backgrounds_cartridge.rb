@@ -3,11 +3,13 @@
 require "test_helper"
 require "differential"
 require "pack_background_tests"
+require "pack_turning_background_games"
 
 # A BACKGROUND FROM THE DATA PACK ON THE ADVANCE'S CARTRIDGE, read in the emulator. What such a
 # background shows on every run is in test/all/vblank/builder/test_pack_backgrounds.rb.
 class TestPackBackgroundsCartridge < Minitest::Test
   include PackBackgroundGames
+  include PackTurningBackgroundGames
   include Differential
 
   private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
@@ -38,6 +40,40 @@ class TestPackBackgroundsCartridge < Minitest::Test
   def test_a_background_follows_two_banks_the_game_recolors
     Dir.mktmpdir do |folder|
       assert_backends_agree(two_banks_recolored(folder), frames: 1..7)
+    end
+  end
+
+  # A LAYER THAT TURNS, FROM THE PACK (PackTurningBackgroundGames): a map of bytes over tiles of a
+  # byte a pixel. The cartridge shows what the interpreter shows as the game eases its size and
+  # turns it about its map's middle, set down at a point of the screen.
+  def test_a_turning_background_from_the_pack_shows_on_the_cartridge_as_on_the_interpreter
+    Dir.mktmpdir do |folder|
+      program = turning_pack_game(turning_original(folder)) do |layer|
+        layer.turns_around(*PIVOT, map_point: MIDDLE).scale(4.0)
+        spin = var :spin, 0
+        game_loop do
+          layer.scale.approach! 1.0, 0.25
+          spin += 7
+          layer.rotate spin
+        end
+      end
+
+      assert_backends_agree(program, frames: [2, 4, 7, 11, 16])
+    end
+  end
+
+  # The console's own pixels, held to the made-up data: at twice its size about its middle, the
+  # map's pixel sixteen right of the middle is thirty-two right of the pivot.
+  def test_the_console_shows_a_turning_background_from_the_pack_in_its_tables_colors
+    Dir.mktmpdir do |folder|
+      program = turning_pack_game(turning_original(folder)) do |layer|
+        layer.turns_around(*PIVOT, map_point: MIDDLE).scale(2.0)
+        game_loop { wait_vblank }
+      end
+      v = assert_emulator_loads_rom(assemble_rom(program, name: "PACKTURN"), frames: 4)
+
+      assert_equal turning_map_color(*MIDDLE), v.pixel_gba(*PIVOT)
+      assert_equal turning_map_color(MIDDLE[0] + 16, MIDDLE[1] + 3), v.pixel_gba(PIVOT[0] + 32, PIVOT[1] + 6)
     end
   end
 

@@ -12,8 +12,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
   Inside the block, each line is a slot:
   - `slots.colors :palette, at: 0x1000, count: 16` — colours, two bytes each.
   - `slots.tiles :walls, at: 0x1020, count: 40` — 8x8 tiles; `colors: 4` or `colors: 16` where the
-    console keeps both (the Super Nintendo).
+    console keeps both (the Super Nintendo). **`colors: 256` is a tile kept a byte a pixel**, 64 bytes row
+    by row, each byte a place in a table of 256 colours, in any layout: the pictures of a layer a console
+    turns and resizes (the Advance's turning layer, the Super Nintendo's Mode 7), for a `background` from
+    the pack (`backgrounds.md`).
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
+    `pack[:video_bytes].numbers(first, count)` is `count` of them from number `first` on, for a
+    background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
+    its video memory; any other verb takes the whole slot.
   - `slots.pixels :walls, count: 64 * 64 * 106` — **pixels, one byte each**: pictures of up to 256
     colours, row by row, as a computer game keeps its art. A byte is a byte in every layout, so the line
     names none. How the original lays its art out (column by column, in posts, in pages) is the game's
@@ -228,6 +234,11 @@ built for:
 | `:gbc` | 4 colours, 16 bytes: each row's bit 0 plane, then its bit 1 plane, the left pixel in bit 7 | as the Advance's | low byte first |
 | `:snes` | `colors: 4` as the Color's; `colors: 16`, 32 bytes: planes 0 and 1 for all eight rows, then planes 2 and 3 | as the Advance's | low byte first |
 | `:genesis` | 16 colours, 32 bytes, the left pixel in a byte's HIGH half | 2 bytes high byte first, `0000 BBB0 GGG0 RRR0`, each 3 bits widened to 5 as the Genesis shows them | high byte first |
+
+Two layouts are no one console's, since a byte is a byte in every layout: a tile of 256 colours, a byte a
+pixel (`Console::BYTE_A_PIXEL_TILES`, `slots.tiles ..., colors: 256`), and a map of one byte a cell, each
+the number of a tile with no turn and no bank (`Console::BYTE_MAP_CELLS`, a background's `map:` given a
+slot of numbers `width: :byte`). Together they are how a console keeps the layer it turns and resizes.
 
 Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them

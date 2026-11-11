@@ -68,7 +68,8 @@ module VBlank
       end
 
       # +count+ tiles of 8x8 pixels in +colors+ colours, in the tile layout of +layout+. +colors+ may
-      # be left out where the console keeps one kind of tile.
+      # be left out where the console keeps one kind of tile. Tiles of 256 colours are a byte a
+      # pixel in every layout (Console::BYTE_A_PIXEL_TILES), as a layer that turns keeps them.
       def self.tiles(name, count:, at: nil, layout: DEFAULT_LAYOUT, colors: nil, cost: 1)
         new(name: name.to_sym, shape: :tiles, at: at, count: count, width: nil, signed: nil,
             format: tile_format_of(name, layout, colors), cost: cost)
@@ -149,7 +150,13 @@ module VBlank
                                "Name another layout, like `layout: :gba`."
       end
 
+      # How many colours a tile kept a byte a pixel has (Console::BYTE_A_PIXEL_TILES).
+      BYTE_A_PIXEL_COLORS = 256
+
       def self.tile_format_of(name, layout, colors)
+        # A byte is a byte in every layout, a computer game's too, so no console is asked.
+        return Console::BYTE_A_PIXEL_TILES if colors == BYTE_A_PIXEL_COLORS
+
         formats = formats_of(name, layout)
         kinds = formats.tiles
         return kinds.first if colors.nil? && kinds.one?
@@ -159,7 +166,8 @@ module VBlank
 
         options = kinds.map { |format| "colors: #{format.colors}" }.join(" or ")
         raise ArgumentError, "Slot :#{name} holds tiles in the #{Console.for(layout).title}'s layout, which keeps tiles " \
-                             "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{options}."
+                             "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{options}, or " \
+                             "colors: #{BYTE_A_PIXEL_COLORS} for tiles kept a byte a pixel."
       end
       private_class_method :formats_of, :tile_format_of, :number_format_of
 

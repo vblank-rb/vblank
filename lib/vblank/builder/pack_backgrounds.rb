@@ -51,10 +51,13 @@ module VBlank
       def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, set_cells: nil, **others)
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
-        refuse_map_not_of_halves!(name, map)
+        refuse_map_not_of_cells!(name, map)
         refuse_colors_not_whole_slot!(name, colors)
-        words = pack_map_word_format!(name)
+        words = pack_map_word_format!(name, map)
+        refuse_table_tiles_under_banked_cells!(name, tiles, words)
+        refuse_colors_short_of_table!(name, tiles, colors)
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
+        refuse_set_cells_of_table_tiles!(name, tiles, set_cells)
         tiles_a_side = cell / Original::Slot::TILE_SIDE
         if pack_left_out?
           return declare_pack_background_read_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
@@ -63,9 +66,13 @@ module VBlank
         end
 
         tile_places = pack_tile_places(tiles, subject)
-        bank_lists = declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
+        bank_lists = if drawn_from_whole_table?(tiles)
+                       pack_color_tables(colors, tiles.layout.format.colors, "#{subject}'s colors:")
+                     else
+                       declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
+                     end
         pictures = {}
-        rows = pack_slot_values(map, :numbers, "#{subject}'s map:").each_slice(across).flat_map do |row|
+        rows = pack_map_cells(map, "#{subject}'s map:").each_slice(across).flat_map do |row|
           Array.new(tiles_a_side) do |down|
             row.flat_map do |word|
               Array.new(tiles_a_side) do |along|
@@ -83,8 +90,29 @@ module VBlank
         tileset = :"background :#{name} tiles"
         tiles(tileset, drawn.to_h { |picture| [picture, picture] })
         # Which banks the map uses is in the player's copy, so the game may name any bank of the slot.
-        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(bank_lists).allow_set_cells(cells)
+        # Tiles drawn from the whole table have no list, so there is none to name.
+        named = drawn_from_whole_table?(tiles) ? [] : bank_lists
+        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(named).allow_set_cells(cells)
       end
+
+      # TILES OF MORE COLOURS THAN A LIST HOLDS ARE DRAWN FROM THE WHOLE TABLE. A tile of sixteen
+      # colours picks from a bank, which is a list the game can name, walk and swap. A tile kept
+      # a byte a pixel (Console::BYTE_A_PIXEL_TILES) picks from all 256 colours at once, as the
+      # layer a console turns and resizes does, and no list is that long. So its pictures hold
+      # their colours themselves, as a picture the game draws from colours does, and the
+      # background has no list to draw with others.
+      def drawn_from_whole_table?(tiles) = tiles.layout.format.colors > Images::PICTURE_COLORS
+
+      # The cells of +map+ (a slot of numbers, or a run of one), in order.
+      def pack_map_cells(map, where)
+        whole = map.with(first_pixel: 0, pixel_count: nil)
+        cells = pack_slot_values(whole, :numbers, where)
+        map.run_of_numbers? ? cells.slice(map.first_pixel, map.pixel_count) : cells
+      end
+
+      # Each table of +size+ colours of +colors+ (a whole slot of colours), as the colours
+      # themselves: what a tile drawn from the whole table picks from, by bank.
+      def pack_color_tables(colors, size, where) = pack_slot_values(colors, :colors, where).each_slice(size).to_a
 
       # THE CELLS THE BACKGROUND MAY BE WRITTEN LATER (`set_cells:`), each the original's own cell
       # number: a list of them, a Range (a run of tiles in one bank, turned one way), or a list of
@@ -166,11 +194,16 @@ module VBlank
       # all-in-one. The tiles the map draws come after them, made as the game starts.
       def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, set_cells: nil, **others)
         subject = "background :#{name}"
-        [[tiles, "tiles:"], [map, "map:"], [colors, "colors:"]].each { |slot, what| refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}") }
+        refuse_byte_cells_read_at_start!(name, tiles, words)
+        [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
+          refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
+        end
         bank_size = tiles.layout.format.colors
         first_tile = tiles.tile_index || 0
         where = IR::StartFile::Background.new(
-          map_at: @pack_slot_starts.fetch(map.layout.name), cells: map.count, across: across, cell_tiles: tiles_a_side,
+          # A run of a slot starts so many numbers into it; a whole slot, none.
+          map_at: @pack_slot_starts.fetch(map.layout.name) + (map.first_pixel * map.layout.item_bytes),
+          cells: map.count, across: across, cell_tiles: tiles_a_side,
           number_format: map.layout.format, map_words: words,
           tiles_at: @pack_slot_starts.fetch(tiles.layout.name) + (first_tile * tiles.layout.item_bytes),
           tile_count: tiles.layout.count - first_tile, tile_format: tiles.layout.format,
@@ -191,6 +224,16 @@ module VBlank
         @backgrounds.fetch(name).node.from_file = where
         # Which bank the map uses is in the file, so one list given alone is every bank's.
         handle.allow_one_list_for_every_bank.allow_set_cells(cells)
+      end
+
+      # A map of bytes, and tiles of 256 colours, are read as the game is built only: the routines
+      # that fill a background as the game starts read cells of two bytes and tiles of four planes.
+      def refuse_byte_cells_read_at_start!(name, tiles, words)
+        return unless words.cell_bytes == 1 || drawn_from_whole_table?(tiles)
+
+        raise ArgumentError, "background :#{name} has a map of cells one byte wide, or tiles of 256 colors. This build " \
+                             "reads its data pack as the game starts, and it does not read such a background then. " \
+                             "To fix this, build the game all-in-one."
       end
 
       # THE PICTURE OF A TOLD TILE (a Console::CellTile) of a background read as the game starts
@@ -310,7 +353,13 @@ module VBlank
                                "its map uses."
         end
         picture = :"background :#{name} tile #{number}"
-        image picture, width: side, height: side, places: rows.flatten, colors: list
+        if list.is_a?(Array)
+          # A table of colours, not a list's name: the picture holds its colours itself.
+          image picture, width: side, height: side, transparent: true,
+                         data: rows.flatten.map { |place| place.zero? ? :transparent : list.fetch(place) }
+        else
+          image picture, width: side, height: side, places: rows.flatten, colors: list
+        end
         picture
       end
 
@@ -343,11 +392,45 @@ module VBlank
                              "it the map of a screen, or leave the background out."
       end
 
-      def refuse_map_not_of_halves!(name, map)
-        return if map.is_a?(DSL::PackSlot) && map.shape == :numbers && map.layout.width == :half
+      # map: is a slot of numbers a cell each, or a run of one: two bytes wide in the layout of
+      # the original's console, or one byte wide, each a tile's number (Console::BYTE_MAP_CELLS).
+      def refuse_map_not_of_cells!(name, map)
+        return if map.is_a?(DSL::PackSlot) && map.shape == :numbers && %i[half byte].include?(map.layout.width)
 
-        raise ArgumentError, "background :#{name} needs map:, a slot of numbers two bytes wide, one a cell, like " \
-                             "`slots.numbers :map, count: 512, width: :half, signed: false`."
+        raise ArgumentError, "background :#{name} needs map:, a slot of numbers, one a cell. A cell is two bytes wide, " \
+                             "like `slots.numbers :map, count: 512, width: :half, signed: false`, or one byte wide for " \
+                             "a map that holds only tile numbers, like `slots.numbers :map, count: 1024, width: :byte, " \
+                             "signed: false`."
+      end
+
+      # A cell of two bytes names a bank of sixteen colours, and a tile of 256 colours has no banks.
+      # The Advance does keep such tiles under cells of two bytes, their bank bits unused; nothing
+      # reads that here yet, so it is said plainly.
+      def refuse_table_tiles_under_banked_cells!(name, tiles, words)
+        return unless drawn_from_whole_table?(tiles) && words.bank_bits.positive?
+
+        raise ArgumentError, "background :#{name} has tiles of #{tiles.layout.format.colors} colors and a map of cells two " \
+                             "bytes wide. A cell two bytes wide names a bank of colors, and such a tile has no banks. " \
+                             "To fix this, give map: a slot of numbers one byte wide, each the number of a tile."
+      end
+
+      # A tile of 256 colours can name any place of the table, so the slot holds all of it.
+      def refuse_colors_short_of_table!(name, tiles, colors)
+        size = tiles.layout.format.colors
+        return unless drawn_from_whole_table?(tiles) && colors.count < size
+
+        raise ArgumentError, "background :#{name} has tiles of #{size} colors, and its colors: slot holds #{colors.count} " \
+                             "colors. A pixel of such a tile can be any of #{size} colors. To fix this, give colors: a " \
+                             "slot of #{size} colors."
+      end
+
+      # A cell written later is a tile of a bank's list, and tiles of 256 colours have no list.
+      def refuse_set_cells_of_table_tiles!(name, tiles, set_cells)
+        return if set_cells.nil? || !drawn_from_whole_table?(tiles)
+
+        raise ArgumentError, "background :#{name} was given set_cells:, and its tiles have #{tiles.layout.format.colors} " \
+                             "colors. VBlank does not write a cell of such a background later. To fix this, remove " \
+                             "set_cells:, or show another map with `show_map`."
       end
 
       def refuse_colors_not_whole_slot!(name, colors)
@@ -357,8 +440,11 @@ module VBlank
                              "names its bank of colors by counting from the slot's first color."
       end
 
-      # The layout of a cell of the original's maps, the one its console keeps.
-      def pack_map_word_format!(name)
+      # The layout of a cell of +map+: a byte that is a tile's number, in any original, or the
+      # two bytes the original's console keeps.
+      def pack_map_word_format!(name, map)
+        return Console::BYTE_MAP_CELLS if map.layout.width == :byte
+
         formats = Console.for(@data_pack_platform).original_formats if Console::KITS.key?(@data_pack_platform)
         formats&.map_words or
           raise ArgumentError, "background :#{name} reads a map from the data pack, and VBlank does not know how a cell of " \
