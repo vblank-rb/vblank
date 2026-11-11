@@ -105,7 +105,8 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds 256 places on DOS, which is the card's whole palette."),
-        recolor: works("the palette changes, so every pixel of that colour changes at once."),
+        recolor: works("the card has one palette for the whole screen, so each picture drawn with the list is kept " \
+                       "once for each set of colours, and a sprite shows the set the list holds when it is next placed."),
         color_walk: works,
         colors_in_use: works,
         mirror: works,
@@ -251,7 +252,7 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate]
+                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

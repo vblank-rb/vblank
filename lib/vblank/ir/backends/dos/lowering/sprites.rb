@@ -14,17 +14,36 @@ module VBlank
           # table. A sprite switched off, or one whose pose picks no picture, is not placed, which is what
           # "not drawn" means (Reference#objects_on_screen).
           #
-          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), upright and
-          # in its own colours. The plain sprite of a painted screen is no sprite of this kind at all: the
-          # game paints it into the picture itself, keeping and putting back the patch under it
-          # (Lowering#emit_save_region). One that turns or changes size, one drawn in another list of
-          # colours, sprites a list puts in order, and any sprite of a screen drawn from tiles are each
-          # refused by name.
+          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), upright, in
+          # its own colours or another list's. The plain sprite of a painted screen is no sprite of this kind
+          # at all: the game paints it into the picture itself, keeping and putting back the patch under it
+          # (Lowering#emit_save_region). One that turns or changes size, sprites a list puts in order, and
+          # any sprite of a screen drawn from tiles are each refused by name.
+          #
+          # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, `recolor`). The card has one palette
+          # for the whole screen and a sprite's pixels are entries of it, so there is no list of a sprite's
+          # own to swap. Each of the sprite's pictures is kept once more for every set of colours it can be
+          # drawn in, made as the game is built by the rule every build shares (Assets::Recolor), and
+          # placing the sprite picks which: its own, one of the lists it is told to draw with, or, for a
+          # list the game changes (`recolor`), whichever set that list holds now (SET_HELD). Drawing one
+          # costs what drawing any picture costs.
           module Sprites
-            STATEMENT_KINDS = %i[present_objects].freeze
+            STATEMENT_KINDS = %i[present_objects color_list_holds].freeze
 
             # The part of the build a game with such a sprite waits for, for a test run to count skips by.
-            PART = "sprites of a screen drawn from tiles, turned, resized, recoloured or put in order by a list"
+            PART = "sprites of a screen drawn from tiles, turned, resized or put in order by a list"
+
+            # Where a list of colours the game changes keeps which set it holds: nought for the colours it
+            # was declared with, and one more than the set's number for each other.
+            SET_HELD = "color list set held"
+
+            def self.set_held(name) = [SET_HELD, name]
+
+            # The lists of colours +program+ changes as it runs, by name.
+            def self.color_lists_in(program) = program.walk.select { |node| node.kind == :color_list }.to_h { |node| [node.name, node] }
+
+            # A place for each such list's number.
+            def self.reserve(memory, program) = color_lists_in(program).each_key { |name| memory.reserve(set_held(name), 4) }
 
             # How many sprites +program+ has: none for a game that needs none of the runtime's sprites.
             def self.count_in(program) = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
@@ -55,21 +74,114 @@ module VBlank
             def unmade_in_sprite(sprite)
               return "that is not over a painted picture" unless sprite.over_picture
               return "that turns or changes size" unless constant_number?(sprite.angle, 0) && constant_number?(sprite.scale, Build::SCALE_ONE)
-              return "drawn in another list of colours" unless sprite.recolors.to_a.empty? && sprite.follows.nil?
 
               nil
             end
 
+            def color_lists = (@color_lists ||= Sprites.color_lists_in(@program))
+
+            # THE SETS OF COLOURS +sprite+ CAN BE DRAWN IN, in the order its table keeps them: nil for its
+            # own, then for each list it can be told to draw with, that list's colours, or for a list the
+            # game changes its declared colours and then each set it can hold.
+            def color_sets(sprite) = [nil] + sprite.recolors.to_a.flat_map { |list| sets_of(list) }
+
+            def sets_of(list)
+              return [list] unless list.is_a?(Symbol)
+
+              declared = color_lists.fetch(list) { raise LoweringError, "a sprite is drawn with the list #{list.inspect}, which is never declared" }
+              [declared.colors, *declared.recolors]
+            end
+
+            # The 15-bit colour each pixel of the picture +name+ is drawn in with +set+ (Assets::Recolor), or
+            # nil where it draws nothing.
+            def recolored_pixels(name, set)
+              image = picture_image(name)
+              recolor = set && Assets::Recolor.of(image, set)
+              (0...(image.width * image.height)).map do |at|
+                next unless image.drawn_at?(at)
+
+                color = image.color_at(at)
+                Graphics::Color.resolve(recolor ? recolor.color_for(at, color) : color) & 0x7FFF
+              end
+            end
+
+            # Every colour a sprite's pictures show in a set other than their own, for the palette.
+            def recolored_sprite_colors
+              sprite_objects.each_value.flat_map do |sprite|
+                color_sets(sprite).compact.flat_map { |set| sprite.poses.flat_map { |name| recolored_pixels(name, set).compact } }
+              end.uniq
+            end
+
+            # Where the picture +name+ drawn in +set+ is in the art segment, made the first time it is asked for.
+            def recolored_place(name, set)
+              return @art_places.fetch(name) if set.nil?
+
+              @art_places[[:recolored, name, set]] ||= begin
+                image = picture_image(name)
+                place = @art.bytesize
+                @art << [image.width, image.height].pack("v2")
+                @art << recolored_pixels(name, set).map { |color| color ? palette_entry(color) : Runtime::TRANSPARENT }.pack("C*")
+                place
+              end
+            end
+
             def constant_number?(node, number) = node.is_a?(Node) && node.kind == :int && node.value == number
 
-            # For each sprite, a table in the art segment of its pictures in the order its pose counts them: the
-            # place of each, and its number as SpriteNames gives it, a word each.
+            # For each sprite, a table in the art segment of its pictures, for each set of colours it can be
+            # drawn in (#color_sets) in the order its pose counts them: the place of each, and its number as
+            # SpriteNames gives it, a word each. The number is the picture's whatever colours it is in.
             def make_sprite_tables
               sprite_objects.each_value do |sprite|
-                rows = sprite.poses.flat_map { |name| [@art_places.fetch(name), sprite_names.picture_number(name)] }
+                rows = color_sets(sprite).flat_map do |set|
+                  sprite.poses.flat_map { |name| [recolored_place(name, set), sprite_names.picture_number(name)] }
+                end
                 @art_places[sprite_key(sprite)] = @art.bytesize
                 @art << rows.pack("v*")
               end
+            end
+
+            # The bytes of one set's rows in a sprite's table.
+            def set_bytes(sprite) = sprite.poses.size * 4
+
+            # Reference#exec_color_list_holds: the set a list holds from now on, kept as SET_HELD keeps it. A
+            # number that names no set is the colours the list was declared with.
+            def emit_color_list_holds(node)
+              sets = color_lists.fetch(node.name).recolors.size
+              inside = fresh_label("color_set_named")
+              emit_value(node.which)
+              @asm.cmp(:eax, sets) # as numbers with no sign, so one below nought names none either
+              @asm.jb(inside)
+              @asm.mov(:eax, -1)
+              @asm.label(inside)
+              @asm.inc(:eax)
+              @asm.mov(runtime_at(Sprites.set_held(node.name)), :eax)
+            end
+
+            # Reference#object_color_list, for a sprite that can be drawn in more than its own colours: how
+            # far into its table the rows of the set it is drawn in now begin, into EAX. A number that picks
+            # none of its lists is its own colours.
+            def emit_color_set_rows(sprite)
+              chosen = fresh_label("color_set_chosen")
+              emit_value(sprite.recolor)
+              first = 1 # the set after the sprite's own
+              sprite.recolors.each_with_index do |list, which|
+                other = fresh_label("color_set_other")
+                @asm.cmp(:eax, which)
+                @asm.jne(other)
+                if list.is_a?(Symbol)
+                  @asm.mov(:eax, runtime_at(Sprites.set_held(list)))
+                  @asm.add(:eax, first)
+                else
+                  @asm.mov(:eax, first)
+                end
+                @asm.jmp(chosen)
+                @asm.label(other)
+                first += sets_of(list).size
+              end
+              @asm.xor(:eax, :eax)
+              @asm.label(chosen)
+              @asm.mov(:edx, set_bytes(sprite))
+              @asm.imul(:eax, :edx)
             end
 
             def sprite_key(sprite) = [:sprite, sprite.name]
@@ -88,15 +200,22 @@ module VBlank
             # One sprite put in the table, if it is shown and its pose picks one of its pictures.
             def emit_sprite_placed(sprite)
               skip = fresh_label("sprite_not_drawn")
+              recolored = !sprite.recolors.to_a.empty?
               emit_value(sprite.active)
               @asm.cmp(:eax, 1)
               @asm.jne(skip)
+              if recolored
+                emit_color_set_rows(sprite)
+                @asm.push(:ax)
+              end
               emit_value(sprite.pose)
+              @asm.pop(:dx) if recolored # before the test, so the stack is the same either way out
               @asm.cmp(:eax, sprite.poses.size) # as numbers with no sign, so one below nought is too big as well
               @asm.jae(skip)
               # The picture's place into SI and its number into DI, from the sprite's table.
               @asm.mov(:bx, :ax)
               @asm.shl(:bx, 2)
+              @asm.add(:bx, :dx) if recolored
               @asm.add(:bx, @art_places.fetch(sprite_key(sprite)))
               @asm.mov_segment(:cx, :art)
               @asm.push(:ds)

@@ -104,18 +104,4 @@ class TestDOSSprites < Minitest::Test
 
     assert_equal [color(:yellow), color(:blue)], [run.screen.pixel(319, 97), run.screen.pixel(319, 95)]
   end
-
-  def test_a_sprite_drawn_in_another_list_of_colours_is_refused_by_name
-    error = assert_raises(DOS::Lowering::NotMadeYet) do
-      checked(frames: 2) do
-        screen :bitmap
-        image :ship, width: 2, height: 2, data: %i[red red green green], colors: %i[transparent red green]
-        colors :hurt, %i[transparent yellow white]
-        ship = sprite :ship, at: [40, 40], over_picture: true
-        game_loop { ship.draw_with :hurt }
-      end
-    end
-
-    assert_match(/another list of colours/, error.message)
-  end
 end

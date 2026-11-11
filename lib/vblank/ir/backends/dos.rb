@@ -130,6 +130,7 @@ module VBlank
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
                                   area: Lowering.area_used_by?(program), sprites: sprites,
                                   walks: walks, view: view)
+          Lowering::Sprites.reserve(memory, program)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")

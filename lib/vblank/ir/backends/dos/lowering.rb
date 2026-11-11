@@ -214,6 +214,7 @@ module VBlank
             colors = program.walk.select { |node| PAINTING_KINDS.include?(node.kind) }
                             .map { |node| Graphics::Color.resolve(node.color) }.uniq - [0]
             colors |= drawn_pictures.flat_map { |name| picture_colors(name) } - [0]
+            colors |= recolored_sprite_colors - [0]
             if colors.size >= TRANSPARENT_ENTRY
               raise LoweringError, "This game paints with #{colors.size} colours besides black. DOS shows " \
                                    "#{TRANSPARENT_ENTRY - 1} at once. To fix this, use fewer colours."
@@ -363,6 +364,7 @@ module VBlank
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :camera then emit_camera(node)
+            when :color_list_holds then emit_color_list_holds(node)
             when :pixelate then emit_pixelate(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
