@@ -61,11 +61,19 @@ module VBlank
             # losing: a Z80 that wants the cartridge while the chip holds the bus waits for the copy to
             # end anyway. docs/genesis/dma-and-the-sound-processor.md has the sources.
             #
-            # A game with no recordings pays nothing: its Z80 has been held stopped since power-on
-            # (Boot#emit_sound_quiet) and never reaches for the bus.
+            # A game with no recordings pays nothing for that: its Z80 has been held stopped since
+            # power-on (Boot#emit_sound_quiet) and never reaches for the bus.
+            #
+            # THE COMMAND GOES AS TWO WORDS READ FROM WORK RAM, for every game. The console's maker
+            # says a copy now and then fails unless the write that starts it is a word, not a long
+            # word, and is read from work RAM, and its own games keep a word of RAM for it. Here the
+            # command is put on the stack, which is in work RAM, and its two halves are written from
+            # there: two instructions more than one long write from the register.
             def emit_dma_started(asm, command, port, samples:)
+              asm.move(:l, command, asm.pre(M68000::SP))
+              asm.move(:w, asm.post(M68000::SP), port)
               Recordings.emit_bus_taken(asm) if samples
-              asm.move(:l, command, port)
+              asm.move(:w, asm.post(M68000::SP), port)
               asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST)) if samples
             end
 
