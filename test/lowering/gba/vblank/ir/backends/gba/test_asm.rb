@@ -576,6 +576,20 @@ class TestASM < Minitest::Test
     assert_equal 0xE8BD0000 | expected_mask, inst
   end
 
+  # A run of words read into a set of registers from the address in another, which is left as it
+  # was: LDMIA r1, {r0, r2, r3} is 0xE891000D.
+  def test_ldmia_names_its_address_register_and_leaves_it
+    assert_equal 0xE891000D, unpack(A.ldmia(1, 0, 2, 3))
+    refute A.may_write_register?(unpack(A.ldmia(1, 0, 2, 3)), 1)
+    assert A.may_write_register?(unpack(A.ldmia(1, 0, 2, 3)), 2)
+  end
+
+  # STMIA r1, {r0, r2, r3} is 0xE881000D, and writes no register.
+  def test_stmia_names_its_address_register_and_writes_no_register
+    assert_equal 0xE881000D, unpack(A.stmia(1, 0, 2, 3))
+    (0..12).each { |reg| refute A.may_write_register?(unpack(A.stmia(1, 0, 2, 3)), reg) }
+  end
+
   # ========================================================================
   # MOV register
   # ========================================================================

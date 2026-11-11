@@ -66,4 +66,18 @@ class TestPlaceGeometryCost < Minitest::Test
     assert_operator profile.fps, :>=, 8.0, "the floor drew #{profile.fps} times a second"
     assert_backends_agree(program, frames: 2, console_frames: 30, name: "FLOORCOST")
   end
+
+  # THE SAME FLOOR IN PERSPECTIVE, as a place is drawn unless a game asks otherwise. Its rows are
+  # short, two or three stretches of eight pixels and a few pixels over, so what a row costs to
+  # start and to end is most of what perspective adds. A row is drawn from its first stretch to its
+  # last pixel by one run that keeps its numbers in registers, the pixels left over included, and
+  # a pass takes eight frames. When every row went back to the general way for those, a stretch at
+  # a time, it took nine, which is under seven drawings a second.
+  def test_a_floor_of_a_thousand_faces_in_perspective_draws_at_least_seven_times_a_second
+    program = PlaceGames.big_floor(perspective: :every_8_pixels)
+    profile = VBlank::Diagnostics::Profiler.run(assemble_rom(program, name: "FLOORCOST"), frames: 120, picture: false)
+
+    assert_operator profile.fps, :>=, 7.0, "the floor drew #{profile.fps} times a second"
+    assert_backends_agree(program, frames: 2, console_frames: 30, name: "FLOORCOST")
+  end
 end

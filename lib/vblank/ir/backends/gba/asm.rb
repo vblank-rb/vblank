@@ -543,6 +543,21 @@ module VBlank
             [0xE8BD0000 | mask].pack("V")
           end
 
+          # LDMIA rn, {regs} — load a run of words side by side in memory into a set of registers,
+          # the lowest register from the lowest address, and leave rn as it was. Each word after
+          # the first costs one cycle, where a load of its own costs three.
+          def ldmia(rn, *regs)
+            mask = regs.flatten.sum { |r| 1 << r }
+            [0xE8900000 | (rn << 16) | mask].pack("V")
+          end
+
+          # STMIA rn, {regs} — store a set of registers to a run of words side by side in memory,
+          # the lowest register at the lowest address, and leave rn as it was.
+          def stmia(rn, *regs)
+            mask = regs.flatten.sum { |r| 1 << r }
+            [0xE8800000 | (rn << 16) | mask].pack("V")
+          end
+
           # --- MOV register to register ---
 
           # MOV rd, rm

@@ -15,8 +15,9 @@ module VBlank
         #
         #   - EDGES, once a face: for each edge, the first row whose middle it crosses and the
         #     row past its last, and where it crosses its first row and where on the picture that
-        #     is, with how far each moves a row. One division an edge, by the shared divide
-        #     routine; the rest are long multiplies kept to their middle bits.
+        #     is, with how far each moves a row. One division an edge, which for an edge of
+        #     ordinary height is a multiply by a reciprocal from a table
+        #     (#emit_divide_by_count_routine); the rest are long multiplies kept to their middle bits.
         #   - ROWS: each edge that crosses the row gives where it crosses, worked out from its
         #     first row by a multiply. The one furthest left starts the row and the one furthest
         #     right ends it.
@@ -78,7 +79,7 @@ module VBlank
 
           # What the routine keeps of each edge (see Reference::FaceEdge), and of the row it is on.
           EDGE_FIELDS = %w[first past x u v w step_x step_u step_v step_w shade step_shade].freeze
-          ROW_ENDS = %i[_face_left_x _face_left_u _face_left_v _face_right_x _face_right_u _face_right_v].freeze
+          ROW_ENDS = %i[_face_left_u _face_left_v _face_right_u _face_right_v].freeze
 
           # The routine's own working words: how far apart a row's picture is worked out in
           # perspective (nought for never), the two tables of reciprocals, and the row, the span and
@@ -89,10 +90,10 @@ module VBlank
                              _face_rows_end _face_start _face_span_count _face_step_u _face_step_v _face_step_w
                              _face_left_w _face_right_w _face_top_w _face_bottom_w _face_row_base _face_first
                              _face_past _face_along _face_far_along _face_near_u _face_near_v _face_far_u
-                             _face_far_v _face_du _face_dv _face_edge_at _face_edge_words _face_pending
-                             _face_shading _face_levels _face_top_shade _face_bottom_shade _face_left_shade
-                             _face_right_shade _face_step_shade _face_shade _face_run_end _face_moved_u
-                             _face_moved_v _face_over_u _face_over_v _face_over_w _face_stretch_u
+                             _face_far_v _face_du _face_dv _face_edge_corner _face_corners_end _face_edge_words
+                             _face_pending _face_shading _face_levels _face_top_shade _face_bottom_shade
+                             _face_left_shade _face_right_shade _face_step_shade _face_shade _face_run_end
+                             _face_moved_u _face_moved_v _face_moved_w _face_over_u _face_over_v _face_over_w _face_stretch_u
                              _face_stretch_v _face_stretch_w].freeze
 
           # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
@@ -414,7 +415,23 @@ module VBlank
                 emit(ASM.str_offset(6, 3, corner_offset(field)))
               end
             end
+            emit_whole_stretch_words
             place_label(straight)
+          end
+
+          # What the run of whole stretches reads that is the same for every row of a face
+          # (#emit_whole_stretches): how far u and v are moved up for the picture's repeat (see
+          # #emit_pixel_pairs), and a first guess at how far one over the distance is moved down
+          # (#emit_distance_near_last), which must be one the search could have left.
+          def emit_whole_stretch_words
+            load_var(1, :_face_shift)
+            emit(ASM.rsb_imm(1, 1, 16))
+            store_var(1, :_face_moved_u)
+            load_var(1, :_face_rows_shift)
+            emit(ASM.rsb_imm(1, 1, 16))
+            store_var(1, :_face_moved_v)
+            emit_number(1, LEAST_MOVED)
+            store_var(1, :_face_moved_w)
           end
 
           # A LIT FILL's corners, each light held to 0..LIGHTEST and made its shade, times the
@@ -469,23 +486,34 @@ module VBlank
           # words of an edge past them keep whatever an earlier face left, and nothing reads them, as
           # every loop over the edges stops at the corner count. The corners' words and the
           # edges' are side by side in memory (Faces.words is named first, in order), so each turn
-          # reaches its corner and edge by where the first ones are; that is checked here, since a
-          # different layout would read the wrong words.
+          # steps from one corner's words and one edge's to the next, the two places kept in words
+          # of their own with where the corners end; that is checked here, since a different
+          # layout would read the wrong words.
           def emit_edges
             refuse_scattered_words!
             top = gensym
             finished = gensym
-            emit_number(0, 0)
-            store_var(0, :_face_edge_at)
-            place_label(top)
-            load_var(0, :_face_edge_at)
+            emit_number(0, var_addr(edge_word(0, :first)))
+            store_var(0, :_face_edge_words)
+            emit_number(2, var_addr(corner_word(:x, 0)))
+            store_var(2, :_face_edge_corner)
             load_var(1, :_face_corners)
-            emit(ASM.cmp_reg(0, 1))
+            emit_number(0, CORNER_BYTES)
+            emit(ASM.mul(3, 1, 0))
+            emit(ASM.add_reg(3, 2, 3))
+            store_var(3, :_face_corners_end)
+            place_label(top)
+            load_var(2, :_face_edge_corner)
+            load_var(1, :_face_corners_end)
+            emit(ASM.cmp_reg(2, 1))
             emit_branch(:bcond, finished, cond: :ge)
             emit_edge_body
-            load_var(0, :_face_edge_at)
-            emit(ASM.add_imm(0, 0, 1))
-            store_var(0, :_face_edge_at)
+            load_var(2, :_face_edge_corner)
+            emit(ASM.add_imm(2, 2, CORNER_BYTES))
+            store_var(2, :_face_edge_corner)
+            load_var(3, :_face_edge_words)
+            emit(ASM.add_imm(3, 3, EDGE_BYTES))
+            store_var(3, :_face_edge_words)
             emit_branch(:b, top)
             place_label(finished)
           end
@@ -493,45 +521,36 @@ module VBlank
           def refuse_scattered_words!
             corners = MOST_CORNERS.times.flat_map { |k| LISTED_FIELDS.map { |field| var_addr(corner_word(field, k)) } }
             edges = MOST_CORNERS.times.flat_map { |k| EDGE_FIELDS.map { |field| var_addr(edge_word(k, field)) } }
-            return if [corners, edges].all? { |words| words.each_cons(2).all? { |one, other| other == one + 4 } }
+            stepped = STEPPED_WORDS.map { |word| var_addr(word) } # read together (#emit_far_end_of_whole_stretch)
+            return if [corners, edges, stepped].all? { |words| words.each_cons(2).all? { |one, other| other == one + 4 } }
 
             raise LoweringError, "The words of the routine that fills a face are not side by side. This is a fault " \
                                  "in VBlank, not in the game."
           end
 
-          # The edge whose number is in the edge-at word, from that corner to the next (the first,
-          # after the last), its numbers kept in its EDGE_FIELDS words. An edge past the face's
-          # corners crosses no row. r4-r7 hold one end's x, y, u and v, and r8-r11 the other's; the
-          # upper end comes first. r2 is the corner's words, r3 the next corner's, and r3 again
-          # the edge's words wherever one is written.
+          # The edge from the corner whose words r2 is at to the next (the first, after the last: r1
+          # is where the face's corners end), its numbers kept in its EDGE_FIELDS words, which the
+          # edge-words word is at. r4-r7 hold one end's x, y, u and v, and r8-r11 the other's; the
+          # upper end comes first, which is settled before either is read, by which corner r2 and
+          # r3 are at. r3 is then the edge's words wherever one is written.
           def emit_edge_body
             level = gensym
             done = gensym
-            ordered = gensym
             wrapped = gensym
-            load_var(0, :_face_edge_at)
-            emit_number(1, EDGE_BYTES)
-            emit(ASM.mul(2, 0, 1))
-            emit_number(3, var_addr(edge_word(0, :first)))
-            emit(ASM.add_reg(2, 2, 3))
-            store_var(2, :_face_edge_words)
-            load_var(1, :_face_corners)
-            emit(ASM.cmp_reg(0, 1))
-            emit_branch(:bcond, level, cond: :ge)
-            emit_number(3, CORNER_BYTES)
-            emit(ASM.mul(2, 0, 3))
-            emit_number(3, var_addr(corner_word(:x, 0)))
-            emit(ASM.add_reg(2, 2, 3))
             emit(ASM.add_imm(3, 2, CORNER_BYTES))
-            emit(ASM.add_imm(0, 0, 1))
-            emit(ASM.cmp_reg(0, 1))
+            emit(ASM.cmp_reg(3, 1))
             emit_branch(:bcond, wrapped, cond: :ne)
             emit_number(3, var_addr(corner_word(:x, 0))) # the last corner's edge ends at the first
             place_label(wrapped)
-            4.times do |i|
-              emit(ASM.ldr_offset(4 + i, 2, 4 * i))
-              emit(ASM.ldr_offset(8 + i, 3, 4 * i))
-            end
+            emit(ASM.ldr_offset(5, 2, corner_offset(:y)))
+            emit(ASM.ldr_offset(9, 3, corner_offset(:y)))
+            emit(ASM.cmp_reg(5, 9))
+            emit_branch(:bcond, level, cond: :eq)
+            emit(ASM.mov_reg_cond(:gt, 0, 2)) # the lower end came first: take the corners the other way
+            emit(ASM.mov_reg_cond(:gt, 2, 3))
+            emit(ASM.mov_reg_cond(:gt, 3, 0))
+            emit(ASM.ldmia(2, 4, 5, 6, 7)) # x, y, u and v are a corner's first four words
+            emit(ASM.ldmia(3, 8, 9, 10, 11))
             ends = [%i[w _face_top_w _face_bottom_w]]
             ends << %i[light _face_top_shade _face_bottom_shade] if @lit
             ends.each do |field, top, bottom|
@@ -540,21 +559,6 @@ module VBlank
               emit(ASM.ldr_offset(1, 3, corner_offset(field)))
               store_var(1, bottom)
             end
-            emit(ASM.cmp_reg(5, 9))
-            emit_branch(:bcond, level, cond: :eq)
-            emit_branch(:bcond, ordered, cond: :lt)
-            4.times do |i| # the lower end came first: swap the two ends
-              emit(ASM.mov_reg(0, 4 + i))
-              emit(ASM.mov_reg(4 + i, 8 + i))
-              emit(ASM.mov_reg(8 + i, 0))
-            end
-            ends.each do |_, top, bottom| # ...and the two ends' w and shade
-              load_var(0, top)
-              load_var(1, bottom)
-              store_var(1, top)
-              store_var(0, bottom)
-            end
-            place_label(ordered)
 
             emit_row_of(0, 5) # the first row whose middle it crosses...
             emit_row_of(1, 9) # ...and the row past its last
@@ -567,7 +571,7 @@ module VBlank
             # How far one row is along it: 2**28 over its height, held as 24 fraction bits.
             emit(ASM.sub_reg(0, 9, 5))
             emit_number(1, 1 << 28)
-            emit_call_divide_routine
+            emit_branch(:bl, DIVIDE_ROUTINE)
             emit(ASM.mov_reg(9, 0))
 
             # How far its first row's middle is along it.
@@ -762,8 +766,9 @@ module VBlank
           end
 
           # Where the row in r4 starts and ends: of the edges crossing it, the one furthest left
-          # (the first such) and the one furthest right (the last such), each its x, u and v,
-          # kept in ROW_ENDS, and its w and shade in the left and right words. Fewer than two edges
+          # (the first such) and the one furthest right (the last such), each its x, u and v: u
+          # and v kept in ROW_ENDS, x left in r7 and r10 for the span, which is all that reads it
+          # (#emit_span), and its w and shade in the left and right words. Fewer than two edges
           # crossing it, and it is skipped.
           #
           #   r6 how many cross; r7-r9 the leftmost's x, u, v; r10, r11, lr the rightmost's;
@@ -819,7 +824,7 @@ module VBlank
             place_label(counted)
             emit(ASM.cmp_imm(6, 2))
             emit_branch(:bcond, next_row, cond: :lt)
-            [7, 8, 9, 10, 11, 14].zip(ROW_ENDS).each { |reg, word| store_var(reg, word) }
+            [8, 9, 11, 14].zip(ROW_ENDS).each { |reg, word| store_var(reg, word) }
           end
 
           # +into+ = edge +k+'s +at+ moved +step+ for each row in r0. r5 is spare.
@@ -835,11 +840,9 @@ module VBlank
           def emit_span(next_row)
             half = (1 << 15) - 1
             emit_number(2, half)
-            load_var(0, :_face_left_x)
-            emit(ASM.add_reg(0, 0, 2))
+            emit(ASM.add_reg(0, 7, 2)) # the row's two ends are still in r7 and r10 (#emit_row_ends)
             emit(ASM.asr_imm(0, 0, 16)) # the first pixel
-            load_var(1, :_face_right_x)
-            emit(ASM.add_reg(1, 1, 2))
+            emit(ASM.add_reg(1, 10, 2))
             emit(ASM.asr_imm(1, 1, 16)) # the pixel past the last
             emit(ASM.sub_reg(3, 1, 0))
             emit(ASM.cmp_imm(3, 0))
@@ -972,30 +975,34 @@ module VBlank
           #
           # The along words count pixels from the row's start: first and past are the drawn part's,
           # along and far-along the stretch's two ends, near and far the place at each.
+          #
+          # A row of a picture with no see-through pixel, on the tear-free screen, whose first
+          # drawn pixel starts a stretch, is not drawn here at all: the fast run takes it from its
+          # first stretch to its last pixel (#emit_whole_stretches), and comes back only for a row
+          # held in at its right end. So the place at the row's first stretch is worked out here
+          # only for a row the fast run did not take.
           def emit_span_in_perspective(next_row)
             stretch = gensym
+            slow = gensym
             nothing = gensym
+            load_var(1, :_face_start) # r6 and r7 are still the drawn part's ends, across the screen
+            emit(ASM.sub_reg(6, 6, 1))
+            store_var(6, :_face_first)
+            emit(ASM.sub_reg(7, 7, 1))
+            store_var(7, :_face_past)
+            load_var(3, :_face_perspective)
+            emit(ASM.rsb_imm(3, 3, 0))
+            emit(ASM.and_reg(0, 6, 3)) # the stretch the first drawn pixel is in starts here
+            store_var(0, :_face_along)
             emit_span_step(:_face_right_u, :_face_left_u, :_face_step_u)
             emit_span_step(:_face_right_v, :_face_left_v, :_face_step_v)
             emit_span_step(:_face_right_w, :_face_left_w, :_face_step_w)
-            load_var(1, :_face_start)
-            %i[_face_first _face_past].each do |word|
-              load_var(0, word)
-              emit(ASM.sub_reg(0, 0, 1))
-              store_var(0, word)
-            end
-            load_var(0, :_face_first)
-            load_var(3, :_face_perspective)
-            emit(ASM.rsb_imm(3, 3, 0))
-            emit(ASM.and_reg(0, 0, 3)) # the stretch the first drawn pixel is in starts here
-            store_var(0, :_face_along)
-            emit_branch(:bl, SAMPLE_ROUTINE)
-            store_var(0, :_face_near_u)
-            store_var(1, :_face_near_v)
 
             place_label(stretch)
             fast = gensym
             emit_branch_to_whole_stretches(fast)
+            emit_near_place_of_first_stretch
+            place_label(slow)
             load_var(0, :_face_along)
             load_var(3, :_face_perspective)
             emit(ASM.add_reg(0, 0, 3))
@@ -1057,12 +1064,28 @@ module VBlank
             emit(ASM.cmp_reg(0, 1))
             emit_branch(:bcond, stretch, cond: :lt)
             emit_branch(:b, next_row)
-            emit_whole_stretches(fast, stretch, lit: false)
+            emit_whole_stretches(fast, slow, next_row, lit: false)
             emit_every_pixel_run(every_pixel_label(fast), next_row, lit: false)
             return unless @lit
 
-            emit_whole_stretches(lit_label(fast), stretch, lit: true)
+            emit_whole_stretches(lit_label(fast), slow, next_row, lit: true)
             emit_every_pixel_run(every_pixel_label(lit_label(fast)), next_row, lit: true)
+          end
+
+          # The place at the near end of a row's first stretch, worked out for a stretch drawn
+          # here. Only the first stretch needs it: each one after takes the far end of the one
+          # before. The first is the one that starts at or before the first drawn pixel, since
+          # every later stretch starts past it.
+          def emit_near_place_of_first_stretch
+            known = gensym
+            load_var(0, :_face_along)
+            load_var(1, :_face_first)
+            emit(ASM.cmp_reg(0, 1))
+            emit_branch(:bcond, known, cond: :gt)
+            emit_branch(:bl, SAMPLE_ROUTINE)
+            store_var(0, :_face_near_u)
+            store_var(1, :_face_near_v)
+            place_label(known)
           end
 
           # THE FAST RUNS ARE NAMED FROM +fast+, the label of the unlit run of whole stretches: its
@@ -1072,19 +1095,22 @@ module VBlank
           def every_pixel_label(run) = DerivedNames.sub_label(run, :every_pixel)
 
           # The words the run of whole stretches keeps: u, v and w over the distance at the
-          # stretch's start, each one's step over a whole stretch, how far the run goes, and how far
-          # u and v are moved up for the picture's repeat (see #emit_pixel_pairs).
+          # stretch's start and each one's step over a whole stretch, which the run reads and
+          # writes together and so must be side by side in this order (#refuse_scattered_words!);
+          # where its whole stretches end, along; and how far u and v are moved up for the
+          # picture's repeat (see #emit_pixel_pairs).
           WHOLE_STRETCH_WORDS = %i[_face_over_u _face_over_v _face_over_w _face_stretch_u _face_stretch_v
                                    _face_stretch_w _face_run_end _face_moved_u _face_moved_v].freeze
+          STEPPED_WORDS = WHOLE_STRETCH_WORDS.first(6).freeze
 
           # The pixels a whole stretch covers, worked out exactly at its ends: eight.
           STRETCH = 8
 
-          # On to +fast+ when the stretch about to be drawn starts a run of WHOLE STRETCHES: eight
-          # pixels in perspective, all of them drawn, of a picture with no see-through pixel, on the
-          # tear-free screen. Those take a loop of their own (#emit_whole_stretches), lit or not.
+          # On to +fast+ when the stretch about to be drawn starts at a drawn pixel, of a picture
+          # with no see-through pixel, on the tear-free screen. Those rows take a loop of their own
+          # from there on (#emit_whole_stretches, or #emit_every_pixel_run), lit or not.
           #
-          #   r0 where the stretch starts, along; r2 where the run must end
+          #   r0 where the stretch starts, along; r2 where the drawn part of the row ends
           def emit_branch_to_whole_stretches(fast)
             not_whole = gensym
             load_var(0, :_face_along)
@@ -1095,9 +1121,6 @@ module VBlank
             load_var(3, :_face_span_count)
             emit(ASM.cmp_reg(2, 3))
             emit(ASM.mov_reg_cond(:gt, 2, 3))
-            emit(ASM.add_imm(1, 0, STRETCH))
-            emit(ASM.cmp_reg(1, 2))
-            emit_branch(:bcond, not_whole, cond: :gt)
             load_var(3, :_face_direct)
             emit(ASM.cmp_imm(3, 0))
             emit_branch(:bcond, not_whole, cond: :ne)
@@ -1241,27 +1264,46 @@ module VBlank
             emit(ASM.bx(14))
           end
 
-          # A RUN OF WHOLE STRETCHES, from the stretch whose start is in the along word for as long
-          # as each is eight pixels all drawn, then back to +general+ for whatever is left of the
-          # row. Each stretch's far end is worked out exactly and the eight pixels stepped evenly
+          # A ROW FROM A STRETCH'S START TO ITS END, in registers: the run of whole stretches, each
+          # eight pixels all drawn, and then the row's last stretch, the pixels left over. Entered
+          # with the stretch's start, along, in r0 and where the drawn part of the row ends in r2.
+          #
+          # Each whole stretch's far end is worked out exactly and its eight pixels stepped evenly
           # from the near end, two at a time, as #emit_pixel_pairs does, the pairs written whole.
+          # The far end is then the next stretch's near end. The first near end is found by the
+          # same instructions: the run starts a stretch before the row's, with a mark that the near
+          # end is not known yet, and its first turn works out a far end and draws nothing.
           #
           # A stretch need not start on a pair: one that starts on the right half of a pair keeps
           # its last pixel back, and the next stretch's first pixel makes up a pair with it. The
           # first such pixel's other half, before the run, and the last kept back, after it, are
           # read and written back with the half beside them.
           #
+          # THE ROW'S LAST STRETCH is under eight pixels, to the row's end
+          # (#emit_last_stretch). A row held in at its right end has pixels past the drawn part
+          # that set its last stretch's length, so that one goes back to +slow+, a stretch at a
+          # time, with the near end in its words.
+          #
           #   r8, r9 u and v at the stretch's start; r4 where it is in the screen's memory; r6 the
-          #   picture; r7 the pixel kept back; r0-r3, r5, r10-r12 and lr the sums
+          #   picture; r7 the pixel kept back, with the two marks above its byte; r5 the whole
+          #   stretches left; r0-r3, r10-r12 and lr the sums
           #
           # +lit+, the shade starts at the run's first pixel and is kept in its word between
-          # stretches (see #emit_whole_stretch).
-          def emit_whole_stretches(fast, general, lit:)
+          # stretches, and r8-r10 hold the shade, its step and the table while a stretch's pixels
+          # are drawn, so u and v at the far end wait in their words.
+          def emit_whole_stretches(fast, slow, next_row, lit:)
             even = gensym
+            top = gensym
             odd = gensym
-            done = gensym
+            drawn = gensym
+            near_end = gensym
+            last = gensym
             place_label(fast)
-            store_var(2, :_face_run_end)
+            emit(ASM.sub_reg(5, 2, 0))
+            emit(ASM.lsr_imm(5, 5, 3)) # how many whole stretches
+            emit(ASM.lsl_imm(1, 5, 3))
+            emit(ASM.add_reg(1, 0, 1))
+            store_var(1, :_face_run_end)
             emit_shade_along(0, 3, 1) if lit
             [%i[_face_over_u _face_left_u _face_step_u _face_stretch_u],
              %i[_face_over_v _face_left_v _face_step_v _face_stretch_v],
@@ -1270,107 +1312,210 @@ module VBlank
               emit(ASM.mul(3, 1, 0))
               load_var(2, left)
               emit(ASM.add_reg(3, 2, 3))
-              store_var(3, over)
               emit(ASM.lsl_imm(1, 1, 3)) # eight steps
+              emit(ASM.sub_reg(3, 3, 1)) # a stretch back: the first turn steps onto the run's start
+              store_var(3, over)
               store_var(1, stretch)
             end
-            load_var(1, :_face_shift)
-            emit(ASM.rsb_imm(1, 1, 16))
-            store_var(1, :_face_moved_u)
-            load_var(1, :_face_rows_shift)
-            emit(ASM.rsb_imm(1, 1, 16))
-            store_var(1, :_face_moved_v)
             load_var(6, :_face_picture)
             load_var(1, :_face_start)
-            emit(ASM.add_reg(5, 0, 1))
-            emit_pixel_address(4, 5)
-            load_var(8, :_face_near_u)
-            load_var(9, :_face_near_v)
+            emit(ASM.add_reg(1, 0, 1))
+            emit_pixel_address(4, 1)
+            emit_number(7, 0)
             emit(ASM.tst_imm(4, 1))
             emit_branch(:bcond, even, cond: :eq)
             emit(ASM.sub_imm(4, 4, 1)) # the pair it starts the right half of
             emit(ASM.load_halfword(7, 4))
             emit(ASM.and_imm(7, 7, 0xFF))
-            emit_branch(:b, odd)
-
+            emit(ASM.orr_imm(7, 7, KEPT_BACK))
             place_label(even)
-            emit_whole_stretch(:even, lit: lit)
-            emit_branch_to_next_stretch(even)
-            emit_branch(:b, done)
+            emit(ASM.orr_imm(7, 7, NEAR_END_UNKNOWN))
 
+            place_label(top)
+            emit_far_end_of_whole_stretch
+            emit(ASM.tst_imm(7, NEAR_END_UNKNOWN))
+            emit_branch(:bcond, near_end, cond: :ne)
+            emit_whole_stretch_steps(lit: lit)
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_branch(:bcond, odd, cond: :ne)
+            4.times { emit_pair(lit: lit) }
+            emit_branch(:b, drawn)
             place_label(odd)
-            emit_whole_stretch(:odd, lit: lit)
-            emit_branch_to_next_stretch(odd)
-            emit(ASM.load_halfword(14, 4)) # the kept-back pixel, with the half beside it
-            emit(ASM.and_imm(14, 14, 0xFF00))
-            emit(ASM.orr_reg(14, 14, 7))
-            emit(ASM.store_halfword(14, 4))
+            emit_pair_pixel(14, lit: lit)
+            emit(ASM.orr_reg_lsl(11, 7, 14, 8))
+            emit(ASM.store_halfword_post(11, 4, 2))
+            3.times { emit_pair(lit: lit) }
+            emit_pair_pixel(7, lit: lit)
+            emit(ASM.orr_imm(7, 7, KEPT_BACK))
+            place_label(drawn)
+            if lit
+              store_var(8, :_face_shade)
+              load_var(8, :_face_far_u)
+              load_var(9, :_face_far_v)
+            end
+            emit(ASM.subs_imm(5, 5, 1))
+            emit_branch(:bcond, top, cond: :gt)
+            emit_branch(:b, last)
 
-            place_label(done)
-            store_var(8, :_face_near_u)
-            store_var(9, :_face_near_v)
-            emit_branch(:b, general)
+            place_label(near_end)
+            emit(ASM.mov_reg(8, 0))
+            emit(ASM.mov_reg(9, 2))
+            emit(ASM.bic_imm(7, 7, NEAR_END_UNKNOWN))
+            emit(ASM.cmp_imm(5, 0))
+            emit_branch(:bcond, top, cond: :gt)
+
+            place_label(last)
+            emit_last_stretch(slow, next_row, lit: lit)
           end
 
-          # One whole stretch: its far end's u and v exactly, the steps between, and its eight
-          # pixels, starting on a pair (+parity+ :even) or on a pair's right half (:odd).
+          # The two marks the run keeps above the kept-back pixel's byte in r7: that a pixel is kept
+          # back, the left half of a pair waiting for its right half, and that the place at the
+          # stretch's near end is not worked out yet. A pair is written from its low sixteen bits,
+          # so a mark never reaches the screen.
+          KEPT_BACK = 0x10000
+          NEAR_END_UNKNOWN = 0x20000
+
+          # The far end of the stretch: u, v and w over the distance each a stretch on, read and
+          # written back together, and from them u in r0 and v in r2, exactly.
           #
-          # +lit+, the pixels are shaded as #emit_shaded_number does: r8-r10 are free once u and v
-          # are moved into r0-r3, so they take the shade, its step and the table for the eight
-          # pixels, and the shade goes back to its word after.
-          def emit_whole_stretch(parity, lit:)
-            [[0, :_face_over_u, :_face_stretch_u], [2, :_face_over_v, :_face_stretch_v],
-             [3, :_face_over_w, :_face_stretch_w]].each do |into, over, stretch|
-              load_var(into, over)
-              load_var(1, stretch)
-              emit(ASM.add_reg(into, into, 1))
-              store_var(into, over)
-            end
-            emit_distance(3, 5, 1) # r3 the far end's distance
+          #   r1 where the words are, r3 the distance, r10-r12 the steps and then the sums
+          def emit_far_end_of_whole_stretch
+            emit_number(1, var_addr(STEPPED_WORDS.first))
+            emit(ASM.ldmia(1, 0, 2, 3, 10, 11, 12))
+            emit(ASM.add_reg(0, 0, 10))
+            emit(ASM.add_reg(2, 2, 11))
+            emit(ASM.add_reg(3, 3, 12))
+            emit(ASM.stmia(1, 0, 2, 3))
+            emit_distance_near_last(3, 10, 11)
             emit(ASM.smull(10, 11, 0, 3))
             emit(ASM.lsr_imm(10, 10, 14))
             emit(ASM.orr_reg_lsl(0, 10, 11, 18)) # u at the far end
             emit(ASM.smull(10, 11, 2, 3))
             emit(ASM.lsr_imm(10, 10, 14))
             emit(ASM.orr_reg_lsl(2, 10, 11, 18)) # v at the far end
-            store_var(0, :_face_far_u)
-            store_var(2, :_face_far_v)
-            emit_eighth(10, 0, 8) # the step across
-            emit_eighth(11, 2, 9) # the step down
-            load_var(5, :_face_moved_u)
-            emit(ASM.mov_reg_lsl_reg(0, 8, 5))
-            emit(ASM.mov_reg_lsl_reg(2, 10, 5))
-            load_var(5, :_face_moved_v)
-            emit(ASM.mov_reg_lsl_reg(1, 9, 5))
-            emit(ASM.mov_reg_lsl_reg(3, 11, 5))
-            if lit
-              load_var(8, :_face_shade)
-              load_var(9, :_face_step_shade)
-              load_var(10, :_face_shading)
-            end
-            if parity == :even
-              4.times { emit_pair(lit: lit) }
-            else
-              emit_pair_pixel(14, lit: lit)
-              emit(ASM.orr_reg_lsl(11, 7, 14, 8))
-              emit(ASM.store_halfword_post(11, 4, 2))
-              3.times { emit_pair(lit: lit) }
-              emit_pair_pixel(7, lit: lit)
-            end
-            store_var(8, :_face_shade) if lit
-            load_var(8, :_face_far_u)
-            load_var(9, :_face_far_v)
           end
 
-          # On to +top+ for the next whole stretch while one is left in the run.
-          def emit_branch_to_next_stretch(top)
-            load_var(0, :_face_along)
-            emit(ASM.add_imm(0, 0, STRETCH))
-            store_var(0, :_face_along)
-            load_var(2, :_face_run_end)
-            emit(ASM.add_imm(1, 0, STRETCH))
+          # What a whole stretch's eight pixels step from: u and v at its near end and an eighth of
+          # the way to its far end (r0 and r2), each moved up for the picture's repeat, in r0-r3 as
+          # #emit_pair_pixel reads them. The far end is left as the next stretch's near end, in
+          # r8 and r9.
+          #
+          # +lit+, the pixels are shaded as #emit_shaded_number does, so r8-r10 take the shade, its
+          # step and the table, and the far end waits in its words.
+          def emit_whole_stretch_steps(lit:)
+            if lit
+              store_var(0, :_face_far_u)
+              store_var(2, :_face_far_v)
+            end
+            emit_eighth(10, 0, 8) # the step across
+            emit_eighth(11, 2, 9) # the step down
+            load_var(1, :_face_moved_u)
+            emit(ASM.mov_reg(3, 0))
+            emit(ASM.mov_reg_lsl_reg(0, 8, 1))
+            emit(ASM.mov_reg(8, 3))
+            emit(ASM.mov_reg(14, 2))
+            emit(ASM.mov_reg_lsl_reg(2, 10, 1))
+            load_var(1, :_face_moved_v)
+            emit(ASM.mov_reg_lsl_reg(3, 11, 1))
+            emit(ASM.mov_reg_lsl_reg(1, 9, 1))
+            emit(ASM.mov_reg(9, 14))
+            emit_load_shade if lit
+          end
+
+          # A lit pair loop's shade in r8, its step a pixel in r9 and the shading's table in r10.
+          def emit_load_shade
+            load_var(8, :_face_shade)
+            load_var(9, :_face_step_shade)
+            load_var(10, :_face_shading)
+          end
+
+          # THE ROW'S LAST STRETCH, after its whole ones: the pixels from where those ended to the
+          # row's end, under eight. Its far end is the row's end, worked out exactly
+          # (SAMPLE_ROUTINE), and its step the way there divided by its length, so one pixel alone
+          # needs neither: it is the near end's. Then on to +next_row+.
+          #
+          # A pixel at a time, each making up a pair with the one kept back or kept back itself,
+          # and the last one kept back written with the half beside it.
+          #
+          # A ROW HELD IN AT ITS RIGHT END has a last stretch longer than its drawn part, so its
+          # step is not found from the pixels left. With drawn pixels left it goes to +slow+, the
+          # kept-back pixel written first and the near end in its words.
+          #
+          #   r0 where the whole stretches ended, along; r1 where the drawn part ends; r2 the
+          #   row's length; r5 the pixels left; r10 and r11 what the far end's routine would lose
+          def emit_last_stretch(slow, next_row, lit:)
+            held_in = gensym
+            steps_known = gensym
+            pixel = gensym
+            finished = gensym
+            load_var(0, :_face_run_end)
+            load_var(1, :_face_past)
+            load_var(2, :_face_span_count)
             emit(ASM.cmp_reg(1, 2))
-            emit_branch(:bcond, top, cond: :le)
+            emit_branch(:bcond, held_in, cond: :lt)
+            emit(ASM.sub_reg(5, 2, 0))
+            emit(ASM.cmp_imm(5, 1))
+            emit_branch(:bcond, finished, cond: :lt)
+            emit_branch(:bcond, steps_known, cond: :eq)
+            emit(ASM.mov_reg(10, 4))
+            emit(ASM.mov_reg(11, 7))
+            emit(ASM.mov_reg(0, 2))
+            emit_branch(:bl, SAMPLE_ROUTINE)
+            emit(ASM.mov_reg(4, 10))
+            emit(ASM.mov_reg(7, 11))
+            emit(ASM.mov_reg(11, 1)) # v at the far end
+            load_var(6, :_face_picture)
+            load_var(5, :_face_span_count)
+            load_var(2, :_face_run_end)
+            emit(ASM.sub_reg(5, 5, 2))
+            emit(ASM.sub_reg(1, 0, 8))
+            emit(ASM.mov_reg(0, 5))
+            emit_branch(:bl, DIVIDE_ROUTINE)
+            emit(ASM.mov_reg(10, 0)) # the step across
+            emit(ASM.sub_reg(1, 11, 9))
+            emit(ASM.mov_reg(0, 5))
+            emit_branch(:bl, DIVIDE_ROUTINE)
+            emit(ASM.mov_reg(3, 0)) # the step down
+            emit(ASM.mov_reg(2, 10))
+            place_label(steps_known)
+            load_var(1, :_face_moved_u)
+            emit(ASM.mov_reg_lsl_reg(0, 8, 1))
+            emit(ASM.mov_reg_lsl_reg(2, 2, 1))
+            load_var(14, :_face_moved_v)
+            emit(ASM.mov_reg_lsl_reg(1, 9, 14))
+            emit(ASM.mov_reg_lsl_reg(3, 3, 14))
+            emit_load_shade if lit
+            place_label(pixel)
+            emit_pair_pixel(14, lit: lit)
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_if(:ne, ASM.orr_reg_lsl(11, 7, 14, 8))
+            emit_if(:ne, ASM.store_halfword_post(11, 4, 2))
+            emit(ASM.mov_imm_cond(:ne, 7, 0))
+            emit_if(:eq, ASM.orr_imm(7, 14, KEPT_BACK))
+            emit(ASM.subs_imm(5, 5, 1))
+            emit_branch(:bcond, pixel, cond: :ne)
+            place_label(finished)
+            emit_kept_back_pixel
+            emit_branch(:b, next_row)
+
+            place_label(held_in)
+            emit_kept_back_pixel
+            emit(ASM.cmp_reg(0, 1))
+            emit_branch(:bcond, next_row, cond: :ge)
+            store_var(0, :_face_along)
+            store_var(8, :_face_near_u)
+            store_var(9, :_face_near_v)
+            emit_branch(:b, slow)
+          end
+
+          # The pixel kept back, if one is, written with the half of its pair beside it. lr is
+          # spare.
+          def emit_kept_back_pixel
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_if(:ne, ASM.load_halfword(14, 4))
+            emit_if(:ne, ASM.and_imm(14, 14, 0xFF00))
+            emit_if(:ne, ASM.orr_reg(14, 14, 7))
+            emit_if(:ne, ASM.store_halfword(14, 4))
           end
 
           # +into+ = (+far+ - +near+) / 8, truncated toward nought as Int32.div does: a shift down,
@@ -1386,21 +1531,60 @@ module VBlank
           # least, its leading eleven bits found by halving the shift five times (+moved+ counts it),
           # and the table's entry for them moved back down. +spare+ is a spare register.
           def emit_distance(reg, moved, spare)
+            emit_leading_bits(reg, moved, spare)
+            emit(ASM.sub_imm(spare, reg, IR::Reciprocals::LEADING))
+            emit_distance_from_table(reg, moved, spare)
+          end
+
+          # +reg+ held to the least one over a distance there is, and moved down to its leading
+          # eleven bits, +moved+ counting how far.
+          def emit_leading_bits(reg, moved, spare)
             emit_number(spare, IR::Reciprocals::LEAST)
             emit(ASM.cmp_reg(reg, spare))
             emit(ASM.mov_reg_cond(:lt, reg, spare))
             emit_number(moved, 0)
+            # It has more than eleven bits left when moving it down past them leaves something,
+            # which the move itself tells (it is above nought here, so no sign comes into it).
             [16, 8, 4, 2, 1].each do |shift|
-              emit_number(spare, 1 << (10 + shift))
-              emit(ASM.cmp_reg(reg, spare))
-              emit_if(:ge, ASM.lsr_imm(reg, reg, shift))
-              emit(ASM.add_imm_cond(:ge, moved, moved, shift))
+              emit_setting_flags(ASM.lsr_imm(spare, reg, 10 + shift))
+              emit_if(:ne, ASM.lsr_imm(reg, reg, shift))
+              emit(ASM.add_imm_cond(:ne, moved, moved, shift))
             end
-            load_var(spare, :_face_distances)
-            emit(ASM.sub_imm(reg, reg, IR::Reciprocals::LEADING))
-            emit(ASM.ldr_reg_lsl(reg, spare, reg, 2))
+          end
+
+          # +reg+ = the table's entry numbered in +spare+ (the leading bits, less the first entry's),
+          # moved back down by +moved+ less the two places the table is short by.
+          def emit_distance_from_table(reg, moved, spare)
+            load_var(reg, :_face_distances)
+            emit(ASM.ldr_reg_lsl(reg, reg, spare, 2))
             emit(ASM.sub_imm(moved, moved, 2))
             emit(ASM.mov_reg_lsr_reg(reg, reg, moved))
+          end
+
+          # The least a one over a distance is moved down to its leading eleven bits: what the
+          # least one there is, is moved.
+          LEAST_MOVED = IR::Reciprocals::LEAST.bit_length - 11
+
+          # #emit_distance for a run of numbers close to one another, as one over the distance is
+          # from one stretch of a row to the next: tried first with how far the last one was moved
+          # down, which is kept in a word. That is right when it leaves eleven bits with the top
+          # one set, and nearly always does; only otherwise is it searched for and kept.
+          #
+          # The word never holds less than LEAST_MOVED (a face in perspective starts it there, and
+          # a search leaves no less), so a number under the least there is never passes the try,
+          # and is held to the least by the search as it must be.
+          def emit_distance_near_last(reg, moved, spare)
+            found = gensym
+            load_var(moved, :_face_moved_w)
+            emit(ASM.mov_reg_lsr_reg(spare, reg, moved))
+            emit(ASM.sub_imm(spare, spare, IR::Reciprocals::LEADING))
+            emit(ASM.cmp_imm(spare, IR::Reciprocals::LEADING))
+            emit_branch(:bcond, found, cond: :lo)
+            emit_leading_bits(reg, moved, spare)
+            store_var(moved, :_face_moved_w)
+            emit(ASM.sub_imm(spare, reg, IR::Reciprocals::LEADING))
+            place_label(found)
+            emit_distance_from_table(reg, moved, spare)
           end
 
           SPAN_PIXELS_ROUTINE = DerivedNames.sub_label(ROUTINE, :span_pixels)
@@ -1443,21 +1627,7 @@ module VBlank
               load_var(1, left)
               emit(ASM.add_reg(into, 1, into))
             end
-            emit_number(1, IR::Reciprocals::LEAST)
-            emit(ASM.cmp_reg(4, 1))
-            emit(ASM.mov_reg_cond(:lt, 4, 1))
-            emit_number(5, 0)
-            [16, 8, 4, 2, 1].each do |shift|
-              emit_number(1, 1 << (10 + shift))
-              emit(ASM.cmp_reg(4, 1))
-              emit_if(:ge, ASM.lsr_imm(4, 4, shift))
-              emit(ASM.add_imm_cond(:ge, 5, 5, shift))
-            end
-            load_var(1, :_face_distances)
-            emit(ASM.sub_imm(4, 4, IR::Reciprocals::LEADING))
-            emit(ASM.ldr_reg_lsl(4, 1, 4, 2))
-            emit(ASM.sub_imm(5, 5, 2))
-            emit(ASM.mov_reg_lsr_reg(4, 4, 5))
+            emit_distance(4, 5, 1)
             emit_mul_fix(0, 6, 4, 14)
             emit_mul_fix(1, 7, 4, 14)
             emit(ASM.bx(14))
@@ -1467,6 +1637,11 @@ module VBlank
           def emit_if(cond, instruction)
             word = instruction.unpack1("V")
             emit([(word & 0x0FFFFFFF) | (ASM.resolve_cond(cond) << 28)].pack("V"))
+          end
+
+          # +instruction+ made to set the flags from its answer as well.
+          def emit_setting_flags(instruction)
+            emit([instruction.unpack1("V") | 0x00100000].pack("V"))
           end
 
           # +step+ = (+right+ - +left+) divided by the row's count, truncated toward nought as
@@ -1497,15 +1672,20 @@ module VBlank
           # 2**32th of the count, so under one), and one more is seen by multiplying back. A count
           # of one is the number itself; a wider row takes the shared divide routine.
           #
-          #   r0 the count, r1 the number, r2 its size, r3 the reciprocal, r4 and r5 the product
+          # An edge's height takes it too (#emit_edge_body): in sixteenths of a pixel, so an edge
+          # under 32 rows high is in the table.
+          #
+          # The table's way calls nothing, so it goes back by the link register as it is and keeps
+          # no return on the stack; only the wide count's call of the shared routine saves it.
+          #
+          #   r0 the count, r1 the number, r2 its size, r3 the reciprocal and then the product's
+          #   top half, r12 its bottom half; r4-r11 are kept
           def emit_divide_by_count_routine
             routine = gensym
-            done = gensym
             place_label(DIVIDE_ROUTINE)
-            emit(ASM.push(14))
             emit(ASM.cmp_imm(0, 1))
             emit(ASM.mov_reg_cond(:eq, 0, 1))
-            emit_branch(:bcond, done, cond: :eq)
+            emit_if(:eq, ASM.bx(14))
             emit(ASM.cmp_imm(0, RECIPROCALS))
             emit_branch(:bcond, routine, cond: :ge)
             load_var(3, :_face_reciprocals)
@@ -1513,17 +1693,17 @@ module VBlank
             emit(ASM.mov_reg(2, 1))
             emit(ASM.cmp_imm(1, 0))
             emit(ASM.rsb_imm_cond(:lt, 2, 1, 0))
-            emit(ASM.umull(4, 5, 2, 3))
-            emit(ASM.mul(4, 5, 0))
-            emit(ASM.cmp_reg(4, 2))
-            emit(ASM.sub_imm_cond(:hi, 5, 5, 1))
+            emit(ASM.umull(12, 3, 2, 3))
+            emit(ASM.mul(12, 3, 0))
+            emit(ASM.cmp_reg(12, 2))
+            emit(ASM.sub_imm_cond(:hi, 3, 3, 1))
             emit(ASM.cmp_imm(1, 0))
-            emit(ASM.rsb_imm_cond(:lt, 5, 5, 0))
-            emit(ASM.mov_reg(0, 5))
-            emit_branch(:b, done)
+            emit(ASM.rsb_imm_cond(:lt, 3, 3, 0))
+            emit(ASM.mov_reg(0, 3))
+            emit(ASM.bx(14))
             place_label(routine)
+            emit(ASM.push(14))
             emit_call_divide_routine
-            place_label(done)
             emit(ASM.pop(15))
           end
 
