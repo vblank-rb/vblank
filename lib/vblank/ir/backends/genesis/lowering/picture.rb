@@ -556,10 +556,10 @@ module VBlank
                 data.label(grid_label(grid.number))
                 data.data_words(grid.words)
               end
-              @pose_tables.each do |obj, label|
+              @pose_tables.each do |poses, label|
                 data.label(label)
-                data.data_longs(obj.poses.length)
-                data.data_longs(obj.poses.map { |pose| pieces_label(@art.sprite_pictures.fetch(pose).number) })
+                data.data_longs(poses.length)
+                data.data_longs(poses.map { |pose| pieces_label(@art.sprite_pictures.fetch(pose).number) })
               end
               (@recolor_tables || []).each do |lines|
                 data.label(recolor_table_label(lines))
@@ -1187,8 +1187,10 @@ module VBlank
               @asm.label(past)
             end
 
-            # The table of a sprite's pictures: how many, then each one's number.
-            def pose_table(obj) = @pose_tables[obj] ||= "poses #{@pose_tables.length}"
+            # The table of a sprite's pictures: how many, then where each one's pieces are. It is kept by
+            # the pictures it lists, so sprites that face the same poses, in the same order, read one
+            # table: a pool's things, or thirty actors that can each show any frame of one sheet.
+            def pose_table(obj) = @pose_tables[obj.poses] ||= "poses #{@pose_tables.length}"
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.
             def emit_hide_sprites(_node) = store_number(sprites_hidden_flag, 1)

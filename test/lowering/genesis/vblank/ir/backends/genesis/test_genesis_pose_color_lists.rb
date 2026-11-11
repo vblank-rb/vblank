@@ -15,6 +15,11 @@ class TestGenesisPoseColorLists < Minitest::Test
   Genesis = VBlank::IR::Backends::Genesis
   Tiles = Genesis::Runtime::Tiles
 
+  # The poses and the sprites of the cost tests: enough poses that a table of them is bigger than
+  # what placing one sprite takes.
+  POSES = 40
+  MANY_SPRITES = 12
+
   # Two lists the game changes keep a palette each, so the two poses name different palettes. (Two
   # short lists nothing changes can share one palette, each in places of its own.)
   def test_the_entry_of_the_pose_showing_names_the_palette_of_that_poses_list
@@ -71,6 +76,18 @@ class TestGenesisPoseColorLists < Minitest::Test
 
     assert_includes error.message, "picture :left"
     assert_includes error.message, "draw_with({ warm: :warm })"
+  end
+
+  # MANY SPRITES FACING THE SAME POSES COST WHAT ONE DOES, but for the few instructions that place
+  # each: the poses' tiles are in video memory once, and the table of the poses is in the cartridge
+  # once, whoever reads it.
+  def test_many_sprites_facing_the_same_poses_share_their_tiles_and_their_table
+    one = built(shared_poses_game(1))
+    many = built(shared_poses_game(MANY_SPRITES))
+    each_further = (cartridge_bytes(many) - cartridge_bytes(one)) / (MANY_SPRITES - 1)
+
+    assert_equal tiles_held(played(one, frames: 20).video), tiles_held(played(many, frames: 20).video), "tiles in video memory"
+    assert_operator each_further, :<, POSES * 4, "cartridge bytes each further sprite takes, against a table of the poses"
   end
 
   private
@@ -154,5 +171,42 @@ class TestGenesisPoseColorLists < Minitest::Test
     end
     builder.finalize_program
     genesis(builder.program)
+  end
+
+  # +sprites+ sprites that each face the same POSES poses, of four lists in turn, each showing one.
+  def shared_poses_game(sprites)
+    poses = POSES
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      4.times { |list| colors :"line_#{list}", [:transparent, *Array.new(15) { |at| rgb((at % 8) * 4, list * 8, ((at / 8) * 4) + 4) }] }
+      names = Array.new(poses) do |pose|
+        places = Array.new(64) { |at| 1 + ((at + (pose * 7) + ((at / 8) * pose)) % 15) }
+        image :"pose_#{pose}", width: 8, height: 8, places: places, colors: :"line_#{pose % 4}"
+        :"pose_#{pose}"
+      end
+      facing = names.to_h { |name| [name, name] }
+      sprites.times do |at|
+        actor = sprite :"actor_#{at}", at: [8 + (at * 16), 40], facing: facing
+        actor.face names[(at * 5) % poses]
+      end
+      game_loop { wait_vblank }
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  # The cartridge's bytes with the padding at its end left off.
+  def cartridge_bytes(rom)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "game.gen")
+      rom.write(path)
+      File.binread(path).sub(/[\x00\xFF]*\z/n, "").bytesize
+    end
+  end
+
+  # How many tiles of the room for tiles hold a picture: tile 0 is kept blank and not counted.
+  def tiles_held(memory)
+    (1..Genesis::Art::MOST_TILES).count { |tile| memory.byteslice(tile * 32, 32).bytes.any?(&:nonzero?) }
   end
 end

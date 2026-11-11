@@ -138,7 +138,8 @@ module VBlank
                       "of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. " \
                       "A sprite whose poses are drawn from different lists of colors shows each pose in the " \
                       "colors of its own list, and it can follow those lists (`draw_with({ hero: :hero })`). " \
-                      "Each list that it follows uses one of the four palettes. " \
+                      "Each list that it follows uses one of the four palettes. Sprites that show the same " \
+                      "poses use one table of them. " \
                       "The build draws a pose read from the frames of a data pack as the pieces of its frame. " \
                       "Each piece of the frame is one piece of the console. The video memory keeps each 8×8 " \
                       "square of picture one time. Every sprite and background that shows the square uses it, " \
