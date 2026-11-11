@@ -57,6 +57,13 @@ module VBlank
     # one word: the flags are then read from the same place (+flags_at+ the same as +tile_at+), and
     # a +_bit+ may be up to 15.
     #
+    # A TILE'S NUMBER KEPT IN TWO PLACES. A Super Nintendo's sprite entry keeps a tile's low eight
+    # bits in a byte of their own and its ninth among the flags, and an original that keeps the
+    # entry keeps that too. +tile_high_bit+ is the lowest of those high bits at +flags_at+ and
+    # +tile_high_bits+ how many there are: `tile_at: 2, flags_at: 3, tile_high_bit: 0,
+    # tile_high_bits: 1`. They go above the bits read at +tile_at+ (above +tile_bits+ of them,
+    # where the layout names that).
+    #
     # A PIECE OF SEVERAL TILES EACH WAY. The byte at +size_at+ holds two numbers of +size_bits+
     # bits each: how many tiles the piece is across, less one, from bit +columns_bit+ up, and how
     # many down, less one, from bit +rows_bit+ up. +tile_order+ says how the piece's tiles follow
@@ -68,11 +75,12 @@ module VBlank
     FrameLayout = Data.define(:piece_bytes, :counted, :x_at, :y_at, :tile_at, :tile_row_at, :row_tiles, :flags_at,
                               :mirrored_bit, :upside_down_bit, :big_bit, :high_byte_first, :count_bytes,
                               :position_bytes, :tile_bytes, :tile_bits, :flags_bytes, :size_at, :columns_bit,
-                              :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits) do
+                              :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits, :tile_high_bit, :tile_high_bits) do
       def initialize(piece_bytes:, counted:, x_at:, y_at:, tile_at:, flags_at:, mirrored_bit: nil, upside_down_bit: nil,
                      tile_row_at: nil, row_tiles: 16, big_bit: nil, high_byte_first: nil, count_bytes: 1,
                      position_bytes: 1, tile_bytes: 1, tile_bits: nil, flags_bytes: 1, size_at: nil, columns_bit: nil,
-                     rows_bit: nil, size_bits: 2, tile_order: nil, bank_bit: nil, bank_bits: nil)
+                     rows_bit: nil, size_bits: 2, tile_order: nil, bank_bit: nil, bank_bits: nil, tile_high_bit: nil,
+                     tile_high_bits: nil)
         widths = [count_bytes, position_bytes, tile_bytes, flags_bytes]
         refuse_bad_widths!(widths, high_byte_first)
         refuse_bad_places!(piece_bytes, { x_at => position_bytes, y_at => position_bytes, tile_at => tile_bytes,
@@ -81,6 +89,7 @@ module VBlank
                          tile_bytes)
         refuse_bad_size!(size_at, [columns_bit, rows_bit], size_bits, tile_order, big_bit)
         refuse_bad_bank!(bank_bit, bank_bits, flags_bytes)
+        refuse_bad_tile_high_bits!(tile_high_bit, tile_high_bits, flags_bytes)
         super
       end
 
@@ -118,6 +127,7 @@ module VBlank
       def first_tile(&byte)
         tile = part(tile_at, tile_bytes, &byte)
         tile &= (1 << tile_bits) - 1 if tile_bits
+        tile |= ((flags(&byte) >> tile_high_bit) & ((1 << tile_high_bits) - 1)) << (tile_bits || (tile_bytes * 8)) if tile_high_bit
         tile += yield(tile_row_at) * row_tiles if tile_row_at
         tile.clamp(0, FrameRecord::MOST)
       end
@@ -215,6 +225,19 @@ module VBlank
                              "bank's number at flags_at:, and bank_bits:, how many bits the number is. The number must " \
                              "end at bit #{top_bit} or lower. Got bank_bit: #{bank_bit.inspect} and bank_bits: " \
                              "#{bank_bits.inspect}."
+      end
+
+      def refuse_bad_tile_high_bits!(tile_high_bit, tile_high_bits, flags_bytes)
+        return if tile_high_bit.nil? && tile_high_bits.nil?
+
+        top_bit = (flags_bytes * 8) - 1
+        return if tile_high_bit.is_a?(Integer) && tile_high_bits.is_a?(Integer) && tile_high_bits.positive? &&
+                  !tile_high_bit.negative? && tile_high_bit + tile_high_bits - 1 <= top_bit
+
+        raise ArgumentError, "A frame layout that keeps a tile's high bits among the flags needs tile_high_bit:, the " \
+                             "lowest of those bits at flags_at:, and tile_high_bits:, how many bits there are. The bits " \
+                             "must end at bit #{top_bit} or lower. Got tile_high_bit: #{tile_high_bit.inspect} and " \
+                             "tile_high_bits: #{tile_high_bits.inspect}."
       end
 
       TILE_ORDERS = %i[down_columns across_rows].freeze

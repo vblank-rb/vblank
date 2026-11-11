@@ -365,8 +365,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   record of VBlank's own, one layout whatever the original (`Original::FrameRecord`, whose file says the layout;
   `Original::FrameRewrite` writes it, as game code). A piece of a record names its tiles and its bank of colours and
   holds no pixel. The build that holds the pack, the interpreter and each runtime read that record and know no
-  layout, so a way of keeping a frame that no layout says yet is added to `FrameLayout#piece_from` alone, in Ruby.
-  The game's source does not change: the
+  layout, so a way of keeping a frame that no layout says yet is added to `FrameLayout#piece_from` alone, in Ruby
+  (`tile_high_bit:` was, and `test/pack_pose_of_split_tiles_at_start_tests.rb` plays it on every build). The game's
+  source does not change: the
   slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
   `test/frame_record_unpacking_tests.rb`.
 
