@@ -26,6 +26,17 @@ module VBlank
         #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
         # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
         #   array's block calling it by name.
+        # - A LONG ROUTINE IS SEVERAL METHODS. Ruby's compiler walks a method's branches by
+        #   recursion on the machine's stack, one level for each `if`, `while` or `? :` in the whole
+        #   method, so the stack a method needs grows with its length. A thread other than the main
+        #   one, and so a Ractor, has a small stack: there a method of about 29,000 plain branches,
+        #   or 9,000 sums with their check for coming round, is too long to compile, and Ruby stops
+        #   with "stack level too deep" before the game's first line runs (the main thread's stack
+        #   holds about seven times that). A data pack's unpacking is long, and is played in a
+        #   Ractor (Live::BackgroundUnpacking). So a routine of more than MOST_BRANCHES_A_METHOD is
+        #   printed in parts (#print_part_call), each a method of its own, and no method is longer
+        #   than that whatever the routine's length. A routine shorter than that is printed whole,
+        #   as before, since a call costs a little each time.
         class Printer
           Statements = Computer::Statements
           INDENT = "  "
@@ -47,6 +58,19 @@ module VBlank
           PACKING = Ractor.make_shareable({ "int8_t" => "c*", "uint8_t" => "C*", "char" => "C*",
                                             "int16_t" => "s<*", "uint16_t" => "S<*", "int32_t" => "l<*" })
 
+          # The most branches one printed method holds (#branches_in counts them), well inside what
+          # a Ractor's stack compiles (see the class's heading).
+          MOST_BRANCHES_A_METHOD = 3_000
+
+          # What a part of a routine hands back to the method that called it, besides nil (it ran
+          # to its end, so the caller goes on) and the routine's own 0 or 1 (the routine hands that
+          # back at once): that the routine goes on to its next step, leaves its loop, or returns.
+          PART_ENDINGS = Ractor.make_shareable({ goto: ":rg_next", break: ":rg_break", return: ":rg_return" })
+
+          # The statements that always leave the method they are printed in, so a part ending in one
+          # needs no nil after it.
+          LEAVING_STATEMENTS = [Statements::Goto, Statements::Pause, Statements::Finish, Statements::Return].freeze
+
           # Every function the printed code calls by name, so the build can say which of them the
           # runtime does not have (Lowering#runtime_gaps).
           attr_reader :called
@@ -55,6 +79,7 @@ module VBlank
             @out = +""
             @setup = []
             @called = Set.new
+            @branches = {}.compare_by_identity
           end
 
           # The body of the game's class: rg_game_setup, which gives every instance variable its
@@ -102,8 +127,22 @@ module VBlank
           def print_function(item)
             @locals = Set.new
             @temporaries = 0
-            line(0, "def #{item.name.text}")
-            statements(1, item.body)
+            @routine = item.name.text
+            @in_parts = list_branches(item.body) > MOST_BRANCHES_A_METHOD
+            @parts = []
+            @part_count = 0
+            print_method(item.name.text, item.body, part: false)
+            print_method(*@parts.shift, part: true) until @parts.empty?
+          end
+
+          # One method: the routine itself, or a +part+ of it (#print_part_call), which hands back
+          # nil when it runs to its end (a step's part never does: a step ends by leaving).
+          def print_method(name, body, part:)
+            @in_part = part
+            @loops_open = 0
+            line(0, "def #{name}")
+            statements(1, body)
+            line(1, "nil") if part && !LEAVING_STATEMENTS.include?(body.last.class)
             line(0, "end")
             line(0, "")
           end
@@ -140,25 +179,142 @@ module VBlank
 
           # --- statements ---
 
+          # +list+ written out here, or, in a routine printed in parts when +list+ is longer than a
+          # method holds, cut: its statements a run at a time into parts, and one too long for a part
+          # on its own written here with what it holds in parts (#heavy?).
           def statements(depth, list)
-            list.each { |statement| statement(depth, statement) }
+            return list.each { |statement| statement(depth, statement) } unless @in_parts && list_branches(list) > MOST_BRANCHES_A_METHOD
+
+            run = []
+            run_branches = 0
+            list.each do |statement|
+              branches = branches_in(statement)
+              if heavy?(statement)
+                print_part_call(depth, run)
+                run = []
+                run_branches = 0
+                statement(depth, statement)
+              else
+                if run_branches + branches > MOST_BRANCHES_A_METHOD
+                  print_part_call(depth, run)
+                  run = []
+                  run_branches = 0
+                end
+                run << statement
+                run_branches += branches
+              end
+            end
+            print_part_call(depth, run)
           end
+
+          # A statement longer than a method holds, in a routine printed in parts: the statements
+          # inside it are each put in parts of their own (#inner_statements).
+          def heavy?(statement) = @in_parts && branches_in(statement) > MOST_BRANCHES_A_METHOD
+
+          # The statements inside +owner+ (an if's branch, a loop's body, a step).
+          def inner_statements(depth, list, owner)
+            heavy?(owner) ? print_part_call(depth, list) : statements(depth, list)
+          end
+
+          # +list+ as a part of the routine, a method of its own printed after it, and its call here.
+          # What the part hands back is handed on (PART_ENDINGS): a part only stops the routine,
+          # leaves its loop or goes to the next step through the method it was cut from.
+          def print_part_call(depth, list)
+            return if list.empty?
+
+            name = "rg_part_#{@part_count += 1}_#{@routine}"
+            @parts << [name, list]
+            endings = endings_of(list, in_loop: false)
+            return line(depth, name) if endings.empty?
+
+            line(depth, "rg_part_ended = #{name}")
+            if @in_part
+              line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break) && @loops_open.positive?
+              line(depth, "return rg_part_ended unless rg_part_ended.nil?")
+            else
+              line(depth, "next if rg_part_ended == #{PART_ENDINGS[:goto]}") if endings.include?(:goto)
+              line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break)
+              line(depth, "return if rg_part_ended == #{PART_ENDINGS[:return]}") if endings.include?(:return)
+              line(depth, "return rg_part_ended unless rg_part_ended.nil?") if endings.include?(:value)
+            end
+          end
+
+          # How +list+ can leave the method it is printed in: :goto, :break (of a loop outside it),
+          # :return, or :value (the routine's own 0 or 1).
+          def endings_of(list, in_loop:)
+            list.each_with_object(Set.new) do |statement, endings|
+              case statement
+              when Statements::Goto then endings << :goto
+              when Statements::Pause, Statements::Finish, Statements::Resume then endings << :value
+              when Statements::Return then endings << :return
+              when Statements::Break then endings << :break unless in_loop
+              when Statements::If then endings.merge(endings_of(statement.body, in_loop: in_loop))
+                                                .merge(endings_of(statement.otherwise, in_loop: in_loop))
+              when Statements::Block then endings.merge(endings_of(statement.body, in_loop: in_loop))
+              when Statements::While then endings.merge(endings_of(statement.body, in_loop: true))
+              end
+            end
+          end
+
+          # Leaving the method by +ending+ (PART_ENDINGS): from a part, handing it back; from the
+          # routine itself, Ruby's own +word+.
+          def leave(depth, ending, word)
+            line(depth, @in_part ? "return #{PART_ENDINGS.fetch(ending)}" : word)
+          end
+
+          # --- how long a routine is ---
+
+          # The branches +statement+ is printed with, as Ruby's compiler counts its cost: an if, a
+          # loop or a comparison taken as a number (`? :`) one each, and a sum with its check for
+          # coming round three, its `||` making the branch dearer (measured, see the class's heading).
+          def branches_in(statement)
+            @branches[statement] ||=
+              case statement
+              when Statements::Eval then expression_branches(statement.call)
+              when Statements::Assign then expression_branches(statement.target) + expression_branches(statement.value)
+              when Statements::Local then expression_branches(statement.value)
+              when Statements::If
+                1 + expression_branches(statement.condition) + list_branches(statement.body) + list_branches(statement.otherwise)
+              when Statements::While then 1 + expression_branches(statement.condition) + list_branches(statement.body)
+              when Statements::Block then list_branches(statement.body)
+              when Statements::Steps then statement.steps.sum { |step| list_branches(step) }
+              when Statements::Resume, Statements::RunToEnd then 1 + expression_branches(statement.call)
+              else 0
+              end
+          end
+
+          def list_branches(list) = list.sum { |statement| branches_in(statement) }
+
+          def expression_branches(item)
+            case item
+            when Statements::Index then expression_branches(item.array) + expression_branches(item.index)
+            when Statements::Call
+              function = item.function.text
+              own = if COMPARISONS.key?(function) then 1
+                    elsif WRAPPED_OPERATORS.key?(function) then 3
+                    else 0
+                    end
+              own + item.args.sum { |arg| expression_branches(arg) }
+            else 0
+            end
+          end
+
+          # --- statements ---
 
           def statement(depth, item)
             case item
             when Statements::Eval then line(depth, expression(item.call))
             when Statements::Assign then line(depth, "#{expression(item.target)} = #{expression(item.value)}")
-            when Statements::Local then @locals << item.name.text
-                               line(depth, "#{item.name.text} = #{expression(item.value)}")
+            when Statements::Local then print_local(depth, item)
             when Statements::If then print_if(depth, item)
-            when Statements::While then print_block_statement(depth, "while #{condition(item.condition)}", item.body)
-            when Statements::Break then line(depth, "break")
-            when Statements::Return then line(depth, "return")
+            when Statements::While then print_while(depth, item)
+            when Statements::Break then @loops_open.positive? ? line(depth, "break") : leave(depth, :break, "break")
+            when Statements::Return then leave(depth, :return, "return")
             when Statements::Block then statements(depth, item.body) # a Ruby method's locals are its own already
             when Statements::Comment then comment(depth, item.text)
             when Statements::Steps then print_steps(depth, item)
             when Statements::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
-                              line(depth, "next")
+                              leave(depth, :goto, "next")
             when Statements::Pause then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
                                line(depth, "return 1")
             when Statements::Finish then line(depth, "#{expression(item.counter)} = 0")
@@ -186,7 +342,7 @@ module VBlank
             line(depth + 1, "case #{expression(item.counter)}")
             item.steps.each_with_index do |step, number|
               line(depth + 1, "when #{integer(number)}")
-              statements(depth + 2, step)
+              inner_statements(depth + 2, step, item)
             end
             # A counter no step has (none the game writes) ends the routine, as the C does.
             line(depth + 1, "else")
@@ -196,19 +352,28 @@ module VBlank
             line(depth, "end")
           end
 
+          # A local is a Ruby local, or, in a routine printed in parts, where every part reads it, an
+          # instance variable (the lowering names each local for its routine alone).
+          def print_local(depth, item)
+            @locals << item.name.text unless @in_parts
+            line(depth, "#{name(item.name)} = #{expression(item.value)}")
+          end
+
           def print_if(depth, item)
             line(depth, "if #{condition(item.condition)}")
-            statements(depth + 1, item.body)
+            inner_statements(depth + 1, item.body, item)
             unless item.otherwise.empty?
               line(depth, "else")
-              statements(depth + 1, item.otherwise)
+              inner_statements(depth + 1, item.otherwise, item)
             end
             line(depth, "end")
           end
 
-          def print_block_statement(depth, opening, body)
-            line(depth, opening)
-            statements(depth + 1, body)
+          def print_while(depth, item)
+            line(depth, "while #{condition(item.condition)}")
+            @loops_open += 1
+            inner_statements(depth + 1, item.body, item)
+            @loops_open -= 1
             line(depth, "end")
           end
 

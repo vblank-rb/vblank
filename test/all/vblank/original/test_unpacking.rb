@@ -58,6 +58,32 @@ class TestUnpacking < Minitest::Test
     end
   end
 
+  # A LONG ROUTINE PLAYS IN A RACTOR, whose stack is small, as the all-in-one build in a test's
+  # Ractor and a shell's background unpacking play it. LONG_ROUTINE_COPIES copies written out, each a
+  # word read whose answer places a byte read, are thousands of statements; a loop of copy reads at
+  # the end writes the tiles over what they wrote, so the slot is the copy's tiles.
+  LONG_ROUTINE_COPIES = 500
+
+  def test_a_long_routine_ending_in_a_loop_of_copy_reads_plays_in_a_ractor
+    Dir.mktmpdir do |folder|
+      unpacking = unpacking_of(folder) do |copy, pack|
+        LONG_ROUTINE_COPIES.times do |n|
+          at = copy.word(0x10 + ((n * 4) % 0x100))
+          count = copy.byte((at & 0xFF) + (n % 64))
+          count = 12 if count > 12
+          pack[:walls][n % 64] = count
+        end
+        repeat(TILE_BYTES.bytesize) { |at| pack[:walls][at] = copy.byte(TILES_AT + at) }
+      end
+      # Handed over as a copy: the lowering keeps notes on the program as it reads it, so it cannot be frozen.
+      walls = Ractor.new(unpacking.with(copy_bytes: COPY)) do |routine|
+        routine.slot_bytes_in(routine.run_as_ruby(frames: 10_000)).fetch(:walls)
+      end.value
+
+      assert_equal TILE_BYTES.bytes, walls.bytes
+    end
+  end
+
   # The watchdog ends with the run: a routine that waits and ends gets to its end, and nothing is
   # raised in the test after it.
   def test_a_routine_that_waits_for_frames_gets_to_its_end

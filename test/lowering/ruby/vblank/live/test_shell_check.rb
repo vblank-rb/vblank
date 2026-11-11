@@ -25,6 +25,46 @@ class TestShellCheck < Minitest::Test
     end
   end
 
+  # A shell's unpacking plays in a Ractor, whose stack is small. LONG_ROUTINE_COPIES frame copies
+  # written out, each a word read whose answer places a byte read, a test and a slot write, and
+  # every eighth a copy of bytes, are thousands of statements, and a loop of copy reads ends it.
+  LONG_ROUTINE_COPIES = 500
+
+  private def long_routine_port(from)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :frames, count: 64, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          LONG_ROUTINE_COPIES.times do |n|
+            at = copy.word(0x10 + ((n * 4) % 0x100))
+            count = copy.byte((at & 0xFF) + (n % 64))
+            count = 12 if count > 12
+            into[:frames][n % 64] = count
+            copy.copy_bytes at: TILES_AT, count: 4, into: into[:frames], start: n % 60 if (n % 8).zero?
+          end
+          repeat(4) { |k| copy.copy_bytes at: copy.byte(k) & 0xFF, count: 4, into: into[:frames], start: k * 4 }
+        end
+      end
+      frames = table :frames, pack[:frames]
+      step = var :step, 0
+      game_loop do
+        draw_rect_at frames[step] * 4, 40, 4, 4, :white
+        step = (step + 1) & 63
+      end
+    end
+  end
+
+  def test_a_port_whose_unpacking_routine_is_long_passes_every_step
+    Dir.mktmpdir do |folder|
+      said = []
+      check(long_routine_port(original(folder)), said)
+
+      assert_match "plays as its all-in-one build does", said.last
+    end
+  end
+
   def test_the_check_plays_the_presses_of_a_tape
     Dir.mktmpdir do |folder|
       tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: MADE UP 0x00000000\nstarts from: power-on\n\n" \

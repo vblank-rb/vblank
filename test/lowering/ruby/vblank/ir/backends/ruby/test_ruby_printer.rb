@@ -6,12 +6,7 @@ require "test_helper"
 # test of what a game does plays the printed code, but a condition always taken or a routine
 # never called would only show where some test happened to look.
 class TestRubyPrinter < Minitest::Test
-  private def printed(&block)
-    builder = Builder.new
-    builder.instance_eval(&block)
-    builder.finalize_program
-    printed_program(builder.program)
-  end
+  private def printed(&block) = printed_program(program_of(&block))
 
   private def printed_program(program)
     text, = VBlank::IR::Backends::Ruby::Lowering.new(program).text_and_gaps(VBlank::IR::Backends::Ruby::HEADLESS_FUNCTIONS)
@@ -78,6 +73,51 @@ class TestRubyPrinter < Minitest::Test
     wrapped = nodes.grep(Prism::IfNode).find { |choice| call_names(every_node(choice)).include?(:rg_i32) }
     refute_nil wrapped, "a sum past 32 bits should come round through rg_i32, and only when it is"
   end
+
+  # A ROUTINE LONGER THAN A METHOD HOLDS is printed in parts, each a method no longer than that,
+  # since Ruby's compiler needs stack for every branch in a method and a Ractor has little. The
+  # parts play as the routine did: a loop whose body is in parts still stops when it is told, its
+  # count and index (locals of the routine) are read in every part, and the game loop it is called
+  # from goes on to its next pass. Checked against the interpreter on every frame.
+  SUMS_IN_A_LONG_LOOP = 1_500
+
+  def test_a_routine_longer_than_a_method_holds_plays_in_parts
+    program = program_of do
+      total = var :total, 0
+      passes = var :passes, 0
+      stop = var :stop, 0
+      func(:long) do
+        repeat(40, stop_when: stop == 1) do |round|
+          SUMS_IN_A_LONG_LOOP.times { |n| total += (round & 3) + (n & 1) }
+          stop = 1 if round == 2 + passes
+        end
+        stop = 0
+      end
+      game_loop do
+        call :long
+        passes += 1
+      end
+    end
+    printed = printed_program(program)
+    longest = method_bodies(printed).max_by { |body| body.scan(/ \? |\bif\b|\bwhile\b/).size }
+
+    assert_match(/^def rg_part_\d+_f_long$/, printed)
+    assert_operator longest.scan(/ \? |\bif\b|\bwhile\b/).size, :<, 4_000, "a method holds too many branches"
+    v = game_player.run(program, frames: 3)
+    passes = v[:passes]
+
+    assert_operator passes, :>=, 2
+    assert_equal (0...passes).sum { |pass| (0..(2 + pass)).sum { |round| ((round & 3) * SUMS_IN_A_LONG_LOOP) + (SUMS_IN_A_LONG_LOOP / 2) } }, v[:total]
+  end
+
+  private def program_of(&block)
+    builder = Builder.new
+    builder.instance_eval(&block)
+    builder.finalize_program
+    builder.program
+  end
+
+  private def method_bodies(text) = text.scan(/^def \w+\n.*?^end$/m)
 
   # What the game keeps is the game's own, from rg_game_setup on; a routine is a method, and one
   # picked by its number is called by that method's name.
