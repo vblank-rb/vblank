@@ -11,8 +11,14 @@ require VBlank.root.join("examples/lit_corridor").to_s
 class TestLitCorridorExampleCartridge < Minitest::Test
   include Differential
 
+  # THE LAMP FLICKERS WITH NOBODY AT THE CONTROLS, so the picture changes from one pass to the next
+  # even standing still, and a pass takes the cartridge several frames. On the frame a pass ends the
+  # count of passes has gone up and the page that pass drew is not shown until the next frame, so
+  # that one frame shows the pass before the one counted. Which frame that is moves whenever the
+  # fill gets faster or slower, so the frame is read as assert_backends_agree_by_passes says: with
+  # the passes counted a frame earlier.
   def test_the_corridor_at_the_start_agrees
-    assert_backends_agree(LitCorridor.program, frames: 3, console_frames: 20, name: "LITHALL")
+    assert_backends_agree_by_passes(LitCorridor.program, frame: 20, name: "LITHALL")
   end
 
   # Each pass compared is its own run, with the buttons held from power-on: the lamp dimmed and

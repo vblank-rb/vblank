@@ -85,6 +85,23 @@ class TestConsoleLineUp < Minitest::Test
     assert_backends_agree(over_budget(tear_free: true), frames: 6, name: "SLOW", keys: [:right])
   end
 
+  # THE FRAME A PASS ENDS ON SHOWS THE PASS BEFORE IT. The game finishes a pass part-way down a
+  # frame, and the page it drew is shown from the next frame on, so on that one frame the count of
+  # passes is one more than the picture's. Read pass by pass, every frame agrees, that one too:
+  # each frame over several passes is compared here with no second try. A fill that got a little
+  # faster once moved that frame onto the one an example's test read, and the example's lamp had
+  # flickered between the two passes.
+  def test_a_tear_free_game_read_by_passes_agrees_on_the_frame_a_pass_ends
+    program = over_budget(tear_free: true)
+    passes = (9..20).map do |frame|
+      assert_backends_agree_by_passes(program, frame: frame, keys: [:right], name: "SLOW", tries: 1)
+      VBlank::Diagnostics::Verifier.new(assemble_rom(program, name: "SLOW"), frames: frame, count_passes: true).passes
+    end
+
+    assert_operator passes.uniq.length, :>=, 3, "the frames read cover the ends of several passes"
+    assert_operator passes.uniq.length, :<, passes.length, "a pass takes this game more than one frame"
+  end
+
   # A single-buffered picture caught mid-pass is half drawn, and no interpreter frame can
   # match it — so the helper says that is what happened, rather than comparing two
   # different moments and blaming the lowering.
