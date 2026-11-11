@@ -24,6 +24,7 @@ module VBlank
         # all is refused in the words its answers have (Console::Answers#refusals).
         class Lowering
           include ControlFlow
+          include TimerSteps
           include Clock
           include Sprites
 
@@ -38,10 +39,10 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
-          ] + ControlFlow::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
-          VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix held pressed save_read
-                            save_sum] + Clock::VALUE_KINDS).freeze
+          VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix chance data_byte table_get
+                            held pressed save_read save_sum] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -79,6 +80,10 @@ module VBlank
           # palette entry a pixel), and whether there are any.
           attr_reader :art
 
+          # The label of the routine the runtime runs at each frame boundary (TimerSteps), or nil for a game
+          # with no timers.
+          attr_reader :frame_begins
+
           def pictures? = !@art_places.empty?
 
           # Whether the game keeps and puts back patches of its picture, and so carries the runtime's routines
@@ -113,6 +118,7 @@ module VBlank
             @plan = cache.plan
             @variables = {}
             @locals = {}
+            @locals_of_routine = {} # a routine's label -> the names of the numbers it keeps
             @starts = []
             @labels = 0
             @routine = MAIN
@@ -129,6 +135,7 @@ module VBlank
             make_art
             DOS.refuse_too_much_art!(@art.bytesize)
             @scene = keep_local(:scene, start: -1) unless @plan.scenes.empty?
+            keep_timer_numbers
             keep_loop_running
             keep_clock_readings
             keep_patches
@@ -137,6 +144,7 @@ module VBlank
             @program.children.each { |node| emit_statement(node) }
             @asm.ret
             emit_routines
+            @frame_begins = emit_timer_routines
             emit_clock_routines
           end
 
@@ -320,6 +328,7 @@ module VBlank
             end
             make_pose_tables
             make_sprite_tables
+            make_tables
           end
 
           # For each `blit` of several pictures, a table of their places (a word each) that the number picks from.
@@ -345,6 +354,7 @@ module VBlank
           # A number of the routine's own, kept in the data segment, by a name a value can read as a variable.
           def keep_local(what, start: 0)
             name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
+            (@locals_of_routine[@routine] ||= []) << name
             @locals[name] = @memory.reserve(name, 4, what: "the game's number #{name}")
             @starts << [@locals[name], start] unless start.zero?
             name
@@ -374,6 +384,7 @@ module VBlank
             when :negate_abs then emit_sign_held(node.var, above_nought: false)
             when :clamp then emit_clamp(node)
             when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
+            when *TimerSteps::STATEMENT_KINDS then emit_timer_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt
@@ -477,6 +488,55 @@ module VBlank
               @plan.funcs.fetch(name).children.each { |node| emit_statement(node) }
               @asm.ret
             end
+            @routine = MAIN
+          end
+
+          # --- what TimerSteps asks of a lowering ---
+
+          def emit_store_number(name, number) = emit_number_into(name, number)
+          def call_routine(label) = @asm.call(label)
+
+          # A handler's statements (TimerSteps), with the numbers of every routine it can call kept on the
+          # stack while it runs and put back after. The game may be waiting in the middle of one of those
+          # routines, part way through a loop whose count is in the data segment: the handler's own call of
+          # it would leave the count where its loop ended. Every routine is written before any handler, so
+          # the numbers each keeps are all known here.
+          def keeping_interrupted_numbers(handler)
+            kept = routines_called_from(handler).flat_map { |name| @locals_of_routine.fetch(Lowering.routine_label(name), []) }
+            kept.each do |name|
+              @asm.mov(:eax, number_at(name))
+              @asm.push(:eax)
+            end
+            yield
+            kept.reverse_each do |name|
+              @asm.pop(:eax)
+              @asm.mov(number_at(name), :eax)
+            end
+          end
+
+          # Every routine +node+'s statements can reach, by name: the ones it calls, and the ones those call.
+          def routines_called_from(node, found = [])
+            node.walk.each do |inner|
+              called = case inner.kind
+                       when :call then [inner.target]
+                       when :call_one_of then inner.targets
+                       when :case then inner.callees
+                       else []
+                       end
+              (called - found).each do |name|
+                found << name
+                routines_called_from(@plan.funcs.fetch(name), found)
+              end
+            end
+            found
+          end
+
+          # A routine of the lowering's own, named for itself as a game's routine is.
+          def emit_own_routine(label)
+            @routine = label
+            @asm.label(label)
+            yield
+            @asm.ret
             @routine = MAIN
           end
 
@@ -834,6 +894,10 @@ module VBlank
               @asm.not(:eax)
             when :shift_right then emit_shift_right(node)
             when :mul_fix then emit_mul_fix(node)
+            when :chance then emit_chance(node)
+            when :data_byte then @asm.mov(:eax, data_byte(node))
+            when :table_get then emit_table_get(node)
+            when :timer_ticks then @asm.mov(:eax, number_at(timer_ticks_variable(node.name)))
             when :div_fix then emit_div_fix(node)
             when :clock then emit_clock_reading(node)
             when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
@@ -886,6 +950,55 @@ module VBlank
             @asm.jns(done)
             @asm.neg(:eax)
             @asm.label(done)
+          end
+
+          # Reference#value_of_chance: 1 where the number drawn is below the chance in a hundred.
+          def emit_chance(node)
+            emit_value(node.draw)
+            @asm.cmp(:eax, node.percent)
+            @asm.setl(:al)
+            @asm.movzx(:eax, :al)
+          end
+
+          # Reference#data_byte: a byte of data the game declared, which is known as the game is built. One past
+          # its end stops the build, where the interpreter stops the run.
+          def data_byte(node)
+            @data_declared ||= @program.walk.select { |declared| declared.kind == :data }.to_h { |declared| [declared.name, declared.bytes] }
+            bytes = @data_declared.fetch(node.name) { raise LoweringError, "the data #{node.name.inspect} is read and never declared" }
+            bytes.getbyte(node.index) || raise(LoweringError, "data_byte index #{node.index} is past the end of #{node.name.inspect}")
+          end
+
+          # Each table a run reads, in the art segment with the pictures: its entries at the width the plan
+          # keeps it at (LoweringPlan#table_keeping), the low byte first.
+          def make_tables
+            @plan.tables_read.each do |table|
+              bytes, = @plan.table_keeping(table)
+              @art_places[table_key(table.name)] = @art.bytesize
+              @art << table.values.flat_map { |entry| Array.new(bytes) { |i| (Int32.wrap(entry) >> (8 * i)) & 0xFF } }.pack("C*")
+            end
+          end
+
+          def table_key(name) = [:table, name]
+
+          # Reference#value_of_table_get: the entry at the index made safe (LoweringPlan.index_kept_in_range: a
+          # table whose length is a power of two wraps it, any other holds it to the ends), widened to a whole
+          # number by its sign or with noughts as the table keeps it. DS is the art segment for the one read.
+          def emit_table_get(node)
+            table = @plan.tables.fetch(node.name) { raise LoweringError, "the table #{node.name.inspect} is read and never declared" }
+            bytes, signed = @plan.table_keeping(table)
+            emit_value(LoweringPlan.index_kept_in_range(node.index, table.values.length))
+            @asm.mov(:bx, :ax)
+            @asm.shl(:bx, bytes.bit_length - 1) if bytes > 1
+            @asm.add(:bx, @art_places.fetch(table_key(table.name)))
+            @asm.mov_segment(:cx, :art)
+            @asm.push(:ds)
+            @asm.mov(:ds, :cx)
+            entry = X86.mem(:bx, 0, size: bytes * 8)
+            if bytes == 4 then @asm.mov(:eax, entry)
+            elsif signed then @asm.movsx(:eax, entry)
+            else @asm.movzx(:eax, entry)
+            end
+            @asm.pop(:ds)
           end
 
           # Int32.shift_right by a count settled as the game is built: the bits moved down with the sign filling

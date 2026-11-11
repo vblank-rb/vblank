@@ -82,7 +82,7 @@ module VBlank
             FAULT = "rt fault"
             # Set by whoever reads the run when it has the pass it wanted last: the game shows it and goes no further.
             HOLD = "rt hold"
-            # Set when the reader has taken the last pass it compares one by one (timers are not made yet).
+            # Set when the reader has taken the last pass it compares one by one: no timer moves on after it.
             LAST_PASS_TAKEN = "rt last pass taken"
             FRAMES = "rt frames" # frames counted since the game began
             STEP_TAKEN = "rt step"
@@ -184,7 +184,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false, fractions: false)
+                   columns: false, fractions: false, frame_begins: nil)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -193,7 +193,7 @@ module VBlank
             emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves, second, walks)
+            emit_frame(asm, memory, saves, second, walks, frame_begins)
             Fades.emit(asm, memory, palette) if walks
             emit_picture_shown(asm, memory, sprites: sprites, view: view) if second
             emit_keyboard(asm, memory)
@@ -316,7 +316,8 @@ module VBlank
           end
 
           # The end of a pass, stopping, and the wait for a retrace they share.
-          def emit_frame(asm, memory, saves, second, walks)
+          # +frame_begins+ is the game's routine run at each frame boundary (its timers, TimerSteps), or nil.
+          def emit_frame(asm, memory, saves, second, walks, frame_begins = nil)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -339,6 +340,14 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
+            if frame_begins
+              # What keeps time by the frame moves on, unless a reader has taken the last pass it compares,
+              # after which the interpreter moves nothing on.
+              asm.cmp(at.call(Frame::LAST_PASS_TAKEN), 0)
+              asm.jne("rt_wait_timers_moved")
+              asm.call(frame_begins)
+              asm.label("rt_wait_timers_moved")
+            end
             asm.call("rt_picture_shown") if second # before a reader is told the pass has ended
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do

@@ -202,6 +202,8 @@ module VBlank
             # sprite on the screen put in it. (`hide_sprites`, which makes a placing place none, is refused on
             # a painted screen before any build, so nothing here answers it.)
             def emit_present_objects(node)
+              return if sprite_objects.empty? # a pass ends by placing the sprites in a game with none too
+
               @asm.mov(runtime_at(Runtime::Sprites::PLACED), 0)
               node.names.each { |name| emit_sprite_placed(sprite_objects.fetch(name)) }
             end
