@@ -79,8 +79,9 @@ module VBlank
       # WHAT IS DIFFERENT FROM THE PLAYSTATION'S AND THE GENESIS'S LOWERINGS: nothing about where the
       # lowering sits. It is a peer of those two: it walks the IR and emits machine code itself, through
       # a Ruby assembler (DOS::X86) and a writer for the file (the MZ .EXE), and shares what the other
-      # cartridge lowerings decide before writing an instruction (LoweringPlan, BuildCache,
-      # RoutineCuts, Sections). Never the C lowering through a cross-compiler.
+      # cartridge lowerings decide before writing an instruction (LoweringPlan, BuildCache). It has no use
+      # for RoutineCuts or Sections, which fit routines into a cartridge's banks: a DOS program's code is
+      # one segment, refused at build time when it is too big. Never the C lowering through a cross-compiler.
       #
       # WHAT IS DIFFERENT, AND WHY IT MATTERS: a 16-bit real-mode program sees memory through 64 KB
       # segments, so a number held in a variable is two 16-bit halves to the eye but one 32-bit

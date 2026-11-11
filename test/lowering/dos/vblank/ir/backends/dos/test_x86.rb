@@ -64,8 +64,22 @@ class TestX86 < Minitest::Test
     [-> { xchg(:ax, :bx) }, "93"]
   ].freeze
 
+  # A place in memory with a number and no register, where the place says its size. These were made by
+  # LLVM's assembler (`clang -c -target i386-none-elf`, `.code16` and `.intel_syntax noprefix`, the size
+  # written as `byte ptr`, `word ptr` or `dword ptr`) and read back as the section's raw bytes.
+  SIZED_MEMORY_ENCODINGS = [
+    [-> { mov(mem(:bx, 5, size: 8), 1) }, "c6 47 05 01"],
+    [-> { mov(mem(nil, 0, size: 16), 0x1234) }, "c7 06 00 00 34 12"],
+    [-> { mov(mem(nil, 0x100, size: 32), 0x12345678) }, "66 c7 06 00 01 78 56 34 12"],
+    [-> { cmp(mem(nil, 0x80, seg: :es, size: 8), 2) }, "26 80 3e 80 00 02"],
+    [-> { add(mem(nil, 0x100, size: 32), 5) }, "66 83 06 00 01 05"],
+    [-> { add(mem(nil, 0x100, size: 32), 0x12345) }, "66 81 06 00 01 45 23 01 00"],
+    [-> { inc(mem(:bx, 0, size: 16)) }, "ff 07"],
+    [-> { test(mem(nil, 0x100, size: 32), 0x10000) }, "66 f7 06 00 01 00 00 01 00"]
+  ].freeze
+
   def test_each_instruction_is_the_bytes_an_independent_assembler_makes
-    ENCODINGS.each do |written, expected|
+    (ENCODINGS + SIZED_MEMORY_ENCODINGS).each do |written, expected|
       asm = X86.new
       asm.instance_exec(&written)
 
@@ -122,6 +136,39 @@ class TestX86 < Minitest::Test
 
   def test_a_number_too_big_for_the_register_is_refused
     assert_raises(X86::Error) { X86.new.mov(:al, 300) }
+  end
+
+  def test_a_number_too_big_for_the_arithmetic_is_refused
+    assert_raises(X86::Error) { X86.new.add(:al, 300) }
+    assert_raises(X86::Error) { X86.new.add(:ax, 0x1_0000) }
+    assert_raises(X86::Error) { X86.new.cmp(X86.mem(nil, 0, size: 8), -129) }
+  end
+
+  # Without a size the instruction could be a byte's, a word's or a doubleword's.
+  def test_memory_with_a_number_and_no_size_is_refused
+    asm = X86.new
+
+    assert_raises(X86::Error) { asm.mov(X86.mem(nil, 0x100), 1) }
+    assert_raises(X86::Error) { asm.add(X86.mem(:bx, 4), 1) }
+    assert_raises(X86::Error) { asm.inc(X86.mem(:bx, 0)) }
+  end
+
+  # 16-bit addressing has eight shapes (bx or bp, plus si or di, or one of the four alone); no other is an
+  # address, and [si] cannot be an index alone.
+  def test_an_address_16_bit_code_cannot_name_is_refused
+    assert_raises(X86::Error) { X86.mem(nil, 4, index: :si) }
+    assert_raises(X86::Error) { X86.mem(:si, 0, index: :bx) }
+    assert_raises(X86::Error) { X86.mem(:ax) }
+  end
+
+  # A register of one size and a place that says another would move part of a number, or spill past it.
+  def test_a_register_and_a_place_of_different_sizes_are_refused
+    asm = X86.new
+
+    assert_raises(X86::Error) { asm.mov(X86.mem(nil, 0x100, size: 32), :ax) }
+    assert_raises(X86::Error) { asm.mov(:al, X86.mem(:bx, 0, size: 32)) }
+    assert_raises(X86::Error) { asm.add(:eax, X86.mem(:bx, 0, size: 16)) }
+    assert_equal "66 a1 00 01", hex(asm.mov(:eax, X86.mem(nil, 0x100, size: 32)).assemble.bytes)
   end
 
   private def hex(bytes) = bytes.unpack("C*").map { |byte| format("%02x", byte) }.join(" ")

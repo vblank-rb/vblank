@@ -29,7 +29,7 @@ module VBlank
           end
 
           # EVERY KIND THIS LOWERING WRITES, each by a method called by name in #emit_statement and
-          # #value_of_kind. A declaration writes nothing where it is.
+          # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit draw_text draw_digit
@@ -55,13 +55,11 @@ module VBlank
           # The console this lowers for (BuildCache).
           CONSOLE = Console::DOS
 
-          # The binops one instruction does on EAX and ECX, the routines that do the others, and the
-          # conditions a comparison asks the processor for.
-          IN_PLACE = Ractor.make_shareable({ :+ => :add, :- => :sub, :& => :and, :| => :or, :^ => :xor })
-          CALLED = Ractor.make_shareable({ :/ => "rt_div32", :% => "rt_mod32", :<< => "rt_shl32", :>> => "rt_shr32" })
-          CONDITIONS = Ractor.make_shareable({ :< => :l, :<= => :le, :> => :g, :>= => :ge, :== => :e, :!= => :ne })
+          # The binops that compare two numbers (emit_comparison).
+          COMPARISONS = %i[< <= > >= == !=].freeze
 
-          # What the build works out once for every try (BuildCache#facts). The DOS build makes one try, so
+          # What the build works out once for every try (BuildCache#facts), which BuildCache asks every
+          # lowering for. The DOS build makes one try, since its code is one segment with no banks to fit, so
           # there is nothing of its own to keep.
           class BuildFacts
             def initialize(_cache); end
@@ -97,10 +95,10 @@ module VBlank
             refuse_what_cannot_be_made!
             reserve_variables
             @palette = palette_of(@program)
-            keep_pictures
+            make_art
             keep_loop_running
             @asm.label(MAIN)
-            @program.children.each { |node| statement(node) }
+            @program.children.each { |node| emit_statement(node) }
             @asm.ret
           end
 
@@ -168,7 +166,7 @@ module VBlank
             @pictures_declared.fetch(name) { raise LoweringError, "the picture #{name.inspect} is drawn and never declared" }
           end
 
-          def keep_texts
+          def make_text_pictures
             @program.walk.select { |node| node.kind == :draw_text }.each do |node|
               key = text_key(node)
               @art_places[key] = picture_of_text(node.fonts.get(node.font), node.text, node.color) unless @art_places.key?(key)
@@ -178,7 +176,7 @@ module VBlank
           # Each digit a game draws as it runs: ten pictures, 0 to 9, in the font and colour, and a table of their
           # places (a word each) that the digit's value picks from. A digit the font has no pixels for is a
           # picture of no rows.
-          def keep_digits
+          def make_digit_pictures
             @program.walk.select { |node| node.kind == :draw_digit }.each do |node|
               key = digits_key(node)
               next if @art_places.key?(key)
@@ -220,9 +218,9 @@ module VBlank
           # Each picture the game draws, and each text it writes, made into its bytes of the art segment once its
           # palette is known. A text is the picture of its pixels in its font and colour, which is how the
           # interpreter draws it (Reference#exec_draw_text), and the same text in the same colour is one picture.
-          def keep_pictures
-            keep_texts
-            keep_digits
+          def make_art
+            make_text_pictures
+            make_digit_pictures
             drawn_pictures.each do |name|
               image = picture_image(name)
               @art_places[name] = @art.bytesize
@@ -235,6 +233,8 @@ module VBlank
 
           def palette_entry(color) = @palette.index(Graphics::Color.resolve(color))
 
+          # @routine is MAIN until routines (`func`, scenes) are made: the labels and the numbers of each are
+          # named for the routine they are in, so two routines' never meet.
           def fresh_label(what)
             @labels += 1
             "#{@routine}.#{what}##{@labels}"
@@ -252,17 +252,17 @@ module VBlank
             @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
 
-          def number_at(name) = X86.mem(nil, place_of(name))
-          def runtime_at(name) = X86.mem(nil, @memory[name])
+          def number_at(name) = X86.mem(nil, place_of(name), size: 32)
+          def runtime_at(name) = X86.mem(nil, @memory[name], size: 32)
 
           def console_loop(node) = @plan.console_loop(node)
           def folded(node) = @plan.folded(node)
 
           # --- statements ---
 
-          def statement(node)
+          def emit_statement(node)
             case node.kind
-            when :program then node.children.each { |child| statement(child) }
+            when :program then node.children.each { |child| emit_statement(child) }
             when :set then emit_set(node)
             when :add then emit_sum(node.var, :+, node.operand)
             when :sub then emit_sum(node.var, :-, node.operand)
@@ -317,24 +317,24 @@ module VBlank
             body = node.children
             otherwise = node.else&.children || []
             known = folded(node.cond)
-            return (known.zero? ? otherwise : body).each { |child| statement(child) } if known
+            return (known.zero? ? otherwise : body).each { |child| emit_statement(child) } if known
 
             other = fresh_label("else")
             done = fresh_label("end_if")
-            jump_unless(node.cond, other)
-            body.each { |child| statement(child) }
+            emit_jump_unless(node.cond, other)
+            body.each { |child| emit_statement(child) }
             @asm.jmp(done) unless otherwise.empty?
             @asm.label(other)
-            otherwise.each { |child| statement(child) }
+            otherwise.each { |child| emit_statement(child) }
             @asm.label(done)
           end
 
           def emit_loop(node)
-            console_loop(node).before.each { |child| statement(child) }
+            console_loop(node).before.each { |child| emit_statement(child) }
             emit_number_into(@loop_running, (loops_ending_passes.index(node) || -1) + 1) if @loop_running
             top = fresh_label("loop")
             @asm.label(top)
-            console_loop(node).each_time.each { |child| statement(child) }
+            console_loop(node).each_time.each { |child| emit_statement(child) }
             @asm.jmp(top)
           end
 
@@ -345,7 +345,7 @@ module VBlank
           def keep_loop_running = (@loop_running = keep_local(:loop_running) if loops_ending_passes.any?)
 
           def emit_number_into(name, number)
-            @asm.mov_memory_number(number_at(name), Int32.wrap(number) & 0xFFFF_FFFF, size: 32)
+            @asm.mov(number_at(name), Int32.wrap(number) & 0xFFFF_FFFF)
           end
 
           # Reference#exec_repeat: the count worked out once, before the first pass; the index counting 0, 1,
@@ -363,13 +363,13 @@ module VBlank
             top = fresh_label("repeat")
             done = fresh_label("end_repeat")
             @asm.label(top)
-            jump_unless(Build.binop(:<, Build.var_ref(index), count), done)
+            emit_jump_unless(Build.binop(:<, Build.var_ref(index), count), done)
             if node.index
               @asm.mov(:eax, number_at(index))
               emit_store(node.index)
             end
-            jump_if(node.stop_when, done)
-            node.children.each { |child| statement(child) }
+            emit_jump_if(node.stop_when, done)
+            node.children.each { |child| emit_statement(child) }
             emit_sum(index, :+, Build.int(1))
             @asm.jmp(top)
             @asm.label(done)
@@ -378,8 +378,8 @@ module VBlank
           def emit_halt
             loops_ending_passes.each_with_index do |ending, i|
               other = fresh_label("not_this_loop")
-              jump_unless(Build.binop(:==, Build.var_ref(@loop_running), Build.int(i + 1)), other)
-              console_loop(ending).pass_end.each { |child| statement(child) }
+              emit_jump_unless(Build.binop(:==, Build.var_ref(@loop_running), Build.int(i + 1)), other)
+              console_loop(ending).pass_end.each { |child| emit_statement(child) }
               @asm.label(other)
             end
             @asm.jmp("rt_halt")
@@ -409,7 +409,7 @@ module VBlank
           end
 
           def emit_pixel(node)
-            with_operands(node.x, node.y)
+            emit_operands(node.x, node.y)
             @asm.mov(:dl, palette_entry(node.color))
             @asm.call("rt_pixel")
           end
@@ -423,18 +423,22 @@ module VBlank
           end
 
           # Reference#exec_blit: the picture at x and y, from its place in the art segment.
-          def emit_blit(node)
-            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
-            @asm.mov(:si, @art_places.fetch(node.name))
-            @asm.call("rt_blit")
-          end
+          def emit_blit(node) = emit_picture_at(@art_places.fetch(node.name), node)
 
           # Reference#exec_draw_text: the words as a picture in their colour, at x and y. A text with no pixels
           # in its font draws nothing.
-          def emit_draw_text(node)
-            place = @art_places.fetch(text_key(node))
-            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+          def emit_draw_text(node) = emit_picture_at(@art_places.fetch(text_key(node)), node)
+
+          # The picture at +place+ in the art segment, drawn at the node's x and y.
+          def emit_picture_at(place, node)
             @asm.mov(:si, place)
+            emit_blit_call(node)
+          end
+
+          # rt_blit with the picture's place already in SI: the node's x into EAX and its y into ECX. Working
+          # them out never touches SI.
+          def emit_blit_call(node)
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
             @asm.call("rt_blit")
           end
 
@@ -454,9 +458,7 @@ module VBlank
             @asm.mov(:ds, :cx)
             @asm.mov(:si, X86.mem(:bx, 0))
             @asm.pop(:ds)
-            @asm.mov(:eax, node.x)
-            @asm.mov(:ecx, node.y)
-            @asm.call("rt_blit")
+            emit_blit_call(node)
             @asm.label(skip)
           end
 
@@ -482,16 +484,16 @@ module VBlank
 
             case operand
             when Symbol then @asm.mov(:eax, number_at(operand))
-            when Node then value_of_kind(operand)
+            when Node then emit_value_of_kind(operand)
             else raise LoweringError, "cannot make #{operand.inspect} a number"
             end
           end
 
-          def value_of_kind(node)
+          def emit_value_of_kind(node)
             case node.kind
             when :int then @asm.mov(:eax, Int32.wrap(node.value))
             when :var_ref then @asm.mov(:eax, number_at(node.name))
-            when :binop then value_of_binop(node)
+            when :binop then emit_binop(node)
             when :neg
               emit_value(node.operand)
               @asm.neg(:eax)
@@ -499,30 +501,47 @@ module VBlank
             end
           end
 
-          def value_of_binop(node)
-            return value_of_comparison(node) if CONDITIONS.key?(node.op)
-            return value_of_both_or_either(node) if %i[and or].include?(node.op)
+          # The left in EAX and the right in ECX, then one instruction on the pair, or a call to the runtime
+          # where IR::Int32 and the processor differ (Runtime#emit_number_routines).
+          def emit_binop(node)
+            return emit_comparison(node) if COMPARISONS.include?(node.op)
+            return emit_both_or_either(node) if %i[and or].include?(node.op)
 
-            with_operands(node.lhs, node.rhs)
-            if CALLED.key?(node.op)
-              @asm.call(CALLED.fetch(node.op))
-            elsif node.op == :*
-              @asm.imul(:eax, :ecx)
-            else
-              @asm.public_send(IN_PLACE.fetch(node.op), :eax, :ecx)
+            emit_operands(node.lhs, node.rhs)
+            case node.op
+            when :+ then @asm.add(:eax, :ecx)
+            when :- then @asm.sub(:eax, :ecx)
+            when :* then @asm.imul(:eax, :ecx)
+            when :& then @asm.and(:eax, :ecx)
+            when :| then @asm.or(:eax, :ecx)
+            when :^ then @asm.xor(:eax, :ecx)
+            when :/ then @asm.call("rt_div32")
+            when :% then @asm.call("rt_mod32")
+            when :<< then @asm.call("rt_shl32")
+            when :>> then @asm.call("rt_shr32")
+            else raise LoweringError, "no writer here for the operator #{node.op.inspect}"
             end
           end
 
-          def value_of_comparison(node)
-            with_operands(node.lhs, node.rhs)
+          # A comparison is a signed compare, then 1 in AL where it holds (SETcc) widened to EAX.
+          def emit_comparison(node)
+            emit_operands(node.lhs, node.rhs)
             @asm.cmp(:eax, :ecx)
-            @asm.public_send(:"set#{CONDITIONS.fetch(node.op)}", :al)
+            case node.op
+            when :< then @asm.setl(:al)
+            when :<= then @asm.setle(:al)
+            when :> then @asm.setg(:al)
+            when :>= then @asm.setge(:al)
+            when :== then @asm.sete(:al)
+            when :!= then @asm.setne(:al)
+            else raise LoweringError, "no writer here for the comparison #{node.op.inspect}"
+            end
             @asm.movzx(:eax, :al)
           end
 
           # `and` and `or` work out both sides (no short-circuit, as Reference does), then combine their truth.
-          def value_of_both_or_either(node)
-            with_operands(node.lhs, node.rhs)
+          def emit_both_or_either(node)
+            emit_operands(node.lhs, node.rhs)
             @asm.test(:eax, :eax)
             @asm.setne(:al)
             @asm.test(:ecx, :ecx)
@@ -533,7 +552,7 @@ module VBlank
 
           # The left number in EAX and the right in ECX. A right that is a number or a variable is loaded
           # straight into ECX; any other is worked out with the left kept on the stack.
-          def with_operands(left, right)
+          def emit_operands(left, right)
             emit_value(left)
             if simple?(right)
               emit_simple_into(:ecx, right)
@@ -561,13 +580,13 @@ module VBlank
           end
 
           # A condition worked out into EAX, then a jump on whether it is nought.
-          def jump_if(condition, label)
+          def emit_jump_if(condition, label)
             emit_value(condition)
             @asm.test(:eax, :eax)
             @asm.jne(label)
           end
 
-          def jump_unless(condition, label)
+          def emit_jump_unless(condition, label)
             emit_value(condition)
             @asm.test(:eax, :eax)
             @asm.je(label)

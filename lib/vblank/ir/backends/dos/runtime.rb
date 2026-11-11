@@ -51,14 +51,6 @@ module VBlank
             FRAMES = "rt frames" # frames counted since the game began
             STEP_TAKEN = "rt step"
             FRAMES_TAKEN = "rt frames taken"
-            # A program a reader opened (started as `GAME.EXE HOLD`) takes its frame boundary from TICKS, which
-            # the reader moves on once before each frame it plays, in place of the card's retrace. DOSBox's
-            # frame and the retrace are not locked one to one (one frame can hold none, or two), and a reader
-            # needs each pass to end in its own frame. DRIVEN says the program is one of those; TICKS_SEEN is
-            # how many ticks the program has used.
-            DRIVEN = "rt driven"
-            TICKS = "rt ticks"
-            TICKS_SEEN = "rt ticks seen"
             # How many frames each of the last STEPS_KEPT passes took, a byte each.
             STEPS = "rt steps"
             STEPS_KEPT = 16
@@ -67,7 +59,7 @@ module VBlank
             END_SHOWN = 0xFFFF_FFFF
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES, STEP_TAKEN,
-                     FRAMES_TAKEN, DRIVEN, TICKS, TICKS_SEEN].freeze
+                     FRAMES_TAKEN].freeze
           end
 
           # WHERE A LIST KEEPS ITS COUNTS, which every cartridge's reader asks (CartridgeHeadlessRun#read_lists):
@@ -115,11 +107,21 @@ module VBlank
           # What a picture's pixel holds where nothing is drawn: a palette entry the build never gives a colour.
           TRANSPARENT = 255
 
+          # Where in the PSP (the 256 bytes DOS puts before a program) the command tail's length is: the tail
+          # itself follows it, a space and then what was typed after the program's name.
+          PSP_TAIL_LENGTH = 0x80
+
           def emit_start(asm, memory, palette, starts)
             ica = Diagnostics::DOSMemory
             asm.label("start")
-            # ES is the program's PSP: its command tail (PSP:0081h) holds " HOLD" if a reader asked for the gate.
-            asm.mov(:bl, X86.mem(nil, 0x82, seg: :es))
+            # ES is the program's PSP, whose command tail says whether a reader asked for the gate: " HOLD", its
+            # length in the byte before it. A tail of no letters is not cleared, so its first letter is read only
+            # when the length says there is one; BL is then that letter, or nought.
+            asm.xor(:bl, :bl)
+            asm.cmp(X86.mem(nil, PSP_TAIL_LENGTH, seg: :es, size: 8), 2)
+            asm.jb("rt_no_tail")
+            asm.mov(:bl, X86.mem(nil, PSP_TAIL_LENGTH + 2, seg: :es))
+            asm.label("rt_no_tail")
             asm.mov_segment(:ax, :data)
             asm.mov(:ds, :ax)
             asm.mov(:ss, :ax)
@@ -130,17 +132,13 @@ module VBlank
             asm.mov(X86.mem(nil, ica::DATA_SEGMENT_AT, seg: :es), :ax)
             asm.cmp(:bl, "H".ord)
             asm.jne("rt_no_gate")
-            asm.mov_memory_number(X86.mem(nil, ica::START_GATE_AT, seg: :es), 1, size: 8)
+            asm.mov(X86.mem(nil, ica::START_GATE_AT, seg: :es, size: 8), 1)
             asm.label("rt_no_gate")
             asm.mov(:es, :ax)
             asm.xor(:di, :di)
             asm.mov(:cx, memory.cleared_bytes / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
-            asm.cmp(:bl, "H".ord)
-            asm.jne("rt_not_driven")
-            asm.mov_memory_number(X86.mem(nil, memory[Frame::DRIVEN]), 1, size: 32)
-            asm.label("rt_not_driven")
             asm.mov(:ax, Console::DOSHardware::MODE_13H)
             asm.int(0x10)
             asm.mov(:dx, Console::DOSHardware::DAC_WRITE_INDEX)
@@ -153,7 +151,7 @@ module VBlank
                 asm.out_to_dx(:al)
               end
             end
-            starts.each { |offset, number| asm.mov_memory_number(X86.mem(nil, offset), number & 0xFFFF_FFFF, size: 32) }
+            starts.each { |offset, number| asm.mov(X86.mem(nil, offset, size: 32), number & 0xFFFF_FFFF) }
             # THE GATE, after everything that takes DOSBox time (the mode, the palette), so the game's first pass
             # starts at the moment a reader lets go.
             asm.xor(:bx, :bx)
@@ -170,21 +168,13 @@ module VBlank
 
           # The end of a pass, stopping, and the wait for a retrace they share.
           def emit_frame(asm, memory)
-            at = ->(name) { X86.mem(nil, memory[name]) }
+            at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
-            # A frame boundary: the card's retrace, or the next tick where a reader drives the frames.
+            # A frame boundary: the start of the card's next retrace. A program a reader plays waits here
+            # too: the emulator's frame is one retrace (RubyDOSEmulator::Core#run_frame), so each frame it
+            # plays holds exactly one boundary.
             asm.label("rt_sleep_until_retrace")
-            asm.mov(:eax, at.call(Frame::DRIVEN))
-            asm.test(:eax, :eax)
-            asm.je("rt_sleep_until_vertical_retrace")
-            asm.label("rt_sleep_until_tick")
-            asm.mov(:eax, at.call(Frame::TICKS))
-            asm.cmp(:eax, at.call(Frame::TICKS_SEEN))
-            asm.je("rt_sleep_until_tick")
-            asm.mov(at.call(Frame::TICKS_SEEN), :eax)
-            asm.ret
-            asm.label("rt_sleep_until_vertical_retrace")
             asm.mov(:dx, Console::DOSHardware::INPUT_STATUS)
             asm.label("rt_retrace_ends")
             asm.in_from_dx(:al)
@@ -200,7 +190,7 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
-            asm.mov_memory_number(at.call(Frame::WAITING), 1, size: 32)
+            asm.mov(at.call(Frame::WAITING), 1)
             # THE FIRST WAIT TAKES TWO RETRACES. The first pass starts at an unknown moment of a frame, so the
             # retrace that follows may be a frame's whole length away or a hair: skipping it makes the first
             # pass end a whole frame later in either case, and a reader that looks once a frame finds the first
@@ -219,19 +209,19 @@ module VBlank
             asm.mov(:eax, at.call(Frame::FRAMES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::FRAMES), :eax)
-            asm.mov_memory_number(at.call(Frame::FRAMES_TAKEN), 1, size: 32)
-            asm.mov_memory_number(at.call(Frame::STEP_TAKEN), 1, size: 32)
-            asm.mov(:bx, at.call(Frame::PASSES))
+            asm.mov(at.call(Frame::FRAMES_TAKEN), 1)
+            asm.mov(at.call(Frame::STEP_TAKEN), 1)
+            asm.mov(:bx, X86.mem(nil, memory[Frame::PASSES])) # the count's low half: only its low bits are wanted
             asm.and(:bx, Frame::STEPS_KEPT - 1)
-            asm.mov_memory_number(X86.mem(:bx, memory[Frame::STEPS]), 1, size: 8)
-            asm.mov_memory_number(at.call(Frame::WAITING), 0, size: 32)
+            asm.mov(X86.mem(:bx, memory[Frame::STEPS], size: 8), 1)
+            asm.mov(at.call(Frame::WAITING), 0)
             asm.ret
 
             # Stopping: the game is marked as halted, and the last picture is shown by the retrace after it.
             asm.label("rt_halt")
-            asm.mov_memory_number(at.call(Frame::STATE), Frame::HALTED, size: 32)
+            asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_sleep_until_retrace")
-            asm.mov_memory_number(at.call(Frame::SHOWN), Frame::END_SHOWN, size: 32)
+            asm.mov(at.call(Frame::SHOWN), Frame::END_SHOWN)
             asm.label("rt_stopped")
             asm.jmp("rt_stopped")
           end

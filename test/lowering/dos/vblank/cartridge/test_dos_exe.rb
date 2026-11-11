@@ -30,7 +30,7 @@ class TestDOSEXE < Minitest::Test
     asm.xor(:bx, :bx)
     asm.mov(:es, :bx)
     asm.mov(mem_at(DATA_SEGMENT_AT, seg: :es), :ax)
-    asm.mov_memory_number(asm.mem(nil, 0), MARKER, size: 16)
+    asm.mov(asm.mem(nil, 0, size: 16), MARKER)
     asm.label("forever")
     asm.jmp("forever")
     asm

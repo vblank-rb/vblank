@@ -102,11 +102,10 @@ module VBlank
             record_moment(:end, read_variables, read_lists, picture_now(nil), read_sounds)
           end
 
-          # The frame boundary is a tick the reader gives (Runtime::Frame::DRIVEN): one before each frame played.
+          # One frame is one retrace of the card's, as the shipped program sees it.
           def play_frame
             @frames_played += 1
             decide_buttons unless @frames_played == 1
-            write32(runtime_place(Runtime::Frame::TICKS), @frames_played)
             @core.run_frame
           end
 

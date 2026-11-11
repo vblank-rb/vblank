@@ -43,9 +43,15 @@ module VBlank
           # mistake in the lowering.
           class Error < StandardError; end
 
-          # A place in memory: +base+ and +index+ are register names or nil, +disp+ a number added, and +seg+ a
-          # segment register to use instead of the usual one (DS, or SS when the base is BP).
-          Mem = Data.define(:base, :index, :disp, :seg)
+          # A place in memory: +base+ and +index+ are register names or nil, +disp+ a number added, +seg+ a
+          # segment register to use instead of the usual one (DS, or SS when the base is BP), and +size+ how
+          # many bits the place holds (8, 16 or 32), or nil.
+          #
+          # MEMORY HAS NO SIZE OF ITS OWN: `mov [bx], 1` could store a byte, a word or a doubleword, and the
+          # processor is told which by the opcode and the 66h prefix. Where a register is the other operand its
+          # size says; where a number is, or nothing (`inc [bx]`), the place must say it, and an instruction
+          # with a place of no size and no register is refused rather than guessed.
+          Mem = Data.define(:base, :index, :disp, :seg, :size)
 
           REGISTERS_32 = %i[eax ecx edx ebx esp ebp esi edi].freeze
           REGISTERS_16 = %i[ax cx dx bx sp bp si di].freeze
@@ -68,7 +74,15 @@ module VBlank
           # What an assembled run holds: its bytes, and where its words that name a segment are.
           Assembled = Data.define(:bytes, :segment_words)
 
-          def self.mem(base = nil, disp = 0, index: nil, seg: nil) = Mem.new(base: base, index: index, disp: disp, seg: seg)
+          def self.mem(base = nil, disp = 0, index: nil, seg: nil, size: nil)
+            raise Error, "[#{index}] is not an address: an index needs a base (bx or bp)" if base.nil? && index
+            unless base.nil? || ADDRESSING.key?([base, index])
+              raise Error, "[#{[base, index].compact.join('+')}] is not an address 16-bit code can name"
+            end
+            raise Error, "#{size} bits is not a size memory can be read in" unless [nil, 8, 16, 32].include?(size)
+
+            Mem.new(base: base, index: index, disp: disp, seg: seg, size: size)
+          end
 
           def initialize
             @bytes = "".b
@@ -102,7 +116,8 @@ module VBlank
           # --- moves ---
 
           # mov destination, source: a register or memory from a register, a number or memory, and a segment
-          # register from a 16-bit register or the other way about.
+          # register from a 16-bit register or the other way about. Memory from a number takes the place's
+          # size (Mem).
           def mov(destination, source)
             return emit_modrm(0x8E, destination, nil, source, size: 16) if segment?(destination)
             return emit_modrm(0x8C, source, nil, destination, size: 16) if segment?(source)
@@ -278,38 +293,46 @@ module VBlank
           end
 
           def segment?(operand) = SEGMENTS.include?(operand)
-          def byte_size?(operand) = operand.is_a?(Symbol) && REGISTERS_8.include?(operand)
+          def byte_size?(operand) = size_of(operand) == 8
 
+          # A register's size, or a place's (Mem): one that says none is refused, since the instruction would
+          # be a guess.
           def size_of(operand)
+            return memory_size(operand) if operand.is_a?(Mem)
             return 32 if REGISTERS_32.include?(operand)
             return 8 if REGISTERS_8.include?(operand)
 
             16
           end
 
+          # A register and a place of another size: `mov [a 32-bit word], ax` writes half of it. A place of no
+          # size takes the register's.
+          def refuse_size_mismatch!(register, operand)
+            return unless register.is_a?(Symbol) && operand.is_a?(Mem) && operand.size
+            return if size_of(register) == operand.size
+
+            raise Error, "#{register} is #{size_of(register)} bits and #{operand.inspect} is #{operand.size}"
+          end
+
+          def memory_size(memory)
+            memory.size || raise(Error, "#{memory.inspect} has no size, and nothing else here says one: give it size:")
+          end
+
           # +byte_opcode+ for an 8-bit operand, +word_opcode+ for the others.
           def opcode_for(operand, byte_opcode, word_opcode) = byte_size?(operand) ? byte_opcode : word_opcode
 
-          def number_size(destination) = destination.is_a?(Mem) ? 16 : size_of(destination)
-
+          # mov register, number is one opcode with the register in it; mov [memory], number is C6h or C7h and
+          # a modrm byte, in the place's size.
           def move_number(destination, number)
-            if destination.is_a?(Symbol)
-              size = size_of(destination)
-              emit([0x66].pack("C")) if size == 32
-              base = size == 8 ? 0xB0 + REGISTERS_8.index(destination) : 0xB8 + (REGISTERS_16 + REGISTERS_32).index(destination) % 8
-              emit([base].pack("C"))
-              emit_number(number, size)
+            size = size_of(destination)
+            if destination.is_a?(Mem)
+              emit_modrm(size == 8 ? 0xC6 : 0xC7, nil, 0, destination, size: size)
             else
-              raise Error, "mov to memory from a number needs the size: use mov_memory_number"
+              emit([0x66].pack("C")) if size == 32
+              emit([size == 8 ? 0xB0 + REGISTERS_8.index(destination) : 0xB8 + field_of(destination)].pack("C"))
             end
-          end
-
-          # mov [memory], number with the size said, since memory has none of its own: 8, 16 or 32.
-          def mov_memory_number(memory, number, size:)
-            emit_modrm(size == 8 ? 0xC6 : 0xC7, nil, 0, memory, size: size)
             emit_number(number, size)
           end
-          public :mov_memory_number
 
           # A number as +size+ bits, low byte first: a signed or an unsigned one that fits.
           def emit_number(number, size)
@@ -318,17 +341,17 @@ module VBlank
             emit([number & ((1 << size) - 1)].pack({ 8 => "C", 16 => "v", 32 => "V" }.fetch(size)))
           end
 
-          # arithmetic with a register, memory or number on the right.
+          # arithmetic with a register, memory or number on the right. A number must fit the destination's size
+          # (signed or unsigned); one that fits a signed byte takes the short form (83h), sign-extended.
           def arithmetic(name, destination, source)
             opcode, digit = ARITHMETIC.fetch(name)
             if source.is_a?(Integer)
-              size = size_of(destination.is_a?(Mem) ? :ax : destination)
+              size = size_of(destination)
               short = size != 8 && source.between?(-128, 127)
               return arithmetic_with_accumulator(digit, destination, source, size) if ACCUMULATORS.include?(destination) && !short
-              emit_modrm(size == 8 ? 0x80 : (short ? 0x83 : 0x81), nil, digit, destination, size: destination.is_a?(Symbol) ? nil : 16)
-              return emit_number(source & 0xFF, 8) if size == 8 || short
 
-              emit_number(source & (size == 32 ? 0xFFFF_FFFF : 0xFFFF), size)
+              emit_modrm(size == 8 ? 0x80 : (short ? 0x83 : 0x81), nil, digit, destination, size: size)
+              emit_number(source, short ? 8 : size)
             elsif source.is_a?(Symbol)
               emit_modrm(opcode_for(source, opcode - 1, opcode), source, nil, destination)
             else
@@ -341,11 +364,11 @@ module VBlank
           def arithmetic_with_accumulator(digit, register, number, size)
             emit([0x66].pack("C")) if size == 32
             emit([(digit * 8) + (size == 8 ? 4 : 5)].pack("C"))
-            emit_number(number & ((1 << size) - 1), size)
+            emit_number(number, size)
           end
 
           def count_by_one(operand, short_base, digit)
-            if operand.is_a?(Symbol) && size_of(operand) != 8
+            if operand.is_a?(Symbol) && !byte_size?(operand)
               emit([0x66].pack("C")) if size_of(operand) == 32
               return emit([short_base + field_of(operand)].pack("C"))
             end
@@ -366,6 +389,7 @@ module VBlank
             into = ACCUMULATORS.include?(destination)
             register = into ? destination : source
             memory = into ? source : destination
+            refuse_size_mismatch!(register, memory)
             emit([0x66].pack("C")) if register == :eax
             emit([(into ? 0xA0 : 0xA2) + (register == :al ? 0 : 1)].pack("C"))
             word(memory.disp)
@@ -381,7 +405,8 @@ module VBlank
           # register name), or +digit+ (a number) when the opcode needs one; +operand+ the register or memory
           # the other field names. The operand-size prefix and any segment override come first.
           def emit_modrm(opcode, register, digit, operand, size: nil)
-            size ||= size_of(register || (operand.is_a?(Symbol) ? operand : :ax))
+            refuse_size_mismatch!(register, operand) unless size
+            size ||= size_of(register || operand)
             emit([SEGMENT_PREFIX.fetch(operand.seg)].pack("C")) if operand.is_a?(Mem) && operand.seg
             emit([0x66].pack("C")) if size == 32
             emit(Array(opcode).pack("C*"))
