@@ -1124,6 +1124,10 @@ module VBlank
       (2..).lazy.map { |number| :"#{name}_#{number}" }.find { |each_name| !@variables.include?(each_name) }
     end
 
+    # Has a `var` line made +name+ already? PlainRuby::Writes asks, for a line that makes a variable
+    # and is reached a second time.
+    def variable_declared?(name) = @var_declarations.key?(name)
+
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
 

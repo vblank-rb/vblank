@@ -2513,6 +2513,79 @@ class TestPlainRuby < Minitest::Test
     assert_equal 8, player[:shown]
   end
 
+  # Ruby asks the left side of `==`, and a plain 3 asked about a game number answers for itself.
+  # The test is the game's whichever side the plain number is on.
+  def test_a_plain_number_on_the_left_of_an_equality_is_a_test_the_game_makes
+    player = played(frames: 5) do
+      hp = 0
+      same = 0
+      different = 0
+      state = :title
+      titles = 0
+      game_loop do
+        same += 1 if 3 == hp
+        different += 1 if 3 != hp
+        titles += 1 if :title == state
+        state = :playing
+        hp += 1
+      end
+    end
+
+    assert_equal 1, player[:same], "hp is 3 on one pass"
+    assert_equal player[:hp] - 1, player[:different]
+    assert_equal 1, player[:titles]
+  end
+
+  # `until row == rows` with row a plain 0 when the loop is reached: the loop is the game's.
+  def test_a_loop_until_a_plain_counter_equals_a_game_number_goes_round
+    player = played(frames: 1) do
+      rows = var :rows, 4
+      row = 0
+      until row == rows
+        row += 1
+      end
+      rounds = var :rounds, 0
+      rounds.store!(row)
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 4, player[:rounds]
+  end
+
+  def test_two_names_started_on_one_line_in_game_code_start_afresh_on_every_pass
+    player = played(frames: 3) do
+      most = 0
+      game_loop do
+        count, other = 0, 1
+        repeat(3) { count += other }
+        most = count if count > most
+      end
+    end
+
+    assert_equal 3, player[:most]
+  end
+
+  # `column = 0` at the top of each round of a loop the game makes, counted by a loop of Ruby's
+  # inside it: the counter is plain Ruby, written out twice, on every round.
+  def test_a_ruby_loop_counted_from_zero_inside_a_loop_of_the_games_is_written_out
+    player = played(frames: 1) do
+      rows = var :rows, 3
+      cells = var :cells, 0
+      row = var :row, 0
+      while row < rows
+        column = 0
+        while column < 2
+          cells += 1
+          column += 1
+        end
+        row += 1
+      end
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 6, player[:cells]
+  end
+
   # `@shown` holds whichever number it was last given, as a Ruby name would.
   def test_an_instance_variable_moved_to_another_number_in_game_code_takes_that_number
     game = proc do

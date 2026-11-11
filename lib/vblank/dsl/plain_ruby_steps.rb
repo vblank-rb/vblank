@@ -31,6 +31,18 @@ module VBlank
           value.truth ? value.truth == Value::TRUTHY_HELD : value != 0
         end
 
+        # `a == b`. Ruby asks the left side. A plain number, symbol or yes or no asked whether it
+        # equals a number the game keeps answers for itself, true or false, while the game is built:
+        # Ruby's own `3 == hp` is true whatever hp holds, and a loop that starts `until row == rows`
+        # with row still a plain 0 would never run. So that one is asked of the game's number, the
+        # other way round, which makes the test the game asks as it plays.
+        def equal_test(left, right) = plain_beside_game_number?(left, right) ? right == left : left == right
+
+        # `a != b`, the same way.
+        def unequal_test(left, right) = plain_beside_game_number?(left, right) ? right != left : left != right
+
+        def plain_beside_game_number?(left, right) = game_value?(left) && right.is_a?(Value)
+
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value) = value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
 

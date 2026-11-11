@@ -5,6 +5,7 @@ require "tmpdir"
 require "folder_original"
 
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
+VBlank.require_game_file "fixtures/name_search/name_search_part"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -179,6 +180,58 @@ module CopyReaderTests
       assert_equal records_copied(copy), walked_records(folder, copy, :number), "kept as the number read"
       assert_equal records_copied(copy), walked_records(folder, copy, :flag), "kept as true or false"
     end
+  end
+
+  # AN ARCHIVE SEARCHED FOR ONE FILE BY ITS NAME, as an original keeps its pictures and levels:
+  # NameSearchPart (test/fixtures/name_search) says the layout. The file looked for is the third,
+  # after one whose name differs in every letter and one that differs in a single letter, so a
+  # count of differing letters that is not set back to 0 each round never finds it.
+  ARCHIVE_FILES = Ractor.make_shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
+  ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ("\0".b * 8)).freeze
+  ARCHIVE_NAME = "door"
+
+  # The slot a routine fills from where +search+ says the named file starts. +search+ is called on
+  # the routine's builder with a NameSearchPart, the copy and a table of the name's letters.
+  private def bytes_found_in_archive(folder, &search)
+    from = copy_of(folder, ARCHIVE)
+    held = ARCHIVE_FILES.to_h.fetch(ARCHIVE_NAME).bytesize
+    b = VBlank::Builder.new
+    made_pack = nil
+    b.instance_eval do
+      made_pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :found, count: held, width: :byte, signed: false
+        slots.fill_from_copy do |copy, pack|
+          letters = table :archive_name, ARCHIVE_NAME.bytes, width: :byte
+          part = NameSearchPart.new(self, copy, ARCHIVE.bytesize)
+          copy.copy_bytes at: instance_exec(part, copy, letters, &search), count: held, into: pack[:found]
+        end
+      end
+    end
+    unpacking = made_pack.unpacking
+    unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 8))[:found]
+  end
+
+  private def assert_archive_file_found(why = nil, &search)
+    Dir.mktmpdir { |folder| assert_equal ARCHIVE_FILES.to_h.fetch(ARCHIVE_NAME), bytes_found_in_archive(folder, &search), why }
+  end
+
+  # `differing = 0` at the top of a `while` in a part's method, changed in a `@build.repeat` block:
+  # the line sets it on every round, as it does written in the routine's own block.
+  def test_a_count_set_at_the_top_of_a_loop_in_a_parts_method_starts_afresh_each_round
+    assert_archive_file_found("while") { |part, _copy, letters| part.start_counted_by_repeat(letters) }
+    assert_archive_file_found("until") { |part, _copy, letters| part.start_counted_in_until(letters) }
+    assert_archive_file_found("a while inside") { |part, _copy, letters| part.start_counted_by_inner_while(letters) }
+    assert_archive_file_found("a Ruby list") { |part, _copy, _letters| part.start_counted_over_ruby_list(ARCHIVE_NAME.bytes) }
+  end
+
+  def test_a_count_set_at_the_top_of_a_loop_in_a_game_files_method_starts_afresh_each_round
+    assert_archive_file_found { |_part, copy, letters| name_search_start(self, copy, ARCHIVE.bytesize, letters) }
+  end
+
+  # The names the loop's test reads are plain numbers when the loop is reached, and the body
+  # changes them only under a test the routine makes: they are the routine's to keep from there.
+  def test_a_loop_whose_names_change_only_under_a_test_of_the_routines_is_the_routines_loop
+    assert_archive_file_found { |part, _copy, letters| part.start_moved_on_in_else(letters) }
   end
 
   # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:

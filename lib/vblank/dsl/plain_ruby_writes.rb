@@ -29,8 +29,12 @@ module VBlank
         # place that must exist already, so a new one under a game test is an error. +copies+ is an
         # instance variable game code gives another name (LocalNames#moved_in_game_code?), which
         # keeps a variable of its own and copies each number into it.
-        def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false)
-          game = tests.any?(&:game?)
+        #
+        # +before_plain_start+ counts the outermost of +tests+ that opened before a line gave the name
+        # a value outright (Rewriter#tests_open_before_plain_start). See #tests_followed.
+        def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
+                  before_plain_start: 0)
+          game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
           return yield(own_copy(label, value)) if copies && Steps.variable?(value) && !own_variable?(current)
           return write_plain_place(current, value, game, label, needs_slot) { |given| yield given } unless Steps.variable?(current)
@@ -46,6 +50,15 @@ module VBlank
           refuse_object_under_test!(label, value) unless current.truth || current.unwritten
           current.forget_truth!
           yield value
+        end
+
+        # The tests a write to a place holding +current+ has to follow. A game variable follows every
+        # open test. A plain value given to the name inside a test, by a line every way to this write
+        # runs, is the same whichever way that test and the ones around it go, so the write follows
+        # only the tests opened since: a counter set to 0 at the top of a game's loop and counted by
+        # a loop of Ruby's inside it is plain Ruby, written out, on every round.
+        def tests_followed(current, tests, before_plain_start)
+          Steps.variable?(current) ? tests : tests.drop(before_plain_start)
         end
 
         # A write the rewrite does not spell out, where no test is open.
@@ -69,8 +82,8 @@ module VBlank
         # The operator is the one the game wrote, which the rewritten line hands here as a Symbol, so it
         # is applied the way Ruby applies it, by public_send: that is Ruby itself, on purpose, and the
         # same goes for the verbs, attributes and setters below.
-        def change(current, operator, amount, tests, label, second_name: false)
-          game = tests.any?(&:game?)
+        def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0)
+          game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
           return change_variable(current, operator, amount) if Steps.variable?(current)
 
@@ -204,10 +217,12 @@ module VBlank
         #
         # Tests already open around this one have seen to a name read after them, in +outer+. One read
         # only inside them, and still holding a variable it was handed, gets its own here: the sides
-        # would otherwise write the variable it came from, which is somebody else's.
+        # would otherwise write the variable it came from, which is somebody else's. So does one given
+        # a plain number since (`differing = 0` at the top of a loop's body): the variable an outer
+        # test gave the name is no longer what it holds.
         def promote(value, test, *outer, may_stay_nil: false)
           return value unless test.game?
-          return value if outer.any?(&:game?) && !(Steps.variable?(value) && handed?(value))
+          return value if outer.any?(&:game?) && Steps.variable?(value) && !handed?(value)
           return value unless number_kept?(value)
 
           own = test.hidden_variable(:promoted, like: value.is_a?(Value) || value.is_a?(Float) ? value : nil)
@@ -276,10 +291,35 @@ module VBlank
         end
 
         def refuse_object_under_test!(name, held)
-          shown = held.is_a?(String) ? held.inspect : "a #{held.class.name.split('::').last}"
-          Steps.refuse_game_code!("`#{name}` holds #{shown}, and this line changes it under a test the game makes " \
-                            "as it plays. A game can keep only numbers, symbols, `true` and `false`. To fix this, " \
-                            "keep a number and pick with it.")
+          refuse_plain_value_under_test!(name, held) if Steps.game_value?(held)
+
+          Steps.refuse_game_code!("`#{name}` holds #{object_words(held)}, and this line changes it under a test the game " \
+                            "makes as it plays. A game can keep only numbers, symbols, `true` and `false`. To fix " \
+                            "this, keep a number and pick with it.")
+        end
+
+        def object_words(held)
+          return held.inspect if held.is_a?(String)
+
+          kind = held.class.name.split("::").last
+          "#{kind.match?(/\A[AEIOU]/) ? 'an' : 'a'} #{kind}"
+        end
+
+        # A number, a symbol or a yes or no is something a game keeps, so the fault is not what the
+        # place holds. It is that Ruby holds it: the place was not given a game variable before the
+        # test, as a plain name read after its test is (#promote), so both sides of the test would
+        # change the one Ruby value while the game is built.
+        def refuse_plain_value_under_test!(name, held)
+          Steps.refuse_game_code!("`#{name}` holds `#{held.inspect}`, which Ruby set while it built the game. This line " \
+                            "changes it under a test the game makes as it plays. Ruby would make the change one " \
+                            "time, and the game would not see it. To fix this, make a game variable where " \
+                            "`#{name}` is first set: `#{var_line_for(name, held)}`.")
+        end
+
+        # The `var` line that gives the place +label+ a game variable starting at +held+, named after
+        # the last word of the place: `hp` for `ball[:hp]`.
+        def var_line_for(label, held)
+          "#{label} = var :#{label.to_s.scan(/[a-z_]\w*/i).last}, #{held.inspect}"
         end
 
         # A number changed from a block that is a pool's `each` or a Ruby list's, which only running
@@ -317,6 +357,29 @@ module VBlank
           variable
         end
 
+        # The same, for the line that makes the variable outside a game block: in setting up, or in
+        # a method. A variable's start is the number it holds at power-on, and that is all such a
+        # line needs where it runs once, before anything has changed the variable. Reached where
+        # game code is recorded (the method called from a game loop, the line in the body of a loop
+        # the game makes) or reached a second time, it runs after the variable has changed, so it
+        # also sets the variable there, as Ruby's line would. +sets+ false leaves that to the caller.
+        def variable_set_where_reached(owner, name, start, sets: true)
+          sets &&= reached_after_power_on?(name, shared_by_name: owner.respond_to?(:var, true))
+          variable = variable_with_no_var_line(owner, name, start)
+          give_variable(variable, start) if sets
+          variable
+        end
+
+        # Does the line that makes the variable +name+ run somewhere other than once at power-on?
+        # +shared_by_name+ is a line whose every run makes the one variable of that name. A part's
+        # line makes a new variable each time it runs, which nothing has changed yet.
+        def reached_after_power_on?(name, shared_by_name:)
+          builder = Builder.in_use
+          return false if builder.nil?
+
+          builder.recording_game_code? || (shared_by_name && builder.variable_declared?(name))
+        end
+
         def variable_for_part(name, start)
           builder = Builder.in_use
           Steps.refuse_game_code!("`#{name}` is changed by game code, but no game is being built. To fix this, " \
@@ -332,8 +395,12 @@ module VBlank
         # The first line of a name the game changes later. A number starts a variable. A variable or
         # a working-out gives it a variable of its own holding that number now, since a Ruby name
         # holds a value and never another name. Anything else stays what it is.
+        #
+        # The block makes the variable from the start it is handed. It is also handed whether the
+        # start is the whole of what the line gives the name, which #variable_set_where_reached
+        # then has to set: a variable or a working-out is set here, whatever the block does.
         def start_name(value)
-          return yield(value) if Steps.game_value?(value)
+          return yield(value, true) if Steps.game_value?(value)
 
           case value
           when Condition then give_variable(yield(false), value)

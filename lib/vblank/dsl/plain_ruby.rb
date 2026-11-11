@@ -199,6 +199,9 @@ module VBlank
           @written_as_is = {}.compare_by_identity
           @pattern_subjects = {}.compare_by_identity
           @heredoc_parts = []
+          # Each run of statements being rewritten, the outermost first, with how many tests were
+          # open as it began. A block, a lambda or a method starts with none.
+          @open_statements = []
         end
 
         def rewritten_block = rewritten(@block_node)
@@ -283,7 +286,42 @@ module VBlank
         # needs no variable to keep its answer in.
         def statements_text(node)
           node.body[0...-1].each { |statement| @lone_joins[statement] = true }
+          @open_statements.push([node, @open_tests.length])
           copied_text(node)
+        ensure
+          @open_statements.pop
+        end
+
+        # How many of the open tests, counted from the outermost, opened before +write+'s name was
+        # last given a value outright by a line that every way to +write+ runs: a line of its own
+        # among the statements +write+ stands in, or stands under, with no block between.
+        #
+        #     while more != 0          # the game's loop
+        #       place = 0              # every round runs this
+        #       while place < 4        # Ruby's loop, written out four times
+        #         place += 1
+        #
+        # While the name still holds the plain value that line gave it, those tests have nothing
+        # to follow: whichever way they go, the game reaches the write with the same value. A name
+        # holding a game variable by then (one read after the test, so given a variable before it)
+        # is changed under every test, as it always was. Writes.tests_followed decides which.
+        def tests_open_before_plain_start(write)
+          @open_statements.reverse_each do |statements, open_tests|
+            return open_tests if statements.body.any? { |statement| gives_plain_value_before?(statement, write) }
+          end
+          0
+        end
+
+        def gives_plain_value_before?(statement, write)
+          statement.is_a?(Prism::LocalVariableWriteNode) && statement.name == write.name &&
+            statement.location.end_offset <= write.location.start_offset && @names.plain_name_write?(statement) &&
+            !reads_local?(statement.value, write.name)
+        end
+
+        def reads_local?(node, name)
+          return true if node.is_a?(Prism::LocalVariableReadNode) && node.name == name
+
+          node.compact_child_nodes.any? { |child| reads_local?(child, name) }
         end
 
         # The node's text, with what is inside it rewritten. A heredoc's lines sit past the end
@@ -307,13 +345,16 @@ module VBlank
         def own_scope_text(node)
           outer = @open_tests
           outer_block_tests = @block_tests
+          outer_statements = @open_statements
           @block_tests = node.is_a?(Prism::DefNode) ? [] : @block_tests + outer
           @open_tests = []
+          @open_statements = []
           @tail_ternaries[node.body.body.last] = true if method_body?(node)
           copied_text(node)
         ensure
           @open_tests = outer
           @block_tests = outer_block_tests
+          @open_statements = outer_statements
         end
 
         def method_body?(node) = node.is_a?(Prism::DefNode) && node.body.is_a?(Prism::StatementsNode)
@@ -344,6 +385,7 @@ module VBlank
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
           return nil_comparison_text(node) if LocalNames.nil_comparison?(node)
+          return equality_text(node) if equality?(node)
           return bits_text(node) if Steps::BIT_JOINS.include?(node.name) && node.receiver && node.arguments
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
 
@@ -374,6 +416,18 @@ module VBlank
           operand = LocalNames.side_not_nil(node)
           test = "#{STEPS}.nil_test(#{argument(operand)})"
           node.name == :== ? test : "#{STEPS}.opposite(#{test})"
+        end
+
+        # `a == b` or `a != b`, written with the operator between its two sides.
+        def equality?(node)
+          %i[== !=].include?(node.name) && node.receiver && node.call_operator_loc.nil? && node.block.nil? &&
+            node.arguments&.arguments&.one?
+        end
+
+        # Ruby asks the left side, so Steps asks the right one where only it can make the test.
+        def equality_text(node)
+          step = node.name == :== ? "equal_test" : "unequal_test"
+          "#{STEPS}.#{step}(#{argument(node.receiver)}, #{argument(node.arguments.arguments.first)})"
         end
 
         def bits_text(node)
@@ -518,12 +572,14 @@ module VBlank
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           # A name kept for a read past its `if` can stay a plain name under a test further out, so
           # it keeps its answer the way any plain name does.
-          return "#{prefix}#{second_name_write(node.name, "(#{promoted_value_text(node)})")}" if promoted?(node)
+          return "#{prefix}#{second_name_write(node.name, "(#{promoted_value_text(node)})", node)}" if promoted?(node)
           return picked_into_text(node) if picks_into_variable?(node)
           return joined_into_text(node, prefix) if joins_into_variable?(node)
 
           case @names.action_for(node)
-          when :declare then "#{prefix}#{declaration(node)}"
+          # The line that makes a variable outside a game block sets it wherever it runs after
+          # power-on (Writes.variable_set_where_reached).
+          when :declare then "#{prefix}#{declaration(node, sets_where_reached: true)}"
           # The line that makes a variable in game code sets it on every pass, as Ruby would.
           when :start then "#{prefix}#{start_text(node)}"
           when :assign then "#{prefix}#{assign_text(node.name, "(#{value_text(node.value)})")}"
@@ -551,16 +607,24 @@ module VBlank
 
         # Anything but a number written out can hold anything, so what it starts is asked as the
         # line runs. Its value is kept in a local of its own, so the right side runs once.
-        def declaration(node)
+        def declaration(node, sets_where_reached: false)
           name = @names.variable_name_of(node)
           if @names.keeps_truth?(node)
             return "#{WRITES}.start_with_truth(#{value_text(node.value)}) { |start| #{made_variable_text(name, 'start')} }"
           end
-          return made_variable_text(name, "false") if node.value.is_a?(Prism::NilNode)
-          return made_variable_text(name, rewritten_text(node.value)) if LocalNames.number?(node)
+          return declared_variable_text(name, "false", sets_where_reached) if node.value.is_a?(Prism::NilNode)
+          return declared_variable_text(name, rewritten_text(node.value), sets_where_reached) if LocalNames.number?(node)
 
           start = "__plain_ruby_#{@answers += 1}"
-          "(#{start} = #{value_text(node.value)}; #{WRITES}.start_name(#{start}) { |start| #{made_variable_text(name, 'start')} })"
+          "(#{start} = #{value_text(node.value)}; #{WRITES}.start_name(#{start}) " \
+            "{ |start, sets| #{declared_variable_text(name, 'start', sets_where_reached, 'sets')} })"
+        end
+
+        # +sets+ is the Ruby that answers whether the start is all the line gives the name.
+        def declared_variable_text(name, start, sets_where_reached, sets = nil)
+          return made_variable_text(name, start) unless sets_where_reached
+
+          "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets})"
         end
 
         def kept_value_text(value, write = nil)
@@ -582,14 +646,20 @@ module VBlank
         # game plays. A plain name is left to Ruby.
         def logic_write_text(node, step)
           joined = "#{STEPS}.#{step}(#{node.name}) { #{rewritten_text(node.value)} }"
-          return "#{node.name} = #{second_name_write(node.name, joined)}" if promoted?(node)
+          return "#{node.name} = #{second_name_write(node.name, joined, node)}" if promoted?(node)
           return copied_text(node) unless @names.action_for(node)
 
           "#{node.name} = #{assign_text(node.name, joined)}"
         end
 
         # A name #promote gave a variable of its own, if a test the game makes turned out to be open.
-        def second_name_write(name, value) = write_call(name, value, name, options: ", second_name: true")
+        # +write+ is the line's own node, where it has one to look for an earlier line with.
+        def second_name_write(name, value, write = nil) = write_call(name, value, name, options: second_name_options(write))
+
+        def second_name_options(write)
+          before_plain_start = write ? tests_open_before_plain_start(write) : 0
+          before_plain_start.zero? ? ", second_name: true" : ", second_name: true, before_plain_start: #{before_plain_start}"
+        end
 
         # `a, b = b, a`. Every right side is held in a name of its own, then each target is given
         # its own, one write at a time, so each goes the way the same line alone would. A right
@@ -666,8 +736,11 @@ module VBlank
           return "#{name} = #{second_name_write(name, value)}" if promoted?(target)
 
           case @names.action_for(target)
+          # One name of `count, other = 0, 0`. Its line sets it wherever it runs after power-on,
+          # in game code and outside it (Writes.variable_set_where_reached).
           when :declare, :start
-            "#{name} = #{WRITES}.start_name(#{value}) { |start| #{made_variable_text(@names.variable_name_of(target), 'start')} }"
+            made = declared_variable_text(@names.variable_name_of(target), "start", true, "sets")
+            "#{name} = #{WRITES}.start_name(#{value}) { |start, sets| #{made} }"
           when :assign then "#{name} = #{assign_text(name, value)}"
           else "#{name} = #{value}"
           end
@@ -730,7 +803,7 @@ module VBlank
         end
 
         def change_text(node)
-          return "#{node.name} = #{change_call(node, ', second_name: true')}" if promoted?(node)
+          return "#{node.name} = #{change_call(node, second_name_options(node))}" if promoted?(node)
           if @names.plain_name_write?(node)
             return "(#{WRITES}.note_handed_name_written(#{node.name}, nil, :#{node.name}); #{copied_text(node)})"
           end

@@ -38,6 +38,10 @@ plays.
   two routines is two.
 - **A name first set inside a game block is set again every time the block runs**, so it starts afresh
   each pass. State that lasts is set up above the game loop.
+- **A method's own names are set each time the method runs**, as in Ruby: `count = 0` on a method's
+  first line, or at the top of a loop's body in it, sets `count` again on every call and every round,
+  whether the method is called from a game loop, from an unpacking routine or twice while setting up.
+  `count, other = 0, 0` does the same for both names.
 
 ## Changing a variable
 
@@ -60,7 +64,8 @@ plays.
   compare a number: `if hp > 0`, never `if hp`.
 - `&&`, `||`, `!`, `and`, `or` and `not` join tests, and the right side is skipped as in Ruby. `&`,
   `|` and `^` between tests evaluate both sides.
-- `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number.
+- `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number. Either side can be
+  the game's number: `3 == hp` is the test `hp == 3` is.
 - `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass.
 - `case` on a game number takes `when` with a number, a symbol, a range, a comma list, a variable, or
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
@@ -73,7 +78,14 @@ plays.
 
 - **`while` and `until` on a game test are loops in the game.** The build warns about one that never
   waits for a frame.
+- **A loop can start on plain numbers and become the game's.** `at = 3`, then `while at < size` with a
+  body that moves `at` on under a game test (`if found then … else at += 17 end`): the first round is
+  Ruby's, written out once, and the rounds after it are a loop in the game.
+- **A loop on plain numbers inside a loop of the game's is written out on every round**: `column = 0`,
+  then `while column < 2` with `column += 1`, in the body of `while row < rows`.
 - **`repeat(n) { |i| … }` is the loop counted as the game plays** (`control-flow.md`).
+- **A block verb called on a builder held in a name means what it means bare**: `@build.repeat(n) { … }`
+  or `build.every(2) { … }` in a method of a part is `repeat` or `every` in a game block.
 - **`.each`, `.times`, `upto`, `step` and `.map` on something written in the source** (a literal, a
   constant, a range) run while building: the body is written out once for each time round. In a game
   block, `3.times { x += 1 }` adds 3 on every pass. That is right for laying out a row of sprites, and
@@ -101,6 +113,7 @@ Each is a friendly error naming the line.
 | `return`, `break` or `next` leaving a game block, or under a game test (`found \|\| next`, `loop do … break if … end`) | put the test in an `if` or `while` around the code |
 | a local set outside the game block and changed inside it | move the line that sets it into the block |
 | an object (a String, an Array) changed under a game test | keep a number, symbol or `true`/`false`, and pick with it |
+| a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |
 | a new Hash key given a number under a game test | give it a number before the test |
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
@@ -121,7 +134,8 @@ Each is a friendly error naming the line.
 ## What builds without a word and means something else
 
 - `if hp` or `seen += 1 if flags & 4`: always true, since 0 is truthy. Compare: `!= 0`.
-- `x = 0` inside `game_loop` or a `func`: set again every pass. State that lasts goes above the loop.
+- `x = 0` inside `game_loop`, a `func` or a method the game loop calls: set again every pass. State
+  that lasts goes above the loop.
 - `3.times { … }` in a game block: written out three times, run every pass.
 - Changing a method's argument: the caller's variable is left as it was (a warning, not an error).
 - `/` on a negative game number truncates toward zero (`-7 / 2` is -3), where the same sum on a plain
