@@ -139,7 +139,8 @@ module VBlank
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
                                     sprites: sprites.positive?, regions: lowering.regions?,
-                                    walks: walks, view: view, columns: Lowering.draws_columns?(program))
+                                    walks: walks, view: view, columns: Lowering.draws_columns?(program),
+                                    fractions: Lowering.divides_fractions?(program))
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")

@@ -184,7 +184,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false)
+                   columns: false, fractions: false)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -199,6 +199,7 @@ module VBlank
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
+            emit_fraction_divide(asm) if fractions
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
             emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns
@@ -764,6 +765,71 @@ module VBlank
             asm.ret
             asm.label("rt_shr32_in_range")
             asm.sar(:eax, :cl)
+            asm.ret
+          end
+
+          # rt_div_fix (Int32.div_fix): EAX divided by ECX, both numbers that hold a fraction of BL bits (0 to
+          # 32), giving one that holds the same. The numerator is widened by those bits first, into EDX and
+          # EAX, which is why this is not rt_div32: 3.0 over 1.5 with sixteen bits is 196608 widened to 48 bits
+          # over 98304. The two are divided as numbers with no sign and the sign put back, which rounds toward
+          # nought; an answer too big for 32 bits is the biggest or smallest number there is, where DIV would
+          # stop the program. By nought gives 1, or -1 for a numerator below nought.
+          def emit_fraction_divide(asm)
+            asm.label("rt_div_fix")
+            asm.test(:ecx, :ecx)
+            asm.jne("rt_div_fix_by_something")
+            asm.mov(:ecx, 1)
+            asm.test(:eax, :eax)
+            asm.jns("rt_div_fix_by_nought")
+            asm.mov(:ecx, -1)
+            asm.label("rt_div_fix_by_nought")
+            asm.mov(:eax, :ecx)
+            asm.ret
+            asm.label("rt_div_fix_by_something")
+            asm.mov(:esi, :eax)
+            asm.xor(:esi, :ecx) # its top bit: whether the answer is below nought
+            asm.test(:eax, :eax)
+            asm.jns("rt_div_fix_numerator")
+            asm.neg(:eax)
+            asm.label("rt_div_fix_numerator")
+            asm.test(:ecx, :ecx)
+            asm.jns("rt_div_fix_divisor")
+            asm.neg(:ecx)
+            asm.label("rt_div_fix_divisor")
+            asm.mov(:edi, :ecx)
+            asm.mov(:cl, :bl)
+            asm.xor(:edx, :edx)
+            asm.cmp(:cl, 32)
+            asm.jb("rt_div_fix_widen")
+            asm.mov(:edx, :eax)
+            asm.xor(:eax, :eax)
+            asm.jmp("rt_div_fix_widened")
+            asm.label("rt_div_fix_widen")
+            asm.shld(:edx, :eax, :cl)
+            asm.shl(:eax, :cl)
+            asm.label("rt_div_fix_widened")
+            asm.cmp(:edx, :edi)
+            asm.jae("rt_div_fix_too_big") # the answer would not fit 32 bits even with no sign
+            asm.div(:edi)
+            asm.test(:esi, :esi)
+            asm.js("rt_div_fix_below_nought")
+            asm.cmp(:eax, 0x7FFF_FFFF)
+            asm.jbe("rt_div_fix_done")
+            asm.mov(:eax, 0x7FFF_FFFF)
+            asm.label("rt_div_fix_done")
+            asm.ret
+            asm.label("rt_div_fix_below_nought")
+            asm.cmp(:eax, -0x8000_0000)
+            asm.jbe("rt_div_fix_smallest_held")
+            asm.mov(:eax, -0x8000_0000)
+            asm.label("rt_div_fix_smallest_held")
+            asm.neg(:eax)
+            asm.ret
+            asm.label("rt_div_fix_too_big")
+            asm.mov(:eax, 0x7FFF_FFFF)
+            asm.test(:esi, :esi)
+            asm.jns("rt_div_fix_done")
+            asm.mov(:eax, -0x8000_0000)
             asm.ret
           end
 

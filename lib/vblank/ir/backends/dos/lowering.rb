@@ -35,11 +35,12 @@ module VBlank
           # EVERY KIND THIS LOWERING WRITES, each by a method called by name in #emit_statement and
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
-            program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
+            program set add sub copy negate abs negate_abs clamp if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
-          VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
+          VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix held pressed save_read
+                            save_sum] + Clock::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -92,6 +93,9 @@ module VBlank
 
           # Whether +program+ draws stretched columns of a picture, and so carries the runtime's routine for one.
           def self.draws_columns?(program) = program.walk.any? { |node| node.kind == :draw_column_at }
+
+          # Whether +program+ divides a number that holds a fraction, and so carries the runtime's routine for it.
+          def self.divides_fractions?(program) = program.walk.any? { |node| node.kind == :div_fix }
 
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
@@ -362,6 +366,10 @@ module VBlank
             when :add then emit_sum(node.var, :+, node.operand)
             when :sub then emit_sum(node.var, :-, node.operand)
             when :copy then emit_copy(node)
+            when :negate then @asm.neg(number_at(node.var))
+            when :abs then emit_sign_held(node.var, above_nought: true)
+            when :negate_abs then emit_sign_held(node.var, above_nought: false)
+            when :clamp then emit_clamp(node)
             when :if then emit_if(node)
             when :loop then emit_loop(node)
             when :repeat then emit_repeat(node)
@@ -784,7 +792,14 @@ module VBlank
               @asm.neg(:eax)
             when :save_read then emit_runtime_call("rt_save_read", node.at, save_width(node))
             when :save_sum then emit_runtime_call("rt_save_sum", node.at, node.length)
-            when :clamped then emit_clamped(node)
+            when :clamped then emit_clamped(node.operand, node.min, node.max)
+            when :absolute then emit_absolute(node)
+            when :bit_not
+              emit_value(node.operand)
+              @asm.not(:eax)
+            when :shift_right then emit_shift_right(node)
+            when :mul_fix then emit_mul_fix(node)
+            when :div_fix then emit_div_fix(node)
             when :clock then emit_clock_reading(node)
             when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
             when :pressed then emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
@@ -795,10 +810,10 @@ module VBlank
           # Reference#clamp_value: the number held at the floor, then at the ceiling, in that order, so a
           # floor worked out to above its ceiling gives the ceiling. The number in EAX, the floor in EDX and
           # the ceiling in ECX, compared as signed numbers.
-          def emit_clamped(node)
+          def emit_clamped(operand, min, max)
             above_floor = fresh_label("above_floor")
             below_ceiling = fresh_label("below_ceiling")
-            emit_values_into(%i[eax edx ecx], [node.operand, node.min, node.max].map { |part| value_node(part) })
+            emit_values_into(%i[eax edx ecx], [operand, min, max].map { |part| value_node(part) })
             @asm.cmp(:eax, :edx)
             @asm.jge(above_floor)
             @asm.mov(:eax, :edx)
@@ -807,6 +822,73 @@ module VBlank
             @asm.jle(below_ceiling)
             @asm.mov(:eax, :ecx)
             @asm.label(below_ceiling)
+          end
+
+          # Reference#exec_clamp: the variable held inside the range, as #emit_clamped holds a number.
+          def emit_clamp(node)
+            emit_clamped(Build.var_ref(node.var), node.min, node.max)
+            emit_store(node.var)
+          end
+
+          # Reference#exec_abs and #exec_negate_abs: the variable turned the other way round unless it is already
+          # the way wanted: not below nought with +above_nought+, and not above it without.
+          def emit_sign_held(name, above_nought:)
+            done = fresh_label("sign_held")
+            @asm.mov(:eax, number_at(name))
+            @asm.test(:eax, :eax)
+            above_nought ? @asm.jns(done) : @asm.jle(done)
+            @asm.neg(:eax)
+            emit_store(name)
+            @asm.label(done)
+          end
+
+          # Reference#value_of_absolute: how far the number is from nought. The smallest number there is has no
+          # other way round and stays as it is, as Int32.neg leaves it.
+          def emit_absolute(node)
+            done = fresh_label("absolute")
+            emit_value(node.operand)
+            @asm.test(:eax, :eax)
+            @asm.jns(done)
+            @asm.neg(:eax)
+            @asm.label(done)
+          end
+
+          # Int32.shift_right by a count settled as the game is built: the bits moved down with the sign filling
+          # in behind, and a count outside 0 to 31 leaves only the sign.
+          def emit_shift_right(node)
+            emit_value(node.operand)
+            count = Int32.shift_count_in_range?(node.bits) ? node.bits : Int32::BITS - 1
+            @asm.sar(:eax, count) unless count.zero?
+          end
+
+          # Int32.mul_fix: the whole 64-bit product first, then its bits moved down, so a product too big for
+          # 32 bits before the shift is not lost. EDX holds the product's high half and EAX its low.
+          def emit_mul_fix(node)
+            bits = node.fraction_bits
+            raise LoweringError, "a product is moved down by #{bits} bits, and it has none below nought" if bits.negative?
+
+            emit_operands(node.lhs, node.rhs)
+            @asm.imul_wide(:ecx)
+            return if bits.zero?
+            return @asm.shrd(:eax, :edx, bits) if bits < Int32::BITS
+
+            @asm.mov(:eax, :edx)
+            moved = [bits - Int32::BITS, Int32::BITS - 1].min
+            @asm.sar(:eax, moved) unless moved.zero?
+          end
+
+          # Int32.div_fix, by the runtime's routine: the numerator widened by the fraction's bits and then
+          # divided, which is more than 32 bits of numerator.
+          def emit_div_fix(node)
+            bits = node.fraction_bits
+            unless bits.between?(0, Int32::BITS)
+              raise LoweringError, "a fraction of #{bits} bits is divided, and the #{CONSOLE.title} build divides one of " \
+                                   "0 to #{Int32::BITS}"
+            end
+
+            emit_operands(node.lhs, node.rhs)
+            @asm.mov(:bl, bits)
+            @asm.call("rt_div_fix")
           end
 
           # 1 where +button+ is in the set the runtime keeps at +which+ (held through the pass, or pressed

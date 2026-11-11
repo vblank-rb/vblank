@@ -219,6 +219,20 @@ module VBlank
           # imul destination, source: the low half of the signed product, which is the 32-bit wrapping product.
           def imul(destination, source) = emit_modrm([0x0F, 0xAF], destination, nil, source)
 
+          # imul with one operand: the whole signed product of it and EAX, its high half in EDX and its low in
+          # EAX (or DX and AX), where the two-operand form keeps only the low half.
+          def imul_wide(operand) = emit_modrm(opcode_for(operand, 0xF6, 0xF7), nil, 5, operand)
+
+          # shld destination, source, count and shrd: +destination+ shifted left (or right) by a count in CL or
+          # a number, the bits that come in taken from +source+'s top (or bottom), which is how a number kept
+          # in two registers is shifted as one.
+          { shld: 0xA4, shrd: 0xAC }.each do |name, opcode|
+            instruction(name) do |destination, source, count|
+              emit_modrm([0x0F, opcode + (count == :cl ? 1 : 0)], source, nil, destination)
+              byte(count) unless count == :cl
+            end
+          end
+
           # Sign-extends: CDQ fills EDX with EAX's sign (66 99), CWD does the same from AX into DX.
           def cdq = emit([0x66, 0x99].pack("C*"))
           def cwd = emit([0x99].pack("C"))
