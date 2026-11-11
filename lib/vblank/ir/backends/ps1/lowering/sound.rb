@@ -43,16 +43,9 @@ module VBlank
             # Whether +program+ holds its music, so its player looks (Runtime::Music::TUNE_HELD).
             def self.holds_music?(program) = program.walk.any? { |node| node.kind == :hold_music }
 
-            # WHAT A SONG DOES THAT THE PLAYSTATION'S PLAYER DOES NOT DO YET, in words, or nil: each is a step of
-            # the Genesis's player (Genesis::Runtime::Music) still to be written for the R3000.
+            # WHAT A SONG DOES THAT THE PLAYSTATION'S PLAYER DOES NOT DO YET, in words, or nil.
             def self.unmade_song_part(program)
-              if SongTable.wobbles?(program) then "notes that wobble"
-              elsif SongTable.steps_shapes?(program) then "notes that step their shapes"
-              elsif SongTable.slides?(program) then "notes that slide"
-              elsif SongTable.swells_under_level?(program) then "notes that swell under the music volume"
-              elsif SongTable.any_note?(program) { |part, event| IR::Tunes.note_side(part, event) } then "notes from one speaker"
-              elsif PS1::Music.new(program).recorded_parts? then "parts that play recordings"
-              end
+              "parts that play recordings" if PS1::Music.new(program).recorded_parts?
             end
 
             # Every entry of the sound log the program can write, by the number it writes.
@@ -118,7 +111,17 @@ module VBlank
             def emit_beep(node)
               effect = VBlank::Audio::Sound.resolve_effect(node.tone, duty: node.duty, decay: node.decay,
                                                                       volume: node.volume, defined: @defined_sounds)
+              emit_game_sound_on(Reference::Player::BEEP_CHANNEL)
               emit_sound_entry([:beep, effect])
+            end
+
+            # Reference::Player#game_sound_on: a song's note on +channel+ no longer wobbles, steps or swells.
+            def emit_game_sound_on(channel)
+              return unless Sound.songs?(@program)
+
+              runtime_call("rt_music_stop_wobble", [Build.int(channel)]) if PS1::Music.wobbles?(@program)
+              runtime_call("rt_music_stop_shapes", [Build.int(channel)]) if PS1::Music.steps_shapes?(@program)
+              runtime_call("rt_music_stop_swell", [Build.int(channel)]) if PS1::Music.swells_under_level?(@program)
             end
 
             # Reference#exec_noise: the hit resolved as the interpreter resolves it.
@@ -129,8 +132,15 @@ module VBlank
             end
 
             # Reference#exec_wave's entry.
-            def emit_wave(node) = emit_sound_entry([:wave, { shape: node.shape, frequency: node.frequency, volume: node.volume }])
-            def emit_stop_wave(_node) = emit_sound_entry([:stop_wave])
+            def emit_wave(node)
+              emit_game_sound_on(Reference::Player::WAVE_CHANNEL)
+              emit_sound_entry([:wave, { shape: node.shape, frequency: node.frequency, volume: node.volume }])
+            end
+
+            def emit_stop_wave(_node)
+              emit_game_sound_on(Reference::Player::WAVE_CHANNEL)
+              emit_sound_entry([:stop_wave])
+            end
 
             # Reference#exec_play_song: the tune named, from the next frame or from here.
             def emit_play_song(node)

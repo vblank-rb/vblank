@@ -35,6 +35,7 @@ module VBlank
             VOLUMES = "rt sound volumes" # A word for each voice: its volume, 0 to 15
             STEPS = "rt sound steps" # A word for each voice: the 64ths of a second between its steps, above nought when it climbs
             COUNTS = "rt sound counts" # A word for each voice: how far to its next step
+            SIDES = "rt sound sides" # A word for each voice: the speaker it is heard from (SPUWrites::SIDES), nought for both
             KEYS_ON = "rt sound keys on" # The voices to start at the frame boundary, a bit each
             KEYS_OFF = "rt sound keys off" # The voices to let go there
             TICKS_LEFT = "rt sound ticks left" # Frames still to move the fades on by, where a wait ends
@@ -84,8 +85,8 @@ module VBlank
             def command_for(write)
               case write.first
               when :spu then [WRITE_SPU, write[1], write[2]]
-              when :loud then [SET_LOUD, (write[1] << 8) | write[2], write[3] & 0xFFFF]
-              when :level then [SET_LEVEL, (write[1] << 8) | write[2], 0]
+              when :loud then [SET_LOUD, ((write[4] || 0) << 12) | (write[1] << 8) | write[2], write[3] & 0xFFFF]
+              when :level then [SET_LEVEL, ((write[3] || 0) << 12) | (write[1] << 8) | write[2], 0]
               when :key_on then [KEY_ON, write[1], 0]
               when :key_off then [KEY_OFF, write[1], 0]
               when :silence then [SILENCE, write[1], 0]
@@ -102,7 +103,7 @@ module VBlank
 
             def reserve(memory)
               [ON, LOGGED, TICKS_LEFT, KEYS_ON, KEYS_OFF].each { |name| memory.reserve(name, 4) }
-              [VOLUMES, STEPS, COUNTS].each { |name| memory.reserve(name, SPUWrites::VOICES * 4) }
+              [VOLUMES, STEPS, COUNTS, SIDES].each { |name| memory.reserve(name, SPUWrites::VOICES * 4) }
               memory.reserve(LOG, LOG_LENGTH * 2)
               memory.reserve(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
             end
@@ -169,30 +170,30 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # rt_sound_loud(a0 = the voice << 8 | its volume, a1 = the step it moves by): the voice at that
-            # volume, moved on from there by the step (SPUWrites's [:loud ...]).
+            # rt_sound_loud(a0 = the side << 12 | the voice << 8 | its volume, a1 = the step it moves by): the
+            # voice at that volume, from that side (SPUWrites::SIDES, nought for both), moved on from there by
+            # the step (SPUWrites's [:loud ...]).
             #
-            # rt_sound_level(a0 = the voice << 8 | its volume): at that volume, going on as it was ([:level ...]).
+            # rt_sound_level(a0 the same): at that volume, going on as it was ([:level ...]).
             #
-            # rt_sound_volume (t0 = a volume, t2 = a voice): the voice's volume registers, both speakers, set
-            # to the volume's loudness (SPUWrites::VOLUME_REGISTER). It changes t4 to t7.
+            # rt_sound_volume (t0 = a volume, t2 = a voice, t3 = gp plus four bytes a voice): the voice's volume
+            # registers set to the volume's loudness (SPUWrites::VOLUME_REGISTER), the one of a side it is not
+            # heard from at nought. It changes t4 to t7.
             def emit_loudness(asm, at)
               asm.label("rt_sound_loud")
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "rt_sound_volume_done")
-              asm.srl(:t2, :a0, 8)
-              asm.sll(:t3, :t2, 2)
-              asm.addu(:t3, :t3, :gp)
+              emit_voice_of(asm)
               asm.sw(:a1, at.call(STEPS), :t3)
               asm.b("rt_sound_level_voice") { asm.sw(:zero, at.call(COUNTS), :t3) }
 
               asm.label("rt_sound_level")
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "rt_sound_volume_done")
-              asm.srl(:t2, :a0, 8)
-              asm.sll(:t3, :t2, 2)
-              asm.addu(:t3, :t3, :gp)
+              emit_voice_of(asm)
               asm.label("rt_sound_level_voice")
+              asm.srl(:t0, :a0, 12)
+              asm.sw(:t0, at.call(SIDES), :t3)
               asm.andi(:t0, :a0, 0xFF)
               asm.sw(:t0, at.call(VOLUMES), :t3)
 
@@ -204,10 +205,28 @@ module VBlank
               asm.sll(:t6, :t2, 4)
               asm.lui(:t7, h::IO >> 16)
               asm.addu(:t7, :t7, :t6)
-              asm.sh(:t5, spu_at(h::SPU_VOLUME_LEFT), :t7)
+              asm.lw(:t6, at.call(SIDES), :t3)
+              asm.move(:t4, :t5)
+              asm.li(:t0, SPUWrites::SIDES.fetch(:right))
+              asm.bne(:t6, :t0, "rt_sound_volume_left")
+              asm.move(:t4, :zero) # heard from the right alone
+              asm.label("rt_sound_volume_left")
+              asm.sh(:t4, spu_at(h::SPU_VOLUME_LEFT), :t7)
+              asm.li(:t0, SPUWrites::SIDES.fetch(:left))
+              asm.bne(:t6, :t0, "rt_sound_volume_right")
+              asm.move(:t5, :zero) # heard from the left alone
+              asm.label("rt_sound_volume_right")
               asm.sh(:t5, spu_at(h::SPU_VOLUME_RIGHT), :t7)
               asm.label("rt_sound_volume_done")
               asm.jr(:ra)
+            end
+
+            # t2 = the voice in a0's bits 8 to 11, and t3 = gp plus four bytes a voice.
+            def emit_voice_of(asm)
+              asm.srl(:t2, :a0, 8)
+              asm.andi(:t2, :t2, 0xF)
+              asm.sll(:t3, :t2, 2)
+              asm.addu(:t3, :t3, :gp)
             end
 
             # rt_sound_key_on(a0 = a voice) and rt_sound_key_off: the voice's bit set in what the frame
@@ -318,6 +337,7 @@ module VBlank
               asm.beq(:t6, :zero, "rt_sound_fades_next")
               asm.sw(:t0, at.call(VOLUMES), :t9)
               asm.srl(:t2, :t8, 2)
+              asm.move(:t3, :t9)
               asm.jal("rt_sound_volume")
               asm.label("rt_sound_fades_next")
               asm.addiu(:t8, :t8, -4)

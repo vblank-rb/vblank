@@ -15,6 +15,8 @@ module VBlank
           RECORDED_PARTS = Console::PLAYSTATION.recordings_at_once
           PARTS = CONSOLE_PARTS + RECORDED_PARTS # A sound effect, the same
 
+          SHAPE_FRAMES_MASK = Audio::Duty::FRAMES - 1 # A note's frame among the frames of its shapes
+
           LoweringError = PS1::LoweringError
 
           # The loops a game's songs play beside its own sounds: each wave part's waveform, and the noise

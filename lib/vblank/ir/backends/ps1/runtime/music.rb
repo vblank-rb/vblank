@@ -99,15 +99,46 @@ module VBlank
             SFX_CURSORS = 20
             STATE_BYTES = SFX_CURSORS + (PS1::Music::PARTS * 4)
 
+            # EACH GAME VOICE'S NOTE THAT CHANGES AS IT PLAYS, VOICE_BYTES a voice, in a game with one: a
+            # wobble's record (PS1::Music, SongTable#wobble_record), nought for a voice holding still, the frames
+            # still to wait, the frames its swing has left, and whether it is above the note's pitch...
+            WOBBLES = "rt music wobbles"
+            WOBBLE_RECORD = 0
+            WOBBLE_WAIT = 4
+            WOBBLE_LEFT = 8
+            WOBBLE_RISING = 12
+            # ...a square note's shapes' record and its note's frame, kept in 0..7 so nought is its first alone...
+            SHAPES = "rt music shapes"
+            SHAPE_RECORD = 0
+            SHAPE_FRAME = 4
+            # ...and a swell's record, its loudness and its count as the interpreter keeps them (IR::Tunes::Swell).
+            SWELLS = "rt music swells"
+            SWELL_RECORD = 0
+            SWELL_VOLUME = 4
+            SWELL_COUNTED = 8
+            SWELL_RISING = 12
+            VOICE_BYTES = 16
+            VOICE_AT = "rt music voice at" # The voice being stepped, VOICE_BYTES a voice
+            SWELL_CEILING = "rt music swell ceiling"
+            SLIDE_CURSOR = "rt music slide cursor" # Where the sliding note's next frame is, an address; nought when none slides
+
             CHANNELS = (1..4).freeze
             PARTS = PS1::Music::PARTS
+            CONSOLE_PARTS = PS1::Music::CONSOLE_PARTS
 
             module_function
 
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has;
-            # +holds+ for one that holds its tune.
-            def reserve(memory, follows_level: false, effects: 0, holds: false)
+            # +holds+ for one that holds its tune; and what its notes do as they play.
+            def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
+                        slides: false)
               memory.reserve(TUNE_HELD, 4) if holds
+              memory.reserve(SLIDE_CURSOR, 4) if slides
+              memory.reserve(WOBBLES, CONSOLE_PARTS * VOICE_BYTES) if wobbles
+              memory.reserve(SHAPES, CONSOLE_PARTS * VOICE_BYTES) if steps_shapes
+              memory.reserve(SWELLS, CONSOLE_PARTS * VOICE_BYTES) if swells
+              memory.reserve(SWELL_CEILING, 4) if swells
+              memory.reserve(VOICE_AT, 4) if wobbles || steps_shapes || swells
               [NAMED, PLAYING, STOPS, STOPS_SEEN, ENDED, FRAME, AGAIN, PART, PARTS_IN, SONG, ENTRY, NOTE].each { |name| memory.reserve(name, 4) }
               memory.reserve(CURSORS, PARTS * 4)
               if effects.positive?
@@ -133,12 +164,386 @@ module VBlank
               sharing = effects.positive?
               holds = memory.reserved?(TUNE_HELD)
               emit_game_side(asm, at, holds)
-              emit_frame(asm, at, sharing)
-              emit_switch(asm, at, holds, level_at, sharing)
-              emit_song_frame(asm, at, holds, level_at, sharing)
-              emit_level(asm, at, level_at) if level_at
-              emit_effects(asm, at, effects, level_at) if sharing
+              emit_frame(asm, at, sharing, memory)
+              emit_voice_changes(asm, at, memory, holds, sharing)
+              emit_switch(asm, at, holds, level_at, sharing, memory)
+              emit_song_frame(asm, at, holds, level_at, sharing, memory)
+              emit_level(asm, at, level_at, memory) if level_at
+              emit_effects(asm, at, effects, level_at, memory) if sharing
               emit_group(asm)
+            end
+
+            def wobbles?(memory) = memory.reserved?(WOBBLES)
+            def steps_shapes?(memory) = memory.reserved?(SHAPES)
+            def swells?(memory) = memory.reserved?(SWELLS)
+            def slides?(memory) = memory.reserved?(SLIDE_CURSOR)
+
+            # The note at ENTRY and NOTE taken up by what changes as it plays, a tune's or an effect's.
+            def emit_note_changes(asm, memory)
+              asm.jal("rt_music_note_wobble") if wobbles?(memory)
+              asm.jal("rt_music_note_shapes") if steps_shapes?(memory)
+              asm.jal("rt_music_note_swell") if swells?(memory)
+              asm.jal("rt_music_note_slide") if slides?(memory)
+            end
+
+            # What changes as a note plays: each kind the game's songs have (Genesis::Runtime::Music says each,
+            # in the same order).
+            def emit_voice_changes(asm, at, memory, holds, sharing)
+              emit_wobbles(asm, at, memory, holds, sharing) if wobbles?(memory)
+              emit_shapes(asm, at, memory, holds, sharing) if steps_shapes?(memory)
+              emit_swells(asm, at) if swells?(memory)
+              emit_slides(asm, at) if slides?(memory)
+            end
+
+            # t1 = gp plus the voice of the part at ENTRY's place in a block, VOICE_BYTES a voice; t0 = NOTE.
+            def emit_note_voice(asm, at)
+              emit_field(asm, at, :t2, ENTRY, PS1::Music::CHANNEL)
+              asm.addiu(:t2, :t2, -1)
+              asm.sll(:t2, :t2, 4) # VOICE_BYTES a voice
+              asm.addu(:t1, :t2, :gp)
+              asm.lw(:t0, at.call(NOTE), :gp)
+            end
+
+            # A routine (+label+) handed a channel in a0 that clears block +name+'s record for that voice: the
+            # game's own sound took the voice (Reference::Player#game_sound_on).
+            def emit_stop_voice_change(asm, at, label, name)
+              asm.label(label)
+              asm.addiu(:t0, :a0, -1)
+              asm.sll(:t0, :t0, 4)
+              asm.addu(:t0, :t0, :gp)
+              asm.jr(:ra) { asm.sw(:zero, at.call(name), :t0) }
+            end
+
+            # A walk over the game's voices at VOICE_AT, the block's code for each with t1 = gp plus the voice's
+            # place in a block and t8 the place itself, given the label that goes on to the next.
+            def emit_each_voice(asm, at, label)
+              asm.sw(:zero, at.call(VOICE_AT), :gp)
+              asm.label("#{label}_voice")
+              emit_reload_voice(asm, at)
+              yield "#{label}_next"
+              asm.label("#{label}_next")
+              emit_count_up(asm, at, VOICE_AT, VOICE_BYTES)
+              asm.sltiu(:t1, :t0, CONSOLE_PARTS * VOICE_BYTES)
+              asm.bne(:t1, :zero, "#{label}_voice")
+            end
+
+            def emit_reload_voice(asm, at)
+              asm.lw(:t8, at.call(VOICE_AT), :gp)
+              asm.addu(:t1, :t8, :gp)
+            end
+
+            # In a game with no effects, a held tune's voices all hold still, so its walk does not start
+            # (on to +done+).
+            def emit_held_tune_returns(asm, at, holds, sharing, done)
+              return unless holds && !sharing
+
+              asm.lw(:t0, at.call(TUNE_HELD), :gp)
+              asm.bne(:t0, :zero, done)
+            end
+
+            # A HELD TUNE'S NOTES HOLD STILL, and an effect's move on (Reference::Player#held_still?). With effects
+            # each voice is asked: on to +next_voice+ when it holds still.
+            def emit_skip_voice_held_still(asm, at, holds, sharing, next_voice, label)
+              return unless holds && sharing
+
+              asm.lw(:t0, at.call(TUNE_HELD), :gp)
+              asm.beq(:t0, :zero, label)
+              asm.srl(:a0, :t8, 4)
+              asm.jal("rt_sfx_effect_holds")
+              asm.beq(:v0, :zero, next_voice)
+              asm.label(label)
+              emit_reload_voice(asm, at)
+            end
+
+            # rt_music_wobbles: every wobbling voice moved on a frame, the voices in order, once everything due
+            # on the frame has played (Reference::Player#step_wobbles), as IR::Tunes::Wobble#stepped counts it.
+            # rt_music_note_wobble: the voice of the part at ENTRY wobbling as the note at NOTE sets, or holding
+            # still (Reference::Player#set_voice). A note that slides does not wobble: the word is its slide's
+            # record. A vibrato that carries takes the swing up where the voice's last wobble left it.
+            def emit_wobbles(asm, at, memory, holds, sharing)
+              m = PS1::Music
+              w = at.call(WOBBLES)
+              asm.label("rt_music_wobbles")
+              enter(asm)
+              emit_held_tune_returns(asm, at, holds, sharing, "rt_music_wobbles_done")
+              emit_each_voice(asm, at, "rt_music_wobble") do |next_voice|
+                asm.lw(:t0, w + WOBBLE_RECORD, :t1)
+                asm.beq(:t0, :zero, next_voice)
+                emit_skip_voice_held_still(asm, at, holds, sharing, next_voice, "rt_music_wobble_moves")
+                asm.lw(:t0, w + WOBBLE_WAIT, :t1)
+                asm.beq(:t0, :zero, "rt_music_wobble_going")
+                asm.addiu(:t0, :t0, -1)
+                asm.b(next_voice) { asm.sw(:t0, w + WOBBLE_WAIT, :t1) }
+                asm.label("rt_music_wobble_going")
+                asm.lw(:t0, w + WOBBLE_LEFT, :t1)
+                asm.bne(:t0, :zero, "rt_music_wobble_hold")
+                asm.lw(:t0, w + WOBBLE_RISING, :t1)
+                asm.xori(:t0, :t0, 1)
+                asm.sw(:t0, w + WOBBLE_RISING, :t1)
+                asm.lw(:t2, w + WOBBLE_RECORD, :t1)
+                emit_table_place(asm, :t3, :t2)
+                asm.lhu(:t4, m::WOBBLE_SPEED, :t3)
+                asm.sw(:t4, w + WOBBLE_LEFT, :t1)
+                asm.lhu(:a0, m::WOBBLE_DOWN, :t3)
+                asm.beq(:t0, :zero, "rt_music_wobble_turn")
+                asm.lhu(:a0, m::WOBBLE_UP, :t3)
+                asm.label("rt_music_wobble_turn")
+                asm.jal("rt_sound_group")
+                emit_reload_voice(asm, at)
+                asm.label("rt_music_wobble_hold")
+                asm.lw(:t0, w + WOBBLE_LEFT, :t1)
+                asm.addiu(:t0, :t0, -1)
+                asm.sw(:t0, w + WOBBLE_LEFT, :t1)
+              end
+              asm.label("rt_music_wobbles_done")
+              leave(asm)
+              emit_stop_voice_change(asm, at, "rt_music_stop_wobble", WOBBLES)
+
+              asm.label("rt_music_note_wobble")
+              emit_note_voice(asm, at)
+              asm.lhu(:t2, m::NOTE_VOLUME, :t0)
+              asm.andi(:t2, :t2, m::SLIDES)
+              asm.move(:t3, :zero)
+              asm.bne(:t2, :zero, "rt_music_note_wobble_set")
+              asm.lhu(:t3, m::NOTE_WOBBLE, :t0)
+              asm.label("rt_music_note_wobble_set")
+              asm.sw(:t3, w + WOBBLE_RECORD, :t1)
+              asm.beq(:t3, :zero, "rt_music_note_wobble_done")
+              emit_table_place(asm, :t4, :t3)
+              asm.lhu(:t5, m::WOBBLE_WAITS, :t4)
+              asm.sw(:t5, w + WOBBLE_WAIT, :t1)
+              asm.lhu(:t5, m::WOBBLE_CARRIES, :t4)
+              asm.bne(:t5, :zero, "rt_music_note_wobble_done")
+              asm.sw(:zero, w + WOBBLE_LEFT, :t1)
+              asm.sw(:zero, w + WOBBLE_RISING, :t1)
+              asm.label("rt_music_note_wobble_done")
+              asm.jr(:ra)
+            end
+
+            # rt_music_shapes: every square note that steps its shapes given the shape of the frame it is on, the
+            # voices in order, after the wobbles (Reference::Player#step_shapes). The record holds a group for
+            # each of a note's four frames, nought where the shape stays.
+            # rt_music_note_shapes: the voice of the part at ENTRY stepping as the note at NOTE sets, or holding
+            # its shape.
+            def emit_shapes(asm, at, memory, holds, sharing)
+              m = PS1::Music
+              s = at.call(SHAPES)
+              asm.label("rt_music_shapes")
+              enter(asm)
+              emit_held_tune_returns(asm, at, holds, sharing, "rt_music_shapes_done")
+              emit_each_voice(asm, at, "rt_music_shapes") do |next_voice|
+                asm.lw(:t0, s + SHAPE_RECORD, :t1)
+                asm.beq(:t0, :zero, next_voice)
+                emit_skip_voice_held_still(asm, at, holds, sharing, next_voice, "rt_music_shapes_step")
+                asm.lw(:t2, s + SHAPE_FRAME, :t1)
+                asm.beq(:t2, :zero, "rt_music_shapes_on") # a note's first frame is its head's
+                asm.andi(:t2, :t2, m::SHAPE_FRAMES_MASK)
+                asm.sll(:t2, :t2, 1)
+                asm.lw(:t3, s + SHAPE_RECORD, :t1)
+                asm.addu(:t2, :t2, :t3)
+                emit_table_place(asm, :t4, :t2)
+                asm.lhu(:a0, 0, :t4)
+                asm.beq(:a0, :zero, "rt_music_shapes_on")
+                asm.jal("rt_sound_group")
+                emit_reload_voice(asm, at)
+                asm.label("rt_music_shapes_on")
+                asm.lw(:t0, s + SHAPE_FRAME, :t1)
+                asm.addiu(:t0, :t0, 1)
+                asm.sltiu(:t2, :t0, 8)
+                asm.bne(:t2, :zero, "rt_music_shapes_kept")
+                asm.li(:t0, 4)
+                asm.label("rt_music_shapes_kept")
+                asm.sw(:t0, s + SHAPE_FRAME, :t1)
+              end
+              asm.label("rt_music_shapes_done")
+              leave(asm)
+              emit_stop_voice_change(asm, at, "rt_music_stop_shapes", SHAPES)
+
+              asm.label("rt_music_note_shapes")
+              emit_note_voice(asm, at)
+              asm.lhu(:t2, m::NOTE_SHAPES, :t0)
+              asm.sw(:t2, s + SHAPE_RECORD, :t1)
+              asm.jr(:ra) { asm.sw(:zero, s + SHAPE_FRAME, :t1) }
+            end
+
+            # rt_music_swells: every swelling note held under the music volume, the voices in order, before the
+            # wobbles (Reference::Player#step_swells): struck where IR::Tunes::Swell#held_under returns, then
+            # counted on a frame as Swell#stepped does. Runtime::Sound does the climbing; this only knows how far
+            # it has got.
+            # rt_music_note_swell: the voice of the part at ENTRY counting as the note at NOTE sets, from its
+            # loudness at the level, or holding no swell (Reference::Player#hold_swell_under_level). A note that
+            # slides is left to climb: striking it again would start its slide over.
+            def emit_swells(asm, at)
+              m = PS1::Music
+              loudest = IR::Tunes::LOUDEST
+              s = at.call(SWELLS)
+              asm.label("rt_music_swells")
+              enter(asm)
+              asm.li(:a0, loudest)
+              asm.jal("rt_music_scaled")
+              asm.sw(:v0, at.call(SWELL_CEILING), :gp)
+              emit_each_voice(asm, at, "rt_music_swell") do |next_voice|
+                asm.lw(:t0, s + SWELL_RECORD, :t1)
+                asm.beq(:t0, :zero, next_voice)
+                asm.lw(:t0, s + SWELL_RISING, :t1)
+                asm.beq(:t0, :zero, "rt_music_swell_kept")
+                # Climbing: held once it reaches the ceiling, unless that is full, where it stops by itself.
+                asm.lw(:t0, at.call(SWELL_CEILING), :gp)
+                asm.sltiu(:t2, :t0, loudest)
+                asm.beq(:t2, :zero, "rt_music_swell_count")
+                asm.lw(:t2, s + SWELL_VOLUME, :t1)
+                asm.sltu(:t3, :t2, :t0)
+                asm.bne(:t3, :zero, "rt_music_swell_count")
+                asm.b("rt_music_swell_hold")
+                # Held: struck lower if the ceiling came down, and let climb if it went up.
+                asm.label("rt_music_swell_kept")
+                asm.lw(:t2, s + SWELL_VOLUME, :t1)
+                asm.lw(:t0, at.call(SWELL_CEILING), :gp)
+                asm.beq(:t2, :t0, next_voice)
+                asm.sltu(:t3, :t2, :t0)
+                asm.beq(:t3, :zero, "rt_music_swell_hold")
+                asm.sw(:zero, s + SWELL_COUNTED, :t1)
+                asm.li(:t3, 1)
+                asm.sw(:t3, s + SWELL_RISING, :t1)
+                asm.b("rt_music_swell_strike") { asm.li(:t4, m::SWELL_ONWARDS) }
+                asm.label("rt_music_swell_hold")
+                asm.lw(:t0, at.call(SWELL_CEILING), :gp)
+                asm.sw(:t0, s + SWELL_VOLUME, :t1)
+                asm.sw(:zero, s + SWELL_COUNTED, :t1)
+                asm.sw(:zero, s + SWELL_RISING, :t1)
+                asm.li(:t4, m::SWELL_HOLDS)
+                asm.label("rt_music_swell_strike") # t4 = which list of the record's
+                asm.lw(:t2, s + SWELL_RECORD, :t1)
+                asm.addu(:t4, :t4, :t2)
+                asm.lw(:t3, s + SWELL_VOLUME, :t1)
+                asm.sll(:t3, :t3, 1)
+                asm.addu(:t4, :t4, :t3)
+                emit_table_place(asm, :t5, :t4)
+                asm.lhu(:a0, 0, :t5)
+                asm.jal("rt_sound_group")
+                emit_reload_voice(asm, at)
+                asm.label("rt_music_swell_count")
+                asm.lw(:t0, s + SWELL_RISING, :t1)
+                asm.beq(:t0, :zero, next_voice)
+                asm.lw(:t2, s + SWELL_VOLUME, :t1)
+                asm.sltiu(:t3, :t2, loudest)
+                asm.beq(:t3, :zero, next_voice)
+                asm.lw(:t3, s + SWELL_RECORD, :t1)
+                emit_table_place(asm, :t4, :t3)
+                asm.lhu(:t5, m::SWELL_STEP, :t4)
+                asm.lw(:t0, s + SWELL_COUNTED, :t1)
+                asm.addiu(:t0, :t0, IR::Tunes::COUNTED_A_FRAME)
+                asm.label("rt_music_swell_climb")
+                asm.sltu(:t3, :t0, :t5)
+                asm.bne(:t3, :zero, "rt_music_swell_climbed")
+                asm.subu(:t0, :t0, :t5)
+                asm.addiu(:t2, :t2, 1)
+                asm.sltiu(:t3, :t2, loudest)
+                asm.bne(:t3, :zero, "rt_music_swell_climb")
+                asm.label("rt_music_swell_climbed")
+                asm.sw(:t0, s + SWELL_COUNTED, :t1)
+                asm.sw(:t2, s + SWELL_VOLUME, :t1)
+              end
+              leave(asm)
+              emit_stop_voice_change(asm, at, "rt_music_stop_swell", SWELLS)
+
+              asm.label("rt_music_note_swell")
+              enter(asm, %i[s0])
+              emit_note_voice(asm, at)
+              asm.move(:s0, :t1)
+              asm.lhu(:t2, m::NOTE_SWELL, :t0)
+              asm.sw(:t2, s + SWELL_RECORD, :s0)
+              asm.beq(:t2, :zero, "rt_music_note_swell_done")
+              asm.lhu(:t3, m::NOTE_VOLUME, :t0)
+              asm.andi(:t4, :t3, m::SLIDES)
+              asm.beq(:t4, :zero, "rt_music_note_swell_counts")
+              asm.b("rt_music_note_swell_done") { asm.sw(:zero, s + SWELL_RECORD, :s0) }
+              asm.label("rt_music_note_swell_counts")
+              asm.andi(:a0, :t3, m::RINGS_ALONE - 1)
+              asm.jal("rt_music_scaled")
+              asm.sw(:v0, s + SWELL_VOLUME, :s0)
+              asm.sw(:zero, s + SWELL_COUNTED, :s0)
+              asm.li(:t0, 1)
+              asm.sw(:t0, s + SWELL_RISING, :s0)
+              asm.label("rt_music_note_swell_done")
+              leave(asm, %i[s0])
+            end
+
+            # rt_music_slides: the sliding note's frame played from its record, every frame the player runs,
+            # since on the Advance the voice moves by itself even under `hold_music`.
+            # rt_music_note_slide: the record of the note at NOTE taken up, or nothing, when the part at ENTRY
+            # plays on the one voice that slides.
+            def emit_slides(asm, at)
+              m = PS1::Music
+              asm.label("rt_music_slides")
+              asm.lw(:t0, at.call(SLIDE_CURSOR), :gp)
+              asm.beq(:t0, :zero, "rt_music_slides_done")
+              asm.lhu(:a0, 0, :t0)
+              asm.addiu(:t0, :t0, 2)
+              asm.sw(:t0, at.call(SLIDE_CURSOR), :gp)
+              asm.li(:t1, m::SLIDE_END)
+              asm.beq(:a0, :t1, "rt_music_slides_over")
+              asm.beq(:a0, :zero, "rt_music_slides_done")
+              asm.j("rt_sound_group")
+              asm.label("rt_music_slides_over")
+              asm.sw(:zero, at.call(SLIDE_CURSOR), :gp)
+              asm.label("rt_music_slides_done")
+              asm.jr(:ra)
+
+              asm.label("rt_music_note_slide")
+              emit_field(asm, at, :t1, ENTRY, m::CHANNEL)
+              asm.li(:t2, m::SLIDING_CHANNEL)
+              asm.bne(:t1, :t2, "rt_music_note_slide_done")
+              asm.lw(:t0, at.call(NOTE), :gp)
+              asm.lhu(:t1, m::NOTE_VOLUME, :t0)
+              asm.andi(:t1, :t1, m::SLIDES)
+              asm.bne(:t1, :zero, "rt_music_note_slides")
+              asm.b("rt_music_note_slide_done") { asm.sw(:zero, at.call(SLIDE_CURSOR), :gp) }
+              asm.label("rt_music_note_slides")
+              asm.lhu(:t1, m::NOTE_WOBBLE, :t0)
+              emit_table_place(asm, :t2, :t1)
+              asm.sw(:t2, at.call(SLIDE_CURSOR), :gp)
+              asm.label("rt_music_note_slide_done")
+              asm.jr(:ra)
+            end
+
+            # The voice of channel +channel_name+ (a word) stopped wobbling, stepping and sliding, as an effect's
+            # end stops it (Reference::Player#finish_effect).
+            def emit_voice_stops_changing(asm, at, memory, channel_name, label)
+              asm.lw(:t0, at.call(channel_name), :gp)
+              [WOBBLES, SHAPES].each do |name|
+                next unless memory.reserved?(name)
+
+                asm.addiu(:t1, :t0, -1)
+                asm.sll(:t1, :t1, 4)
+                asm.addu(:t1, :t1, :gp)
+                asm.sw(:zero, at.call(name), :t1)
+              end
+              return unless slides?(memory)
+
+              asm.li(:t1, PS1::Music::SLIDING_CHANNEL)
+              asm.bne(:t0, :t1, label)
+              asm.sw(:zero, at.call(SLIDE_CURSOR), :gp)
+              asm.label(label)
+            end
+
+            # What a stopping tune's voices stop doing: all of it, but on a voice a sound effect holds, which goes
+            # on as the effect's (Reference::Player#silence_song).
+            def emit_tune_voices_stop_changing(asm, at, memory, sharing)
+              blocks = [WOBBLES, SHAPES, SWELLS].select { |name| memory.reserved?(name) }
+              return if blocks.empty? && !slides?(memory)
+
+              CONSOLE_PARTS.times do |voice|
+                kept = "rt_music_quiet_changes_#{voice}"
+                if sharing
+                  asm.li(:a0, voice)
+                  asm.jal("rt_sfx_effect_holds")
+                  asm.bne(:v0, :zero, kept)
+                end
+                blocks.each { |name| asm.sw(:zero, at.call(name) + (voice * VOICE_BYTES), :gp) }
+                asm.sw(:zero, at.call(SLIDE_CURSOR), :gp) if slides?(memory) && voice.zero?
+                asm.label(kept)
+              end
             end
 
             def enter(asm, saved = [])
@@ -256,7 +661,7 @@ module VBlank
 
             # rt_music_frame: one frame of the player: the tune caught up with, the effects that outrank it,
             # its parts, and the other effects (Reference::Player#advance).
-            def emit_frame(asm, at, sharing)
+            def emit_frame(asm, at, sharing, memory)
               asm.label("rt_music_frame")
               enter(asm)
               asm.jal("rt_music_switch")
@@ -266,12 +671,16 @@ module VBlank
               asm.jal("rt_music_song_frame")
               asm.label("rt_music_frame_played")
               asm.jal("rt_sfx_below") if sharing
+              asm.jal("rt_music_swells") if swells?(memory)
+              asm.jal("rt_music_slides") if slides?(memory)
+              asm.jal("rt_music_wobbles") if wobbles?(memory)
+              asm.jal("rt_music_shapes") if steps_shapes?(memory)
               leave(asm)
             end
 
             # rt_music_switch: caught up with the tune the game names (Reference::Player#switch_to_wanted_song).
             # v0 is 1 when that changed what is playing, nought when not.
-            def emit_switch(asm, at, holds, level_at, sharing)
+            def emit_switch(asm, at, holds, level_at, sharing, memory)
               m = PS1::Music
               asm.label("rt_music_switch")
               enter(asm)
@@ -345,6 +754,7 @@ module VBlank
                 asm.sw(:zero, at.call(HELD_END), :gp)
               end
               emit_field(asm, at, :s0, SONG, m::VOICES)
+              emit_tune_voices_stop_changing(asm, at, memory, sharing)
               emit_release_tune_voices(asm, at) if sharing
               asm.move(:a0, :s0)
               asm.jal("rt_sound_silence")
@@ -370,7 +780,7 @@ module VBlank
 
             # rt_music_song_frame: each part's note whose frame has come, then the frame on
             # (Reference::Player#play_song_frame and #advance_song_frame).
-            def emit_song_frame(asm, at, holds, level_at, sharing)
+            def emit_song_frame(asm, at, holds, level_at, sharing, memory)
               m = PS1::Music
               asm.label("rt_music_song_frame")
               enter(asm)
@@ -418,6 +828,7 @@ module VBlank
               emit_group_at(asm, at, NOTE, m::NOTE_HEAD)
               asm.jal("rt_music_note_loudness") if level_at
               emit_group_at(asm, at, NOTE, m::NOTE_TAIL)
+              emit_note_changes(asm, memory)
               asm.label("rt_music_part_passed")
               asm.lw(:t0, at.call(PART), :gp)
               asm.sll(:t0, :t0, 2)
@@ -473,10 +884,11 @@ module VBlank
             #
             # rt_music_loudness(a0 = volume): the part at ENTRY's loudness group for that volume at the level.
             # rt_music_scaled(a0 = volume): v0 = the volume at the level (IR::Tunes.scaled_volume).
-            def emit_level(asm, at, level_at)
+            def emit_level(asm, at, level_at, memory)
               m = PS1::Music
               full = IR::Tunes::FULL_LEVEL
               plain = m::PLAIN_VOLUME
+              sided = m::PLAIN_VOLUME | m::LEFT_ONLY | m::RIGHT_ONLY
 
               asm.label("rt_music_note_loudness")
               enter(asm)
@@ -489,7 +901,7 @@ module VBlank
               asm.label("rt_music_note_may_hold")
               emit_field(asm, at, :t1, ENTRY, m::HOLDS)
               asm.beq(:t1, :zero, "rt_music_note_not_held")
-              asm.andi(:t1, :t3, plain)
+              asm.andi(:t1, :t3, sided)
               asm.lw(:t2, at.call(PART), :gp)
               asm.sll(:t2, :t2, 2)
               asm.addu(:t2, :t2, :gp)
@@ -497,8 +909,25 @@ module VBlank
               emit_part_listed(asm, at, "rt_music_note_listed")
               asm.label("rt_music_note_not_held")
               emit_field(asm, at, :a0, NOTE, m::NOTE_VOLUME)
-              asm.andi(:a0, :a0, plain)
+              asm.andi(:a0, :a0, sided)
+              if swells?(memory)
+                # A note that swells logs where it starts, and climbs by itself from there.
+                emit_field(asm, at, :t3, NOTE, m::NOTE_SWELL)
+                asm.beq(:t3, :zero, "rt_music_note_plain")
+                asm.andi(:a0, :a0, plain)
+                asm.jal("rt_music_scaled")
+                asm.sll(:v0, :v0, 1)
+                emit_field(asm, at, :t3, NOTE, m::NOTE_SWELL)
+                asm.addu(:v0, :v0, :t3)
+                asm.addiu(:v0, :v0, m::SWELL_STARTS)
+                emit_table_place(asm, :t2, :v0)
+                asm.lhu(:a0, 0, :t2)
+                asm.jal("rt_sound_group")
+                asm.b("rt_music_note_loud")
+                asm.label("rt_music_note_plain")
+              end
               asm.jal("rt_music_loudness")
+              asm.label("rt_music_note_loud")
               leave(asm)
 
               asm.label("rt_music_relevel")
@@ -584,17 +1013,23 @@ module VBlank
               asm.sw(:s1, at.call(ENTRY), :gp)
               leave(asm, %i[s0 s1])
 
+              # A note's side in its upper bits is which of the part's lists of loudness groups: each list is a
+              # halfword for each of the sixteen volumes, 32 bytes, and a part with no notes from one side has
+              # the one list.
               asm.label("rt_music_loudness")
-              enter(asm)
+              enter(asm, %i[s0])
+              asm.srl(:s0, :a0, 5)
+              asm.andi(:s0, :s0, 0x60)
               asm.andi(:a0, :a0, plain)
               asm.jal("rt_music_scaled")
               asm.sll(:v0, :v0, 1)
+              asm.addu(:v0, :v0, :s0)
               emit_field(asm, at, :t1, ENTRY, m::LOUDNESS_GROUPS)
               asm.addu(:t1, :t1, :v0)
               emit_table_place(asm, :t2, :t1)
               asm.lhu(:a0, 0, :t2)
               asm.jal("rt_sound_group")
-              leave(asm)
+              leave(asm, %i[s0])
 
               asm.label("rt_music_scaled")
               asm.lw(:t1, at.call(LEVEL_SET), :gp)
@@ -633,12 +1068,12 @@ module VBlank
             end
 
             # THE SOUND EFFECTS (Genesis::Runtime::Effects says each routine, in the same order).
-            def emit_effects(asm, at, count, level_at)
+            def emit_effects(asm, at, count, level_at, memory)
               emit_effect_holds(asm, at)
               emit_sfx_game_side(asm, at, count)
               emit_sfx_passes(asm, at, count)
-              emit_sfx_frame(asm, at, level_at)
-              emit_sfx_finish(asm, at)
+              emit_sfx_frame(asm, at, level_at, memory)
+              emit_sfx_finish(asm, at, memory)
               emit_claim(asm, at)
               emit_select(asm, at)
             end
@@ -813,7 +1248,7 @@ module VBlank
             # rt_sfx_frame: one frame of the effect selected (Reference::Player#play_effect_frame). Cut off, it
             # stops first; asked for, it starts from its first note; at its end, it lets go of its voices;
             # sounding, each part plays its note whose frame has come, on the voice its rank lets it take.
-            def emit_sfx_frame(asm, at, level_at)
+            def emit_sfx_frame(asm, at, level_at, memory)
               m = PS1::Music
               asm.label("rt_sfx_frame")
               enter(asm)
@@ -881,6 +1316,14 @@ module VBlank
               end
               emit_group_at(asm, at, SFX_NOTE, m::NOTE_HEAD)
               emit_group_at(asm, at, SFX_NOTE, m::NOTE_TAIL)
+              # An effect's note changes as it plays as a tune's does, by the same steps, which read the note
+              # from the tune's places (Reference::Player#set_voice); the tune's own walk has finished or not
+              # begun whenever an effect plays, so those places are free.
+              asm.lw(:t0, at.call(SFX_ENTRY), :gp)
+              asm.sw(:t0, at.call(ENTRY), :gp)
+              asm.lw(:t0, at.call(SFX_NOTE), :gp)
+              asm.sw(:t0, at.call(NOTE), :gp)
+              emit_note_changes(asm, memory)
               asm.label("rt_sfx_frame_next")
               emit_count_up(asm, at, SFX_PART)
               asm.b("rt_sfx_frame_part")
@@ -905,7 +1348,7 @@ module VBlank
             # rt_sfx_finish: the effect selected over (Reference::Player#finish_effect): not sounding, and every
             # voice it still holds free and quiet, in the order the voices were first held, each through its
             # part's group for letting the voice go.
-            def emit_sfx_finish(asm, at)
+            def emit_sfx_finish(asm, at, memory)
               m = PS1::Music
               asm.label("rt_sfx_finish")
               enter(asm)
@@ -929,6 +1372,7 @@ module VBlank
               asm.lw(:t3, at.call(RELEASE_RANK), :gp)
               asm.bne(:t2, :t3, "rt_sfx_finish_walk")
               asm.sw(:zero, at.call(HOLDERS), :t0)
+              emit_voice_stops_changing(asm, at, memory, RELEASE_CHANNEL, "rt_sfx_finish_stops_changing")
               # Its part on that voice, whose group lets the voice go.
               emit_field(asm, at, :t0, RECORD, m::EFFECT_PART_COUNT)
               asm.sw(:t0, at.call(SFX_PARTS), :gp)

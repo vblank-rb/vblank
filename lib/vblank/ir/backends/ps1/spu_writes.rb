@@ -166,9 +166,15 @@ module VBlank
             CHANNEL_VOICES.fetch(channel) != WAVE_VOICE || VBlank::Audio::Sound.wave_level(volume) != :mute
           end
 
-          # Where a [:voice ...] entry holds its fade, its slide and its shapes (IR::Tunes.voice_entry).
+          # Where a [:voice ...] entry holds its fade, its slide, its speaker and its shapes (IR::Tunes.voice_entry).
           FADE_OF_VOICE_ENTRY = 5
+          SLIDE_OF_VOICE_ENTRY = 6
+          SIDE_OF_VOICE_ENTRY = 8
           DUTY_OF_VOICE_ENTRY = 9
+
+          # WHICH SPEAKERS A VOICE IS HEARD FROM, as the runtime keeps it beside its loudness: both, or one.
+          BOTH_SIDES = 0
+          SIDES = { left: 1, right: 2 }.freeze
 
           # A SONG'S NOTE on a square voice, or the voice silenced for a rest; on the wave or noise voice
           # nothing, since the entry after it is the note. The square of the note's width, or its part's.
@@ -198,11 +204,61 @@ module VBlank
             [[:level, voice, volume]]
           end
 
-          # A note from one speaker is not made yet (Lowering::Sound refuses it), so nothing changes here.
-          def heard_from_one_side(writes, _side) = writes
+          # A NOTE FROM ONE SPEAKER (+side+ :left or :right): its loudness kept to that side, which the runtime
+          # holds beside the voice's volume so a fade keeps to it too, and the wave voice's other volume
+          # register nought.
+          def heard_from_one_side(writes, side)
+            code = SIDES.fetch(side)
+            silent = register(WAVE_VOICE, side == :left ? H::SPU_VOLUME_RIGHT : H::SPU_VOLUME_LEFT)
+            writes.map do |write|
+              case write.first
+              when :loud then [:loud, write[1], write[2], write[3], code]
+              when :level then [:level, write[1], write[2], code]
+              when :spu then write[1] == silent ? [:spu, silent, 0] : write
+              else write
+              end
+            end
+          end
 
-          # A swelling note struck at the music volume: refused as not made yet before a table is made.
-          def swell_strike(entry, _voicing, _song) = [[:level, CHANNEL_VOICES.fetch(entry[1]), entry[2]]]
+          # A SWELLING NOTE STRUCK AT THE MUSIC VOLUME, where the player's count puts it
+          # (Reference::Player#step_swells): an +entry+ of [:loudness, channel, volume], with the swell after
+          # it if it climbs on, which the runtime's fade does from there.
+          def swell_strike(entry, _voicing, _song)
+            _, channel, volume, swelling = entry
+            [[:loud, CHANNEL_VOICES.fetch(channel), volume, swelling ? swelling.step : 0]]
+          end
+
+          # A NOTE WOBBLING: the voice on +channel+ playing a +frequency+ Hz note +steps+ of the Advance's pitch
+          # number from it (Audio::Vibrato). The note is not started again.
+          def wobble(channel, frequency, steps)
+            voice = CHANNEL_VOICES.fetch(channel)
+            return [] if voice == NOISE_VOICE
+
+            clock = voice == WAVE_VOICE ? VBlank::Audio::Sound::WAVE_CLOCK_HZ.to_f : VBlank::Audio::Sound::SQUARE_CLOCK_HZ.to_f
+            moved = clock / ((clock / frequency).round - steps)
+            [[:spu, register(voice, H::SPU_PITCH), voice == WAVE_VOICE ? wave_pitch(moved) : square_pitch(moved)]]
+          end
+
+          # A SQUARE NOTE STEPPING ITS SHAPE: the square of the new width as the voice's loop, which the chip
+          # takes up as the one playing comes round (its repeat address; Beetle PSX spu.c: a write there holds
+          # until the next key on, IgnoreSampLA).
+          def shape(channel, _frequency, shape)
+            voice = SQUARE_VOICES[channel] or return []
+            [[:spu, register(voice, H::SPU_REPEAT), SoundMemory.square_start(shape)]]
+          end
+
+          # A NOTE SLIDING: the voice on +channel+ taken to the pitch of +count+ (Audio::PitchSlide).
+          def slide_step(channel, count, _was, _shape, from:)
+            _ = from
+            [[:spu, register(CHANNEL_VOICES.fetch(channel), H::SPU_PITCH), square_pitch(slide_frequency(count))]]
+          end
+
+          # The Hz of a square voice's pitch count, and the pitch count of a +frequency+ Hz note.
+          def slide_frequency(count) = VBlank::Audio::Sound::SQUARE_CLOCK_HZ.to_f / (VBlank::Audio::PitchSlide::COUNT_TOP - count)
+          def slide_count(frequency) = VBlank::Audio::PitchSlide::COUNT_TOP - (VBlank::Audio::Sound::SQUARE_CLOCK_HZ.to_f / frequency).round
+
+          # A slide run off the top: the voice silent at once.
+          def slide_stop(channel) = silence(1 << CHANNEL_VOICES.fetch(channel))
 
           # THE WRITES A RUN OF THE LOG MEANS, in order, with what one entry says of the next, as
           # Genesis::ChipWrites works them out: the tune a held note's [:loudness ...] reaches is the one
@@ -215,32 +271,71 @@ module VBlank
           def each_entry_writes(entries, voicing, song: nil)
             return enum_for(:each_entry_writes, entries, voicing, song: song) unless block_given?
 
-            _ = song
             note_volume = nil
             loudness = [] # what a new note's loudness has just written
             previous = nil
             effect_voices = 0 # the voices a sound effect holds, a bit each
             fade = nil # the fade the note just logged named
+            side = nil # the speaker it plays from
+            sounding = {} # what each channel's last note is, for a wobble of it
+            rising = {} # whether each channel's last note is a song's that swells
+            sides = {} # the speaker each channel's last note plays from, which its loudness keeps to
             entries.each do |entry|
+              if entry.first == :voice
+                sounding[entry[1]] = entry[3]
+                rising[entry[1]] = swelling_note?(entry, voicing)
+                sides[entry[1]] = entry[SIDE_OF_VOICE_ENTRY]
+              end
+              if entry.first == :loudness && rising[entry[1]]
+                # A swell's own start only sets where it starts: the voice climbs by itself from there.
+                strike = previous == :voice ? loudness_at(entry[1], entry[2], voicing, song) : swell_strike(entry, voicing, song)
+                strike = heard_from_one_side(strike, sides[entry[1]]) if sides[entry[1]]
+                yield entry, strike
+                loudness = []
+                previous = entry.first
+                next
+              end
+              if entry.first == :wobble
+                yield entry, wobble(entry[1], sounding.fetch(entry[1]), entry[2])
+                next
+              end
+              if entry.first == :duty
+                yield entry, shape(entry[1], nil, entry[2])
+                next
+              end
+
               effect_voices = held_by_effects(effect_voices, entry, voicing) if entry.first == :voice
               played = note_volume && wave_or_noise_note?(entry) ? [entry.first, entry.last.merge(volume: note_volume)] : entry
               note_volume = entry[4] if entry.first == :voice && !SQUARE_VOICES.key?(entry[1])
               note_volume = nil unless %i[voice loudness].include?(entry.first)
-              fade = entry[FADE_OF_VOICE_ENTRY] if entry.first == :voice
+              if entry.first == :voice
+                fade = entry[FADE_OF_VOICE_ENTRY]
+                side = entry[SIDE_OF_VOICE_ENTRY]
+              end
               writes = for_entry(played, voicing, effect_voices: effect_voices)
               writes = under_loudness(writes, loudness) if voice_own_entry?(entry)
               writes = with_fade(writes, fade) if fade && noise_note?(entry)
+              writes = heard_from_one_side(writes, side) if side && (entry.first == :voice || voice_own_entry?(entry))
+              if entry.first == :loudness && !entry[1].is_a?(Array) && sides[entry[1]]
+                writes = heard_from_one_side(writes, sides[entry[1]])
+              end
               loudness = entry.first == :loudness && previous == :voice ? writes : []
               previous = entry.first
               yield entry, writes
             end
           end
 
+          # Whether a [:voice ...] +entry+ is a song's note the player holds at the music volume.
+          def swelling_note?(entry, voicing)
+            _, channel, who, frequency, _, fade = entry
+            frequency.positive? && fade&.swells_by_itself? && CHANNEL_VOICES.fetch(channel) != WAVE_VOICE && !voicing.effects.include?(who)
+          end
+
           # A voice's own entry after its note's loudness: the wave voice's volume stays as the loudness
           # wrote it, and the noise voice starts at the loudness's volume.
           def under_loudness(writes, loudness)
             registers = loudness.select { |write| write.first == :spu }.map { |write| write[1] }
-            volume = loudness.find { |write| write.first == :level }&.last
+            volume = loudness.find { |write| write.first == :level }&.at(2)
             writes.reject { |write| write.first == :spu && registers.include?(write[1]) }.map do |write|
               write.first == :loud && volume ? [:loud, write[1], volume, write[3]] : write
             end
@@ -285,8 +380,9 @@ module VBlank
 
           # WHAT THE CHIP'S REGISTERS HOLD AFTER THE SOUND LOG +entries+, by their distance from 1F801C00h.
           # Nothing reaches the chip until the game calls `enable_sound` (Runtime::Sound). A voice that is
-          # moving its own loudness has none to answer for: the log does not say where it has got to. Key on
-          # and key off are gathered and written at the frame boundary, so they are not here.
+          # moving its own loudness has none to answer for: the log does not say where it has got to; nor a
+          # note that slides its pitch. Key on and key off are gathered and written at the frame boundary, so
+          # they are not here.
           def after(entries, voicing)
             held = {}
             moving = {}
@@ -297,25 +393,39 @@ module VBlank
 
               writes.each { |write| hold_write(held, moving, write) }
             end
-            held
+            held.except(*slide_registers(entries))
           end
 
           def hold_write(held, moving, write)
             case write.first
             when :spu then held[write[1]] = write[2]
-            when :loud then hold_loudness(held, moving, write[1], write[2], !write[3].zero?)
-            when :level then hold_loudness(held, moving, write[1], write[2], moving[write[1]])
-            when :silence then VOICES.times { |voice| hold_loudness(held, moving, voice, 0, false) if write[1][voice] == 1 }
+            when :loud then hold_loudness(held, moving, write[1], write[2], !write[3].zero?, write[4] || BOTH_SIDES)
+            when :level then hold_loudness(held, moving, write[1], write[2], moving[write[1]], write[3] || BOTH_SIDES)
+            when :silence then VOICES.times { |voice| hold_loudness(held, moving, voice, 0, false, BOTH_SIDES) if write[1][voice] == 1 }
             end
           end
 
-          def hold_loudness(held, moving, voice, volume, moves)
+          def hold_loudness(held, moving, voice, volume, moves, side)
             moving[voice] = moves
-            keys = [register(voice, H::SPU_VOLUME_LEFT), register(voice, H::SPU_VOLUME_RIGHT)]
+            left = register(voice, H::SPU_VOLUME_LEFT)
+            right = register(voice, H::SPU_VOLUME_RIGHT)
             if moves
-              keys.each { |key| held.delete(key) }
+              held.delete(left)
+              held.delete(right)
             else
-              keys.each { |key| held[key] = VOLUME_REGISTER.fetch(volume) }
+              held[left] = side == SIDES.fetch(:right) ? 0 : VOLUME_REGISTER.fetch(volume)
+              held[right] = side == SIDES.fetch(:left) ? 0 : VOLUME_REGISTER.fetch(volume)
+            end
+          end
+
+          # WHAT THE LOG CANNOT ANSWER FOR. A slide logs nothing as it moves, so while the last note of a
+          # channel slides, its voice's pitch and loudness have no expected value.
+          def slide_registers(entries)
+            entries.select { |entry| entry.first == :voice && entry[3].positive? }.group_by { |entry| entry[1] }.flat_map do |channel, notes|
+              next [] unless VBlank::Audio::PitchSlide.moves?(notes.last[SLIDE_OF_VOICE_ENTRY])
+
+              voice = CHANNEL_VOICES.fetch(channel)
+              [register(voice, H::SPU_PITCH), register(voice, H::SPU_VOLUME_LEFT), register(voice, H::SPU_VOLUME_RIGHT)]
             end
           end
         end

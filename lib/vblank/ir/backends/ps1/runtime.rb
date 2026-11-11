@@ -33,13 +33,14 @@ module VBlank
           # The runtime's own places in RAM, asked for before the game's; Faces's only for a game that
           # fills faces (+faces+), Sound's for one that makes sound (+sound+), and Music's for one with songs
           # (+songs+): as much of them as its songs ask for, by whether it sets the music volume
-          # (+follows_level+), how many sound +effects+ it has, and whether it holds its tune (+holds_music+).
-          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false)
+          # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
+          # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:).
+          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {})
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
             Sound.reserve(memory) if sound
-            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music) if songs
+            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
           end
 
           # The runtime's sections: the entry point, then everything else. +main+ is the label of the

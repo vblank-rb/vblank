@@ -87,7 +87,9 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
                                   songs: songs, follows_level: follows_level, effects: effects,
-                                  holds_music: Lowering::Sound.holds_music?(program))
+                                  holds_music: Lowering::Sound.holds_music?(program),
+                                  notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
+                                           swells: Music.swells_under_level?(program), slides: Music.slides?(program) })
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,

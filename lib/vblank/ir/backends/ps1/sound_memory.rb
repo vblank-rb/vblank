@@ -69,6 +69,13 @@ module VBlank
           # The name of the square loop of +duty+ (Audio::Sound::SQUARE_HIGH_EIGHTHS's names).
           def self.square(duty) = [:square, Audio::Sound::SQUARE_HIGH_EIGHTHS.fetch(duty)]
 
+          # WHERE THE SQUARE OF +duty+ STARTS, in 8-byte steps: every game's sound memory starts with the
+          # squares, in SQUARE_EIGHTHS's order, each the same size, so it is the same in every game.
+          def self.square_start(duty)
+            bytes = (SQUARE_SAMPLES / ADPCM::SAMPLES_A_BLOCK) * ADPCM::BLOCK_BYTES
+            (Console::PS1Hardware::SPU_FIRST_FREE + (SQUARE_EIGHTHS.index(Audio::Sound::SQUARE_HIGH_EIGHTHS.fetch(duty)) * bytes)) / 8
+          end
+
           # The name of the loop of the waveform +shape+ (a name, or its 32 steps).
           def self.wave(shape) = [:wave, Audio::Sound.wavetable(shape)]
 

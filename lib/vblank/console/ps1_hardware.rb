@@ -93,6 +93,7 @@ module VBlank
       SPU_START = 0x6 # Where its sound starts in sound memory, counted in 8-byte steps
       SPU_ADSR_LOW = 0x8 # Its envelope: attack, decay and sustain level
       SPU_ADSR_HIGH = 0xA # ...sustain and release
+      SPU_REPEAT = 0xE # Where its loop goes back to, in 8-byte steps; written, it holds until the next key on
       # The chip's own, as distances from SPU:
       SPU_KEY_ON = 0x188 # Voices 0-15 started, a bit each (voices 16-23 at 18Ah)
       SPU_KEY_OFF = 0x18C # Voices 0-15 let go, a bit each (16-23 at 18Eh)
