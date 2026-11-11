@@ -48,6 +48,8 @@ module VBlank
     #   marker for each colour of a bank (below). The tiles of the cells it was told it may be
     #   written later are known but for their pixels, so the program holds each after the banks'
     #   as a picture of its own read from the file, and the map's tiles follow them.
+    # - a shading (Nodes::Shading#from_file, a Shading): its colours and its levels' places. The
+    #   program holds zeros of their number.
     # - a screen's backdrop (Nodes::Screen#backdrop_from_file, a Color): the one colour the screen
     #   shows wherever nothing is drawn. The program holds no colour for it.
     # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
@@ -164,6 +166,16 @@ module VBlank
       # The fifteen bits of the colour +where+ (a Color) names in +bytes+, the file.
       def self.color_in(bytes, where) = FormatReading.colors(bytes.byteslice(where.at, 2), where.format).first & 0x7FFF
 
+      # A SHADING IN THE FILE (Nodes::Shading#from_file): its colours, two bytes each from
+      # +colors_at+ on, kept as +color_format+ (a Console::ColorFormat), and its levels, one byte a
+      # place from +levels_at+ on, each level's places one after another, darkest level first. How
+      # many colours and levels there are is the game's word, so the shading holds that many
+      # zeros until the file is read.
+      #
+      # The file is the player's, so nothing in it stops the game, where the build that holds the
+      # same numbers refuses them: a place past the colours is place 0.
+      Shading = Data.define(:colors_at, :color_format, :levels_at)
+
       # ONE NUMBER IN THE FILE: +width+ (:byte, :half or :word) from +at+ on, below zero only where
       # +signed+, kept as +format+ (a Console::NumberFormat).
       Number = Data.define(:at, :width, :signed, :format)
@@ -271,7 +283,7 @@ module VBlank
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
       # nothing (.place_in_file); a song reads the notes of the parts that keep theirs there.
-      READ_KINDS = %i[table bitmap sample background screen song].freeze
+      READ_KINDS = %i[table bitmap sample background screen song shading].freeze
 
       # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
       def self.place_in_file(node)
@@ -483,6 +495,7 @@ module VBlank
         when :background then fill_background(program, node, bytes)
         when :screen then fill_backdrop(node, bytes)
         when :song then fill_song(node, bytes)
+        when :shading then fill_shading(node, bytes)
         else raise ArgumentError, "a #{node.kind} is not read from the file (READ_KINDS names the kinds that are)"
         end
       end
@@ -494,6 +507,18 @@ module VBlank
           where = part.from_file
           where ? where.voice_playing(notes_in(bytes, where), node.total_frames) : part
         end
+      end
+
+      # A shading's colours and levels, read from the places it names: the shading the game keeps
+      # when it is built holding them, each colour of fifteen bits as a marker's colour is
+      # (.color_in), and a place past the colours held as Shading says.
+      def self.fill_shading(node, bytes)
+        where = node.from_file
+        count = node.colors.length
+        node.colors = FormatReading.colors(bytes.byteslice(where.colors_at, count * 2), where.color_format).map { |color| color & 0x7FFF }
+        places = bytes.byteslice(where.levels_at, node.levels.length * count).bytes.map { |place| place < count ? place : 0 }
+        node.levels = places.each_slice(count).to_a
+        node.from_file = nil
       end
 
       # A screen's backdrop, read from the place it names: the colour a `screen` keeps when the game
@@ -691,7 +716,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :fill_song, :fill_table, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
+      private_class_method :fill_node, :fill_recording, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece
     end

@@ -227,6 +227,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * where a game holding its data writes a colour, as a screen's backdrop does. The colours of a
  * list of colours read from the file are entries of it too (IR::StartFile#colors).
  *
+ * rg_start_file_fill_places: +count+ entries of +numbers+ from entry +first+ on, each a byte of the
+ * file from byte +at+ on, a place among +places+ colours: a byte past them is place 0. The levels of
+ * a shading read from the file (IR::StartFile::Shading), whose colours rg_start_file_fill_colors
+ * fills into the same array.
+ *
  * rg_start_file_walk_colors: +count+ entries of +colors+ from entry +first+ on, each made from an
  * entry before it (IR::StartFile::WalkedColor): +made+ holds three numbers for each, the entry it
  * is made from, the colour it is walked toward, and how many steps each of its three channels is
@@ -277,6 +282,7 @@ void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
+void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
 void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
 int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at);

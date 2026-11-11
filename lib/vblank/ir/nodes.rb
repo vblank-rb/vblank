@@ -890,7 +890,11 @@ module VBlank
         kind :shading
         declaration!
         category :data
-        operands name: :name, colors: :list, levels: :list
+        operands name: :name, colors: :list, levels: :list, from_file: :file_shading
+
+        # +from_file+ is where its colours and levels are in the file the program is handed as it
+        # starts (StartFile::Shading), for a shading read from there; its +colors+ and +levels+ are
+        # then zeros of their number. Absent on every other shading.
 
         # The level a light (0 to FillFace::LIGHTEST) times the levels has reached: its whole part.
         def self.level_of(shade) = shade >> 16

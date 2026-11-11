@@ -516,6 +516,13 @@ void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, in
   for (int32_t place = 0; place < count; place++) colors[first + place] = start_file_color(at, format, place);
 }
 
+void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places) {
+  for (int32_t i = 0; i < count; i++) {
+    int32_t place = start_file[at + i];
+    numbers[first + i] = place < places ? place : 0;
+  }
+}
+
 /* +color+ with each of its three channels moved +steps+ toward those of +far+, and no further
  * (Graphics::Color.walked_toward). */
 static int32_t start_file_walked_color(int32_t color, int32_t far, int32_t steps) {

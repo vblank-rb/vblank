@@ -239,6 +239,7 @@ module VBlank
             @start_file_marked_pixels = [] # ...and the pixels written as markers, put in their colours then
             @start_file_marked_numbers = [] # ...and the numbers of a table of colours written as markers
             @start_file_followed_tiles = [] # ...and which tiles of such a background are drawn from each list it follows
+            @start_file_shading_fills = [] # ...and the colours and levels of each lit fill's shading read from it
             @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound

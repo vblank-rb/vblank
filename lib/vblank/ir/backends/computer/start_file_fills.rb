@@ -61,8 +61,32 @@ module VBlank
                                             build_start_file_picture_fills + build_start_file_background_fills +
                                             build_start_file_marked_pixel_fills + build_start_file_marked_number_fills +
                                             build_start_file_recording_fills +
-                                            build_start_file_sound_fills + start_file_pose_list_choices)]
+                                            build_start_file_sound_fills + start_file_pose_list_choices +
+                                            start_file_shading_fills)]
           end
+
+          # A SHADING READ FROM THE FILE (IR::StartFile::Shading), in the array a lit fill hands the
+          # runtime (Picture#shading_array): written with zeros where its colours and its levels'
+          # places go, where the routine can write, and filled from the file as the game starts.
+          # Each lit fill has an array of its own, so each is filled. A place past the colours is
+          # place 0 (rg_start_file_fill_places), as the interpreter holds it.
+          def record_start_file_shading_fill(array, shading)
+            where = shading.from_file
+            colors = shading.colors.length
+            format = drawing_array("start_file_color_format", "int32_t", color_format_rules(where.color_format))
+            start_file_shading_fills.push(
+              eval_call("rg_start_file_fill_colors", array, Statements::Int.new(SHADING_COLORS_AT), Statements::Int.new(colors),
+                        Statements::Int.new(where.colors_at), format),
+              eval_call("rg_start_file_fill_places", array, Statements::Int.new(SHADING_COLORS_AT + colors),
+                        Statements::Int.new(shading.levels.length * colors), Statements::Int.new(where.levels_at), Statements::Int.new(colors))
+            )
+          end
+
+          # Where a shading's colours start in the array a lit fill hands the runtime: after how many
+          # levels and how many colours (Picture#shading_array).
+          SHADING_COLORS_AT = 2
+
+          attr_reader :start_file_shading_fills
 
           # THE LIST A FOLLOWING SPRITE'S POSE IS DRAWN FROM, WHERE ITS FRAME PICKS IT
           # (Picture#lists_chosen_by_frame). +chosen+ is, for each pose of +obj+, that pose's

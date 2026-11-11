@@ -805,7 +805,11 @@ module VBlank
                      else
                        [0]
                      end
-            drawing_array("shading", "int32_t", values)
+            return drawing_array("shading", "int32_t", values) unless shading&.from_file
+
+            array = drawing_array("shading", "int32_t", values, writable: true)
+            record_start_file_shading_fill(array, shading)
+            array
           end
 
           # The key, in place of a list of colours, of an image whose pixels are a picture's numbers

@@ -67,6 +67,7 @@ module VBlank
         file_picture: ->(v) { v.is_a?(StartFile::Picture) || v.is_a?(StartFile::Pose) }, # ...where a picture is in it, or a pose's frame
         file_background: ->(v) { v.is_a?(StartFile::Background) },    # ...where a background's map, tiles and colours are
         file_color: ->(v) { v.is_a?(StartFile::Color) },              # ...and where one colour is
+        file_shading: ->(v) { v.is_a?(StartFile::Shading) },          # ...and where a shading's colours and levels are
         file_recording_settings: ->(v) { v.is_a?(StartFile::RecordingSettings) }, # ...and where a recording's settings are
       })
 

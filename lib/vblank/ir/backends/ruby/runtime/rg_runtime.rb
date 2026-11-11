@@ -323,6 +323,13 @@ def rg_start_file_fill_colors(colors, first, count, at, format)
   count.times { |place| colors[first + place] = rg_start_file_color(at, format, 0, place) }
 end
 
+# The levels of a shading read from the file (rg_runtime.h, rg_start_file_fill_places).
+def rg_start_file_fill_places(numbers, first, count, at, places)
+  @rg_start_file.byteslice(at, count).bytes.each_with_index do |place, i|
+    numbers[first + i] = place < places ? place : 0
+  end
+end
+
 # rg_runtime.c's start_file_walked_color.
 def rg_start_file_walked_color(color, far, steps)
   walked = 0
