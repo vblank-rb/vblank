@@ -28,16 +28,41 @@ module VBlank
     # refused, since a fact must be written once. Testing#assert_facts_kept holds every file to the
     # three rules above.
     #
+    # FACTS A PERSON WRITES. A port made from a decompilation has no tool: a person reads each number
+    # in the original's source and writes it down. Such a game sets that:
+    #
+    #   FACTS = VBlank::Original::Facts.new("data/facts", written_by: :hand)
+    #
+    # They read the same, and Testing#assert_facts_kept holds them to the rules that fit:
+    #
+    # - no layout: a number stays in the base it was written in (`cue: 0x7f`, which a person checks
+    #   against the source's own hex) and a list stays down the page;
+    # - every top-level key but `measured:` has a comment directly above it, with no blank line
+    #   between, saying what it is and where in the original it was read. A mapping's comment covers
+    #   every key under it, so those need none of their own. A top-level key that is a label of the
+    #   original's needs one like any other: nothing above it explains it;
+    # - `measured:` is as above, a value, a source and a test for each entry. An entry's source says
+    #   where it was read, so nothing in the section needs a comment, and nor does `measured:`.
+    #
+    # Whether a comment names where the number was read is for the person to keep: the check can
+    # tell only that a comment is there. #write refuses these files, since it would write the
+    # tool's layout over the person's.
+    #
     # Every file is read when this is made, and what is read is frozen all the way down, so a Facts
     # in a constant is shared by every Ractor as it is. Reading is of what was read then; #write
     # changes the file, and a Facts made after it reads the new values.
     class Facts
       MEASURED = FactsFile::MEASURED.to_sym
 
+      # Who writes the values outside `measured:`, the game's tool or a person.
+      WRITERS = %i[tool hand].freeze
+
       # The names of the files, as symbols.
       attr_reader :files
 
-      def initialize(*folders)
+      def initialize(*folders, written_by: :tool)
+        refuse_unknown_writer!(written_by)
+        @written_by = written_by
         @folders = folders.map { |folder| File.expand_path(folder) }.freeze
         found = @folders.flat_map { |folder| Dir[File.join(folder, "*.yml")] }.group_by { |path| File.basename(path, ".yml").to_sym }
         refuse_doubled_names!(found)
@@ -46,6 +71,9 @@ module VBlank
         @loaded = @paths.transform_values { |path| YAML.safe_load_file(path, symbolize_names: true) || {} }
         Ractor.make_shareable(self)
       end
+
+      # Whether a person writes these files' values (`written_by: :hand`), not the game's tool.
+      def written_by_hand? = @written_by == :hand
 
       # The path of +file+.
       def path(file) = @paths.fetch(file.to_sym) { raise KeyError, "There is no facts file #{file}.yml. The files are #{files.join(', ')}." }
@@ -77,6 +105,7 @@ module VBlank
       # comment and the measured section. A file there is not yet is made in +folder+, the first folder
       # unless set.
       def write(file, values, folder: @folders.first)
+        refuse_write_over_hand_written!(file)
         target = @paths.fetch(file.to_sym) { File.join(File.expand_path(folder), "#{file}.yml") }
         FileUtils.mkdir_p(File.dirname(target))
         File.write(target, FactsFile.merge(File.exist?(target) ? File.read(target) : "", values))
@@ -90,10 +119,28 @@ module VBlank
         FactsFile.merge(text, values) == text
       end
 
-      # The paths of +file+'s keys that have no comment above them.
-      def uncommented(file) = FactsFile.uncommented(File.read(path(file)))
+      # The paths of +file+'s keys that have no comment above them and need one: every key of a
+      # tool's file, the top-level keys of a person's.
+      def uncommented(file)
+        text = File.read(path(file))
+        written_by_hand? ? FactsFile.uncommented_top_level(text) : FactsFile.uncommented(text)
+      end
 
       private
+
+      def refuse_unknown_writer!(written_by)
+        return if WRITERS.include?(written_by)
+
+        raise ArgumentError, "written_by: #{written_by.inspect} is not known. Write written_by: :hand for facts a person writes, " \
+                             "or leave it out for facts a tool writes."
+      end
+
+      def refuse_write_over_hand_written!(file)
+        return unless written_by_hand?
+
+        raise ArgumentError, "#{file}.yml is written by hand (written_by: :hand), and a write would put the tool's layout over it. " \
+                             "Change the file in an editor."
+      end
 
       def refuse_doubled_names!(found)
         doubled = found.values.select { |paths| paths.size > 1 }

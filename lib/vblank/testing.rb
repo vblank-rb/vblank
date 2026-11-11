@@ -160,7 +160,17 @@ module VBlank
     # writes it, so nobody edited a value by hand; every key has a comment written above it; and
     # every measured fact has a value, a source and a test, a file under +root+ (the folder the
     # game's tests are named from) that is there.
+    #
+    # Facts a person writes (`Original::Facts.new(folder, written_by: :hand)`) are held to the rules
+    # that fit them, told in full on Original::Facts: no layout, a comment directly above every
+    # top-level key but `measured:`, and the same of every measured fact. Every mistake in every
+    # file is named in the one failure, since a person mends them by hand.
     def assert_facts_kept(facts, root:)
+      if facts.written_by_hand?
+        mistakes = hand_written_facts_mistakes(facts, root)
+        return assert mistakes.empty?, mistakes.join("\n")
+      end
+
       facts.files.each do |file|
         name = File.basename(facts.path(file))
         assert facts.kept?(file), "#{name} is not laid out as its tool writes it. Run the tool again to write its values."
@@ -171,6 +181,37 @@ module VBlank
           assert_path_exists File.join(root, entry.fetch("test")), "#{name}'s measured #{path} names a test that is not there."
         end
       end
+    end
+
+    # Each mistake in +facts+, files a person writes, as a sentence for that person: the file and
+    # the key, what is wrong, then what to write. +root+ is the folder its tests are named from.
+    def hand_written_facts_mistakes(facts, root)
+      facts.files.flat_map do |file|
+        name = File.basename(facts.path(file))
+        uncommented = facts.uncommented(file).map do |key|
+          "#{name}: #{key} has no comment directly above it. Write one there. Say what #{key} is and where in the original you read it."
+        end
+        uncommented + facts.measured_entries(file).filter_map do |path, entry|
+          mistake = measured_entry_mistake(entry, root)
+          "#{name}: measured #{path} #{mistake}" if mistake
+        end
+      end
+    end
+
+    # What is wrong with the measured +entry+, as the end of a sentence about it, or nil for an
+    # entry that is a value, a source and a test under +root+ that is there. A source with nothing
+    # written in it is no source.
+    def measured_entry_mistake(entry, root)
+      return "is not an entry. Give it a value, a source and a test." unless entry.is_a?(Hash)
+
+      missing = Original::FactsFile::ENTRY_KEYS - entry.keys
+      missing |= ["source"] if entry["source"].to_s.strip.empty?
+      unknown = entry.keys - Original::FactsFile::ENTRY_KEYS
+      return "has no #{missing.join(' and no ')}. Give it a value, a source and a test." if missing.any?
+      return "has #{unknown.join(' and ')}, which an entry cannot have. Keep only its value, its source and its test." if unknown.any?
+      return if File.exist?(File.join(root, entry.fetch("test").to_s))
+
+      "names the test #{entry.fetch('test')}, and that file is not there. Write the path of the test that holds this fact, from #{root}."
     end
 
     # A test of an example +game+ (a VBlank.game) skips on a console the game does not name yet: it is

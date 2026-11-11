@@ -112,6 +112,36 @@ class TestOriginalFacts < Minitest::Test
     end
   end
 
+  def test_hand_written_facts_need_a_comment_above_each_top_level_key_only
+    Dir.mktmpdir do |folder|
+      text = "# A header.\n\n# Fast. ball.c\nspeed: 0x10\nspin: 2\n# Edges. field.c\nedges:\n  left: 1\n\n\"odd key\": 3\n" \
+             "measured:\n  frames:\n    value: 4\n    source: probe\n    test: x\n"
+      File.write(File.join(folder, "ball.yml"), text)
+
+      facts = VBlank::Original::Facts.new(folder, written_by: :hand)
+
+      assert_predicate facts, :written_by_hand?
+      assert_equal ["spin", "odd key"], facts.uncommented(:ball)
+    end
+  end
+
+  def test_facts_are_written_by_a_tool_unless_set
+    Dir.mktmpdir do |folder|
+      refute_predicate facts_in(folder), :written_by_hand?
+      assert_match "written_by", assert_raises(ArgumentError) { VBlank::Original::Facts.new(folder, written_by: :nobody) }.message
+    end
+  end
+
+  def test_hand_written_facts_refuse_a_tool_s_write
+    Dir.mktmpdir do |folder|
+      File.write(File.join(folder, "ball.yml"), "# Fast.\nspeed: 0x10\n")
+      facts = VBlank::Original::Facts.new(folder, written_by: :hand)
+
+      assert_match "by hand", assert_raises(ArgumentError) { facts.write(:ball, { "speed" => 5 }) }.message
+      assert_equal "# Fast.\nspeed: 0x10\n", File.read(File.join(folder, "ball.yml"))
+    end
+  end
+
   def test_a_nested_measured_fact_is_read_and_one_without_a_value_refused
     Dir.mktmpdir do |folder|
       facts = facts_in(folder, { "field" => "# Cuts.\nmeasured:\n  # The cut.\n  cut:\n    # White.\n    white_frame:\n      value: 6\n" \

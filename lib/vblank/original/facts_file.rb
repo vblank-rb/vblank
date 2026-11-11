@@ -10,6 +10,7 @@ module VBlank
     #   FactsFile.merge(text, values)   # the file with +values+, every comment kept
     #   FactsFile.parse(text)           # its header, each key's comment, and its measured section
     #   FactsFile.uncommented(text)     # the paths of keys with no comment above them
+    #   FactsFile.uncommented_top_level(text)   # the same of a file a person writes: its top-level keys
     #
     # A file is a header (comment lines, then a blank line), then the tool's keys, each with the
     # comment lines written directly above it, then the hand-written `measured:` section to the end.
@@ -72,6 +73,21 @@ module VBlank
         missing + keys.reject { |path| comments.key?(path) || ENTRY_KEYS.include?(path.split(".").last) }
       end
 
+      # The top-level keys of +text+ that have no comment directly above them, all but `measured`:
+      # the rule for a file a person writes, where a mapping's comment covers the keys under it and
+      # a measured entry's source says where it was read. The keys are YAML's own reading of the
+      # file, so one written in a way KEY_LINE does not match is named, never passed over.
+      def self.uncommented_top_level(text)
+        commented = []
+        above = false
+        text.each_line(chomp: true) do |line|
+          match = line.match(KEY_LINE)
+          commented << key_name(match) if match && above
+          above = line.start_with?("#")
+        end
+        (YAML.safe_load(text) || {}).keys.map(&:to_s) - commented - [MEASURED]
+      end
+
       # Each key line of +lines+ outside a list: its path into +keys+ and the comment lines just above
       # it into +comments+. At the top-level `measured:` key it yields where that is and the comment
       # lines above it, unless +stop_at_measured+ is false.
@@ -93,7 +109,7 @@ module VBlank
               next
             end
             list_floor = nil
-            key = match[1] ? JSON.parse(%("#{match[1]}")) : match[2]
+            key = key_name(match)
             yield at, pending if stop_at_measured && indent.zero? && key == MEASURED
             stack.pop while stack.any? && stack.last[0] >= indent
             path = (stack.map(&:last) + [key]).join(".")
@@ -104,6 +120,9 @@ module VBlank
           end
         end
       end
+
+      # The key a KEY_LINE +match+ found: a quoted one read as YAML reads it.
+      def self.key_name(match) = match[1] ? JSON.parse(%("#{match[1]}")) : match[2]
 
       def self.format_mapping(map, indent, path, comments, top: false)
         map.each_with_index.flat_map do |(key, value), n|
@@ -160,7 +179,7 @@ module VBlank
         end
       end
 
-      private_class_method :index_keys, :format_mapping, :format_value, :format_item, :label?, :format_flow_list, :format_scalar
+      private_class_method :index_keys, :key_name, :format_mapping, :format_value, :format_item, :label?, :format_flow_list, :format_scalar
     end
   end
 end
