@@ -345,7 +345,8 @@ static void forget_held_tiles(int32_t background) {
  * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
  * are stamped again over it. A turned background is painted through its turn at the next rebuild,
  * and a status bar from its own top,
- * rather than stamped as drawn. */
+ * rather than stamped as drawn. So is anything put up while a placed fade is in the picture, which
+ * a stamp leaves out. */
 void rg_background_put_up(int32_t background) {
   forget_held_tiles(background);
   if (background_field(background, RG_BG_ON_ARRIVAL)) {
@@ -357,7 +358,7 @@ void rg_background_put_up(int32_t background) {
   scenery_kept = 0;
   if (turns[keeper_of(background)].turned || background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
       background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0 ||
-      boxes[keeper_of(background)].held) {
+      boxes[keeper_of(background)].held || placed_fade_in_picture()) {
     request_repaint();
     return;
   }
@@ -863,7 +864,8 @@ static int32_t rg_tiled_layer_holds_scenery(int32_t layer) {
 }
 
 /* Reference#take_down_scenery: the last scene's own scenery comes down, and the picture goes back
- * to the scenery every screen shows. Answers whether any came down. */
+ * to the scenery every screen shows. A placed fade stays across the change, so while one is in the
+ * picture the view is rebuilt with it. Answers whether any came down. */
 static int32_t rg_tiled_scene_take_down(int32_t brings_scenery) {
   int32_t any_scene_owned = 0;
   for (int32_t i = 0; i < shown_count; i++)
@@ -880,6 +882,7 @@ static int32_t rg_tiled_scene_take_down(int32_t brings_scenery) {
   scenery_kept = 0;
   clear_to(backdrop);
   stamp_in_stack_order(-1);
+  if (placed_fade_in_picture()) request_repaint();
   return 1;
 }
 
