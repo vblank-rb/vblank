@@ -704,6 +704,21 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   free(places);
 }
 
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks) {
+  int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
+  int32_t bank_at = rules[10], bank_bits = rules[11], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
+  int32_t columns = across * side, count = followed[2];
+  for (int32_t cell = 0; cell < cells; cell++) {
+    uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    if (bank >= bank_count || bank > 30 || !((banks >> bank) & 1)) continue;
+    for (int32_t down = 0; down < side; down++)
+      for (int32_t along = 0; along < side; along++)
+        followed[3 + count++] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+  }
+  followed[2] = count;
+}
+
 void rg_start_file_fill_background(const int32_t *rules) {
   int32_t total = rules[0], start = rules[1], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
   int32_t map_high_byte_first = rules[6], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];

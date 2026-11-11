@@ -657,23 +657,23 @@ module VBlank
 
           # The rules for one background and one list it follows, made once, or nil where none of
           # its tiles is drawn from the list.
+          #
+          # A BACKGROUND READ FROM THE START FILE has a tile for every cell of its map after the
+          # tiles the game holds, and which bank a cell is of is in the file. So its rules are
+          # written with room for every one of those tiles, where the routine reading the file can
+          # write, and that routine adds the tiles of the cells whose bank is drawn from the list
+          # (StartFileFills#record_start_file_followed_tiles).
           def followed_tile_rules(bg, name)
             (@followed_tile_rules ||= {})[[bg.object_id, name]] ||= begin
-              refuse_followed_lists_from_file!(bg)
               tiles = bg.tiles.each_index.select { |at| bg.list_followed_by(tile_image(bg.tiles[at]).list_drawn_from) == name }
-              tiles.empty? ? :none : drawing_array("followed_tiles", "int32_t", [tile_pixel_total, entry_of(bg), tiles.length, *tiles])
+              rules = [tile_pixel_total, entry_of(bg), tiles.length, *tiles]
+              if bg.from_file
+                record_start_file_followed_tiles(bg, tiles, rules)
+              else
+                tiles.empty? ? :none : drawing_array("followed_tiles", "int32_t", rules)
+              end
             end
             @followed_tile_rules[[bg.object_id, name]].then { |rules| rules == :none ? nil : rules }
-          end
-
-          # Which tile each cell of a background read from the start file shows is known only once
-          # the file is read, so which tiles are drawn from which list is not known here.
-          def refuse_followed_lists_from_file!(bg)
-            return unless bg.from_file
-
-            raise LoweringError, "The background #{bg.name.inspect} is read from the data pack as the game starts, and it " \
-                                 "draws with more than one list of colors that the game changes with `recolor`. This " \
-                                 "build does not make that yet. To fix this, tell it to draw with one of those lists."
           end
 
           # How many pixels the tiles of every background take, each written once for the colors it
@@ -1248,9 +1248,10 @@ module VBlank
           def yes_or_no(answer) = Statements::Int.new(answer ? 1 : 0)
 
           # A constant array for one drawing statement, kept to be written before the routines.
-          def drawing_array(what, type, values)
+          # +writable+ is for one the routine that reads the start file writes into.
+          def drawing_array(what, type, values, writable: false)
             name = @names.own("#{what}_#{@drawing_arrays.length + 1}")
-            @drawing_arrays << Statements::ConstArray.new(name: name, type: type, values: values)
+            @drawing_arrays << Statements::ConstArray.new(name: name, type: type, values: values, writable: writable)
             name
           end
         end

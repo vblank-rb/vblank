@@ -190,6 +190,14 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * naming a tile past the file's draws nothing, and one naming a bank past its colours is drawn in
  * colour 0: the file is the player's, and the game plays on.
  *
+ * rg_start_file_fill_followed_tiles: which of such a background's tiles are drawn from one list of
+ * colours the game changes, for a background that follows several (rg_background_follow, whose
+ * rules +followed+ is: how many tile pixels, the background, how many tiles, and the tiles). The
+ * game writes the tiles it holds and leaves room for one for every cell of the map; which bank a
+ * cell is of is in the file, so this adds the tile of each cell whose bank has its bit set in
+ * +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the background's own, as
+ * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
+ *
  * rg_start_file_fill_pose: the pixels of a picture that is one frame of the original's sprites
  * (IR::StartFile::Pose): a list of pieces, each saying where it sits from the object's place,
  * which tile it starts at, how it is turned and how many tiles it is each way. The frame is in the
@@ -262,6 +270,7 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);

@@ -538,6 +538,32 @@ def rg_start_file_fill_pose(rules)
   end
 end
 
+# Which tiles of a background whose map is in the file are drawn from one list it follows
+# (rg_runtime.h, rg_start_file_fill_followed_tiles). The game writes +followed+ unfrozen.
+def rg_start_file_fill_followed_tiles(followed, rules, banks)
+  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  bank_at, bank_bits = rules[10, 2]
+  bank_count = rules[16]
+  held, cell_bytes = rules[19, 2]
+  columns = across * side
+  kept_as = if cell_bytes == 1 then "C*"
+            else map_high_byte_first == 1 ? "n*" : "v*"
+            end
+  count = followed[2]
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    next if bank >= bank_count || bank > 30 || banks[bank].zero?
+
+    side.times do |down|
+      side.times do |along|
+        followed[3 + count] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        count += 1
+      end
+    end
+  end
+  followed[2] = count
+end
+
 # The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_background(rules)

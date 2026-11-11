@@ -254,7 +254,8 @@ module VBlank
           # the list it is drawn with. Those are the game's, or markers where the list is read
           # from the file too (another bank, a walk of one), which the tiles are then filled with
           # and put in their colours with every other marker (#record_marked_pixels).
-          StartFileBackgroundFill = Data.define(:start, :held, :from, :lists)
+          # +entry+ is the number the runtime knows the background by (Picture#entry_of).
+          StartFileBackgroundFill = Data.define(:entry, :start, :held, :from, :lists)
           BankFromFile = Data.define(:bank)
 
           def record_start_file_background_fill(start, bg, steps)
@@ -267,18 +268,63 @@ module VBlank
               end
             end
             held = bg.tiles.length
-            @start_file_background_fills << StartFileBackgroundFill.new(start: start, held: held, from: from, lists: lists)
+            @start_file_background_fills << StartFileBackgroundFill.new(entry: entry_of(bg), start: start, held: held, from: from, lists: lists)
             return unless lists.flatten.any? { |color| IR::StartFile.marker?(color) }
 
             @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start,
                                                           count: (held + from.tiles_drawn) * Picture::RUN_TILE_PIXELS * lists.length)
           end
 
+          # Each background's fill, and then, for each list a background read from the file
+          # follows beside others, the tiles of its map that are drawn from that list.
           def build_start_file_background_fills
-            @start_file_background_fills.map do |fill|
-              eval_call("rg_start_file_fill_background",
-                        drawing_array("start_file_background", "int32_t", start_file_background_rules(fill)))
+            rules = @start_file_background_fills.to_h do |fill|
+              [fill.entry, drawing_array("start_file_background", "int32_t", start_file_background_rules(fill))]
             end
+            followed = @start_file_followed_tiles.map do |tiles|
+              eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry), Statements::Int.new(tiles.banks))
+            end
+            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed
+          end
+
+          # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE DRAWN FROM ONE LIST IT FOLLOWS
+          # (Picture#followed_tile_rules). When the game tells a list what to hold, the tiles drawn
+          # from that list alone are copied from the set it names (rg_background_follow), so the
+          # runtime needs which tiles those are. For the tiles the game holds, the build knows:
+          # +tiles+, and +known+ is the rules for them ([how many tile pixels, the background, how
+          # many tiles, the tiles]). For the map's, the file says: each cell names its bank. A
+          # bank's list is found by the bank's stand-in tile, which is tile number +bank+ of those
+          # the game holds, so the banks drawn from the list are the stand-ins among +tiles+.
+          #
+          # So the rules are written with room for every tile of the map, where the routine can
+          # write, and the routine adds each cell's tiles whose bank is one of +banks+, a bit for
+          # each bank, and counts them in (rg_start_file_fill_followed_tiles). It reads the map
+          # by the rules the background's own fill is handed. Hands back the rules, or :none
+          # where no tile can be drawn from the list.
+          StartFileFollowedTiles = Data.define(:entry, :rules, :banks)
+
+          def record_start_file_followed_tiles(bg, tiles, known)
+            from = bg.from_file
+            banks = from.bank_names.each_index.select { |bank| tiles.include?(bank) }
+            return :none if tiles.empty?
+            return drawing_array("followed_tiles", "int32_t", known) if banks.empty?
+
+            refuse_bank_past_followed_banks!(bg, banks.max)
+            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(from.tiles_drawn, 0)], writable: true)
+            @start_file_followed_tiles << StartFileFollowedTiles.new(entry: entry_of(bg), rules: rules, banks: banks.sum { |bank| 1 << bank })
+            rules
+          end
+
+          # The banks are handed to the runtime as a bit each of one number of the game's.
+          MOST_FOLLOWED_BANKS = 31
+
+          def refuse_bank_past_followed_banks!(bg, bank)
+            return if bank < MOST_FOLLOWED_BANKS
+
+            raise LoweringError, "The background #{bg.name.inspect} is read from the #{@program.start_file.called} as the game " \
+                                 "starts, and it follows bank #{bank} of its colors with `recolor`. #{build_name} follows " \
+                                 "banks 0 to #{MOST_FOLLOWED_BANKS - 1} of such a background. To fix this, build the game " \
+                                 "all-in-one."
           end
 
           # The numbers rg_start_file_fill_background reads (rg_runtime.h has what each is).

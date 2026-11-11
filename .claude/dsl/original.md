@@ -320,8 +320,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   The build does not know a bank's colours, so a bank's list holds a marker for each, as a list declared from
   the pack does (below): `color_walk` of a bank, `recolor` with one, a picture drawn in one and a bank drawn
   with another all show what the all-in-one build shows. One list given alone (`city.draw_with walk, showing:
-  step`) draws every bank, since the build cannot tell which bank the map uses. A background that follows more
-  than one bank the game recolours is refused when the game is written out, for now.
+  step`) draws every bank, since the build cannot tell which bank the map uses. **A background that follows more
+  than one bank the game recolours** (`city.draw_with({ title_0: :title_0, title_3: :title_3 })`, then `recolor` of
+  each, which is how a title's palette lines are faded apart) **works as built all-in-one**: when a list is told what
+  to hold, only the tiles of its own bank change, and which cells are of which bank is in the file, so the runtime
+  works that out at power-on from each cell's bank (`rg_start_file_fill_followed_tiles`) for the copy a list's
+  write makes (`rg_background_follow`).
   **The cells it is told it may be written later (`set_cells:`) work as built all-in-one**: a told number names
   its tile, turn and bank, so the build knows everything of a told tile but its pixels. Each is a picture of the
   background's own, read from the file at power-on as any picture of a tile from the pack is

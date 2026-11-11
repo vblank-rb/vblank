@@ -595,6 +595,31 @@ module PackGames
           end
         end
       end,
+      # A background that follows two banks the game recolours, each at a pass of its own: a
+      # title brought down to another set of colours a palette line at a time. Which cells are of
+      # which bank is in the file, and a list's write changes only its own bank's.
+      game(:background_following_two_banks_recolored, passes: 8) do |folder, options|
+        first = TURNED_LIST.(3)
+        second = TURNED_LIST.(5)
+        words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(3, mirrored: true), ADVANCE_CELL.(1, bank: 1, upside_down: true),
+                 ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(0), ADVANCE_CELL.(3, bank: 1), ADVANCE_CELL.(2)]
+        advance_background(folder, options, words, across: 4) do |world|
+          colors :first, first
+          colors :second, second
+          world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+          # A list the game recolours is one a sprite draws with: a dot in each bank's.
+          %i[palette_0 palette_1].each_with_index do |bank, at|
+            image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+            sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+          end
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            recolor :palette_0, :first if pass >= 3
+            recolor :palette_1, %i[second palette_0], showing: pass - 5 if pass >= 5
+          end
+        end
+      end,
       # The backdrop follows a bank's list: the bank's colour at a place, which no picture can show.
       game(:backdrop_following_a_backgrounds_bank, passes: 2) do |folder, options|
         advance_game_of(folder, options, [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1)]) do |pack|
@@ -703,6 +728,30 @@ module PackGames
             recolor :palette_1, %i[other palette_0], showing: pass - 3
             pass += 1
             world.set_cell 2, 0, base + 1 if pass == 2
+          end
+        end
+      end,
+      # A cell written on a background that follows two banks the game recolours: the written
+      # tile is one the build holds, and follows its bank's list as the map's tiles do.
+      game(:written_cell_on_a_background_following_two_banks, passes: 8) do |folder, options|
+        first = TURNED_LIST.(3)
+        second = TURNED_LIST.(5)
+        base = ADVANCE_CELL.(FIRST_FONT_TILE, bank: 1)
+        words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1), ADVANCE_CELL.(1), ADVANCE_CELL.(2)]
+        advance_cells_game(folder, options, words, set_cells: base..(base + 1)) do |world|
+          colors :first, first
+          colors :second, second
+          world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+          %i[palette_0 palette_1].each_with_index do |bank, at|
+            image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+            sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+          end
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            world.set_cell 2, 0, base + 1 if pass == 2
+            recolor :palette_0, :first if pass >= 3
+            recolor :palette_1, :second if pass >= 5
           end
         end
       end,
