@@ -64,6 +64,14 @@ class TestCore < Minitest::Test
     end
   end
 
+  def test_a_bios_file_that_is_not_there_is_refused
+    Dir.mktmpdir do |dir|
+      error = assert_raises(ArgumentError) { RubyPS1Emulator::Core.new(write(dir, red_screen), bios: File.join(dir, "none.bin")) }
+
+      assert_match(/no BIOS file/, error.message)
+    end
+  end
+
   def test_a_button_the_pad_does_not_have_is_refused
     played(red_screen, 0) do |core|
       assert_raises(ArgumentError) { core.set_buttons(%i[a]) }

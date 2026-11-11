@@ -52,6 +52,18 @@ module VBlank
       # cache and the scratchpad on (psx-spx, "Cache Control").
       CACHE_CONTROL = 0xFFFE_0130
       CACHE_CONTROL_SET_BY_BIOS = 0x0001_E988
+      # The two values the cache is emptied with (Runtime::Boot#emit_instruction_cache_emptied): the
+      # cache on in its tag test mode, where a store marks a line as holding nothing, and the cache on.
+      CACHE_CONTROL_TAG_TEST = 0x0000_0804
+      CACHE_CONTROL_CACHE_ON = 0x0000_0800
+      # The instruction cache: 4K of instructions, kept in lines of four.
+      INSTRUCTION_CACHE_BYTES = 0x1000
+      INSTRUCTION_CACHE_LINE_BYTES = 16
+      # RAM again where nothing is fetched through the cache (KSEG1): an address in RAM with this bit
+      # set as well names the same byte.
+      UNCACHED = 0x2000_0000
+      # The status register's "isolate cache" bit: loads and stores go to the cache and nowhere else.
+      SR_ISOLATE_CACHE = 1 << 16
 
       # --- the ports, all reached from one register holding 1F800000h, at a 16-bit distance ---
       IO = 0x1F80_0000

@@ -40,10 +40,10 @@
  
     po = &PIOMem->data8[0x0800];
  
-@@ -4553,8 +4570,15 @@
+@@ -4553,8 +4570,19 @@
     va_end(va);
  }
- 
+
 +/* VBlank probe: the profiler's counts start again with each console (cpu.c,
 + * gpu.c). */
 +extern void vblank_probe_profile_reset(void);
@@ -53,10 +53,14 @@
  {
 +   vblank_probe_profile_reset();
 +   vblank_probe_gpu_busy = 0;
++   /* A library copy is used again by the next console that takes it, which
++    * may be given a BIOS file where the last one had none: Sony's BIOS must
++    * be left its own reset vector. */
++   vblank_probe_openbios = false;
     VCD_Init();
- 
+
     struct retro_log_callback log;
-@@ -7638,8 +7662,58 @@
+@@ -7638,8 +7666,58 @@
     okay           = MDFNSS_LoadSM(&st, 0, 0);
     FastSaveStates = false;
     return okay;
@@ -115,7 +119,7 @@
  void *retro_get_memory_data(unsigned type)
  {
     /* This callback may be invoked before retro_load_game or after
-@@ -7647,6 +7721,18 @@
+@@ -7647,6 +7725,18 @@
      * libretro spec; the frontend must cope with that. */
     switch (type)
     {
@@ -134,7 +138,7 @@
        case RETRO_MEMORY_SYSTEM_RAM:
           return MainRAM ? MainRAM->data8 : NULL;
        case RETRO_MEMORY_SAVE_RAM:
-@@ -7666,6 +7752,18 @@
+@@ -7666,6 +7756,18 @@
  {
     switch (type)
     {

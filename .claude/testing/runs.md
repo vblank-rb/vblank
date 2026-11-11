@@ -74,3 +74,12 @@ to Ruby or to what a run spends its time on.
 `vblank/testing` sets `$stdout.sync`; the comment beside it says why. Taken out, a test in a
 Ractor that starts a program (ImageMagick, for a game whose art is read from a file) stops as a
 deadlock now and then, as the Pac-Man example's tests did.
+
+## The PlayStation run plays under OpenBIOS, and under a Sony BIOS where one is named
+
+Every play on the PlayStation run is under OpenBIOS, which the emulator carries: the program starts
+at power-on with no BIOS run. `VBLANK_PS1_BIOS` names a player's own Sony BIOS, dumped from their
+console and never in the repository. Only a test that asks plays under it
+(`Diagnostics::Emulator.open_ps1(path, bios: Diagnostics::Emulator.ps1_bios)`), so the rest of the
+run is the same on a machine with a BIOS file and on one without. `test_ps1_boot.rb` has those
+tests; without the setting they skip with `skip_on_this_machine`.

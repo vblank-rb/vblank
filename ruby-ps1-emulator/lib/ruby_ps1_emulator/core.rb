@@ -21,9 +21,18 @@ module RubyPS1Emulator
   # globals. So each Core loads a copy of the library of its own (KeptCopy), and two Cores in one
   # process are two consoles that cannot see each other.
   #
-  # NO BIOS FROM SONY. The core is told a system folder with no BIOS in it, so it starts OpenBIOS, the
-  # free BIOS built into it. Beetle loads a PS-X EXE by letting the BIOS start and then copying the
-  # program into RAM and jumping to it, where the BIOS would have started the disc.
+  # NO BIOS FROM SONY, unless one is handed over. The core is told a system folder with no BIOS in it,
+  # so it starts OpenBIOS, the free BIOS built into it. Beetle loads a PS-X EXE by letting the BIOS
+  # start and then copying the program into RAM and jumping to it, where the BIOS would have started
+  # the disc. OpenBIOS never reaches the place Beetle does that from, so the probe patch starts the
+  # program at power-on instead, with no BIOS run at all.
+  #
+  # A BIOS FROM SONY is the player's own, dumped from their console, and is named when the core is made
+  # (+bios+). The core finds a BIOS by its file name in the system folder, so a link to the player's
+  # file is put there under the name the core asks for (BIOS_NAME): a link and never a copy, gone with
+  # the folder. Then the BIOS runs first, sets its kernel up in RAM as it does on a console, and Beetle
+  # starts the program from inside it, so the program finds the console as a BIOS leaves it and not as
+  # power-on does.
   #
   # THE PICTURE is read from video RAM, at the place and the size the graphics chip is told to show,
   # never from the picture the core hands its front end (which it crops and widens for a television).
@@ -72,6 +81,10 @@ module RubyPS1Emulator
     JOYPAD = 1
     JOYPAD_MASK = 256
 
+    # The name Beetle looks for a North American console's BIOS under in its system folder, the region
+    # it takes a PS-X EXE to be for. It takes a file of that name whichever console it was dumped from.
+    BIOS_NAME = "scph5501.bin"
+
     attr_reader :frames
 
     # How many pairs of sound samples the console has made since power-on. The sound chip makes 44100 a
@@ -80,9 +93,15 @@ module RubyPS1Emulator
 
     # +exe_path+ is the program. +save_dir+ is where the core is told to keep files; a core made without
     # one keeps them in a folder of its own that is gone with it.
-    def initialize(exe_path, save_dir: nil)
+    #
+    # +bios+ is the path of a BIOS file to start the console under, the player's own (see "A BIOS FROM
+    # SONY" above). Without one the console has OpenBIOS.
+    def initialize(exe_path, save_dir: nil, bios: nil)
+      raise ArgumentError, "there is no BIOS file at #{bios}" if bios && !File.file?(bios)
+
       @dir = Dir.mktmpdir("ruby-ps1-emulator")
       @save_dir = save_dir || @dir
+      File.symlink(File.expand_path(bios), File.join(@dir, BIOS_NAME)) if bios
       @buttons = Array.new(2) { [] }
       @frames = 0
       @sound_frames = 0

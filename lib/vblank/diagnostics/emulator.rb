@@ -184,10 +184,26 @@ module VBlank
       def ps1_loaded? = !defined?(::RubyPS1Emulator::Core).nil?
 
       # A PlayStation on a PS-X EXE (see RubyPS1Emulator::Core). +save_dir+ is where the core is told to
-      # keep its files.
-      def open_ps1(exe_path, save_dir: nil)
+      # keep its files. +bios+ is the path of a BIOS file the console starts under; without one it has
+      # OpenBIOS, the free BIOS the core carries, and the program starts at power-on with no BIOS run.
+      def open_ps1(exe_path, save_dir: nil, bios: nil)
         load_ps1!
-        RubyPS1Emulator::Core.new(exe_path, save_dir: save_dir)
+        RubyPS1Emulator::Core.new(exe_path, save_dir: save_dir, bios: bios)
+      end
+
+      # The setting that names a player's own PlayStation BIOS, dumped from their console. Nothing
+      # ships one: it is Sony's.
+      PS1_BIOS_SETTING = "VBLANK_PS1_BIOS"
+
+      # The path of the player's own PlayStation BIOS, or nil where the setting names none. A program
+      # is played under it only when something asks for that by handing this to #open_ps1: every other
+      # play is under OpenBIOS, so a run is the same on a machine with a BIOS file and on one without.
+      def ps1_bios(env = ENV)
+        named = env[PS1_BIOS_SETTING]
+        return nil if named.nil? || named.empty?
+        raise LoadError, "#{PS1_BIOS_SETTING} names #{named}, and there is no file there." unless File.file?(named)
+
+        named
       end
 
       # Open an emulator core on a ROM file path.

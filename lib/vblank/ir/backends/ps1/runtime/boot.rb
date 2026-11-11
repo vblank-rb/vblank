@@ -18,7 +18,9 @@ module VBlank
           # BIOS's kernel keeps for itself. The runtime writes four instructions there that jump to its own
           # handler (Frame#emit_interrupt): a LUI and an ORI to put the handler's address in k0, a JR k0,
           # and a NOP for its delay slot. k0 is the one register the handler may change before it has
-          # saved the others.
+          # saved the others. Then the processor's instruction cache is emptied, so that it is those four
+          # words an interrupt runs and not the BIOS's, which it may still hold
+          # (#emit_instruction_cache_emptied).
           #
           # THE BUTTONS HELD FROM POWER-ON are read before anything that takes a frame: a player's hand is
           # on the pad before the console is on. They are the first pass's (Frame::HELD), kept in s0 until
@@ -39,6 +41,7 @@ module VBlank
               emit_interrupts_quiet(asm, h)
               emit_port_word(asm, h::TIMER1_MODE, h::TIMER1_COUNTS_LINES) # for Frame::END_LINES
               emit_handler_installed(asm, h)
+              emit_instruction_cache_emptied(asm, h)
               asm.jal("rt_pads_start")
               asm.jal("rt_buttons_now")
               asm.move(:s0, :v0)
@@ -116,6 +119,63 @@ module VBlank
               asm.li(:t1, 0x0340_0008) # JR k0
               asm.sw(:t1, 8, :t3)
               asm.sw(:zero, 12, :t3)
+            end
+
+            # THE INSTRUCTION CACHE EMPTIED, so the handler just written is the one an interrupt runs.
+            #
+            # The cache holds copies of the instructions the processor ran last, and a word stored to RAM
+            # does not reach the copy. A console that took an interrupt under its BIOS has the BIOS's
+            # four words at the exception vector in its cache, and would go on running those: the BIOS's
+            # handler, with the runtime's sitting unread in RAM beneath it.
+            #
+            # The processor has no instruction that empties its cache. What it has is a bit in its status
+            # register, "isolate cache" (bit 16): while it is set, loads and stores go to the cache itself
+            # and never reach RAM or the ports. With the cache control register in its tag test mode
+            # (804h), a nought stored to the first word of a line of four marks all four as holding
+            # nothing; then, in its ordinary mode (800h), a nought is stored over every word. That is the
+            # BIOS's own FlushCache, step for step (psx-spx, "CPU Specifications", cache isolation).
+            #
+            # THREE THINGS IT MUST MIND. It runs from the uncached mirror of RAM (the same bytes at
+            # A0000000h as at 80000000h, never fetched through the cache), since a processor with its
+            # cache isolated runs whatever the cache holds and asks RAM for nothing; so it is written with
+            # no jump that names an address, only branches, which count from where they are. It touches
+            # no memory while the bit is set, the stack included. And the cache control register is itself
+            # reached by a store, so the bit is cleared before each write to it. Interrupts are off
+            # throughout: the status register holds the one bit and nothing else.
+            #
+            # The cache is 4K, 1024 words in 256 lines, and it is left on, as the BIOS leaves it.
+            def emit_instruction_cache_emptied(asm, h)
+              control = lambda do |value|
+                asm.li(:t0, value)
+                asm.sw(:t0, 0, :t1)
+              end
+              every = lambda do |label, step|
+                asm.lui(:t2, h::SR_ISOLATE_CACHE >> 16)
+                asm.mtc0(:t2, R3000::COP0_STATUS)
+                asm.nop # an instruction for the change to take hold before the first store
+                asm.move(:t3, :zero)
+                asm.label(label)
+                asm.sw(:zero, 0, :t3)
+                asm.addiu(:t3, :t3, step)
+                asm.bne(:t3, :t4, label)
+                asm.mtc0(:zero, R3000::COP0_STATUS)
+                asm.nop
+              end
+              asm.la(:t0, "rt_cache_uncached")
+              asm.lui(:t1, h::UNCACHED >> 16)
+              asm.or(:t0, :t0, :t1)
+              asm.jr(:t0)
+              asm.label("rt_cache_uncached")
+              asm.li(:t1, h::CACHE_CONTROL)
+              asm.li(:t4, h::INSTRUCTION_CACHE_BYTES)
+              control.call(h::CACHE_CONTROL_TAG_TEST)
+              every.call("rt_cache_lines", h::INSTRUCTION_CACHE_LINE_BYTES)
+              control.call(h::CACHE_CONTROL_CACHE_ON)
+              every.call("rt_cache_words", 4)
+              control.call(h::CACHE_CONTROL_SET_BY_BIOS)
+              asm.la(:t0, "rt_cache_emptied")
+              asm.jr(:t0)
+              asm.label("rt_cache_emptied")
             end
 
             # The sound chip's main volume at nought, and the chip off, until a game's sound is made.

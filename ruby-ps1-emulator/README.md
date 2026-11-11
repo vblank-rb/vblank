@@ -32,7 +32,10 @@ archive of Beetle PSX at the revision `CoreBuild` names, applies the patch and b
 somewhere else.
 
 No BIOS from Sony is needed: with none in its system folder, Beetle PSX runs OpenBIOS (MIT), which
-is built into it. Beetle PSX is GPL-2.0, and `core/LICENSE.md` says what that covers here. This gem
+is built into it. To start a program under a BIOS dumped from your own console, name the file when
+the core is made, `RubyPS1Emulator::Core.new("game.exe", bios: "/path/to/your/bios.bin")`: the BIOS
+then runs first and Beetle starts the program from inside it, as a console that loaded it would.
+No BIOS ships with this gem. Beetle PSX is GPL-2.0, and `core/LICENSE.md` says what that covers here. This gem
 is a tool for testing, and VBlank never ships it: it is not in VBlank's gemspec.
 
 The binding is pure Ruby over Fiddle: there is no C extension to compile. Each `Core` loads a copy
