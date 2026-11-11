@@ -1576,13 +1576,15 @@ module VBlank
         # {QuickMemoryPlan}) goes to the roomy memory whatever its turn.
         def register_lists_hot_first(program, declarations)
           roomy = Roomy.new(program)
+          in_words = @top.fill_face_at ? @faces.corner_lists_in_words(program, declarations) : Set.new
           ranked = declarations.sort_by do |node, _ring|
             asked = node.fast
             [asked == false ? 2 : (asked || roomy.hot?(node.name) ? 0 : 1), -node.capacity]
           end
           ranked.each do |node, ring|
+            at = var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
             @lists.register_list(node.name, node.capacity, ring: ring, width: node.width || :word,
-                                                           fast: node.fast, roomy: @lists_to_roomy.include?(node.name))
+                                                           fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at)
           end
         end
 

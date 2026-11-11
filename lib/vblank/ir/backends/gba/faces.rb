@@ -85,7 +85,8 @@ module VBlank
           # perspective (nought for never), the two tables of reciprocals, and the row, the span and
           # the stretch of it being drawn; for a lit fill, its shading's table (nought when unlit)
           # and how many levels it has, and the shade at each end of an edge and of a row, its step
-          # a pixel and the shade where a span starts.
+          # a pixel and the shade where a span starts; and where the picture's entry the PICTURE_WORDS
+          # were last copied from is (#emit_picture_entry).
           WORKING_WORDS = %i[_face_corners _face_direct _face_perspective _face_reciprocals _face_distances _face_row
                              _face_rows_end _face_start _face_span_count _face_step_u _face_step_v _face_step_w
                              _face_left_w _face_right_w _face_top_w _face_bottom_w _face_row_base _face_first
@@ -94,7 +95,7 @@ module VBlank
                              _face_pending _face_shading _face_levels _face_top_shade _face_bottom_shade
                              _face_left_shade _face_right_shade _face_step_shade _face_shade _face_run_end
                              _face_moved_u _face_moved_v _face_moved_w _face_over_u _face_over_v _face_over_w _face_stretch_u
-                             _face_stretch_v _face_stretch_w].freeze
+                             _face_stretch_v _face_stretch_w _face_entry].freeze
 
           # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
           # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
@@ -124,6 +125,7 @@ module VBlank
             @picture_tables = {}
             @shadings = {}
             @shading_tables = {}
+            @corner_lists_in_words = Set.new
           end
 
           # The program's shadings by name, and the tear-free screen's palette (nil without one),
@@ -154,9 +156,31 @@ module VBlank
             node.children.each { |statement| @lowering.statement(statement) }
           end
 
-          # The fill: its corners read out of their list into the routine's words, its picture's
-          # entry out of the fill's table of pictures, and the routine called. A count under three
-          # draws nothing, and one past MOST_CORNERS is held to it.
+          # A PLACE'S CORNER LIST IS KEPT IN THE ROUTINE'S OWN CORNER WORDS, so a fill hands its
+          # corners over by writing nothing at all. The list and the words hold the same numbers in
+          # the same order (a corner's CORNER_NUMBERS, LISTED_FIELDS), and a place's drawing writes
+          # every number the fill reads into the list before each fill, then reads none of them after
+          # it: the routine works a picture in perspective into its corners' u and v, and a lit one
+          # its lights, in the words themselves. So two places' lists can share the words too.
+          #
+          # Only a place's own list, which IR::PlaceDrawing writes and reads as above; a fill of
+          # another list is handed its corners by copying them, since its game may read the list
+          # again. The names of the lists kept in the words, from +declarations+ ([list_new, shifted]).
+          def corner_lists_in_words(program, declarations)
+            filled = program.walk.filter_map { |node| node.corners if node.kind == :fill_face }.to_set
+            @corner_lists_in_words = declarations.filter_map do |node, ring|
+              kind, parts = Messages::MadeNames.read(node.name)
+              next unless filled.include?(node.name) && kind == :place_part && parts[:part] == "corners"
+              next unless !ring && (node.width || :word) == :word && node.capacity == CORNER_WORDS.length
+
+              node.name
+            end.to_set
+          end
+
+          # The fill: its corners read out of their list into the routine's words (unless the list is
+          # kept in them, #corner_lists_in_words), its picture's entry out of the fill's table of
+          # pictures, and the routine called. A count under three draws nothing, and one past
+          # MOST_CORNERS is held to it.
           def emit_fill_face(node)
             done = gensym
             @lowering.value(node.count)
@@ -166,8 +190,25 @@ module VBlank
             emit(ASM.cmp_imm(ACC, 3))
             emit_branch(:bcond, done, cond: :lt)
             store_var(ACC, :_face_corners)
-            # Only the face's own corners are handed over: the routine reads no corner past its
-            # count, and a face of four corners is most faces, so the copy stops there.
+            emit_copy_corners(node) unless @corner_lists_in_words.include?(node.corners)
+            emit_shading_words(node) if @lit
+            node.edges.zip(EDGE_WORDS).each do |value, word|
+              @lowering.value(value)
+              store_var(ACC, word)
+            end
+            emit_picture_entry(node)
+            emit_number(ACC, @lowering.mode == :buffered ? 0 : 1)
+            store_var(ACC, :_face_direct)
+            @lowering.value(node.perspective)
+            store_var(ACC, :_face_perspective)
+            @divide.emit_call_routine_at(@routine_iwram)
+            place_label(done)
+          end
+
+          # The fill's corners copied out of their list into the routine's words. Only the face's own
+          # corners: the routine reads no corner past its count, and a face of four corners is most
+          # faces, so the copy stops there.
+          def emit_copy_corners(node)
             copied = gensym
             CORNER_WORDS.each_with_index do |word, at|
               corner, field = at.divmod(LISTED_FIELDS.length)
@@ -178,22 +219,6 @@ module VBlank
               store_var(ACC, word)
             end
             place_label(copied)
-            emit_shading_words(node) if @lit
-            node.edges.zip(EDGE_WORDS).each do |value, word|
-              @lowering.value(value)
-              store_var(ACC, word)
-            end
-            emit_picture_entry(node)
-            emit_number(ACC, @lowering.mode == :buffered ? 0 : 1)
-            store_var(ACC, :_face_direct)
-            emit_load_data_address(ACC, reciprocal_table)
-            store_var(ACC, :_face_reciprocals)
-            emit_load_data_address(ACC, distance_table)
-            store_var(ACC, :_face_distances)
-            @lowering.value(node.perspective)
-            store_var(ACC, :_face_perspective)
-            @divide.emit_call_routine_at(@routine_iwram)
-            place_label(done)
           end
 
           # On to +past+ when corner +corner+ is past the face's own: from the fourth on, the corner
@@ -213,9 +238,20 @@ module VBlank
             @routine_iwram = at
           end
 
-          # Copy the routine from the cartridge into the quick memory, once, at power-on.
+          # Copy the routine from the cartridge into the quick memory, once, at power-on, with the
+          # words every fill hands it alike: where its two tables are, which nothing writes after.
+          # No picture's entry is marked as copied, since the console's memory is not nought at
+          # power-on.
           def emit_copy_fill_face_routine
-            @divide.copy_routine(ROUTINE, @routine_iwram) if @routine_iwram
+            return unless @routine_iwram
+
+            @divide.copy_routine(ROUTINE, @routine_iwram)
+            emit_load_data_address(ACC, reciprocal_table)
+            store_var(ACC, :_face_reciprocals)
+            emit_load_data_address(ACC, distance_table)
+            store_var(ACC, :_face_distances)
+            emit_number(ACC, 0)
+            store_var(ACC, :_face_entry)
           end
 
           # Where the routine runs, by name, for a profile to report against.
@@ -280,8 +316,11 @@ module VBlank
 
           # THE PICTURE'S ENTRY, from a table of the fill's pictures in the cartridge: its number,
           # worked out as the game runs, held to the ends of the table, and the entry's words
-          # copied to the routine's.
+          # copied to the routine's. Nothing else writes those words, so where the entry copied
+          # last is kept, and an entry already there is not copied again: a place's faces are
+          # most often filled with one picture after another the same.
           def emit_picture_entry(node)
+            copied = gensym
             @lowering.value(node.picture)
             emit(ASM.cmp_imm(ACC, 0))
             emit(ASM.mov_imm_cond(:lt, ACC, 0))
@@ -292,10 +331,15 @@ module VBlank
             emit(ASM.mul(SPARE, ACC, TMP))
             emit_load_data_address(ACC, picture_table(node.pictures))
             emit(ASM.add_reg(SPARE, SPARE, ACC))
+            load_var(TMP, :_face_entry)
+            emit(ASM.cmp_reg(SPARE, TMP))
+            emit_branch(:bcond, copied, cond: :eq)
+            store_var(SPARE, :_face_entry)
             PICTURE_WORDS.each_with_index do |word, i|
               emit(ASM.ldr_offset(ACC, SPARE, i * 4))
               store_var(ACC, word)
             end
+            place_label(copied)
           end
 
           # The table a picture in perspective finds a distance in (IR::Reciprocals), made once.
