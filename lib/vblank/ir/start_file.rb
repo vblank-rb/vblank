@@ -63,13 +63,22 @@ module VBlank
       # place not drawn: 0, as a picture of tiles has it, any place a picture of bytes names, or nil
       # for none. A place past the colours is drawn in colour 0. +turns+ are the ways the picture is
       # turned once it is read, in order, each :mirrored or :upside_down (Assets::Image).
+      #
+      # A picture of bytes can be a PIECE OF A WIDER ONE, as a letter is of a strip of them: its rows
+      # are then not one run of the file. +row_bytes+ is how many bytes of the file are from one of
+      # its rows to the next, the wider picture's width; nil for a picture whose rows follow each
+      # other, which is its own width.
       Picture = Data.define(:colors_at, :colors_count, :color_format, :places_at, :tile_format, :across, :places_by_byte,
-                            :see_through, :turns) do
+                            :see_through, :turns, :row_bytes) do
         def initialize(colors_at:, colors_count:, places_at:, color_format: nil, tile_format: nil, across: 1,
-                       places_by_byte: false, see_through: 0, turns: [].freeze) = super
+                       places_by_byte: false, see_through: 0, turns: [].freeze, row_bytes: nil) = super
 
         # The same picture turned +way+ once it is read.
         def turned(way) = with(turns: [*turns, way].freeze)
+
+        # A piece of this picture of bytes that starts +left+ pixels along each of its rows:
+        # the same rows, read from further along. +whole_width+ is how wide this picture is.
+        def piece_from(left, whole_width:) = with(places_at: places_at + left, row_bytes: row_bytes || whole_width)
       end
 
       # Where a pose's frame and the tiles its pieces name are in the file, as the original keeps
@@ -363,7 +372,10 @@ module VBlank
       def self.picture_places(node, where, bytes)
         count = node.width * node.height
         return node.places.bytes unless where.places_at
-        return bytes.byteslice(where.places_at, count).bytes if where.places_by_byte
+        if where.places_by_byte
+          row_bytes = where.row_bytes || node.width
+          return Array.new(node.height) { |row| bytes.byteslice(where.places_at + (row * row_bytes), node.width).bytes }.flatten
+        end
 
         tiles = bytes.byteslice(where.places_at, (count / FormatReading::TILE_PIXELS) * where.tile_format.tile_bytes)
         Assets.picture_places_of_tiles(FormatReading.tiles(tiles, where.tile_format).flatten, across: where.across)

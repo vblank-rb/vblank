@@ -110,10 +110,17 @@ module VBlank
 
       # One piece of a strip, from +left+, +width+ across. A strip made from a data pack's tiles
       # is cut by its tiles, so the piece reads the pack as the strip does (a build that reads its
-      # pack as the game starts has no pixels to cut); any other is cut from its pixels.
+      # pack as the game starts has no pixels to cut). Any other strip read from the pack as the
+      # game starts is cut where it is in the pack, each piece reading its own part
+      # (DataPacks#define_piece_read_from_start_file). The rest are cut from their pixels.
       def declare_strip_piece(font_name, strip, piece, left, width, height)
         options = @pack_picture_options[strip]
         return image(piece, options.merge(width: width, places: strip_piece_tiles(font_name, strip, options[:places], left, width))) if options
+
+        if picture_from_start_file?(strip)
+          return define_piece_read_from_start_file(piece, strip, left: left, width: width) ||
+                 refuse_strip_not_cut_at_start!(font_name, strip)
+        end
 
         node = @program.walk.find { |found| found.kind == :bitmap && found.name == strip }
         unless node
@@ -125,6 +132,15 @@ module VBlank
         pixels = node.pixels.unpack("v*")
         data = (0...height).flat_map { |row| pixels[(row * node.width) + left, width] }
         define_pixel_image(piece, width: width, height: height, data: data, transparent: node.transparent)
+      end
+
+      # A strip the build holds no pixels of, and whose pieces are not parts of the pack as it is
+      # kept: cut from the zeros the build holds, every letter would be drawn empty.
+      def refuse_strip_not_cut_at_start!(font_name, strip)
+        raise ArgumentError,
+              "font :#{font_name} cannot cut the strip :#{strip}. This build reads that picture from the data pack as " \
+              "the game starts, and a picture that is turned, or that is a frame of the original, cannot be cut then. " \
+              "To fix this, give the font a picture for each character with pictures:, or build the game all-in-one."
       end
 
       def strip_piece_tiles(font_name, strip, tiles, left, width)

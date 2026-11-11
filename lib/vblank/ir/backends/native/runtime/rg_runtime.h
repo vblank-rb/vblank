@@ -151,8 +151,10 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * many tiles wide its places are, where in the file its places are (-1 where the game holds them),
  * where its colours are (-1 where the game holds them), how many colours, how many colours of
  * another list it is drawn with, 1 where its places in the file are one byte a pixel row by row
- * rather than tiles (a picture of up to 256 colours), and the place that is see-through (0 for a
- * picture of tiles, -1 for none). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
+ * rather than tiles (a picture of up to 256 colours), the place that is see-through (0 for a
+ * picture of tiles, -1 for none), and how many bytes of the file are from one row of a picture of
+ * bytes to the next (its width, or the width of the wider picture it is a piece of, as a letter is
+ * of a strip of them). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
  * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Computer::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
  * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
  * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its

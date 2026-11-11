@@ -30,8 +30,9 @@ module VBlank
           COLOR_FORMAT_NUMBERS = 5
 
           # The numbers before the tile layout: what is filled, the totals, the turn, the places and
-          # colours counts, whether the places are one byte each, and the see-through place.
-          RULES_HEADER_NUMBERS = 13
+          # colours counts, whether the places are one byte each, the see-through place, and the
+          # bytes from one row of a picture of bytes to the next.
+          RULES_HEADER_NUMBERS = 14
 
           # The numbers before the tile layout in a background's rules
           # (StartFileFills#start_file_background_rules): the totals, where its map is and how its

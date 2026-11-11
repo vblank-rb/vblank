@@ -401,6 +401,32 @@ module VBlank
       # Whether the picture +name+ is read from the file the program is handed as it starts.
       def picture_from_start_file?(name) = @pictures_from_start_file&.key?(name) || false
 
+      # A PIECE OF A PICTURE READ FROM THE FILE, a picture of its own: +piece+ is +width+ pixels of
+      # every row of +source+ from +left+ on, as a font cut from a strip of pictures cuts each
+      # letter (PictureFonts#declare_strip_piece). The build holds none of the source's pixels, so
+      # nothing is cut here: the piece reads the file as the source does, from its own part of it.
+      #
+      # A source whose places are a slot's pixels, one byte each, gives a piece that reads the same
+      # rows from further along (IR::StartFile::Picture#piece_from). A source that holds its places
+      # and reads only its colours gives a piece of those places, reading the same colours.
+      # Hands back +piece+, or nil for a source that cannot be cut this way: one turned as it is
+      # read, one of tiles, or a pose painted from an original's frame.
+      def define_piece_read_from_start_file(piece, source, left:, width:)
+        from = @pictures_from_start_file.fetch(source)
+        return nil unless from.is_a?(IR::StartFile::Picture) && from.turns.empty? && (from.places_by_byte || from.places_at.nil?)
+
+        whole = @program.walk.find { |found| found.kind == :bitmap && found.name == source }
+        cut = ->(cells) { (0...whole.height).flat_map { |row| cells[(row * whole.width) + left, width] } }
+        node = Build.bitmap(piece, width: width, height: whole.height, pixels: cut.call(whole.pixels.unpack("v*")).pack("v*"),
+                                   transparent: whole.transparent, colors: whole.colors,
+                                   places: cut.call(whole.places.bytes).pack("C*"), colors_name: whole.colors_name)
+        node.from_file = from.places_at ? from.piece_from(left, whole_width: whole.width) : from
+        record_picture(node)
+        @pictures_from_start_file[piece] = node.from_file
+        record_visible_bounds(name: piece, width: width, height: whole.height, cells: [], transparent: nil)
+        piece
+      end
+
       # With the pack left out, a picture reads from the pack only as a slot of colours or tiles of
       # places, or both, and nothing else: the build knows nothing else of it that does not depend on
       # the bytes.

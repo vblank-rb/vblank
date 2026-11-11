@@ -237,7 +237,7 @@ module VBlank
             swapped = fill.swapped || []
             header = [FILL_KINDS.fetch(fill.kind), total, fill.start, fill.width, fill.height, turn, where.across,
                       where.places_at || -1, where.colors_at || -1, where.colors_count, swapped.length,
-                      where.places_by_byte ? 1 : 0, where.see_through || -1]
+                      where.places_by_byte ? 1 : 0, where.see_through || -1, where.row_bytes || fill.width]
             refuse_header_size_mismatch!(header)
             [*header, *tile_format_rules(where.tile_format), *color_format_rules(where.color_format),
              *(fill.places unless where.places_at), *(fill.colors unless where.colors_at), *swapped]
