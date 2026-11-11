@@ -446,11 +446,14 @@ module VBlank
       # THE LISTS A SPRITE OF SEVERAL LISTS FOLLOWS (Images#follow_pose_lists), kept on each such
       # object only where the game changes the list: a list never told `recolor` holds the colours it
       # was declared with for good, which are the colours its poses were drawn in, so following it
-      # is drawing them as drawn and the object names nothing. Hands back every list still followed.
+      # is drawing them as drawn and the object names nothing. Those it names apart
+      # (IR::Nodes::Object#follows_unchanging), for a target that keeps a pose's colours in the order
+      # of its list. Hands back every list still followed.
       def keep_changing_lists_poses_follow
         (@pose_list_followers || []).uniq.flat_map do |node|
-          kept = node.follows_each.select { |name| @changing_color_lists.key?(name) }
+          kept, unchanging = node.follows_each.partition { |name| @changing_color_lists.key?(name) }
           node.follows_each = kept.empty? ? nil : kept
+          node.follows_unchanging = unchanging.empty? ? nil : unchanging
           kept
         end.uniq
       end

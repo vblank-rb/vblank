@@ -78,6 +78,17 @@ class TestGenesisPoseColorLists < Minitest::Test
     assert_includes error.message, "draw_with({ warm: :warm })"
   end
 
+  # A LIST THE GAME NEVER CHANGES, FOLLOWED BY A SPRITE AND A BACKGROUND, IS ONE PALETTE: the sprite's
+  # pose of it is cut in the list's order, as the background's tiles are, so the two share it, and
+  # the changed list keeps one more. Cut in the order its own pixels use the colours, the pose would
+  # want a palette of its own, and a screen of four lists would need a fifth.
+  def test_a_followed_list_the_game_never_changes_shares_one_palette_with_the_background
+    memory = played(built(followed_beside_background_game), frames: 20)
+    filled = (0...4).count { |line| memory.colors[(line * 16) + 1, 15].any?(&:nonzero?) }
+
+    assert_equal 2, filled, "palettes holding colours: one for :warm, one for :cold"
+  end
+
   # MANY SPRITES FACING THE SAME POSES COST WHAT ONE DOES, but for the few instructions that place
   # each: the poses' tiles are in video memory once, and the table of the poses is in the cartridge
   # once, whoever reads it.

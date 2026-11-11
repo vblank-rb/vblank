@@ -62,6 +62,30 @@ module PoseColorListGames
     end
   end
 
+  # A BACKGROUND AND A SPRITE EACH TOLD TO FOLLOW :warm AND :cold, the game changing :cold to hold
+  # :dusk from pass 2 and never changing :warm. The background's tiles are a tile of each list at
+  # the top left. The sprite faces :orange_first, of :warm, and turns to :right, of :cold, on pass
+  # TURN_PASS; :orange_first is drawn with :warm's second colour on its left half, so the colours it
+  # uses, in the order its pixels use them, are not in the list's order.
+  private def followed_beside_background_game
+    halves = ->(first, second) { Array.new(64) { |at| (at % 8) < 4 ? first : second } }
+    pose_colors_game do
+      image :orange_first, width: 8, height: 8, data: halves.(WARM[2], WARM[1]), colors: :warm
+      image :warm_tile, width: 8, height: 8, data: halves.(WARM[1], WARM[2]), colors: :warm
+      image :cold_tile, width: 8, height: 8, data: halves.(COLD[1], COLD[2]), colors: :cold
+      tiles :title_set, "w" => :warm_tile, "c" => :cold_tile
+      background(:title, tiles: :title_set, map: ["wc"]).draw_with({ warm: :warm, cold: :cold })
+      ship = sprite :ship, at: AT, facing: { orange_first: :orange_first, right: :right }
+      ship.draw_with({ warm: :warm, cold: :cold })
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        ship.face :right if pass >= TURN_PASS
+        recolor :cold, :dusk if pass >= 2
+      end
+    end
+  end
+
   # The colours of the sprite's two halves after +frames+ of +program+.
   private def halves_shown(program, frames:)
     screen = game_player.run(program, frames: frames + framework_drawing_lag).screen

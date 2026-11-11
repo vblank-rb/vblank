@@ -216,7 +216,7 @@ module VBlank
               image = @cache.image(picture_named(name))
               if (list = followed_list_of(name))
                 @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-              elsif recolored?(name)
+              elsif recolored?(name) || follows_unchanging_list?(name)
                 @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
               else
                 @art.cut_sprite_picture(name, image)
@@ -365,6 +365,16 @@ module VBlank
             # (`recolor`) keeps a palette that is written over, as the colours it holds change; one that is
             # never changed shares a palette with any other list of the same colours.
             def recolored?(name) = @objects.values.any? { |obj| obj.poses.include?(name) && !obj.recolors.empty? }
+
+            # A POSE A SPRITE FOLLOWS TO A LIST THE GAME NEVER CHANGES (Object#follows_unchanging) shows the
+            # colours it was drawn in, and it is cut in its list's order all the same, as a pose of a sprite
+            # told `draw_with` that one list is. A background drawing the list draws it from the palette of
+            # the list in that order (#recolored_palette), so the two share one of the four. Cut in the order
+            # its pixels use the colours, the pose takes a palette of its own beside the background's.
+            def follows_unchanging_list?(name)
+              drawn_from = picture_named(name).colors_name or return false
+              @objects.values.any? { |obj| obj.poses.include?(name) && obj.follows_unchanging&.include?(drawn_from) }
+            end
 
             # THE CHANGING LIST A PICTURE IS ALWAYS DRAWN WITH, or nil. A picture every sprite showing it draws
             # with one list the game changes, for good and from power-on (Object#follows), is drawn in that list

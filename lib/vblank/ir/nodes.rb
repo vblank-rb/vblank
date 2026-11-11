@@ -1271,12 +1271,19 @@ module VBlank
         # in what that list holds now, and a pose drawn from any other list in the colours it was
         # drawn in. Such a thing has no +recolors+: which colours it shows is settled by the pose
         # showing and what each list holds, with no number of its own. Absent otherwise.
+        #
+        # +follows_unchanging+ names the lists such a thing was told to follow that the program never
+        # changes. A pose drawn from one shows the colours it was drawn in, as any pose not followed
+        # does, so it changes nothing that is shown. A target whose palettes keep a list's colours in
+        # the list's order cuts the pose in that order, so it shares the list's palette with anything
+        # else drawn from the list. Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
-                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list
+                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list,
+                 follows_unchanging: :list
 
         # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
         # or nil for a pose that is shown as it was drawn.
