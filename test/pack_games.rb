@@ -13,6 +13,7 @@ require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
 require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
+require "pack_pose_of_shapes_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
@@ -978,6 +979,18 @@ module PackGames
     ].freeze
   end
 
+  # A POSE WHOSE FRAME'S PIECES ARE EVERY SHAPE AND SIZE OF THE ADVANCE'S (PackPoseOfShapesGames):
+  # each piece's size read through the console's table, as game code with the pack left out.
+  class PosesOfShapes < Kit
+    include PackPoseOfShapesGames
+
+    GAMES = [
+      game(:pose_of_every_advance_shape_and_size, passes: 3) do |folder, options|
+        built(*pose_of_shapes_and_file(original(folder), options: options))
+      end
+    ].freeze
+  end
+
   # A POSE IN THE COLOURS OF THE BANK ITS FRAME NAMES (PackPoseBankColorGames).
   class PosesInBankColors < Kit
     include PackPoseBankColorGames
@@ -1201,7 +1214,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesInBankColors,
           Sounds, Scores, SlotViews].freeze
 
   # Every registered game.

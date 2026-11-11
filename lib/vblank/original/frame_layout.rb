@@ -72,22 +72,42 @@ module VBlank
     # +:across_rows+ where t + 1 is right of t and the next row starts at t + columns. A piece
     # that is mirrored or upside down is turned whole, so its columns or rows change places too,
     # as the console turns a sprite.
+    #
+    # A PIECE WHOSE SIZE IS THE GAME BOY ADVANCE'S OWN PAIR. The Advance's sprite entry does not
+    # keep a piece's width and height: it keeps a shape (0 square, 1 wide, 2 tall) and a size of
+    # that shape (0 to 3), and the console reads the two through a table of its own, in tiles
+    # across by down:
+    #
+    #   shape 0, square:  1x1  2x2  4x4  8x8
+    #   shape 1, wide:    2x1  4x1  4x2  8x4
+    #   shape 2, tall:    1x2  1x4  2x4  4x8
+    #
+    # An original that keeps a frame as the console's entries keeps the pair too. +shape_bit+ is
+    # the lowest of the shape's two bits at +flags_at+ and +shape_size_bit+ the lowest of the
+    # size's two: `shape_bit: 6, shape_size_bit: 4`. +tile_order+ must be given with them, as with
+    # +size_at+ (on the Advance it is :across_rows, its one-dimensional sprite mapping), and they
+    # take the place of +big_bit+ and +size_at+.
     FrameLayout = Data.define(:piece_bytes, :counted, :x_at, :y_at, :tile_at, :tile_row_at, :row_tiles, :flags_at,
                               :mirrored_bit, :upside_down_bit, :big_bit, :high_byte_first, :count_bytes,
                               :position_bytes, :tile_bytes, :tile_bits, :flags_bytes, :size_at, :columns_bit,
-                              :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits, :tile_high_bit, :tile_high_bits) do
+                              :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits, :tile_high_bit, :tile_high_bits,
+                              :shape_bit, :shape_size_bit) do
       def initialize(piece_bytes:, counted:, x_at:, y_at:, tile_at:, flags_at:, mirrored_bit: nil, upside_down_bit: nil,
                      tile_row_at: nil, row_tiles: 16, big_bit: nil, high_byte_first: nil, count_bytes: 1,
                      position_bytes: 1, tile_bytes: 1, tile_bits: nil, flags_bytes: 1, size_at: nil, columns_bit: nil,
                      rows_bit: nil, size_bits: 2, tile_order: nil, bank_bit: nil, bank_bits: nil, tile_high_bit: nil,
-                     tile_high_bits: nil)
+                     tile_high_bits: nil, shape_bit: nil, shape_size_bit: nil)
         widths = [count_bytes, position_bytes, tile_bytes, flags_bytes]
         refuse_bad_widths!(widths, high_byte_first)
         refuse_bad_places!(piece_bytes, { x_at => position_bytes, y_at => position_bytes, tile_at => tile_bytes,
                                           flags_at => flags_bytes, tile_row_at => 1, size_at => 1 })
         refuse_bad_bits!(counted, [mirrored_bit, upside_down_bit, big_bit].compact, flags_bytes, row_tiles, tile_bits,
                          tile_bytes)
-        refuse_bad_size!(size_at, [columns_bit, rows_bit], size_bits, tile_order, big_bit)
+        if shape_bit || shape_size_bit
+          refuse_bad_shape!(shape_bit, shape_size_bit, flags_bytes, tile_order, [size_at, columns_bit, rows_bit, big_bit])
+        else
+          refuse_bad_size!(size_at, [columns_bit, rows_bit], size_bits, tile_order, big_bit)
+        end
         refuse_bad_bank!(bank_bit, bank_bits, flags_bytes)
         refuse_bad_tile_high_bits!(tile_high_bit, tile_high_bits, flags_bytes)
         super
@@ -145,10 +165,55 @@ module VBlank
       end
 
       # How many tiles a piece is across, and down.
-      def columns(&byte) = size_at ? size_number(columns_bit, &byte) : big_or_one(&byte)
-      def rows(&byte) = size_at ? size_number(rows_bit, &byte) : big_or_one(&byte)
+      def columns(&byte)
+        if shape_bit then power_of_two { shape_columns_power(&byte) }
+        elsif size_at then size_number(columns_bit, &byte)
+        else big_or_one(&byte)
+        end
+      end
+
+      def rows(&byte)
+        if shape_bit then power_of_two { shape_rows_power(&byte) }
+        elsif size_at then size_number(rows_bit, &byte)
+        else big_or_one(&byte)
+        end
+      end
 
       def size_number(bit) = ((yield(size_at) >> bit) & ((1 << size_bits) - 1)) + 1
+
+      # THE ADVANCE'S TABLE OF SPRITE SIZES, AS SUMS. Each side of every entry is a power of two,
+      # 1 to 8 tiles, so the table is read as which power (0 to 3) each side is. A square's sides
+      # are both the size's own power, +a+. A wide piece's columns are one power more at sizes 0
+      # and 1 and the same at 2 and 3 (a + 1, less 1 where bit 1 of the size is set: 1, 2, 2, 3),
+      # and its rows one less, except at size 0 where they stay at 1 (a, less 1 where the size is
+      # not 0: 0, 0, 1, 2). A tall piece is the wide one turned: the same two rules, the other way.
+      #
+      # It is sums and masks and not a lookup, since a lookup by a game's value cannot be written
+      # here (see WHAT READS A FRAME'S BYTES above). The console has no fourth shape (both bits
+      # set), and a build cannot refuse one, since the shape is in the player's file. A piece that
+      # names it is read as a square of its size: a size the console has, and drawn like any
+      # other piece, so what of it falls outside the picture is not drawn.
+      def shape_columns_power(&byte) = shape_size(&byte) + (wide(&byte) & one_more_power(&byte)) - (tall(&byte) & one_less_power(&byte))
+      def shape_rows_power(&byte) = shape_size(&byte) + (tall(&byte) & one_more_power(&byte)) - (wide(&byte) & one_less_power(&byte))
+
+      def shape(&byte) = (flags(&byte) >> shape_bit) & 3
+      def shape_size(&byte) = (flags(&byte) >> shape_size_bit) & 3
+
+      # 1 where the piece is wide (shape 1), 0 where not.
+      def wide(&byte) = shape(&byte) & ((shape(&byte) >> 1) ^ 1) & 1
+      # 1 where the piece is tall (shape 2), 0 where not.
+      def tall(&byte) = (shape(&byte) >> 1) & (shape(&byte) ^ 1) & 1
+
+      # 1 where the long side of a wide or tall piece is one power more than its size's (sizes 0
+      # and 1), 0 where it is the same (sizes 2 and 3).
+      def one_more_power(&byte) = (shape_size(&byte) >> 1) ^ 1
+      # 1 where the short side is one power less than its size's (sizes 1 to 3), 0 at size 0.
+      def one_less_power(&byte) = (shape_size(&byte) | (shape_size(&byte) >> 1)) & 1
+
+      # 2 to the power the block gives (0 to 3): one more than its low bit, moved up two places
+      # where its high bit is set. The block is asked twice, since a game's value is made for one
+      # place, and the number moved is on the left of the shift, as a game's value must be.
+      def power_of_two = ((yield & 1) + 1) << (yield & 2)
 
       # Two tiles a side where the piece's big bit is set, and one where it is not or there is none.
       def big_or_one(&byte) = big_bit ? ((flags(&byte) >> big_bit) & 1) + 1 : 1
@@ -241,6 +306,27 @@ module VBlank
       end
 
       TILE_ORDERS = %i[down_columns across_rows].freeze
+
+      # +other_sizes+ is size_at:, columns_bit:, rows_bit: and big_bit:, none of which may be given too.
+      def refuse_bad_shape!(shape_bit, shape_size_bit, flags_bytes, tile_order, other_sizes)
+        top_bit = (flags_bytes * 8) - 1
+        unless [shape_bit, shape_size_bit].all? { |bit| bit.is_a?(Integer) && !bit.negative? && bit + 1 <= top_bit }
+          raise ArgumentError, "A frame layout that reads a piece's size as the Game Boy Advance's shape and size needs " \
+                               "shape_bit: and shape_size_bit:, the lowest bit of each two-bit number at flags_at:. Each " \
+                               "number must end at bit #{top_bit} or lower. Got shape_bit: #{shape_bit.inspect} and " \
+                               "shape_size_bit: #{shape_size_bit.inspect}."
+        end
+        unless other_sizes.none?
+          raise ArgumentError, "A frame layout was given shape_bit: and shape_size_bit: with size_at:, columns_bit:, " \
+                               "rows_bit: or big_bit:. A piece has its size from one of them. Give shape_bit: and " \
+                               "shape_size_bit:, or the others, not both."
+        end
+        return if TILE_ORDERS.include?(tile_order)
+
+        raise ArgumentError, "A frame layout with shape_bit: and shape_size_bit: needs tile_order:. Give :across_rows " \
+                             "when the tile after a piece's first is to its right, as on a Game Boy Advance. Got " \
+                             "#{tile_order.inspect}."
+      end
 
       def refuse_bad_size!(size_at, size_places, size_bits, tile_order, big_bit)
         if size_at.nil?
