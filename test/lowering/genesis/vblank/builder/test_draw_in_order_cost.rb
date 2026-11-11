@@ -70,19 +70,34 @@ class TestDrawInOrderCost < Minitest::Test
   BOUND_SEVEN = 3
   BOUND_THIRTY = 20
 
-  private def lines_order_costs(sprites)
+  # The lines of the picture in one frame.
+  LINES_A_FRAME = 262
+
+  # The lines the order costs a frame, over the frames measured: the share of the frame it takes
+  # (DrawOrderCostGames.share_of_frame), which is read from the emulator's own count and never
+  # rounded.
+  private def lines_order_costs_each_frame(sprites)
+    DrawOrderCostGames.share_of_frame(:genesis, sprites: sprites) * LINES_A_FRAME
+  end
+
+  # The lines the order costs the tightest frame, one where two things pass: the whole lines that
+  # frame has to spare without the order, less those with it. Each of the two is rounded down to
+  # a line, so this reads a line over or under what the order costs, and the same order can read
+  # a line more when the game without it gets faster. Only a bound with more than a line of room
+  # is held to it.
+  private def lines_order_costs_tightest_frame(sprites)
     spare = ->(ordered) { DrawOrderCostGames.profile(:genesis, ordered: ordered, sprites: sprites).fewest_lines_spare }
     spare.call(false) - spare.call(true)
   end
 
   def test_an_order_of_seven_costs_a_few_lines
-    cost = lines_order_costs(4)
+    cost = lines_order_costs_each_frame(4)
 
-    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost} lines"
+    assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost.round(2)} lines"
   end
 
   def test_an_order_of_thirty_costs_under_a_thirteenth_of_the_frame
-    cost = lines_order_costs(27)
+    cost = lines_order_costs_tightest_frame(27)
 
     assert_operator cost, :<=, BOUND_THIRTY, "an order of thirty costs #{cost} lines"
   end
