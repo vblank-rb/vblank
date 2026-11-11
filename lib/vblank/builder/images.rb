@@ -452,13 +452,20 @@ module VBlank
       #
       # +through+ names the list the sprite really draws with, where +name+ is a set that
       # list is told to hold (see ColorLists#recolor) rather than a list the sprite named.
+      #
+      # WHERE THE OTHER LIST IS READ FROM THE DATA PACK AS THE GAME STARTS, its colours at those
+      # places are markers (IR::StartFile), and two markers differ whatever colours the file
+      # holds there. The build cannot tell, and nothing in the player's file may stop the game,
+      # so the swap is made by the first place, as the all-in-one build makes it wherever it
+      # takes the game: the file holds one colour at those places, as the original's own did.
       def refuse_ambiguous_color_places!(own:, swapped:, name:, poses:, subject:, through: nil)
         guessed = poses.reject { |pose| @painted_colors.key?(pose) || @pictures.fetch(pose).places }
         return if guessed.empty?
 
         drawn = guessed.flat_map { |pose| @pictures.fetch(pose).colors_drawn }
         color, places = (1...own.length).group_by { |place| own[place] }.find do |value, at|
-          at.length > 1 && drawn.include?(value) && swapped.values_at(*at).uniq.length > 1
+          others = swapped.values_at(*at)
+          at.length > 1 && drawn.include?(value) && others.uniq.length > 1 && others.none? { |other| IR::StartFile.marker?(other) }
         end
         return unless color
 
@@ -934,6 +941,13 @@ module VBlank
         # A list read from the data pack as the game starts holds a marker for each colour
         # (IR::StartFile), so no pixel can be held to it here. The picture's pixels are the
         # game's own colours, and it is drawn in them.
+        #
+        # NOR IS IT CHECKED AS THE GAME STARTS, against the colours the file then holds. Nothing in
+        # the player's file may stop the game, so a check there could only fall back, and the one
+        # fallback is to draw the picture in its own colours, which is what is done anyway: the
+        # list is used only to swap the pixels onto another, and that is refused while building
+        # (#refuse_swapping_unplaced_pixels!). The all-in-one build of the same game, which the
+        # author builds and plays, still holds every pixel to the list.
         return table.map { |value| value || 0x0000 } if table.any? { |color| IR::StartFile.marker?(color) }
 
         drawn = pixels.unpack("v*").uniq

@@ -1214,8 +1214,125 @@ module PackGames
     ].freeze
   end
 
+  # COLOURS READ AS THE GAME STARTS, COMPARED WHILE THE GAME IS BUILT: what the build checks of two
+  # lists of colours when one of them is markers (IR::StartFile, "MARKERS"), whose colours it does
+  # not hold. Each is a game the all-in-one build accepts, so the build with the pack left out must
+  # take it too.
+  class ColorsComparedAtStart < Kit
+    include PackColorListGames
+
+    # A made-up Genesis original whose four colours hold one colour twice, at places 1 and 2.
+    TWICE_AT = 0x10
+    TWICE = [0x0000, 0x000E, 0x000E, 0x00E0].freeze
+    RED = 0x001F
+    GREEN = 0x03E0
+
+    private def original_holding_one_color_twice(folder)
+      copy = "\0".b * (TWICE_AT + 8)
+      copy[TWICE_AT, 8] = TWICE.pack("n*")
+      path = File.join(folder, "made_up_twice.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :genesis,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    end
+
+    GAMES = [
+      # The sprite's own list holds red at two places, and the pack's list one colour at both, so
+      # the swap by the first place draws every red pixel right.
+      game(:picture_of_colors_drawn_with_a_pack_list_agreeing_at_a_repeated_place, passes: 3) do |folder, options|
+        from = original_holding_one_color_twice(folder)
+        b = Builder.new(options: options)
+        b.instance_eval do
+          pack = data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: TWICE_AT, count: TWICE.length }
+          screen :tiled
+          colors :from_pack, pack[:palette]
+          image :ship, width: 8, height: 8, colors: %i[transparent red red green], data: Array.new(64) { |at| at.even? ? RED : GREEN }
+          ship = sprite :ship, at: [40, 40]
+          ship.draw_with :from_pack
+          game_loop { wait_vblank }
+        end
+        b.finalize_program
+        built(b.program, b.made_data_pack_file)
+      end,
+      # A background of pictures given as colours in a list from the pack is never drawn with
+      # another list, and another list the game recolours leaves it as it is.
+      game(:background_of_pictures_of_colors_in_a_pack_list_beside_a_recolored_list, passes: 4) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+          colors :bank_3, pack[:palette].bank(3, size: BANK_SIZE)
+          image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          tiles :wall_tiles, "#" => :brick
+          background :wall, tiles: :wall_tiles, map: ["##"]
+          image :ship, width: 8, height: 8, colors: :bank_2, places: SHIP
+          ship = sprite :ship, at: SHIP_AT
+          ship.draw_with :bank_2
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            recolor :bank_2, :bank_3 if pass == 2
+          end
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
+      # A canvas in a list from the pack stamps a picture drawn in that list, each pixel at the
+      # place of its colour in the canvas's list.
+      game(:canvas_in_a_pack_list_stamping_a_picture_in_that_list, passes: 4) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :ink, pack[:palette].bank(1, size: BANK_SIZE)
+          image :ship, width: 8, height: 8, colors: :ink, places: SHIP
+          board = canvas :board, width: 16, height: 8, colors: :ink
+          background :box, tiles: :board, map: board.cells
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            board.blit :ship, 4, 0 if pass == 2
+          end
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end
+    ].freeze
+  end
+
+  # POSES IN THE BANK THEIR FRAMES NAME, ONE SPRITE SHOWING TWO (PackPoseBankColorGames), on a
+  # console whose build keeps one list of colours for a whole sprite.
+  class PosesSharingTheirFramesBank < Kit
+    include PackPoseBankColorGames
+
+    SIZE = [16, 8].freeze
+    # One piece a frame: each piece of the frame of bank 1 read as a frame of its own.
+    PIECE_FRAME = FRAME.with(counted: false)
+
+    GAMES = [
+      # Two frames that name one bank are drawn from one list all-in-one, so one sprite shows both.
+      game(:one_sprite_showing_two_frames_of_one_bank, passes: 12) do |folder, options|
+        program, file = game_and_file_of(folder, options: options) do |pack|
+          image :left, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 2, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                       colors: pack[:palette], size: SIZE
+          image :right, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 10, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
+                        colors: pack[:palette], size: SIZE
+          sprite :both, at: [40, 40], frames: %i[left right], rate: 4
+        end
+        built(program, file)
+      end
+    ].freeze
+  end
+
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesInBankColors,
-          Sounds, Scores, SlotViews].freeze
+          Sounds, Scores, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

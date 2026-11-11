@@ -405,12 +405,14 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   built all-in-one. **What the game paints from a list as it runs** (`image ..., from: list`, `tiles ..., from:
   list`, `canvas`, `sprite_tiles`) **takes such a list too**: a build for a computer draws those through tables of
   the colour each place shows, which it writes with their markers and fills at power-on
-  (`rg_start_file_fill_marked_numbers`). **A picture given as colours** (`data:`, `from:`, art in characters, the
+  (`rg_start_file_fill_marked_numbers`), and a canvas in such a list `blit`s a picture drawn in it. **A picture given as colours** (`data:`, `from:`, art in characters, the
   last with `colors: pack[:palette]` on its line too) **is drawn as it is**, since its pixels are the game's own
   colours; the build cannot hold them to a list it does not hold, so a pixel in a colour the list lacks is not
   told there. The build cannot compare two colours it does not hold, so one thing is refused at the line: such a
   picture drawn with another list (`draw_with`, `recolor` of its list, a background told other colours), which
-  swaps by each pixel's place in its own list; give it `places:`. A game may read 32766 such colours,
+  swaps by each pixel's place in its own list; give it `places:`. A picture given as colours in a list of the
+  game's own that holds one colour at two places, drawn with such a list, is swapped by the first of them, as
+  all-in-one where the file holds one colour at both. A game may read 32766 such colours,
   the steps of its walks among them. Worked example: `test/pack_color_list_at_start_tests.rb`.
 - `image :balloon_0, tiles: pack[:sprites], frame: pack[:frames].frame(at, layout: FRAME), origin: [32, 48], colors: :balloon,
   size: [64, 64]` — a pose that is one of the original's own frames (`sprites.md`). How many pieces the frame has and what
@@ -425,8 +427,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   colours. The build cannot NAME that list, so `colors_name_of` of such a pose, a sprite told to follow its poses' lists
   (`draw_with` given a hash) and `bank:` are refused at the line there, saying to give the pose one list or build all-in-one. A
   frame of two banks in the player's file, which the all-in-one build refuses, is drawn whole in its front piece's bank. On a
-  console whose build keeps one list for a whole sprite (the Advance), one sprite that shows two such poses is refused in that
-  build even where their frames name one bank, since the build cannot tell. Nothing the file holds stops the
+  console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
+  all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
+  pose is drawn in its own frame's bank. Nothing the file holds stops the
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
   **The layout is read once, by the pack's unpacking.** A frame's slot holds the original's bytes, and the game's
