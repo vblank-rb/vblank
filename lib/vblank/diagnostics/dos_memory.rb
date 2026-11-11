@@ -31,9 +31,11 @@ module VBlank
 
       # The first +count+ pixels of the picture the game draws in, a palette entry each: its own, in a segment
       # past its data, which the card is sent as each retrace begins (IR::Backends::DOS::Runtime, "THE PICTURE").
-      def picture(core, count)
+      # +after_data+ is how many paragraphs past the data segment the picture is: the game's own, or for a
+      # game with sprites the one shown, with the sprites over it (DOS.picture_shown_after_data).
+      def picture(core, count, after_data: IR::Backends::DOS::PICTURE_AFTER_DATA)
         data_segment = core.peek(DATA_SEGMENT_AT, 2).unpack1("v")
-        core.peek((data_segment + IR::Backends::DOS::PICTURE_AFTER_DATA) << 4, count)
+        core.peek((data_segment + after_data) << 4, count)
       end
 
       # The place in the first megabyte of offset +offset+ of the program's data segment.

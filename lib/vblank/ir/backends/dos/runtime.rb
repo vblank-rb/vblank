@@ -149,7 +149,8 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:)
+          def reserve(memory, saves:, clock:, area:, sprites:)
+            Sprites.reserve(memory, sprites) if sprites.positive?
             memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
             memory.reserve(Frame::FAULT, Frame::FAULT_BYTES)
@@ -159,7 +160,10 @@ module VBlank
           end
 
           # Where each of the runtime's names is, for a reader.
-          def places(memory) = (Frame::WORDS + [Frame::FAULT, Frame::STEPS]).to_h { |name| [name, memory[name]] }
+          def places(memory, sprites: false)
+            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : [])
+            names.to_h { |name| [name, memory[name]] }
+          end
 
           # The 6-bit red, green and blue of a 15-bit colour (red in the low five bits): each five-bit channel
           # widened by repeating its top bit, which the card's `(value >> 1)` takes back to the five.
@@ -169,13 +173,15 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:)
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], Console::DOS.screen_height]]
-            emit_start(asm, memory, palette, starts, saves, clock)
+            starts += Sprites.starts(memory) if sprites
+            emit_start(asm, memory, palette, starts, saves, clock, sprites)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves)
+            emit_frame(asm, memory, saves, sprites)
+            Sprites.emit(asm, memory) if sprites
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
@@ -203,7 +209,7 @@ module VBlank
           # itself follows it, a space and then what was typed after the program's name.
           PSP_TAIL_LENGTH = 0x80
 
-          def emit_start(asm, memory, palette, starts, saves, clock)
+          def emit_start(asm, memory, palette, starts, saves, clock, sprites)
             ica = Diagnostics::DOSMemory
             asm.label("start")
             # ES is the program's PSP, whose command tail says whether a reader asked for the gate: " HOLD", its
@@ -235,6 +241,14 @@ module VBlank
             asm.mov(:cx, PIXELS / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
+            if sprites
+              asm.mov_segment(:ax, :shown)
+              asm.mov(:es, :ax)
+              asm.xor(:di, :di)
+              asm.mov(:cx, PIXELS / 4)
+              asm.xor(:eax, :eax)
+              asm.stos(32, rep: true)
+            end
             asm.push(:bx) # the letter, kept from whatever the BIOS does with BX, and from the save's start
             asm.call("rt_save_start") if saves
             asm.call("rt_clock_start") if clock
@@ -294,7 +308,7 @@ module VBlank
           end
 
           # The end of a pass, stopping, and the wait for a retrace they share.
-          def emit_frame(asm, memory, saves)
+          def emit_frame(asm, memory, saves, sprites)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -317,6 +331,7 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
+            asm.call("rt_sprites_over_picture") if sprites # before a reader is told the pass has ended
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
             asm.call("rt_sleep_until_retrace")
@@ -376,6 +391,7 @@ module VBlank
             # Stopping: the game is marked as halted, and the last picture is shown by the retrace after it.
             asm.label("rt_halt")
             asm.call("rt_save_flush") if saves
+            asm.call("rt_sprites_over_picture") if sprites
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_sleep_until_retrace")
             asm.call("rt_show_picture")
@@ -383,11 +399,12 @@ module VBlank
             asm.label("rt_stopped")
             asm.jmp("rt_stopped")
 
-            emit_show_picture(asm, memory)
+            emit_show_picture(asm, memory, sprites ? :shown : :back)
 
             # Going wrong: what went wrong is already in FAULT, and the game goes no further.
             asm.label("rt_fault")
             asm.call("rt_save_flush") if saves
+            asm.call("rt_sprites_over_picture") if sprites
             asm.call("rt_sleep_until_retrace")
             asm.call("rt_show_picture") # what the pass drew before it went wrong
             asm.mov(at.call(Frame::STATE), Frame::WENT_WRONG)
@@ -466,16 +483,24 @@ module VBlank
             asm.iret
           end
 
-          # rt_show_picture: the rows of the game's picture that changed, copied to the card, and none marked
-          # as changed after. A row is 320 bytes, eighty moves of four. Changes AX, CX and DX.
-          def emit_show_picture(asm, memory)
+          # rt_show_picture: the rows that changed, copied to the card from the picture the player is shown
+          # (+shown+, a segment's name: the game's own, or its picture with the sprites over it), and none
+          # marked as changed after.
+          def emit_show_picture(asm, memory, shown)
+            emit_copy_changed_rows(asm, memory, "rt_show_picture", from: shown, to: VIDEO, forget: true)
+          end
+
+          # A routine +label+ that copies the rows marked as changed from the segment +from+ to the segment
+          # +to+, each a segment's name or its number, and with +forget+ leaves none marked. A row is 320
+          # bytes, eighty moves of four. Changes AX, CX and DX.
+          def emit_copy_changed_rows(asm, memory, label, from:, to:, forget:)
             top = X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16)
             bottom = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16)
             width = Console::DOS.screen_width
-            asm.label("rt_show_picture")
+            asm.label(label)
             asm.mov(:ax, bottom)
             asm.sub(:ax, top)
-            asm.jbe("rt_show_picture_done")
+            asm.jbe("#{label}_done")
             asm.push(:ds)
             asm.push(:es)
             asm.push(:si)
@@ -488,20 +513,26 @@ module VBlank
             asm.mul(:cx)
             asm.mov(:si, :ax)
             asm.mov(:di, :ax)
-            asm.mov(top, Console::DOS.screen_height)
-            asm.mov(bottom, 0)
+            if forget
+              asm.mov(top, Console::DOS.screen_height)
+              asm.mov(bottom, 0)
+            end
             asm.pop(:cx)
-            asm.mov(:ax, VIDEO)
-            asm.mov(:es, :ax)
-            asm.mov_segment(:ax, :back)
-            asm.mov(:ds, :ax)
+            emit_segment_into(asm, :es, to)
+            emit_segment_into(asm, :ds, from)
             asm.movs(32, rep: true)
             asm.pop(:di)
             asm.pop(:si)
             asm.pop(:es)
             asm.pop(:ds)
-            asm.label("rt_show_picture_done")
+            asm.label("#{label}_done")
             asm.ret
+          end
+
+          # A segment register pointed at +segment+: a segment of the program's by its name, or a number.
+          def emit_segment_into(asm, register, segment)
+            segment.is_a?(Symbol) ? asm.mov_segment(:ax, segment) : asm.mov(:ax, segment)
+            asm.mov(register, :ax)
           end
 
           # Rows +top+ up to and not +bottom+ (16-bit registers) marked as changed, for rt_show_picture. +tag+
@@ -704,13 +735,17 @@ module VBlank
           # time, and `set_pixel` leaves out one that is outside them), so a picture half outside shows its
           # half, and a row outside is passed over by the width of its pixels.
           #
+          # +name+ is the routine's, and with +marks+ it marks the rows it draws in as changed: the game's
+          # own drawing does, and a sprite's, drawn into the picture shown and not the game's, does not
+          # (Sprites marks its rows itself).
+          #
           # The numbers it keeps are on the stack, which is in the data segment (SS), since DS is the art
           # segment while it reads pixels: BP+0 the x of the picture's left edge, +4 the y of the row to
           # draw, +8 the picture's width, +10 the rows left.
-          def emit_blit_routine(asm, memory, edges)
+          def emit_blit_routine(asm, memory, edges, name: "rt_blit", marks: true)
             frame = ->(offset) { X86.mem(:bp, offset) }
             width = Console::DOS.screen_width
-            asm.label("rt_blit")
+            asm.label(name)
             asm.push(:ds)
             asm.sub(:sp, 12)
             asm.mov(:bp, :sp)
@@ -728,20 +763,20 @@ module VBlank
             asm.movzx(:edx, :dx)
             asm.add(:edx, :eax)
             asm.cmp(:eax, edges.top)
-            asm.jge("rt_blit_top_held")
+            asm.jge("#{name}_top_held")
             asm.mov(:eax, edges.top)
-            asm.label("rt_blit_top_held")
+            asm.label("#{name}_top_held")
             asm.cmp(:edx, edges.bottom)
-            asm.jle("rt_blit_bottom_held")
+            asm.jle("#{name}_bottom_held")
             asm.mov(:edx, edges.bottom)
-            asm.label("rt_blit_bottom_held")
+            asm.label("#{name}_bottom_held")
             asm.cmp(:eax, :edx)
-            asm.jge("rt_blit_row")
-            emit_mark_rows(asm, memory, :ax, :dx, "rt_blit", seg: :ss)
-            asm.label("rt_blit_row")
+            asm.jge("#{name}_row")
+            emit_mark_rows(asm, memory, :ax, :dx, name, seg: :ss) if marks
+            asm.label("#{name}_row")
             asm.mov(:dx, frame.call(10))
             asm.test(:dx, :dx)
-            asm.je("rt_blit_done")
+            asm.je("#{name}_done")
             asm.dec(:dx)
             asm.mov(frame.call(10), :dx)
             asm.mov(:eax, frame.call(4))
@@ -751,32 +786,32 @@ module VBlank
             asm.xor(:ecx, :ecx)
             asm.mov(:cx, frame.call(8))
             asm.cmp(:edi, edges.top)
-            asm.jl("rt_blit_skip_row")
+            asm.jl("#{name}_skip_row")
             asm.cmp(:edi, edges.bottom)
-            asm.jl("rt_blit_draw_row")
-            asm.label("rt_blit_skip_row")
+            asm.jl("#{name}_draw_row")
+            asm.label("#{name}_skip_row")
             asm.add(:si, :cx)
-            asm.jmp("rt_blit_row")
-            asm.label("rt_blit_draw_row")
+            asm.jmp("#{name}_row")
+            asm.label("#{name}_draw_row")
             asm.mov(:eax, width)
             asm.imul(:edi, :eax)
             asm.mov(:ebx, frame.call(0))
-            asm.label("rt_blit_pixel")
+            asm.label("#{name}_pixel")
             asm.mov(:dl, X86.mem(:si, 0))
             asm.inc(:si)
             asm.cmp(:dl, TRANSPARENT)
-            asm.je("rt_blit_next")
+            asm.je("#{name}_next")
             asm.cmp(:ebx, edges.left)
-            asm.jl("rt_blit_next")
+            asm.jl("#{name}_next")
             asm.cmp(:ebx, edges.right)
-            asm.jge("rt_blit_next")
+            asm.jge("#{name}_next")
             asm.mov(X86.mem(:bx, 0, index: :di, seg: :es), :dl)
-            asm.label("rt_blit_next")
+            asm.label("#{name}_next")
             asm.inc(:ebx)
             asm.dec(:cx)
-            asm.jne("rt_blit_pixel")
-            asm.jmp("rt_blit_row")
-            asm.label("rt_blit_done")
+            asm.jne("#{name}_pixel")
+            asm.jmp("#{name}_row")
+            asm.label("#{name}_done")
             asm.add(:sp, 12)
             asm.pop(:ds)
             asm.ret

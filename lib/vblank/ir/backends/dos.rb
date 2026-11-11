@@ -18,6 +18,8 @@ require_relative "dos/memory"
 require_relative "dos/runtime"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
+require_relative "dos/runtime/sprites"
+require_relative "dos/lowering/sprites"
 require_relative "dos/lowering/clock"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
@@ -115,27 +117,32 @@ module VBlank
         # gives beyond the file (EXTRA_PARAGRAPHS), cleared by the program as it starts.
         def build(program, title: "VBLANK", cache: BuildCache.for(DOS, program))
           memory = Memory.new
+          sprites = Lowering::Sprites.count_in(program)
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
-                                  area: Lowering.area_used_by?(program))
+                                  area: Lowering.area_used_by?(program), sprites: sprites)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
           lowering.emit(asm)
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
-                                    saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?)
+                                    saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
+                                    sprites: sprites.positive?)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
           refuse_too_much_art!(art.bytesize)
           data_segment = art_segment + (art.bytesize / 16)
+          shown = DOS.picture_shown_after_data(sprites: sprites.positive?)
+          after_pictures = shown + PICTURE_PARAGRAPHS
           assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
-                                   save: data_segment + PICTURE_AFTER_DATA + PICTURE_PARAGRAPHS)
-          places = Places.new(variables: lowering.variables, lists: {}, runtime: Runtime.places(memory),
+                                   shown: data_segment + shown, save: data_segment + after_pictures)
+          places = Places.new(variables: lowering.variables, lists: {},
+                              runtime: Runtime.places(memory, sprites: sprites.positive?),
                               source_program: program, code: asm.here,
                               bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])
           Cartridge::DOSEXE.new(assembled.bytes.ljust(art_segment * 16, "\0") + art, title: title, entry: [0, 0],
                                 stack: [data_segment, 0xFFFE], relocations: assembled.segment_words.map { |at| [0, at] },
-                                extra_paragraphs: EXTRA_PARAGRAPHS + PICTURE_PARAGRAPHS + (lowering.saves? ? SAVE_PARAGRAPHS : 0),
+                                extra_paragraphs: after_pictures + (lowering.saves? ? SAVE_PARAGRAPHS : 0),
                                 built: places)
         end
 
@@ -148,7 +155,12 @@ module VBlank
         PICTURE_AFTER_DATA = EXTRA_PARAGRAPHS
         PICTURE_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
 
-        # The save memory of a game that saves, in a segment of its own after that one (Runtime::Saving).
+        # A game with sprites has a second picture after the first: the one shown, the game's with the sprites
+        # over it (Runtime::Sprites). Where the picture the player is shown is, in paragraphs past the data
+        # segment: the second where there is one (+sprites+), the game's own where there is not.
+        def self.picture_shown_after_data(sprites:) = PICTURE_AFTER_DATA + (sprites ? PICTURE_PARAGRAPHS : 0)
+
+        # The save memory of a game that saves, in a segment of its own after those (Runtime::Saving).
         SAVE_PARAGRAPHS = Runtime::Saving::SIZE / 16
 
         private

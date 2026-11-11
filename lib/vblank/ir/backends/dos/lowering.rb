@@ -24,6 +24,7 @@ module VBlank
         # all is refused in the words its answers have (Console::Answers#refusals).
         class Lowering
           include Clock
+          include Sprites
 
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
@@ -36,7 +37,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_init save_store save_write save_erase
-          ] + Clock::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
 
@@ -128,6 +129,7 @@ module VBlank
             refuse_unmade_variant!
             refuse_unmade_screens!
             refuse_unmade_text!
+            refuse_unmade_sprites!
           end
 
           # A DOS game saves in a file of 32K, written a byte at any time (Runtime::Saving). A game that names
@@ -213,7 +215,7 @@ module VBlank
               when :blit_pose then node.poses
               else []
               end
-            end.uniq
+            end.concat(sprite_pictures).uniq
           end
 
           def picture_node(name)
@@ -285,6 +287,7 @@ module VBlank
               end.pack("C*")
             end
             make_pose_tables
+            make_sprite_tables
           end
 
           # For each `blit` of several pictures, a table of their places (a word each) that the number picks from.
@@ -350,6 +353,7 @@ module VBlank
             when :draw_digit then emit_draw_digit(node)
             when :save_init then emit_save_init(node)
             when :set_clock then emit_set_clock(node)
+            when :present_objects then emit_present_objects(node)
             when :save_store then emit_save_write_word(SaveLayout.save_var_at(node.slot), Build.var_ref(node.var))
             when :save_write then emit_runtime_call("rt_save_write", node.at, node.value, save_width(node))
             # A file takes any byte at any time, so nothing is wiped; the place is worked out all the same,

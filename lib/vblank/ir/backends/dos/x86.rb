@@ -267,6 +267,9 @@ module VBlank
           def stos(size, rep: false) = string_instruction(0xAA, size, rep)
           def movs(size, rep: false) = string_instruction(0xA4, size, rep)
           def lods(size, rep: false) = string_instruction(0xAC, size, rep)
+          # cmps compares DS:SI with ES:DI, and repeated goes on while they are the same (the flags say whether
+          # it reached the end).
+          def cmps(size, rep: false) = string_instruction(0xA6, size, rep)
 
           # The finished run: every jump's distance filled, and where each word that names a segment is.
           # +segments+ is the segment numbers to put in those words (the header adds the load place to each),

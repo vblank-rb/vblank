@@ -212,7 +212,7 @@ module VBlank
       # WHAT .claude/dsl/dos.md SAYS: every answer, in the order ANSWERS gives them, and what the
       # DOS build does not make yet — +not_yet+, the lowering's own list of the program's kinds
       # it refuses for now, by what they are part of (Kit#answers_page).
-      def self.reference(not_yet: {}, screens_not_made: nil)
+      def self.reference(not_yet: {}, parts_not_made: [])
         <<~MARKDOWN
           # DOS — what every verb does there
 
@@ -236,7 +236,7 @@ module VBlank
 
           ## Not made yet
 
-          #{not_yet_words(not_yet)}#{screens_not_made_words(screens_not_made)}
+          #{not_yet_words(not_yet)}#{parts_not_made_words(parts_not_made)}
         MARKDOWN
       end
 
@@ -251,16 +251,13 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock inside]
+                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite]
       })
 
-      # The screens of the variants the build does not make yet (Lowering#refuse_unmade_variant!), +part+
-      # being the words for them, or nothing once every variant is made.
-      def self.screens_not_made_words(part)
-        return "" unless part
-
-        "\n- #{part}: a game that names one is refused."
-      end
+      # The parts of a verb that works which the build does not make yet, each in the words its refusal
+      # counts skips by: a screen variant (Lowering#refuse_unmade_variant!), a kind of sprite
+      # (Lowering::Sprites::PART).
+      def self.parts_not_made_words(parts) = parts.map { |part| "\n- #{part}: a game that uses one is refused." }.join
 
       # What the page says of the steps the DOS build does not make yet: for each part, the
       # verbs that wait on it and the steps it names in a refusal.

@@ -47,6 +47,64 @@ class TestSpriteOverPicture < Minitest::Test
     assert_equal Color.resolve(:white), screen.pixel(45, 41), "and the second"
   end
 
+  # Two sprites that cross over a picture painted once: the one declared later is in front where they
+  # meet, and the picture under where they have been is as it was painted.
+  def test_sprites_that_cross_are_drawn_in_order_over_a_picture_left_as_it_was
+    played = game_player.run(blocks_program { |red, green| [red.x += 2, green.x -= 2] }, frames: 9 + framework_drawing_lag)
+    red, green = played.sprites
+    meet = [red.x, green.x].max
+
+    assert_equal %i[red_block green_block], [red.picture, green.picture]
+    assert_operator (red.x - green.x).abs, :<, 8, "the two overlap by now"
+    assert_equal Color.resolve(:green), played.screen.pixel(meet, 50), "the later sprite in front where they meet"
+    assert_equal Color.resolve(:yellow), played.screen.pixel(20, 50), "the bar where no sprite is"
+  end
+
+  # A sprite part way off an edge of the screen shows the part of itself still on it.
+  def test_a_sprite_part_way_off_an_edge_shows_what_is_left_of_it
+    screen = game_player.run(blocks_program(red_at: [-3, 46], green_at: [100, -3]), frames: 3 + framework_drawing_lag).screen
+
+    assert_equal ([Color.resolve(:red)] * 5) + [Color.resolve(:yellow)], (0..5).map { |x| screen.pixel(x, 50) }
+    assert_equal ([Color.resolve(:green)] * 5) + [Color.resolve(:blue)], (0..5).map { |y| screen.pixel(104, y) }
+  end
+
+  # A sprite switched off is not drawn, and is drawn again once it is switched on.
+  def test_a_sprite_hidden_is_not_drawn_until_it_is_shown_again
+    player = game_player
+    seen = []
+    player.each_vblank { seen << player.sprites.size }
+    program = blocks_program do |red, _green, passes|
+      red.hide if passes == 2
+      red.show if passes == 6
+    end
+    player.run(program, frames: 10)
+
+    # From the first frame that shows them, since a console's first frames come before its first placing.
+    assert_equal [2, 1, 2], seen.drop_while(&:zero?).chunk_while { |a, b| a == b }.map(&:first)
+  end
+
+  # Two 8x8 blocks, red then green, over a blue field with a yellow bar painted once before the loop. The
+  # block is handed both sprites and a count of passes, and what it does is each pass's own.
+  private def blocks_program(red_at: [20, 46], green_at: [56, 46], &each_pass)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      image :red_block, width: 8, height: 8, data: [:red] * 64
+      image :green_block, width: 8, height: 8, data: [:green] * 64
+      clear_screen :blue
+      fill_rect 0, 44, screen_width, 12, :yellow
+      red = sprite :red_block, at: red_at, over_picture: true
+      green = sprite :green_block, at: green_at, over_picture: true
+      passes = var :passes, 0
+      game_loop do
+        instance_exec(red, green, passes, &each_pass) if each_pass
+        passes += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   private def count_color(screen, color)
     want = Color.resolve(color)
     count = 0

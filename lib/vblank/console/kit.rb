@@ -362,7 +362,8 @@ module VBlank
       def variants = DOS_VARIANTS
       def answers = DOSAnswers
       def answers_page = answers.reference(not_yet: IR::Backends::DOS::Lowering::NOT_LOWERED_YET,
-                                           screens_not_made: IR::Backends::DOS::Lowering::VARIANT_PART)
+                                           parts_not_made: [IR::Backends::DOS::Lowering::VARIANT_PART,
+                                                            IR::Backends::DOS::Lowering::Sprites::PART])
       def lowering = IR::Backends::DOS
       def cartridge = Cartridge::DOSEXE
       def reading = Diagnostics::DOSReading

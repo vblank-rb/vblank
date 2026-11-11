@@ -157,7 +157,18 @@ module VBlank
 
           def picture_of_pass(_camera, drawn) = drawn
 
-          def read_sprites = []
+          # The sprites the pass placed, from the runtime's table (Runtime::Sprites), in the order they are drawn.
+          def read_sprites
+            sprites = Runtime::Sprites
+            return [] unless @places.runtime.key?(sprites::PLACED)
+
+            table = runtime_place(sprites::TABLE)
+            Array.new(half(runtime_place(sprites::PLACED))) do |i|
+              name, picture, _, _, x, y = Diagnostics::DOSMemory.bytes(@core, table + (i * sprites::ENTRY_BYTES), sprites::ENTRY_BYTES)
+                                                               .unpack("s<2v2l<2")
+              @drawn_sprites.row(name, picture, x, y)
+            end
+          end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on.
           def record_moment(frame, variables, lists, picture, sounds)
@@ -191,7 +202,7 @@ module VBlank
           # The picture the game has drawn now, as 15-bit colours: each pixel's palette entry, through the palette.
           def picture_now(_camera)
             width, height = kit.description.screen_size
-            drawn = Diagnostics::DOSMemory.picture(@core, width * height)
+            drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: DOS.picture_shown_after_data(sprites: @places.runtime.key?(Runtime::Sprites::PLACED)))
             refuse_card_not_showing!(@stopped ? drawn : @picture_before)
             @picture_before = drawn
             colors = @core.palette.map { |red, green, blue| (red >> 1) | ((green >> 1) << 5) | ((blue >> 1) << 10) }
