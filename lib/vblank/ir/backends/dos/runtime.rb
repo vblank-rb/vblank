@@ -143,7 +143,8 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false, turned: false)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false, turned: false, overlaps: false)
+            Overlap.reserve(memory) if overlaps
             Fades.reserve(memory) if walks
             View.reserve(memory) if view
             Sprites.reserve(memory, sprites, turned: turned) if sprites.positive?
@@ -173,7 +174,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false)
+                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false, overlaps: false)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -190,6 +191,7 @@ module VBlank
             emit_number_routines(asm)
             emit_fraction_divide(asm) if fractions
             Lists.emit(asm, memory, sorts: sorts) if lists
+            Overlap.emit(asm, memory) if overlaps
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
             emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns

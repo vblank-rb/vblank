@@ -256,7 +256,8 @@ module VBlank
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
                                                var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
                                                func call scene case_var every after shake_screen
-                                               timer table chance rand roll seed randomize list pool]
+                                               timer table chance rand roll seed randomize list pool
+                                               save_data players_connected drawing_for_local_player]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

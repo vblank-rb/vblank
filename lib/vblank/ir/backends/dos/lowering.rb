@@ -40,11 +40,12 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
+            save_load_list save_store_list
           ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Lists::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix chance data_byte table_get
-                            held pressed save_read save_sum] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS + Lists::VALUE_KINDS).freeze
+                            held pressed save_read save_sum local_player players_connected pixels_overlap] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS + Lists::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -256,6 +257,7 @@ module VBlank
               case node.kind
               when :blit, :draw_column_at then [node.name]
               when :blit_pose then node.poses
+              when :pixels_overlap then node.a_poses + node.b_poses
               else []
               end
             end.concat(sprite_pictures).uniq
@@ -335,13 +337,18 @@ module VBlank
           end
 
           # For each `blit` of several pictures, a table of their places (a word each) that the number picks from.
+          # The same for each side of a `pixels_overlap`.
           def make_pose_tables
-            @program.walk.select { |node| node.kind == :blit_pose }.each do |node|
-              next if @art_places.key?(poses_key(node))
-
-              places = node.poses.map { |name| @art_places.fetch(name) }
-              @art_places[poses_key(node)] = @art.bytesize
-              @art << places.pack("v*")
+            pose_lists = @program.walk.flat_map do |node|
+              case node.kind
+              when :blit_pose then [node.poses]
+              when :pixels_overlap then [node.a_poses, node.b_poses]
+              else []
+              end
+            end
+            pose_lists.uniq.each do |poses|
+              @art_places[poses_key(poses)] = @art.bytesize
+              @art << poses.map { |name| @art_places.fetch(name) }.pack("v*")
             end
           end
 
@@ -417,6 +424,8 @@ module VBlank
             # A file takes any byte at any time, so nothing is wiped; the place is worked out all the same,
             # as the interpreter works it out (Reference#exec_save_erase).
             when :save_erase then emit_value(node.at)
+            # Reference#exec_save_load_list and #exec_save_store_list, as the loops the steps stand for.
+            when :save_load_list, :save_store_list then SaveListMoves.loops_for(node).each { |loop| emit_statement(loop) }
             else emit_declaration_or_refuse(node)
             end
           end
@@ -783,11 +792,32 @@ module VBlank
             emit_value(node.index)
             @asm.cmp(:eax, node.poses.size) # as numbers with no sign, so one below nought is too big as well
             @asm.jae(skip)
-            emit_picture_from_table(@art_places.fetch(poses_key(node)), node)
+            emit_picture_from_table(@art_places.fetch(poses_key(node.poses)), node)
             @asm.label(skip)
           end
 
-          def poses_key(node) = [:poses, node.poses]
+          # Where the table of places of the pictures +poses+ is kept among the art's places.
+          def poses_key(poses) = [:poses, poses]
+
+          # Reference#pixels_overlap?: each side's picture found from its pose, then its x and y, the first side
+          # before the second, all pushed for rt_pixels_overlap (Runtime::Overlap), which answers 1 or 0.
+          def emit_pixels_overlap(node)
+            [[node.a_poses, node.a_pose, node.a_x, node.a_y], [node.b_poses, node.b_pose, node.b_x, node.b_y]].each do |poses, pose, x, y|
+              emit_value(pose)
+              @asm.mov(:ecx, poses.size)
+              @asm.mov(:dx, @art_places.fetch(poses_key(poses)))
+              @asm.call("rt_overlap_picture")
+              @asm.push(:eax)
+              [x, y].each do |operand|
+                emit_value(operand)
+                @asm.push(:eax)
+              end
+            end
+            @asm.call("rt_pixels_overlap")
+          end
+
+          # Whether +program+ asks if two pictures' drawn pixels touch, and so carries Runtime::Overlap.
+          def self.overlaps_in?(program) = program.walk.any? { |node| node.kind == :pixels_overlap }
 
           # The picture whose place is word EAX of the table at +table+ in the art segment, drawn at the node's
           # x and y.
@@ -926,6 +956,9 @@ module VBlank
             when :timer_ticks then @asm.mov(:eax, number_at(timer_ticks_variable(node.name)))
             when :div_fix then emit_div_fix(node)
             when :clock then emit_clock_reading(node)
+            # A PC is played by one person, who is player 1 (Console::DOSAnswers).
+            when :local_player, :players_connected then @asm.mov(:eax, 1)
+            when :pixels_overlap then emit_pixels_overlap(node)
             when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
             when :pressed then emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
