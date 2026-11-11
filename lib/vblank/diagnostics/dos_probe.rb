@@ -59,7 +59,9 @@ module VBlank
         @frames = frames
       end
 
-      # The picture as four bytes a pixel: red, green, blue and one unused.
+      # The picture the card shows, as four bytes a pixel: red, green, blue and one unused. The card is sent
+      # a pass's picture as the retrace after it begins, so what it shows is the pass before the one the
+      # program's numbers are in.
       def frame_buffer
         @core.picture.pixels.map { |pixel| ((pixel >> 16) & 0xFF) | (pixel & 0xFF00) | ((pixel & 0xFF) << 16) }.pack("V*")
       end

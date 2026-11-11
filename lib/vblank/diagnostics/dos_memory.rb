@@ -29,6 +29,13 @@ module VBlank
 
       def bytes(core, offset, count) = core.peek(linear(core, offset), count)
 
+      # The first +count+ pixels of the picture the game draws in, a palette entry each: its own, in a segment
+      # past its data, which the card is sent as each retrace begins (IR::Backends::DOS::Runtime, "THE PICTURE").
+      def picture(core, count)
+        data_segment = core.peek(DATA_SEGMENT_AT, 2).unpack1("v")
+        core.peek((data_segment + IR::Backends::DOS::PICTURE_AFTER_DATA) << 4, count)
+      end
+
       # The place in the first megabyte of offset +offset+ of the program's data segment.
       def linear(core, offset) = (core.peek(DATA_SEGMENT_AT, 2).unpack1("v") << 4) + offset
     end

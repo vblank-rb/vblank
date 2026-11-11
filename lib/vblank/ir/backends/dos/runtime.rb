@@ -11,8 +11,8 @@ module VBlank
         # THE START. DOS jumps to the program with DS and ES pointing at its PSP and the stack where the header
         # says. The runtime points DS and SS at the data segment (loaded as a relocated word, since DOS chose
         # where the program is), tells a reader of the running program where that is (Diagnostics::DOSMemory),
-        # clears the segment, sets VGA mode 13h through the BIOS, programs the palette, leaves ES at the video
-        # memory (A000h) for the drawing routines, and runs the game.
+        # clears the segment, sets VGA mode 13h through the BIOS, programs the palette, leaves ES at the game's
+        # own picture for the drawing routines (see THE PICTURE), and runs the game.
         #
         # THE FRAME. A frame is one vertical retrace, which bit 3 of port 3DAh says. A pass of the game loop ends
         # by waiting (rt_wait_vblank): it lets any retrace already going end, then waits for the next to
@@ -25,6 +25,16 @@ module VBlank
         # ticks are a whole number of frames give or take one tick, and nothing adds up from pass to pass.
         # The BIOS counted the time of day by this interrupt at its own slower rate, so rt_timer calls the
         # BIOS's routine each time that much time has gone by, and the PC's clock keeps right.
+        #
+        # THE PICTURE. The card shows its memory as it is, at once, so a game that drew straight into it would
+        # show each pass half drawn, and a sprite rubbed out and not yet drawn again. So the game draws into a
+        # picture of its own in ordinary memory (a segment of 64K, ES while the game runs), and the wait at a
+        # pass's end copies it to the card from the top as the retrace begins, while the beam is off the
+        # picture, so the player sees whole passes. Only the rows a pass changed are copied (CHANGED_TOP to
+        # CHANGED_BOTTOM, which each drawing routine widens), since the card's memory is the slowest in the
+        # machine and a pass that moved one thing has no need to send the whole picture. A copy of every row
+        # outlasts the retrace: the beam then follows the copy down the picture, and shows a whole pass for
+        # as long as the copy keeps ahead of it, which a card too slow for that does not.
         #
         # THE KEYBOARD. Each key going down or up interrupts the program (IRQ 1), and the routine the runtime
         # hands the processor for it (rt_keyboard) reads the key's scan code from port 60h and keeps two sets
@@ -73,6 +83,10 @@ module VBlank
             FRAMES = "rt frames" # frames counted since the game began
             STEP_TAKEN = "rt step"
             FRAMES_TAKEN = "rt frames taken"
+            # The rows of the picture drawn in since the card was last sent it: from the first, up to and not
+            # the row after the last. None is from the screen's height to nought.
+            CHANGED_TOP = "rt changed top"
+            CHANGED_BOTTOM = "rt changed bottom"
             # The timer's ticks since the game began, and what they were where the last wait ended.
             TIMER_TICKS = "rt timer ticks"
             TICKS_MARK = "rt ticks mark"
@@ -93,7 +107,7 @@ module VBlank
             END_SHOWN = 0xFFFF_FFFF
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES, STEP_TAKEN,
-                     FRAMES_TAKEN, TIMER_TICKS, TICKS_MARK, BIOS_TIME, BIOS_TIMER, KEY_HELD, KEY_PRESSED,
+                     FRAMES_TAKEN, CHANGED_TOP, CHANGED_BOTTOM, TIMER_TICKS, TICKS_MARK, BIOS_TIME, BIOS_TIMER, KEY_HELD, KEY_PRESSED,
                      KEY_EXTENDED, KEY_SKIP].freeze
           end
 
@@ -157,6 +171,7 @@ module VBlank
           # +starts+ is [offset, number] for places that begin on something other than nought.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:)
             starts += whole_screen_area(memory) if area
+            starts += [[memory[Frame::CHANGED_TOP], Console::DOS.screen_height]]
             emit_start(asm, memory, palette, starts, saves, clock)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
@@ -164,8 +179,8 @@ module VBlank
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
-            emit_drawing_routines(asm, edges(memory, area))
-            emit_blit_routine(asm, edges(memory, area, seg: :ss)) if pictures
+            emit_drawing_routines(asm, memory, edges(memory, area))
+            emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
           end
 
           # The area as the program starts: the whole screen, as [place, number] for the start to set.
@@ -211,6 +226,13 @@ module VBlank
             asm.mov(:es, :ax)
             asm.xor(:di, :di)
             asm.mov(:cx, memory.cleared_bytes / 4)
+            asm.xor(:eax, :eax)
+            asm.stos(32, rep: true)
+            # The game's picture starts as the card's does once its mode is set: every pixel the first entry.
+            asm.mov_segment(:ax, :back)
+            asm.mov(:es, :ax)
+            asm.xor(:di, :di)
+            asm.mov(:cx, PIXELS / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
             asm.push(:bx) # the letter, kept from whatever the BIOS does with BX, and from the save's start
@@ -265,7 +287,7 @@ module VBlank
             asm.call("rt_sleep_until_retrace")
             asm.mov(:eax, X86.mem(nil, memory[Frame::TIMER_TICKS], size: 32))
             asm.mov(X86.mem(nil, memory[Frame::TICKS_MARK], size: 32), :eax)
-            asm.mov(:ax, VIDEO)
+            asm.mov_segment(:ax, :back)
             asm.mov(:es, :ax)
             asm.call("main")
             asm.jmp("rt_halt")
@@ -298,6 +320,7 @@ module VBlank
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
             asm.call("rt_sleep_until_retrace")
+            asm.call("rt_show_picture")
             # The buttons, taken from the keyboard's interrupt with interrupts off, so a key cannot go down
             # between the two halves and be lost.
             asm.cli
@@ -355,13 +378,18 @@ module VBlank
             asm.call("rt_save_flush") if saves
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_sleep_until_retrace")
+            asm.call("rt_show_picture")
             asm.mov(at.call(Frame::SHOWN), Frame::END_SHOWN)
             asm.label("rt_stopped")
             asm.jmp("rt_stopped")
 
+            emit_show_picture(asm, memory)
+
             # Going wrong: what went wrong is already in FAULT, and the game goes no further.
             asm.label("rt_fault")
             asm.call("rt_save_flush") if saves
+            asm.call("rt_sleep_until_retrace")
+            asm.call("rt_show_picture") # what the pass drew before it went wrong
             asm.mov(at.call(Frame::STATE), Frame::WENT_WRONG)
             asm.jmp("rt_stopped")
           end
@@ -436,6 +464,65 @@ module VBlank
             asm.pop(:ds)
             asm.pop(:ax)
             asm.iret
+          end
+
+          # rt_show_picture: the rows of the game's picture that changed, copied to the card, and none marked
+          # as changed after. A row is 320 bytes, eighty moves of four. Changes AX, CX and DX.
+          def emit_show_picture(asm, memory)
+            top = X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16)
+            bottom = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16)
+            width = Console::DOS.screen_width
+            asm.label("rt_show_picture")
+            asm.mov(:ax, bottom)
+            asm.sub(:ax, top)
+            asm.jbe("rt_show_picture_done")
+            asm.push(:ds)
+            asm.push(:es)
+            asm.push(:si)
+            asm.push(:di)
+            asm.mov(:cx, width / 4)
+            asm.mul(:cx)
+            asm.push(:ax) # how many moves of four
+            asm.mov(:ax, top)
+            asm.mov(:cx, width)
+            asm.mul(:cx)
+            asm.mov(:si, :ax)
+            asm.mov(:di, :ax)
+            asm.mov(top, Console::DOS.screen_height)
+            asm.mov(bottom, 0)
+            asm.pop(:cx)
+            asm.mov(:ax, VIDEO)
+            asm.mov(:es, :ax)
+            asm.mov_segment(:ax, :back)
+            asm.mov(:ds, :ax)
+            asm.movs(32, rep: true)
+            asm.pop(:di)
+            asm.pop(:si)
+            asm.pop(:es)
+            asm.pop(:ds)
+            asm.label("rt_show_picture_done")
+            asm.ret
+          end
+
+          # Rows +top+ up to and not +bottom+ (16-bit registers) marked as changed, for rt_show_picture. +tag+
+          # names the routine marking them, for its labels, and +seg+ is for one whose DS is not the data segment.
+          def emit_mark_rows(asm, memory, top, bottom, tag, seg: nil)
+            first = X86.mem(nil, memory[Frame::CHANGED_TOP], seg: seg, size: 16)
+            past = X86.mem(nil, memory[Frame::CHANGED_BOTTOM], seg: seg, size: 16)
+            asm.cmp(top, first)
+            asm.jae("#{tag}_top_marked")
+            asm.mov(first, top)
+            asm.label("#{tag}_top_marked")
+            asm.cmp(bottom, past)
+            asm.jbe("#{tag}_bottom_marked")
+            asm.mov(past, bottom)
+            asm.label("#{tag}_bottom_marked")
+          end
+
+          # Every row marked as changed.
+          def emit_mark_every_row(asm, memory)
+            asm.mov(X86.mem(nil, memory[Frame::CHANGED_TOP], size: 16), 0)
+            asm.mov(X86.mem(nil, memory[Frame::CHANGED_BOTTOM], size: 16), Console::DOS.screen_height)
           end
 
           # rt_keyboard, the keyboard's interrupt (see THE KEYBOARD above). It keeps every register it uses,
@@ -570,7 +657,7 @@ module VBlank
           # x + width (saturating, so a sum past 32 bits is the far end it would be on a number line, not a
           # wrapped one), each edge is held to +edges+, and a rectangle with no width or height left draws
           # nothing. The rows are then one REP STOSB each.
-          def emit_rectangle_routine(asm, width, edges)
+          def emit_rectangle_routine(asm, memory, width, edges)
             asm.label("rt_fill_rect")
             [[:edx, :eax, "x", edges.left, edges.right], [:ebx, :ecx, "y", edges.top, edges.bottom]].each do |far, near, axis, low, high|
               asm.add(far, near)
@@ -591,6 +678,7 @@ module VBlank
               asm.cmp(near, far)
               asm.jge("rt_fill_rect_done")
             end
+            emit_mark_rows(asm, memory, :cx, :bx, "rt_fill_rect")
             asm.sub(:edx, :eax)
             asm.sub(:ebx, :ecx)
             asm.mov(:ebp, width)
@@ -619,7 +707,7 @@ module VBlank
           # The numbers it keeps are on the stack, which is in the data segment (SS), since DS is the art
           # segment while it reads pixels: BP+0 the x of the picture's left edge, +4 the y of the row to
           # draw, +8 the picture's width, +10 the rows left.
-          def emit_blit_routine(asm, edges)
+          def emit_blit_routine(asm, memory, edges)
             frame = ->(offset) { X86.mem(:bp, offset) }
             width = Console::DOS.screen_width
             asm.label("rt_blit")
@@ -635,6 +723,21 @@ module VBlank
             asm.mov(:dx, X86.mem(:si, 2))
             asm.mov(frame.call(10), :dx)
             asm.add(:si, 4)
+            # The rows it can draw in, marked once: its own, held to the edges, if any are left.
+            asm.mov(:eax, frame.call(4))
+            asm.movzx(:edx, :dx)
+            asm.add(:edx, :eax)
+            asm.cmp(:eax, edges.top)
+            asm.jge("rt_blit_top_held")
+            asm.mov(:eax, edges.top)
+            asm.label("rt_blit_top_held")
+            asm.cmp(:edx, edges.bottom)
+            asm.jle("rt_blit_bottom_held")
+            asm.mov(:edx, edges.bottom)
+            asm.label("rt_blit_bottom_held")
+            asm.cmp(:eax, :edx)
+            asm.jge("rt_blit_row")
+            emit_mark_rows(asm, memory, :ax, :dx, "rt_blit", seg: :ss)
             asm.label("rt_blit_row")
             asm.mov(:dx, frame.call(10))
             asm.test(:dx, :dx)
@@ -679,8 +782,8 @@ module VBlank
             asm.ret
           end
 
-          # Drawing on the card's memory, with ES at A000h.
-          def emit_drawing_routines(asm, edges)
+          # Drawing in the game's picture, with ES at its segment.
+          def emit_drawing_routines(asm, memory, edges)
             width = Console::DOS.screen_width
 
             # A pixel: x in EAX, y in ECX, the palette entry in DL. One outside the edges is left out
@@ -694,6 +797,9 @@ module VBlank
             asm.jl("rt_pixel_done")
             asm.cmp(:ecx, edges.bottom)
             asm.jge("rt_pixel_done")
+            asm.mov(:bx, :cx)
+            asm.inc(:bx)
+            emit_mark_rows(asm, memory, :cx, :bx, "rt_pixel")
             asm.mov(:ebx, width)
             asm.imul(:ecx, :ebx)
             asm.add(:ecx, :eax)
@@ -703,11 +809,12 @@ module VBlank
             asm.label("rt_pixel_done")
             asm.ret
 
-            emit_rectangle_routine(asm, width, edges)
+            emit_rectangle_routine(asm, memory, width, edges)
 
             # The whole screen one colour: EAX is four pixels' worth of the palette entry. For a game that
             # holds no drawing to an area: one that does clears as a rectangle (Lowering#emit_clear_screen).
             asm.label("rt_clear_screen")
+            emit_mark_every_row(asm, memory)
             asm.xor(:di, :di)
             asm.mov(:cx, PIXELS / 4)
             asm.stos(32, rep: true)

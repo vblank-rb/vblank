@@ -128,17 +128,25 @@ module VBlank
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
           refuse_too_much_art!(art.bytesize)
           data_segment = art_segment + (art.bytesize / 16)
-          assembled = asm.assemble(art: art_segment, data: data_segment, save: data_segment + EXTRA_PARAGRAPHS)
+          assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
+                                   save: data_segment + PICTURE_AFTER_DATA + PICTURE_PARAGRAPHS)
           places = Places.new(variables: lowering.variables, lists: {}, runtime: Runtime.places(memory),
                               source_program: program, code: asm.here,
                               bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])
           Cartridge::DOSEXE.new(assembled.bytes.ljust(art_segment * 16, "\0") + art, title: title, entry: [0, 0],
                                 stack: [data_segment, 0xFFFE], relocations: assembled.segment_words.map { |at| [0, at] },
-                                extra_paragraphs: EXTRA_PARAGRAPHS + (lowering.saves? ? SAVE_PARAGRAPHS : 0), built: places)
+                                extra_paragraphs: EXTRA_PARAGRAPHS + PICTURE_PARAGRAPHS + (lowering.saves? ? SAVE_PARAGRAPHS : 0),
+                                built: places)
         end
 
         # A segment of 64K for the numbers and the stack, in memory the loader gives beyond the file.
         EXTRA_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
+
+        # THE PICTURE THE GAME DRAWS, in a segment of its own after that one: every pixel a pass draws goes
+        # here, and the rows that changed are copied to the card as the retrace begins (Runtime, "THE
+        # PICTURE"). A reader of the running program finds it this many paragraphs past the data segment.
+        PICTURE_AFTER_DATA = EXTRA_PARAGRAPHS
+        PICTURE_PARAGRAPHS = Console::DOSHardware::SEGMENT_SIZE / 16
 
         # The save memory of a game that saves, in a segment of its own after that one (Runtime::Saving).
         SAVE_PARAGRAPHS = Runtime::Saving::SIZE / 16

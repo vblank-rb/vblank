@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
 
 # DRAWING ON THE VGA CARD, in DOSBox, held to the interpreter pixel for pixel on every pass (DOS::CheckedRun):
 # what the first games of test_dos_checked_run.rb do not reach. A checked run that ends is a picture that
@@ -104,5 +105,39 @@ class TestDOSDrawing < Minitest::Test
     end
 
     assert_equal 5, run[:which]
+  end
+
+  # THE CARD SHOWS WHAT THE GAME DREW. The game draws in a picture of its own, and the card is sent the rows
+  # that changed as each retrace begins: a square that moves leaves nothing behind it on the card, and the
+  # whole of what was drawn before the loop is there, though no pass after the first drew it again.
+  def test_the_card_shows_the_picture_the_game_drew
+    game = VBlank.game("DOSGAME", consoles: %i[dos]) do
+      screen :bitmap
+      clear_screen :blue
+      fill_rect 300, 190, 20, 10, :green
+      x = var :x, 0
+      game_loop do
+        draw_rect_at x, 50, 10, 10, :blue
+        x += 3
+        draw_rect_at x, 50, 10, 10, :white
+      end
+    end
+    exe = DOS.new.build(game.program(console: :dos))
+    Dir.mktmpdir("dos-drawing") do |dir|
+      path = File.join(dir, "GAME.EXE")
+      exe.write(path)
+      probe = VBlank::Diagnostics::DOSProbe.new(path)
+      probe.step(20)
+      x = probe.read32(exe.built.variables.fetch(:x))
+      shown = probe.frame_buffer.unpack("V*")
+      colors = shown.each_slice(320).to_a[55]
+      white = colors.each_index.select { |column| colors[column] == 0xFFFFFF }
+
+      assert_equal 10, white.size, "one square, with no trail"
+      assert_includes [x, x - 3], white.first, "where the last pass shown put it"
+      assert_equal [0x00FF00], shown.each_slice(320).to_a[195][300, 20].uniq
+    ensure
+      probe&.close
+    end
   end
 end

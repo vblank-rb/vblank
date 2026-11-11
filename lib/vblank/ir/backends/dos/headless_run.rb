@@ -6,14 +6,14 @@ module VBlank
       class DOS
         # A DOS program played in the emulator with nobody watching, driven and read back through the calls a
         # test makes on Backends::Reference (CartridgeHeadlessRun says how a pass is read). What is DOS's own:
-        # its numbers read by offset into the data segment, low byte first; its picture read from the card's
-        # memory and palette; its buttons as keys, by the shared names; and a run of no frames ending before
+        # its numbers read by offset into the data segment, low byte first; its picture read from the game's
+        # own and the card's palette; its buttons as keys, by the shared names; and a run of no frames ending before
         # the picture is on.
         #
-        # THE PICTURE A PASS DREW IS READ AS THE GAME WAITS AT ITS END. The program draws straight into the
-        # card's memory, which is shown as it is written, so by the time the reader sees the pass on the
-        # screen the next pass may have drawn over it. The reader takes the card's memory the moment the game
-        # is found waiting, and that is the pass's picture.
+        # THE PICTURE A PASS DREW IS READ AS THE GAME WAITS AT ITS END. The program draws into a picture of its
+        # own in memory and sends it to the card as the retrace begins, by when the next pass is drawing over
+        # it. So the reader takes the game's own picture the moment the game is found waiting, and that is
+        # the pass's picture; what the card shows a frame later is the same (test_dos_drawing.rb holds it to that).
         #
         # THE PICTURE'S COLOURS. The card keeps a number a pixel and a palette of 256 colours of six bits a
         # channel. The reader gives each pixel the 15-bit colour the interpreter paints with: its palette
@@ -133,10 +133,27 @@ module VBlank
 
           def start_run(_program)
             @frames_played = 0
+            @picture_before = nil
+            @stopped = false
           end
 
-          # The card's memory as the game waits at the end of the pass: the picture the pass drew.
+          # The game's own picture as the game waits at the end of the pass: the picture the pass drew.
           def read_picture_drawn = picture_now(nil)
+
+          # THE CARD IS HELD TO THE GAME'S PICTURE on every pass. What a pass drew is read from the game's own
+          # picture, so a row the runtime never sent to the card would otherwise go unseen. By the time a pass
+          # is found waiting, the retrace before it has sent the card the pass before: the card's memory must
+          # be that pass's picture, byte for byte. A game that stopped has shown its last picture, and the
+          # card must be that one.
+          def refuse_card_not_showing!(picture)
+            return if picture.nil? || @core.chained_pixels(picture.bytesize) == picture
+
+            raise CardNotSent, "the #{kit.title} program's card does not show the picture the game drew: " \
+                               "a row that changed was not sent to it"
+          end
+
+          # The card showing something other than what the game drew.
+          class CardNotSent < StandardError; end
 
           def picture_of_pass(_camera, drawn) = drawn
 
@@ -160,6 +177,7 @@ module VBlank
               play_frame
               frames += 1
             end
+            @stopped = true
             record_moment(:end, read_variables, read_lists, picture_now(nil), read_sounds)
           end
 
@@ -170,11 +188,14 @@ module VBlank
             @core.run_frame
           end
 
-          # The picture the card shows now, as 15-bit colours: each pixel's palette entry, through the palette.
+          # The picture the game has drawn now, as 15-bit colours: each pixel's palette entry, through the palette.
           def picture_now(_camera)
             width, height = kit.description.screen_size
+            drawn = Diagnostics::DOSMemory.picture(@core, width * height)
+            refuse_card_not_showing!(@stopped ? drawn : @picture_before)
+            @picture_before = drawn
             colors = @core.palette.map { |red, green, blue| (red >> 1) | ((green >> 1) << 5) | ((blue >> 1) << 10) }
-            Picture.new(shown: @core.chained_pixels(width * height).bytes.map { |entry| colors.fetch(entry) },
+            Picture.new(shown: drawn.bytes.map { |entry| colors.fetch(entry) },
                         width: width, height: height, camera_x: 0, camera_y: 0)
           end
 
