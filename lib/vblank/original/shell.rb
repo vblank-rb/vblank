@@ -78,10 +78,15 @@ module VBlank
       MENU_START_BYTES = 2
 
       # Where the menu says the game's data must be read again: this many rows under its last
-      # line, a row of words every so many rows, with this much room left at each side.
+      # line, this many rows between one row of its words and the next, and this much room left
+      # at each side.
       READ_AGAIN_GAP = 8
-      READ_AGAIN_STEP = 10
+      READ_AGAIN_ROW_GAP = 3
       READ_AGAIN_MARGIN = 8
+
+      # The variable holding which of the game's own scenes is up in the menu's place, from 1; 0
+      # while the menu is.
+      MENU_SCENE = :shell_scene
 
       # The menu's routine that draws its picture.
       MENU_PICTURE = :shell_menu_picture
@@ -95,15 +100,18 @@ module VBlank
       # (Original.without_copies), so a port whose code needs the copy to be made stops here, naming
       # the line that asked for it.
       def self.build(game, console: game.consoles.first, settings: {}, err: $stderr, progress: Messages::Progress.silent)
-        program, data_pack = Original.without_copies do
-          game.shell_parts(console: console, settings: settings, err: err, progress: progress)
+        Original.without_copies do
+          parts = game.shell_parts(console: console, settings: settings, err: err, progress: progress)
+          program = parts.program
+          data_pack = parts.data_pack
+          refuse_without_data_pack!(game, data_pack)
+          releases = refuse_unusable_releases!(data_pack.original)
+          # The first screen is made with the copies still hidden: its block is the game's code too.
+          new(game: program, menu: menu_program(game.title, program, releases.title, parts.first_screen),
+              unpackings: releases.readable.map { |release| data_pack.unpacking(release: release) },
+              facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
+              original: data_pack.original)
         end
-        refuse_without_data_pack!(game, data_pack)
-        releases = refuse_unusable_releases!(data_pack.original)
-        new(game: program, menu: menu_program(game.title, program, releases.title),
-            unpackings: releases.readable.map { |release| data_pack.unpacking(release: release) },
-            facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
-            original: data_pack.original)
       rescue NotSet => e
         raise BuildError, needs_copy_message(game, e)
       end
@@ -147,12 +155,53 @@ module VBlank
       # Letters the menu's font has; anything else in a title is left out of the menu.
       MENU_LETTERS = %r{[^A-Z0-9 !.:%,'?/-]}
 
-      # The menu's lines, top to bottom. The line at place n sets MENU_CHOICE to n + 1.
+      # The words of the two lines every first screen has, and of the line saying what the game
+      # needs, where a game gives none of its own.
       MENU_LINES = ["LOAD ROM", "SETTINGS"].freeze
+      MENU_NEEDS = "LOAD YOUR COPY OF THE GAME"
+
+      # One line of the menu: its +words+, the +number+ MENU_CHOICE is set to when it is chosen
+      # (LOAD_ROM, SETTINGS, then 3 and up for a game's own lines in the order written, whatever
+      # place each has on the screen), the +scene+ it shows and comes back from (nil for the two
+      # lines a runtime acts on), and the line of the game that wrote it (+source+, nil for those two).
+      MenuLine = Data.define(:words, :number, :scene, :source)
+
+      # How a first screen looks: its +font+ (a name), the +title+ and +needs+ words above the
+      # lines, each part's colour (+colors+, by the names of DSL::ShellScreen::DEFAULT_COLORS),
+      # the +picture+ behind the words (a DSL::ShellScreen::Picture, or nil), and its +lines+
+      # (each a MenuLine), top to bottom.
+      Look = Data.define(:font, :title, :needs, :colors, :picture, :lines)
+
+      # The rows the words are written on: the +title+'s, the +needs+ line's, the first line's
+      # (+first_line+), and the +step+ from one line down to the next.
+      Rows = Data.define(:title, :needs, :first_line, :step)
+
+      # THE LINES OF A FIRST SCREEN, top to bottom, for what a game +given+ (a DSL::ShellScreen):
+      # LOAD ROM, the game's lines that go under it, SETTINGS, and the game's lines under that.
+      # LOAD ROM and SETTINGS keep their numbers whatever is added, since three runtimes read them.
+      def self.menu_lines(given)
+        own = given.lines.each_with_index.map do |line, at|
+          [line.under, MenuLine.new(words: line.words, number: SETTINGS + 1 + at, scene: line.shows, source: line.source)]
+        end
+        fixed = { load_rom: LOAD_ROM, settings: SETTINGS }
+        DSL::ShellScreen::FIXED_LINES.each_with_index.flat_map do |which, at|
+          words = given.label(which) || MENU_LINES.fetch(at)
+          [MenuLine.new(words: words, number: fixed.fetch(which), scene: nil, source: nil),
+           *own.select { |under, _| under == which }.map(&:last)]
+        end
+      end
 
       # THE MENU, a small game of the library's own built for the console +game+ (the game's
-      # program) is built for: the title, a line naming what the game needs, and two lines picked with
+      # program) is built for: the title, a line naming what the game needs, and lines picked with
       # up and down and chosen with A or Start. Game code, so each runtime plays it as it plays any game.
+      #
+      # A GAME MAKES IT ITS OWN with `shell_screen` (+first_screen+, what the game gave, or nil):
+      # its font, colours, a picture, its words, and lines of its own (Builder::ShellScreens, whose
+      # block is run on this menu's builder). A game that gives nothing gets the screen as it
+      # always was. A LINE OF THE GAME'S OWN SHOWS A SCENE AND COMES BACK, all inside this
+      # program: chosen, it shows as chosen as any line does, then its scene is called every pass
+      # over the ground's colour until A, B or Start is pressed, and the menu is back with the
+      # cursor where it was. The menu does not halt for it, so no runtime hears of such a line.
       #
       # THE LINE CHOSEN SHOWS AS CHOSEN, in yellow, for CHOSEN_FRAMES frames in which no button
       # does anything. Then the menu sets MENU_CHOICE and halts, and the runtime does what was
@@ -172,50 +221,87 @@ module VBlank
       # byte), and the menu says under its lines, in the words of #read_again_rows, that the
       # data must be read again from the player's copy of +original_title+, the original's own
       # title: what the player owns, where +title+ is this program's.
-      def self.menu_program(title, game, original_title)
+      def self.menu_program(title, game, original_title, first_screen = nil)
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
-        named = title.to_s.upcase.gsub(MENU_LETTERS, "").strip
         sentence = read_again_sentence(original_title).upcase.gsub(MENU_LETTERS, "")
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: options)
           maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: MENU_START_BYTES, checks: [])
           maker.instance_eval do
             screen :bitmap
+            look = shell_screen_look(title, first_screen)
+            lines = look.lines
+            rows = shell_screen_rows(text_height(font: look.font))
+            shown = lines.select(&:scene) # the lines that show a scene; a scene's number is its place here, from 1
             start = table MENU_START, DSL::StartFileEntries.new(at: 0, count: MENU_START_BYTES), width: :byte, signed: false
             line = var MENU_LINE, 0
             choice = var MENU_CHOICE, 0
             chosen_for = var :shell_chosen_for, 0 # frames the chosen line has shown as chosen; 0 while none is
-            middle = screen_height / 2
-            line.store!(start[0].clamp(0, MENU_LINES.length - 1))
-            read_again = Shell.read_again_rows(sentence, screen_width - (2 * READ_AGAIN_MARGIN)) { |words| text_width(words) }
+            scene_up = (var MENU_SCENE, 0 unless shown.empty?) # the scene showing in the menu's place; 0 while none is
+            line.store!(start[0].clamp(0, lines.length - 1))
+            # What the menu says of a pack to read again is VBlank's own sentence, so it is
+            # written in the screen's font only where that font has every letter of it.
+            said_in = IR::FontTable.of(program).get(look.font).missing_characters(sentence).empty? ? look.font : :default
+            read_again = Shell.read_again_rows(sentence, screen_width - (2 * READ_AGAIN_MARGIN)) { |words| text_width(words, font: said_in) }
             func(MENU_PICTURE) do
-              clear_screen :black
-              draw_text named, :center, middle - 40, :white unless named.empty?
-              draw_text "LOAD YOUR COPY OF THE GAME", :center, middle - 24, :gray
-              MENU_LINES.each_with_index do |words, place|
-                draw_text words, :center, middle + (12 * place), %i[gray white], showing: line == place
-                ((chosen_for > 0) & (line == place)).record_branch { draw_text words, :center, middle + (12 * place), :yellow }
+              clear_screen look.colors.fetch(:ground)
+              blit look.picture.name, look.picture.x, look.picture.y if look.picture
+              draw_text look.title, :center, rows.title, look.colors.fetch(:title), font: look.font unless look.title.empty?
+              draw_text look.needs, :center, rows.needs, look.colors.fetch(:needs), font: look.font unless look.needs.empty?
+              lines.each_with_index do |menu_line, place|
+                row = rows.first_line + (rows.step * place)
+                draw_text menu_line.words, :center, row, look.colors.values_at(:line, :cursor), showing: line == place, font: look.font
+                ((chosen_for > 0) & (line == place)).record_branch do
+                  draw_text menu_line.words, :center, row, look.colors.fetch(:chosen), font: look.font
+                end
               end
               (start[1] != 0).record_branch do
-                top = middle + (12 * (MENU_LINES.length - 1)) + text_height + READ_AGAIN_GAP
-                read_again.each_with_index { |words, row| draw_text words, :center, top + (READ_AGAIN_STEP * row), :gray }
+                top = rows.first_line + (rows.step * (lines.length - 1)) + text_height(font: look.font) + READ_AGAIN_GAP
+                step = text_height(font: said_in) + READ_AGAIN_ROW_GAP
+                read_again.each_with_index do |words, row|
+                  draw_text words, :center, top + (step * row), look.colors.fetch(:needs), font: said_in
+                end
+              end
+            end
+            # The menu's own pass: its picture, the line chosen shown as chosen for a while and
+            # then acted on, and otherwise the buttons.
+            play_menu = lambda do
+              call MENU_PICTURE
+              (chosen_for > 0).record_branch do
+                chosen_for.store!(chosen_for + 1)
+                (chosen_for > CHOSEN_FRAMES).record_branch do
+                  lines.each_with_index do |menu_line, place|
+                    (line == place).record_branch do
+                      if menu_line.scene
+                        chosen_for.store!(0)
+                        scene_up.store!(shown.index(menu_line) + 1)
+                      else
+                        choice.store!(menu_line.number)
+                        halt
+                      end
+                    end
+                  end
+                end
+              end.else do
+                pressed(:down).record_branch { line.store!((line + 1) % lines.length) }
+                pressed(:up).record_branch { line.store!((line + lines.length - 1) % lines.length) }
+                %i[a start].each { |button| pressed(button).record_branch { chosen_for.store!(1) } }
               end
             end
             # Drawn before the loop's first wait too, so the menu's first picture is the menu and a
             # menu played again shows no empty frame between its last picture and its first.
             call MENU_PICTURE
             game_loop do
-              call MENU_PICTURE
-              (chosen_for > 0).record_branch do
-                chosen_for.store!(chosen_for + 1)
-                (chosen_for > CHOSEN_FRAMES).record_branch do
-                  choice.store!(line + 1)
-                  halt
-                end
-              end.else do
-                pressed(:down).record_branch { line.store!(1 - line) }
-                pressed(:up).record_branch { line.store!(1 - line) }
-                %i[a start].each { |button| pressed(button).record_branch { chosen_for.store!(1) } }
+              if shown.empty?
+                play_menu.call
+              else
+                # A scene of the game's own, up in the menu's place: the ground, then the scene's
+                # own drawing, each pass until a button sends the player back.
+                (scene_up > 0).record_branch do
+                  clear_screen look.colors.fetch(:ground)
+                  case_var(MENU_SCENE) { shown.each_with_index { |menu_line, at| when_val at + 1, menu_line.scene } }
+                  %i[a b start].each { |button| pressed(button).record_branch { scene_up.store!(0) } }
+                end.else { play_menu.call }
               end
             end
             finalize_program

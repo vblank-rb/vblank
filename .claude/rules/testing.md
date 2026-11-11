@@ -104,6 +104,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),
+`shell_screen_tests.rb` (the made-up port with a shell's first screen of its own, `shell_screen`, and the same screen drawn by a plain game, which is the answer key each runtime's test holds it to),
 `made_up_original_layouts.rb` (made-up originals in each console's layout, and a game reading them through a data pack, for the layout tests and the pack-at-start runs),
 `pack_background_tests.rb` (made-up originals whose screen is a background of their own tiles, map and colours, in the Advance's, the Super Nintendo's and the Genesis's layouts, for the verb's tests; and the same games with the pack left out, a bank walked, recoloured and drawn in among them, played by the interpreter and the game as C, JavaScript and Ruby),
 `pack_turning_background_games.rb` (a made-up original whose screen is a layer that turns, a map of one byte a cell over tiles of a byte a pixel in a table of 256 colours, a game showing it through a data pack, and the same background drawn by the game, which is its answer key),

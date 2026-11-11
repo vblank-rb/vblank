@@ -97,6 +97,7 @@ module VBlank
         func: works, call: works, scene: works, case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: works("it lists the ARM a routine was made into."),
         entry: works("raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`)."),
 

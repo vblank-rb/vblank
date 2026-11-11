@@ -243,6 +243,7 @@ module VBlank
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: works("it lists the SM83 code a routine was made into, with the game's variables and " \
                          "the runtime's routines by name."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Game Boy Color does " \

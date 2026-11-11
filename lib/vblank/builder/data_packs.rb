@@ -889,6 +889,7 @@ module VBlank
       end
 
       def refuse_slot_from_elsewhere!(handle, where)
+        refuse_slot_on_first_screen!(handle)
         return if @data_pack_slots&.fetch(handle.layout.name, nil) == handle.layout
 
         raise ArgumentError, "#{where} was given slot :#{handle.layout.name}, and this game's data pack has no such slot. " \

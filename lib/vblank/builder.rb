@@ -52,6 +52,7 @@ require_relative "builder/data_packs"          # data_pack: the original's data,
 require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
 require_relative "builder/pack_poses"          # image frame: pack[...]: a pose that is one of the original's frames
 require_relative "builder/pack_scores"         # notes: pack[...]: the original's songs as notes, and its instruments' settings
+require_relative "builder/shell_screens"       # shell_screen: a shell's first screen, made the game's own
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -112,6 +113,7 @@ module VBlank
     include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
     include PackPoses  # image frame: pack[...] (a pose that is one of the original's own frames)
     include PackScores # notes: pack[...] (the original's songs as notes, and its instruments' settings)
+    include ShellScreens # shell_screen (a shell's first screen: its font, colours, picture, words and lines)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.
@@ -235,6 +237,8 @@ module VBlank
       @current_layer = nil     # while a `layer` block runs: the layer its declarations belong to
       @routine_layer = {}      # routine name → [layer, what the author wrote] when it was declared inside one
       @deferred_layer = nil    # while such a routine's body is built: that pair, so a declaration in it can be refused
+      @shell_screen = nil      # what the game gave for its shell's first screen (see ShellScreens)
+      @shell_first_screen = false # whether this builder makes a shell's first screen, where no data pack slot may be used
 
       # The program the DSL builds: an IR tree of nodes that {VBlank.build}
       # lowers to a ROM. Each statement attaches to the container on top of the

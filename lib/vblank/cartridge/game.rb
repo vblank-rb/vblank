@@ -127,14 +127,20 @@ module VBlank
                   cartridge: false, for_computer: for_computer, pack_at_start: pack_at_start)
       end
 
-      # WHAT A SHELL IS BUILT FROM (Original::Shell.build): the program #checked_program makes with
-      # the pack left out, and the game's data pack (DSL::DataPack, or nil for a game with none). The
-      # block runs a second time for the data pack, since a checked build hands back only its program.
+      # What a shell is built from: the game's +program+ with its pack left out, its +data_pack+
+      # (DSL::DataPack, or nil for a game with none), and what it gave for the shell's first screen
+      # (+first_screen+, a Builder::ShellScreens::DeclaredShellScreen, or nil).
+      ShellParts = Data.define(:program, :data_pack, :first_screen)
+
+      # WHAT A SHELL IS BUILT FROM (Original::Shell.build), a ShellParts: the program
+      # #checked_program makes with the pack left out, and the game's data pack and first screen.
+      # The block runs a second time for those two, since a checked build hands back only its program.
       def shell_parts(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
         program = checked_program(err: err, progress: progress, settings: settings, console: console, pack_at_start: true)
         options = @options.with(console: console, variant: variant_for(console), consoles: @consoles, for_computer: true,
                                 pack_at_start: true)
-        [program, EvaluatedGame.new(@block, options: options, settings: settings).declared_data_pack]
+        evaluated = EvaluatedGame.new(@block, options: options, settings: settings)
+        ShellParts.new(program: program, data_pack: evaluated.declared_data_pack, first_screen: evaluated.declared_shell_screen)
       end
 
       # THE DATA PACK FILE THE ALL-IN-ONE BUILD MAKES from the copy of the original the game reads,

@@ -130,6 +130,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the program holds what each slot holds, as if the game had written it.
+- `shell_screen` — works: the program holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a PlayStation has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a PlayStation does not have.
 - `held` — works: a game names the pad's buttons by the shared names: `:a` is Cross, `:b` Circle, `:x` Triangle, `:y` Square, `:l` L1 and `:r` R1, with `:select`, `:start` and the D-pad. A PlayStation has two ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more than 1 are not made yet.

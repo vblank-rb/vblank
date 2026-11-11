@@ -25,6 +25,7 @@ and a test fails when the two differ.
 - `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
+- `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — works: it lists the ARM a routine was made into.
 - `entry` — works: raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`).
 - `held` — works: the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. `:x` and `:y` are refused: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.

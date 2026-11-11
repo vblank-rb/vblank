@@ -422,6 +422,78 @@ The web page (`--format web --shell`) and the desktop program (`--format native 
 the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every
 release reads one slot list. Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.
 
+**The first screen** — `shell_screen do |first| … end` makes the screen a shell opens on the game's
+own. With none, VBlank writes it: the game's title in capitals (letters the built-in font lacks left
+out), LOAD YOUR COPY OF THE GAME, and the lines LOAD ROM and SETTINGS, gray, white under the cursor
+and yellow once chosen, on black.
+
+```ruby
+VBlank.game "AEON PORT", consoles: %i[gba] do
+  pack = data_pack(from: ORIGINAL, version: "1.0") { |slots| … }
+  shell_screen do |first|
+    font :runes, glyphs: RUNES                      # declared here, for this screen
+    image :sky, width: 240, height: 160, data: SKY
+    first.font :runes
+    first.title "ÆON"                               # letters the built-in font lacks
+    first.needs "LOAD YOUR COPY OF ÆON"
+    first.colors title: :yellow, line: :gray, cursor: :white, chosen: :cyan, ground: :blue
+    first.picture :sky
+    first.line "CREDITS", shows: :credits
+    scene(:credits) { draw_text "A PORT BY US", :center, 40, :white, font: :runes }
+  end
+  …
+end
+```
+
+- **The words.** The *screen* is this first screen. A *line* is a row the player can put the cursor on
+  and choose; LOAD ROM and SETTINGS are lines, and are always there. The *title* and what the game
+  *needs* are words above the lines. A line is plain, under the *cursor*, or *chosen*. The *ground* is the
+  colour behind everything, and the *picture* is drawn over it, under the words.
+- **The block is a program of its own.** This screen plays before the game can: the game's program
+  does not start without its data pack. So the block is not run as the game is built. A shell build
+  runs it as game code on the program that is the first screen, the way the unpacking routine has a
+  program of its own. A font, a picture or a scene the screen uses is declared **inside the block**,
+  with the verbs a game declares them with (`font`, `image`, `scene`, `func`, `var`); one declared
+  outside it is the game's and is not there. Share art between the two with a Ruby constant or method.
+- **Nothing here may come from the data pack.** The screen shows before the player's copy is read, so
+  the pack holds nothing yet: no font, picture, colour or sound of the original's. A slot given to
+  `first.` anything, or to a verb in the block, is a friendly error saying so.
+- `first.font :runes` — the font every word of the screen is written in, a font of glyphs (a block of
+  `glyph`s or `glyphs:`). It is how a title in letters the built-in font lacks shows at all. A font of
+  pictures is refused, since a line changes colour. Every word the screen writes must be in the font,
+  LOAD ROM and SETTINGS too, or the error names the letters.
+- `first.title "ÆON"`, `first.needs "…"` — the title's words and the words of the line under it. A
+  game's own title is written as given, never folded to capitals. `""` leaves either out.
+- `first.labels load_rom: "CARGAR ROM", settings: "AJUSTES"` — the words of the two lines VBlank
+  keeps, for a font without their letters or a game in another language. The lines stay and do what
+  they do.
+- `first.colors title:, needs:, line:, cursor:, chosen:, ground:` — any of the six; the rest keep
+  VBlank's.
+- `first.picture :sky, at: [0, 0]` — one picture behind the words, over the ground.
+- `first.line "CREDITS", shows: :credits` — **a line of the game's own**, under LOAD ROM, or under
+  SETTINGS with `under: :settings`. **What a line may do is a short list, since the shell is not the
+  game: it shows a scene written in the block and comes back.** Chosen, it shows as chosen as LOAD
+  ROM does, then the scene is called every pass over the ground's colour until the player presses A,
+  B or Start, and the menu is back with the cursor on that line. Credits, how to get the game, the
+  controls. It cannot ask for the copy, start the game or end the shell. Not made yet: a line that
+  opens a web address, and a line that sets something the game then reads.
+- **Where the words go**, in a font H rows tall: the lines from the screen's middle down, H + 5 rows
+  from one to the next; the needs line two such steps above the middle; the title H + 9 rows above
+  that. With the built-in font that is the screen as VBlank writes it.
+- **Friendly errors**, told when the game is built as a shell and naming the block's line: a slot of the
+  data pack; a line with no `shows:`, or one naming a scene the block does not have; more lines than
+  fit the screen in the font; a font too tall for the title; words wider than the screen; a letter the
+  font lacks; a picture the block does not declare; a colour for a part the screen does not have; a
+  second `shell_screen`.
+- **What stays VBlank's**: LOAD ROM is choice 1 and SETTINGS choice 2 to every runtime wherever they
+  stand; the words a file is refused in; the sentence about reading the data again, written in the
+  screen's font where the font has its letters and in the built-in font where it does not; the
+  chosen line shown for a moment; the cursor kept; the desktop program's one window.
+- **A cartridge holds nothing of it**: only a shell build runs the block, so a mistake in it is not
+  told by a cartridge build. Worked examples: `test/shell_screen_tests.rb` (the game, and the same
+  screen drawn by a plain game, which every runtime's test holds it to pixel for pixel) and
+  `test/all/vblank/builder/test_shell_screens.rb` (what is refused).
+
 **A port's shell check** — `rake shell:check`, from `Original::ShellCheckTasks` in the port's Rakefile
 (`t.game_file`, and `t.console` and `t.tape` if wanted), or `Live::ShellCheck.new(game, tape:).run` — does
 what a player does with nobody at the controls: builds the shell with no copy in reach, starts it with
