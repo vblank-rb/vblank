@@ -16,9 +16,9 @@ module VBlank
       # The card's palette of 256 colours, kept in the card.
       PALETTE = Verifier::PaletteLayout.new(half: 0, group: 256)
 
-      # A DOS game keeps its saves in a file beside the program (nothing is made to save yet, which
-      # Lowering::NOT_LOWERED_YET says).
-      SAVE_FILE = Verifier::SaveFileLayout.new(whole: 0x10000, clock_bytes: 0)
+      # A DOS game keeps its saves in a file beside the program: the 32K of its save memory and nothing
+      # else (IR::Backends::DOS::Runtime::Saving).
+      SAVE_FILE = Verifier::SaveFileLayout.new(whole: IR::SaveLayout::SIZE, clock_bytes: 0)
 
       def sprites(_name = nil) = refuse_dos_reader!(:sprites)
 

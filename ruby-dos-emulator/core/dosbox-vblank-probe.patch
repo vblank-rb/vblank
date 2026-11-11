@@ -19,7 +19,19 @@ diff --color -ruN a/libretro/Makefile.libretro b/libretro/Makefile.libretro
 diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
-@@ -608,6 +608,17 @@
+@@ -186,7 +186,10 @@
+ unsigned disk_count = 0;
+ bool disk_tray_ejected;
+ char disk_load_image[PATH_MAX_LENGTH];
+-bool mount_overlay = true;
++/* VBlank probe: no overlay. The core would keep every file a program writes in a folder of its own, away
++   from the drive, and the harness reads a program's save file from the drive. (The core's option for this
++   is read only with its other options, which the harness leaves off.) */
++bool mount_overlay = false;
+ 
+ /* helper functions */
+ static char last_written_character = 0;
+@@ -608,6 +611,17 @@
      disk_add_image_index,
  };
  
@@ -37,7 +49,7 @@ diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
  static void leave_thread(Bitu)
  {
      MIXER_CallBack(0, audioData, samplesPerFrame * 4);
-@@ -1504,7 +1515,7 @@
+@@ -1504,7 +1518,7 @@
              log_cb(RETRO_LOG_INFO, "[dosbox] loading default configuration %s\n", configPath.c_str());
          }
  
@@ -46,7 +58,7 @@ diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
          // Change the current working directory so that it's possible to have paths in .conf and
          // .bat files (like MOUNT commands) that are relative to the content directory.
          std::string dir = gamePath.substr(0, gamePath.find_last_of(PATH_SEPARATOR));
-@@ -1619,22 +1630,36 @@
+@@ -1619,22 +1633,36 @@
      restart_program(control->startup_params);
  }
  
@@ -88,7 +100,7 @@ diff --color -ruN a/libretro/libretro.cpp b/libretro/libretro.cpp
  }
  
  /* Stubs */
-@@ -1663,3 +1688,100 @@
+@@ -1663,3 +1691,100 @@
  }
  
  #endif

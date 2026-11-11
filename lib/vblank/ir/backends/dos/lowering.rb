@@ -17,7 +17,8 @@ module VBlank
         # instruction on a game's number whose answer Int32 gives otherwise.
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
-        # its conditions and halting, the keyboard's keys as buttons, and a painted screen of one page with a cleared screen, pixels,
+        # its conditions and halting, the keyboard's keys as buttons, save memory kept in a file, and a
+        # painted screen of one page with a cleared screen, pixels,
         # rectangles, pictures (`blit`), text and numbers, in a palette of the colours the game names.
         # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
         # all is refused in the words its answers have (Console::Answers#refusals).
@@ -32,10 +33,10 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit draw_text draw_digit
+            draw_rect_at blit draw_text draw_digit save_init save_store save_write save_erase
           ] + Nodes.of_role(:declaration)).freeze
 
-          VALUE_KINDS = %i[int var_ref binop neg held pressed].freeze
+          VALUE_KINDS = %i[int var_ref binop neg held pressed save_read save_sum].freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -75,6 +76,9 @@ module VBlank
 
           def pictures? = !@art_places.empty?
 
+          # Whether the game keeps anything in save memory, and so carries the runtime's saving (Runtime::Saving).
+          def saves? = SaveLayout.named_by?(@program)
+
           def initialize(program, memory:, cache: BuildCache.for(DOS, program))
             @program = program
             @memory = memory
@@ -107,12 +111,28 @@ module VBlank
           def refuse_what_cannot_be_made!
             Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
             @plan.refuse_hardware_only_kinds!
+            refuse_unmade_save_memory! # before the kinds: a chip's layout brings steps a file never needs
             @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_variant!
             refuse_unmade_screens!
             refuse_unmade_text!
+          end
+
+          # A DOS game saves in a file of 32K, written a byte at any time (Runtime::Saving). A game that names
+          # flash or an EEPROM lays its save memory out for that chip, its blocks wiped before they are
+          # written, which a file has no need of.
+          def refuse_unmade_save_memory!
+            return unless saves?
+
+            memory = SaveLayout.memory_of(@program)
+            return if memory.battery?
+
+            asked = @program.walk.find { |node| node.kind == :save_memory }&.asked_for
+            fix = asked ? "leave `save_memory:` out of the game" : "keep less in the game's `save_data` records"
+            raise LoweringError, "This game saves in #{memory.kilobytes}K of #{memory.kind_words}, and a #{CONSOLE.title} " \
+                                 "game saves in a file of 32K. To fix this, #{fix}."
           end
 
           # The part of the build a game with a screen variant waits for, for a test run to count skips by.
@@ -295,6 +315,12 @@ module VBlank
             when :blit then emit_blit(node)
             when :draw_text then emit_draw_text(node)
             when :draw_digit then emit_draw_digit(node)
+            when :save_init then emit_save_init(node)
+            when :save_store then emit_save_write_word(SaveLayout.save_var_at(node.slot), Build.var_ref(node.var))
+            when :save_write then emit_runtime_call("rt_save_write", node.at, node.value, save_width(node))
+            # A file takes any byte at any time, so nothing is wiped; the place is worked out all the same,
+            # as the interpreter works it out (Reference#exec_save_erase).
+            when :save_erase then emit_value(node.at)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -416,6 +442,46 @@ module VBlank
             emit_store(Frames::STEP)
           end
 
+          # --- save memory: each step a call into Runtime::Saving, the places IR::SaveLayout's ---
+
+          # Reference#exec_save_init: every `save_var` takes its saved number when save memory carries the
+          # game's marker, and the number it was declared with when it does not. Each is written back, and
+          # the marker after them, in the interpreter's order.
+          def emit_save_init(node)
+            saved = keep_local(:saved)
+            marker = Int32.wrap(node.magic)
+            emit_value(Build.binop(:==, Build.save_read(Build.int(SaveLayout::SAVE_VAR_MARKER_AT), width: :word), Build.int(marker)))
+            emit_store(saved)
+            node.vars.each do |kept|
+              at = SaveLayout.save_var_at(kept.slot)
+              declared = fresh_label("declared_number")
+              chosen = fresh_label("number_chosen")
+              emit_jump_unless(Build.var_ref(saved), declared)
+              emit_value(Build.save_read(Build.int(at), width: :word))
+              @asm.jmp(chosen)
+              @asm.label(declared)
+              @asm.mov(:eax, Int32.wrap(kept.default))
+              @asm.label(chosen)
+              emit_store(kept.name)
+              emit_save_write_word(at, Build.var_ref(kept.name))
+            end
+            emit_save_write_word(SaveLayout::SAVE_VAR_MARKER_AT, Build.int(marker))
+          end
+
+          def emit_save_write_word(at, value)
+            emit_runtime_call("rt_save_write", Build.int(at), value, Build.int(Reference::SAVE_WIDTHS.fetch(:word)))
+          end
+
+          # How many bytes a read or a write moves, by the width it names: the interpreter's own table.
+          def save_width(node) = Build.int(Reference::SAVE_WIDTHS.fetch(node.width))
+
+          # A routine of the runtime's called with its numbers in EAX, ECX and EDX, in that order; what it
+          # answers is in EAX.
+          def emit_runtime_call(routine, *operands)
+            emit_values_into(%i[eax ecx edx].first(operands.size), operands.map { |operand| value_node(operand) })
+            @asm.call(routine)
+          end
+
           # --- the screen ---
 
           # A colour as four pixels of its palette entry, which the whole-screen fill stores a word at a time.
@@ -513,6 +579,8 @@ module VBlank
             when :neg
               emit_value(node.operand)
               @asm.neg(:eax)
+            when :save_read then emit_runtime_call("rt_save_read", node.at, save_width(node))
+            when :save_sum then emit_runtime_call("rt_save_sum", node.at, node.length)
             when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
             when :pressed then emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"

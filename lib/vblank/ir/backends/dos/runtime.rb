@@ -122,10 +122,12 @@ module VBlank
 
           module_function
 
-          def reserve(memory)
+          # +saves+ is whether the game keeps anything in save memory: one that keeps nothing has none of it.
+          def reserve(memory, saves:)
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
             memory.reserve(Frame::FAULT, Frame::FAULT_BYTES)
             memory.reserve(Frame::STEPS, Frame::STEPS_KEPT)
+            Saving.reserve(memory) if saves
           end
 
           # Where each of the runtime's names is, for a reader.
@@ -139,9 +141,10 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:)
-            emit_start(asm, memory, palette, starts)
-            emit_frame(asm, memory)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:)
+            emit_start(asm, memory, palette, starts, saves)
+            Saving.emit(asm, memory) if saves
+            emit_frame(asm, memory, saves)
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
@@ -156,7 +159,7 @@ module VBlank
           # itself follows it, a space and then what was typed after the program's name.
           PSP_TAIL_LENGTH = 0x80
 
-          def emit_start(asm, memory, palette, starts)
+          def emit_start(asm, memory, palette, starts, saves)
             ica = Diagnostics::DOSMemory
             asm.label("start")
             # ES is the program's PSP, whose command tail says whether a reader asked for the gate: " HOLD", its
@@ -167,6 +170,7 @@ module VBlank
             asm.jb("rt_no_tail")
             asm.mov(:bl, X86.mem(nil, PSP_TAIL_LENGTH + 2, seg: :es))
             asm.label("rt_no_tail")
+            asm.mov(:bp, :es) # the PSP's segment, for the save file's name
             asm.mov_segment(:ax, :data)
             asm.mov(:ds, :ax)
             asm.mov(:ss, :ax)
@@ -180,7 +184,8 @@ module VBlank
             asm.mov(:cx, memory.cleared_bytes / 4)
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
-            asm.push(:bx) # the letter, kept from whatever the BIOS does with BX
+            asm.push(:bx) # the letter, kept from whatever the BIOS does with BX, and from the save's start
+            asm.call("rt_save_start") if saves
             asm.mov(:ax, Console::DOSHardware::MODE_13H)
             asm.int(0x10)
             asm.pop(:bx)
@@ -237,7 +242,7 @@ module VBlank
           end
 
           # The end of a pass, stopping, and the wait for a retrace they share.
-          def emit_frame(asm, memory)
+          def emit_frame(asm, memory, saves)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -261,6 +266,7 @@ module VBlank
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
             asm.mov(at.call(Frame::WAITING), 1)
+            asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
             asm.call("rt_sleep_until_retrace")
             # The buttons, taken from the keyboard's interrupt with interrupts off, so a key cannot go down
             # between the two halves and be lost.
@@ -316,10 +322,17 @@ module VBlank
 
             # Stopping: the game is marked as halted, and the last picture is shown by the retrace after it.
             asm.label("rt_halt")
+            asm.call("rt_save_flush") if saves
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_sleep_until_retrace")
             asm.mov(at.call(Frame::SHOWN), Frame::END_SHOWN)
             asm.label("rt_stopped")
+            asm.jmp("rt_stopped")
+
+            # Going wrong: what went wrong is already in FAULT, and the game goes no further.
+            asm.label("rt_fault")
+            asm.call("rt_save_flush") if saves
+            asm.mov(at.call(Frame::STATE), Frame::WENT_WRONG)
             asm.jmp("rt_stopped")
           end
 

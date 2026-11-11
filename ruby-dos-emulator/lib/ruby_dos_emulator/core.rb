@@ -75,14 +75,13 @@ module RubyDOSEmulator
     START_GATE_AT = 0x4F2
 
     # +program+ is the path of an .EXE or a .COM; its folder is drive C: (a copy of it, so a program
-    # that saves a file never changes what is on disk; read it back with #drive_file). With +hold+ the
-    # program is started with the word HOLD after its name (see START_GATE_AT).
-    def initialize(program, hold: false)
+    # that saves a file never changes what is on disk; read it back with #drive_file). With +in_place+
+    # the folder itself is the drive, and a file the program writes is there once the machine is shut.
+    # With +hold+ the program is started with the word HOLD after its name (see START_GATE_AT).
+    def initialize(program, hold: false, in_place: false)
       @hold = hold
       @dir = Dir.mktmpdir("ruby-dos-emulator")
-      @drive = File.join(@dir, "c")
-      FileUtils.mkdir_p(@drive)
-      FileUtils.cp_r(File.join(File.dirname(File.expand_path(program)), "."), @drive)
+      @drive = in_place ? File.dirname(File.expand_path(program)) : copied_folder_of(program)
       @frames = 0
       @held = []
       @kept = [] # what the core holds a pointer to, kept from the garbage collector
@@ -192,6 +191,13 @@ module RubyDOSEmulator
     end
 
     private
+
+    def copied_folder_of(program)
+      drive = File.join(@dir, "c")
+      FileUtils.mkdir_p(drive)
+      FileUtils.cp_r(File.join(File.dirname(File.expand_path(program)), "."), drive)
+      drive
+    end
 
     # Loads a library of its own and starts the machine on +program+. A machine that cannot start
     # leaves nothing behind: not its library, and not its folder.

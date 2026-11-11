@@ -338,7 +338,7 @@ module VBlank
     end
 
     # DOS's. Its programs play in DOSBox, through ruby-dos-emulator. A program is an MZ EXE, and a game's
-    # saves go in a file beside it (the lowering does not make saves yet).
+    # saves go in a file beside it (IR::Backends::DOS::Runtime::Saving).
     class DOSKit < CheckedKit
       # THE VIDEO MODES A GAME CAN ASK FOR besides mode 13h, as variants (`variants: { dos: :mode_x }`): the
       # same PC and the same game, shown on a screen of another size. The card draws nothing for a game, so
@@ -366,9 +366,11 @@ module VBlank
       def lowering = IR::Backends::DOS
       def cartridge = Cartridge::DOSEXE
       def reading = Diagnostics::DOSReading
-      # Held at its start, for a reader to release (Diagnostics::DOSMemory::START_GATE_AT).
-      def open_core(path, save_dir:) = Diagnostics::Emulator.open_dos(path, hold: true)
-      def open_probe(path, save_dir:) = Diagnostics::DOSProbe.new(path)
+      # Held at its start, for a reader to release (Diagnostics::DOSMemory::START_GATE_AT). With a folder to
+      # save in, the program's own folder is its drive, so the save file it keeps beside itself is there
+      # for the reader afterwards.
+      def open_core(path, save_dir:) = Diagnostics::Emulator.open_dos(path, hold: true, in_place: !save_dir.nil?)
+      def open_probe(path, save_dir:) = Diagnostics::DOSProbe.new(path, save_dir: save_dir)
       def save_file_extension = ".sav"
       # The 386 reads a number of any size at any address, low byte first.
       def words_at_any_address? = true

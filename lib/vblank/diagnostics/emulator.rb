@@ -232,11 +232,12 @@ module VBlank
       def dos_loaded? = !defined?(::RubyDOSEmulator::Core).nil?
 
       # A DOS machine running a program, an .EXE or a .COM (see RubyDOSEmulator::Core). The program's
-      # folder is the machine's drive C:, and a file it saves is read back from the core. With +hold+ the
-      # program waits at its start until the core's gate is released.
-      def open_dos(program_path, hold: false)
+      # folder is the machine's drive C:: a copy of it, and a file the program saves is read back from the
+      # core, or with +in_place+ the folder itself, where the file is once the machine is shut. With +hold+
+      # the program waits at its start until the core's gate is released.
+      def open_dos(program_path, hold: false, in_place: false)
         load_dos!
-        RubyDOSEmulator::Core.new(program_path, hold: hold)
+        RubyDOSEmulator::Core.new(program_path, hold: hold, in_place: in_place)
       end
 
       # Open an emulator core on a ROM file path.
