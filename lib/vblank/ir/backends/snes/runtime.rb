@@ -57,7 +57,7 @@ module VBlank
             Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
-            Recordings.reserve(memory, glides: c.glides) if c.samples
+            Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes) if c.samples
           end
 
           def reserve_music(memory, carries)
@@ -108,7 +108,8 @@ module VBlank
             emit_frame_begins(asm, lowering.frame_begins)
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
             [vectors.section, asm.section, *chip_paint] +
-              (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD)) : []) +
+              (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD),
+                                                         chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES)) : []) +
               [lowered[:music], lowered[:plays]].compact
           end
 

@@ -61,7 +61,8 @@ module VBlank
         maybe_value: ->(v) { v.is_a?(Node) && v.value? },      # a value operand a game can leave out
         flag:    ->(v) { v == true || v == false },            # an on/off switch (e.g. double buffering)
         shape:   ->(v) { v.is_a?(Audio::Envelope) },                  # how a note starts and how it ends
-        start_file: ->(v) { v.is_a?(StartFile) && v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
+        chip_shape: ->(v) { v.is_a?(Audio::SNESEnvelope) },           # ...as a console's sound chip keeps it
+        start_file: ->(v) { v.is_a?(StartFile)&& v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
         number_format: ->(v) { v.is_a?(Console::NumberFormat) },      # ...how a table's numbers are kept in it
         file_picture: ->(v) { v.is_a?(StartFile::Picture) },          # ...where a picture is in it
         file_background: ->(v) { v.is_a?(StartFile::Background) },    # ...where a background's map, tiles and colours are

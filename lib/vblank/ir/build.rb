@@ -397,9 +397,12 @@ module VBlank
       # the end, or nil for a recording that simply runs out.
       # +from_file+ is where its first sample is in the file the program is handed as it starts
       # (StartFile), for a recording read from there: +bytes+ is then zeros of its length. Nil otherwise.
-      def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil)
+      # +chip_envelope+ is the shape as a console's sound chip keeps it (an Audio::SNESEnvelope), with
+      # +envelope+ then the nearest ordinary one. Nil otherwise.
+      def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil, chip_envelope: nil)
         Nodes.build(:sample, name: name, bytes: bytes, rate: rate, note: note,
-                             envelope: envelope, holds_from: holds_from, from_file: from_file)
+                             envelope: envelope, holds_from: holds_from, from_file: from_file,
+                             chip_envelope: chip_envelope)
       end
 
       # Play the named sample from the start. +loop+ true replays it seamlessly on a

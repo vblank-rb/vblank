@@ -47,10 +47,14 @@ module VBlank
             LOGGED = 20
             NAME = 22
             # ...and its shape (Audio::Envelope): its attack and decay, its sustain and release, a byte
-            # each, two to a word; and 1 when it has one.
+            # each, two to a word; and 1 when it has one. In a game with a recording shaped by the
+            # sound chip's own envelope bytes (CHIP_ENVELOPES), SHAPED's high byte is which row of
+            # "recording_chip_envelopes" the note's voice is told: nought for a note with none.
             SHAPE_AD = 24
             SHAPE_SR = 26
             SHAPED = 28
+            SHAPED_BIT = 0x00FF
+            CHIP_ENVELOPE_BITS = 0xFF00
             # ...and for a song's note, how its end is found without counting its samples (#frames_left).
             FRAMES_LEFT = 30
             ROW_BYTES = 32
@@ -93,6 +97,8 @@ module VBlank
             # ...and in a game with a sound queue, whether a word about its loudness is waiting there
             # (#emit_shapes).
             VOLUME_WAITING = 42
+            # ...and its row's SHAPED word, in a game with CHIP_ENVELOPES.
+            PLACE_SHAPED = 44
             PLACE_BYTES = 64
             LOOPS = 0x8000
             PLAIN = 0
@@ -132,7 +138,28 @@ module VBlank
             # Kept in a game with a note that glides, whose runtime then carries what moves one.
             GLIDES = "rt recordings glides"
 
+            # THE SOUND CHIP'S OWN ENVELOPE. A recording can be given the three bytes the S-DSP shapes
+            # a voice by (Audio::SNESEnvelope: ADSR1, ADSR2, GAIN), and its voice is told them as
+            # they are, so the chip shapes the note itself, as it did in the game they came from.
+            #
+            # The place still keeps a level and steps it every frame, by the ordinary envelope
+            # nearest those bytes (the row's SHAPE_AD and SHAPE_SR), since that count is what the
+            # interpreter keeps and what says when the place comes free. Only what the voice hears
+            # differs: its volume registers hold the note's loudness whole, never scaled by the
+            # level, and once the note has ended its voice is keyed off, where the chip takes the
+            # level down itself.
+            #
+            # Kept in a game with such a recording, whose runtime then tells every note's voice the
+            # three bytes of its row of "recording_chip_envelopes": row nought is ADSR off and GAIN
+            # fixed at the top, what a note with none was always told.
+            CHIP_ENVELOPES = "rt recordings chip envelopes"
+            CHIP_ENVELOPE_BYTES = 4
+            NO_CHIP_ENVELOPE = [DSPWrites::ADSR_OFF, 0, DSPWrites::FIXED_TOP, 0].freeze
+
             module_function
+
+            # A row of "recording_chip_envelopes" for +envelope+ (an Audio::SNESEnvelope).
+            def chip_envelope_row(envelope) = [envelope.adsr1, envelope.adsr2, envelope.gain, 0]
 
             # A play's row of "recording_plays", as words: its voice's +source+, +pitch+ and +volume+;
             # the recording's +length+ and the +back+ it reads at its end (32 bits each); the +advance+
@@ -140,8 +167,9 @@ module VBlank
             # number of its +logged+ entry; the +name+'s number; and its +shape+ (an Audio::Envelope), or
             # nil for a note that sounds flat out from its first sample to its last. +walks+ counts its
             # samples whatever it is, for a note whose pitch can change part way through, so that no
-            # count of frames made at the start holds.
-            def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil, walks: false)
+            # count of frames made at the start holds. +chip_envelope+ is its row of
+            # "recording_chip_envelopes", nought for a note with none.
+            def row(source:, pitch:, volume:, length:, back:, advance:, logged:, name:, shape: nil, walks: false, chip_envelope: 0)
               words = Array.new(ROW_BYTES / 2, 0)
               words[FRAMES_LEFT / 2] = frames_left(length, back, advance) if logged == NOT_LOGGED && !walks
               { SOURCE => source, PITCH => pitch, VOLUME => volume, LENGTH => length & 0xFFFF, LENGTH + 2 => length >> 16,
@@ -153,6 +181,7 @@ module VBlank
                 words[SHAPE_SR / 2] = shape.sustain | (shape.release << 8)
                 words[SHAPED / 2] = 1
               end
+              words[SHAPED / 2] |= chip_envelope << 8
               words
             end
 
@@ -169,8 +198,9 @@ module VBlank
               frames < NEVER_ENDS ? frames : COUNTS_SAMPLES
             end
 
-            def reserve(memory, glides: false)
+            def reserve(memory, glides: false, chip_envelopes: false)
               memory.reserve(GLIDES, 2) if glides
+              memory.reserve(CHIP_ENVELOPES, 2) if chip_envelopes
               [ROW, PLACE, REGISTERS, STOP_NAME, STOP_LOGGED, TICKETS, NOTE_OWNER, NOTE_RANK, BEST, BEST_RANK,
                BEST_TICKET, DROPS, DROPS_MUSIC].each { |name| memory.reserve(name, 2) }
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
@@ -293,13 +323,16 @@ module VBlank
                 asm.sta(place.call(to))
               end
               asm.label("rt_recordings_take_walked")
-              { SHAPE_AD => PLACE_AD, SHAPE_SR => PLACE_SR, VOLUME => LOUD }.each do |from, to|
+              copied = { SHAPE_AD => PLACE_AD, SHAPE_SR => PLACE_SR, VOLUME => LOUD }
+              copied[SHAPED] = PLACE_SHAPED if memory.reserved?(CHIP_ENVELOPES)
+              copied.each do |from, to|
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
               # Its shape: one with none sounds at full from its first sample; one with a shape starts at
               # nothing and climbs (Reference::Mixer#recording_fields).
               asm.lda(row.call(SHAPED))
+              asm.and_a(SHAPED_BIT) if memory.reserved?(CHIP_ENVELOPES)
               asm.beq("rt_recordings_take_plain")
               asm.lda(0)
               asm.sta(place.call(LEVEL))
@@ -327,9 +360,9 @@ module VBlank
                 emit_queued_entry(asm, at, Sound::START_NOTE)
                 asm.lda(1)
                 asm.rtl
-                memory.reserved?(Sound::AHEAD) ? emit_whole_voice_routines(asm, at, row, place) : emit_voice_routines(asm, at, row, place)
+                memory.reserved?(Sound::AHEAD) ? emit_whole_voice_routines(asm, at, memory, row, place) : emit_voice_routines(asm, at, memory, row, place)
               else
-                emit_voice_start(asm, at, row)
+                emit_voice_start(asm, at, memory, row)
                 asm.lda(1)
                 asm.rtl
               end
@@ -340,10 +373,10 @@ module VBlank
             # (Sound's rt_sound_send_queued). rt_recordings_voice_start (JSL), with PLACE and ROW set:
             # the note, in Sound::NOTE_START_WRITES writes. rt_recordings_voice_volume (JSL), with
             # PLACE set: its loudness, in Sound::NOTE_VOLUME_WRITES.
-            def emit_voice_routines(asm, at, row, place)
+            def emit_voice_routines(asm, at, memory, row, place)
               asm.label("rt_recordings_voice_start")
               emit_clear_loudness_waiting(asm, at, place)
-              emit_voice_start(asm, at, row)
+              emit_voice_start(asm, at, memory, row)
               asm.rtl
               asm.label("rt_recordings_voice_volume")
               emit_clear_loudness_waiting(asm, at, place)
@@ -353,8 +386,9 @@ module VBlank
             end
 
             # The same two where the sound unit's program writes the registers (Sound.driver): a note in
-            # two commands, the pitch and then the rest, and a loudness in one.
-            def emit_whole_voice_routines(asm, at, row, place)
+            # two commands, the pitch and then the rest, and a loudness in one. In a game with
+            # CHIP_ENVELOPES a note is two commands more, its envelope's bytes ahead of it.
+            def emit_whole_voice_routines(asm, at, memory, row, place)
               told = lambda do |command, first, second|
                 first.call
                 asm.and_a(0xFF)
@@ -384,6 +418,11 @@ module VBlank
                 pitch.call
                 asm.xba
               })
+              if memory.reserved?(CHIP_ENVELOPES)
+                byte = ->(which) { -> { emit_chip_envelope_byte(asm, at, row, which) } }
+                told.call(-> { asm.lda(Sound::HOLD_ENVELOPE) }, byte.call(0), byte.call(1))
+                told.call(-> { asm.lda(Sound::HOLD_GAIN) }, byte.call(2), -> { asm.lda(0) })
+              end
               told.call(voice_command.call(Sound::WHOLE_NOTE), lambda {
                 asm.ldx(at.call(ROW))
                 asm.lda(row.call(SOURCE))
@@ -398,9 +437,11 @@ module VBlank
 
               asm.label("rt_recordings_loudness")
               asm.ldy(at.call(PLACE))
+              emit_whole_loudness_for_chip_envelope(asm, memory, place, "rt_recordings_loudness_whole")
               asm.lda(place.call(LEVEL))
               asm.cmp(FULL)
               asm.bne("rt_recordings_loudness_scaled")
+              asm.label("rt_recordings_loudness_whole")
               asm.lda(place.call(LOUD))
               asm.rts
               asm.label("rt_recordings_loudness_scaled")
@@ -416,8 +457,30 @@ module VBlank
               asm.sta(place.call(VOLUME_WAITING))
             end
 
+            # In a game with CHIP_ENVELOPES, on to +whole+ with the place Y holds when its note has a chip
+            # envelope: its voice hears its loudness whole, whatever the place's level.
+            def emit_whole_loudness_for_chip_envelope(asm, memory, place, whole)
+              return unless memory.reserved?(CHIP_ENVELOPES)
+
+              asm.lda(place.call(PLACE_SHAPED))
+              asm.and_a(CHIP_ENVELOPE_BITS)
+              asm.bne(whole)
+            end
+
+            # A = byte +which+ (0 ADSR1, 1 ADSR2, 2 GAIN) of the chip envelope of the row at ROW.
+            def emit_chip_envelope_byte(asm, at, row, which)
+              asm.ldx(at.call(ROW))
+              asm.lda(row.call(SHAPED))
+              asm.xba
+              asm.and_a(0xFF)
+              asm.asl
+              asm.asl
+              asm.tax
+              asm.lda(asm.long_x("recording_chip_envelopes", which))
+            end
+
             # The place's voice told all about its note, key-on last.
-            def emit_voice_start(asm, at, row)
+            def emit_voice_start(asm, at, memory, row)
               emit_registers(asm, at)
               dsp = DSPWrites
               asm.jsr(asm.abs("rt_recordings_volume")) # the volume its level scales it to
@@ -432,8 +495,14 @@ module VBlank
                 asm.lda(row.call(PITCH))
                 asm.xba
               end
-              emit_voice_write(asm, at, dsp::ADSR1) { asm.lda(dsp::ADSR_OFF) }
-              emit_voice_write(asm, at, dsp::GAIN) { asm.lda(dsp::FIXED_TOP) }
+              if memory.reserved?(CHIP_ENVELOPES)
+                [dsp::ADSR1, dsp::ADSR2, dsp::GAIN].each_with_index do |register, which|
+                  emit_voice_write(asm, at, register) { emit_chip_envelope_byte(asm, at, row, which) }
+                end
+              else
+                emit_voice_write(asm, at, dsp::ADSR1) { asm.lda(dsp::ADSR_OFF) }
+                emit_voice_write(asm, at, dsp::GAIN) { asm.lda(dsp::FIXED_TOP) }
+              end
               emit_voice_bit(asm, at)
               asm.sta(asm.direct(Sound::R0))
               asm.stz(asm.direct(Sound::R1))
@@ -856,6 +925,7 @@ module VBlank
                 asm.cpy(heard)
                 asm.branch_long(:bcs, next_place)
                 asm.sty(at.call(PLACE))
+                emit_chip_envelope_heard(asm, at, memory, place, next_place)
                 emit_told_new_volume(asm, at, memory, place, next_place)
                 asm.ldy(at.call(PLACE))
               end
@@ -878,9 +948,11 @@ module VBlank
 
               asm.label("rt_recordings_volume")
               asm.ldy(at.call(PLACE))
+              emit_whole_loudness_for_chip_envelope(asm, memory, place, "rt_recordings_volume_whole")
               asm.lda(place.call(LEVEL))
               asm.cmp(FULL)
               asm.bne("rt_recordings_volume_scaled")
+              asm.label("rt_recordings_volume_whole")
               asm.lda(place.call(LOUD))
               asm.bra("rt_recordings_volume_now")
               asm.label("rt_recordings_volume_scaled")
@@ -892,6 +964,29 @@ module VBlank
                 emit_voice_write(asm, at, register) { asm.lda(at.call(BEST)) }
               end
               asm.rts
+            end
+
+            # In a game with CHIP_ENVELOPES, what a frame of its shape means to the voice of the place
+            # at PLACE (Y that place) when its note has a chip envelope, and then on to +past+: nothing
+            # while the note sounds, since the chip moves the level itself; and once the note has
+            # ended, its key-off, from where the chip takes the level down. Any other note falls
+            # through to be told its loudness.
+            def emit_chip_envelope_heard(asm, at, memory, place, past)
+              return unless memory.reserved?(CHIP_ENVELOPES)
+
+              asm.lda(place.call(PLACE_SHAPED))
+              asm.and_a(CHIP_ENVELOPE_BITS)
+              asm.beq(scaled = "rt_recordings_shapes_scaled_#{asm.here}")
+              asm.lda(place.call(PHASE))
+              asm.cmp(FALLING)
+              asm.branch_long(:bcc, past)
+              emit_voice_bit(asm, at)
+              asm.sta(asm.direct(Sound::R0))
+              asm.sta(asm.direct(Sound::R1))
+              asm.jsl(asm.long("rt_sound_key_off_bits"))
+              asm.ldy(at.call(PLACE))
+              asm.brl(past)
+              asm.label(scaled)
             end
 
             # The voice of the place at PLACE told its loudness, with Y that place. In a game with a

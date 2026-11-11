@@ -259,7 +259,9 @@ module VBlank
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \
                       "beep, a wave, noise or a song's own part. If every one of those plays a recording, the next " \
-                      "recording is not heard. It still ends or loops as on the Advance."),
+                      "recording is not heard. It still ends or loops as on the Advance. A recording whose " \
+                      "`envelope:` is the sound chip's own bytes (a `VBlank::Audio::SNESEnvelope`) has them " \
+                      "written to its voice unchanged, and the sound chip shapes each note itself."),
         instrument: works("see `sample`.")
       })
 

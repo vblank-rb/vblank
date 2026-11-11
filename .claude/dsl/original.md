@@ -36,8 +36,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack[:title_0].notes(instruments: %i[horn bass]))` (`sound.md`). An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
+    **An envelope kept as a Super Nintendo's sound chip keeps it** is `envelope:
+    pack[:adsr].snes_envelope(3)`: three bytes of a slot of bytes, ADSR1, ADSR2 and GAIN, envelope 0 from
+    byte 0, read as a `VBlank::Audio::SNESEnvelope` (`sound.md`), so the unpacking routine copies the
+    original's bytes and converts nothing. An envelope past the end of its slot is a friendly error.
     Built all-in-one these are read as the game is built; a build that leaves its pack out refuses them
-    for now. Worked example: `test/all/vblank/builder/test_pack_scores.rb`.
+    for now. Worked examples: `test/all/vblank/builder/test_pack_scores.rb` and
+    `test/snes_envelope_tests.rb`.
 
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
   (a whole number, 1 or more; 1 when not named). It changes only the shell's progress bar (below):

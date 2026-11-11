@@ -119,9 +119,9 @@ module VBlank
           SUSTAIN_AT_TOP = 0xE0
 
           # How many of the DSP's samples each of the 32 envelope rates waits between steps, by rate:
-          # nought never steps (fullsnes, "ADSR/Gain (and Noise) Rates").
-          RATE_SAMPLES = [nil, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80, 64, 48, 40,
-                          32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1].freeze
+          # nought never steps (fullsnes, "ADSR/Gain (and Noise) Rates"). Kept where an instrument's
+          # own envelope bytes are played forward by it.
+          RATE_SAMPLES = VBlank::Audio::SNESEnvelope::RATE_SAMPLES
 
           # The envelope's top, and the level below which its top seven bits (ENVX) read nought.
           ENVELOPE_TOP = 0x7FF

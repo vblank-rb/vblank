@@ -75,6 +75,10 @@ module VBlank
             HOLD_PITCH = 8
             WHOLE_NOTE = 9
             VOICE_LOUDNESS = 10
+            # ...and in a game with a recording shaped by the chip's own envelope bytes, those of the
+            # note coming: ADSR1 and ADSR2, then GAIN.
+            HOLD_ENVELOPE = 11
+            HOLD_GAIN = 12
             COMMAND_BITS = 0x0F
             VOICE_BITS = 0x70
 
@@ -95,6 +99,9 @@ module VBlank
             KEPT_BITS = 0x01
             # ...and the pitch of the note it is about to be told, two bytes.
             NEXT_PITCH = 0x02
+            # ...and its envelope's bytes: ADSR1 and ADSR2, then GAIN.
+            NEXT_ENVELOPE = 0x04
+            NEXT_GAIN = 0x06
 
             # How many times rt_sound_write reads mailbox 0 for the answer to the write before.
             PATIENCE = 256
@@ -131,7 +138,12 @@ module VBlank
                                  NOTE_VOLUME => [1, "rt_recordings_voice_volume"] }.freeze
             # ...and in a game with a note that glides, its new pitch.
             VOICE_TOLD_OF_GLIDES = { NOTE_PITCH => [NOTE_PITCH_WRITES, "rt_recordings_voice_pitch"] }.freeze
-            # The room a write leaves in the queue, so an entry at the front can always become its writes.
+            # What a note's start takes more in a game with a recording shaped by the chip's own
+            # envelope bytes: a write for ADSR2, or told whole, the two commands that hold the bytes.
+            CHIP_ENVELOPE_WRITES = 1
+            CHIP_ENVELOPE_COMMANDS = 2
+            # The room a write leaves in the queue, so an entry at the front can always become its
+            # writes (#queue_room adds what a chip envelope takes).
             QUEUE_ROOM = (NOTE_START_WRITES + 1) * ENTRY_BYTES
             QUEUE_TAIL_KEPT = "rt sound queue tail kept"
             # THE LINE AHEAD OF IT, in a game with sound effects (#emit_write_ahead), a ring laid out
@@ -209,8 +221,8 @@ module VBlank
             # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
             # same lists, since rt_sound_start sends as many bytes as it is given. What does not fit in the
             # sound unit's memory, below the part its built-in program is kept in, is refused.
-            def image(waves, recordings: [], whole_notes: false)
-              program = driver(whole_notes: whole_notes).assembled.bytes
+            def image(waves, recordings: [], whole_notes: false, chip_envelopes: false)
+              program = driver(whole_notes: whole_notes, chip_envelopes: chip_envelopes).assembled.bytes
               room = TABLE_AT - DRIVER_AT
               raise ArgumentError, "the sound program is #{program.size} bytes, more than #{room}" if program.size > room
 
@@ -233,8 +245,9 @@ module VBlank
             # recording and a loudness, it writes the nine registers, and the game has sent two
             # turns. A note's loudness, which changes every frame, is one turn and not two.
             #
-            # The program the SPC700 runs once it has been sent. +whole_notes+ is one that takes them.
-            def driver(whole_notes: false)
+            # The program the SPC700 runs once it has been sent. +whole_notes+ is one that takes them,
+            # and +chip_envelopes+ one that is told each note's envelope bytes first.
+            def driver(whole_notes: false, chip_envelopes: false)
               ports = PORTS
               spc = SPC700.new(origin: DRIVER_AT)
               spc.instance_eval do
@@ -274,13 +287,17 @@ module VBlank
                 mov direct(ports[0]), :a
                 bra "wait"
               end
-              emit_whole_note_commands(spc) if whole_notes
+              emit_whole_note_commands(spc, chip_envelopes: chip_envelopes) if whole_notes
               spc
             end
 
             # What the sound unit does with a note told whole, a voice's number being the high half of
             # its command. The registers of a voice sit in order, so each is the one after.
-            def emit_whole_note_commands(spc)
+            #
+            # With +chip_envelopes+ a note's envelope is the three bytes it was last told to hold
+            # (HOLD_ENVELOPE, HOLD_GAIN), written to the voice as they are; without, every note sounds
+            # flat out (ADSR off, GAIN fixed at the top) and its loudness is the game's to move.
+            def emit_whole_note_commands(spc, chip_envelopes: false)
               ports = PORTS
               dsp = DSPWrites
               unless [dsp::VOLUME_LEFT, dsp::VOLUME_RIGHT, dsp::PITCH_LOW, dsp::PITCH_HIGH, dsp::SOURCE, dsp::ADSR1] == (0..5).to_a && dsp::GAIN == 7
@@ -295,6 +312,19 @@ module VBlank
                 mov direct(NEXT_PITCH + 1), direct(ports[3])
                 bra "answer"
                 label "whole_voice"
+                if chip_envelopes
+                  cmp :a, imm(HOLD_ENVELOPE)
+                  bne "whole_gain"
+                  mov direct(NEXT_ENVELOPE), direct(ports[2])
+                  mov direct(NEXT_ENVELOPE + 1), direct(ports[3])
+                  jmp "answer"
+                  label "whole_gain"
+                  cmp :a, imm(HOLD_GAIN)
+                  bne "whole_voice_told"
+                  mov direct(NEXT_GAIN), direct(ports[2])
+                  jmp "answer"
+                  label "whole_voice_told"
+                end
                 mov :x, :a
                 and_ :a, imm(COMMAND_BITS)
                 cmp :a, imm(VOICE_LOUDNESS)
@@ -312,10 +342,18 @@ module VBlank
                 inc direct(DSP_ADDRESS)
                 mov direct(DSP_DATA), direct(ports[2])
                 inc direct(DSP_ADDRESS)
-                mov direct(DSP_DATA), imm(dsp::ADSR_OFF)
-                inc direct(DSP_ADDRESS)
-                inc direct(DSP_ADDRESS)
-                mov direct(DSP_DATA), imm(dsp::FIXED_TOP)
+                if chip_envelopes
+                  mov direct(DSP_DATA), direct(NEXT_ENVELOPE)
+                  inc direct(DSP_ADDRESS)
+                  mov direct(DSP_DATA), direct(NEXT_ENVELOPE + 1)
+                  inc direct(DSP_ADDRESS)
+                  mov direct(DSP_DATA), direct(NEXT_GAIN)
+                else
+                  mov direct(DSP_DATA), imm(dsp::ADSR_OFF)
+                  inc direct(DSP_ADDRESS)
+                  inc direct(DSP_ADDRESS)
+                  mov direct(DSP_DATA), imm(dsp::FIXED_TOP)
+                end
                 mov :a, :x
                 lsr :a
                 lsr :a
@@ -345,10 +383,10 @@ module VBlank
             end
 
             # What is sent across, in the cartridge, for rt_sound_start to send.
-            def sections(waves, recordings: [], whole_notes: false)
+            def sections(waves, recordings: [], whole_notes: false, chip_envelopes: false)
               asm = W65816.new("sound driver")
               asm.label("sound driver")
-              asm.data_bytes(image(waves, recordings: recordings, whole_notes: whole_notes))
+              asm.data_bytes(image(waves, recordings: recordings, whole_notes: whole_notes, chip_envelopes: chip_envelopes))
               [asm.section]
             end
 
@@ -719,7 +757,12 @@ module VBlank
               asm.sec
               asm.sbc(asm.stack(past_end))
               asm.and_a(QUEUE_MASK)
-              asm.cmp(memory.reserved?(AHEAD) ? QUEUE_ROOM + ENTRY_BYTES : QUEUE_ROOM) # an effect's note goes in front of it
+              asm.cmp(memory.reserved?(AHEAD) ? queue_room(memory) + ENTRY_BYTES : queue_room(memory)) # an effect's note goes in front of it
+            end
+
+            # QUEUE_ROOM, and an entry more where a note's start writes its envelope's second byte too.
+            def queue_room(memory)
+              memory.reserved?(Recordings::CHIP_ENVELOPES) ? QUEUE_ROOM + (CHIP_ENVELOPE_WRITES * ENTRY_BYTES) : QUEUE_ROOM
             end
 
             # rt_sound_queue_make_room, with the queue nearly full and the place past its end on the
@@ -831,6 +874,11 @@ module VBlank
 
             def voice_told(memory)
               told = memory.reserved?(AHEAD) ? VOICE_TOLD_WHOLE : VOICE_TOLD
+              if memory.reserved?(Recordings::CHIP_ENVELOPES)
+                writes, routine = told.fetch(START_NOTE)
+                more = memory.reserved?(AHEAD) ? CHIP_ENVELOPE_COMMANDS : CHIP_ENVELOPE_WRITES
+                told = told.merge(START_NOTE => [writes + more, routine])
+              end
               memory.reserved?(Recordings::GLIDES) ? told.merge(VOICE_TOLD_OF_GLIDES) : told
             end
 

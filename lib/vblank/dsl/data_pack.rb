@@ -163,9 +163,11 @@ module VBlank
     PackNotes = Data.define(:slot, :instruments)
 
     # ONE NUMBER OF A SLOT OF NUMBERS (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
-    # (PackSlot#envelope), each read as the game is built.
+    # (PackSlot#envelope), each read as the game is built; and ONE ENVELOPE AS A SUPER NINTENDO'S
+    # SOUND CHIP KEEPS IT (PackSlot#snes_envelope).
     PackNumber = Data.define(:slot, :index)
     PackEnvelope = Data.define(:slot, :index)
+    PackSNESEnvelope = Data.define(:slot, :index)
 
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
@@ -267,6 +269,20 @@ module VBlank
         end
 
         DSL::PackEnvelope.new(slot: self, index: index)
+      end
+
+      # A handle on envelope +index+ (0 first) of a slot of bytes, three bytes each as a Super
+      # Nintendo's sound chip keeps them (ADSR1, ADSR2, GAIN: an Audio::SNESEnvelope), for an
+      # instrument's `envelope:`.
+      def snes_envelope(index)
+        unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
+               (index + 1) * 3 <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `snes_envelope` picks three bytes " \
+                               "of a slot of numbers one byte wide, envelope 0 from byte 0. There is no envelope " \
+                               "#{index.inspect} in it."
+        end
+
+        DSL::PackSNESEnvelope.new(slot: self, index: index)
       end
 
       # A handle on the frame of a sprite from byte +at+ (0 first) of a slot of bytes, kept as

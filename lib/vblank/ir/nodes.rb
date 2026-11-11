@@ -1493,7 +1493,12 @@ module VBlank
         declaration!
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
-                 envelope: :shape, holds_from: :int, from_file: :int
+                 envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape
+
+        # +chip_envelope+ is the same shape as one console's sound chip keeps it, for a recording
+        # whose settings came from a game for that console. A backend for that console may hand it
+        # to the chip; +envelope+ is then the nearest shape every other backend plays, and the one
+        # that says how long a note holds its voice on all of them.
       end
 
       class SaveInit

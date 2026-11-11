@@ -58,6 +58,10 @@ module VBlank
                 program.walk.any? { |node| node.kind == :song && node.voices.any? { |part| IR::Tunes.part_kind(part) == :recorded } }
             end
 
+            # Whether +program+ has a recording shaped by the sound chip's own envelope bytes
+            # (Audio::SNESEnvelope), whose voice is then told them (Runtime::Recordings::CHIP_ENVELOPES).
+            def self.chip_envelopes?(program) = program.walk.any? { |node| node.kind == :sample && node.chip_envelope }
+
             # Every entry of the sound log the cartridge can write, by the number it writes.
             def sound_entries = @sound_entries.dup
 
@@ -71,12 +75,18 @@ module VBlank
             # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
             def recording_names = @samples.keys
 
-            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays".
+            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays";
+            # and after it, in a game with a recording shaped by the chip's own envelope bytes, those
+            # bytes a row each, labelled "recording_chip_envelopes".
             def recordings_section
               asm = W65816.new("recording plays", holds: PLAYS)
               asm.label("recording_plays")
               @plays.each { |row| asm.data_words(row) }
               asm.data_words(0) if @plays.empty? # a label has to be somewhere
+              if Sound.chip_envelopes?(@program)
+                asm.label("recording_chip_envelopes")
+                @chip_envelopes.each { |row| asm.data_bytes(row) }
+              end
               asm.section
             end
 
@@ -103,7 +113,8 @@ module VBlank
             # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+
             # read at +frequency+, from its start, back to where it holds from at its end (or played
             # once, for one that does not hold), at its written +volume+ as a mixer voice's loudness,
-            # shaped by +envelope+ (the note's or its part's), or by the recording's own when it has none.
+            # shaped by +envelope+ (the note's or its part's), or by the recording's own when it has none:
+            # and then by the chip's own envelope bytes, when the recording was given them.
             # Nothing is logged as it comes round. Its number in "recording_plays". A note of a part
             # that glides +walks+ its samples, which every frame pays for while it sounds, since its
             # end cannot be counted ahead; every other note counts its frames.
@@ -121,7 +132,7 @@ module VBlank
                 volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
-                walks: walks
+                walks: walks, chip_envelope: envelope ? 0 : chip_envelope_number(declared)
               )
               @plays << row unless @plays.include?(row)
               @plays.index(row)
@@ -142,6 +153,17 @@ module VBlank
               @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
               @recordings = [] # [name, read-back] for each way a recording is played
               @plays = []      # each play's row of "recording_plays"
+              @chip_envelopes = [Runtime::Recordings::NO_CHIP_ENVELOPE] # each row of "recording_chip_envelopes"
+            end
+
+            # The row of "recording_chip_envelopes" the recording +declared+ was given (its
+            # Audio::SNESEnvelope's three bytes), the next row the first time; nought for one given none.
+            def chip_envelope_number(declared)
+              return 0 unless declared.chip_envelope
+
+              row = Runtime::Recordings.chip_envelope_row(declared.chip_envelope)
+              @chip_envelopes << row unless @chip_envelopes.include?(row)
+              @chip_envelopes.index(row)
             end
 
             # Reference#exec_play_sample (Reference::Mixer#start): a row of the table for the play —
@@ -163,7 +185,7 @@ module VBlank
                 volume: (loudness * DSPWrites::MAIN_VOLUME / VBlank::Audio::Sound::MIX_LEVELS[:full].to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: sound_entry_number([:sample, node.name]), name: @samples.keys.index(node.name),
-                shape: shape_of(info.envelope)
+                shape: shape_of(info.envelope), chip_envelope: chip_envelope_number(declared)
               )
               @plays << row unless @plays.include?(row)
               runtime_call("rt_recordings_play", [Build.int(@plays.index(row))])

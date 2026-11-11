@@ -20,7 +20,8 @@ module VBlank
     # unpacking routine writes as its original's sound driver would play them. Everything else about
     # a Score (its tempo, its loop, its parts' settings) is the game's, written in Ruby as for any
     # Score. An instrument's rate, the sample it holds from and its envelope can each be a number of a
-    # slot (`rate: pack[:tuning].number(3)`), read where the game is built.
+    # slot (`rate: pack[:tuning].number(3)`), read where the game is built. An envelope kept as a
+    # Super Nintendo's sound chip keeps it is three bytes of a slot (`pack[:adsr].snes_envelope(0)`).
     #
     # BUILT ALL-IN-ONE, the notes and the numbers are read here, and the song is the Score a port
     # would have written by hand, so every console and build plays it as any Score. With the pack
@@ -78,12 +79,19 @@ module VBlank
 
       # +envelope+ for an instrument, an envelope of the pack read here (DSL::PackEnvelope) as the
       # four numbers an Audio::Envelope keeps, or the game's own.
+      # A DSL::PackSNESEnvelope is read as the three bytes an Audio::SNESEnvelope keeps.
       def pack_envelope_value(envelope, subject)
-        return envelope unless envelope.is_a?(DSL::PackEnvelope)
-
-        refuse_pack_read_while_left_out!(subject)
-        attack, decay, sustain, release = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 4, 4)
-        Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
+        case envelope
+        when DSL::PackEnvelope
+          refuse_pack_read_while_left_out!(subject)
+          attack, decay, sustain, release = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 4, 4)
+          Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
+        when DSL::PackSNESEnvelope
+          refuse_pack_read_while_left_out!(subject)
+          adsr1, adsr2, gain = pack_slot_values(envelope.slot, :numbers, subject).slice(envelope.index * 3, 3)
+          Audio::SNESEnvelope.new(adsr1: adsr1, adsr2: adsr2, gain: gain)
+        else envelope
+        end
       end
 
       def refuse_pack_read_while_left_out!(subject)

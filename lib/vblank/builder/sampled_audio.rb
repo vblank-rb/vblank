@@ -38,6 +38,10 @@ module VBlank
         rate = pack_setting_value(rate, "sample :#{name}'s rate:")
         holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:")
         envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
+        # The Super Nintendo's sound chip's own settings: its build writes them to the chip, and
+        # every other build plays the ordinary envelope nearest them (Audio::SNESEnvelope).
+        chip_envelope = envelope if envelope.is_a?(Audio::SNESEnvelope)
+        envelope = chip_envelope.closest_envelope if chip_envelope
         bytes, rate = sample_data(name, pcm, from, rate)
         start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)
@@ -49,7 +53,7 @@ module VBlank
         record(IR::Build.sample(name, bytes, rate, note: note,
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate),
-                                                   from_file: start_file_offset))
+                                                   from_file: start_file_offset, chip_envelope: chip_envelope))
         DSL::Sample.new(self, name)
       end
 
