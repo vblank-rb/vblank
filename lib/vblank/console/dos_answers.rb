@@ -251,7 +251,7 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock]
+                                               var set add add_var sub sub_var copy held pressed save_var clock inside]
       })
 
       # The screens of the variants the build does not make yet (Lowering#refuse_unmade_variant!), +part+

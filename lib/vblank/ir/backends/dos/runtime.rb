@@ -116,15 +116,27 @@ module VBlank
           TIMER_COUNT = (Console::DOSHardware::PIT_CLOCK * Console::DOS.cycles_a_frame /
                          (Console::DOS.cycles_a_second * TICKS_A_FRAME.to_f)).round
 
+          # THE AREA DRAWING IS HELD TO (`inside`), for a game that names one: its left, top, right and bottom
+          # edges, a word each, the right and the bottom the first column and row outside it. It starts as the
+          # whole screen, the lowering changes it where an `inside` opens and puts back what was there where it
+          # shuts, and every drawing routine holds what it draws to it. A game with no `inside` keeps no area,
+          # and its routines hold their drawing to the screen's own edges, written into them as numbers.
+          AREA = "rt area"
+          AREA_BYTES = 16
+
+          # The edges a drawing routine holds its drawing to, each a number or a place in memory to compare with.
+          Edges = Data.define(:left, :top, :right, :bottom)
+
           # The video memory's segment, and the card's ports.
           VIDEO = Console::DOSHardware::VIDEO_SEGMENT
           PIXELS = Console::DOS.screen_width * Console::DOS.screen_height
 
           module_function
 
-          # +saves+ is whether the game keeps anything in save memory, and +clock+ whether it reads or sets
-          # the clock: a game that does neither has none of either.
-          def reserve(memory, saves:, clock:)
+          # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
+          # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
+          def reserve(memory, saves:, clock:, area:)
+            memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
             memory.reserve(Frame::FAULT, Frame::FAULT_BYTES)
             memory.reserve(Frame::STEPS, Frame::STEPS_KEPT)
@@ -143,7 +155,8 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:)
+            starts += whole_screen_area(memory) if area
             emit_start(asm, memory, palette, starts, saves, clock)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
@@ -151,8 +164,21 @@ module VBlank
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
-            emit_drawing_routines(asm)
-            emit_blit_routine(asm) if pictures
+            emit_drawing_routines(asm, edges(memory, area))
+            emit_blit_routine(asm, edges(memory, area, seg: :ss)) if pictures
+          end
+
+          # The area as the program starts: the whole screen, as [place, number] for the start to set.
+          def whole_screen_area(memory)
+            [0, 0, Console::DOS.screen_width, Console::DOS.screen_height].each_with_index.map { |edge, i| [memory[AREA] + (i * 4), edge] }
+          end
+
+          # The edges the drawing routines compare with: the area's, where the game keeps one, read through
+          # +seg+ by a routine whose DS is not the data segment; or the screen's own.
+          def edges(memory, area, seg: nil)
+            return Edges.new(left: 0, top: 0, right: Console::DOS.screen_width, bottom: Console::DOS.screen_height) unless area
+
+            Edges.new(*Array.new(4) { |i| X86.mem(nil, memory[AREA] + (i * 4), seg: seg, size: 32) })
           end
 
           # What a picture's pixel holds where nothing is drawn: a palette entry the build never gives a colour.
@@ -542,11 +568,11 @@ module VBlank
           # A rectangle: x in EAX, y in ECX, width in EDX, height in EBX, the palette entry in SI. It is the
           # pixels of the interpreter's `x.upto(x + width - 1)` loop that are on the screen, so each far edge is
           # x + width (saturating, so a sum past 32 bits is the far end it would be on a number line, not a
-          # wrapped one), each edge is held to the screen, and a rectangle with no width or height left draws
+          # wrapped one), each edge is held to +edges+, and a rectangle with no width or height left draws
           # nothing. The rows are then one REP STOSB each.
-          def emit_rectangle_routine(asm, width, height)
+          def emit_rectangle_routine(asm, width, edges)
             asm.label("rt_fill_rect")
-            [[:edx, :eax, "x"], [:ebx, :ecx, "y"]].each do |far, near, axis|
+            [[:edx, :eax, "x", edges.left, edges.right], [:ebx, :ecx, "y", edges.top, edges.bottom]].each do |far, near, axis, low, high|
               asm.add(far, near)
               asm.jno("rt_fill_rect_#{axis}_sum")
               asm.mov(far, 0x7FFF_FFFF)
@@ -554,13 +580,13 @@ module VBlank
               asm.jns("rt_fill_rect_#{axis}_sum")
               asm.mov(far, -0x8000_0000)
               asm.label("rt_fill_rect_#{axis}_sum")
-              asm.test(near, near)
-              asm.jns("rt_fill_rect_#{axis}_near")
-              asm.xor(near, near)
+              asm.cmp(near, low)
+              asm.jge("rt_fill_rect_#{axis}_near")
+              asm.mov(near, low)
               asm.label("rt_fill_rect_#{axis}_near")
-              asm.cmp(far, axis == "x" ? width : height)
+              asm.cmp(far, high)
               asm.jle("rt_fill_rect_#{axis}_far")
-              asm.mov(far, axis == "x" ? width : height)
+              asm.mov(far, high)
               asm.label("rt_fill_rect_#{axis}_far")
               asm.cmp(near, far)
               asm.jge("rt_fill_rect_done")
@@ -586,17 +612,16 @@ module VBlank
 
           # A PICTURE, drawn at x in EAX and y in ECX from the picture at offset SI of the art segment: its width
           # and its height (a word each), then a byte for each pixel, a row at a time, each a palette entry or
-          # TRANSPARENT. Each pixel is held to the screen by itself (Reference#blit_image sets pixels one at a
-          # time, and `set_pixel` leaves out one that is off it), so a picture half off the screen shows its
-          # half, and a row off the screen is passed over by the width of its pixels.
+          # TRANSPARENT. Each pixel is held to +edges+ by itself (Reference#blit_image sets pixels one at a
+          # time, and `set_pixel` leaves out one that is outside them), so a picture half outside shows its
+          # half, and a row outside is passed over by the width of its pixels.
           #
           # The numbers it keeps are on the stack, which is in the data segment (SS), since DS is the art
           # segment while it reads pixels: BP+0 the x of the picture's left edge, +4 the y of the row to
           # draw, +8 the picture's width, +10 the rows left.
-          def emit_blit_routine(asm)
+          def emit_blit_routine(asm, edges)
             frame = ->(offset) { X86.mem(:bp, offset) }
             width = Console::DOS.screen_width
-            height = Console::DOS.screen_height
             asm.label("rt_blit")
             asm.push(:ds)
             asm.sub(:sp, 12)
@@ -622,8 +647,11 @@ module VBlank
             asm.mov(frame.call(4), :eax)
             asm.xor(:ecx, :ecx)
             asm.mov(:cx, frame.call(8))
-            asm.cmp(:edi, height)
-            asm.jb("rt_blit_draw_row")
+            asm.cmp(:edi, edges.top)
+            asm.jl("rt_blit_skip_row")
+            asm.cmp(:edi, edges.bottom)
+            asm.jl("rt_blit_draw_row")
+            asm.label("rt_blit_skip_row")
             asm.add(:si, :cx)
             asm.jmp("rt_blit_row")
             asm.label("rt_blit_draw_row")
@@ -635,8 +663,10 @@ module VBlank
             asm.inc(:si)
             asm.cmp(:dl, TRANSPARENT)
             asm.je("rt_blit_next")
-            asm.cmp(:ebx, width)
-            asm.jae("rt_blit_next")
+            asm.cmp(:ebx, edges.left)
+            asm.jl("rt_blit_next")
+            asm.cmp(:ebx, edges.right)
+            asm.jge("rt_blit_next")
             asm.mov(X86.mem(:bx, 0, index: :di, seg: :es), :dl)
             asm.label("rt_blit_next")
             asm.inc(:ebx)
@@ -650,17 +680,20 @@ module VBlank
           end
 
           # Drawing on the card's memory, with ES at A000h.
-          def emit_drawing_routines(asm)
+          def emit_drawing_routines(asm, edges)
             width = Console::DOS.screen_width
-            height = Console::DOS.screen_height
 
-            # A pixel: x in EAX, y in ECX, the palette entry in DL. One that is off the screen is left out
-            # (Framebuffer#set_pixel), and one unsigned compare each says so for a negative number too.
+            # A pixel: x in EAX, y in ECX, the palette entry in DL. One outside the edges is left out
+            # (Framebuffer#set_pixel).
             asm.label("rt_pixel")
-            asm.cmp(:eax, width)
-            asm.jae("rt_pixel_done")
-            asm.cmp(:ecx, height)
-            asm.jae("rt_pixel_done")
+            asm.cmp(:eax, edges.left)
+            asm.jl("rt_pixel_done")
+            asm.cmp(:eax, edges.right)
+            asm.jge("rt_pixel_done")
+            asm.cmp(:ecx, edges.top)
+            asm.jl("rt_pixel_done")
+            asm.cmp(:ecx, edges.bottom)
+            asm.jge("rt_pixel_done")
             asm.mov(:ebx, width)
             asm.imul(:ecx, :ebx)
             asm.add(:ecx, :eax)
@@ -670,9 +703,10 @@ module VBlank
             asm.label("rt_pixel_done")
             asm.ret
 
-            emit_rectangle_routine(asm, width, height)
+            emit_rectangle_routine(asm, width, edges)
 
-            # The whole screen one colour: EAX is four pixels' worth of the palette entry.
+            # The whole screen one colour: EAX is four pixels' worth of the palette entry. For a game that
+            # holds no drawing to an area: one that does clears as a rectangle (Lowering#emit_clear_screen).
             asm.label("rt_clear_screen")
             asm.xor(:di, :di)
             asm.mov(:cx, PIXELS / 4)

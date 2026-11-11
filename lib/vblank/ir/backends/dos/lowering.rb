@@ -18,7 +18,7 @@ module VBlank
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
         # its conditions and halting, the keyboard's keys as buttons, save memory kept in a file, the clock, and a
-        # painted screen of one page with a cleared screen, pixels,
+        # painted screen of one page with a cleared screen, pixels, an area drawing is held to,
         # rectangles, pictures (`blit`), text and numbers, in a palette of the colours the game names.
         # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
         # all is refused in the words its answers have (Console::Answers#refusals).
@@ -35,7 +35,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit draw_text draw_digit save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -77,6 +77,11 @@ module VBlank
           attr_reader :art
 
           def pictures? = !@art_places.empty?
+
+          # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
+          def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
+
+          def area? = Lowering.area_used_by?(@program)
 
           # Whether the game keeps anything in save memory, and so carries the runtime's saving (Runtime::Saving).
           def saves? = SaveLayout.named_by?(@program)
@@ -200,7 +205,16 @@ module VBlank
           # The palette entry that means "nothing here" in a picture, so no colour is given it.
           TRANSPARENT_ENTRY = Runtime::TRANSPARENT
 
-          def drawn_pictures = @program.walk.select { |node| node.kind == :blit }.map(&:name).uniq
+          # Every picture a `blit` draws, and every one a `blit` of several picks from.
+          def drawn_pictures
+            @program.walk.flat_map do |node|
+              case node.kind
+              when :blit then [node.name]
+              when :blit_pose then node.poses
+              else []
+              end
+            end.uniq
+          end
 
           def picture_node(name)
             @pictures_declared ||= @program.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, node] }
@@ -270,6 +284,18 @@ module VBlank
                 image.drawn_at?(at) ? palette_entry(image.color_at(at)) : Runtime::TRANSPARENT
               end.pack("C*")
             end
+            make_pose_tables
+          end
+
+          # For each `blit` of several pictures, a table of their places (a word each) that the number picks from.
+          def make_pose_tables
+            @program.walk.select { |node| node.kind == :blit_pose }.each do |node|
+              next if @art_places.key?(poses_key(node))
+
+              places = node.poses.map { |name| @art_places.fetch(name) }
+              @art_places[poses_key(node)] = @art.bytesize
+              @art << places.pack("v*")
+            end
           end
 
           def palette_entry(color) = @palette.index(Graphics::Color.resolve(color))
@@ -318,6 +344,8 @@ module VBlank
             when :pixel then emit_pixel(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
+            when :blit_pose then emit_blit_pose(node)
+            when :inside then emit_inside(node)
             when :draw_text then emit_draw_text(node)
             when :draw_digit then emit_draw_digit(node)
             when :save_init then emit_save_init(node)
@@ -494,8 +522,65 @@ module VBlank
 
           # A colour as four pixels of its palette entry, which the whole-screen fill stores a word at a time.
           def emit_clear_screen(node)
+            return emit_clear_area(node) if area?
+
             @asm.mov(:eax, palette_entry(node.color) * 0x0101_0101)
             @asm.call("rt_clear_screen")
+          end
+
+          # Where the game holds drawing to an area, a cleared screen is the area cleared
+          # (Framebuffer#clear): a rectangle of the whole screen, which the area holds to itself.
+          def emit_clear_area(node)
+            emit_values_into(%i[eax ecx edx ebx], [0, 0, CONSOLE.screen_width, CONSOLE.screen_height].map { |edge| Build.int(edge) })
+            @asm.mov(:si, palette_entry(node.color))
+            @asm.call("rt_fill_rect")
+          end
+
+          # Reference#exec_inside: drawing held to the rectangle while the children run, and the area there
+          # was before given back after, from the stack. The rectangle is numbers written in the game, so its
+          # edges are worked out here, each held to the screen, with no width or height where it has none left.
+          def emit_inside(node)
+            left = node.x.clamp(0, CONSOLE.screen_width)
+            top = node.y.clamp(0, CONSOLE.screen_height)
+            edges = [left, top, (node.x + node.w).clamp(left, CONSOLE.screen_width), (node.y + node.h).clamp(top, CONSOLE.screen_height)]
+            places = Array.new(4) { |i| X86.mem(nil, @memory[Runtime::AREA] + (i * 4), size: 32) }
+            places.each do |place|
+              @asm.mov(:eax, place)
+              @asm.push(:eax)
+            end
+            places.zip(edges) { |place, edge| @asm.mov(place, edge) }
+            node.children.each { |child| emit_statement(child) }
+            places.reverse_each do |place|
+              @asm.pop(:eax)
+              @asm.mov(place, :eax)
+            end
+          end
+
+          # Reference#exec_blit_pose: one of the pictures, by the number the game works out, and nothing
+          # for a number that is none of them.
+          def emit_blit_pose(node)
+            skip = fresh_label("no_pose")
+            emit_value(node.index)
+            @asm.cmp(:eax, node.poses.size) # as numbers with no sign, so one below nought is too big as well
+            @asm.jae(skip)
+            emit_picture_from_table(@art_places.fetch(poses_key(node)), node)
+            @asm.label(skip)
+          end
+
+          def poses_key(node) = [:poses, node.poses]
+
+          # The picture whose place is word EAX of the table at +table+ in the art segment, drawn at the node's
+          # x and y.
+          def emit_picture_from_table(table, node)
+            @asm.mov(:bx, :ax)
+            @asm.add(:bx, :bx)
+            @asm.add(:bx, table)
+            @asm.mov_segment(:cx, :art)
+            @asm.push(:ds)
+            @asm.mov(:ds, :cx)
+            @asm.mov(:si, X86.mem(:bx, 0))
+            @asm.pop(:ds)
+            emit_blit_call(node)
           end
 
           def emit_pixel(node)
@@ -540,15 +625,7 @@ module VBlank
             emit_value(node.value)
             @asm.cmp(:eax, 9)
             @asm.ja(skip)
-            @asm.mov(:bx, :ax)
-            @asm.add(:bx, :bx)
-            @asm.add(:bx, table)
-            @asm.mov_segment(:cx, :art)
-            @asm.push(:ds)
-            @asm.mov(:ds, :cx)
-            @asm.mov(:si, X86.mem(:bx, 0))
-            @asm.pop(:ds)
-            emit_blit_call(node)
+            emit_picture_from_table(table, node)
             @asm.label(skip)
           end
 
