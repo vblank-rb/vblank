@@ -55,7 +55,9 @@ class TestGenesisTapeProfile < Minitest::Test
 
     assert_equal 1, one.game.length
     assert_equal 1, one.runtime.length
-    assert_operator many.game.length, :>, VBlank::Diagnostics::TapeProfile::ROUTINES_KEPT
+    assert_equal %w[main routine\ stand routine\ walk], many.game.map { |spent| spent.routine.to_s }.sort,
+                 "the game's three routines, each once"
+    assert_operator many.runtime.length, :>, VBlank::Diagnostics::TapeProfile::ROUTINES_KEPT
     assert_equal one.game.first, many.game.first
   end
 

@@ -63,10 +63,17 @@ module VBlank
 
       private
 
+      # A label inside a routine, as a lowering names the places its loops and tests jump to: the
+      # routine, what the place is, and a count ("main.end_if#7").
+      PLACE_IN_ROUTINE = /\.\w+#\d+\z/
+
+      # The routine an address is in, by the label before it. A routine's time is all under its own
+      # name, never under the places inside it: a game loop has hundreds of those, and listed one
+      # by one each is too small to show, so most of a pass went unlisted.
       def game_label_at(game_labels)
         lambda do |address|
           label = label_before(address)
-          label if label.match?(game_labels)
+          label.sub(PLACE_IN_ROUTINE, "") if label.match?(game_labels)
         end
       end
 
