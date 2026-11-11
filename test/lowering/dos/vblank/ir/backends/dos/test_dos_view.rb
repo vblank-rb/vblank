@@ -2,12 +2,13 @@
 
 require "test_helper"
 
-# THE CAMERA ON A PC, in DOSBox, held to the interpreter on every pass (DOS::CheckedRun): every pixel of the
-# picture the player is shown and where the view is. What the camera does is in
-# test/all/vblank/builder/test_camera_shake.rb; these are what is DOS's own, where the processor makes the
-# picture shown a row at a time: the view past each edge, a row the game changes while the view is moved,
-# and sprites that stay where they are as the picture moves under them.
-class TestDOSCamera < Minitest::Test
+# THE CAMERA AND THE PICTURE IN BLOCKS ON A PC, in DOSBox, held to the interpreter on every pass
+# (DOS::CheckedRun): every pixel of the picture the player is shown and where the view is. What the camera
+# does is in test/all/vblank/builder/test_camera_shake.rb; these are what is DOS's own, where the processor
+# makes the picture shown a row at a time: the view past each edge, a row the game changes while the view
+# is moved, sprites that stay where they are as the picture moves under them, and blocks of every size,
+# cut off by the screen's edge and counted from the picture's first column.
+class TestDOSView < Minitest::Test
   DOS = VBlank::IR::Backends::DOS
 
   # A strip whose every pixel differs from its neighbour's, so a row moved a pixel too far shows.
@@ -110,10 +111,70 @@ class TestDOSCamera < Minitest::Test
     assert_equal colors(:white, :red, :blue), shown(run, [105, 50], [194, 50], [200, 50])
   end
 
-  # A game with no camera is shown its own picture, and carries none of this.
-  def test_a_game_with_no_camera_has_no_second_picture
-    plain = DOS.new.build(program_of { screen(:bitmap) && clear_screen(:blue) && halt })
+  # A picture with nothing flat in it, a pixel of each of four colours in turn and a row further on each row.
+  DETAILED = proc do
+    image :strip, width: 4, height: 1, data: STRIP
+    row = var :row, 0
+    column = var :column, 0
+    repeat 24 do
+      column = 0
+      repeat 12 do
+        blit :strip, column + row, row
+        column += 4
+      end
+      row += 1
+    end
+  end
 
-    refute plain.built.runtime.key?(DOS::Runtime::Camera::SHOWN_X)
+  # Blocks are fixed to the screen and each is the colour of its top left pixel. Seven does not go into
+  # the screen's width, so the last block of a row is cut off by the edge.
+  def test_the_picture_in_blocks_takes_each_block_from_its_top_left_pixel
+    run = checked do
+      screen :bitmap
+      clear_screen :blue
+      instance_exec(&DETAILED)
+      pixelate 7
+      halt
+    end
+
+    assert_equal [run.screen.stored_pixel(7, 7)] * 3, shown(run, [8, 9], [13, 13], [7, 13])
+    assert_equal run.screen.pixel(315, 0), run.screen.pixel(319, 6), "the block the right edge cuts off"
+  end
+
+  # The size changes pass by pass, past both ends of the sizes there are, while the game paints, a sprite
+  # stands over the picture and the view moves, to the left of the picture too, where the blocks count
+  # from the picture's first column.
+  def test_blocks_of_every_size_under_a_moving_view_and_a_sprite
+    run = checked(frames: 44) do
+      screen :bitmap
+      image :block, width: 5, height: 5, data: [:white] * 25
+      clear_screen :blue
+      instance_exec(&DETAILED)
+      over = sprite :block, at: [30, 10], over_picture: true
+      size = var :size, -2
+      passes = var :passes, 0
+      across = var :across, -9
+      game_loop do
+        passes += 1
+        size += 1 if (passes & 1) == 0
+        pixelate size
+        across += 1 if passes > 20
+        camera across, 3 if passes > 20
+        over.x += 2 if passes > 30
+        draw_rect_at 2, passes, 6, 1, :green
+      end
+    end
+
+    assert_equal 20, run[:size]
+  end
+
+  # A game with neither a camera nor blocks is shown its own picture and carries none of this. One with
+  # blocks alone is shown the second picture, as one with a camera is.
+  def test_only_a_game_with_a_camera_or_blocks_has_the_second_picture
+    plain = DOS.new.build(program_of { screen(:bitmap) && clear_screen(:blue) && halt })
+    in_blocks = DOS.new.build(program_of { screen(:bitmap) && pixelate(4) && halt })
+
+    refute plain.built.runtime.key?(DOS::Runtime::View::SHOWN_X)
+    assert in_blocks.built.runtime.key?(DOS::Runtime::View::SHOWN_X)
   end
 end

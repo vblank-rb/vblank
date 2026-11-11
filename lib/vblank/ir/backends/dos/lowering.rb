@@ -36,7 +36,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -86,9 +86,9 @@ module VBlank
           # Whether +program+ fades or tints, and so carries the runtime's walk of the palette (Runtime::Fades).
           def self.walks_colors?(program) = program.walk.any? { |node| %i[fade tint].include?(node.kind) }
 
-          # Whether +program+ moves the view over its picture, and so is shown a picture made from its own
-          # (Runtime::Camera).
-          def self.moves_camera?(program) = program.walk.any? { |node| node.kind == :camera }
+          # Whether +program+ moves the view over its picture or shows it in blocks, and so is shown a picture made from its own
+          # (Runtime::View).
+          def self.shown_through_view?(program) = program.walk.any? { |node| %i[camera pixelate].include?(node.kind) }
 
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
@@ -363,6 +363,7 @@ module VBlank
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :camera then emit_camera(node)
+            when :pixelate then emit_pixelate(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
             when :blit_pose then emit_blit_pose(node)
@@ -672,6 +673,13 @@ module VBlank
           def emit_camera(node)
             emit_operands(node.x, node.y)
             @asm.call("rt_camera")
+          end
+
+          # Reference#exec_pixelate: the size of the blocks the picture shown is made in (Runtime::View). Blocks that
+          # leave a layer as drawn (`under:`) are a tiled screen's, and the builder refuses them on a painted one.
+          def emit_pixelate(node)
+            emit_value(node.size)
+            @asm.call("rt_pixelate")
           end
 
           def emit_pixel(node)

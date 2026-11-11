@@ -22,7 +22,7 @@ require_relative "dos/runtime/mode_x"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
-require_relative "dos/runtime/camera"
+require_relative "dos/runtime/view"
 require_relative "dos/runtime/regions"
 require_relative "dos/runtime/fades"
 require_relative "dos/lowering/sprites"
@@ -125,11 +125,11 @@ module VBlank
           memory = Memory.new(Screen.of(program))
           sprites = Lowering::Sprites.count_in(program)
           walks = Lowering.walks_colors?(program)
-          camera = Lowering.moves_camera?(program)
-          second = sprites.positive? || camera
+          view = Lowering.shown_through_view?(program)
+          second = sprites.positive? || view
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
                                   area: Lowering.area_used_by?(program), sprites: sprites,
-                                  walks: walks, camera: camera)
+                                  walks: walks, view: view)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
@@ -137,7 +137,7 @@ module VBlank
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
                                     sprites: sprites.positive?, regions: lowering.regions?,
-                                    walks: walks, camera: camera)
+                                    walks: walks, view: view)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
@@ -148,7 +148,7 @@ module VBlank
           assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
                                    shown: data_segment + shown, save: data_segment + after_pictures)
           places = Places.new(variables: lowering.variables, lists: {},
-                              runtime: Runtime.places(memory, sprites: sprites.positive?, camera: camera),
+                              runtime: Runtime.places(memory, sprites: sprites.positive?, view: view),
                               source_program: program, code: asm.here,
                               bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])
           Cartridge::DOSEXE.new(assembled.bytes.ljust(art_segment * 16, "\0") + art, title: title, entry: [0, 0],
@@ -166,8 +166,8 @@ module VBlank
         # It is a segment's worth, or for a screen of more pixels than that, as many as it has (Runtime::Rows).
         PICTURE_AFTER_DATA = EXTRA_PARAGRAPHS
 
-        # A game with sprites or a camera has a second picture after the first: the one shown, the game's with
-        # the sprites over it (Runtime::Sprites) as the view has it (Runtime::Camera). Where the picture the
+        # A game with sprites, a camera or blocks has a second picture after the first: the one shown, the game's with
+        # the sprites over it (Runtime::Sprites) as the view has it (Runtime::View). Where the picture the
         # player is shown is, in paragraphs past the data segment: the second where there is one (+second+),
         # the game's own where there is not.
         def self.picture_shown_after_data(screen, second:)

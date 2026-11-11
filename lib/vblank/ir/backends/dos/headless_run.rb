@@ -176,12 +176,12 @@ module VBlank
           # once that retrace has come, before the next one sends the next pass's.
           def picture_of_pass(camera, drawn) = picture_of(drawn, camera)
 
-          # Where the view was over the game's picture when the picture shown was last made (Runtime::Camera);
-          # [0, 0] for a game with no camera.
+          # Where the view was over the game's picture when the picture shown was last made (Runtime::View);
+          # [0, 0] for a game with neither a camera nor blocks, which has no such picture.
           def read_camera
-            return [0, 0] unless @places.runtime.key?(Runtime::Camera::SHOWN_X)
+            return [0, 0] unless @places.runtime.key?(Runtime::View::SHOWN_X)
 
-            [Runtime::Camera::SHOWN_X, Runtime::Camera::SHOWN_Y].map { |name| [read32(runtime_place(name))].pack("V").unpack1("l<") }
+            [Runtime::View::SHOWN_X, Runtime::View::SHOWN_Y].map { |name| [read32(runtime_place(name))].pack("V").unpack1("l<") }
           end
 
           # The sprites the pass placed, from the runtime's table (Runtime::Sprites), in the order they are drawn.
@@ -233,7 +233,7 @@ module VBlank
           # card held to the one before it (#refuse_card_not_showing!).
           def entries_drawn_now
             width, height = screen_size
-            second = [Runtime::Sprites::PLACED, Runtime::Camera::SHOWN_X].any? { |name| @places.runtime.key?(name) }
+            second = [Runtime::Sprites::PLACED, Runtime::View::SHOWN_X].any? { |name| @places.runtime.key?(name) }
             after_data = DOS.picture_shown_after_data(screen_built_for, second: second)
             drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: after_data)
             refuse_card_not_showing!(@stopped ? drawn : @picture_before)

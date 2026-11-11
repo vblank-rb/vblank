@@ -154,9 +154,9 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:, walks:, camera: false)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false)
             Fades.reserve(memory) if walks
-            Camera.reserve(memory) if camera
+            View.reserve(memory) if view
             Sprites.reserve(memory, sprites) if sprites.positive?
             ModeX.reserve(memory) if memory.screen.mode == :mode_x
             memory.reserve(AREA, AREA_BYTES) if area
@@ -168,8 +168,8 @@ module VBlank
           end
 
           # Where each of the runtime's names is, for a reader.
-          def places(memory, sprites: false, camera: false)
-            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : []) + (camera ? Camera::PLACES : [])
+          def places(memory, sprites: false, view: false)
+            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : []) + (view ? View::PLACES : [])
             names.to_h { |name| [name, memory[name]] }
           end
 
@@ -181,19 +181,20 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          # +sprites+ and +camera+ are whether the game has sprites over its picture and whether it moves
-          # the view over it: with either, the player is shown a second picture made from the game's.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, camera: false)
-            second = sprites || camera
+          # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
+          # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false)
+            second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
             starts += Sprites.starts(memory) if sprites
+            starts += View.starts(memory) if view
             emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
             emit_frame(asm, memory, saves, second, walks)
             Fades.emit(asm, memory, palette) if walks
-            emit_picture_shown(asm, memory, sprites: sprites, camera: camera) if second
+            emit_picture_shown(asm, memory, sprites: sprites, view: view) if second
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
@@ -494,15 +495,15 @@ module VBlank
           end
 
           # rt_picture_shown: THE PICTURE SHOWN made from the game's as a pass ends, in a game that has one
-          # (Sprites and Camera say why each wants it), and the routines it is made with. rt_picture_rows
+          # (Sprites and View say why each wants it), and the routines it is made with. rt_picture_rows
           # brings the rows marked as changed over from the game's picture, as the view has them in a game
-          # with a camera.
-          def emit_picture_shown(asm, memory, sprites:, camera:)
+          # with a camera or blocks.
+          def emit_picture_shown(asm, memory, sprites:, view:)
             asm.label("rt_picture_shown")
-            asm.call("rt_camera_rows") if camera
+            asm.call("rt_view_rows") if view
             asm.jmp(sprites ? "rt_sprites_over_picture" : "rt_picture_rows")
             Sprites.emit(asm, memory) if sprites
-            return Camera.emit(asm, memory) if camera
+            return View.emit(asm, memory) if view
 
             emit_copy_changed_rows(asm, memory, "rt_picture_rows", from: :back, to: :shown, forget: false)
           end
