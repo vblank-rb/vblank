@@ -720,10 +720,14 @@ module VBlank
       # What the slot +handle+ (a DSL::PackSlot) holds, read as +wanted+ asks: :colors and :numbers
       # take a whole slot of that shape, :tile one tile of a slot of tiles. +where+ names the line
       # for the error ("image :wall's colors:").
+      #
+      # Must be called only in a build that holds its pack. A build that leaves its pack out holds
+      # none to read, and every verb that takes a handle is made for that build, or refuses it in
+      # words of its own, before it gets here. A verb added later that is not is found by its game
+      # in test/pack_games.rb, which the coverage check asks for, failing here in that build.
       def pack_slot_values(handle, wanted, where)
         refuse_slot_from_elsewhere!(handle, where)
         refuse_slot_read_wrongly!(handle, wanted, where)
-        refuse_slot_read_while_left_out!(handle, where)
         values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
         return values.slice(handle.first_color, handle.color_count) if handle.bank?
         return values unless handle.one_tile?
@@ -904,18 +908,6 @@ module VBlank
         raise ArgumentError, "`screen ... backdrop_place: #{place.inspect}` asks for a place that the backdrop's colors " \
                              "do not have. backdrop: was given #{slot.count} colors of slot :#{slot.layout.name}, at " \
                              "places 0 to #{slot.count - 1}. To fix this, use a place in that range."
-      end
-
-      # A verb that reads what a slot holds as the game is built, in a build that holds no pack
-      # because it leaves its pack out. Every verb that takes a handle today is made for such a
-      # build, or refuses it in words of its own, before it reads a slot, so no game reaches this.
-      # It is what a verb added later meets if it reads a slot without being made for that build.
-      def refuse_slot_read_while_left_out!(handle, where)
-        return if @data_pack_contents
-
-        raise ArgumentError, "#{where} reads what slot :#{handle.layout.name} holds as the game is built, and this " \
-                             "build reads its data pack as the game starts. Read the slot with `table` or with " \
-                             "`image colors:, places:`, or build the game all-in-one."
       end
 
       def refuse_second_data_pack!
