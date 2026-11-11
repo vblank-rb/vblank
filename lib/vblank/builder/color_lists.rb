@@ -114,11 +114,15 @@ module VBlank
       # game pays for the lists and for naming which one shows, and only the lists it names move.
       # How fast it goes is how fast the game moves the number it hands to `showing:`.
       #
+      # A LIST READ FROM THE DATA PACK AS THE GAME STARTS is walked too. The build does not hold
+      # its colours, so each step's colours are made as the game starts, from the file's, by the
+      # same sum (Graphics::Color.walked_toward; #walked_color).
+      #
       # @param name [Symbol] a list declared with `colors`
       # @param from [Symbol, String, Integer] the colour the walk starts at
       # @param steps [Integer] how many steps from there to the list itself
       # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
-      def color_walk(name, from:, steps: CHANNEL_STEPS)
+      def color_walk(name, from:, steps: Graphics::Color::CHANNEL_STEPS)
         refuse_color_list_read_at_start!(name, "color_walk :#{name}")
         own = @color_lists.fetch(name) do
           raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
@@ -131,9 +135,19 @@ module VBlank
         far = Graphics::Color.resolve(from)
         (0..steps).map do |step|
           walked = :"#{name}_walk_#{from.to_s.delete_prefix('#')}_#{steps}_#{step}"
-          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : color_steps_from(color, far, steps - step) }
+          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : walked_color(color, far, steps - step) }
           walked
         end
+      end
+
+      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further. A
+      # colour the build holds is worked out here. One it reads from the data pack as the game
+      # starts (a marker, IR::StartFile) is another colour made then, of the same sum.
+      private def walked_color(color, far, steps)
+        return Graphics::Color.walked_toward(color, far, steps) unless IR::StartFile.marker?(color)
+        return color if steps.zero?
+
+        start_file_color_marker(IR::StartFile::WalkedColor.new(of: IR::StartFile.entry_of(color), far: far, steps: steps))
       end
 
       # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
@@ -179,7 +193,8 @@ module VBlank
                                "0 to #{colors.length - 1}. To fix this, use a place in that range."
         end
 
-        BackdropList.new(name: backdrop, place: place, color: colors.fetch(place) & 0x7FFF, screen: nil)
+        # A colour read from the data pack as the game starts is kept as the marker it is.
+        BackdropList.new(name: backdrop, place: place, color: list_color(colors.fetch(place)), screen: nil)
       end
 
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
@@ -290,18 +305,6 @@ module VBlank
         raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name} for the whole game. " \
                              "The `screen` at #{node.source} gives a backdrop of its own. To fix this, remove backdrop: " \
                              "from that `screen` line."
-      end
-
-      # How many steps a channel of a colour has from one end to the other.
-      CHANNEL_STEPS = 31
-
-      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further.
-      def color_steps_from(color, far, steps)
-        [0, 5, 10].sum do |shift|
-          own = (color >> shift) & CHANNEL_STEPS
-          limit = (far >> shift) & CHANNEL_STEPS
-          (own < limit ? [own + steps, limit].min : [own - steps, limit].max) << shift
-        end
       end
 
       # Everything kept about the list +name+, made the first time it is told `recolor`.

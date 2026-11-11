@@ -323,6 +323,52 @@ def rg_start_file_fill_colors(colors, first, count, at, format)
   count.times { |place| colors[first + place] = rg_start_file_color(at, format, 0, place) }
 end
 
+# rg_runtime.c's start_file_walked_color.
+def rg_start_file_walked_color(color, far, steps)
+  walked = 0
+  [0, 5, 10].each do |shift|
+    own = (color >> shift) & 31
+    limit = (far >> shift) & 31
+    moved = own < limit ? [own + steps, limit].min : [own - steps, limit].max
+    walked |= moved << shift
+  end
+  walked
+end
+
+# Colours made from entries before them (rg_runtime.h, rg_start_file_walk_colors).
+def rg_start_file_walk_colors(colors, first, count, made)
+  count.times do |entry|
+    colors[first + entry] = rg_start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2])
+  end
+end
+
+# rg_runtime.c's start_file_marked, of the sixteen bits +held+.
+def rg_start_file_marked(held) = held > RG_MARKED_COLOR && held != 0xFFFF
+
+# +color+, or the entry of +colors+ it names where it is a marker (rg_runtime.h).
+def rg_start_file_marked_color(colors, color)
+  held = color & 0xFFFF
+  rg_start_file_marked(held) ? colors[held - RG_MARKED_COLOR - 1] : color
+end
+
+# The pixels written as markers, put in their colours (rg_runtime.h,
+# rg_start_file_fill_marked_pixels). A marker kept in sixteen signed bits is below zero, so its
+# sixteen bits are read. The game's pixels are frozen, so an unfrozen copy takes their place, as a
+# picture's fill does.
+def rg_start_file_fill_marked_pixels(colors, kind, _total, start, count)
+  if kind == RG_FILL_TILE
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    pixels = @rg_game_tile_pixels
+  else
+    @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
+    pixels = @rg_game_image_pixels
+  end
+  (start...(start + count)).each do |at|
+    held = pixels[at] & 0xFFFF
+    pixels[at] = colors[held - RG_MARKED_COLOR - 1] if rg_start_file_marked(held)
+  end
+end
+
 # One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
 # the first picture filled puts an unfrozen copy in their place; the picture reads them from there
 # on. The +total+ in the rules is how many there are, which the C needs.

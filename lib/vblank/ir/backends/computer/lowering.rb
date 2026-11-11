@@ -233,6 +233,7 @@ module VBlank
             @scenes = scene_numbers
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
             @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
+            @start_file_marked_pixels = [] # ...and the pixels written as markers, put in their colours then
             @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound

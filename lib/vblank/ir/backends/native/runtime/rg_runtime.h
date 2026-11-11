@@ -213,7 +213,24 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
  * (RG_COLOR_FORMAT_NUMBERS numbers, as above). These are the colours that are no part of a
  * picture (IR::StartFile::Color): the game keeps them in an array of its own and reads an entry
- * where a game holding its data writes a colour, as a screen's backdrop does.
+ * where a game holding its data writes a colour, as a screen's backdrop does. The colours of a
+ * list of colours read from the file are entries of it too (IR::StartFile#colors).
+ *
+ * rg_start_file_walk_colors: +count+ entries of +colors+ from entry +first+ on, each made from an
+ * entry before it (IR::StartFile::WalkedColor): +made+ holds three numbers for each, the entry it
+ * is made from, the colour it is walked toward, and how many steps each of its three channels is
+ * moved toward that colour's, and no further. It is one step of a walk of a list read from the
+ * file, which the build works out itself for a list it holds (Graphics::Color.walked_toward).
+ *
+ * A COLOUR OF SUCH A LIST IS WRITTEN IN THE GAME AS A MARKER wherever the game would hold the
+ * colour (IR::StartFile, "MARKERS"): a number of sixteen bits above RG_MARKED_COLOR, never all
+ * sixteen, which names entry (marker - RG_MARKED_COLOR - 1) of +colors+.
+ * rg_start_file_fill_marked_pixels puts the entry's colour where each marker is among +count+
+ * pixels from +start+ on, of the +kind+ of pixels (RG_FILL_TILE or RG_FILL_IMAGE), of which there
+ * are +total+. The game calls it once the colours are filled and every picture read from the file
+ * is, since one of those drawn in such a list is filled with markers.
+ * rg_start_file_marked_color is +color+, or the entry it names where it is a marker, for a colour
+ * a statement picks from a table as the game runs.
  *
  * WHAT A RUNTIME FEATURE READS THE FILE BY, for the parts of the file only some games read (a
  * recording's settings, a song part's notes), which the feature fills itself: the file's bytes,
@@ -230,6 +247,9 @@ void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
+void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
+void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);
+int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color);
 const uint8_t *rg_start_file_bytes(void);
 uint32_t rg_start_file_number(int32_t at, int32_t width, int32_t high_byte_first);
 

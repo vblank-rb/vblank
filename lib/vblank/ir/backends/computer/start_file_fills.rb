@@ -53,23 +53,35 @@ module VBlank
           def build_start_file_routines
             return [] unless reads_start_file?
 
+            # The colours first: the pixels filled after them are put in those colours last.
             [Statements::Function.new(name: start_file_routine,
-                                      body: build_start_file_table_fills + build_start_file_picture_fills +
-                                            build_start_file_background_fills + build_start_file_recording_fills +
-                                            build_start_file_sound_fills + build_start_file_color_fills)]
+                                      body: build_start_file_color_fills + build_start_file_table_fills +
+                                            build_start_file_picture_fills + build_start_file_background_fills +
+                                            build_start_file_marked_pixel_fills + build_start_file_recording_fills +
+                                            build_start_file_sound_fills)]
           end
 
-          # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE (IR::StartFile::Color): a
-          # screen's backdrop today. The game keeps one array of them, written as its size alone,
-          # and the routine fills each entry from the file; a statement that takes a colour then
-          # reads its entry (#start_file_color) where a game holding its data writes a number. An
-          # array and not a read at each statement, so a colour is read from the file once however
-          # often a scene arrives, and anything else that needs colours known only as the game
-          # starts takes more entries of the same array and is filled by the same call.
+          # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE READ FROM IT: a screen's
+          # backdrop (IR::StartFile::Color), and every colour of a list of colours the game
+          # declared from the pack, with the colours each walk of one is made of
+          # (IR::StartFile#colors). The game keeps one array of them, written as its size alone,
+          # and the routine fills each entry from the file, or makes it from an entry before it
+          # (a WalkedColor). A statement that takes a colour then reads its entry
+          # (#start_file_color) where a game holding its data writes a number. An array and not a
+          # read at each statement, so a colour is read from the file once however often a scene
+          # arrives.
           #
-          # Every colour the program names, each once, in the order the program names them.
+          # A LIST'S COLOURS ARE IN THE PROGRAM AS MARKERS (IR::StartFile, "MARKERS"), each naming
+          # its entry of this array: the program's colours are the first entries, in its order,
+          # so a marker's entry is the array's. The art is worked out here as it is for any game,
+          # so a pixel drawn in such a colour is written as its marker, and the routine's last
+          # work on the pictures is to put the entry's colour where each marker is
+          # (#build_start_file_marked_pixel_fills).
+          #
+          # Every colour the program names, each once: the program's own, then the backdrops.
           def start_file_colors
-            @start_file_colors ||= @program.walk.filter_map { |node| node.backdrop_from_file if node.kind == :screen }.uniq
+            @start_file_colors ||= [*@program.start_file&.colors,
+                                    *@program.walk.filter_map { |node| node.backdrop_from_file if node.kind == :screen }].uniq
           end
 
           def start_file_colors_name = @names.own("start_file_colors")
@@ -86,14 +98,88 @@ module VBlank
             Statements::Index.new(start_file_colors_name, Statements::Int.new(start_file_colors.index(where)))
           end
 
-          # One call for each run of entries kept one way: here each colour is a run of one.
+          # A colour as a statement or a table holds it: a marker's entry of the array, and any
+          # other colour as the number it is.
+          def color_or_start_file_entry(color)
+            return Statements::Int.new(color) unless IR::StartFile.marker?(color)
+
+            Statements::Index.new(start_file_colors_name, Statements::Int.new(IR::StartFile.entry_of(color)))
+          end
+
+          # One call for each run of entries: colours one after another in the file, kept one
+          # way, or colours made from entries before them. The entries are filled in their order,
+          # since a colour is made from one before it.
           def build_start_file_color_fills
             formats = {}
-            start_file_colors.each_with_index.map do |where, entry|
+            runs = start_file_colors.each_with_index.chunk_while do |(before, _), (after, _)|
+              next after.is_a?(IR::StartFile::WalkedColor) if before.is_a?(IR::StartFile::WalkedColor)
+
+              after.is_a?(IR::StartFile::Color) && after.format == before.format && after.at == before.at + START_FILE_COLOR_BYTES
+            end
+            runs.map do |run|
+              where, first = run.first
+              if where.is_a?(IR::StartFile::WalkedColor)
+                made = drawing_array("start_file_walked_colors", "int32_t", run.flat_map { |walked, _| [walked.of, walked.far, walked.steps] })
+                next eval_call("rg_start_file_walk_colors", start_file_colors_name, Statements::Int.new(first), Statements::Int.new(run.length), made)
+              end
+
               format = formats[where.format] ||= drawing_array("start_file_color_format", "int32_t", color_format_rules(where.format))
-              eval_call("rg_start_file_fill_colors", start_file_colors_name, Statements::Int.new(entry), Statements::Int.new(1),
+              eval_call("rg_start_file_fill_colors", start_file_colors_name, Statements::Int.new(first), Statements::Int.new(run.length),
                         Statements::Int.new(where.at), format)
             end
+          end
+
+          # How many bytes of the file a colour is.
+          START_FILE_COLOR_BYTES = 2
+
+          # PIXELS WRITTEN AS MARKERS, put in their colours as the game starts: +count+ pixels from
+          # +start+ in the +kind+ of pixels (:tile or :image).
+          MarkedPixels = Data.define(:kind, :start, :count)
+
+          # Does this program hold markers at all? Only then is any pixel looked at for one.
+          def marks_colors? = !(@program.start_file.nil? || @program.start_file.colors.empty?)
+
+          # +colors+, the pixels about to be written at +start+ in the +kind+ of pixels, noted if
+          # any is a marker.
+          def record_marked_pixels(kind, start, colors)
+            return unless marks_colors? && colors.any? { |color| IR::StartFile.marker?(color) }
+
+            @start_file_marked_pixels << MarkedPixels.new(kind: kind, start: start, count: colors.length)
+          end
+
+          # One call for each run of pixels that holds a marker, runs side by side as one. It
+          # comes after every picture read from the file is filled, since one drawn in a list of
+          # markers is filled with them.
+          def build_start_file_marked_pixel_fills
+            @start_file_marked_pixels.group_by(&:kind).flat_map do |kind, noted|
+              total = kind == :tile ? @tile_pixel_count : @image_pixel_count
+              joined = noted.sort_by(&:start).each_with_object([]) do |pixels, runs|
+                last = runs.last
+                next runs << pixels unless last && last.start + last.count >= pixels.start
+
+                runs[-1] = last.with(count: [last.count, pixels.start + pixels.count - last.start].max)
+              end
+              joined.map do |pixels|
+                eval_call("rg_start_file_fill_marked_pixels", start_file_colors_name, Statements::Int.new(FILL_KINDS.fetch(kind)),
+                          Statements::Int.new(total), Statements::Int.new(pixels.start), Statements::Int.new(pixels.count))
+              end
+            end
+          end
+
+          # A picture's pixels as sixteen signed bits keep them: a marker, whose sixteenth bit is
+          # set, is the number below zero of the same bits.
+          def image_pixel_kept(pixel) = IR::StartFile.marker?(pixel) ? pixel - 0x1_0000 : pixel
+
+          # WHAT THE GAME PAINTS FROM A LIST AS IT RUNS IS NOT PUT IN COLOURS READ AS THE GAME STARTS
+          # YET: the colour of each place of a painted picture is kept where the routine reading the
+          # file does not write. +colors+ are those colours, handed back where none is a marker.
+          def refuse_painted_in_marked_colors!(colors, name)
+            return colors unless marks_colors? && colors.any? { |color| IR::StartFile.marker?(color) }
+
+            raise LoweringError, "#{name.inspect} is painted from a list as the game runs, and it is drawn with colors " \
+                                 "that are read from the #{@program.start_file.called} as the game starts. #{build_name} " \
+                                 "does not make that yet. To fix this, draw it with a list of colors that the game " \
+                                 "writes, or build the game all-in-one."
           end
 
           # A BACKGROUND WHOSE MAP, TILES AND COLOURS ARE READ FROM THE FILE (IR::StartFile::Background).
@@ -104,8 +190,10 @@ module VBlank
           #
           # +start+ is where its tiles' pixels start in the tile pixels, +from+ where it is in the
           # file, and +lists+ the colours of each bank at each step, the step it is drawn in its own
-          # colours first: a BankFromFile for a bank drawn as the file has it or as another bank of
-          # the file, or the colours of a list the game holds.
+          # colours first: a BankFromFile for a bank drawn as the file has it, or the colours of
+          # the list it is drawn with. Those are the game's, or markers where the list is read
+          # from the file too (another bank, a walk of one), which the tiles are then filled with
+          # and put in their colours with every other marker (#record_marked_pixels).
           StartFileBackgroundFill = Data.define(:start, :from, :lists)
           BankFromFile = Data.define(:bank)
 
@@ -113,12 +201,16 @@ module VBlank
             from = bg.from_file
             lists = [nil, *steps].map do |swaps|
               Array.new(from.bank_count) do |bank|
-                drawn_with = swaps && swaps[[from.bank_names[bank], IR::StartFile.bank_colors(bank, from.bank_size)]]
-                other_bank = IR::StartFile.bank_of(drawn_with)
-                drawn_with && !other_bank ? drawn_with : BankFromFile.new(bank: other_bank || bank)
+                # The list of a bank is found by its name: its colours here are markers.
+                _, drawn_with = swaps&.find { |(name, _), _| name == from.bank_names[bank] }
+                drawn_with || BankFromFile.new(bank: bank)
               end
             end
             @start_file_background_fills << StartFileBackgroundFill.new(start: start, from: from, lists: lists)
+            return unless lists.flatten.any? { |color| IR::StartFile.marker?(color) }
+
+            @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start,
+                                                          count: from.tiles_drawn * Picture::RUN_TILE_PIXELS * lists.length)
           end
 
           def build_start_file_background_fills
@@ -183,6 +275,10 @@ module VBlank
             @start_file_fills << StartFileFill.new(kind: kind, start: start, width: node.width, height: node.height,
                                                    from: node.from_file, colors: node.colors, places: node.places.bytes,
                                                    swapped: swapped)
+            # Filled in a list of markers, its pixels hold them until they are put in their colours.
+            return unless marks_colors? && [*node.colors, *swapped].any? { |color| IR::StartFile.marker?(color) }
+
+            @start_file_marked_pixels << MarkedPixels.new(kind: kind, start: start, count: node.width * node.height)
           end
 
           def build_start_file_picture_fills

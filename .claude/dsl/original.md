@@ -81,8 +81,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `color_walk`, and `screen :tiled, backdrop:` (`sprites.md`, `screen.md`). **Place 0 is kept as the
   slot has it**: see-through to a picture, as in any list, and the colour shown to a backdrop that
   follows the list. A game that writes the same colours by hand builds the same bytes. Built
-  all-in-one, the build reads the slot. **A build that reads its pack as the game starts refuses it
-  for now**, naming the list. Friendly errors at the line: a slot or bank of more than 16 colours
+  all-in-one, the build reads the slot. **A build that reads its pack as the game starts shows the
+  same picture**: it reads the colours then, and makes the steps of a `color_walk` of the list then
+  ("With the pack left out" below). Friendly errors at the line: a slot or bank of more than 16 colours
   (take one bank), a slot that does not hold colours, a slot of another game's pack. Worked example:
   `test/all/vblank/builder/test_pack_color_lists.rb`, where a sprite is recoloured through three banks.
 
@@ -312,6 +313,19 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   the line, since the slot's size is the game's own word. Worked examples:
   `test/pack_backdrop_at_start_tests.rb`, and for each scene's own under a tint,
   `test/console/gba/vblank/builder/test_pack_backdrops_at_start_on_the_advance.rb`.
+- `colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)` (or the whole slot) — a list of colours. The
+  program holds none of them: the list holds a MARKER for each, a number where a colour would be that names
+  where the colour is in the file (`IR::StartFile`, "MARKERS"), so the list goes wherever a list goes: a picture's
+  or a sprite's `colors: :logo_cycle_3`, `draw_with`, `recolor`, `screen :tiled, backdrop: :logo_cycle_3`. The
+  runtime reads the colours at power-on into the same array a backdrop's colour is in
+  (`rg_start_file_fill_colors`) and puts each where a marker is (`rg_start_file_fill_marked_pixels`).
+  **`color_walk` of such a list makes its steps at power-on**, each colour from the file's by the sum the build
+  uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`). Place 0 keeps the slot's colour, as
+  built all-in-one. The build cannot compare two colours it does not hold, so it refuses at the line: a
+  picture given as colours (`data:`, `from:`, art in characters) drawn in such a list, which must be given
+  `places:`; and a picture or tiles the game paints from a list as it runs (`image ..., from: list`, `tiles ...,
+  from: list`, `sprite_tiles`) in such colours, which is not made yet. A game may read 32766 such colours,
+  the steps of its walks among them. Worked example: `test/pack_color_list_at_start_tests.rb`.
 - `image :balloon_0, tiles: pack[:sprites], frame: pack[:frames].frame(at, layout: FRAME), origin: [32, 48], colors: :balloon,
   size: [64, 64]` — a pose that is one of the original's own frames (`sprites.md`). How many pieces the frame has and what
   each is is in the pack, so the game gives `size:`, the picture's size, and a pose with none is refused at the line. The

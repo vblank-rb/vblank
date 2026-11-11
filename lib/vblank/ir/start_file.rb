@@ -42,10 +42,14 @@ module VBlank
     #   a cell in the layout the original's console keeps a map in (Console::MapWordFormat), and
     #   the tiles and the banks of colours those numbers pick from. Which tiles there are and what
     #   the map holds is known only once the file is read, so the program holds a tile for each
-    #   bank and a map of the right size that names the first, and its lists of colours are
-    #   BANK COLOURS (.bank_colors), which name a bank and hold none of its colours.
+    #   bank and a map of the right size that names the first, and its lists of colours hold a
+    #   marker for each colour of a bank (below).
     # - a screen's backdrop (Nodes::Screen#backdrop_from_file, a Color): the one colour the screen
     #   shows wherever nothing is drawn. The program holds no colour for it.
+    # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
+    #   walk of either): +colors+ names each colour of it once (a Color in the file, or a
+    #   WalkedColor made from one), and wherever the program would hold the colour it holds a
+    #   MARKER naming that entry (.marker_of). See "MARKERS" below.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -53,9 +57,11 @@ module VBlank
     # file's numbers in place (StartFile.filled), and the runtimes for a computer (C, JavaScript,
     # Ruby) fill the same arrays from the file at power-on. A cartridge is never handed a file, so
     # every cartridge lowering refuses such a program (Backends.refuse_start_file_on_cartridge!).
-    StartFile = Data.define(:called, :size, :checks)
+    StartFile = Data.define(:called, :size, :checks, :colors)
 
     class StartFile
+      def initialize(called:, size:, checks:, colors: [].freeze) = super
+
       # Bytes the file must hold from +at+ on.
       Check = Data.define(:at, :bytes)
 
@@ -259,22 +265,44 @@ module VBlank
         end
       end
 
-      # BANK COLOURS: a list of colours that names a bank of the file's colours and holds none of
-      # them. A program built with its pack left out knows that a background's tiles are drawn
-      # from bank 2 and not what bank 2 holds, and its lists of colours are compared with each
-      # other (Nodes::Background#list_swaps), so a bank's list must be unlike every list a game
-      # can write. A colour is fifteen bits; each of these has the sixteenth set, then the bank
-      # and the place. Place 0 is see-through as in any list. Nothing draws one: each backend
-      # that plays such a program puts the file's colours in its place (.bank_of).
-      BANK_COLOR = 0x8000
-      BANK_SHIFT = 8
+      # A COLOUR MADE FROM ANOTHER AS THE GAME STARTS: entry +of+ of the file's colours
+      # (StartFile#colors), each of its three channels moved +steps+ toward those of +far+ (a
+      # colour of fifteen bits) and no further (Graphics::Color.walked_toward). It is one step of
+      # a walk of a list read from the file (Builder#color_walk), whose colours the build cannot
+      # work out. +of+ always names an entry before this one, so the entries are made in order.
+      WalkedColor = Data.define(:of, :far, :steps)
 
-      def self.bank_colors(bank, size) = [0, *(1...size).map { |place| BANK_COLOR | (bank << BANK_SHIFT) | place }]
+      # MARKERS: A COLOUR KNOWN ONLY AS THE GAME STARTS, WHEREVER THE PROGRAM WOULD HOLD IT. A
+      # program built with its pack left out names lists of colours it does not hold: it knows a
+      # sprite is recoloured with bank 2 and not what bank 2 holds. Its lists are still compared
+      # with each other, kept in pictures' pixels and handed from verb to verb as colours are, so
+      # each such colour is a number where a colour would be. A colour is fifteen bits; a marker
+      # has the sixteenth set, and its other bits name an entry of StartFile#colors, counting
+      # from 1 (the sixteenth bit alone marks a see-through pixel, Assets::SEE_THROUGH_MARKER,
+      # and all sixteen a see-through pixel of a tile). So two markers are equal exactly when
+      # they name one colour of the file.
+      #
+      # Nothing draws a marker. The interpreter plays the program with each replaced by its
+      # colour (.hold_marked_colors), and the builds for a computer fill an array of the entries
+      # as they start and put each where a marker is (Computer::StartFileFills). Whatever does
+      # arithmetic on a colour while the game is built must ask .marker? first: a marker masked
+      # to fifteen bits is a wrong colour, in silence.
+      MARKER = 0x8000
+      MOST_MARKED_COLORS = 0x7FFE
 
-      # The bank +colors+ names, or nil for a list of colours.
-      def self.bank_of(colors)
-        named = colors && colors.length > 1 && colors[1].is_a?(Integer) && (colors[1] & BANK_COLOR) != 0
-        named ? (colors[1] & ~BANK_COLOR) >> BANK_SHIFT : nil
+      def self.marker_of(entry) = MARKER + 1 + entry
+      def self.entry_of(marker) = marker - MARKER - 1
+      def self.marker?(color) = color.is_a?(Integer) && color > MARKER && color <= MARKER + MOST_MARKED_COLORS
+
+      # Each of the file's colours (StartFile#colors) as +bytes+, the file, has it: fifteen bits each.
+      def colors_in(bytes)
+        colors.each_with_object([]) do |source, held|
+          held << case source
+                  when Color then StartFile.color_in(bytes, source)
+                  when WalkedColor then Graphics::Color.walked_toward(held.fetch(source.of), source.far, source.steps)
+                  else raise ArgumentError, "#{source.inspect} is not a colour read from the file"
+                  end
+        end
       end
 
       # The most colours a picture's places can pick from: a place is four bits.
@@ -350,6 +378,8 @@ module VBlank
 
         filled = program.copy
         filled.start_file = nil
+        # First, so whatever is read below is made of colours and of no marker.
+        hold_marked_colors(filled, file.colors_in(bytes.b)) unless file.colors.empty?
         read = filled.walk.select { |node| place_in_file(node) }
         read.each { |node| fill_node(filled, node, bytes.b) }
         VBlank.logger.debug("start file") do
@@ -357,6 +387,39 @@ module VBlank
           "read the #{file.called}, #{file.size} bytes, into #{into.join(', ')}"
         end
         filled
+      end
+
+      # EVERY MARKER +program+ HOLDS REPLACED BY ITS COLOUR, +colors+ being the file's colours by
+      # entry (#colors_in): in each list of colours a picture, a sprite, a list the game changes, a
+      # background, a run of painted tiles and a set of sprite tiles keeps, in a picture's pixels,
+      # and in a screen's backdrop. Those are every place a list of colours the game declared
+      # can reach, so the program is from here on the one a build holding its data makes.
+      def self.hold_marked_colors(program, colors)
+        held = ->(value) { colors_held(value, colors) }
+        program.walk.each do |node|
+          case node.kind
+          when :bitmap
+            node.colors = held.(node.colors) if node.colors
+            node.pixels = held.(node.pixels.unpack("v*")).pack("v*")
+          when :object then node.recolors = held.(node.recolors) if node.recolors
+          when :color_list
+            node.colors = held.(node.colors)
+            node.recolors = held.(node.recolors) if node.recolors
+          when :background
+            node.palettes = held.(node.palettes) if node.palettes
+            node.recolors = held.(node.recolors) if node.recolors
+          when :tile_run, :sprite_tiles then node.colors = held.(node.colors) if node.colors
+          when :screen then node.backdrop = held.(node.backdrop) if node.backdrop
+          end
+        end
+      end
+
+      # +value+ with each marker in it replaced by its colour of +colors+: a colour, a list of
+      # them, or lists of lists. Anything else (a list's name, nil) is as it was.
+      def self.colors_held(value, colors)
+        return value.map { |inner| colors_held(inner, colors) } if value.is_a?(Array)
+
+        marker?(value) ? colors.fetch(entry_of(value)) : value
       end
 
       # What +node+ (a table, a picture, a recording, a background or a screen) of +program+ reads
@@ -519,8 +582,8 @@ module VBlank
       # A BACKGROUND'S TILES AND MAP, read from the places it names, as the build makes them of the
       # same numbers held in the game (Builder::PackBackgrounds): each different tile as drawn (a
       # tile, its bank and its turn) a picture of +program+, drawn from its bank's list, and the
-      # map those pictures, a cell whose tile draws nothing left empty. Its lists of colours that
-      # name a bank (.bank_colors) hold the bank's colours from here on.
+      # map those pictures, a cell whose tile draws nothing left empty. Its lists of colours held
+      # markers for a bank's colours, and hold the colours by now (.hold_marked_colors).
       def self.fill_background(program, node, bytes)
         from = node.from_file
         banks = bank_lists(from, bytes)
@@ -540,8 +603,6 @@ module VBlank
         node.tiles = pictures.values.compact
         numbers = node.tiles.each_with_index.to_h
         node.map = drawn.map { |row| row.map { |picture| picture && numbers.fetch(picture) } }
-        node.palettes = (node.palettes || []).map { |colors| colors_held(colors, banks) }
-        node.recolors = (node.recolors || []).map { |step| step.map { |colors| colors_held(colors, banks) } }
         node.from_file = nil
       end
 
@@ -551,13 +612,6 @@ module VBlank
           kept = bytes.byteslice(from.colors_at + (bank * from.bank_size * 2), from.bank_size * 2)
           [0, *FormatReading.colors(kept, from.color_format).drop(1)]
         end
-      end
-
-      # +colors+ as a filled program holds them: the bank's colours for a list that names a bank,
-      # and any other list as it is.
-      def self.colors_held(colors, banks)
-        bank = bank_of(colors)
-        bank ? banks.fetch(bank) : colors
       end
 
       # The picture of +tile+ (a Console::CellTile) of the background +node+, declared in +program+,
@@ -584,7 +638,7 @@ module VBlank
         name
       end
       private_class_method :fill_node, :fill_recording, :fill_song, :fill_table, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
-                           :bank_lists, :colors_held, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
+                           :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece
     end
   end

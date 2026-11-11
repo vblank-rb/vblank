@@ -516,6 +516,46 @@ void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, in
   for (int32_t place = 0; place < count; place++) colors[first + place] = start_file_color(at, format, place);
 }
 
+/* +color+ with each of its three channels moved +steps+ toward those of +far+, and no further
+ * (Graphics::Color.walked_toward). */
+static int32_t start_file_walked_color(int32_t color, int32_t far, int32_t steps) {
+  int32_t walked = 0;
+  for (int32_t shift = 0; shift <= 10; shift += 5) {
+    int32_t own = (color >> shift) & 31, limit = (far >> shift) & 31;
+    int32_t moved = own < limit ? own + steps : own - steps;
+    if (own < limit ? moved > limit : moved < limit) moved = limit;
+    walked |= moved << shift;
+  }
+  return walked;
+}
+
+void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made) {
+  for (int32_t entry = 0; entry < count; entry++)
+    colors[first + entry] = start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2]);
+}
+
+/* Is +held+, the sixteen bits a pixel or a colour is kept in, a marker (IR::StartFile, "MARKERS")?
+ * The sixteenth bit alone and all sixteen each mark a pixel that is not drawn. */
+static int start_file_marked(uint16_t held) { return held > RG_MARKED_COLOR && held != 0xFFFFu; }
+
+int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color) {
+  return start_file_marked((uint16_t)color) ? colors[(color & 0xFFFF) - RG_MARKED_COLOR - 1] : color;
+}
+
+void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count) {
+  if (kind == RG_FILL_TILE) {
+    uint16_t *pixels = rg_screen_tile_pixels_to_fill(total);
+    for (int32_t at = start; at < start + count; at++)
+      if (start_file_marked(pixels[at])) pixels[at] = (uint16_t)colors[pixels[at] - RG_MARKED_COLOR - 1];
+  } else {
+    int16_t *pixels = rg_screen_image_pixels_to_fill(total);
+    for (int32_t at = start; at < start + count; at++) {
+      uint16_t held = (uint16_t)pixels[at];
+      if (start_file_marked(held)) pixels[at] = (int16_t)colors[held - RG_MARKED_COLOR - 1];
+    }
+  }
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];

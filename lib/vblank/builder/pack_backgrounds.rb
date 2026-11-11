@@ -144,12 +144,14 @@ module VBlank
       # The most tiles a background read as the game starts can be: each cell's tile is a tile of
       # its own, and a build for a computer keeps a cell's tile in sixteen signed bits.
       MOST_TILES_READ_AT_START = 0x7FFF
+      # How many bytes of the file a colour is, in every layout a slot of colours is kept in.
+      COLOR_BYTES = 2
 
       # THE SAME BACKGROUND WITH THE PACK LEFT OUT (see the top of this file). It is declared as a
       # background of the right size whose tiles are a picture for each bank of the slot, drawn
       # from that bank's list, so `draw_with` finds every bank by its name; the pictures and the
       # map's cells are stand-ins nothing draws, and the node says where in the file the real ones
-      # are. A bank's list holds no colours here, only which bank it is (IR::StartFile.bank_colors).
+      # are. A bank's list holds no colours here, only a marker for each (IR::StartFile, "MARKERS").
       def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, **others)
         subject = "background :#{name}"
         [[tiles, "tiles:"], [map, "map:"], [colors, "colors:"]].each { |slot, what| refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}") }
@@ -165,7 +167,7 @@ module VBlank
           bank_names: Array.new(colors.count / bank_size) { |bank| :"#{colors.layout.name}_#{bank}" }
         )
         refuse_oversized_map_at_start!(name, where)
-        stand_ins = where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, bank_size, subject) }
+        stand_ins = where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, where, subject) }
         tileset = :"background :#{name} tiles"
         tiles(tileset, stand_ins.to_h { |picture| [picture, picture] })
         handle = background(name, tiles: tileset, map: Array.new(where.rows) { Array.new(where.columns, stand_ins.first) }, **others)
@@ -174,15 +176,23 @@ module VBlank
       end
 
       # A picture standing in for the tiles drawn from bank +bank+ of a background read as the game
-      # starts: a tile of the list +list+, which names the bank. Nothing draws it. Registers the
-      # list as one read at start; a list of that name the game declared itself is refused.
-      def declare_bank_stand_in(name, list, bank, bank_size, subject)
-        refuse_pack_color_list_taken!("#{subject}'s colors:", list) if @color_lists.key?(list)
+      # starts (+where+, an IR::StartFile::Background): a tile of the list +list+. Nothing draws it.
+      # The list is declared as `colors :list, pack[:slot].bank(n)` declares one in such a build,
+      # a marker for each colour of the bank (DataPacks#pack_colors_read_at_start), so the game
+      # walks it, recolours with it and draws pictures in it by its name. A list of that name made
+      # by another background from the slot is the same list; one the game declared itself is refused.
+      def declare_bank_stand_in(name, list, bank, where, subject)
+        held = Array.new(where.bank_size) do |place|
+          at = where.colors_at + (((bank * where.bank_size) + place) * COLOR_BYTES)
+          start_file_color_marker(IR::StartFile::Color.new(at: at, format: where.color_format))
+        end
+        refuse_pack_color_list_taken!("#{subject}'s colors:", list) if @color_lists.key?(list) && @color_lists[list] != held
+        @color_lists[list] = held
         (@color_lists_read_at_start ||= {})[list] = bank
         side = Original::Slot::TILE_SIDE
         picture = :"background :#{name} bank #{bank}"
         node = Build.bitmap(picture, width: side, height: side, pixels: Array.new(side * side, 0).pack("v*"), transparent: nil,
-                                     colors: IR::StartFile.bank_colors(bank, bank_size), places: Array.new(side * side, 1).pack("C*"),
+                                     colors: [0, *held.drop(1)], places: Array.new(side * side, 1).pack("C*"),
                                      colors_name: list)
         record_picture(node)
         record_visible_bounds(name: picture, width: side, height: side, cells: [], transparent: nil)

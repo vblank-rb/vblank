@@ -674,6 +674,7 @@ module VBlank
       finalize_sprite_readings
       finalize_background_readings
       refuse_local_player_outside_views!
+      finalize_start_file_colors # last: a walk named in a routine built above makes colours too
     end
 
     # A routine the framework writes whose body depends on every line of the game, built only

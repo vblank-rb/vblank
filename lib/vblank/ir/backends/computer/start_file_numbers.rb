@@ -96,7 +96,9 @@ module VBlank
             "RG_COLOR_GREEN_AT" => COLOR_GREEN_AT, "RG_COLOR_BLUE_AT" => COLOR_BLUE_AT,
             "RG_COLOR_CHANNEL_BITS_AT" => COLOR_CHANNEL_BITS_AT, "RG_COLOR_FORMAT_NUMBERS" => COLOR_FORMAT_NUMBERS,
             "RG_FILL_RULES_HEADER_NUMBERS" => RULES_HEADER_NUMBERS,
-            "RG_FILL_BACKGROUND_HEADER_NUMBERS" => BACKGROUND_HEADER_NUMBERS
+            "RG_FILL_BACKGROUND_HEADER_NUMBERS" => BACKGROUND_HEADER_NUMBERS,
+            # A number above this, of sixteen bits and not all of them, is a marker (IR::StartFile, "MARKERS").
+            "RG_MARKED_COLOR" => IR::StartFile::MARKER
           })
         end
       end

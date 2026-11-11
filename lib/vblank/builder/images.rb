@@ -270,7 +270,9 @@ module VBlank
       #
       # A retail game repaints a sprite by writing other colours over its palette, and the colours
       # it writes are its own data. A list from the pack is the list those colours written here
-      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list).
+      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list). A
+      # build that reads its pack as the game starts does not hold those colours, and the list
+      # then holds a marker for each (DataPacks#pack_colors_read_at_start).
       def colors(name, list)
         refuse_bad_color_list_name!(name)
         list = pack_color_list(name, list) if list.is_a?(DSL::PackSlot)
@@ -280,7 +282,7 @@ module VBlank
                 "Got #{list.inspect}."
         end
 
-        @color_lists[name] = list.map { |c| c == :transparent ? 0x0000 : Graphics::Color.resolve(c) }
+        @color_lists[name] = list.map { |c| c == :transparent ? 0x0000 : list_color(c) }
         name
       end
 
@@ -886,6 +888,7 @@ module VBlank
         return nil if colors.nil?
 
         table = color_table(name, colors)
+        refuse_pixels_in_marked_colors!(name, table)
         drawn = pixels.unpack("v*").uniq
         drawn.each do |value|
           next if transparent && value == transparent
@@ -906,10 +909,23 @@ module VBlank
         table.map { |value| value || 0x0000 }
       end
 
+      # A PICTURE GIVEN AS COLOURS, DRAWN FROM A LIST READ AS THE GAME STARTS. Such a picture is
+      # checked against its list colour by colour, and swapped onto another list by finding each
+      # pixel's colour in its own. The build does not hold the list's colours (+table+ holds
+      # markers, IR::StartFile), so it cannot say which place a pixel is.
+      def refuse_pixels_in_marked_colors!(name, table)
+        return unless table.any? { |color| IR::StartFile.marker?(color) }
+
+        raise ArgumentError, "image :#{name} gives its pixels as colors, and its colors: list is read from the data " \
+                             "pack as the game starts. So the build cannot find the place of each pixel in the list. " \
+                             "To fix this, give the pixels as places: `image :#{name}, ..., colors: ..., places: [...]`. " \
+                             "Or build the game all-in-one."
+      end
+
       # A picture's own list, resolved to colors. The see-through entry is kept as nil so
       # nothing mistakes it for the black a real pixel can be drawn in.
       def color_table(name, colors)
-        return colors.map { |c| c == :transparent ? nil : Graphics::Color.resolve(c) } if colors.length <= PICTURE_COLORS
+        return colors.map { |c| c == :transparent ? nil : list_color(c) } if colors.length <= PICTURE_COLORS
 
         raise ArgumentError,
               "image :#{name} was given #{colors.length} colors. A picture drawn from its own list of " \

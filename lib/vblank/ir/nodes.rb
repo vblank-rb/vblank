@@ -121,8 +121,8 @@ module VBlank
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
         # background's map, tiles and colours are (a StartFile::Background), or absent for one the
         # program holds. Its +tiles+ are then a tile for each bank of colours, its +map+ names the
-        # first in every cell, and each of its +palettes+ names a bank (StartFile.bank_colors):
-        # the size and the lists' names are true, and nothing else of them is.
+        # first in every cell, and each of its +palettes+ holds a marker for each colour of a bank
+        # (StartFile, "MARKERS"): the size and the lists' names are true, and nothing else of them is.
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.

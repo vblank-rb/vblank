@@ -43,7 +43,8 @@ module VBlank
     # (Original::Pack.layout), so the build knows where each slot will be in the file: a table given
     # a slot is read from there (#table_from_start_file), and so is a picture given a slot of colours
     # or tiles of a slot of tiles, or both (#define_picture_from_start_file), and a screen's backdrop
-    # given a slot of colours (#pack_backdrop_in_start_file). The program holds none
+    # given a slot of colours (#pack_backdrop_in_start_file), and a list of colours declared from a
+    # slot holds a marker for each colour (#pack_colors_read_at_start). The program holds none
     # of a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
     # on what a slot holds: a table read from the file is not one whose entries a build looks at (a
     # pose stepped through by a table's entries), and a picture read from the file is a whole box of
@@ -750,8 +751,57 @@ module VBlank
         refuse_slot_from_elsewhere!(slot, where)
         refuse_slot_read_wrongly!(slot, :colors, where)
         refuse_pack_color_list_too_long!(name, slot)
-        refuse_pack_color_list_left_out!(name)
+        return pack_colors_read_at_start(slot) if pack_left_out?
+
         pack_slot_values(slot, :colors, where)
+      end
+
+      # THE SAME LIST WITH THE PACK LEFT OUT: the build holds none of the original's colours, so
+      # the list holds a marker for each (IR::StartFile, "MARKERS"), which names where the colour
+      # is in the file the program is handed as it starts. Everything that takes a list's name
+      # takes this one, since a marker goes wherever a colour goes: into a picture drawn in the
+      # list, a sprite's other colours, a list told to hold it, a backdrop that follows it. Each
+      # backend that plays the program puts the file's colour where a marker is, as it starts.
+      # The first place keeps the slot's own colour here too.
+      def pack_colors_read_at_start(slot)
+        first = colors_in_pack(slot)
+        Array.new(slot.count) do |place|
+          start_file_color_marker(IR::StartFile::Color.new(at: first + (place * slot.layout.item_bytes), format: slot.layout.format))
+        end
+      end
+
+      # The marker of +source+ (an IR::StartFile::Color, or a WalkedColor made from one), which is
+      # one of the file's colours (IR::StartFile#colors) from here on. The same source asked for
+      # again has the same marker, so two lists of one bank hold equal colours, as they do when the
+      # build holds what the bank holds.
+      def start_file_color_marker(source)
+        @start_file_colors ||= []
+        entry = (@start_file_color_entries ||= {})[source] ||= begin
+          refuse_too_many_start_file_colors!
+          @start_file_colors << source
+          @start_file_colors.length - 1
+        end
+        IR::StartFile.marker_of(entry)
+      end
+
+      # A colour a list holds, as the build keeps it: its fifteen bits, or the marker it is.
+      def list_color(color) = IR::StartFile.marker?(color) ? color : Graphics::Color.resolve(color)
+
+      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the program every colour it reads from the file as
+      # it starts, in the order the markers count them.
+      def finalize_start_file_colors
+        return unless @start_file_colors
+
+        @program.start_file = @program.start_file.with(colors: @start_file_colors.dup.freeze)
+      end
+
+      # A marker fits in the sixteen bits a picture keeps a pixel in, so there are so many of them.
+      def refuse_too_many_start_file_colors!
+        return if @start_file_colors.length < IR::StartFile::MOST_MARKED_COLORS
+
+        raise ArgumentError, "This build reads its pack as the game starts, and it reads more than " \
+                             "#{IR::StartFile::MOST_MARKED_COLORS} colors of lists from it, with the steps of each " \
+                             "`color_walk`. To fix this, walk fewer lists or use fewer steps, or build the game all-in-one."
       end
 
       # A list holds as many colours as one picture can be drawn from (Images::PICTURE_COLORS), and
@@ -763,16 +813,6 @@ module VBlank
         raise ArgumentError, "colors :#{name} was given #{slot.count} colors of slot :#{slot.layout.name}. A list of " \
                              "colors can have #{most} of them, the first meaning see-through. To fix this, give it " \
                              "one bank of the slot, like `pack[:#{slot.layout.name}].bank(0, size: #{most})`."
-      end
-
-      # A build that leaves its pack out holds none of the original's colours, and a list's colours
-      # are part of the program every lowering writes. Filling a list at power-on is not made yet.
-      def refuse_pack_color_list_left_out!(name)
-        return unless pack_left_out?
-
-        raise ArgumentError, "colors :#{name} reads its colors from the data pack, and this build reads its pack as " \
-                             "the game starts. A list of colors from the pack is not made that way yet. To fix this, " \
-                             "build the game all-in-one."
       end
 
       # THE COLOUR OF A BACKDROP TAKEN FROM THE PACK (`screen :tiled, backdrop: pack[:palette]`): the

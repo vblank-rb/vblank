@@ -189,11 +189,13 @@ module VBlank
                       else
                         sprite_pixels(image, colors)
                       end
-              if drawn.any? { |pixel| pixel > MAX_COLOR }
+              if drawn.any? { |pixel| pixel > MAX_COLOR && !IR::StartFile.marker?(pixel) }
                 raise LoweringError, "picture #{name.inspect} holds a pixel past the fifteen bits a colour has, " \
                                      "so #{build_name} cannot make it."
               end
-              pixels.concat(drawn)
+              # A pixel in a colour read as the game starts is its marker until then (StartFileFills).
+              record_marked_pixels(:image, pixels.length, drawn)
+              pixels.concat(drawn.map { |pixel| image_pixel_kept(pixel) })
             end
             @image_pixel_count = pixels.length # what the runtime copies them by, to fill an image read from the start file
             [runtime_array("image_pixels", "int16_t", pixels), runtime_array("images", "int32_t", info), *sprite_name_arrays]
@@ -375,7 +377,9 @@ module VBlank
 
               first = images.length / (PLACES_IN_RUN_COLORS + 1)
               shown_as = @images.select { |(name, _), _| name == run.picture }
-              shown_as.each { |(_, colors), number| images.push(number, *sprite_pixels(every_place_of(run), colors)) }
+              shown_as.each do |(_, colors), number|
+                images.push(number, *refuse_painted_in_marked_colors!(sprite_pixels(every_place_of(run), colors), run.picture))
+              end
               [0, run.width, run.height, start, first, shown_as.size, planes]
             end
             [runtime_array("tile_runs", "int32_t", runs), runtime_array("run_images", "int32_t", images)]
@@ -428,7 +432,9 @@ module VBlank
                     if (read_at_start = picture_from_start_file(tile))
                       record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
                     end
-                    tile_pixels.concat(tile_colors(tile, swaps))
+                    drawn = tile_colors(tile, swaps)
+                    record_marked_pixels(:tile, tile_pixels.length, drawn)
+                    tile_pixels.concat(drawn)
                   end
                 end
               end
@@ -469,7 +475,9 @@ module VBlank
               painted_tiles.concat(run ? [@run_numbers.fetch(run.name), run.tiles.index(tile)] : [NOT_PAINTED, 0])
             end
             [nil, *steps].each do |swaps|
-              @tile_runs.each_value { |run| run_colors.concat(colors_as_tile(every_place_of(run), swaps)) }
+              @tile_runs.each_value do |run|
+                run_colors.concat(refuse_painted_in_marked_colors!(colors_as_tile(every_place_of(run), swaps), run.name))
+              end
             end
             starts
           end
@@ -688,8 +696,15 @@ module VBlank
             Array.new(image.width * image.height) do |i|
               next 0xFFFF if image.tile_see_through_at?(i)
 
-              recolor ? recolor.color_for(i, image.color_at(i)) : image.color_at(i)
+              recolor ? recolor.color_for(i, tile_color_at(image, i)) : tile_color_at(image, i)
             end
+          end
+
+          # The colour a tile's pixel is drawn in: its fifteen bits, or, for a pixel in a colour
+          # read as the game starts, the marker it is (IR::StartFile), which those bits are no part of.
+          def tile_color_at(image, index)
+            raw = image.raw_at(index)
+            IR::StartFile.marker?(raw) ? raw : image.color_at(index)
           end
 
           # The number of the picture +name+ as drawn with the list +colors+, or with its own.
@@ -714,8 +729,9 @@ module VBlank
             two_pages &&= @program.described_console.painted_pages == 2
             # A backdrop that follows a list (nil) is left as the list has it, which rg_screen.c reads
             # as a colour below nought. One read from the start file is its entry of the colours
-            # filled from it (StartFileFills#start_file_color).
-            shown = backdrop.is_a?(IR::StartFile::Color) ? start_file_color(backdrop) : Statements::Int.new(backdrop || -1)
+            # filled from it (StartFileFills#start_file_color), and so is the colour of a list read
+            # from it, which is a marker here.
+            shown = backdrop.is_a?(IR::StartFile::Color) ? start_file_color(backdrop) : color_or_start_file_entry(backdrop || -1)
             change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), shown)
             always = @handover.always_up
             put_back = [*always.map_choices.map { |var| assign(var, Statements::Int.new(0)) },
@@ -1095,9 +1111,15 @@ module VBlank
             return [held, *followers] unless place
 
             sets = sets_held_by(node.name)
-            colors = drawing_array("backdrop_colors", "int32_t", sets.map { |set| set.fetch(place) & 0x7FFF })
+            shown = sets.map { |set| set.fetch(place) }
+            # A set read from the start file has a marker there, which the runtime reads as the
+            # colour filled from the file (StartFileFills).
+            marked = shown.any? { |color| IR::StartFile.marker?(color) }
+            colors = drawing_array("backdrop_colors", "int32_t", shown.map { |color| IR::StartFile.marker?(color) ? color : color & 0x7FFF })
             choice = call("rg_place_of_choice", held_colors(node.name), Statements::Int.new(sets.length - 1))
-            [held, eval_call("rg_screen_show_backdrop", Statements::Index.new(colors, choice)), *followers]
+            color = Statements::Index.new(colors, choice)
+            color = call("rg_start_file_marked_color", start_file_colors_name, color) if marked
+            [held, eval_call("rg_screen_show_backdrop", color), *followers]
           end
 
           # Reference#pixels_overlap?: each side's picture now, and where it is.
