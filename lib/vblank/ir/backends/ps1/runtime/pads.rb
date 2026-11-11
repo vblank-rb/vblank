@@ -97,14 +97,7 @@ module VBlank
               asm.label("rt_buttons_now_answered")
               asm.lui(:t1, h::IO >> 16)
               asm.sh(:zero, h::JOY_CTRL & 0xFFFF, :t1)
-              asm.nor(:t5, :t5, :zero) # a pressed button is a 1 from here on
-              asm.move(:v0, :zero)
-              BITS.each do |name, (which, bit)|
-                asm.andi(:t0, :t5, 1 << ((which * 8) + bit))
-                asm.beq(:t0, :zero, "rt_buttons_now_not_#{name}")
-                asm.ori(:v0, :v0, 1 << Buttons::NAMES.index(name))
-                asm.label("rt_buttons_now_not_#{name}")
-              end
+              emit_buttons_of_bytes(asm, "rt_buttons_now")
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
             end
@@ -141,13 +134,114 @@ module VBlank
               asm.jr(:ra) { asm.move(:v1, :zero) }
             end
 
-            # In the interrupt, every frame: the buttons held now, and every one that went down since the
-            # frame before added to those pressed during the pass.
+            # EVERY FRAME, THE PAD IS ASKED WITHOUT WAITING FOR IT. A byte takes the port about a thousand of
+            # the processor's cycles to send, and the conversation is five: read by sending each and going
+            # round a loop until its answer came (rt_buttons_now, which power-on still does, once), the
+            # frame's interrupt held the game for a hundredth of every frame. The pad says when it has
+            # taken a byte, by its acknowledge line, and the port can raise an interrupt of its own on that
+            # (IRQ7; JOY_CTRL bit 12 turns it on, bit 4 lets the next one come). So:
+            #
+            #   rt_pad_read          in the frame's interrupt: the conversation begun last frame is finished
+            #                        (rt_pad_finish) and a new one begun, its first byte sent
+            #   rt_pad_acknowledged  in the pad's interrupt: the answer to the byte sent is read, and the
+            #                        next byte sent
+            #   rt_pad_finish        the last byte's answer taken, and the buttons made of the two bytes:
+            #                        held now, and every one that went down since the frame before added to
+            #                        those pressed during the pass. THE LAST BYTE IS NOT ACKNOWLEDGED, so no
+            #                        interrupt says it came: the port's own flag does
+            #   rt_pad_await         as a pass's wait ends: waits for the conversation the blank began,
+            #                        and finishes it, so the pass has that frame's buttons, as before
+            #
+            # Frame::PAD_STEP counts the bytes sent, nought when no conversation is under way. A game whose
+            # pass takes several frames is where this is felt: the frames in the middle of it no longer
+            # stop for the pad. With no pad in the port no byte is acknowledged, the conversation stays at
+            # its first, and it is finished as no buttons held.
             def emit_pad_read(asm, at)
+              h = Console::PS1Hardware
+              emit_pad_begin(asm, at, h)
+              emit_pad_acknowledged(asm, at, h)
+              emit_pad_finish(asm, at, h)
+              emit_pad_await(asm, at, h)
+            end
+
+            # JOY_CTRL through a conversation: the transmitter on, the first port selected, an interrupt
+            # as the pad acknowledges; and the bit that lets the next such interrupt come.
+            CONVERSING = SELECT_FIRST_PORT | (1 << 12)
+            NEXT_ACKNOWLEDGE = 1 << 4
+
+            def emit_pad_begin(asm, at, h)
               asm.label("rt_pad_read")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
-              asm.jal("rt_buttons_now")
+              asm.jal("rt_pad_finish")
+              asm.lui(:t1, h::IO >> 16)
+              asm.li(:t0, CONVERSING | NEXT_ACKNOWLEDGE)
+              asm.sh(:t0, h::JOY_CTRL & 0xFFFF, :t1)
+              # The port takes a byte in only once the one before was read, so whatever is left is read
+              # first and thrown away.
+              asm.lbu(:t0, h::JOY_DATA & 0xFFFF, :t1)
+              asm.li(:t0, 0xFF) # the first button byte, none pressed until the pad reports it
+              asm.sw(:t0, at.call(Frame::PAD_BYTE), :gp)
+              asm.li(:t0, SENT.first)
+              asm.sb(:t0, h::JOY_DATA & 0xFFFF, :t1)
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(Frame::PAD_STEP), :gp)
+              asm.lw(:ra, 0, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
+            end
+
+            # The pad acknowledged byte PAD_STEP of the conversation: its answer is read (the fourth's is
+            # the first button byte), and the next byte sent. Nothing is read where no conversation waits
+            # for an acknowledge: none under way, or the last byte sent, whose answer rt_pad_finish takes.
+            def emit_pad_acknowledged(asm, at, h)
+              asm.label("rt_pad_acknowledged")
+              asm.lui(:t1, h::IO >> 16)
+              asm.li(:t0, CONVERSING | NEXT_ACKNOWLEDGE)
+              asm.sh(:t0, h::JOY_CTRL & 0xFFFF, :t1)
+              asm.li(:t0, ~h::IRQ_PAD & 0xFFFF_FFFF)
+              asm.sw(:t0, h::I_STAT & 0xFFFF, :t1)
+              asm.lw(:t2, at.call(Frame::PAD_STEP), :gp)
+              asm.addiu(:t0, :t2, -1)
+              asm.sltiu(:t0, :t0, SENT.size - 1)
+              asm.beq(:t0, :zero, "rt_pad_acknowledged_done")
+              asm.lbu(:t3, h::JOY_DATA & 0xFFFF, :t1)
+              asm.li(:t0, SENT.size - 1)
+              asm.bne(:t2, :t0, "rt_pad_acknowledged_next")
+              asm.sw(:t3, at.call(Frame::PAD_BYTE), :gp)
+              asm.label("rt_pad_acknowledged_next")
+              # The second byte asks for the buttons, and the rest are noughts (SENT).
+              asm.li(:t0, 1)
+              asm.bne(:t2, :t0, "rt_pad_acknowledged_send") { asm.move(:t3, :zero) }
+              asm.li(:t3, SENT[1])
+              asm.label("rt_pad_acknowledged_send")
+              asm.sb(:t3, h::JOY_DATA & 0xFFFF, :t1)
+              asm.addiu(:t2, :t2, 1)
+              asm.sw(:t2, at.call(Frame::PAD_STEP), :gp)
+              asm.label("rt_pad_acknowledged_done")
+              asm.jr(:ra)
+            end
+
+            # The conversation under way finished, with the interrupts off: the buttons it read, or none
+            # where it did not reach its end. Nothing where none is under way.
+            def emit_pad_finish(asm, at, h)
+              asm.label("rt_pad_finish")
+              asm.lw(:t2, at.call(Frame::PAD_STEP), :gp)
+              asm.beq(:t2, :zero, "rt_pad_finish_done")
+              asm.lui(:t1, h::IO >> 16)
+              asm.li(:t5, 0xFFFF) # the two button bytes, none pressed
+              asm.addiu(:t0, :t2, -SENT.size)
+              asm.bne(:t0, :zero, "rt_pad_finish_none")
+              asm.lhu(:t0, h::JOY_STAT & 0xFFFF, :t1)
+              asm.andi(:t0, :t0, RECEIVED)
+              asm.beq(:t0, :zero, "rt_pad_finish_none")
+              asm.lbu(:t3, h::JOY_DATA & 0xFFFF, :t1)
+              asm.lw(:t4, at.call(Frame::PAD_BYTE), :gp)
+              asm.sll(:t3, :t3, 8)
+              asm.or(:t5, :t3, :t4)
+              asm.label("rt_pad_finish_none")
+              asm.sh(:zero, h::JOY_CTRL & 0xFFFF, :t1)
+              asm.sw(:zero, at.call(Frame::PAD_STEP), :gp)
+              emit_buttons_of_bytes(asm, "rt_pad_finish")
               asm.lw(:t0, at.call(Frame::SEEN), :gp)
               asm.lw(:t1, at.call(Frame::PAD_PRESSED), :gp)
               asm.nor(:t0, :t0, :zero)
@@ -156,8 +250,50 @@ module VBlank
               asm.sw(:t1, at.call(Frame::PAD_PRESSED), :gp)
               asm.sw(:v0, at.call(Frame::PAD_HELD), :gp)
               asm.sw(:v0, at.call(Frame::SEEN), :gp)
+              asm.label("rt_pad_finish_done")
+              asm.jr(:ra)
+            end
+
+            # Waits until the conversation under way has had its last answer, or gives up as a wait for
+            # a pad does, and finishes it. The waiting's labels are named as the wait for the screen is,
+            # so a profile counts it as time the game had nothing to do.
+            def emit_pad_await(asm, at, h)
+              asm.label("rt_pad_await")
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              asm.lui(:t1, h::IO >> 16)
+              asm.li(:t2, PATIENCE)
+              asm.label("rt_sleep_until_vblank_pad")
+              asm.lw(:t0, at.call(Frame::PAD_STEP), :gp)
+              asm.beq(:t0, :zero, "rt_pad_awaited")
+              asm.addiu(:t0, :t0, -SENT.size)
+              asm.bne(:t0, :zero, "rt_sleep_until_vblank_pad_not_yet")
+              asm.lhu(:t0, h::JOY_STAT & 0xFFFF, :t1)
+              asm.andi(:t0, :t0, RECEIVED)
+              asm.bne(:t0, :zero, "rt_pad_awaited")
+              asm.label("rt_sleep_until_vblank_pad_not_yet")
+              asm.addiu(:t2, :t2, -1)
+              asm.bne(:t2, :zero, "rt_sleep_until_vblank_pad")
+              asm.label("rt_pad_awaited")
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.jal("rt_pad_finish")
+              asm.li(:t0, h::SR_INTERRUPTS_ON)
+              asm.mtc0(:t0, R3000::COP0_STATUS)
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
+            end
+
+            # v0 = the buttons of the two button bytes in t5 (a pressed button reading 0), a bit each in
+            # IR::Buttons's order. +tag+ starts its labels. Changes t0 and t5.
+            def emit_buttons_of_bytes(asm, tag)
+              asm.nor(:t5, :t5, :zero) # a pressed button is a 1 from here on
+              asm.move(:v0, :zero)
+              BITS.each do |name, (which, bit)|
+                asm.andi(:t0, :t5, 1 << ((which * 8) + bit))
+                asm.beq(:t0, :zero, "#{tag}_not_#{name}")
+                asm.ori(:v0, :v0, 1 << Buttons::NAMES.index(name))
+                asm.label("#{tag}_not_#{name}")
+              end
             end
           end
         end

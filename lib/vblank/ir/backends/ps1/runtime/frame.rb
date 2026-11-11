@@ -76,6 +76,10 @@ module VBlank
             # went down on any of them since the last wait ended.
             PAD_HELD = "rt pad held"
             PAD_PRESSED = "rt pad pressed"
+            # The conversation with the pad (Pads): how many of its bytes have been sent, nought for none
+            # under way, and the first of the two button bytes once it has come.
+            PAD_STEP = "rt pad step"
+            PAD_BYTE = "rt pad byte"
             # 1 once the interrupt has come since the game began to wait.
             VBLANK = "rt vblank"
             # 1 once the picture is on: before the end of the first pass it is off.
@@ -91,8 +95,8 @@ module VBlank
             KEPT_REGISTERS = %i[at v0 v1 a0 a1 a2 a3 t0 t1 t2 t3 t4 t5 t6 t7 t8 t9 ra].freeze
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES,
-                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, VBLANK, DISPLAY_ON,
-                     BLANK_LINE].freeze
+                     FRAMES_MARK, STEP_TAKEN, FRAMES_TAKEN, PAD_HELD, PAD_PRESSED, PAD_STEP, PAD_BYTE, VBLANK,
+                     DISPLAY_ON, BLANK_LINE].freeze
 
             module_function
 
@@ -129,6 +133,13 @@ module VBlank
               asm.mflo(:t1)
               asm.sw(:t0, saved + (KEPT_REGISTERS.size * 4), :gp)
               asm.sw(:t1, saved + ((KEPT_REGISTERS.size + 1) * 4), :gp)
+              # The pad's first: a byte it has acknowledged is answered before a new conversation starts.
+              asm.lui(:t2, h::IO >> 16)
+              asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
+              asm.andi(:t0, :t0, h::IRQ_PAD)
+              asm.beq(:t0, :zero, "rt_interrupt_not_pad")
+              asm.jal("rt_pad_acknowledged")
+              asm.label("rt_interrupt_not_pad")
               asm.lui(:t2, h::IO >> 16)
               asm.lw(:t0, h::I_STAT & 0xFFFF, :t2)
               asm.andi(:t0, :t0, h::IRQ_VBLANK)
@@ -176,6 +187,8 @@ module VBlank
               asm.jal("rt_show_pass")
               asm.lw(:t0, at.call(HOLD), :gp)
               asm.bne(:t0, :zero, "rt_stopped")
+              # The blank that ended the wait asked the pad for its buttons; they are the next pass's.
+              asm.jal("rt_pad_await")
               asm.jal("rt_read_buttons")
               asm.sw(:zero, at.call(WAITING), :gp)
               asm.lw(:ra, 0, :sp)

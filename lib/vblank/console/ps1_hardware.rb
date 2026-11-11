@@ -80,6 +80,7 @@ module VBlank
 
       # --- interrupts (I_STAT and I_MASK bits) ---
       IRQ_VBLANK = 1 << 0
+      IRQ_PAD = 1 << 7 # A pad or memory card has acknowledged a byte
       # The status register's bits: the hardware interrupt line (IM2, which every one of the ports'
       # interrupts comes in on) and interrupts on (IEc).
       SR_INTERRUPTS_ON = (1 << 10) | 1

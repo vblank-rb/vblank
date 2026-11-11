@@ -176,11 +176,12 @@ module VBlank
               end
             end
 
-            # The vertical blank's interrupt let through to the processor, and the processor told to take it.
+            # The vertical blank's interrupt and the pad's (Pads) let through to the processor, and the
+            # processor told to take them.
             def emit_interrupts_on(asm, h)
               asm.lui(:t1, h::IO >> 16)
               asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
-              asm.li(:t0, h::IRQ_VBLANK)
+              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD)
               asm.sw(:t0, h::I_MASK & 0xFFFF, :t1)
               asm.li(:t0, h::SR_INTERRUPTS_ON)
               asm.mtc0(:t0, R3000::COP0_STATUS)
