@@ -113,6 +113,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
 `state_image_tests.rb` (a game's whole state written at a frame and read into a fresh run, which plays on as the unbroken run did, played by the C, JavaScript and Ruby runs, each reading a state across from another),
 `runtime_feature_games.rb` (small games that do or do not use a runtime feature, for the native, JavaScript and Ruby runs' tests that a game takes in only the features it uses),
+`save_list_move_tests.rb` (a whole list moved to or from save memory as a block, held to the interpreter, played by each console whose lowering moves the block itself: the Color and the Super Nintendo),
 `clock_tests.rb` (the clock's tests, played by each console that has one),
 `players_connected_tests.rb` (how many players are connected, played by each console whose build reads one controller: the Advance, the Color and the Genesis),
 `many_players_tests.rb` (games and tests for four and for sixteen players, played by the interpreter and the game as C, JavaScript and Ruby, which read sixteen; no cartridge does, so not in `test/all/`),

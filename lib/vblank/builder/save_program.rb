@@ -19,6 +19,7 @@ module VBlank
       def repeat(...) = @port.repeat.call(...)
       def at_boot(node) = @port.at_boot.call(node)
       def ensure_var(name) = @port.ensure_var.call(name)
+      def declare_loop_counter = @port.loop_counter.call
       def declare_func(name, fast: nil, &body) = @port.declare_func.call(name, fast: fast, &body)
       def run_each_pass(name) = @port.run_each_pass.call(name)
 

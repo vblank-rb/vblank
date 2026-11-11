@@ -24,7 +24,7 @@ module VBlank
       # kilobytes, or nil to let the records decide.
       Port = Data.define(:handle, :record, :repeat, :at_boot, :ensure_var, :declare_func, :run_each_pass,
                          :start_value, :list_new_node, :save_var, :saved_vars, :pool_refill, :save_memory,
-                         :fraction_bits)
+                         :fraction_bits, :loop_counter)
 
       include SaveProgram
       include SaveRecords
@@ -272,6 +272,7 @@ module VBlank
           handle: self, record: ->(node) { record(node) },
           repeat: ->(count, **settings, &body) { repeat(count, **settings, &body) },
           at_boot: ->(node) { at_boot(node) }, ensure_var: ->(name) { ensure_var(name) },
+          loop_counter: -> { declare_loop_counter },
           declare_func: ->(name, fast: nil, &body) { declare_func(name, fast: fast, &body) },
           run_each_pass: ->(name) { @per_pass_routines << name },
           start_value: ->(name) { @boot_inits.find { |node| node.kind == :set && node.var == name }&.value },

@@ -42,8 +42,8 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
             case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
-            save_init save_store save_write save_erase timer_start timer_stop on_timer show_light_now
-            show_held_tiles
+            save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
+            on_timer show_light_now show_held_tiles
           ] + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS + TileRuns::STATEMENT_KINDS +
             SpriteTiles::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
@@ -79,6 +79,7 @@ module VBlank
             when :save_store then emit_save_store(node)
             when :save_write then emit_save_write(node)
             when :save_erase then emit_save_erase(node)
+            when :save_load_list, :save_store_list then emit_save_list_move(node)
             when :timer_start then emit_timer_start(node)
             when :timer_stop then emit_timer_stop(node)
             # a timer's handler runs as its timer ticks, not where it is written
@@ -362,6 +363,10 @@ module VBlank
               (node.kind == :list_push && bytes.include?(node.name)) || (node.kind == :list_drop && node.from == :front)
             end
           end
+
+          # Whether the game moves a whole list to or from save memory, so wants the routines that do
+          # it as a block (Runtime::Lists#emit_save_moves).
+          def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
 
           # Whether the game pushes onto a list of halves or takes from one's front, so wants the
           # routines that push and read such a list quickly (Runtime::Lists#emit_queue_routines).
@@ -1541,6 +1546,24 @@ module VBlank
 
           # Reference#exec_save_erase: the wipe is waited for unless the node asks not to.
           def emit_save_erase(node) = runtime_call("rt_save_erase", [node.at, Build.int(node.wait == false ? 0 : 1)])
+
+          # A whole list moved to or from save memory (Reference#exec_save_load_list,
+          # #exec_save_store_list) as a block, by a routine of the runtime's (Runtime::Lists
+          # #emit_save_moves). The count a load reads is held to nought and the step's most here,
+          # and the most can be no more than the list holds, so the routine copies without looking.
+          # The step's counter is left at nought, as every backend leaves it.
+          def emit_save_list_move(node)
+            if node.kind == :save_load_list
+              _place, capacity, = list_placed(node)
+              refusal = SaveListMoves.past_capacity_message(node, capacity)
+              raise LoweringError, refusal if refusal
+
+              list_call("rt_save_load_list", node, node.at, SaveListMoves.load_count(node))
+            else
+              list_call("rt_save_store_list", node, node.at)
+            end
+            emit_statement(Build.set(node.index, 0))
+          end
 
           def value_of_save_read(node) = runtime_call("rt_save_read", [node.at, save_width(node)])
           def value_of_save_sum(node) = runtime_call("rt_save_sum", [node.at, node.length])

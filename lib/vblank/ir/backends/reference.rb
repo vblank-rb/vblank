@@ -745,7 +745,7 @@ module VBlank
         # (#exec_declaration).
         STATEMENT_KINDS = (%i[
           program set add sub copy negate abs negate_abs clamp save_init save_store save_write save_erase
-          if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy
+          save_load_list save_store_list if loop inside repeat every after list_new list_push list_drop list_set list_fill list_copy
           list_sort blit blit_pose save_region restore_region call call_one_of case halt wait_vblank
           hide_sprites rumble screen clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
@@ -772,6 +772,8 @@ module VBlank
           when :save_store then exec_save_store(node)
           when :save_write then exec_save_write(node)
           when :save_erase then exec_save_erase(node)
+          when :save_load_list then exec_save_load_list(node)
+          when :save_store_list then exec_save_store_list(node)
           when :if then exec_if(node)
           when :loop then exec_loop(node)
           when :inside then exec_inside(node)
@@ -3734,6 +3736,32 @@ module VBlank
           at = eval_value(node.at)
           length = eval_value(node.length)
           on_save_memory { @save.checksum(at, length) }
+        end
+
+        # A whole list read from save memory: what it held is gone, and it holds +count+ items
+        # (held to nought and the node's most), each read as a save_read of the list's width reads
+        # one and kept the way the list keeps an item.
+        def exec_save_load_list(node)
+          list = list_for(node.name)
+          at = eval_value(node.at)
+          width = SAVE_WIDTHS.fetch(node.width)
+          count = eval_value(node.count).clamp(0, node.most)
+          raise ProgramError, Faults.list_full(node.name, list.capacity) if count > list.capacity
+          items = Array.new(count) do |i|
+            on_save_memory { width == 4 ? @save.word(at + (i * width)) : @save.read(at + (i * width), width) }
+          end
+          list.replace(items)
+          @vars[node.index] = 0
+        end
+
+        # Every item of a list written to save memory, in order, as a save_write of the list's
+        # width writes one: the bytes go in rising order, so a power cut stops it where it would
+        # stop the same writes made one at a time.
+        def exec_save_store_list(node)
+          at = eval_value(node.at)
+          width = SAVE_WIDTHS.fetch(node.width)
+          list_for(node.name).to_a.each_with_index { |item, i| write_save(at + (i * width), item, width) }
+          @vars[node.index] = 0
         end
 
         def write_save(at, value, width) = on_save_memory { @save.write(at, value, width) }

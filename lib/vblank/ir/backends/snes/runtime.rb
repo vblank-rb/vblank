@@ -84,7 +84,8 @@ module VBlank
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
                                     second_controller: c.second_controller, dims: c.dims)
             Blank.emit(asm, memory, Blank.scratch(memory))
-            Lists.emit(asm, memory, Lists.scratch(memory))
+            lists = Lists.scratch(memory)
+            Lists.emit(asm, memory, lists)
             run_count = c.tile_runs.length
             Picture.emit(asm, memory, work: memory.scratch(8), painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
                                       tile_runs: run_count, straight_tile_runs: c.straight_tile_runs, held_runs: c.held_runs,
@@ -97,7 +98,11 @@ module VBlank
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
-            Saving.emit(asm, memory, Saving.scratch(memory), bank: c.board.save_bank) if c.saves
+            if c.saves
+              saving = Saving.scratch(memory)
+              Saving.emit(asm, memory, saving, bank: c.board.save_bank)
+              Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
+            end
             emit_sound_routines(asm, memory, c, lowered)
             emit_start(asm, chip: c.chip?, sound: c.sound)
             emit_frame_begins(asm, lowering.frame_begins)

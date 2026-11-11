@@ -37,10 +37,11 @@ module VBlank
             # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?), and
             # +half_queues+ that it pushes onto a list of halves or takes from one's front
             # (Lowering#keeps_half_queues?).
-            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false)
+            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false, save_moves: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
               emit_routines(asm, memory, q, byte_fills)
+              emit_save_moves(asm, memory, q) if save_moves
               widths = NARROW_WIDTHS.keys.select { |width| width == 1 ? queues : half_queues }
               emit_queue_routines(asm, memory, q, widths) if widths.any?
               emit_shift(asm, memory) if queues
@@ -876,6 +877,157 @@ module VBlank
                 asm.load_high(q.entry + i, :a)
               end
               asm.ret
+            end
+
+            # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK MEMORY AS A BLOCK (IR save_load_list,
+            # save_store_list; Reference#exec_save_load_list, #exec_save_store_list). A record that
+            # keeps a list used to read and write it an item at a time, each a call that copied
+            # its numbers, checked the place in 32 bits, switched save memory on and off and opened
+            # the list again: on the order of a thousand cycles an item. A slot keeps its bytes
+            # lowest first, which is how save memory keeps them, so the items are the same bytes in
+            # both places and the move is a copy: the place checked once, save memory switched on
+            # once, and a few instructions a byte, as a console's own games copy their saves.
+            #
+            # rt_save_load_list(list, at, count): the list made to hold +count+ items, which the
+            # lowering has held to nought and what the list can hold, read from +at+ on. It holds
+            # them from its first slot, so the bytes go in one run.
+            #
+            # rt_save_store_list(list, at): every item written from +at+ on, oldest first. The list
+            # is a ring, so its oldest item can be in any slot: the copy starts there and comes
+            # round to the first slot where the ring ends. The bytes are written in rising order,
+            # as the writes one at a time were, so a power cut leaves what it left then.
+            def emit_save_moves(asm, memory, q)
+              sram_end = (Console::GBCHardware::SRAM + Saving::BANK_SIZE) >> 8
+              ring_end = memory.args + 24 # where the list's slots end, for the store
+
+              asm.label("rt_save_load_list")
+              emit_args_read(asm, 3)
+              count = arg(memory, 2, 3)
+              asm.load(:a, arg_at(memory, 0, 3))
+              asm.call("rt_list_open")
+              asm.xor_a(:a)
+              asm.load_high(q.front, :a)
+              asm.load_high(q.front + 1, :a)
+              asm.load_high(:a, count)
+              asm.load_high(q.length, :a)
+              asm.load_high(:a, count + 1)
+              asm.load_high(q.length + 1, :a)
+              asm.call("rt_list_close")
+              emit_times_slot_width(asm, q, count, "rt_save_load_list") # the count, now in bytes
+              asm.load(:de, arg(memory, 1, 3))
+              asm.load(:hl, count)
+              asm.load(:a, Frame::SAVE_READ_OUTSIDE)
+              asm.call("rt_save_at") # HL = where the place is seen
+              asm.push(:hl)
+              list_address(asm, q)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.load(:d, :h)
+              asm.load(:e, :l) # DE = the list's first slot
+              asm.pop(:hl)
+              asm.load_high(:a, count)
+              asm.load(:c, :a)
+              asm.load_high(:a, count + 1)
+              asm.load(:b, :a)
+              asm.or_a(:c)
+              asm.jump(:z, "rt_save_off")
+              asm.label("rt_save_load_list_byte")
+              asm.load(:a, :h)
+              asm.cp_a(sram_end)
+              asm.call(:z, "rt_save_next")
+              asm.load(:a, [:hli])
+              asm.load([:de], :a)
+              asm.inc(:de)
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_save_load_list_byte")
+              asm.jump("rt_save_off")
+
+              asm.label("rt_save_store_list")
+              emit_args_read(asm, 2)
+              asm.load(:a, arg_at(memory, 0, 2))
+              asm.call("rt_list_open")
+              # The bytes to write, a 32-bit number as rt_save_at takes one: the length × the width.
+              asm.load_high(:a, q.length)
+              asm.load_high(q.entry, :a)
+              asm.load_high(:a, q.length + 1)
+              asm.load_high(q.entry + 1, :a)
+              asm.xor_a(:a)
+              asm.load_high(q.entry + 2, :a)
+              asm.load_high(q.entry + 3, :a)
+              emit_times_slot_width(asm, q, q.entry, "rt_save_store_list")
+              # Where the oldest item is, kept on the stack, and where the ring ends.
+              asm.load_high(:a, q.front)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.front + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.push(:hl)
+              asm.load_high(:a, q.capacity)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.capacity + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.load(:a, :l)
+              asm.load_high(ring_end, :a)
+              asm.load(:a, :h)
+              asm.load_high(ring_end + 1, :a)
+              asm.load(:de, arg(memory, 1, 2))
+              asm.load(:hl, q.entry)
+              asm.load(:a, Frame::SAVE_WRITE_OUTSIDE)
+              asm.call("rt_save_at") # HL = where the place is seen
+              asm.pop(:de) # DE = the oldest item's slot
+              asm.load_high(:a, q.entry)
+              asm.load(:c, :a)
+              asm.load_high(:a, q.entry + 1)
+              asm.load(:b, :a)
+              asm.or_a(:c)
+              asm.jump(:z, "rt_save_off")
+              asm.label("rt_save_store_list_byte")
+              asm.load(:a, :h)
+              asm.cp_a(sram_end)
+              asm.call(:z, "rt_save_next")
+              asm.load(:a, [:de])
+              asm.load([:hli], :a)
+              asm.inc(:de)
+              # Past the last slot: round to the first.
+              asm.load_high(:a, ring_end)
+              asm.cp_a(:e)
+              asm.jump_relative(:nz, "rt_save_store_list_in_ring")
+              asm.load_high(:a, ring_end + 1)
+              asm.cp_a(:d)
+              asm.jump_relative(:nz, "rt_save_store_list_in_ring")
+              asm.load_high(:a, q.list)
+              asm.add_a(HEADER)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.list + 1)
+              asm.adc_a(0)
+              asm.load(:d, :a)
+              asm.label("rt_save_store_list_in_ring")
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_save_store_list_byte")
+              asm.jump("rt_save_off")
+            end
+
+            # The 16-bit count at quick-memory address +at+ made a count of bytes: doubled once for a
+            # list of halves and twice for one of words. +named+ keeps the labels apart.
+            def emit_times_slot_width(asm, q, at, named)
+              2.times do |doubling|
+                asm.load_high(:a, q.width)
+                asm.cp_a(doubling + 1) # a width of 1 doubles never, of 2 once, of 4 twice
+                asm.jump_relative(:z, "#{named}_in_bytes")
+                asm.jump_relative(:c, "#{named}_in_bytes")
+                asm.load_high(:a, at)
+                asm.add_a(:a)
+                asm.load_high(at, :a)
+                asm.load_high(:a, at + 1)
+                asm.adc_a(:a)
+                asm.load_high(at + 1, :a)
+              end
+              asm.label("#{named}_in_bytes")
             end
 
             def emit_start(asm)

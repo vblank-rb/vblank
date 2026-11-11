@@ -132,6 +132,19 @@ module VBlank
         Nodes.build(:save_write, at: at, value: value, width: width)
       end
 
+      # The list +name+ made to hold +count+ items read from save memory at +at+ on, and every item
+      # it holds written there (see Nodes::SaveLoadList). +most+ is the most items it may be made to
+      # hold, +width+ is the list's, and +index+ a variable declared for a backend that writes the
+      # step out as a loop.
+      def save_load_list(name, at:, count:, most:, width:, index:)
+        Nodes.build(:save_load_list, name: name, at: to_value_node(at), count: to_value_node(count), most: most, width: width,
+                                     index: index)
+      end
+
+      def save_store_list(name, at:, width:, index:)
+        Nodes.build(:save_store_list, name: name, at: to_value_node(at), width: width, index: index)
+      end
+
       # The checksum of +length+ bytes of save memory from +at+ (see Nodes::SaveSum).
       def save_sum(at, length)
         Nodes.build(:save_sum, at: at, length: length)

@@ -1521,6 +1521,37 @@ module VBlank
         operands at: :value, length: :value
       end
 
+      # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND THE GAME IN ONE STEP. A record that keeps a list
+      # reads and writes every slot of it, and written as a read or a write for each item that
+      # is a call apiece, with the place worked out afresh each time: on a small console the
+      # calls cost far more than the bytes. One statement lets a backend move the run as a block,
+      # the way a console's own games copy their saves.
+      #
+      # SaveLoadList: the list made to hold +count+ items (held to nought and +most+, which is no
+      # more than its capacity), read from +at+ on, each a slot of the list's +width+ as a
+      # save_read of that width reads it, pushed in order. What the list held before is gone.
+      #
+      # SaveStoreList: every item the list holds written from +at+ on, in order, each as a
+      # save_write of the list's +width+ writes it. The bytes go in rising order, so a power cut
+      # part way leaves what the same writes one at a time would.
+      #
+      # +index+ names a variable the builder declared for a backend that writes the step out as
+      # the loops it stands for (IR::SaveListMoves.loops_for). It is a variable of the game's like
+      # any other, so every backend leaves it the same: at nought once the step is done.
+      class SaveLoadList
+        include Node
+        kind :save_load_list
+        category :list
+        operands name: :name, at: :value, count: :value, most: :int, width: :option, index: :name
+      end
+
+      class SaveStoreList
+        include Node
+        kind :save_store_list
+        category :list
+        operands name: :name, at: :value, width: :option, index: :name
+      end
+
       # HOW MUCH SAVE MEMORY THE PROGRAM HAS, in kilobytes (see IR::SaveLayout::MEMORIES), and
       # so which kind: the smallest takes any byte at any time, where the bigger ones have to be
       # wiped a block at a time before a block is written again (IR::SaveLayout::Memory says

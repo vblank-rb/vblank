@@ -191,7 +191,7 @@ module VBlank
       PACKED = memory(MEMORIES.first)
 
       # The kinds that reach save memory. A program holding none of them has none.
-      KINDS = %i[save_init save_store save_write save_erase save_read save_sum].freeze
+      KINDS = %i[save_init save_store save_write save_erase save_read save_sum save_load_list save_store_list].freeze
 
       # Whether +program+ names save memory anywhere, which is when a run of it is worth handing
       # a save file and its cartridge worth giving save memory at all.

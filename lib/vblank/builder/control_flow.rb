@@ -157,9 +157,7 @@ module VBlank
 
         record_estimate_line(estimate)
 
-        @repeat_seq += 1
-        index = :"__repeat_#{@repeat_seq}"
-        ensure_var(index)
+        index = declare_loop_counter
         ensure_var(count)
         i = DSL::Value.new(self, Build.var_ref(index), name: index)
         # A Condition carries its own node; anything else is an ordinary value, where not-zero
@@ -175,6 +173,13 @@ module VBlank
         push_container(Build.repeat(DSL::Value.node_for(count), index, stop_when: leave)) do
           run_block(i, &block)
         end
+      end
+
+      # A hidden variable for a loop to count in, declared and named: a `repeat`'s, and the one a
+      # step that stands for a loop is handed (IR save_load_list, save_store_list).
+      private def declare_loop_counter
+        @repeat_seq += 1
+        :"__repeat_#{@repeat_seq}".tap { |index| ensure_var(index) }
       end
 
       # The console refreshes the screen ~59.73 times a second; like every game, we

@@ -321,6 +321,10 @@ module VBlank
           # #sections has lowered it.
           def divides? = @divides || false
 
+          # Whether the game moves a whole list to or from save memory, so its runtime carries the
+          # routines that do it as a block (Runtime::Saving#emit_list_moves).
+          def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
+
           # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
           # (LoweringState#on_copies).
           def bytes_of(list)
@@ -1078,7 +1082,7 @@ module VBlank
           def full_length_lists
             @full_length_lists ||= begin
               resized = @reachable.filter_map do |node|
-                node.name if %i[list_push list_drop list_fill list_copy].include?(node.kind) ||
+                node.name if %i[list_push list_drop list_fill list_copy save_load_list].include?(node.kind) ||
                              (node.kind == :list_new && !node.full_of)
               end
               made = @reachable.select { |node| node.kind == :list_new && node.full_of && !resized.include?(node.name) }

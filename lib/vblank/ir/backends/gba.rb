@@ -223,7 +223,7 @@ module VBlank
 
         # The kinds that reach save memory, any one of which means the cartridge has a save
         # chip and has to carry the marker that tells an emulator so.
-        SAVE_KINDS = %i[save_memory save_init save_write save_read save_sum save_erase].freeze
+        SAVE_KINDS = %i[save_memory save_init save_write save_read save_sum save_erase save_load_list save_store_list].freeze
 
         ACC = 0   # Accumulator register
         TMP = 1   # Temporary / I/O address register

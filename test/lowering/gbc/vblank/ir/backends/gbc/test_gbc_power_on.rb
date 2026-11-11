@@ -224,15 +224,22 @@ class TestGBCPowerOn < Minitest::Test
     frame
   end
 
-  def test_a_small_save_record_on_an_empty_chip_starts_by_frame_eleven
-    assert_operator first_pass_frame(saving_game), :<=, 11, "the first pass, on an empty chip"
+  # The record's lists (its own, and the table of places every game with a record keeps) move
+  # between save memory and the game as blocks (Runtime::Lists#emit_save_moves), which is what
+  # brought both starts to two frames after the same game with no record.
+  def test_a_small_save_record_on_an_empty_chip_starts_two_frames_after_a_game_with_none
+    without = first_pass_frame(saving_game(record: false))
+
+    assert_operator first_pass_frame(saving_game), :<=, without + 2, "the first pass, on an empty chip"
   end
 
-  def test_a_small_save_record_with_a_good_save_starts_by_frame_eleven
+  def test_a_small_save_record_with_a_good_save_starts_two_frames_after_a_game_with_none
     program = saving_game
     good = Reference.save_into(SaveImage.new, program, :high, 0, scores: (1..61).to_a)
+    without = first_pass_frame(saving_game(record: false))
 
-    assert_operator first_pass_frame(program, save: good), :<=, 11, "the first pass, with a good save"
+    assert_operator first_pass_frame(program, save: good), :<=, without + 2, "the first pass, with a good save"
+    assert_operator without + 2, :<=, 11, "retail's own first pass is on frame 11"
   end
 
   def test_a_recording_started_while_the_game_sets_up_is_heard_once_it_runs

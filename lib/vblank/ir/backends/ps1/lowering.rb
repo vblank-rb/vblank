@@ -143,7 +143,8 @@ module VBlank
                                                                                           show_picture_group pixels_overlap],
                                                     "sound" => %i[enable_sound beep noise wave stop_wave play_song stop_music
                                                                   hold_music play_from_list play_sound_effect play_sample stop_sample],
-                                                    "save memory" => %i[save_init save_store save_write save_erase save_read save_sum]
+                                                    "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
+                                                                        save_load_list save_store_list]
                                                   })
 
           # Where a list went: the address of its header, how many items it holds, the bytes of a slot,

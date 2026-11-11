@@ -50,7 +50,7 @@ module VBlank
             color_list_holds show_picture_group copy_tiles copy_owed_tiles load_sprite_tiles present_objects
             hide_sprites rumble fade tint pixelate see_through beep enable_sound play_song stop_music
             hold_music play_from_list play_sound_effect play_sample stop_sample wave stop_wave noise save_init
-            save_store save_write save_erase
+            save_store save_write save_erase save_load_list save_store_list
           ] + Nodes.of_role(:declaration)).freeze
 
           def lower(node)
@@ -143,6 +143,7 @@ module VBlank
             when :save_store then lower_save_store(node)
             when :save_write then lower_save_write(node)
             when :save_erase then lower_save_erase(node)
+            when :save_load_list, :save_store_list then lower_save_list_move(node)
             else lower_declaration_or_refuse(node)
             end
           end

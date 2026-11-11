@@ -24,7 +24,7 @@ module VBlank
         # memory is uninitialized garbage) apart from one that already holds real saved data.
         class Save
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
-          STATEMENT_KINDS = %i[save_init save_store save_write save_erase].freeze
+          STATEMENT_KINDS = %i[save_init save_store save_write save_erase save_load_list save_store_list].freeze
 
           def emit_statement(node)
             case node.kind
@@ -32,6 +32,10 @@ module VBlank
             when :save_store then emit_save_store(node)
             when :save_write then emit_save_write(node)
             when :save_erase then emit_save_erase(node)
+            # A whole list moved to or from save memory, written as the loops it stands for: each
+            # chip here has its own way to a byte (a plain address, a command, a stream of bits),
+            # and the loops already go through it.
+            when :save_load_list, :save_store_list then IR::SaveListMoves.loops_for(node).each { |loop| @lowering.statement(loop) }
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end

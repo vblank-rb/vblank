@@ -24,7 +24,8 @@ module VBlank
                                              case: ->(n) { [n.var] }, scroll_rows: ->(n) { [n.row] },
                                              shade_outside: ->(n) { [n.row] },
                                              copy_owed_tiles: ->(n) { n.masks },
-                                             save_init: ->(n) { n.vars.map(&:name) }, save_store: ->(n) { [n.var] }
+                                             save_init: ->(n) { n.vars.map(&:name) }, save_store: ->(n) { [n.var] },
+                                             save_load_list: ->(n) { [n.index] }, save_store_list: ->(n) { [n.index] }
                                            })
 
       module_function

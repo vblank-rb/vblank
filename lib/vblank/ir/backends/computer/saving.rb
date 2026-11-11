@@ -73,6 +73,11 @@ module VBlank
             [eval_call("rg_save_erase", value(node.at), Statements::Int.new(node.wait == false ? 0 : 1))]
           end
 
+          # A whole list moved to or from save memory (Reference#exec_save_load_list,
+          # #exec_save_store_list), written as the loops it stands for: a computer moves an item
+          # in a few instructions either way, so a routine of its own would save nothing.
+          def lower_save_list_move(node) = SaveListMoves.loops_for(node).flat_map { |loop| lower(loop) }
+
           def value_of_save_read(node) = call("rg_save_read", value(node.at), save_width(node))
           def value_of_save_sum(node) = call("rg_save_sum", value(node.at), value(node.length))
 

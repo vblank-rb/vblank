@@ -10,7 +10,7 @@ module VBlank
           # battery-backed RAM holds the bytes the interpreter's save memory holds. Mixed into
           # Lowering.
           module Saving
-            STATEMENT_KINDS = %i[save_init save_store save_write save_erase].freeze
+            STATEMENT_KINDS = %i[save_init save_store save_write save_erase save_load_list save_store_list].freeze
 
             def emit_saving_statement(node)
               case node.kind
@@ -18,6 +18,7 @@ module VBlank
               when :save_store then emit_save_store(node)
               when :save_write then emit_save_write(node)
               when :save_erase then emit_save_erase(node)
+              when :save_load_list, :save_store_list then emit_save_list_move(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -87,6 +88,23 @@ module VBlank
             # Reference#exec_save_write: the place worked out first and the value after it, as the
             # interpreter does.
             def emit_save_write(node) = runtime_call("rt_save_write", [node.at, node.value, save_width(node)])
+
+            # A whole list moved to or from save memory (Reference#exec_save_load_list,
+            # #exec_save_store_list) as a block, by a routine of the runtime's (Runtime::Saving
+            # #emit_list_moves), handed a count it can copy without looking (SaveListMoves#load_count).
+            # The step's counter is left at nought, as every backend leaves it.
+            def emit_save_list_move(node)
+              if node.kind == :save_load_list
+                capacity = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }[1]
+                refusal = SaveListMoves.past_capacity_message(node, capacity)
+                raise LoweringError, refusal if refusal
+
+                list_call("rt_save_load_list", node, node.at, SaveListMoves.load_count(node))
+              else
+                list_call("rt_save_store_list", node, node.at)
+              end
+              emit_statement(Build.set(node.index, 0))
+            end
 
             # Reference#exec_save_erase: battery-backed RAM needs no wiping, but the place is worked
             # out all the same, as the interpreter works it out.

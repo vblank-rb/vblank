@@ -124,6 +124,126 @@ module VBlank
               asm.rtl
             end
 
+            # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK RAM AS A BLOCK (IR save_load_list,
+            # save_store_list; Reference#exec_save_load_list, #exec_save_store_list). A record that
+            # keeps a list used to read and write it an item at a time, each a call that checked the
+            # place again and found the item's slot again. A slot keeps its bytes lowest first, as
+            # save memory does, so the items are the same bytes in both places and the move is a
+            # copy: the place checked once, and a byte read through one pointer and written through
+            # the other.
+            #
+            # rt_save_load_list(list, at, count): the list made to hold +count+ items, which the
+            # lowering has held to nought and what the list can hold, read from +at+ on. It holds
+            # them from its first slot, so the bytes go in one run.
+            #
+            # rt_save_store_list(list, at): every item written from +at+ on, oldest first. The list
+            # is a ring, so its oldest item can be in any slot: the copy starts there and comes
+            # round to the first slot where the slots end. The bytes are written in rising order, as
+            # the writes one at a time were, so a power cut leaves what it left then.
+            #
+            # +lists+ is Lists' own scratch: the list's pointer, how far into the list the copy is
+            # (slot), how far into save memory (count) and where the slots end (table).
+            def emit_list_moves(asm, s, lists)
+              list = lists.list
+
+              asm.label("rt_save_load_list")
+              asm.jsr(asm.abs("rt_list_pointer"))
+              asm.lda(0)
+              asm.ldy(Lists::FRONT)
+              asm.sta(asm.ind_long_y(list))
+              asm.lda(asm.direct(R2))
+              asm.ldy(Lists::LENGTH)
+              asm.sta(asm.ind_long_y(list))
+              emit_count_in_bytes(asm, list, R2, "rt_save_load_list")
+              emit_place_into_r0(asm)
+              asm.lda(Frame::SAVE_READ_OUTSIDE)
+              asm.ldx(R2)
+              asm.jsr(asm.abs("rt_save_point_or_stop"))
+              asm.sty(asm.direct(lists.count))
+              asm.lda(Lists::HEADER)
+              asm.sta(asm.direct(lists.slot))
+              asm.lda(asm.direct(R2))
+              asm.beq("rt_save_load_list_done")
+              asm.label("rt_save_load_list_byte")
+              asm.ldy(asm.direct(lists.count))
+              asm.sep(0x20)
+              asm.lda(asm.ind_long_y(s.pointer))
+              asm.ldy(asm.direct(lists.slot))
+              asm.sta(asm.ind_long_y(list))
+              asm.rep(0x20)
+              asm.inc(asm.direct(lists.count))
+              asm.inc(asm.direct(lists.slot))
+              asm.dec(asm.direct(R2))
+              asm.bne("rt_save_load_list_byte")
+              asm.label("rt_save_load_list_done")
+              asm.rtl
+
+              asm.label("rt_save_store_list")
+              asm.jsr(asm.abs("rt_list_pointer"))
+              asm.ldy(Lists::LENGTH)
+              asm.lda(asm.ind_long_y(list))
+              asm.sta(asm.direct(R2))
+              asm.stz(asm.direct(R2 + 2))
+              emit_count_in_bytes(asm, list, R2, "rt_save_store_list")
+              # Where the slots end, and then where the oldest item is (both leave it in the slot).
+              asm.ldy(Lists::CAPACITY)
+              asm.lda(asm.ind_long_y(list))
+              asm.jsr(asm.abs("rt_list_slot_at"))
+              asm.lda(asm.direct(lists.slot))
+              asm.sta(asm.direct(lists.table))
+              asm.lda(0)
+              asm.jsr(asm.abs("rt_list_slot_of_a"))
+              emit_place_into_r0(asm)
+              asm.lda(Frame::SAVE_WRITE_OUTSIDE)
+              asm.ldx(R2)
+              asm.jsr(asm.abs("rt_save_point_or_stop"))
+              asm.sty(asm.direct(lists.count))
+              asm.lda(asm.direct(R2))
+              asm.beq("rt_save_store_list_done")
+              asm.label("rt_save_store_list_byte")
+              asm.ldy(asm.direct(lists.slot))
+              asm.sep(0x20)
+              asm.lda(asm.ind_long_y(list))
+              asm.ldy(asm.direct(lists.count))
+              asm.sta(asm.ind_long_y(s.pointer))
+              asm.rep(0x20)
+              asm.inc(asm.direct(lists.count))
+              asm.inc(asm.direct(lists.slot))
+              asm.lda(asm.direct(lists.slot))
+              asm.cmp(asm.direct(lists.table))
+              asm.bne("rt_save_store_list_in_ring")
+              asm.lda(Lists::HEADER) # past the last slot: round to the first
+              asm.sta(asm.direct(lists.slot))
+              asm.label("rt_save_store_list_in_ring")
+              asm.dec(asm.direct(R2))
+              asm.bne("rt_save_store_list_byte")
+              asm.label("rt_save_store_list_done")
+              asm.rtl
+            end
+
+            # The count in working number +count+ made a count of bytes: doubled once for a list of
+            # halves and twice for one of words. +named+ keeps the labels apart.
+            def emit_count_in_bytes(asm, list, count, named)
+              asm.ldy(Lists::WIDTH)
+              asm.lda(asm.ind_long_y(list))
+              asm.cmp(2)
+              asm.bcc("#{named}_in_bytes")
+              asm.asl(asm.direct(count))
+              asm.cmp(4)
+              asm.bcc("#{named}_in_bytes")
+              asm.asl(asm.direct(count))
+              asm.label("#{named}_in_bytes")
+            end
+
+            # The place in save memory, the routine's second number, into R0, where
+            # rt_save_point_or_stop looks for it; the list's own place is in its pointer by now.
+            def emit_place_into_r0(asm)
+              asm.lda(asm.direct(R1))
+              asm.sta(asm.direct(R0))
+              asm.lda(asm.direct(R1 + 2))
+              asm.sta(asm.direct(R0 + 2))
+            end
+
             # rt_save_point_or_stop (JSR): +at+ in R0 and a count of bytes in the working number X
             # names, both 32 bits; A the fault to stop with when they do not fit. They fit, as
             # SaveImage has it, when +at+ is nought or more and +at+ + count is no more than the 32K.

@@ -523,9 +523,7 @@ module VBlank
         return record(Build.save_write(item.value_at(body), sd_var(item.name))) if item.kind == :var
 
         record(Build.save_write(item.value_at(body), Build.list_len(item.name)))
-        repeat(DSL::Value.new(handle, Build.list_len(item.name))) do |i|
-          record(Build.save_write(item.slot_at(body, i.node), Build.list_get(item.name, i.node), width: item.width))
-        end
+        record(Build.save_store_list(item.name, at: item.slot_at(body, sd_int(0)), width: item.width, index: declare_loop_counter))
       end
 
       # LOAD A COPY INTO THE GAME'S STATE, when it is good; otherwise nothing changes, so a
@@ -545,11 +543,8 @@ module VBlank
       def emit_read_kept_item(item, body)
         return record(Build.set(item.name, sd_read(item.value_at(body)))) if item.kind == :var
 
-        repeat(DSL::Value.new(handle, Build.list_len(item.name))) { |_| record(Build.list_drop(item.name, from: :back)) }
-        count = Build.clamped(sd_read(item.value_at(body)), sd_int(0), sd_int(item.count))
-        repeat(DSL::Value.new(handle, count)) do |i|
-          record(Build.list_push(item.name, sd_read(item.slot_at(body, i.node), item.width)))
-        end
+        record(Build.save_load_list(item.name, at: item.slot_at(body, sd_int(0)), count: sd_read(item.value_at(body)),
+                                               most: item.count, width: item.width, index: declare_loop_counter))
       end
 
       public

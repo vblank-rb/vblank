@@ -445,6 +445,10 @@ module ConformanceFixture
       B.list_new(:tally, 4, width: :byte),
       B.list_push(:tally, 300),           # too big — keeps the low bits (44)
       B.set(:acc, B.list_get(:tally, 0)),
+      # a whole list written to save memory in one step, and another made from what was written
+      B.save_store_list(:narrow, at: B.int(0x1010), width: :byte, index: :acc),
+      B.save_load_list(:tally, at: B.int(0x1010), count: B.int(2), most: 4, width: :byte, index: :acc),
+      B.set(:acc, B.list_get(:tally, 1)),
       B.list_new(:owed, 4, width: :half),
       B.list_push(:owed, -300),           # below nothing, and wide enough to hold it
       B.set(:acc, B.list_get(:owed, 0)),
