@@ -13,7 +13,8 @@ require "made_up_original_layouts"
 # colours of the bank its word names.
 #
 # The made-up original and its games, shared with the Genesis's own tests of one sprite facing
-# frames of different banks (test/console/genesis/vblank/builder/test_pack_pose_bank_colors_on_the_genesis.rb).
+# frames of different banks (test/console/genesis/vblank/builder/test_pack_pose_bank_colors_on_the_genesis.rb)
+# and with the registry of games that read a data pack (PackGames::PosesInBankColors, test/pack_games.rb).
 module PackPoseBankColorGames
   include SharedConstants
 
@@ -75,7 +76,10 @@ module PackPoseBankColorGames
 
   # A tiled game with the made-up original's pack, and whatever the block, handed the pack,
   # declares, then a loop that only waits.
-  private def game_of(folder, options: VBlank::Cartridge::Options.new, &declares)
+  private def game_of(...) = game_and_file_of(...).first
+
+  # The same game, and the pack file its build made (nil for a build that leaves its pack out).
+  private def game_and_file_of(folder, options: VBlank::Cartridge::Options.new, &declares)
     from = original(folder)
     b = Builder.new(options: options)
     b.instance_eval do
@@ -90,7 +94,7 @@ module PackPoseBankColorGames
       game_loop { wait_vblank }
     end
     b.finalize_program
-    b.program
+    [b.program, b.made_data_pack_file]
   end
 
   # The poses :first (the frame of bank 1) and :second (the frame of bank 2), declared in +game+.
@@ -99,6 +103,12 @@ module PackPoseBankColorGames
     game.image :first, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN, colors: colors
     game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors
   end
+
+  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+end
+
+class TestPackPoseBankColors < Minitest::Test
+  include PackPoseBankColorGames
 
   # A game showing :first as a sprite at (40, 40) and :second as one at (80, 40), and whatever the
   # block, handed the two sprites, says.

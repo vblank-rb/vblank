@@ -3,13 +3,13 @@
 require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_pack_poses"
-require "all/vblank/builder/test_pack_poses_of_words"
 require "pack_at_start_tests"
 
-# A POSE FROM THE PACK, ITS PACK LEFT OUT: the games of PackPoseGames
-# (test/all/vblank/builder/test_pack_poses.rb) built with `pack_at_start: true` and handed the pack
-# file the all-in-one build made show what the all-in-one build shows. The answer key is the
-# all-in-one build on the interpreter.
+# A POSE FROM THE PACK, ITS PACK LEFT OUT: what the games of PackPoseGames
+# (test/all/vblank/builder/test_pack_poses.rb) built with `pack_at_start: true` refuse, what a
+# player's file that asks for more than the build holds draws, and what the build holds when
+# written out. That each plays as its all-in-one build is the registry's (PackGames::Poses and
+# PackGames::PosesOfWords, test/pack_games.rb).
 #
 # Only a build for a computer leaves its pack out, so these are played by the interpreter and the
 # game as C, JavaScript and Ruby, and are not in test/all/ (PackAtStartTests says more).
@@ -18,65 +18,6 @@ module PackPoseAtStartTests
   include WrittenOutSearch
 
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-
-  # The game built both ways, as +shape+ says, shows one picture after each of +frames+.
-  private def assert_pose_plays_alike(what, frames: [1, 3], size: REACH, **shape, &more)
-    Dir.mktmpdir do |folder|
-      from = original(folder)
-      whole, file = pose_game_and_file(from, size: size, **shape, &more)
-      left_out, = pose_game_and_file(from, size: size, options: LEFT_OUT, **shape, &more)
-
-      frames.each do |count|
-        shown = game_player.run(whole, frames: count).screen.to_a
-        assert_operator shown.flatten.uniq.length, :>, 2, "#{what}: the all-in-one build draws the pose"
-        assert_equal shown, game_player.hand_file(file).run(left_out, frames: count).screen.to_a,
-                     "#{what}: after #{count} frames the game handed its pack shows what the all-in-one build shows"
-      end
-    end
-  end
-
-  def test_a_pose_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("the frame")
-  end
-
-  def test_a_pose_of_a_larger_size_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("a larger size", size: [32, 40])
-  end
-
-  def test_a_frame_of_a_given_count_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("a count the game gives", frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length)
-  end
-
-  def test_a_pose_drawn_with_another_list_read_at_start_shows_as_the_all_in_one_build
-    other = MadeUpOriginalLayouts::PALETTE.last(4)
-
-    assert_pose_plays_alike("drawn with another list") do |hero|
-      colors :other, [:transparent, *other.drop(1)]
-      hero.draw_with :other
-    end
-  end
-
-  # Turned, the pose turns about the size the game gives, in both builds.
-  def test_a_pose_turned_round_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("turned round", size: [32, 24], turned: :mirror)
-  end
-
-  def test_a_pose_turned_upside_down_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("turned upside down", size: [16, 40], turned: :upside_down)
-  end
-
-  # A bank of a slot of colours for the pose's `colors:`, read from the file with its pieces.
-  def test_a_pose_in_colors_from_the_pack_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_plays_alike("colours from the pack", pose_colors: ->(pack) { pack[:palette].bank(1, size: 4) })
-  end
-
-  def test_a_pose_with_no_size_is_refused_with_the_pack_left_out
-    Dir.mktmpdir do |folder|
-      error = assert_raises(ArgumentError) { pose_game(original(folder), options: LEFT_OUT) }
-
-      assert_includes error.message, "size:"
-    end
-  end
 
   # The slot's size is the game's own word, so a frame that starts past it is refused as the game
   # is built, whichever way it is built.
@@ -128,39 +69,5 @@ module PackPoseAtStartTests
 
       assert_empty ways_holding(number_runs_in(yield(left_out)), raw), "the pose built with its pack left out holds a tile's bytes"
     end
-  end
-end
-
-# A POSE WHOSE FRAME IS THE CONSOLE'S OWN SPRITE ENTRIES, ITS PACK LEFT OUT: the games of
-# PackPoseOfWordsGames (test/all/vblank/builder/test_pack_poses_of_words.rb), whose frame has parts
-# of two bytes and pieces of several tiles each way, built both ways as PackPoseAtStartTests'.
-module PackPoseOfWordsAtStartTests
-  include PackPoseOfWordsGames
-
-  LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-
-  private def assert_pose_of_words_plays_alike(what, layout: FRAME, high_byte_first: true)
-    Dir.mktmpdir do |folder|
-      from = original(folder, high_byte_first: high_byte_first)
-      whole, file = pose_from_pack_and_file(from, layout: layout, size: REACH)
-      left_out, = pose_from_pack_and_file(from, layout: layout, size: REACH, options: LEFT_OUT)
-      shown = game_player.run(whole, frames: 3).screen.to_a
-
-      assert_operator shown.flatten.uniq.length, :>, 2, "#{what}: the all-in-one build draws the pose"
-      assert_equal shown, game_player.hand_file(file).run(left_out, frames: 3).screen.to_a,
-                   "#{what}: the game handed its pack shows what the all-in-one build shows"
-    end
-  end
-
-  def test_a_frame_of_words_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_of_words_plays_alike("pieces of mixed sizes")
-  end
-
-  def test_a_layout_of_tiles_across_rows_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_of_words_plays_alike("tiles across rows", layout: FRAME.with(tile_order: :across_rows))
-  end
-
-  def test_a_layout_of_low_bytes_first_read_at_start_shows_as_the_all_in_one_build
-    assert_pose_of_words_plays_alike("low bytes first", layout: FRAME.with(high_byte_first: false), high_byte_first: false)
   end
 end

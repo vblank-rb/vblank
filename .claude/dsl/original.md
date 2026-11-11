@@ -360,7 +360,15 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   game: pieces are read while they end inside the slot, a piece outside the picture is not painted, and a tile past the
   slot paints nothing. The build sees a whole box, as for a picture. Worked example: `test/pack_pose_at_start_tests.rb`.
 
-  Any other verb that reads a slot's bytes is refused at the line.
+  Any other verb that reads a slot's bytes is refused at the line. So is a verb that works out its data from a
+  picture's pixels as the game is built, where the picture's places are in the pack: `sprite_tiles ... copy_from
+  :picture` is refused there, since the build holds none of the picture's tiles; copy from a `table` of the
+  tiles' bytes, or build all-in-one.
+
+  **One test holds every one of these to its all-in-one build.** Each verb above has a small game in
+  `test/pack_games.rb`, built both ways on the interpreter and the C, JavaScript and Ruby builds and held to the
+  same picture and sound on every pass, or to its refusal (`test/pack_parity_tests.rb`; `.claude/testing/lowerings.md`,
+  "A game that reads a data pack"). A game's own suite does the same with `VBlank::Testing::PackParity`.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an
   `Original::Release`, with its name and size), built with no copy; it is handed the copy as its start file, and `slot_bytes_in(run)`
   after its halt is the pack, which `Original::Pack.holding(..., sha1:, build_version:)` writes.

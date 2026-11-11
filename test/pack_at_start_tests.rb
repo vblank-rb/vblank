@@ -44,8 +44,8 @@ module WrittenOutSearch
 end
 
 # AN ORIGINAL FROM ANOTHER CONSOLE, ITS PACK LEFT OUT (MadeUpOriginalLayouts, made_up_original_layouts.rb):
-# each console's layout read by the runtime from the pack it is handed as it starts, played as the
-# all-in-one build plays, and written out with none of the made-up original's bytes in it.
+# each console's layout written out with none of the made-up original's bytes in it. That each is
+# played as its all-in-one build plays is the registry's (PackGames::Layouts, test/pack_games.rb).
 module PackAtStartLayoutTests
   include MadeUpOriginalLayouts
   include WrittenOutSearch
@@ -57,20 +57,6 @@ module PackAtStartLayoutTests
     left_out, = layout_game(through_layout_pack(layout_original_nowhere(folder, layout), layout),
                             options: PackAtStartPictures::PACK_AT_START)
     [whole, file, left_out]
-  end
-
-  def test_each_consoles_layout_read_as_the_game_starts_plays_as_its_all_in_one_build
-    LAYOUTS.each do |layout|
-      Dir.mktmpdir do |folder|
-        whole, file, left_out = layout_games(folder, layout)
-
-        [1, 4, 9].each do |frames|
-          assert_equal game_player.run(whole, frames: frames).screen.to_a,
-                       game_player.hand_file(file).run(left_out, frames: frames).screen.to_a,
-                       "#{layout.title} layout: after #{frames} frames the game handed its pack shows what the all-in-one build shows"
-        end
-      end
-    end
   end
 
   # A tile of +layout+'s, its +places+, as a background keeps its pixels: each place's colour, and
@@ -108,8 +94,8 @@ module PackAtStartLayoutTests
   end
 end
 
-# THE HELPERS FOR GAMES THAT DRAW PICTURES FROM THE PACK, kept once for PackAtStartTests and for
-# PackAtStartPlaceTests.
+# THE GAMES OF THE MADE-UP ORIGINAL THAT DRAW FROM THE PACK, kept once for PackAtStartTests and for
+# the registry of games held to their all-in-one builds (PackGames::Pictures, test/pack_games.rb).
 module PackAtStartPictures
   include MadeUpOriginal
 
@@ -117,9 +103,9 @@ module PackAtStartPictures
   PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
   # PICTURES DRAWN FROM THE PACK. The made-up original's sprite picture is four tiles of places
-  # (SPRITE_PLACES), and each game below draws it, or a tile of it, one way each: as a sprite, a blit, a
-  # place's face, in other colours, turned, or with only one of its two lists in the pack. Each is built
-  # all-in-one and with the pack left out, handed a pack of these two slots.
+  # (SPRITE_PLACES), and each game of #picture_game draws it, or a tile of it, one way each: as a
+  # sprite, a blit, a place's face, in other colours, turned, or with only one of its two lists in
+  # the pack. Each is built all-in-one and with the pack left out, handed a pack of these two slots.
   PICTURE_SLOTS = [VBlank::Original::Slot.colors(:palette, at: PALETTE_AT, count: 16),
                    VBlank::Original::Slot.tiles(:sprites, at: SPRITES_AT, count: 4)].freeze
   Ractor.make_shareable(PICTURE_SLOTS)
@@ -149,63 +135,6 @@ module PackAtStartPictures
     b.program
   end
 
-  # The game drawn both ways plays alike: the all-in-one build on the interpreter, and the build with
-  # its pack left out handed the pack file, on this run's player.
-  private def assert_pictures_play_alike(what, tear_free: false, screen_kind: :bitmap, &draws)
-    Dir.mktmpdir do |folder|
-      whole = picture_game(folder, tear_free: tear_free, screen_kind: screen_kind, &draws)
-      left_out = picture_game(folder, options: PACK_AT_START, tear_free: tear_free, screen_kind: screen_kind, &draws)
-
-      [1, 3].each do |frames|
-        shown = game_player.run(whole, frames: frames).screen.to_a
-        assert_operator shown.flatten.uniq.length, :>, 2, "#{what}: the all-in-one build draws the picture"
-        assert_equal shown, game_player.hand_file(picture_pack_file).run(left_out, frames: frames).screen.to_a,
-                     "#{what}: after #{frames} frames the game handed its pack shows what the all-in-one build shows"
-      end
-    end
-  end
-end
-
-# A PLACE'S FACE DRAWN FROM THE PACK. Only a console that draws places plays it (the Advance), so it
-# sits in test/console/gba/ and not with PackAtStartTests.
-module PackAtStartPlaceTests
-  include PackAtStartPictures
-
-  def test_a_face_of_a_place_drawn_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a face", tear_free: true) do |pack|
-      image :mark, **MARK, colors: pack[:palette], places: pack[:sprites].tile(0)
-      place :room do
-        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 2.0), point(1.0, -1.0, 2.0), point(-1.0, -1.0, 2.0),
-             picture: :mark, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
-      end
-      eye = viewer :eye, at: [0.0, 0.0, 0.0]
-      game_loop do
-        wait_vblank
-        draw_place :room, seen_by: eye
-      end
-    end
-  end
-end
-
-# A GAME BUILT WITH ITS DATA PACK LEFT OUT, handed the pack file as it starts. The made-up original
-# and its game are made_up_original.rb's (MadeUpOriginal): built all-in-one there, the pack is made
-# from the copy as the game is built and the game holds what it read. Built here with
-# `pack_at_start: true`, the build reads no copy at all, the program holds none of the original's
-# bytes, and the pack is a file handed to the program as it starts (hand_file).
-#
-# The answer key is the same game built all-in-one, played on the interpreter, and the interpreter
-# reading the same pack file (Reference#hand_file).
-#
-# Only a build for a computer can leave the pack out: a cartridge holds its own data, and nothing
-# hands a cartridge a file. So these tests are not in test/all/, which every cartridge run plays,
-# and not in test/console/ (but for a place's face, which only the Advance draws). They are played through game_player by each run whose player reads a
-# file as it starts: the interpreter (test/interpreter/vblank/builder/test_pack_at_start_interpreter.rb)
-# and the game as C, as JavaScript and as Ruby, checked against it on every frame
-# (test/lowering/{native,js,ruby}/vblank/ir/backends/*/test_*_pack_at_start.rb). That a cartridge
-# build refuses is test_data_packs.rb's.
-module PackAtStartTests
-  include PackAtStartPictures
-
   # The pack file a player's machine makes from the made-up copy: each slot cut from it, as the
   # all-in-one build cuts them.
   # +build_version+ is the build it names.
@@ -217,14 +146,134 @@ module PackAtStartTests
                                                                                          build_version: build_version).to_bytes
   end
 
-  # The made-up original's one release, as the unpacking of a build with no copy is handed it.
-  private def made_up_release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY_SIZE })
-
   # The made-up original on a machine where no copy of it is set.
   private def original_nowhere(folder)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: {}, settings_file: File.join(folder, "made_up.yml"),
                                releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
   end
+
+  # The game built with its pack left out, and the same game built all-in-one.
+  private def pack_at_start_game(folder) = game_program(through_pack(folder), options: PACK_AT_START)
+  private def all_in_one_game(folder) = game_program(through_pack(folder))
+
+  # A PICTURE OF UP TO 256 COLOURS FROM A SLOT OF PIXELS, one byte a pixel: the made-up copy's
+  # sprite bytes read as 256 places of a 16x16 picture, in a list of 256 colours the game gives, the
+  # copy's first sprite byte named see-through. Drawn plain, turned, and as stretched columns.
+  PIXELS_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:art, at: SPRITES_AT, count: 256)])
+  PIXELS_COLORS = Ractor.make_shareable(Array.new(256) { |place| (place * 37) & 0x7FFF })
+
+  private def pixels_pack_file
+    VBlank::Original::Pack.holding(PIXELS_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
+  end
+
+  private def pixels_art_game(folder, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    see_through = COPY.getbyte(SPRITES_AT)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :art, at: SPRITES_AT, count: 256 }
+      image :art, width: 16, height: 16, colors: PIXELS_COLORS, places: pack[:art], see_through: see_through
+      game_loop do
+        clear_screen :blue
+        blit :art, 20, 20
+        blit mirror(:art), 60, 20
+        blit upside_down(:art), 100, 20
+        16.times { |slice| draw_column_at :art, slice: slice, x: 20 + (slice * 2), top: 60, height: 40, width: 2 }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A FONT OF THE PACK'S PIXELS with the pack left out: each letter a run of the sprite bytes, lit
+  # where a byte is not nought, written in one colour, in a pair picked by a test that changes every
+  # pass, placed in the middle, and as a number.
+  LETTERING_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:letters, at: SPRITES_AT, count: 120)])
+
+  private def lettering_pack_file
+    VBlank::Original::Pack.holding(LETTERING_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
+  end
+
+  private def lettering_game(folder, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
+      letters = pack[:letters]
+      font :lettering, glyphs: { "A" => letters.pixels(0, 30), "B" => letters.pixels(30, 24), "1" => letters.pixels(54, 36),
+                                 "2" => letters.pixels(90, 30) }, height: 6
+      pass = var :pass, 0
+      game_loop do
+        clear_screen :blue
+        draw_text "AB", 10, 10, :red, font: :lettering
+        draw_text "BA", 10, 30, %i[green white], showing: (pass % 2) == 1, font: :lettering
+        draw_text "ABBA", :center, 50, :yellow, font: :lettering
+        draw_number 21, 10, 70, :white, digits: 3, font: :lettering
+        pass.store!(pass + 1)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A NUMBER THAT CHANGES in a font of the pack's pixels whose digits differ in width, as an
+  # original's alphabet keeps them: each digit two or three pixels wide, overlapping in the slot,
+  # and a space four wide, which a number without leading noughts shows in a place not reached.
+  private def changing_number_game(folder, screen_kind, options: VBlank::Cartridge::Options.new)
+    from = original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen screen_kind
+      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
+      letters = pack[:letters]
+      digits = ("0".."9").to_h { |digit| [digit, letters.pixels(digit.to_i * 6, 6 * (2 + (digit.to_i % 2)))] }
+      font :digits, glyphs: digits.merge(" " => letters.pixels(60, 24)), height: 6
+      shown = var :shown, 1
+      numbers = lambda do
+        draw_number shown, 10, 10, :white, digits: 3, font: :digits
+        draw_number shown, 10, 30, :red, digits: 3, leading_zeros: true, font: :digits
+        draw_number 7, 10, 50, :white, digits: 3, font: :digits
+      end
+      # A tiled screen's number is declared once and follows its variable; a bitmap's is painted each pass.
+      instance_exec(&numbers) if screen_kind == :tiled
+      game_loop do
+        if screen_kind == :bitmap
+          clear_screen :blue
+          instance_exec(&numbers)
+        end
+        shown.store!(shown + 37)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+end
+
+# A GAME BUILT WITH ITS DATA PACK LEFT OUT, handed the pack file as it starts. The made-up original
+# and its game are made_up_original.rb's (MadeUpOriginal): built all-in-one there, the pack is made
+# from the copy as the game is built and the game holds what it read. Built here with
+# `pack_at_start: true`, the build reads no copy at all, the program holds none of the original's
+# bytes, and the pack is a file handed to the program as it starts (hand_file).
+#
+# That each game of the pack plays as its all-in-one build is the registry's (PackGames,
+# test/pack_games.rb, held by PackParityTests). These are what is particular to a pack handed
+# over: a machine with no copy, a pack that is missing or another build's, the unpacking and its
+# bar, and what the game holds when it is written out.
+#
+# Only a build for a computer can leave the pack out: a cartridge holds its own data, and nothing
+# hands a cartridge a file. So these tests are not in test/all/, which every cartridge run plays,
+# and not in test/console/. They are played through game_player by each run whose player reads a
+# file as it starts: the interpreter (test/interpreter/vblank/builder/test_pack_at_start_interpreter.rb)
+# and the game as C, as JavaScript and as Ruby, checked against it on every frame
+# (test/lowering/{native,js,ruby}/vblank/ir/backends/*/test_*_pack_at_start.rb). That a cartridge
+# build refuses is test_data_packs.rb's.
+module PackAtStartTests
+  include PackAtStartPictures
+
+  # The made-up original's one release, as the unpacking of a build with no copy is handed it.
+  private def made_up_release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY_SIZE })
 
   # A game as `vblank build` builds one, reading the made-up original's tiles and table through its
   # data pack, on a machine with no copy: only a build that leaves its pack out can make it.
@@ -242,10 +291,6 @@ module PackAtStartTests
       game_loop { wait_vblank }
     end
   end
-
-  # The game built with its pack left out, and the same game built all-in-one.
-  private def pack_at_start_game(folder) = game_program(through_pack(folder), options: PACK_AT_START)
-  private def all_in_one_game(folder) = game_program(through_pack(folder))
 
   include WrittenOutSearch
 
@@ -339,233 +384,6 @@ module PackAtStartTests
         end
       end
       assert_equal ways.sort, found.uniq.sort, "the all-in-one builds hold the original's bytes in every way an array is written"
-    end
-  end
-
-  def test_a_sprite_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a sprite") do |pack|
-      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
-      sprite :hero, at: [30, 20]
-      game_loop { wait_vblank }
-    end
-  end
-
-  def test_a_picture_blitted_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a blit") do |pack|
-      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
-      image :mark, **MARK, colors: pack[:palette], places: pack[:sprites].tile(0)
-      game_loop do
-        wait_vblank
-        blit :hero, 100, 60
-        blit :mark, 10, 10
-      end
-    end
-  end
-
-  def test_a_picture_from_the_pack_turned_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a turned picture") do |pack|
-      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
-      game_loop do
-        wait_vblank
-        blit mirror(:hero), 20, 20
-        blit upside_down(:hero), 60, 20
-        blit upside_down(mirror(:hero)), 100, 20
-      end
-    end
-  end
-
-  def test_a_picture_from_the_pack_drawn_in_other_colors_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a recoloured sprite", screen_kind: :tiled) do |pack|
-      image :hero, **HERO, colors: pack[:palette], places: pack[:sprites].tiles(0, across: 2, down: 2)
-      colors :warm, [:transparent, *Array.new(15) { |at| rgb(31 - at, at * 2, at / 2) }]
-      hero = sprite :hero, at: [30, 20]
-      hero.draw_with :warm
-      game_loop { wait_vblank }
-    end
-  end
-
-  def test_a_picture_taking_only_its_colors_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("colors from the pack") do |pack|
-      image :held, width: 8, height: 8, colors: pack[:palette], places: TILE_PLACES[1]
-      game_loop do
-        wait_vblank
-        blit :held, 30, 30
-        blit mirror(:held), 50, 30
-      end
-    end
-  end
-
-  def test_a_picture_taking_a_bank_of_colors_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("a bank of colors from the pack") do |pack|
-      image :banked, width: 8, height: 8, colors: pack[:palette].bank(0, size: 8), places: TILE_PLACES[1]
-      image :second_bank, width: 8, height: 8, colors: pack[:palette].bank(1, size: 8), places: TILE_PLACES[0]
-      game_loop do
-        wait_vblank
-        blit :banked, 30, 30
-        blit :second_bank, 60, 30
-      end
-    end
-  end
-
-  def test_a_picture_taking_only_its_places_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    assert_pictures_play_alike("places from the pack") do |pack|
-      own = [:transparent, :white, :red, :green, :blue, :yellow, :cyan, :magenta, :orange, :gray, rgb(5, 10, 15), rgb(30, 3, 9)]
-      image :held, width: 16, height: 16, colors: own, places: pack[:sprites].tiles(0, across: 2, down: 2)
-      sprite :held, at: [30, 20]
-      game_loop { wait_vblank }
-    end
-  end
-
-  # A PICTURE OF UP TO 256 COLOURS FROM A SLOT OF PIXELS, one byte a pixel: the made-up copy's
-  # sprite bytes read as 256 places of a 16x16 picture, in a list of 256 colours the game gives, the
-  # copy's first sprite byte named see-through. Drawn plain, turned, and as stretched columns.
-  PIXELS_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:art, at: SPRITES_AT, count: 256)])
-  PIXELS_COLORS = Ractor.make_shareable(Array.new(256) { |place| (place * 37) & 0x7FFF })
-
-  private def pixels_pack_file
-    VBlank::Original::Pack.holding(PIXELS_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
-  end
-
-  private def pixels_art_game(folder, options: VBlank::Cartridge::Options.new)
-    from = original(folder)
-    see_through = COPY.getbyte(SPRITES_AT)
-    b = VBlank::Builder.new(options: options)
-    b.instance_eval do
-      screen :bitmap
-      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :art, at: SPRITES_AT, count: 256 }
-      image :art, width: 16, height: 16, colors: PIXELS_COLORS, places: pack[:art], see_through: see_through
-      game_loop do
-        clear_screen :blue
-        blit :art, 20, 20
-        blit mirror(:art), 60, 20
-        blit upside_down(:art), 100, 20
-        16.times { |slice| draw_column_at :art, slice: slice, x: 20 + (slice * 2), top: 60, height: 40, width: 2 }
-      end
-    end
-    b.finalize_program
-    b.program
-  end
-
-  def test_a_picture_of_pixels_from_the_pack_is_drawn_as_the_all_in_one_build_draws_it
-    Dir.mktmpdir do |folder|
-      whole = pixels_art_game(folder)
-      left_out = pixels_art_game(folder, options: PACK_AT_START)
-
-      shown = game_player.run(whole, frames: 2).screen.to_a
-      assert_operator shown.flatten.uniq.length, :>, 10, "the all-in-one build draws the picture in many colours"
-      assert_equal shown, game_player.hand_file(pixels_pack_file).run(left_out, frames: 2).screen.to_a,
-                   "the game handed its pack shows what the all-in-one build shows"
-    end
-  end
-
-  # A FONT OF THE PACK'S PIXELS with the pack left out: each letter a run of the sprite bytes, lit
-  # where a byte is not nought, written in one colour, in a pair picked by a test that changes every
-  # pass, placed in the middle, and as a number.
-  LETTERING_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:letters, at: SPRITES_AT, count: 120)])
-
-  private def lettering_pack_file
-    VBlank::Original::Pack.holding(LETTERING_SLOTS.to_h { |slot| [slot.name, slot.cut_from(COPY)] }, sha1: SHA1, build_version: "1").to_bytes
-  end
-
-  private def lettering_game(folder, options: VBlank::Cartridge::Options.new)
-    from = original(folder)
-    b = VBlank::Builder.new(options: options)
-    b.instance_eval do
-      screen :bitmap
-      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
-      letters = pack[:letters]
-      font :lettering, glyphs: { "A" => letters.pixels(0, 30), "B" => letters.pixels(30, 24), "1" => letters.pixels(54, 36),
-                                 "2" => letters.pixels(90, 30) }, height: 6
-      pass = var :pass, 0
-      game_loop do
-        clear_screen :blue
-        draw_text "AB", 10, 10, :red, font: :lettering
-        draw_text "BA", 10, 30, %i[green white], showing: (pass % 2) == 1, font: :lettering
-        draw_text "ABBA", :center, 50, :yellow, font: :lettering
-        draw_number 21, 10, 70, :white, digits: 3, font: :lettering
-        pass.store!(pass + 1)
-      end
-    end
-    b.finalize_program
-    b.program
-  end
-
-  def test_a_font_of_the_packs_pixels_is_drawn_as_the_all_in_one_build_draws_it
-    Dir.mktmpdir do |folder|
-      whole = lettering_game(folder)
-      left_out = lettering_game(folder, options: PACK_AT_START)
-
-      [1, 2, 3].each do |frames|
-        shown = game_player.run(whole, frames: frames).screen.to_a
-        assert_operator shown.flatten.uniq.length, :>, 3, "the all-in-one build writes in several colours"
-        assert_equal shown, game_player.hand_file(lettering_pack_file).run(left_out, frames: frames).screen.to_a,
-                     "after #{frames} frames the game handed its pack shows what the all-in-one build shows"
-      end
-    end
-  end
-
-  # The frames the number is looked at after, each showing a different number.
-  NUMBER_FRAMES = [1, 2, 4].freeze
-
-  # A NUMBER THAT CHANGES in a font of the pack's pixels whose digits differ in width, as an
-  # original's alphabet keeps them: each digit two or three pixels wide, overlapping in the slot,
-  # and a space four wide, which a number without leading noughts shows in a place not reached.
-  private def changing_number_game(folder, screen_kind, options: VBlank::Cartridge::Options.new)
-    from = original(folder)
-    b = VBlank::Builder.new(options: options)
-    b.instance_eval do
-      screen screen_kind
-      pack = data_pack(from: from, version: "1") { |slots| slots.pixels :letters, at: SPRITES_AT, count: 120 }
-      letters = pack[:letters]
-      digits = ("0".."9").to_h { |digit| [digit, letters.pixels(digit.to_i * 6, 6 * (2 + (digit.to_i % 2)))] }
-      font :digits, glyphs: digits.merge(" " => letters.pixels(60, 24)), height: 6
-      shown = var :shown, 1
-      numbers = lambda do
-        draw_number shown, 10, 10, :white, digits: 3, font: :digits
-        draw_number shown, 10, 30, :red, digits: 3, leading_zeros: true, font: :digits
-        draw_number 7, 10, 50, :white, digits: 3, font: :digits
-      end
-      # A tiled screen's number is declared once and follows its variable; a bitmap's is painted each pass.
-      instance_exec(&numbers) if screen_kind == :tiled
-      game_loop do
-        if screen_kind == :bitmap
-          clear_screen :blue
-          instance_exec(&numbers)
-        end
-        shown.store!(shown + 37)
-      end
-    end
-    b.finalize_program
-    b.program
-  end
-
-  def test_a_changing_number_in_digits_of_differing_widths_is_drawn_as_the_all_in_one_build_draws_it
-    %i[bitmap tiled].each do |screen_kind|
-      Dir.mktmpdir do |folder|
-        whole = changing_number_game(folder, screen_kind)
-        left_out = changing_number_game(folder, screen_kind, options: PACK_AT_START)
-
-        screens = NUMBER_FRAMES.map do |frames|
-          shown = game_player.run(whole, frames: frames).screen.to_a
-          assert_equal shown, game_player.hand_file(lettering_pack_file).run(left_out, frames: frames).screen.to_a,
-                       "on a #{screen_kind} screen after #{frames} frames, the game handed its pack shows the all-in-one number"
-          shown
-        end
-        assert_equal 3, screens.uniq.length, "on a #{screen_kind} screen the number shows, and changes"
-      end
-    end
-  end
-
-  def test_a_game_handed_its_pack_as_it_starts_plays_as_its_all_in_one_build
-    Dir.mktmpdir do |folder|
-      left_out = pack_at_start_game(folder)
-      whole = all_in_one_game(folder)
-
-      [1, 4, 9].each do |frames|
-        assert_equal game_player.run(whole, frames: frames).screen.to_a,
-                     game_player.hand_file(made_up_pack_file).run(left_out, frames: frames).screen.to_a,
-                     "after #{frames} frames the game handed its pack shows what the all-in-one build shows"
-      end
     end
   end
 

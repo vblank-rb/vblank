@@ -84,6 +84,53 @@ module PackColorListGames
     [builder.program, builder.made_data_pack_file]
   end
 
+  # A GAME THAT WALKS A LIST FROM THE PACK UP FROM WHITE: a ship drawn in a list of the game's own
+  # and with a list that holds each step of the walk in turn, a pass a step. The steps are made
+  # from the list's colours, which a build that leaves its pack out learns as the game starts.
+  WALK_STEPS = 6
+
+  private def walking_game_and_file(from, options: VBlank::Cartridge::Options.new)
+    test = self
+    builder = Builder.new(options: options)
+    builder.instance_eval do
+      screen :tiled
+      pack = test.palette_pack_of(self, from)
+      colors :shown, [:transparent, :red, :green, :blue]
+      colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+      image :ship, width: 8, height: 8, colors: :shown, places: SHIP
+      ship = sprite :ship, at: SHIP_AT
+      ship.draw_with :shown
+      walk = color_walk(:bank_2, from: :white, steps: WALK_STEPS)
+      step = var :step, 0
+      game_loop do
+        recolor :shown, walk, showing: step
+        step.store!(step + 1)
+      end
+    end
+    builder.finalize_program
+    [builder.program, builder.made_data_pack_file]
+  end
+
+  # A picture drawn in a list from the pack and blitted, where no sprite or `recolor` is.
+  private def blitting_game_and_file(from, options: VBlank::Cartridge::Options.new)
+    test = self
+    builder = Builder.new(options: options)
+    builder.instance_eval do
+      screen :bitmap
+      pack = test.palette_pack_of(self, from)
+      colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+      image :ship, width: 8, height: 8, colors: :bank_1, places: SHIP
+      game_loop do
+        clear_screen :black
+        blit :ship, 20, 20
+        blit mirror(:ship), 40, 20
+        wait_vblank
+      end
+    end
+    builder.finalize_program
+    [builder.program, builder.made_data_pack_file]
+  end
+
   # Called back from a game block, where `self` is the builder.
   def palette_pack_of(builder, from, count: 16) = palette_pack(builder, from, count: count)
 end

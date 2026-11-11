@@ -110,6 +110,48 @@ The run ends with its skips counted by reason, and fails if any is not a missing
   hands back the C's picture in place of the console's. How the console is lined up against the
   interpreter is the GBA lowering's alone (`ir/backends/gba/test_console_line_up.rb`).
 
+## A game that reads a data pack: register it once
+
+A game reads its data pack two ways: all-in-one, and with the pack left out and handed over as a
+file as the game starts, which is what a shell build is. Each verb that takes a pack handle is
+taught the second way separately, so **every such verb has a small game in the registry,
+`test/pack_games.rb`**, and one test (`test/pack_parity_tests.rb`) builds each both ways on the
+interpreter and as C, JavaScript and Ruby, once for each console those runs play. It requires the
+same picture after every pass, the same sound log and the same mixed sound, and that the build
+with its pack left out, written out, holds none of the numbers the pack file puts into it.
+
+**To add a verb that takes a pack handle, or a new way an old one takes it:**
+
+1. Add a `game(:name, passes: N) { |folder, options| ... }` line to the kit of the made-up
+   original it reads (`PackGames::Pictures`, `Backgrounds`, `Sounds`, ...), or a kit of its own.
+   The block builds the game as `options` say and gives back `built(program, pack_file)`. Give
+   `presses: { 1 => [:a] }` for buttons. Start from a game that is there.
+2. If the verb is not made for a pack left out yet, mark the game `refused:
+   refused_by_builder("a phrase of its words")`. The refusal must be an `ArgumentError` or a
+   `VBlank::BuildError` whose words say to build all-in-one. A lowering's refusal is
+   `Refusal.new(phrase:, by: :computer_build)`, and the interpreter then plays the game and must
+   match. When the verb is made, the test fails saying to take the mark off.
+3. Run `rake test TEST=test/interpreter/vblank/builder/test_pack_parity_interpreter.rb`, then the
+   three `test_*_pack_parity.rb` files under `test/lowering/`.
+
+**A verb with no game fails the suite.** `test/interpreter/vblank/builder/test_pack_parity_coverage.rb`
+reads the builder's source for every line that asks `pack_left_out?` or tests for a handle
+(`DSL::PackSlot` and its kin), builds every registered game with Ruby counting branches, and fails
+naming each such line no game answered yes on. `ruby -Itest -Ilib
+test/support/pack_site_coverage_run.rb --report` prints which game reaches which line. It cannot
+see a verb that takes a pack picture, list or table by NAME (`sprite_tiles ... copy_from :picture`):
+a verb that works anything out from a picture's pixels, a list's colours or a table's numbers as the
+game is built needs its game registered by hand, since a build with its pack left out holds
+stand-ins there and would show them with no error.
+
+**A fault found and not mended yet** is marked `differs: "what differs"`: the test then requires
+the two builds to differ, and fails when they stop. It is never a skip.
+
+Keep beside the registry only a test of something particular: a refusal both builds make, a pixel
+held to the made-up data, what a player's file may hold that a build would refuse, the pack's own
+bytes. A game's own suite holds its two builds alike with `VBlank::Testing::PackParity`
+(`assert_pack_at_start_plays_alike`).
+
 ## Reading every frame is one run
 
 A helper that plays the game again for each frame it looks at costs the square of the frames,

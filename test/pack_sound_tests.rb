@@ -8,8 +8,11 @@ require "pack_at_start_tests"
 # `pcm: pack[:bang].samples(first, count)` a stretch of it. Built all-in-one, the recording holds
 # what the slot holds. With the pack left out, the program holds zeros of the recording's length and
 # the runtime fills them from the start file as the game starts, so the shell of a port plays
-# its sound. Like PackAtStartTests, this is played by each run that reads a file as it starts:
-# the interpreter and the game as C, JavaScript and Ruby, checked against it on every frame.
+# its sound. That each of these games sounds as its all-in-one build is the registry's
+# (PackGames::Sounds, test/pack_games.rb); here is what is particular: settings held to the same
+# numbers written by hand, what the program holds, and what a player's file may hold. Like
+# PackAtStartTests, this is played by each run that reads a file as it starts: the interpreter
+# and the game as C, JavaScript and Ruby, checked against it on every frame.
 module PackSoundTests
   include PackAtStartPictures
 
@@ -60,11 +63,6 @@ module PackSoundTests
     VBlank::Original::Pack.holding({ bang: slot.cut_from(COPY) }, sha1: SHA1, build_version: "1").to_bytes
   end
 
-  private def heard_playing(button, program, file: nil)
-    player = file ? game_player.hand_file(file) : game_player
-    player.hold(button).run(program, frames: 6)
-  end
-
   # A game whose instrument takes its samples from the pack and is played by a song (a long note on
   # a recording that reads back to its start, so it sounds well past its own length) or by a sound
   # effect; the block gets the song and the effects to play. +options+ are the build's.
@@ -90,21 +88,6 @@ module PackSoundTests
     end
     b.finalize_program
     b.program
-  end
-
-  def test_a_recording_from_the_pack_plays_in_a_song_and_in_a_sound_effect
-    Dir.mktmpdir do |folder|
-      whole = scored_sound_game(folder)
-      left_out = scored_sound_game(folder, options: PACK_AT_START)
-      return assert_console_refuses(left_out, sound_pack_file) unless console_plays_instruments?
-
-      %i[a b].each do |button|
-        heard = game_player.hold(button).run(whole, frames: 30).mixed_sound
-        assert heard.flatten.any? { |level| level != 0 }, "the all-in-one build sounds the recording on #{button}"
-        assert_equal heard, game_player.hand_file(sound_pack_file).hold(button).run(left_out, frames: 30).mixed_sound,
-                     "the game handed its pack sounds as the all-in-one build does on #{button}"
-      end
-    end
   end
 
   # Where an instrument's rate (a number of two bytes) and the sample it holds from (one byte) are
@@ -233,45 +216,6 @@ module PackSoundTests
     assert_raises(VBlank::IR::Guardrails::ValidationError) { player.run(program, frames: 1) }
   end
 
-  private def assert_settings_at_start_sound_alike(from_pack)
-    Dir.mktmpdir do |folder|
-      whole = settings_at_start_game(folder, from_pack: from_pack)
-      left_out = settings_at_start_game(folder, from_pack: from_pack, options: PACK_AT_START)
-      return assert_console_refuses(left_out, settings_pack_file) unless console_mixes_recordings?
-
-      %i[a b up down].each do |button|
-        once = ->(frame) { frame == 1 ? [button] : [] }
-        heard = game_player.input_each_frame(&once).run(whole, frames: 40).mixed_sound
-        assert heard.flatten.any? { |level| level != 0 }, "the all-in-one build sounds on #{button}"
-        assert_equal heard, game_player.hand_file(settings_pack_file).input_each_frame(&once).run(left_out, frames: 40).mixed_sound,
-                     "the game handed its pack sounds as the all-in-one build does on #{button}"
-      end
-    end
-  end
-
-  def test_an_instruments_hold_and_envelope_read_as_the_game_starts_sound_as_the_all_in_one_build_sounds
-    assert_settings_at_start_sound_alike(%i[holds_from envelope])
-  end
-
-  # Whether this run lays its sound out from the rates of the game's recordings: a build for a
-  # computer, playing as a console whose mix runs at the rate most recordings have. The
-  # interpreter reads the file before it lays anything out.
-  private def mix_rate_follows_recordings?
-    VBlank::Testing.checked? && VBlank::Console.described(game_console).recording_voice_hz.nil?
-  end
-
-  def test_an_instruments_rate_read_as_the_game_starts_sounds_as_the_all_in_one_build_sounds
-    unless mix_rate_follows_recordings? && console_mixes_recordings?
-      return assert_settings_at_start_sound_alike(%i[rate holds_from envelope])
-    end
-
-    Dir.mktmpdir do |folder|
-      left_out = settings_at_start_game(folder, from_pack: %i[rate], options: PACK_AT_START)
-      error = assert_raises(VBlank::BuildError) { game_player.hand_file(settings_pack_file).run(left_out, frames: 1) }
-      assert_match(/rate/, error.message)
-    end
-  end
-
   def test_a_game_reading_settings_as_it_starts_holds_none_of_them
     Dir.mktmpdir do |folder|
       program = settings_at_start_game(folder, from_pack: %i[rate holds_from envelope], options: PACK_AT_START)
@@ -298,22 +242,6 @@ module PackSoundTests
 
       heard = game_player.hand_file(file).input_each_frame { |frame| frame == 1 ? [:b] : [] }.run(left_out, frames: 20).mixed_sound
       assert heard.flatten.any? { |level| level != 0 }, "the recording sounds, going round its last sample"
-    end
-  end
-
-  def test_a_chip_envelope_from_the_pack_is_refused_by_name_with_the_pack_left_out
-    Dir.mktmpdir do |folder|
-      from = original_nowhere(folder)
-      error = assert_raises(ArgumentError) do
-        VBlank::Builder.new(options: PACK_AT_START).instance_eval do
-          pack = data_pack(from: from, version: "1") do |slots|
-            slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT
-            slots.numbers :shapes, at: ENVELOPE_AT, count: 3, width: :byte, signed: false
-          end
-          instrument :tone, pcm: pack[:bang], rate: SOUND_RATE, envelope: pack[:shapes].snes_envelope(0)
-        end
-      end
-      assert_match(/chip envelope/, error.message)
     end
   end
 
@@ -369,20 +297,6 @@ module PackSoundTests
     end
   end
 
-  def test_a_recording_from_the_pack_sounds_as_the_all_in_one_build_sounds
-    Dir.mktmpdir do |folder|
-      whole = sound_game(folder)
-      left_out = sound_game(folder, options: PACK_AT_START)
-
-      %i[a b].each do |button|
-        heard = heard_playing(button, whole).mixed_sound
-        assert heard.flatten.any? { |level| level != 0 }, "the all-in-one build sounds the recording on #{button}"
-        assert_equal heard, heard_playing(button, left_out, file: sound_pack_file).mixed_sound,
-                     "the game handed its pack sounds as the all-in-one build does on #{button}"
-      end
-    end
-  end
-
   # Two recordings of one length from two stretches of the slot. With the pack left out the build
   # holds the same zeros for both, and they are still two: each is filled from its own place.
   private def two_stretches_game(folder, options: VBlank::Cartridge::Options.new)
@@ -402,18 +316,6 @@ module PackSoundTests
     end
     b.finalize_program
     b.program
-  end
-
-  def test_two_recordings_of_one_length_from_the_pack_each_sound_their_own_samples
-    Dir.mktmpdir do |folder|
-      whole = two_stretches_game(folder)
-      left_out = two_stretches_game(folder, options: PACK_AT_START)
-      early, late = %i[a b].map { |button| heard_playing(button, whole).mixed_sound }
-
-      refute_equal early, late, "the two stretches hold different samples"
-      assert_equal early, heard_playing(:a, left_out, file: sound_pack_file).mixed_sound
-      assert_equal late, heard_playing(:b, left_out, file: sound_pack_file).mixed_sound
-    end
   end
 
   def test_the_game_without_its_pack_holds_none_of_the_recordings_bytes
