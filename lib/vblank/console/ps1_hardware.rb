@@ -31,14 +31,16 @@ module VBlank
       RAM = 0x8000_0000
       RAM_SIZE = 0x20_0000
       KERNEL_SIZE = 0x1_0000
-      EXE_AT = RAM + KERNEL_SIZE # Where a PS-X EXE's code is loaded, and the first byte a program owns
+      EXE_AT = RAM + KERNEL_SIZE # The first byte a program owns, where a PS-X EXE is loaded by convention
       RAM_END = RAM + RAM_SIZE
       # Where the stack starts, at the top of RAM less a few words: the MIPS habit keeps the 16 bytes over
       # the pointer for a routine's arguments. The PS-X EXE's header names it, and the runtime sets it.
       STACK_TOP = RAM_END - 0x10
-      # How far a program (its code and tables) may reach. VBlank's build keeps the RAM past it for the
-      # game's variables, lists and stack (Backends::PS1::Memory), so a PS-X EXE stops here.
-      PROGRAM_END = 0x8018_0000
+      # The stack's room, the top 32K of RAM, and how far a program and what the game keeps may reach
+      # below it. VBlank's build puts what the game keeps first and the program after it
+      # (Backends::PS1::Memory), so a PS-X EXE is loaded wherever that ends and stops here.
+      STACK_BYTES = 0x8000
+      PROGRAM_END = RAM_END - STACK_BYTES
       SCRATCHPAD = 0x1F80_0000
       SCRATCHPAD_SIZE = 0x400
       # Where the processor goes when an interrupt or another exception happens, with the status

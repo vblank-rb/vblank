@@ -7,15 +7,23 @@ module VBlank
         # WHERE EVERYTHING THE GAME KEEPS LIVES WHILE IT RUNS.
         #
         # A PlayStation has 2 megabytes of main RAM, and the program itself is loaded into it (a PS-X
-        # EXE, from 80010000h up). The rest is the game's: the runtime's own state, the game's
-        # variables and lists, and the stack. They are kept apart from the program in a region of
-        # their own at the top of RAM, so every place is known while the program is still being built:
+        # EXE). The rest is the game's: the runtime's own state, the game's variables and lists, and
+        # the stack. What the game keeps comes FIRST, from the first byte a program owns, and the
+        # program is loaded straight after it:
         #
-        #   80010000h-8017FFFFh  the program: code, tables (Linker)
-        #   80180000h-...        the runtime's own state, then the game's variables and lists, upward
+        #   80010000h-...        the runtime's own state, then the game's variables and lists, upward
+        #   ...-...              the program: code, tables (Linker), from the next 2K after those
         #   ...-801F7FFFh        free
         #   801F8000h-801FFFEFh  the stack, 32K, growing down from the top
         #   1F800000h-1F8003FFh  the scratchpad: the numbers read most (see below)
+        #
+        # WHY THAT WAY ROUND. Every place is given out while the program is still being written, and
+        # the code is written with the places in it, so a place cannot wait to learn how big the
+        # program came to. The program can: every address in it is a hole the Linker fills, and a PS-X
+        # EXE's header says where it is loaded. So the places count up from a fixed start, and the
+        # program goes where they end (#program_at). Neither has a size set aside: a small program
+        # leaves the rest of the 2 megabytes to lists, and a game of few numbers leaves it to code and
+        # tables. Whether the two fit together is known once both are (PS1#build).
         #
         # THE GAME'S CODE REACHES ITS VARIABLES WITH ONE REGISTER. gp (the "global pointer") holds the
         # address 32K into the region, and a load or a store names a place as a signed 16-bit distance
@@ -35,10 +43,10 @@ module VBlank
         # one register as it reaches the region with gp: fp holds 1F800000h from power-on (Boot), and
         # the scratchpad's 1K is a distance of 0 to 3FFh from it.
         class Memory
-          FIRST = Console::PS1Hardware::PROGRAM_END
+          FIRST = Console::PS1Hardware::EXE_AT
           STACK_TOP = Console::PS1Hardware::STACK_TOP
-          STACK_BYTES = 0x8000
-          LAST = Console::PS1Hardware::RAM_END - STACK_BYTES
+          STACK_BYTES = Console::PS1Hardware::STACK_BYTES
+          LAST = Console::PS1Hardware::PROGRAM_END
 
           # Where gp points: 32K into the region, so a signed 16-bit distance reaches its first 64K.
           BASE = FIRST + 0x8000
@@ -47,8 +55,9 @@ module VBlank
           SCRATCHPAD_FIRST = Console::PS1Hardware::SCRATCHPAD
           SCRATCHPAD_LAST = SCRATCHPAD_FIRST + Console::PS1Hardware::SCRATCHPAD_SIZE
 
-          # How many bytes the program itself may take from where it is loaded: up to the region.
-          PROGRAM_ROOM = Console::PS1Hardware::PROGRAM_END - Console::PS1Hardware::EXE_AT
+          # A PS-X EXE is a whole number of these blocks of 2K, so the program starts on one: then the
+          # room left for it is a whole number of them too.
+          PROGRAM_BLOCK = 0x800
 
           # Raised when the game keeps more than there is room for. It is the game's to fix, so it is a
           # refusal like the lowering's others, said to the author in the same way.
@@ -99,6 +108,13 @@ module VBlank
 
           # How many bytes of the region are in use, which the runtime clears at power-on.
           def used = @next - FIRST
+
+          # Where the program is loaded: the first block past what is in use. Asked once everything has
+          # its place, since a place given out afterwards would land in the program.
+          def program_at = (@next + PROGRAM_BLOCK - 1) & ~(PROGRAM_BLOCK - 1)
+
+          # How many bytes the program may take from there, up to the stack.
+          def program_room = LAST - program_at
 
           # The distance of +address+ from where fp points (the scratchpad's start), or nil when it is not
           # in the scratchpad.

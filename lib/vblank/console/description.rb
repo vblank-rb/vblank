@@ -491,10 +491,12 @@ module VBlank
                                   samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
                                   recordings_at_once: 16, mixes_recordings: true,
                                   recording_voice_hz: 44_100, lowest_square_hz: nil, voice_output_hz: 44_100,
-                                  # Lists and pools go in the region the build keeps the game's numbers in
-                                  # (Backends::PS1::Memory): 480K, less the runtime's own.
-                                  largest_memory_bytes: 480 * 1024,
-                                  work_memory_bytes: 480 * 1024, work_memory_kept_bytes: 4096,
+                                  # Lists and pools go in main RAM with the program after them
+                                  # (Backends::PS1::Memory): 2 megabytes less the BIOS's 64K and the
+                                  # stack's 32K, which the two share. The build says whether they fit
+                                  # together once it knows how big the program came to.
+                                  largest_memory_bytes: 1952 * 1024,
+                                  work_memory_bytes: 1952 * 1024, work_memory_kept_bytes: 4096,
                                   roomier_memory_bytes: 0, variables_go_far: false,
                                   # A pass's drawing is sent to the graphics chip as its wait ends.
                                   sprites_placed_before_wait: true,

@@ -76,12 +76,14 @@ module VBlank
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?)
-          linked = Linker.new(runtime + game, room: Memory::PROGRAM_ROOM).link
+          # Everything has its place by now, so the program goes where the places end (Memory#program_at).
+          linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, bytes: byte_counts(linked),
                              routines: game_routines(lowering, linked))
-          Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), built: built)
+          Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), load_at: memory.program_at,
+                                              built: built)
         end
 
         private

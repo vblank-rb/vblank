@@ -8,10 +8,12 @@ module VBlank
         #
         # A PlayStation program is loaded whole into main RAM before it starts, so there are no banks
         # and nothing to switch: the sections go one after the other from where the PS-X EXE is loaded
-        # (80010000h), in the order they came, each a whole number of words. A branch reaches 32K
-        # instructions either way, and a jump (J, JAL) any place in the same 256 megabytes, which is all
-        # of RAM, so what is placed where only matters to a branch.
+        # (+origin+: after what the game keeps, Memory#program_at), in the order they came, each a whole
+        # number of words. A branch reaches 32K instructions either way, and a jump (J, JAL) any place
+        # in the same 256 megabytes, which is all of RAM, so what is placed where only matters to a
+        # branch.
         class Linker
+          # Where a program with nothing kept before it is loaded.
           ORIGIN = Console::PS1Hardware::EXE_AT
 
           Linked = Data.define(:image, :places, :sections) do
@@ -28,11 +30,16 @@ module VBlank
 
           DOES_NOT_FIT = "This game does not fit in the PlayStation's memory."
 
-          # +room+ is how many bytes the program may take from ORIGIN: the rest of RAM is the stack's and
-          # the runtime's.
-          def initialize(sections, room: Console::PS1Hardware::RAM_END - ORIGIN)
+          # What the game keeps in RAM takes most of the room when it is more than this share of it.
+          KEPT_IS_MOST = 0.5
+
+          # +origin+ is where the program is loaded, and +room+ how many bytes it may take from there:
+          # the rest of RAM is the stack's, and below +origin+ what the game keeps, +kept+ bytes of it.
+          def initialize(sections, origin: ORIGIN, room: Console::PS1Hardware::PROGRAM_END - origin, kept: 0)
             @sections = sections
+            @origin = origin
             @room = room
+            @kept = kept
           end
 
           def link
@@ -46,19 +53,29 @@ module VBlank
           def place_sections
             total = @sections.sum(&:size)
             refuse_too_big!(total) if total > @room
-            address = ORIGIN
+            address = @origin
             @sections.map do |section|
               Placed.new(section: section, address: address).tap { address += section.size }
             end
           end
 
+          # The program and what the game keeps share the room, so the words give both, and by how
+          # much the two together pass it. The fix named is for whichever takes most.
           def refuse_too_big!(total)
             if @sections.none?(&:holds)
               raise Error, "the framework's own code needs #{total} bytes, more than the #{@room} the program has"
             end
 
-            raise TooBig, "#{DOES_NOT_FIT} A program has #{@room} bytes. Of what goes in it, " \
-                          "#{Sections.taken_words(@sections)}. To fix this, #{Sections.biggest(@sections).fix}."
+            shared = @room + @kept
+            fix = if @kept > shared * KEPT_IS_MOST
+                    "give the game's lists smaller capacities, or use fewer variables"
+                  else
+                    Sections.biggest(@sections).fix
+                  end
+            raise TooBig, "#{DOES_NOT_FIT} What the game keeps in memory (its variables and lists) takes #{@kept} bytes, " \
+                          "and its program takes #{total} bytes. The two share #{shared} bytes, so that is " \
+                          "#{total + @kept - shared} bytes too many. Of what goes in the program, " \
+                          "#{Sections.taken_words(@sections)}. To fix this, #{fix}."
           end
 
           def label_places(placed)
@@ -76,7 +93,7 @@ module VBlank
             placed.each do |one|
               bytes = one.section.bytes.dup
               one.section.fixups.each { |fixup| patch(bytes, fixup, one, places) }
-              image[one.address - ORIGIN, bytes.bytesize] = bytes
+              image[one.address - @origin, bytes.bytesize] = bytes
             end
             image
           end
