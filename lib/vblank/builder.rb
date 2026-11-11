@@ -50,6 +50,7 @@ require_relative "builder/debug"               # The probe-only verbs, defined b
 require_relative "builder/game_effects"        # uses: a game's own effect packs, for its build alone
 require_relative "builder/data_packs"          # data_pack: the original's data, read through the pack made from the copy
 require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
+require_relative "builder/pack_poses"          # image frame: pack[...]: a pose that is one of the original's frames
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -108,6 +109,7 @@ module VBlank
     include GameEffects # uses (a game's own effect packs, for its build alone)
     include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
     include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
+    include PackPoses  # image frame: pack[...] (a pose that is one of the original's own frames)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.

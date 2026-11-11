@@ -16,6 +16,7 @@ require_relative "original/facts_file"     # A facts file as text: values rewrit
 require_relative "original/facts"          # What the port measured from the original
 require_relative "original/decompilation"  # The decompilation, built and proven to be the copy
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
+require_relative "original/frame_layout"   # How the original keeps one frame of a sprite, piece by piece
 require_relative "original/pack"           # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds

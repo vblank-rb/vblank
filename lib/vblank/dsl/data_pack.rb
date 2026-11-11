@@ -150,6 +150,11 @@ module VBlank
       end
     end
 
+    # ONE FRAME OF A SPRITE IN A SLOT OF BYTES: the slot's handle (+slot+), the byte the frame
+    # starts at, how many pieces it has where its layout does not say (+count+), and how it is kept
+    # (+piece_layout+, an Original::FrameLayout). An image reads it (Builder::PackPoses).
+    PackFrame = Data.define(:slot, :at, :count, :piece_layout)
+
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
@@ -215,6 +220,19 @@ module VBlank
         end
 
         with(first_color: index * size, color_count: size)
+      end
+
+      # A handle on the frame of a sprite from byte +at+ (0 first) of a slot of bytes, kept as
+      # +layout+ (an Original::FrameLayout) says, for an image's `frame:`. +count+ is how many pieces
+      # it has, for a layout whose frames do not say.
+      def frame(at, layout:, count: nil)
+        # +layout+ here is the frame's; the slot's own is self.layout.
+        unless shape == :numbers && self.layout.width == :byte
+          raise ArgumentError, "Slot :#{self.layout.name} holds #{shape}. `frame` reads a frame from a slot of numbers one " \
+                               "byte wide. To fix this, call it on a slot like `slots.numbers :frames, width: :byte, ...`."
+        end
+
+        DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout)
       end
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.

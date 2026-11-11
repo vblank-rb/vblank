@@ -37,13 +37,11 @@ module VBlank
       def declare_pack_background(name, tiles:, map:, colors:, across:, cell:, **others)
         refuse_pack_background_left_out!(name)
         subject = "background :#{name}"
-        refuse_tiles_not_from_slot!(name, tiles)
-        refuse_slot_from_elsewhere!(tiles, "#{subject}'s tiles:")
+        tile_places = pack_tile_places(tiles, subject)
         refuse_map_not_of_halves!(name, map)
         refuse_colors_not_whole_slot!(name, colors)
         words = pack_map_word_format!(name)
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
-        tile_places = tiles.layout.decode(@data_pack_contents.bytes_of(tiles.layout.name)).drop(tiles.tile_index || 0)
         bank_lists = declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
         pictures = {}
         tiles_a_side = cell / Original::Slot::TILE_SIDE
@@ -85,16 +83,10 @@ module VBlank
       # draws nothing, left empty in the map.
       def pack_background_tile(name, tile, tile_places, bank_lists, number)
         side = Original::Slot::TILE_SIDE
-        places = tile_places.fetch(tile.tile) do
-          raise ArgumentError, "background :#{name} has a cell that draws tile #{tile.tile}, and its tiles: slot holds " \
-                               "#{tile_places.length} tiles from there. To fix this, give it a slot that holds every " \
-                               "tile its map uses."
-        end
+        places = pack_tile_at(tile_places, tile.tile, "background :#{name}")
         return nil if places.all?(&:zero?)
 
-        rows = places.each_slice(side).to_a
-        rows = rows.map(&:reverse) if tile.mirrored
-        rows = rows.reverse if tile.upside_down
+        rows = turned_rows(places.each_slice(side).to_a, mirrored: tile.mirrored, upside_down: tile.upside_down)
         list = bank_lists.fetch(tile.bank) do
           raise ArgumentError, "background :#{name} has a cell drawn from bank #{tile.bank} of colors, and its colors: " \
                                "slot holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank " \
@@ -163,13 +155,6 @@ module VBlank
         raise ArgumentError, "background :#{name} reads its tiles, map and colors from the data pack, and this build reads " \
                              "its pack as the game starts. A background from the pack is not made that way yet. To fix " \
                              "this, build the game all-in-one."
-      end
-
-      def refuse_tiles_not_from_slot!(name, tiles)
-        return if tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
-
-        raise ArgumentError, "background :#{name} was given tiles: #{tiles.inspect}. Give it a slot of tiles, " \
-                             "like `pack[:video]`, or the tiles from one tile on, like `pack[:video].tile(256)`."
       end
 
       def refuse_bad_pack_background_shape!(name, map, across, cell, words)

@@ -668,6 +668,34 @@ module VBlank
         IR::Assets.picture_places_of_tiles(values.slice(handle.tile_index, handle.count).flatten, across: handle.across)
       end
 
+      # THE TILES OF A SLOT OF TILES, from the tile +tiles+ (a DSL::PackSlot) starts at on, each a
+      # list of its 64 places row by row, for a verb that draws the original's own tiles by number
+      # (PackBackgrounds, PackPoses). +subject+ names the line for the error.
+      def pack_tile_places(tiles, subject)
+        unless tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
+          raise ArgumentError, "#{subject} needs tiles:, a slot of tiles like `pack[:video]`, or the tiles from one tile " \
+                               "on, like `pack[:video].tile(256)`."
+        end
+
+        refuse_slot_from_elsewhere!(tiles, "#{subject}'s tiles:")
+        tiles.layout.decode(@data_pack_contents.bytes_of(tiles.layout.name)).drop(tiles.tile_index || 0)
+      end
+
+      # Tile +at+ of +tile_places+ (#pack_tile_places), which +subject+ draws, or a friendly error.
+      def pack_tile_at(tile_places, at, subject)
+        tile_places.fetch(at) do
+          raise ArgumentError, "#{subject} draws tile #{at}, and its tiles: slot holds #{tile_places.length} tiles from " \
+                               "there. To fix this, give it a slot that holds every tile it draws."
+        end
+      end
+
+      # +rows+ of a picture turned as the original's flags say: each row reversed for +mirrored+,
+      # the rows reversed for +upside_down+.
+      def turned_rows(rows, mirrored:, upside_down:)
+        rows = rows.map(&:reverse) if mirrored
+        upside_down ? rows.reverse : rows
+      end
+
       # +opts+ for `image`, each handle in colors: or places: replaced by what its slot holds.
       def opts_with_pack_slots_read(name, opts)
         read = opts.dup

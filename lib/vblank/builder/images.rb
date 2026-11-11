@@ -82,6 +82,8 @@ module VBlank
         return define_picture_run(name, opts) if opts[:from].is_a?(DSL::List)
         # A pose drawn from tiles of a set the game loads (see SpriteTiles).
         return define_tile_pose(name, opts) if opts.key?(:tiles_from)
+        # A pose that is one of the original's own frames, from the data pack (see PackPoses).
+        return define_pack_pose(name, opts) if opts.key?(:frame)
         # A picture of up to 256 colours from a slot of pixels of the data pack (DataPacks).
         return define_picture_of_pack_pixels(name, opts) if opts[:places].is_a?(DSL::PackSlot) && opts[:places].shape == :pixels
 
