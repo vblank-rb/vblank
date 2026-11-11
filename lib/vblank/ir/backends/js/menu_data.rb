@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
-require "vblank/live/window_menu"
+require_relative "../../../live/window_menu"
 
 module VBlank
   module IR
