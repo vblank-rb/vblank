@@ -13,9 +13,13 @@ require "tmpdir"
 #
 # Like test_native_desktop.rb it builds with SDL, so it is loaded only under SDL=1. The file dialog
 # and the menu's buttons are what a person does, so a test names in their place the file
-# (--shell-copy) and a script of buttons for the menu (--shell-menu-keys); the program is otherwise
-# the one a player runs, with SDL's stand-in for a display. The answer key is the same game built
-# all-in-one, played the same number of frames, and the pack the all-in-one build makes.
+# (--shell-copy), or what the dialog gives each time it is asked (--shell-picks), and a script of
+# buttons for the menu (--shell-menu-keys); the program is otherwise the one a player runs, with
+# SDL's stand-in for a display. The answer key is the same game built all-in-one, played the same
+# number of frames, and the pack the all-in-one build makes.
+#
+# The shell has ONE WINDOW from its menu to its game: its parts have none, and send what they draw
+# to the program that started them (runtime/rg_shell.c).
 class TestNativeShell < Minitest::Test
   include ShellTests
 
@@ -72,48 +76,95 @@ class TestNativeShell < Minitest::Test
   # last word counts the pictures handed to the display.
   BUSY_STEPS = 400_000_000 # ShellTests#busy_port's: enough to keep the game as C at work for many frames
 
+  # The pictures the window shows for the menu (its frames before LOAD ROM is chosen and the frames
+  # the line shows as chosen) and for the game, at the most: any past these are the unpacking's.
+  MENU_AND_GAME_PICTURES = 30
+
   def test_an_unpacking_shows_pictures_while_it_works_between_writes
     Dir.mktmpdir do |dir|
       shell = Native.new.build_desktop_shell(busy_port(original_nowhere(dir), steps: BUSY_STEPS), File.join(dir, "busy-shell"),
                                              console: :gba, err: nil)
-      answer = File.join(dir, "answer.txt")
-      run = Computer::ProgramRun.run(File.join(shell, "parts", "unpack-0"),
-                                     args: ["--part", answer, "--data-pack", copy_at(dir), "--part-fast", "--frame-times",
-                                            "--settings-file", File.join(dir, "none.txt")],
-                                     env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)
-      pictures = run.complaints[/^pictures: (\d+)/, 1].to_i
+      played = play(shell_exe(shell), dir, "busy", options: [*shell_options(dir, copy: copy_at(dir)), "--frame-times"])
+      pictures = played.complaints[/^pictures: (\d+)/, 1].to_i
 
-      assert_operator pictures, :>=, 10, "the window showed #{pictures} pictures as the unpacking worked:\n#{run.complaints}"
-      assert_includes File.read(answer), "list #{VBlank::Original::Unpacking::BYTES} #{HEIGHTS.length} #{HEIGHTS.join(' ')}\n"
-      assert_a_window_closed_part_way_leaves_no_answer(shell, dir)
+      assert_operator pictures, :>=, MENU_AND_GAME_PICTURES + 10,
+                      "the window showed #{pictures} pictures in all as the unpacking worked:\n#{played.complaints}"
+      assert_equal Dir.mktmpdir { |other| busy_port(original(other), steps: 1).data_pack_file }, kept_pack(dir),
+                   "the pack is not the all-in-one build's, byte for byte"
+      assert_a_window_closed_part_way_keeps_no_pack(shell, dir)
     end
   end
 
   # The window closed while the unpacking works (SDL takes the signal a system sends a program it
   # asks to end as the window closing): the program ends at once, without waiting for the unpacking,
-  # and leaves no answer, whole or half, for the shell to make a pack from.
-  private def assert_a_window_closed_part_way_leaves_no_answer(shell, dir)
-    answer = File.join(dir, "closed-answer.txt")
-    pid = Process.spawn(NO_SCREEN_OR_SPEAKER, File.join(shell, "parts", "unpack-0"), "--part", answer, "--data-pack", copy_at(dir),
-                        "--part-fast", "--settings-file", File.join(dir, "none-closed.txt"), err: File::NULL, out: File::NULL)
-    sleep 0.3
+  # which ends with it, and nothing is left in the pack's folder to make a pack from.
+  private def assert_a_window_closed_part_way_keeps_no_pack(shell, dir)
+    kept = File.join(dir, "kept-closed")
+    pid = Process.spawn(NO_SCREEN_OR_SPEAKER, shell_exe(shell), "--pack-folder", kept, "--shell-menu-keys", File.join(dir, "menu.keys"),
+                        "--shell-copy", copy_at(dir), "--scripted-keys", GAME_FRAMES.to_s,
+                        "--settings-file", File.join(dir, "none-closed.txt"), in: File::NULL, err: File::NULL, out: File::NULL)
+    sleep 0.6
+    unpacking = unpackings_running(shell)
     closed_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     Process.kill("TERM", pid)
     Process.wait(pid)
+    took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - closed_at
+    sleep 0.2
 
-    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - closed_at, :<, 0.4, "the window waited for the unpacking"
-    assert_empty Dir.glob("#{answer}*"), "an answer was left behind"
+    refute_empty unpacking, "the window was not closed while the unpacking worked, so this shows nothing"
+    assert_operator took, :<, 0.4, "the window waited for the unpacking"
+    assert_empty Dir.children(kept), "the shell left these behind in the pack's folder"
+    assert_empty unpackings_running(shell), "the unpacking went on with its window closed"
   end
 
-  # The same shell whole: the pack it keeps is the all-in-one build's, byte for byte.
-  def test_a_shell_whose_unpacking_works_between_writes_keeps_the_all_in_one_pack
-    Dir.mktmpdir do |dir|
-      shell = Native.new.build_desktop_shell(busy_port(original_nowhere(dir), steps: BUSY_STEPS), File.join(dir, "busy-shell"),
-                                             console: :gba, err: nil)
-      play(shell_exe(shell), dir, "busy", options: shell_options(dir, copy: copy_at(dir)))
+  # The process numbers of this shell's unpacking still running, by the path of its program.
+  private def unpackings_running(shell)
+    `pgrep -f #{File.join(shell, 'parts', 'unpack-0')}`.split
+  end
 
-      assert_equal Dir.mktmpdir { |other| busy_port(original(other), steps: 1).data_pack_file }, kept_pack(dir)
+  # WHAT A PERSON DOES AT THE FILE DIALOG, with nobody there (--shell-picks): closes it with nothing
+  # picked, picks a file that is no release, then picks the copy. The window is saved each time the
+  # dialog would open (--shell-pick-pictures), and every window opened by the shell or a part of it
+  # is written down (VBLANK_WINDOW_LOG, which a part is handed with the rest of the environment).
+  def test_one_window_from_the_menu_to_the_game_whatever_is_picked
+    Dir.mktmpdir do |dir|
+      shell = Native.new.build_desktop_shell(port_without_copy(dir), File.join(dir, "made-up-shell"), console: :gba, err: nil)
+      picks = File.join(dir, "picks.txt")
+      File.write(picks, "\n#{wrong_copy_at(dir)}\n#{copy_at(dir)}\n")
+      windows = File.join(dir, "windows.txt")
+      pictures = File.join(dir, "asked")
+      played = play(shell_exe(shell), dir, "picked", env: { "VBLANK_WINDOW_LOG" => windows },
+                                                     options: [*shell_options(dir), "--shell-picks", picks, "--shell-pick-pictures", pictures])
+
+      assert_equal 1, File.readlines(windows).size, "the shell and its parts opened these windows:\n#{File.read(windows)}"
+      assert_equal %w[asked.1.bmp asked.2.bmp asked.3.bmp], Dir.children(dir).grep(/\Aasked\./).sort,
+                   "the dialog was not asked for once for each pick"
+      (1..3).each { |ask| assert_load_rom_shows_as_chosen(File.binread("#{pictures}.#{ask}.bmp"), "as the dialog opened, time #{ask}") }
+      assert_includes played.complaints, "not a release of Made Up that this game knows"
+      refute_empty played.variables, "the game did not play after the copy was picked"
+      assert_equal all_in_one_pack, kept_pack(dir)
     end
+  end
+
+  # The menu's two lines in the window's picture (Original::Shell.menu_program draws LOAD ROM at
+  # the screen's middle and SETTINGS twelve rows under it), and its colours as a BMP keeps them,
+  # blue first: yellow for the line chosen, white for the line under the cursor.
+  LOAD_ROM_ROWS = (240...264)
+  SETTINGS_ROWS = (276...300)
+  YELLOW = "\x00\xFF\xFF".b
+  WHITE = "\xFF\xFF\xFF".b
+
+  private def pixels_on(bmp, rows)
+    rows.flat_map do |from_top|
+      bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES).scan(/.{3}/mn)
+    end.uniq
+  end
+
+  private def assert_load_rom_shows_as_chosen(bmp, moment)
+    assert_includes pixels_on(bmp, LOAD_ROM_ROWS), YELLOW, "LOAD ROM is not shown as chosen #{moment}"
+    refute_includes pixels_on(bmp, LOAD_ROM_ROWS), WHITE, "LOAD ROM is still drawn as not chosen #{moment}"
+    assert_empty pixels_on(bmp, SETTINGS_ROWS) & [YELLOW, WHITE], "SETTINGS is lit #{moment}"
+    assert_operator pixels_on(bmp, SETTINGS_ROWS).size, :>, 1, "SETTINGS is not drawn #{moment}"
   end
 
   # A script of buttons, a line a frame, with nothing held once its lines run out.
@@ -136,11 +187,11 @@ class TestNativeShell < Minitest::Test
   end
 
   # The game as the window plays it for GAME_FRAMES frames with nothing held.
-  private def play(exe, dir, name, options: [])
+  private def play(exe, dir, name, options: [], env: {})
     picture = File.join(dir, "#{name}.bmp")
     run = Computer::ProgramRun.run(exe, args: ["--scripted-keys", GAME_FRAMES, "--settings-file", File.join(dir, "none-#{name}.txt"),
                                               "--window-picture", picture, *options],
-                                       input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER, seconds: 240, complaints: true)
+                                       input: "0\n" * GAME_FRAMES, env: NO_SCREEN_OR_SPEAKER.merge(env), seconds: 240, complaints: true)
     Played.new(variables: Native::HeadlessRun.variables_in(run.printed.lines.map(&:chomp)), picture: File.binread(picture),
                complaints: run.complaints)
   end

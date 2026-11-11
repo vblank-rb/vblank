@@ -4,7 +4,8 @@
  * holds none of the original's data. It is built with its parts in a folder beside it: the game
  * itself, and under parts/ the menu and one unpacking for each release of the original the game
  * reads. Each part is a whole desktop program of its own, since the native lowering names every
- * global of one program for the runtime and two programs cannot share one executable.
+ * global of one program for the runtime and two programs cannot share one executable. A part has
+ * no window: the game's program shows what each part draws in its own (rg_shell_window).
  *
  * rg_shell_facts is Original::ShellFacts, what every runtime of a shell is made from
  * (Native::ShellData writes it), every sentence a file is refused in among them, each with {name}
@@ -73,19 +74,51 @@ typedef struct {
 
 extern const rg_shell_description *const rg_shell_facts;
 
-/* What a test names in place of what a person does (--shell-copy, --shell-menu-keys,
- * --shell-settings-keys), and where the pack is kept where the player has not chosen
- * (--pack-folder). All NULL for a player's run. */
+/* What a test names in place of what a person does (--shell-copy, --shell-picks, --shell-menu-keys,
+ * --shell-settings-keys, --shell-pick-pictures), and where the pack is kept where the player has
+ * not chosen (--pack-folder). All NULL for a player's run. */
 typedef struct {
   const char *pack_folder;
-  const char *copy;          /* the file picked, in place of the file dialog */
-  const char *menu_keys;     /* a script of buttons the menu is played with, in place of a person */
+  const char *copy;          /* the file picked, in place of the file dialog; one refused ends the program */
+  const char *picks;         /* a file of what the dialog gives each time it is asked, a line each: a path, or
+                              * an empty line for nothing picked; the shell ends when they run out */
+  const char *menu_keys;     /* a script of buttons the menu is played with each time it plays, in place of a person */
   const char *settings_keys; /* ...and the one once SETTINGS has opened the window's menu */
+  const char *pick_pictures; /* the window saved each time the copy is asked for, as it stands then:
+                              * this name with ".1.bmp" for the first time, ".2.bmp" for the second */
 } rg_shell_asked;
 
-/* The path of a data pack this shell reads, made from the player's copy if it was not kept yet; NULL
- * when the player stopped. Frees with SDL_free. A test that names a copy this shell refuses ends
- * the program here, printing why. */
-char *rg_shell_pack_path(const rg_shell_asked *asked);
+/* THE WINDOW A SHELL IS SHOWN IN, which the program that owns it hands over (rg_sdl.c): one window
+ * from the menu to the game. Each of these keeps reading the window's events while it waits, and
+ * the player closing the window ends the program from inside any of them.
+ *
+ * SDL's types are named here and not included: this header is also read where there is no SDL. */
+struct SDL_Process;
+typedef struct {
+  /* Shows +part+, a part started with its standard input and output as pipes, until it ends: each
+   * picture it sends is drawn, and it is sent the buttons held for each frame (from the script in
+   * +keys+ where a test names one). +fast+ is an unpacking, which is sent no buttons. Whether the
+   * part ended well. Its last picture stays up after. */
+  int (*show_part)(struct SDL_Process *part, int fast, const char *keys);
+  /* The file the player picks in the system's dialog, or the folder when +folder+, the dialog the
+   * window's own; NULL for none. Freed with SDL_free. */
+  char *(*pick_copy)(int folder);
+  /* +words+ in a box that is the window's own, until the player closes it. */
+  void (*tell)(const char *words);
+  /* The window's menu, where the settings are, opened over the picture. */
+  void (*open_settings)(void);
+  /* The window as it stands, saved as a BMP at +path+: a test's way to see it. */
+  void (*save_picture)(const char *path);
+} rg_shell_window;
+
+/* The path of a data pack this shell reads, made from the player's copy if it was not kept yet, all
+ * of it shown in +window+; NULL when the player stopped. Frees with SDL_free. A test that names a
+ * copy this shell refuses ends the program here, printing why. */
+char *rg_shell_pack_path(const rg_shell_asked *asked, const rg_shell_window *window);
+
+/* The files rg_shell_pack_path and its parts write beside the pack while they work, removed: the
+ * window calls this when the player closes it part way, after ending the part that was playing,
+ * so the copy the player picked is not left in the game's folder. Does nothing at any other time. */
+void rg_shell_remove_working_files(void);
 
 #endif
