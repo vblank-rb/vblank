@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
 
 # THE KEYBOARD AS THE GAME'S BUTTONS, in DOSBox, held to the interpreter pass for pass (DOS::CheckedRun):
 # the keys are pressed on the emulated keyboard, reach the program through its keyboard interrupt, and
@@ -66,5 +67,72 @@ class TestDOSKeyboard < Minitest::Test
     played = DOS::CheckedRun.new.hold(:right).run(program, frames: 6)
 
     assert_equal [46, 1], [played[:x], played[:presses]]
+  end
+
+  # A button down at power-on and let go before the first pass ends was never down on a frame the game
+  # read, so it is no press.
+  def test_a_button_let_go_before_the_first_pass_ends_is_no_press
+    played = DOS::CheckedRun.new.hold(:a).input_each_frame { [] }.run(counting_buttons, frames: 5)
+
+    assert_equal [0, 0], [played[:held_frames], played[:presses]]
+  end
+
+  # A PASS OF MORE THAN ONE FRAME. The work in it takes the pass past a retrace, which the program cannot
+  # see while it works: the timer says how many frames went by, the interpreter is told the same, and a tap
+  # one frame long is one press whichever of the pass's frames it lands on.
+  SLOW_FRAMES = { 4 => [:a], 7 => [:b], 8 => [:b], 11 => [:left] }.freeze
+
+  def test_a_slow_pass_counts_its_frames_and_loses_no_tap
+    program = program_of do
+      screen :bitmap
+      presses = var :presses, 0
+      work = var :work, 0
+      game_loop do
+        presses += 1 if pressed(:any)
+        repeat(SLOW_WORK) { work += 1 }
+      end
+    end
+    run = DOS::CheckedRun.new.input_each_frame { |frame| SLOW_FRAMES.fetch(frame, []) }
+    played = run.run(program, frames: 8)
+
+    assert_equal 3, played[:presses]
+    assert_operator run.frames_took(3), :>, 1, "the pass was meant to take more than a frame"
+  end
+
+  # Enough turns of a small loop to take a pass past one retrace and not past three.
+  SLOW_WORK = 30_000
+
+  # Any player's button is the one player's: `player: :any` builds and reads the keyboard.
+  def test_any_player_s_button_is_the_keyboard_s
+    program = program_of do
+      screen :bitmap
+      lefts = var :lefts, 0
+      game_loop { lefts += 1 if held(:left, player: :any) }
+    end
+    played = DOS::CheckedRun.new.hold(:left).run(program, frames: 4)
+
+    assert_equal 4, played[:lefts]
+  end
+
+  # Pause sends three bytes, of which the second reads as Ctrl (the A button): none of them is a button.
+  def test_pause_is_no_button
+    exe = DOS.new.build(counting_buttons)
+    Dir.mktmpdir("dos-keyboard") do |dir|
+      path = File.join(dir, "GAME.EXE")
+      exe.write(path)
+      core = VBlank::Diagnostics::Emulator.open_dos(path)
+      10.times { core.run_frame }
+      core.press(%i[pause])
+      5.times { core.run_frame }
+      core.press([])
+      5.times { core.run_frame }
+      core.press(%i[ctrl])
+      5.times { core.run_frame }
+      presses = VBlank::Diagnostics::DOSMemory.read32(core, exe.built.variables.fetch(:presses))
+
+      assert_equal 1, presses, "Ctrl after it is one press, so the keyboard was heard and Pause was none"
+    ensure
+      core&.destroy
+    end
   end
 end

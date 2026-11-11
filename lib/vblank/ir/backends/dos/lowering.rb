@@ -520,7 +520,9 @@ module VBlank
           end
 
           # 1 where +button+ is in the set the runtime keeps at +which+ (held through the pass, or pressed
-          # in it), a bit each in IR::Buttons's order; any of the keyboard's for Buttons::ANY.
+          # in it), a bit each in IR::Buttons's order; any of the keyboard's for Buttons::ANY. One person
+          # plays at a keyboard, and a game that asks for a second player's is refused before it reaches
+          # here (Console::DOSAnswers, by #refuse_what_console_lacks!).
           def emit_button_down_flag(which, button)
             mask = button == Buttons::ANY ? Buttons.mask(CONSOLE.buttons) : Buttons.mask(button)
             @asm.mov(:eax, runtime_at(which))

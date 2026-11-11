@@ -241,6 +241,8 @@ module VBlank
 
           def jmp(label) = jump_near([0xE9], label)
           def call(label) = jump_near([0xE8], label)
+          # call far [memory]: the routine whose offset and segment are the two words at +memory+.
+          def call_far(memory) = emit_modrm(0xFF, nil, 3, memory, size: 16)
           def ret = emit([0xC3].pack("C"))
           def iret = emit([0xCF].pack("C"))
           def int(number) = emit([0xCD, number].pack("C*"))

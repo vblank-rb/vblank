@@ -56,7 +56,8 @@ module RubyDOSEmulator
 
     # libretro's key numbers (RETROK_*) for the keys a DOS game is played with, by name.
     KEYS = { up: 273, down: 274, right: 275, left: 276, ctrl: 306, alt: 308, enter: 13, shift: 303,
-             z: 122, x: 120, space: 32, escape: 27, left_shift: 304, left_ctrl: 306, right_ctrl: 305 }.freeze
+             z: 122, x: 120, space: 32, escape: 27, left_shift: 304, left_ctrl: 306, right_ctrl: 305,
+             pause: 19 }.freeze
 
     # The card's state: its mode (DOSBox's own numbering), the width and height it draws, and how far
     # its memory address moves on for each row.

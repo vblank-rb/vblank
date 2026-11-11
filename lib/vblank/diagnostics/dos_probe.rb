@@ -28,7 +28,10 @@ module VBlank
       def width = @core.picture&.width || 0
       def height = @core.picture&.height || 0
 
-      # +keys+ is a button mask (IR::Buttons.mask).
+      # +keys+ is a button mask (IR::Buttons.mask). A key pressed here reaches the program a frame later
+      # than a button set on a console's pad does: the emulator hands it to the PC's keyboard after the
+      # retrace of the first frame played, and the program reads its keys at the next (ruby-dos-emulator's
+      # probe patch says why). So a tape played on DOS acts a frame after the same tape on a console.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
         @core.press(held.filter_map { |button| KEYS[button] })

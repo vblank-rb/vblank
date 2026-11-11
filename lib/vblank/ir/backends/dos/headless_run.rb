@@ -53,27 +53,42 @@ module VBlank
             set_buttons(buttons_sent(1))
           end
 
-          # A KEY PRESSED NOW IS READ AT THE RETRACE AFTER THE NEXT. The emulator's frame ends as the card
-          # finishes the picture's last line, a few lines before the retrace at which the program takes its
-          # buttons, and a key takes longer than those lines to reach the program through the keyboard's
-          # interrupt. So the keys sent before a frame is played are the buttons of the frame after it, which
-          # is what a person's key is too: down some time in one frame, read as the next begins. The first
-          # frame's are sent as the gate opens (#power_on), after the program has taken the ones held from
-          # power-on for its first pass.
-          def next_screen_frame = super + 1
+          # A KEY PRESSED BEFORE A FRAME IS PLAYED IS READ AT THE RETRACE AFTER THAT FRAME'S. A frame ends as
+          # the card finishes the picture's last line, a few lines before the retrace at which the program
+          # takes its buttons, and the emulator hands a key to its keyboard once that retrace has ended
+          # (ruby-dos-emulator's probe patch says why), so it is read at the next: which is what a person's key
+          # is too, down some time in one frame and read as the next begins.
+          #
+          # So the keys sent now are the buttons of the frame after the one about to begin. The runtime counts
+          # frames only where a wait ends (FRAMES), and a pass may be part way through several, so the frame
+          # about to begin is counted from the timer as the runtime counts it: the frames to the last wait's
+          # end, and the timer's ticks since, rounded to frames. The first frame's keys are sent as the gate
+          # opens (#power_on), after the program has taken the ones held from power-on for its first pass.
+          def next_screen_frame
+            frame = Runtime::Frame
+            ticks = read32(runtime_place(frame::TIMER_TICKS)) - read32(runtime_place(frame::TICKS_MARK))
+            since_last_wait = (ticks + (Runtime::TICKS_A_FRAME / 2)) / Runtime::TICKS_A_FRAME
+            read32(runtime_place(frame::FRAMES)) + since_last_wait + 1
+          end
 
           # The buttons held from power-on are down before the game's first pass begins, as a console's are:
-          # the keys are pressed while the program waits at its gate, and a frame is played there for the
-          # keyboard to tell the program of them.
+          # the keys are pressed while the program waits at its gate, and frames are played there until the
+          # program's keyboard interrupt has heard of every one.
           def press_before_first_pass
             return if @held.empty?
 
             set_buttons(@held)
-            KEY_FRAMES.times { @core.run_frame }
-          end
+            down = Buttons.mask(@held.map(&:to_sym) & KEYS.keys)
+            frames = 0
+            until read32(runtime_place(Runtime::Frame::KEY_HELD)) & down == down
+              @core.run_frame
+              frames += 1
+              next unless frames > LONGEST_PASS_FRAMES
 
-          # The frames a key pressed takes to reach a program waiting at its gate, with one to spare.
-          KEY_FRAMES = 2
+              raise CannotAnswer, "the DOS program never heard the keys held from power-on " \
+                                  "(#{@held.join(', ')}): its keyboard interrupt did not take them."
+            end
+          end
 
           # The buttons a game names, as keys. One the keyboard has no key for is one no program for it can
           # read, so it is not pressed.

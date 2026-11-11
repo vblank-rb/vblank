@@ -58,6 +58,17 @@ module VBlank
       # The card keeps six bits of each colour.
       DAC_BITS = 6
 
+      # --- time: the timer chip (the 8253/8254 PIT) ---
+      # Its first counter counts down from a number at PIT_CLOCK and interrupts the processor (IRQ 0,
+      # interrupt 8) each time it reaches nought. The BIOS sets the number to 65536, about 18 interrupts a
+      # second, and counts the time of day by them.
+      PIT_CLOCK = 1_193_182
+      PIT_COMMAND = 0x43
+      PIT_COUNTER_0 = 0x40
+      # The command for "counter 0, the number's low byte then its high byte, a square wave".
+      PIT_SET_COUNTER_0 = 0x36
+      TIMER_VECTOR = 8 * 4
+
       # --- sound: the AdLib (an OPL2, the YM3812) ---
       ADLIB_REGISTER = 0x388
       ADLIB_DATA = 0x389
@@ -81,6 +92,12 @@ module VBlank
       INTERRUPT_CONTROLLER = 0x20
       END_OF_INTERRUPT = 0x20
       EXTENDED_KEY = 0xE0
+      # Pause sends this, then two more bytes that are no key of their own (they read as Ctrl and Num Lock).
+      PAUSE_KEY = 0xE1
+      PAUSE_BYTES_AFTER = 2
+      # The two Shift keys. A keyboard sends one after EXTENDED_KEY around an arrow while a Shift or Num Lock
+      # is on, to undo it for old programs: a "fake shift", which no finger pressed.
+      SHIFT_KEYS = [0x2A, 0x36].freeze
       # A key is let go with its scan code plus this.
       RELEASE_BIT = 0x80
       # The buttons a game names, to the keys that are them. The arrows send EXTENDED_KEY first.
