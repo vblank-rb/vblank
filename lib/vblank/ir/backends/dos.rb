@@ -19,6 +19,7 @@ require_relative "dos/runtime"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
+require_relative "dos/runtime/regions"
 require_relative "dos/lowering/sprites"
 require_relative "dos/lowering/clock"
 require_relative "dos/lowering"
@@ -126,7 +127,7 @@ module VBlank
           lowering.emit(asm)
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
-                                    sprites: sprites.positive?)
+                                    sprites: sprites.positive?, regions: lowering.regions?)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")

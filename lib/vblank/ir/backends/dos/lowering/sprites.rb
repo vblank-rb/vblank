@@ -15,13 +15,16 @@ module VBlank
           # "not drawn" means (Reference#objects_on_screen).
           #
           # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), upright and
-          # in its own colours. One painted into the picture, one that turns or changes size, one drawn in
-          # another list of colours, and sprites a list puts in order are each refused by name.
+          # in its own colours. The plain sprite of a painted screen is no sprite of this kind at all: the
+          # game paints it into the picture itself, keeping and putting back the patch under it
+          # (Lowering#emit_save_region). One that turns or changes size, one drawn in another list of
+          # colours, sprites a list puts in order, and any sprite of a screen drawn from tiles are each
+          # refused by name.
           module Sprites
             STATEMENT_KINDS = %i[present_objects].freeze
 
             # The part of the build a game with such a sprite waits for, for a test run to count skips by.
-            PART = "sprites painted into the picture, turned, resized, recoloured or put in order by a list"
+            PART = "sprites of a screen drawn from tiles, turned, resized, recoloured or put in order by a list"
 
             # How many sprites +program+ has: none for a game that needs none of the runtime's sprites.
             def self.count_in(program) = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
@@ -50,7 +53,7 @@ module VBlank
 
             # What about +sprite+ the build does not make yet, in words, or nil.
             def unmade_in_sprite(sprite)
-              return "painted into the picture" unless sprite.over_picture
+              return "that is not over a painted picture" unless sprite.over_picture
               return "that turns or changes size" unless constant_number?(sprite.angle, 0) && constant_number?(sprite.scale, Build::SCALE_ONE)
               return "drawn in another list of colours" unless sprite.recolors.to_a.empty? && sprite.follows.nil?
 

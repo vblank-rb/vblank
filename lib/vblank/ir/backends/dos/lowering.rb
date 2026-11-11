@@ -36,7 +36,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit blit_pose inside draw_text draw_digit save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -79,6 +79,10 @@ module VBlank
 
           def pictures? = !@art_places.empty?
 
+          # Whether the game keeps and puts back patches of its picture, and so carries the runtime's routines
+          # for that (Runtime::Regions).
+          def regions? = @program.walk.any? { |node| %i[save_region restore_region].include?(node.kind) }
+
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
 
@@ -110,6 +114,7 @@ module VBlank
             make_art
             keep_loop_running
             keep_clock_readings
+            keep_patches
             @asm.label(MAIN)
             emit_clock_at_start
             @program.children.each { |node| emit_statement(node) }
@@ -349,6 +354,8 @@ module VBlank
             when :blit then emit_blit(node)
             when :blit_pose then emit_blit_pose(node)
             when :inside then emit_inside(node)
+            when :save_region then emit_save_region(node)
+            when :restore_region then emit_restore_region(node)
             when :draw_text then emit_draw_text(node)
             when :draw_digit then emit_draw_digit(node)
             when :save_init then emit_save_init(node)
@@ -558,6 +565,43 @@ module VBlank
               @asm.pop(:eax)
               @asm.mov(place, :eax)
             end
+          end
+
+          # A PATCH OF THE PICTURE, for each one the game declares (a sprite painted into the picture declares
+          # the one it keeps what is under it in): room in the data segment for its width and height and a
+          # byte a pixel (Runtime::Regions), with the width and height written as the program starts, and a
+          # number that is 1 once something has been kept in it.
+          def keep_patches
+            @patches = @program.walk.select { |node| node.kind == :backing_buffer }.to_h do |node|
+              place = @memory.reserve("the patch #{node.name}", 4 + (node.width * node.height), what: "the patch of the picture #{node.name.inspect}")
+              @starts << [place, node.width | (node.height << 16)]
+              [node.name, [place, @memory.reserve("whether the patch #{node.name} is kept", 4)]]
+            end
+          end
+
+          def patch_of(name)
+            @patches.fetch(name) { raise LoweringError, "the patch of the picture #{name.inspect} is used and never declared" }
+          end
+
+          # Reference#exec_save_region: the patch filled from the picture at x and y, off the screen and all.
+          def emit_save_region(node)
+            place, kept = patch_of(node.buffer)
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            @asm.mov(:si, place)
+            @asm.call("rt_save_region")
+            @asm.mov(X86.mem(nil, kept, size: 32), 1)
+          end
+
+          # Reference#exec_restore_region: the patch put back at x and y, and nothing where none was ever kept.
+          def emit_restore_region(node)
+            place, kept = patch_of(node.buffer)
+            nothing_kept = fresh_label("no_patch")
+            @asm.cmp(X86.mem(nil, kept, size: 32), 0)
+            @asm.je(nothing_kept)
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            @asm.mov(:si, place)
+            @asm.call("rt_restore_region")
+            @asm.label(nothing_kept)
           end
 
           # Reference#exec_blit_pose: one of the pictures, by the number the game works out, and nothing

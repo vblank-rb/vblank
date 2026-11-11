@@ -173,7 +173,7 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:)
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], Console::DOS.screen_height]]
             starts += Sprites.starts(memory) if sprites
@@ -187,6 +187,7 @@ module VBlank
             emit_number_routines(asm)
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
+            Regions.emit(asm, memory, edges(memory, area, seg: :ss)) if regions
           end
 
           # The area as the program starts: the whole screen, as [place, number] for the start to set.
@@ -735,14 +736,15 @@ module VBlank
           # time, and `set_pixel` leaves out one that is outside them), so a picture half outside shows its
           # half, and a row outside is passed over by the width of its pixels.
           #
-          # +name+ is the routine's, and with +marks+ it marks the rows it draws in as changed: the game's
+          # The picture is in the art segment, or with +from_art+ false in the data segment (a patch of the
+          # picture kept there, Regions). +name+ is the routine's, and with +marks+ it marks the rows it draws in as changed: the game's
           # own drawing does, and a sprite's, drawn into the picture shown and not the game's, does not
           # (Sprites marks its rows itself).
           #
           # The numbers it keeps are on the stack, which is in the data segment (SS), since DS is the art
           # segment while it reads pixels: BP+0 the x of the picture's left edge, +4 the y of the row to
           # draw, +8 the picture's width, +10 the rows left.
-          def emit_blit_routine(asm, memory, edges, name: "rt_blit", marks: true)
+          def emit_blit_routine(asm, memory, edges, name: "rt_blit", marks: true, from_art: true)
             frame = ->(offset) { X86.mem(:bp, offset) }
             width = Console::DOS.screen_width
             asm.label(name)
@@ -751,8 +753,10 @@ module VBlank
             asm.mov(:bp, :sp)
             asm.mov(frame.call(0), :eax)
             asm.mov(frame.call(4), :ecx)
-            asm.mov_segment(:bx, :art)
-            asm.mov(:ds, :bx)
+            if from_art
+              asm.mov_segment(:bx, :art)
+              asm.mov(:ds, :bx)
+            end
             asm.mov(:dx, X86.mem(:si, 0))
             asm.mov(frame.call(8), :dx)
             asm.mov(:dx, X86.mem(:si, 2))

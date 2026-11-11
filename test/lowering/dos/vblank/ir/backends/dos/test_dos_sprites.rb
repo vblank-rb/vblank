@@ -84,18 +84,25 @@ class TestDOSSprites < Minitest::Test
     assert_equal color(:white), run.screen.pixel(run.sprites.first.x, 10)
   end
 
-  # A sprite painted into the picture keeps and puts back what was under it, which is not made yet.
-  def test_a_sprite_painted_into_the_picture_is_refused_by_name
-    error = assert_raises(DOS::Lowering::NotMadeYet) do
-      checked(frames: 2) do
-        screen :bitmap
-        image :block, width: 6, height: 6, data: [:white] * 36
-        sprite :block, at: [10, 10]
-        game_loop { wait_vblank }
+  # A SPRITE PAINTED INTO THE PICTURE (the plain `sprite` of a painted screen) keeps the patch under it and
+  # puts it back before it moves on. One that walks off the right of a screen 320 wide and back keeps and
+  # puts back patches that are part off the screen, and leaves the picture as it was painted.
+  def test_a_sprite_painted_into_the_picture_walks_off_the_screen_and_back
+    run = checked(frames: 30) do
+      screen :bitmap
+      image :block, width: 6, height: 6, data: [:white] * 36
+      clear_screen :blue
+      fill_rect 280, 96, 40, 4, :yellow
+      walker = sprite :block, at: [300, 95]
+      passes = var :passes, 0
+      game_loop do
+        walker.x += 2 if passes < 15
+        walker.x -= 2 if passes >= 15
+        passes += 1
       end
     end
 
-    assert_match(/does not make that yet/, error.message)
+    assert_equal [color(:yellow), color(:blue)], [run.screen.pixel(319, 97), run.screen.pixel(319, 95)]
   end
 
   def test_a_sprite_drawn_in_another_list_of_colours_is_refused_by_name
