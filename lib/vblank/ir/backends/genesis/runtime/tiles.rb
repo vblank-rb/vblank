@@ -627,10 +627,11 @@ module VBlank
             # with no sprites, one row that is off the screen.
             #
             # The notes are rows already, each linked to the row after it and kept at the end of the
-            # table (#emit_sprite_placed), so they are copied as they stand, two long words a row.
+            # table (#emit_sprite_placed), so they are copied as they stand.
             # The chip starts at row 0 whatever is noted, so the row noted last, the one in front, is
-            # written there too, with the link it has: the row after its own. The row noted first is the
-            # table's last, and its link is cleared here, since 80 names no row.
+            # written there, with the link it has: the row after its own. The rows after it go to their
+            # own places, copied by the chip (#emit_sprite_rows_copied_by_chip). The row noted first is
+            # the table's last, and its link is cleared here, since 80 names no row.
             def emit_sprite_table_written(asm, memory, at)
               h = Console::GenesisHardware
               notes_end = memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)
@@ -650,19 +651,47 @@ module VBlank
               2.times { asm.move(:l, asm.post(1), asm.ind(2)) }
               asm.subq(:w, 1, asm.d(5))
               asm.branch(:eq, "rt_upload_sprites_done")
-              # The chip pointed at the table's row for the note after that one. With D0 rows' worth of
-              # bytes noted it is that many bytes before the row past the table's end, and one row on;
-              # a command keeps its address in its high word.
+              emit_sprite_rows_copied_by_chip(asm)
+              asm.label("rt_upload_sprites_done")
+            end
+
+            # THE REST OF THE ROWS, COPIED BY THE VIDEO CHIP ITSELF (DMA), as a console's own games send
+            # their sprite table: the chip is told how many words, where they are in work RAM and where
+            # they go, and reads them itself with the processor stopped, several times as fast as the
+            # processor hands them over a long word at a time. The rows are in the notes in the order
+            # and with the links the table wants, so they go as one run.
+            #
+            # A1 is at the note after the one written to row 0, D0 is the bytes of every row noted and
+            # D5 the rows still to go. The chip counts its length in words and its source in words too,
+            # so the address is halved, and the top byte of a place in work RAM halved is always $7F.
+            # The rows go to their own places in the table: with D0 bytes noted, that many before the
+            # row past the table's end, and one row on; a command keeps its address in its high word,
+            # and the write of it starts the copy.
+            def emit_sprite_rows_copied_by_chip(asm)
+              h = Console::GenesisHardware
+              register = ->(number) { h::VDP_REGISTER | (number << 8) }
+              asm.lea(asm.abs_l(h::VDP_CONTROL), asm.a(3))
+              asm.lsl(:w, 2, asm.d(5)) # four words a row
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_LENGTH_LOW)), asm.d(1))
+              asm.move(:b, asm.d(5), asm.d(1))
+              asm.move(:w, asm.d(1), asm.ind(3))
+              asm.lsr(:w, 8, asm.d(5))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_LENGTH_HIGH)), asm.d(5))
+              asm.move(:w, asm.d(5), asm.ind(3))
+              asm.move(:l, asm.a(1), asm.d(5))
+              asm.lsr(:l, 1, asm.d(5))
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_LOW)), asm.d(1))
+              asm.move(:b, asm.d(5), asm.d(1))
+              asm.move(:w, asm.d(1), asm.ind(3))
+              asm.lsr(:w, 8, asm.d(5))
+              asm.or(:w, asm.imm(register.call(h::REG_DMA_SOURCE_MIDDLE)), asm.d(5))
+              asm.move(:w, asm.d(5), asm.ind(3))
+              asm.move(:w, asm.imm(register.call(h::REG_DMA_SOURCE_HIGH) | 0x7F), asm.ind(3))
               asm.swap(asm.d(0))
               asm.neg(:l, asm.d(0))
-              asm.add(:l, asm.imm(h.command(h::WRITE_VRAM, SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES))), asm.d(0))
-              asm.move(:l, asm.d(0), asm.abs_l(h::VDP_CONTROL))
-              asm.subq(:w, 1, asm.d(5))
-              asm.label("rt_upload_sprite_row")
-              asm.move(:l, asm.post(1), asm.ind(2))
-              asm.move(:l, asm.post(1), asm.ind(2))
-              asm.dbra(asm.d(5), "rt_upload_sprite_row")
-              asm.label("rt_upload_sprites_done")
+              first_past = h.command(h::WRITE_VRAM, SPRITES_AT + ((MOST_SPRITES + 1) * SPRITE_BYTES))
+              asm.add(:l, asm.imm(first_past | h::COMMAND_DMA), asm.d(0))
+              asm.move(:l, asm.d(0), asm.ind(3))
             end
 
             # Where each plane's view is, into the horizontal scroll table (a plane moved right by the

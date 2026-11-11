@@ -200,13 +200,13 @@ class TestGenesisPiecePace < Minitest::Test
   # about a third of a frame, of which the line of letters is a third: each letter's cell is a
   # word read from a table of the told cells, not found by a test for each told cell, and the
   # loop and its table reads test and branch as a 68000 routine written by hand would. The second
-  # is under a quarter, the sprites being half of it: the walk that places them keeps its place
-  # in registers, and a sprite wholly on the screen is two compares and two long words copied a
-  # piece. The third is about a fifth more: three rows of the table a sprite where the flat
-  # picture takes fewer.
-  MOST_OF_A_FRAME = 0.36
-  MOST_OF_AN_ORDINARY_FRAME = 0.25
-  MOST_OVER_FLAT = 1.25
+  # is about a fifth, the sprites being half of it: the walk that places them keeps its place
+  # in registers, a sprite wholly on the screen is two compares and two long words copied a
+  # piece, and the video chip copies the table in by itself. The third is about a sixth more:
+  # three rows of the table a sprite where the flat picture takes fewer.
+  MOST_OF_A_FRAME = 0.34
+  MOST_OF_AN_ORDINARY_FRAME = 0.23
+  MOST_OVER_FLAT = 1.2
 
   PASSES = 32
 

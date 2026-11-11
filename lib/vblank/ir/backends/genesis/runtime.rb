@@ -110,10 +110,12 @@ module VBlank
           end
 
           # The screen's interrupt switched on, once, as setting up ends: the chip told to raise it, and
-          # the processor to take it. The screen itself stays off until the first pass is shown.
+          # the processor to take it. The screen itself stays off until the first pass is shown. The
+          # chip is let copy from work RAM by itself from here on too, since the first pass's sprite
+          # table goes in that way while the screen is still off (Tiles#emit_sprite_rows_copied_by_chip).
           def emit_interrupt_on(asm)
             h = Console::GenesisHardware
-            asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_OFF | h::MODE2_VBLANK_INTERRUPT),
+            asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_OFF | h::MODE2_VBLANK_INTERRUPT | h::MODE2_DMA),
                      asm.abs_l(h::VDP_CONTROL))
             asm.move_to_sr(asm.imm(Frame::INTERRUPTS_ON))
           end
