@@ -21,6 +21,7 @@ class TestPackBackgrounds < Minitest::Test
   # the Genesis shows exactly.
   BANKS = [MadeUpOriginalLayouts::PALETTE, MadeUpOriginalLayouts::PALETTE.rotate(7)].freeze
   OTHER = MadeUpOriginalLayouts::PALETTE.rotate(3)
+  LATER = MadeUpOriginalLayouts::PALETTE.rotate(5)
 
   # The Advance keeps a tile two pixels a byte, the left one in the low half.
   LOW_HALF_FIRST = ->(places) { places.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*") }
@@ -172,6 +173,92 @@ class TestPackBackgrounds < Minitest::Test
       place = PLACES[1][1]
 
       assert_equal other.fetch(place), screen.pixel(1, 0), "the pixel at (1, 0), drawn with :other in place of :palette_0"
+    end
+  end
+
+  # A game showing one cell of tile 1 from bank 0, its slot of colours holding two banks, and
+  # whatever the block says.
+  private def game_drawn_from_bank_0(folder, &more)
+    words = [ADVANCE_CELL.(1)]
+    pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 1, cell: 8, &more)
+  end
+
+  # +colors+ as a `colors` list, its first place see-through.
+  private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
+
+  # WHICH BANKS A MAP DRAWS FROM IS IN THE PLAYER'S COPY, so a game names every bank its screen
+  # fades, as the original walks every bank of the console's colours, and the banks this map
+  # does not use change nothing.
+  def test_a_bank_the_map_does_not_use_is_stepped_with_the_ones_it_does
+    Dir.mktmpdir do |folder|
+      first = see_through_first(OTHER)
+      second = see_through_first(LATER)
+      program = game_drawn_from_bank_0(folder) do |world|
+        colors :first, first
+        colors :second, second
+        step = var :step, 1
+        world.draw_with({ palette_0: %i[first second], palette_1: %i[first second] }, showing: step)
+      end
+      screen = game_player.run(program, frames: 3).screen
+
+      assert_equal second.fetch(PLACES[1][1]), screen.pixel(1, 0), "bank 0's tile at step 1, beside bank 1 that no cell uses"
+    end
+  end
+
+  def test_a_background_told_only_banks_its_map_does_not_use_is_shown_as_drawn
+    Dir.mktmpdir do |folder|
+      other = see_through_first(OTHER)
+      program = game_drawn_from_bank_0(folder) do |world|
+        colors :other, other
+        world.draw_with({ palette_1: :other })
+      end
+      screen = game_player.run(program, frames: 3).screen
+
+      assert_cell(screen, PLACES[1], 8, 0, 0, 0)
+    end
+  end
+
+  # `recolor` of a bank the map does not use reaches what is drawn with it, a sprite here, and
+  # leaves the background as drawn.
+  def test_a_bank_the_map_does_not_use_is_recolored_beside_the_background
+    Dir.mktmpdir do |folder|
+      other = see_through_first(OTHER)
+      program = game_drawn_from_bank_0(folder) do |world|
+        colors :other, other
+        world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+        image :dot, width: 8, height: 8, places: Array.new(64, 2), colors: :palette_1
+        dot = sprite :dot, at: [40, 40]
+        dot.draw_with :palette_1
+        recolor :palette_1, :other
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_equal other.fetch(2), screen.pixel(41, 41), "the sprite drawn with bank 1, which holds :other"
+      assert_cell(screen, PLACES[1], 8, 0, 0, 0)
+    end
+  end
+
+  def test_a_list_that_is_not_a_bank_of_the_slot_is_still_refused
+    Dir.mktmpdir do |folder|
+      other = see_through_first(OTHER)
+      error = assert_raises(ArgumentError) do
+        game_drawn_from_bank_0(folder) do |world|
+          colors :other, other
+          world.draw_with({ other: :palette_0 })
+        end
+      end
+
+      assert_includes error.message, "none of its tiles is drawn from :other"
+    end
+  end
+
+  def test_a_bank_the_map_does_not_use_drawn_with_no_list_of_colors_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_drawn_from_bank_0(folder) { |world| world.draw_with({ palette_1: :ghost }) }
+      end
+
+      assert_includes error.message, ":ghost, which is not a list of colors"
     end
   end
 

@@ -21,7 +21,9 @@ module VBlank
     # THE COLOURS ARE NAMED LISTS, a bank each. Bank +n+ of the slot is the list `:<slot>_<n>`
     # (`:title_colors_0`), so a game fades the background or draws it with other colours by those
     # names, as it would a background of its own (`city.draw_with color_walk(:title_colors_0, from:
-    # :black), showing: step`). Two backgrounds from one slot share its lists.
+    # :black), showing: step`). Two backgrounds from one slot share its lists. `draw_with` takes any
+    # bank of the slot, and one this background's map does not use changes nothing: which banks a
+    # map uses is in the player's copy, so a game names every bank its screen fades.
     #
     # BUILT ALL-IN-ONE, the cells are worked out here from what the slots hold, as a port would
     # have worked them out by hand: each different tile as drawn (a tile, its bank and its turn) a
@@ -59,7 +61,8 @@ module VBlank
         refuse_pack_background_drawing_nothing!(name) if drawn.empty?
         tileset = :"background :#{name} tiles"
         tiles(tileset, drawn.to_h { |picture| [picture, picture] })
-        background(name, tiles: tileset, map: rows, **others)
+        # Which banks the map uses is in the player's copy, so the game may name any bank of the slot.
+        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(bank_lists)
       end
 
       # ONE TILE OF A CELL, as it is drawn: which tile of the slot, turned how, from which bank. A

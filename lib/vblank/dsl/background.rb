@@ -66,6 +66,20 @@ module VBlank
         @walks_areas = walks_areas # its maps are in several areas, each drawn from its own tiles
         @streams = streams # its maps are brought into view a strip at a time (see IR::TileMap.streams?)
         @map_names = map_names || [name]
+        @lists_allowed_undrawn = [] # see #allow_undrawn_lists
+      end
+
+      # LISTS `draw_with` TAKES THOUGH NO TILE MAY BE DRAWN FROM THEM. Which lists a background's
+      # tiles are drawn from is, as a rule, the game's own doing, so naming one that none is drawn
+      # from is a name spelled wrong, and refused. A background from the data pack differs: which
+      # banks of colours its map uses is in the player's copy of the original, which the game
+      # cannot read as it is written. So its game names every bank the screen fades, and the banks
+      # this map does not use are left out: nothing is drawn from them, so nothing is recoloured.
+      #
+      # Called by Builder::PackBackgrounds as it declares the background, with every bank of its slot.
+      def allow_undrawn_lists(names)
+        @lists_allowed_undrawn = names
+        self
       end
 
       # The name the background was declared with.
@@ -264,8 +278,12 @@ module VBlank
       def draw_with(which, showing: nil)
         refuse_on_bitmap_screen!("draw_with",
                                    instead: "Draw the picture in the colors you want with `blit`")
+        steps = recolor_steps(which, showing)
+        # Told only lists none of its tiles is drawn from (#allow_undrawn_lists): nothing to recolour.
+        return self if steps&.all?(&:none?)
+
         choice = Value.new(@builder, Build.var_ref(colors_var), name: colors_var)
-        recolors.write_choice(choice, recolor_steps(which, showing), showing)
+        recolors.write_choice(choice, steps, showing)
         # Recorded here as well as remembered, the same way `show_map` is: a program with no
         # game loop has no gap between frames to hold the write for, and then it simply
         # happens where it was asked for.
@@ -767,8 +785,12 @@ module VBlank
 
       # A hash of the layer's own lists to what each is drawn with: one list each, or the same
       # number of lists each when a number picks between them.
+      #
+      # A list no tile is drawn from, where the layer takes those (#allow_undrawn_lists), is held to
+      # the same shape and then left out of the steps.
       def recolor_steps_from_hash(named, showing)
-        at = named.keys.to_h { |list| [list, palette_index!(list)] }
+        undrawn = named.keys.select { |list| undrawn_list_allowed?(list) }
+        at = (named.keys - undrawn).to_h { |list| [list, palette_index!(list)] }
         each_list = named.transform_values { |value| showing.nil? ? [value] : value }
         unless each_list.values.all? { |lists| lists.is_a?(Array) && !lists.empty? && lists.all?(Symbol) }
           raise ArgumentError, uneven_steps_message(named, showing)
@@ -776,8 +798,27 @@ module VBlank
         count = each_list.values.first.length
         raise ArgumentError, uneven_steps_message(named, showing) unless each_list.values.all? { |lists| lists.length == count }
 
+        refuse_undeclared_lists!(each_list.values_at(*undrawn).flatten)
+
         (0...count).map do |step|
           Array.new(drawn_lists.length) { |palette| (list = at.key(palette)) && each_list.fetch(list)[step] }
+        end
+      end
+
+      # Whether +list+ is one this layer takes though none of its tiles is drawn from it.
+      def undrawn_list_allowed?(list)
+        @lists_allowed_undrawn.include?(list) && drawn_lists.none? { |name, _| name == list }
+      end
+
+      # The lists given to a list no tile is drawn from are checked against no tile, so a name
+      # spelled wrong among them is caught here.
+      def refuse_undeclared_lists!(names)
+        names.each do |name|
+          next if @builder.declared_colors(name)
+
+          raise ArgumentError,
+                "#{error_subject} was told to draw_with :#{name}, which is not a list of colors. " \
+                "Declare it first with `colors :#{name}, [:transparent, ...]`."
         end
       end
 
