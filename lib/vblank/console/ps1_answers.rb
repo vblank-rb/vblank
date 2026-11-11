@@ -267,8 +267,7 @@ module VBlank
         "sprites and tiled backgrounds" => %i[sprite tiles background status_bar canvas tile_pictures sprite_tiles
                                               layers layer draw_in_order hide_sprites picture_groups colors recolor
                                               color_walk],
-        "sound" => %i[song play_song stop_music hold_music release_music music_volume fade_music_in fade_music_out songs
-                      sound_effects sample instrument],
+        "sound" => %i[sample instrument],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 

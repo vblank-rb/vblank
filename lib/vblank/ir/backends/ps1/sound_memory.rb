@@ -46,8 +46,8 @@ module VBlank
 
           attr_reader :loops
 
-          # The loops +program+ plays: every square width, each waveform it names, and the noise when it
-          # makes any.
+          # The loops +program+ plays: every square width, each waveform it or its songs name, and the noise
+          # when it or a song makes any.
           def initialize(program)
             @loops = {}
             next_free = Console::PS1Hardware::SPU_FIRST_FREE
@@ -101,9 +101,10 @@ module VBlank
           def made(program)
             nodes = program.walk.to_a
             loops = SQUARE_EIGHTHS.map { |eighths| [[:square, eighths], self.class.square_samples(eighths)] }
-            shapes = nodes.select { |node| node.kind == :wave }.map { |node| Audio::Sound.wavetable(node.shape) }.uniq
+            shapes = (nodes.select { |node| node.kind == :wave }.map(&:shape) + Music.waveforms(program))
+                     .map { |shape| Audio::Sound.wavetable(shape) }.uniq
             loops += shapes.map { |steps| [[:wave, steps], self.class.wave_samples(steps)] }
-            if nodes.any? { |node| node.kind == :noise }
+            if nodes.any? { |node| node.kind == :noise } || Music.drums?(program)
               loops << [:hiss, self.class.noise_samples(HISS_STEPS, false)]
               loops << [:rattle, self.class.noise_samples(RATTLE_STEPS, true)]
             end

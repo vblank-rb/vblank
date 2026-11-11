@@ -5,9 +5,10 @@ module VBlank
     module Backends
       class PS1
         # WHAT A SOUND IS, ON A PLAYSTATION'S SOUND CHIP. This module gives which writes each of the
-        # interpreter's sound-log entries means; the lowering makes them (Lowering::Sound), and the checked
-        # run reads the chip's registers after every pass and holds them to what the log up to then says
-        # (#after), so a write that never arrived, or arrived wrong, shows up in the chip itself.
+        # interpreter's sound-log entries means; the lowering makes them (Lowering::Sound), the song player
+        # sends them (Runtime::Music, from the table PS1::Music makes with them), and the checked run reads the
+        # chip's registers after every pass and holds them to what the log up to then says (#after), so a
+        # write that never arrived, or arrived wrong, shows up in the chip itself.
         #
         # THE GAME'S VOICES are four of the chip's 24, one for each of the Advance's: its two squares, its
         # wave voice and its noise voice (VOICES). Each plays a loop from sound memory (SoundMemory): which
@@ -29,8 +30,10 @@ module VBlank
         #   [:spu, register, value]        a register, by its distance from 1F801C00h
         #   [:loud, voice, volume, step]   a voice set to +volume+ (0 to 15), then moved a step every +step+
         #                                  64ths of a second (up when above nought, down when below)
+        #   [:level, voice, volume]        a voice set to +volume+, going on as it was
         #   [:key_on, voice]               the voice started from its loop's start at the frame boundary
         #   [:key_off, voice]              the voice let go at the frame boundary
+        #   [:silence, voices]             each voice whose bit is set at nought and let go
         module SPUWrites
           H = Console::PS1Hardware
 
@@ -39,7 +42,8 @@ module VBlank
           WAVE_VOICE = 2
           NOISE_VOICE = 3
           VOICES = 4
-          CHANNEL_VOICES = { 1 => 0, 2 => 1, 3 => WAVE_VOICE, 4 => NOISE_VOICE }.freeze
+          SQUARE_VOICES = { 1 => 0, 2 => 1 }.freeze
+          CHANNEL_VOICES = SQUARE_VOICES.merge(3 => WAVE_VOICE, 4 => NOISE_VOICE).freeze
 
           # THE LOUDNESS OF A VOICE AT FULL, as its volume register holds it: a quarter of the chip's
           # loudest, so the four voices together cannot go past what the speaker takes. A volume of 0 to
@@ -51,34 +55,57 @@ module VBlank
           PITCH_TOP = 0x3FFF
           SAMPLE_RATE = 44_100
 
+          # WHAT A LOG ENTRY DOES NOT SAY, and the writes need: +memory+, where each loop is in sound memory
+          # (SoundMemory); and for a song's note, as on the Genesis (Genesis::ChipWrites::Voicing), +parts+,
+          # each song's parts by [the song's name, its channel] (a sound effect's among them), and +effects+,
+          # the names of the songs that are sound effects.
+          Voicing = Data.define(:memory, :parts, :effects) do
+            def initialize(memory:, parts: {}, effects: []) = super
+
+            # The voices +song+'s parts play on, a bit each.
+            def song_voices(song)
+              parts.keys.sum { |name, channel| name == song && !SongTable.recorded?(channel) ? 1 << CHANNEL_VOICES.fetch(channel) : 0 }
+            end
+          end
+
           module_function
 
           def register(voice, which) = (voice * H::SPU_VOICE_BYTES) + which
 
-          # The writes one sound-log entry means, its loops placed in +memory+ (a SoundMemory).
-          def for_entry(entry, memory)
+          # The writes one sound-log entry means. +effect_voices+ is the voices sound effects hold, which a
+          # tune's stop leaves alone.
+          def for_entry(entry, voicing, effect_voices: 0)
+            memory = voicing.memory
             case entry.first
             when :enabled then []
             when :beep then beep(entry.last, memory)
-            when :noise then entry.last ? noise(entry.last, memory) : silence(NOISE_VOICE)
+            when :noise then entry.last ? noise(entry.last, memory) : silence(1 << NOISE_VOICE)
             when :wave then wave(entry.last, memory)
             when :stop_wave then [*volume_writes(WAVE_VOICE, 0), [:key_off, WAVE_VOICE]]
+            when :note, :sound_effect, :sample, :stop_sample, :wobble, :duty then []
+            when :voice then song_note(entry, voicing)
+            when :stop_music then silence(voicing.song_voices(entry.fetch(1)) & ~effect_voices & 0xF)
+            when :loudness then entry[1].is_a?(Array) ? [] : loudness_at(entry[1], entry[2], voicing, nil)
             else raise ArgumentError, "the PlayStation build does not play #{entry.first.inspect} yet"
             end
           end
 
           # A beep: the square of its width, read at its pitch, at its loudness, fading as it names.
           def beep(effect, memory)
-            step = VBlank::Audio::Sound::FADE_STEP_SIXTY_FOURTHS.fetch(effect.decay)
-            [[:spu, register(BEEP_VOICE, H::SPU_START), memory.start_of(SoundMemory.square(effect.duty))],
-             [:spu, register(BEEP_VOICE, H::SPU_PITCH), square_pitch(effect.frequency)],
-             [:loud, BEEP_VOICE, effect.volume, -step], [:key_on, BEEP_VOICE]]
+            square(BEEP_VOICE, effect.duty, effect.frequency, effect.volume,
+                   -VBlank::Audio::Sound::FADE_STEP_SIXTY_FOURTHS.fetch(effect.decay), memory)
           end
 
-          # A noise hit (Audio::Sound.resolve_noise's hash): the hiss or the rattle, read a sample a step at
-          # the Advance's rate for its pitch.
+          def square(voice, duty, frequency, volume, step, memory)
+            [[:spu, register(voice, H::SPU_START), memory.start_of(SoundMemory.square(duty))],
+             [:spu, register(voice, H::SPU_PITCH), square_pitch(frequency)],
+             [:loud, voice, volume, step], [:key_on, voice]]
+          end
+
+          # A noise hit (Audio::Sound.resolve_noise's hash, or a song's drum, whose pitch is a frequency): the
+          # hiss or the rattle, read a sample a step at the Advance's rate for its pitch.
           def noise(hit, memory)
-            step = VBlank::Audio::Sound::FADE_STEP_SIXTY_FOURTHS.fetch(hit[:decay])
+            step = VBlank::Audio::Sound.fade_step(hit[:decay] || :none)
             [[:spu, register(NOISE_VOICE, H::SPU_START), memory.start_of(SoundMemory.noise(hit[:metallic]))],
              [:spu, register(NOISE_VOICE, H::SPU_PITCH), noise_pitch(hit[:pitch])],
              [:loud, NOISE_VOICE, hit[:volume], -step], [:key_on, NOISE_VOICE]]
@@ -88,16 +115,19 @@ module VBlank
           # its waveform's loop at its pitch, and its loudness, which on the Advance is one of five
           # (Audio::Sound.wave_level), as so many quarters of a voice's loudest.
           def wave(params, memory)
-            volume = params[:volume]
-            level = volume.is_a?(Symbol) ? volume : VBlank::Audio::Sound.wave_level(volume)
-            quarters = VBlank::Audio::Sound.wave_level_quarters(level)
             [[:spu, register(WAVE_VOICE, H::SPU_START), memory.start_of(SoundMemory.wave(params[:shape]))],
              [:spu, register(WAVE_VOICE, H::SPU_PITCH), wave_pitch(params[:frequency])],
-             *volume_writes(WAVE_VOICE, (quarters * LOUDEST) / 4), [:key_on, WAVE_VOICE]]
+             *wave_levels(params[:volume]), [:key_on, WAVE_VOICE]]
           end
 
-          # A voice silenced: its loudness nought, and let go.
-          def silence(voice) = [[:loud, voice, 0, 0], [:key_off, voice]]
+          # The wave voice's two volume registers at +volume+: a level's name, or 0 to 15.
+          def wave_levels(volume)
+            level = volume.is_a?(Symbol) ? volume : VBlank::Audio::Sound.wave_level(volume)
+            volume_writes(WAVE_VOICE, (VBlank::Audio::Sound.wave_level_quarters(level) * LOUDEST) / 4)
+          end
+
+          # The voices whose bits are set silenced: at nought, and let go.
+          def silence(voices) = voices.zero? ? [] : [[:silence, voices]]
 
           def volume_writes(voice, value) = [[:spu, register(voice, H::SPU_VOLUME_LEFT), value], [:spu, register(voice, H::SPU_VOLUME_RIGHT), value]]
 
@@ -125,19 +155,147 @@ module VBlank
             pitch_for(rate, 1)
           end
 
+          # --- a song's notes (SongTable asks these) ---
+
+          # Whether a song's or an effect's note on +channel+ makes a sound (Reference::Player#sounds?).
+          def sounds?(channel, frequency, volume, fade = nil)
+            return false unless frequency.positive?
+            return true if fade&.swells_by_itself?
+            return false unless volume.positive?
+
+            CHANNEL_VOICES.fetch(channel) != WAVE_VOICE || VBlank::Audio::Sound.wave_level(volume) != :mute
+          end
+
+          # Where a [:voice ...] entry holds its fade, its slide and its shapes (IR::Tunes.voice_entry).
+          FADE_OF_VOICE_ENTRY = 5
+          DUTY_OF_VOICE_ENTRY = 9
+
+          # A SONG'S NOTE on a square voice, or the voice silenced for a rest; on the wave or noise voice
+          # nothing, since the entry after it is the note. The square of the note's width, or its part's.
+          def song_note(entry, voicing)
+            _, channel, who, frequency, volume = entry
+            fade = entry[FADE_OF_VOICE_ENTRY]
+            voice = SQUARE_VOICES[channel] or return []
+            return silence(1 << voice) unless sounds?(channel, frequency, volume, fade)
+
+            duty = entry[DUTY_OF_VOICE_ENTRY]&.at(0) || voicing.parts[[who, channel]]&.duty || :half
+            square(voice, duty, frequency, volume, signed_step(fade), voicing.memory)
+          end
+
+          # A fade as the runtime's step: above nought for a swell, below for a fade, nought for none.
+          def signed_step(fade)
+            return 0 unless fade
+
+            fade.swells? ? fade.step : -fade.step
+          end
+
+          # THE MUSIC VOLUME reaching a note on +channel+, now at +volume+: a square or noise voice's
+          # loudness, going on as it was, or the wave voice's two volume registers.
+          def loudness_at(channel, volume, _voicing, _song)
+            voice = CHANNEL_VOICES.fetch(channel)
+            return wave_levels(volume) if voice == WAVE_VOICE
+
+            [[:level, voice, volume]]
+          end
+
+          # A note from one speaker is not made yet (Lowering::Sound refuses it), so nothing changes here.
+          def heard_from_one_side(writes, _side) = writes
+
+          # A swelling note struck at the music volume: refused as not made yet before a table is made.
+          def swell_strike(entry, _voicing, _song) = [[:level, CHANNEL_VOICES.fetch(entry[1]), entry[2]]]
+
+          # THE WRITES A RUN OF THE LOG MEANS, in order, with what one entry says of the next, as
+          # Genesis::ChipWrites works them out: the tune a held note's [:loudness ...] reaches is the one
+          # whose note was logged last; a song's note on the wave or noise voice plays at the note's own
+          # volume, which its [:voice ...] entry carries; and that note's [:loudness ...], logged before the
+          # voice's own entry, stands over it, so the note starts at the music volume.
+          def writes(entries, voicing, song: nil) = each_entry_writes(entries, voicing, song: song).flat_map { |_, writes| writes }
+
+          # Each of +entries+ with the writes it means.
+          def each_entry_writes(entries, voicing, song: nil)
+            return enum_for(:each_entry_writes, entries, voicing, song: song) unless block_given?
+
+            _ = song
+            note_volume = nil
+            loudness = [] # what a new note's loudness has just written
+            previous = nil
+            effect_voices = 0 # the voices a sound effect holds, a bit each
+            fade = nil # the fade the note just logged named
+            entries.each do |entry|
+              effect_voices = held_by_effects(effect_voices, entry, voicing) if entry.first == :voice
+              played = note_volume && wave_or_noise_note?(entry) ? [entry.first, entry.last.merge(volume: note_volume)] : entry
+              note_volume = entry[4] if entry.first == :voice && !SQUARE_VOICES.key?(entry[1])
+              note_volume = nil unless %i[voice loudness].include?(entry.first)
+              fade = entry[FADE_OF_VOICE_ENTRY] if entry.first == :voice
+              writes = for_entry(played, voicing, effect_voices: effect_voices)
+              writes = under_loudness(writes, loudness) if voice_own_entry?(entry)
+              writes = with_fade(writes, fade) if fade && noise_note?(entry)
+              loudness = entry.first == :loudness && previous == :voice ? writes : []
+              previous = entry.first
+              yield entry, writes
+            end
+          end
+
+          # A voice's own entry after its note's loudness: the wave voice's volume stays as the loudness
+          # wrote it, and the noise voice starts at the loudness's volume.
+          def under_loudness(writes, loudness)
+            registers = loudness.select { |write| write.first == :spu }.map { |write| write[1] }
+            volume = loudness.find { |write| write.first == :level }&.last
+            writes.reject { |write| write.first == :spu && registers.include?(write[1]) }.map do |write|
+              write.first == :loud && volume ? [:loud, write[1], volume, write[3]] : write
+            end
+          end
+
+          # A drum's fade, given in the [:voice ...] before it, in place of the part's.
+          def with_fade(writes, fade)
+            writes.map { |write| write.first == :loud ? [:loud, write[1], write[2], signed_step(fade)] : write }
+          end
+
+          # A [:noise ...] entry that plays a note: a drum's fade is given in the [:voice ...] before it.
+          def noise_note?(entry) = entry.first == :noise && entry.last.is_a?(Hash)
+
+          # +voices+, the voices sound effects hold, after a [:voice ...] +entry+.
+          def held_by_effects(voices, entry, voicing)
+            _, channel, who, frequency, volume = entry
+            bit = 1 << CHANNEL_VOICES.fetch(channel)
+            voicing.effects.include?(who) && sounds?(channel, frequency, volume, entry[FADE_OF_VOICE_ENTRY]) ? voices | bit : voices & ~bit
+          end
+
+          # A [:wave ...] or [:noise ...] entry that plays a note, not a rest.
+          def wave_or_noise_note?(entry) = %i[wave noise].include?(entry.first) && entry.last.is_a?(Hash)
+
+          # The wave or noise voice's own entry, which a song's note there logs after its loudness.
+          def voice_own_entry?(entry) = !entry.nil? && %i[wave stop_wave noise].include?(entry.first)
+
+          # WHICH TUNE A STOP STOPPED, the program's to name and held to the log where the log says it too
+          # (Genesis::ChipWrites.misnamed_stop): the index in +entries+ of the first stop that names another tune.
+          def misnamed_stop(entries, voicing)
+            heard = nil
+            entries.each_with_index do |entry, i|
+              case entry.first
+              when :note then heard = entry[1] unless voicing.effects.include?(entry[1])
+              when :stop_music
+                return i if heard && entry[1] != heard
+
+                heard = nil
+              end
+            end
+            nil
+          end
+
           # WHAT THE CHIP'S REGISTERS HOLD AFTER THE SOUND LOG +entries+, by their distance from 1F801C00h.
           # Nothing reaches the chip until the game calls `enable_sound` (Runtime::Sound). A voice that is
           # moving its own loudness has none to answer for: the log does not say where it has got to. Key on
           # and key off are gathered and written at the frame boundary, so they are not here.
-          def after(entries, memory)
+          def after(entries, voicing)
             held = {}
             moving = {}
             enabled = false
-            entries.each do |entry|
+            each_entry_writes(entries, voicing) do |entry, writes|
               enabled ||= entry.first == :enabled
               next unless enabled
 
-              for_entry(entry, memory).each { |write| hold_write(held, moving, write) }
+              writes.each { |write| hold_write(held, moving, write) }
             end
             held
           end
@@ -146,6 +304,8 @@ module VBlank
             case write.first
             when :spu then held[write[1]] = write[2]
             when :loud then hold_loudness(held, moving, write[1], write[2], !write[3].zero?)
+            when :level then hold_loudness(held, moving, write[1], write[2], moving[write[1]])
+            when :silence then VOICES.times { |voice| hold_loudness(held, moving, voice, 0, false) if write[1][voice] == 1 }
             end
           end
 

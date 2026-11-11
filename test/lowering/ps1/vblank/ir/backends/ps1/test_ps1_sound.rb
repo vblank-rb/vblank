@@ -61,7 +61,7 @@ class TestPS1Sound < Minitest::Test
       game_loop { nil }
     end
 
-    memory = run.rom.built.sound_memory
+    memory = run.rom.built.sound_voicing.memory
     assert_equal memory.start_of(:rattle), run.spu_reads.last.last[SPU.register(SPU::NOISE_VOICE, H::SPU_START)]
     assert_operator run.loudest_each_frame.max, :>, 1000
   end
@@ -78,6 +78,55 @@ class TestPS1Sound < Minitest::Test
       game_loop do
         n += 1
         stop_wave if n == 5
+      end
+    end
+
+    assert_operator run.loudest_each_frame.last(5).max, :<, 50
+  end
+
+  def test_a_song_plays_its_notes_against_the_interpreter
+    run = checked(frames: 40) do
+      enable_sound
+      song(:tune) do
+        tempo 450
+        voice(:lead) do
+          note :A4, :quarter
+          rest :quarter
+        end
+        voice(:bass) do
+          volume 8
+          note :A3, :half
+        end
+      end
+      play_song :tune
+      game_loop { nil }
+    end
+
+    assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 2
+  end
+
+  def test_a_song_is_heard_at_its_notes_pitch
+    assert_in_delta 440, pitch_heard {
+      song(:tune) do
+        tempo 60
+        voice(:lead) { note :A4, :whole }
+      end
+      play_song :tune
+    }, 12
+  end
+
+  def test_a_tune_stopped_lets_its_voices_go
+    run = checked(frames: 30) do
+      enable_sound
+      song(:tune) do
+        tempo 120
+        voice(:lead) { note :A4, :whole }
+      end
+      n = 0
+      play_song :tune
+      game_loop do
+        n += 1
+        stop_music if n == 10
       end
     end
 

@@ -63,18 +63,41 @@ module VBlank
             # How many halfwords the chip's queue for sound memory holds (psx-spx: "FIFO ... 32 halfwords").
             QUEUE_HALVES = 32
 
-            ROUTINES = { loud: "rt_sound_loud", key_on: "rt_sound_key_on", key_off: "rt_sound_key_off", spu: "rt_spu_write" }.freeze
+            # THE COMMANDS OF A GROUP of the song table (PS1::Music), one for each kind of write, each sent to
+            # its routine with its first number in a0 and its second in a1. Nought ends a group and 4 logs an
+            # entry (SongTable::GROUP_END, GROUP_LOG), so neither is one of these.
+            WRITE_SPU = 1
+            SET_LOUD = 2
+            KEY_ON = 3
+            KEY_OFF = 5
+            SILENCE = 6
+            SET_LEVEL = 7
+
+            ROUTINES = Ractor.make_shareable({ WRITE_SPU => "rt_spu_write", SET_LOUD => "rt_sound_loud", KEY_ON => "rt_sound_key_on",
+                                               KEY_OFF => "rt_sound_key_off", SILENCE => "rt_sound_silence",
+                                               SET_LEVEL => "rt_sound_level" })
 
             module_function
 
-            # The runtime routine a write (SPUWrites) is made with, and its numbers.
-            def call_for(write)
+            # The command a write (SPUWrites) is sent as: [the command, its first number, its second], each 16
+            # bits; the second is read back signed (a fade's step can be below nought).
+            def command_for(write)
               case write.first
-              when :spu then [ROUTINES.fetch(:spu), [write[1], write[2]]]
-              when :loud then [ROUTINES.fetch(:loud), [(write[1] << 8) | write[2], write[3]]]
-              when :key_on, :key_off then [ROUTINES.fetch(write.first), [write[1]]]
-              else raise ArgumentError, "no routine for #{write.inspect}"
+              when :spu then [WRITE_SPU, write[1], write[2]]
+              when :loud then [SET_LOUD, (write[1] << 8) | write[2], write[3] & 0xFFFF]
+              when :level then [SET_LEVEL, (write[1] << 8) | write[2], 0]
+              when :key_on then [KEY_ON, write[1], 0]
+              when :key_off then [KEY_OFF, write[1], 0]
+              when :silence then [SILENCE, write[1], 0]
+              else raise ArgumentError, "no command for #{write.inspect}"
               end
+            end
+
+            # The runtime routine a write is made with in the game's own code, and its numbers.
+            def call_for(write)
+              command, first, second = command_for(write)
+              second -= 0x10000 if second >= 0x8000
+              [ROUTINES.fetch(command), [first, second]]
             end
 
             def reserve(memory)
@@ -84,7 +107,8 @@ module VBlank
               memory.reserve(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
             end
 
-            def emit(asm, memory)
+            # +songs+ for a game with songs, whose player (Music) runs where each wait ends.
+            def emit(asm, memory, songs: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_on(asm, at)
               emit_log(asm, at)
@@ -92,9 +116,10 @@ module VBlank
               emit_loudness(asm, at)
               emit_key(asm, at, "rt_sound_key_on", KEYS_ON, KEYS_OFF)
               emit_key(asm, at, "rt_sound_key_off", KEYS_OFF, KEYS_ON)
+              emit_silence(asm)
               emit_keys(asm, at)
               emit_fades(asm, at)
-              emit_frame(asm, at)
+              emit_frame(asm, at, songs)
               emit_upload(asm)
               emit_volume_table(asm)
             end
@@ -147,6 +172,8 @@ module VBlank
             # rt_sound_loud(a0 = the voice << 8 | its volume, a1 = the step it moves by): the voice at that
             # volume, moved on from there by the step (SPUWrites's [:loud ...]).
             #
+            # rt_sound_level(a0 = the voice << 8 | its volume): at that volume, going on as it was ([:level ...]).
+            #
             # rt_sound_volume (t0 = a volume, t2 = a voice): the voice's volume registers, both speakers, set
             # to the volume's loudness (SPUWrites::VOLUME_REGISTER). It changes t4 to t7.
             def emit_loudness(asm, at)
@@ -157,7 +184,15 @@ module VBlank
               asm.sll(:t3, :t2, 2)
               asm.addu(:t3, :t3, :gp)
               asm.sw(:a1, at.call(STEPS), :t3)
-              asm.sw(:zero, at.call(COUNTS), :t3)
+              asm.b("rt_sound_level_voice") { asm.sw(:zero, at.call(COUNTS), :t3) }
+
+              asm.label("rt_sound_level")
+              asm.lw(:t0, at.call(ON), :gp)
+              asm.beq(:t0, :zero, "rt_sound_volume_done")
+              asm.srl(:t2, :a0, 8)
+              asm.sll(:t3, :t2, 2)
+              asm.addu(:t3, :t3, :gp)
+              asm.label("rt_sound_level_voice")
               asm.andi(:t0, :a0, 0xFF)
               asm.sw(:t0, at.call(VOLUMES), :t3)
 
@@ -192,6 +227,35 @@ module VBlank
               asm.sw(:t2, at.call(other), :gp)
               asm.label("#{label}_done")
               asm.jr(:ra)
+            end
+
+            # rt_sound_silence(a0 = voices, a bit each): each voice whose bit is set at nought, not moving, and
+            # let go ([:silence ...]).
+            def emit_silence(asm)
+              asm.label("rt_sound_silence")
+              asm.addiu(:sp, :sp, -12)
+              asm.sw(:ra, 0, :sp)
+              asm.sw(:s0, 4, :sp)
+              asm.sw(:s1, 8, :sp)
+              asm.move(:s0, :a0)
+              asm.move(:s1, :zero)
+              asm.label("rt_sound_silence_voice")
+              asm.srlv(:t0, :s0, :s1)
+              asm.andi(:t0, :t0, 1)
+              asm.beq(:t0, :zero, "rt_sound_silence_next")
+              asm.sll(:a0, :s1, 8)
+              asm.move(:a1, :zero)
+              asm.jal("rt_sound_loud")
+              asm.move(:a0, :s1)
+              asm.jal("rt_sound_key_off")
+              asm.label("rt_sound_silence_next")
+              asm.addiu(:s1, :s1, 1)
+              asm.sltiu(:t0, :s1, SPUWrites::VOICES)
+              asm.bne(:t0, :zero, "rt_sound_silence_voice")
+              asm.lw(:ra, 0, :sp)
+              asm.lw(:s0, 4, :sp)
+              asm.lw(:s1, 8, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 12) }
             end
 
             # rt_sound_keys: the voices let go and the voices started this pass, each told to the chip in
@@ -266,13 +330,14 @@ module VBlank
             # took, the voices' fades (Reference#advance_frame's order: the mix, then the player); then the
             # voices started and let go; and, kept for the pass, how many entries the log holds, with the
             # pass's number (LOGGED_BY_PASS).
-            def emit_frame(asm, at)
+            def emit_frame(asm, at, songs)
               asm.label("rt_sound_frame")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
               asm.lw(:t0, at.call(Frame::FRAMES_TAKEN), :gp)
               asm.sw(:t0, at.call(TICKS_LEFT), :gp)
               asm.label("rt_sound_frame_tick")
+              asm.jal("rt_music_frame") if songs
               asm.jal("rt_sound_fades")
               asm.lw(:t0, at.call(TICKS_LEFT), :gp)
               asm.addiu(:t0, :t0, -1)

@@ -29,13 +29,17 @@ module VBlank
           # log keeps: Runtime::Sound). It is the test's to clear as it watches, as the interpreter's is: what
           # comes after is added to what the test left.
           def audio
-            @audio.concat(@logged_entries[@audio_handed...@sounds]) if @sounds > @audio_handed
+            @audio.concat(in_interpreter_words(@logged_entries[@audio_handed...@sounds])) if @sounds > @audio_handed
             @audio_handed = [@audio_handed, @sounds].max
             @audio
           end
 
           # The sound log up to the moment the run ended, every entry, whatever a test did to #audio.
-          def audio_played = @logged_entries.take(@sounds)
+          def audio_played = in_interpreter_words(@logged_entries.take(@sounds))
+
+          # Every entry the program logged, as it logged them: a stop names the tune it stopped
+          # ([:stop_music, name], SongTable.stop_entry), which the writes the stop means depend on.
+          def audio_as_logged = @logged_entries.dup
 
           # What the sound chip's registers held each time the game was found waiting at a pass's end, each
           # with how many entries the sound log held then: [entries, registers by their distance from
@@ -75,6 +79,12 @@ module VBlank
           end
 
           def kit = Console.for(:ps1)
+
+          # The PlayStation's player keeps the interpreter's fields (CartridgeHeadlessRun#song_taken_up), a word
+          # each, whose low half is the number.
+          def next_song_number = song_taken_up(Runtime::Music)
+
+          def in_interpreter_words(entries) = entries.map { |entry| SongTable.interpreter_entry(entry) }
 
           def power_on = set_buttons(@held)
 

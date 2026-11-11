@@ -140,8 +140,7 @@ module VBlank
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group pixels_overlap],
-                                                    "sound" => %i[play_song stop_music hold_music play_from_list play_sound_effect
-                                                                  play_sample stop_sample],
+                                                    "sound" => %i[play_sample stop_sample],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]
                                                   })
@@ -233,6 +232,7 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_parts!
+            refuse_unmade_song_parts!
             variables_most_read_first.each do |name|
               @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
             end
@@ -254,7 +254,7 @@ module VBlank
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             # The pictures are known once every routine is made, so their tables come last.
-            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections, *sound_memory_sections]
+            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections, *sound_sections]
           end
 
           private

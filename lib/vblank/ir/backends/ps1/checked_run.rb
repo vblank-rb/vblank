@@ -48,10 +48,14 @@ module VBlank
           end
 
           def spu_difference
-            memory = rom.built.sound_memory or return nil
-            logged_entries = audio_played.take(@interpreter_sounds.size)
+            voicing = rom.built.sound_voicing or return nil
+            # Only as far as the interpreter's log goes: past it, nothing held the program's entries.
+            logged_entries = audio_as_logged.take(@interpreter_sounds.size)
+            stop = SPUWrites.misnamed_stop(logged_entries, voicing)
+            return "entry #{stop + 1} of the sound log: the program stopped #{logged_entries[stop][1].inspect}, not the tune playing" if stop
+
             spu_reads.each_with_index do |(logged, registers), i|
-              wrong = SPUWrites.after(logged_entries.take(logged), memory).filter_map do |register, value|
+              wrong = SPUWrites.after(logged_entries.take(logged), voicing).filter_map do |register, value|
                 got = registers.fetch(register)
                 format("register %<register>03Xh holds %<got>04Xh, the log says %<value>04Xh", register: register, got: got, value: value) if got != value
               end
