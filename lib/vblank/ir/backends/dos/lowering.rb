@@ -17,12 +17,14 @@ module VBlank
         # instruction on a game's number whose answer Int32 gives otherwise.
         #
         # WHAT IT MAKES SO FAR: a game's numbers, its loops (the game loop in the console's order, repeat),
-        # its conditions and halting, the keyboard's keys as buttons, save memory kept in a file, and a
+        # its conditions and halting, the keyboard's keys as buttons, save memory kept in a file, the clock, and a
         # painted screen of one page with a cleared screen, pixels,
         # rectangles, pictures (`blit`), text and numbers, in a palette of the colours the game names.
         # Everything else is refused by name until it is made (NOT_LOWERED_YET), and what a PC cannot do at
         # all is refused in the words its answers have (Console::Answers#refusals).
         class Lowering
+          include Clock
+
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
           class NotMadeYet < LoweringError
@@ -34,9 +36,9 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit draw_text draw_digit save_init save_store save_write save_erase
-          ] + Nodes.of_role(:declaration)).freeze
+          ] + Clock::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
-          VALUE_KINDS = %i[int var_ref binop neg held pressed save_read save_sum].freeze
+          VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
           PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
@@ -101,9 +103,12 @@ module VBlank
             @palette = palette_of(@program)
             make_art
             keep_loop_running
+            keep_clock_readings
             @asm.label(MAIN)
+            emit_clock_at_start
             @program.children.each { |node| emit_statement(node) }
             @asm.ret
+            emit_clock_routines
           end
 
           private
@@ -316,6 +321,7 @@ module VBlank
             when :draw_text then emit_draw_text(node)
             when :draw_digit then emit_draw_digit(node)
             when :save_init then emit_save_init(node)
+            when :set_clock then emit_set_clock(node)
             when :save_store then emit_save_write_word(SaveLayout.save_var_at(node.slot), Build.var_ref(node.var))
             when :save_write then emit_runtime_call("rt_save_write", node.at, node.value, save_width(node))
             # A file takes any byte at any time, so nothing is wiped; the place is worked out all the same,
@@ -432,6 +438,7 @@ module VBlank
           # took, and what the game catches up by, both as the runtime counted them.
           def emit_wait_vblank
             @asm.call("rt_wait_vblank")
+            emit_clock_each_pass
             return unless @variables.key?(Frames::COUNT)
 
             @asm.mov(:eax, number_at(Frames::COUNT))
@@ -466,6 +473,7 @@ module VBlank
               emit_save_write_word(at, Build.var_ref(kept.name))
             end
             emit_save_write_word(SaveLayout::SAVE_VAR_MARKER_AT, Build.int(marker))
+            emit_clock_readings_from_save
           end
 
           def emit_save_write_word(at, value)
@@ -581,10 +589,29 @@ module VBlank
               @asm.neg(:eax)
             when :save_read then emit_runtime_call("rt_save_read", node.at, save_width(node))
             when :save_sum then emit_runtime_call("rt_save_sum", node.at, node.length)
+            when :clamped then emit_clamped(node)
+            when :clock then emit_clock_reading(node)
             when :held then emit_button_down_flag(Runtime::Frame::HELD, node.button)
             when :pressed then emit_button_down_flag(Runtime::Frame::PRESSED, node.button)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
+          end
+
+          # Reference#clamp_value: the number held at the floor, then at the ceiling, in that order, so a
+          # floor worked out to above its ceiling gives the ceiling. The number in EAX, the floor in EDX and
+          # the ceiling in ECX, compared as signed numbers.
+          def emit_clamped(node)
+            above_floor = fresh_label("above_floor")
+            below_ceiling = fresh_label("below_ceiling")
+            emit_values_into(%i[eax edx ecx], [node.operand, node.min, node.max].map { |part| value_node(part) })
+            @asm.cmp(:eax, :edx)
+            @asm.jge(above_floor)
+            @asm.mov(:eax, :edx)
+            @asm.label(above_floor)
+            @asm.cmp(:eax, :ecx)
+            @asm.jle(below_ceiling)
+            @asm.mov(:eax, :ecx)
+            @asm.label(below_ceiling)
           end
 
           # 1 where +button+ is in the set the runtime keeps at +which+ (held through the pass, or pressed

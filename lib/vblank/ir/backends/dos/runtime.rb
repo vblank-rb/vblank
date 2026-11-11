@@ -122,12 +122,14 @@ module VBlank
 
           module_function
 
-          # +saves+ is whether the game keeps anything in save memory: one that keeps nothing has none of it.
-          def reserve(memory, saves:)
+          # +saves+ is whether the game keeps anything in save memory, and +clock+ whether it reads or sets
+          # the clock: a game that does neither has none of either.
+          def reserve(memory, saves:, clock:)
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
             memory.reserve(Frame::FAULT, Frame::FAULT_BYTES)
             memory.reserve(Frame::STEPS, Frame::STEPS_KEPT)
             Saving.reserve(memory) if saves
+            Clock.reserve(memory) if clock
           end
 
           # Where each of the runtime's names is, for a reader.
@@ -141,9 +143,10 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:)
-            emit_start(asm, memory, palette, starts, saves)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:)
+            emit_start(asm, memory, palette, starts, saves, clock)
             Saving.emit(asm, memory) if saves
+            Clock.emit(asm, memory) if clock
             emit_frame(asm, memory, saves)
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
@@ -159,7 +162,7 @@ module VBlank
           # itself follows it, a space and then what was typed after the program's name.
           PSP_TAIL_LENGTH = 0x80
 
-          def emit_start(asm, memory, palette, starts, saves)
+          def emit_start(asm, memory, palette, starts, saves, clock)
             ica = Diagnostics::DOSMemory
             asm.label("start")
             # ES is the program's PSP, whose command tail says whether a reader asked for the gate: " HOLD", its
@@ -186,6 +189,7 @@ module VBlank
             asm.stos(32, rep: true)
             asm.push(:bx) # the letter, kept from whatever the BIOS does with BX, and from the save's start
             asm.call("rt_save_start") if saves
+            asm.call("rt_clock_start") if clock
             asm.mov(:ax, Console::DOSHardware::MODE_13H)
             asm.int(0x10)
             asm.pop(:bx)

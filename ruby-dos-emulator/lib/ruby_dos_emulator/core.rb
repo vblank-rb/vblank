@@ -115,6 +115,15 @@ module RubyDOSEmulator
     # How many pairs of samples #take_audio gives for a second of sound.
     def sample_rate = timing.last
 
+    # The PC's clock chip reads +time+ whenever a program asks it, the date and the hour +time+ shows,
+    # from now until the machine is shut; +kept+ is whether its battery kept the time, which the chip
+    # says too. A machine never told reads the host's clock. Tell it before the first frame, since a
+    # program reads the clock as it starts.
+    def clock_at(time, kept: true)
+      @call[:vblank_clock_at].call(time.year, time.month, time.day, time.hour, time.min, time.sec, time.wday, kept ? 1 : 0)
+      self
+    end
+
     # Whether the program has reached its gate and is waiting there (see START_GATE_AT).
     def gate_closed? = peek(START_GATE_AT, 1).getbyte(0) == 1
 
@@ -246,6 +255,7 @@ module RubyDOSEmulator
       retro_get_memory_data: [[Fiddle::TYPE_UINT], Fiddle::TYPE_VOIDP],
       retro_get_memory_size: [[Fiddle::TYPE_UINT], Fiddle::TYPE_SIZE_T],
       vblank_set_directory: [[Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID],
+      vblank_clock_at: [[Fiddle::TYPE_INT] * 8, Fiddle::TYPE_VOID],
       vblank_key_event: [[Fiddle::TYPE_INT, Fiddle::TYPE_UINT], Fiddle::TYPE_VOID],
       vblank_copy_picture: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_SIZE_T],
       vblank_take_sound: [[Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T], Fiddle::TYPE_SIZE_T]

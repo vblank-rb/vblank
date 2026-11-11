@@ -247,3 +247,51 @@ diff --color -ruN a/src/gui/render.cpp b/src/gui/render.cpp
  #endif
  }
  
+diff --color -ruN a/src/hardware/cmos.cpp b/src/hardware/cmos.cpp
+--- a/src/hardware/cmos.cpp
++++ b/src/hardware/cmos.cpp
+@@ -123,6 +123,23 @@
+ 
+ #define MAKE_RETURN(_VAL) (cmos.bcd ? ((((_VAL) / 10) << 4) | ((_VAL) % 10)) : (_VAL));
+ 
++/* VBlank probe: the clock a test gives the machine. DOSBox reads the host's clock each time a program asks
++   the clock chip the time, so no two runs read the same. A harness that calls vblank_clock_at pins it: the
++   chip then reads that date and time whenever it is asked, and says whether its battery kept it (the top
++   bit of register 0Dh), until the machine is shut. A machine never told reads the host's clock as before. */
++static bool vblank_clock_pinned = false;
++static bool vblank_clock_kept = true;
++static struct tm vblank_clock;
++extern "C" __attribute__((visibility("default")))
++void vblank_clock_at(int year, int month, int day, int hour, int minute, int second, int weekday, int kept)
++{
++	vblank_clock.tm_year = year - 1900; vblank_clock.tm_mon = month - 1; vblank_clock.tm_mday = day;
++	vblank_clock.tm_hour = hour; vblank_clock.tm_min = minute; vblank_clock.tm_sec = second;
++	vblank_clock.tm_wday = weekday;
++	vblank_clock_kept = kept != 0;
++	vblank_clock_pinned = true;
++}
++
+ static Bitu cmos_readreg(Bitu port,Bitu iolen) {
+ 	if (cmos.reg>0x3f) {
+ 		LOG(LOG_BIOS,LOG_ERROR)("CMOS:Read from illegal register %x",cmos.reg);
+@@ -137,8 +154,12 @@
+ 
+ 	/* Convert it to local time representation. */
+ 	loctime = localtime (&curtime);
++	if (vblank_clock_pinned) loctime = &vblank_clock; /* VBlank probe */
+ 
+ 	switch (cmos.reg) {
++	case 0x0d:		/* VBlank probe: whether the battery kept the time */
++		if (vblank_clock_pinned) return vblank_clock_kept ? 0x80 : 0x00;
++		return cmos.regs[cmos.reg];
+ 	case 0x00:		/* Seconds */
+ 		return 	MAKE_RETURN(loctime->tm_sec);
+ 	case 0x02:		/* Minutes */
+@@ -266,7 +287,6 @@
+ 
+ 
+ 	case 0x0b:		/* Status register B */
+-	case 0x0d:		/* Status register D */
+ 	case 0x0f:		/* Shutdown status byte */
+ 	case 0x14:		/* Equipment */
+ 	case 0x15:		/* Base Memory KB Low Byte */

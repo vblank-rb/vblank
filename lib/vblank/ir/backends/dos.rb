@@ -17,6 +17,8 @@ require_relative "dos/x86"
 require_relative "dos/memory"
 require_relative "dos/runtime"
 require_relative "dos/runtime/saving"
+require_relative "dos/runtime/clock"
+require_relative "dos/lowering/clock"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
 require_relative "dos/checked_run"
@@ -113,13 +115,13 @@ module VBlank
         # gives beyond the file (EXTRA_PARAGRAPHS), cleared by the program as it starts.
         def build(program, title: "VBLANK", cache: BuildCache.for(DOS, program))
           memory = Memory.new
-          Runtime.reserve(memory, saves: SaveLayout.named_by?(program))
+          Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program))
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
           lowering.emit(asm)
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
-                                    saves: lowering.saves?)
+                                    saves: lowering.saves?, clock: lowering.clock?)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")

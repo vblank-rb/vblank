@@ -32,9 +32,31 @@ module VBlank
           def audio_played = []
 
           # The rest of what the interpreter answers, each refused by name.
-          refuses :clock_at, :mixed_sound, :active_samples
+          refuses :mixed_sound, :active_samples
+
+          # Give the PC's clock chip the date and time +time+ shows as the program starts, from which the
+          # program counts on by its frames, as the interpreter's #clock_at does. With +set: false+ the chip
+          # says its battery did not keep the time. A PC always has a clock, so a run never told one has
+          # NO_TIME_GIVEN, and never the time of the machine the test runs on.
+          def clock_at(time, set: true)
+            @clock_started = time
+            @clock_set = set
+            self
+          end
+
+          NO_TIME_GIVEN = Ractor.make_shareable(Time.utc(2000, 1, 1))
 
           private
+
+          # The time the clock chip is given, and whether it says its battery kept it: what the run was told,
+          # to the whole second, since the chip holds no part of one. A checked run tells the interpreter
+          # the same.
+          def clock_given
+            time = @clock_started || NO_TIME_GIVEN
+            Time.utc(time.year, time.month, time.day, time.hour, time.min, time.sec)
+          end
+
+          def clock_given_set? = @clock_set != false
 
           def kit = Console.for(:dos)
 
@@ -42,6 +64,7 @@ module VBlank
           # the frame about to be played, so its first pass ends in the first frame the reader sees. Nothing
           # is played before but the frames the program takes to reach its gate: DOS's own start-up is in them.
           def power_on
+            @core.clock_at(clock_given, kept: clock_given_set?)
             frames = 0
             until @core.gate_closed?
               @core.run_frame
