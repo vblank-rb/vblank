@@ -633,7 +633,8 @@ module PackAtStartTests
   private def bar_widths(folder, cost:)
     from = original(folder)
     cost_option = cost ? { cost: cost } : {}
-    unpacking = VBlank::Builder.new(options: PACK_AT_START).data_pack(from: from, version: "1") do |slots|
+    # Built for the run's console, so the bar is laid out for the screen #bar_width measures.
+    unpacking = VBlank::Builder.new(options: PACK_AT_START.with(console: game_console)).data_pack(from: from, version: "1") do |slots|
       slots.numbers :plain, at: 0, count: COPY_SIZE, width: :byte, signed: false
       slots.numbers :rendered, count: 1024, width: :byte, signed: false, **cost_option
       slots.fill_from_copy do |copy, pack|
@@ -664,15 +665,15 @@ module PackAtStartTests
   end
 
   # With no cost named the bar is the bytes written of the pack's bytes: the copied slot is a
-  # third of them, so the bar is a third of the way when it is done. The bar divides by whole bytes
-  # a pixel, rounded down, so it runs a little ahead of the exact share.
+  # third of them, so the bar is a third of the way when it is done. The bar rounds down to the
+  # pixel, on every console's width.
   def test_the_unpacking_bar_measures_bytes_when_no_slot_names_a_cost
     Dir.mktmpdir do |folder|
       shown = bar_widths(folder, cost: nil)
 
       assert_operator shown.length, :>=, 3, "the bar moves a step at a time: #{shown.inspect}"
       [256, 512, 768].each_with_index do |done, i|
-        assert_in_delta bar_across * done / 1536.0, shown[i], 6, "the bar after #{done} of 1536 bytes"
+        assert_in_delta bar_across * done / 1536.0, shown[i], 1, "the bar after #{done} of 1536 bytes"
       end
     end
   end
@@ -680,6 +681,7 @@ module PackAtStartTests
   # A slot that costs four times as much work a byte takes four times its share of the bar: the
   # copied slot is 512 parts of the work and the costly one 4 x 1024, so the bar reaches a ninth
   # of the way when the copy is done, and a quarter of the costly slot moves it two ninths further.
+  # Each slot's share of the bar rounds down to the pixel, so two slots can lose two pixels between them.
   def test_the_unpacking_bar_measures_work_when_a_slot_names_its_cost
     Dir.mktmpdir do |folder|
       shown = bar_widths(folder, cost: 4)
@@ -687,7 +689,7 @@ module PackAtStartTests
 
       assert_operator shown.length, :>=, 3, "the bar moves a step at a time: #{shown.inspect}"
       [256, 512, 512 + (4 * 256)].each_with_index do |done, i|
-        assert_in_delta bar_across * done / work.to_f, shown[i], 1.5, "the bar after #{done} of #{work} parts of the work"
+        assert_in_delta bar_across * done / work.to_f, shown[i], 2, "the bar after #{done} of #{work} parts of the work"
       end
     end
   end

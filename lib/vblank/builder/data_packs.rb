@@ -510,10 +510,17 @@ module VBlank
       end
 
       # HOW FAR THE BAR IS, BY BYTES: the bytes written so far (+done+, the routine's count) of all
-      # the +slots+ hold, for a pack whose slots name no cost. The division is by a number worked
-      # out here, so a pack of many megabytes never makes a number too big for 32 bits.
+      # the +slots+ hold, for a pack whose slots name no cost. Both are shifted down before the count
+      # is multiplied by the bar's width, by as little as keeps the product inside 32 bits, so a
+      # pack of many megabytes works the same way and a small one is exact to the pixel.
       UnpackingBytes = Data.define(:slots, :done) do
-        def pixels_shown(across) = done / [slots.sum(&:byte_size) / across, 1].max
+        def pixels_shown(across)
+          total = slots.sum(&:byte_size)
+          shift = (0..31).find { |bits| (total >> bits) * across <= IR::Int32::MAX }
+          whole = [total >> shift, 1].max
+          written = (shift.zero? ? done : done >> shift).clamp(0, whole)
+          (written * across) / whole
+        end
       end
 
       # HOW FAR THE BAR IS, BY WORK: each slot holds a share of the bar as its bytes times its cost
