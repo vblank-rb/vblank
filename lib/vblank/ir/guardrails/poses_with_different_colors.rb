@@ -14,7 +14,7 @@ module VBlank
         # the console composes from, beside the tile it draws. A console's own games write the
         # two together, so a sprite changes list with its pose for nothing, and a build that
         # does the same shows each pose in its own list's colors
-        # (Console::Description#poses_drawn_from_own_lists). This check says nothing there.
+        # (Console::Description#poses_keep_own_lists?). This check says nothing there.
         #
         # A build that sets the list once for the whole sprite draws every picture the sprite
         # can show from that one list, and pictures that each came with a list of their own
