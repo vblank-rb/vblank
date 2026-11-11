@@ -57,9 +57,12 @@ module VBlank
             # this kind, from the cartridge or from work RAM alike: on some consoles a Z80 that reaches
             # for the bus as the copy starts can spoil the copy, work RAM, or the byte the Z80 reads.
             # So the Z80 is asked for its bus and waited for, the copy runs, and the Z80 is let go, as
-            # the console's own games do round theirs. The stop costs the recording nothing it was not
-            # losing: a Z80 that wants the cartridge while the chip holds the bus waits for the copy to
-            # end anyway. docs/genesis/dma-and-the-sound-processor.md has the sources.
+            # the console's own games do round theirs. The recording stands still for the length of the
+            # stop, with or without the request: a Z80 that wants the cartridge while the chip holds
+            # the bus waits for the copy to end anyway. Its program times its samples by the FM
+            # chip's timers, which count on through a stop, and passes over the samples the stop
+            # covered, so the recording keeps its pitch (Recordings#driver).
+            # docs/genesis/dma-and-the-sound-processor.md has the sources.
             #
             # A game with no recordings pays nothing for that: its Z80 has been held stopped since
             # power-on (Boot#emit_sound_quiet) and never reaches for the bus.

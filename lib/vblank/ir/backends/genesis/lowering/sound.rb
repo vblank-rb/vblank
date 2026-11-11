@@ -142,7 +142,7 @@ module VBlank
               info = Assets::Sample.of(declared)
               clock = Console::GENESIS.sample_clock(declared.rate)
               step = IR::Mixing.step(info, frequency, clock.rate)
-              row = [name, info.length, back, step * clock.samples_a_frame, logged, [step >> 8, 0xFFFF].min]
+              row = [name, info.length, back, step * clock.samples_a_frame, logged, Runtime::Recordings.z80_step(step, clock.rate)]
               @plays << row unless @plays.include?(row)
               @plays.index(row)
             end

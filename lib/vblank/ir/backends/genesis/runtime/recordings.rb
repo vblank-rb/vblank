@@ -88,15 +88,37 @@ module VBlank
             BANK_NOW = 17
             END_HIGH_NOW = 19 # END_AT's high byte, while the window is on the last bank; nought otherwise
 
+            FM_ADDRESS = 20 # The FM chip register the Z80 is writing, for the 68000 to put back (#driver)
+            TICKS_MISSED = 21 # Samples still to pass over without sounding them (#driver)
+
             Z80_MEMORY = 0xA00000
             WINDOW = 0x8000 # Where the window starts in the Z80's memory, and how much it shows
 
-            # The program's cycles between one sample and the next, and how many times the wait in it goes
-            # round to make that come to Console::GENESIS's recording_voice_hz, with every sample taking
-            # the time of one in the recording's last 256 bytes (the program's :not_near_end).
-            WAIT_ROUNDS = 6
+            # THE Z80'S CLOCK FOR A SAMPLE IS THE FM CHIP'S FIRST TIMER (#driver). A timer of that chip
+            # counts in ticks of 144 cycles of the chip's clock, which is the 68000's: an NTSC console's
+            # crystal divided by seven.
+            FM_CLOCK_HZ = 53_693_175 / 7r
+            TIMER_TICK_CLOCKS = 144
+            TICKS_A_SAMPLE = 4 # The first timer's length: a sample
+            SAMPLES_A_SECOND = FM_CLOCK_HZ / (TIMER_TICK_CLOCKS * TICKS_A_SAMPLE)
+            # The second timer's length in samples: one of its ticks is sixteen of the first's, so it
+            # comes round with every 256th sample exactly, and a count of samples kept in a byte is
+            # back at nought as it does.
+            SAMPLES_A_CHECK = 256
+            TIMER_A = 1024 - TICKS_A_SAMPLE # Ten bits, registers $24 (the top eight) and $25
+            TIMER_B = 256 - (SAMPLES_A_CHECK * TICKS_A_SAMPLE / 16) # Register $26
+            TIMERS = 0x27 # The register that starts the timers and clears their flags
+            TIMERS_STOPPED = 0x30 # Neither counting, both flags cleared
+            TIMERS_COUNTING = 0x0F # Both counting and raising their flags
+            SAMPLE_TICK_SEEN = 0x1F # ...and the first timer's flag cleared
+            BOTH_TICKS_SEEN = 0x3F # ...and both flags cleared
 
             module_function
+
+            # A play's step for the Z80, in 256ths of a sample of the recording: +step+ is the
+            # interpreter's, in 65536ths for each of the +voice_hz+ samples a second it mixes, and the
+            # Z80 sounds SAMPLES_A_SECOND.
+            def z80_step(step, voice_hz) = [(step * voice_hz / SAMPLES_A_SECOND / 256).round, 0xFFFF].min
 
             def reserve(memory)
               memory.reserve(PLACE, PLACE_BYTES)
@@ -132,12 +154,13 @@ module VBlank
               asm.branch(:ne, label)
             end
 
-            # The FM chip's address put back at the DAC's for the Z80's next write (the 68000's writes moved
-            # it), and the Z80 let go.
+            # The FM chip's address put back for the Z80's next write (the 68000's writes moved it), and
+            # the Z80 let go. The Z80 writes two registers, the DAC's and the timers', and may have been
+            # stopped between naming one and writing it, so it keeps the one it is on in its mailbox.
             def emit_bus_given_back(asm)
               h = Console::GenesisHardware
               asm.jsr(asm.abs_l("rt_fm_wait"))
-              asm.move(:b, asm.imm(ChipWrites::DAC_SAMPLE), asm.abs_l(h::FM))
+              asm.move(:b, asm.abs_l(Z80_MEMORY + MAILBOX + FM_ADDRESS), asm.abs_l(h::FM))
               asm.clr(:w, asm.abs_l(h::Z80_BUS_REQUEST))
             end
 
@@ -152,6 +175,7 @@ module VBlank
               asm.label("rt_recordings_start_next")
               asm.move(:b, asm.post(0), asm.post(1))
               asm.dbra(asm.d(0), "rt_recordings_start_next")
+              asm.move(:b, asm.imm(ChipWrites::DAC_SAMPLE), asm.abs_l(Z80_MEMORY + MAILBOX + FM_ADDRESS))
               asm.clr(:w, asm.abs_l(h::Z80_RESET))
               8.times { asm.nop }
               asm.move(:w, asm.imm(h::Z80_REQUEST), asm.abs_l(h::Z80_RESET))
@@ -395,17 +419,110 @@ module VBlank
             end
 
             # THE Z80'S PROGRAM, as its bytes, the mailbox and the chips by the numbers above. Its registers: B
-            # the play it last saw, HL where it reads in the window, DE its step, C the fraction of a sample.
+            # the play it last saw, HL where it reads in the window, DE its step, C the fraction of a sample;
+            # and in its second set, HL and DE the FM chip's two ports and B the samples sounded since the
+            # second timer last came round.
             #
-            #   start: reset, and the first play awaited with the DAC at the middle of its range (quiet)
-            #   loop:  one sample to the DAC, HL moved on by DE, a new bank when it runs off the window, the end
-            #          of the recording looked for while on its last bank, a wait, and the mailbox looked at
+            #   start: reset, the timers' lengths set, and the first play awaited with the DAC at the middle
+            #          of its range (quiet)
+            #   loop:  the next sample read, the first timer's tick awaited, the sample to the DAC, the
+            #          tick's flag cleared, HL moved on by DE, a new bank when it runs off the window, the
+            #          end of the recording looked for while on its last bank, and the mailbox looked at
+            #
+            # A SAMPLE SOUNDS ON A TICK OF THE FM CHIP'S FIRST TIMER, NOT AFTER A COUNTED WAIT. The Z80 is
+            # stopped many times a frame: for every block the video chip copies (Picture#emit_dma_started),
+            # for every FM register the 68000 writes, for the mailbox. A program that counts its own
+            # cycles from one sample to the next loses the length of every stop, so the recording plays
+            # flat for as long as the stops go on. The timer is in the FM chip and counts whether the Z80
+            # runs or not, so the gap between two samples no longer depends on how long the work between
+            # them took.
+            #
+            # THE SAMPLES A STOP COVERED ARE PASSED OVER, NOT SOUNDED LATE. The timer's flag says a tick
+            # came, not how many, so ticks that came while the Z80 was stopped would be lost with it.
+            # The second timer is set to come round with every 256th tick of the first. The program
+            # counts the samples it sounds in a byte, and when the second timer's flag shows, what the
+            # byte is short of 256 is the number of ticks a stop covered: HL is moved on by that many
+            # samples with nothing written to the DAC, which holds its last sample meanwhile. So the
+            # recording is back where the clock says within 256 samples of any stop, a little over a
+            # frame. A stop longer than the second timer's round loses a whole round.
+            #
+            # THE Z80 NOW WRITES TWO FM REGISTERS, the DAC's and the timers', and the 68000 can stop it
+            # between naming a register and writing it, and names registers of its own meanwhile. So the
+            # Z80 notes the register it is on in FM_ADDRESS before it names it, and the 68000 names that
+            # one again before it lets go (#emit_bus_given_back).
             def driver
               Z80Program.new.tap do |z|
                 mail = ->(field) { MAILBOX + field }
+                # The timers' register named, +value+ written to it, and the DAC's named again. For the
+                # second set of registers: HL and DE are the chip's ports.
+                emit_timers_written = lambda do |value|
+                  z.bytes(0x3E, TIMERS) # LD A,timers
+                  z.word(0x32, mail.call(FM_ADDRESS)) # LD (FM address),A
+                  z.bytes(0x77) # LD (HL),A
+                  z.bytes(0x3E, value, 0x12) # LD A,value ; LD (DE),A
+                  z.bytes(0x3E, ChipWrites::DAC_SAMPLE) # LD A,$2A
+                  z.word(0x32, mail.call(FM_ADDRESS)) # LD (FM address),A
+                  z.bytes(0x77) # LD (HL),A
+                end
+                # HL moved on a sample: by DE, into a new bank when it runs off the window, and back to
+                # where the recording goes round, or to :idle, at its end. Then on to +done+.
+                #
+                # +patched+ for the one every sample runs, which has to fit between two ticks with
+                # the rest of the loop: the end it looks for is written into its two compares
+                # (:set_bank and :new_play write them), which is two reads of the mailbox fewer.
+                emit_sample_passed = lambda do |name, done, patched: false|
+                  same_window = DerivedNames.sub_label(name, :same_window)
+                  ended = DerivedNames.sub_label(name, :ended)
+                  same_bank = DerivedNames.sub_label(name, :same_bank)
+                  z.bytes(0x79, 0x83, 0x4F) # LD A,C ; ADD A,E ; LD C,A
+                  z.bytes(0x7D, 0x8A, 0x6F) # LD A,L ; ADC A,D ; LD L,A
+                  z.jump(0xD2, same_window) # JP NC
+                  z.bytes(0x24) # INC H
+                  z.jump(0xC2, same_window) # JP NZ
+                  z.bytes(0x26, 0x80) # LD H,$80
+                  z.bytes(0xE5) # PUSH HL
+                  z.word(0x2A, mail.call(BANK_NOW)) # LD HL,(bank now)
+                  z.bytes(0x23) # INC HL
+                  z.call_bank
+                  z.bytes(0xE1) # POP HL
+                  z.label(same_window)
+                  if patched
+                    z.bytes(0x7C, 0xFE) # LD A,H ; CP the end's high byte, on the last bank
+                    z.label(:end_high_patched)
+                    z.bytes(0x00)
+                    z.jump(0xC2, done) # JP NZ
+                    z.bytes(0x7D, 0xFE) # LD A,L ; CP the end's low byte
+                    z.label(:end_low_patched)
+                    z.bytes(0x00)
+                    z.jump(0xDA, done) # JP C: L is still below the end
+                  else
+                    z.word(0x3A, mail.call(END_HIGH_NOW)) # LD A,(end's high byte, on the last bank)
+                    z.bytes(0xBC) # CP H
+                    z.jump(0xC2, done) # JP NZ
+                    z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
+                    z.bytes(0xBD) # CP L
+                    z.jump(0xCA, ended) # JP Z
+                    z.jump(0xD2, done) # JP NC: the end is still above L
+                  end
+                  z.label(ended)
+                  z.word(0x3A, mail.call(LOOPS)) # LD A,(loops)
+                  z.bytes(0x3D) # DEC A
+                  z.jump(0xCA, same_bank) # JP Z
+                  z.jump(0xFA, :idle) # JP M: played once
+                  z.word(0x2A, mail.call(LOOP_BANK)) # LD HL,(loop bank)
+                  z.call_bank
+                  z.label(same_bank)
+                  z.word(0x2A, mail.call(LOOP_AT)) # LD HL,(loop at)
+                  z.jump(0xC3, done) # JP
+                end
+
                 z.bytes(0xF3) # DI
                 z.bytes(0x31, 0xF0, 0x1F) # LD SP,$1FF0
                 z.bytes(0x06, 0x00) # LD B,0
+                [[0x24, TIMER_A >> 2], [0x25, TIMER_A & 3], [0x26, TIMER_B]].each do |register, value|
+                  z.word(0x21, (register << 8) | value) # LD HL,register and value
+                  z.jump(0xCD, :set_fm) # CALL
+                end
                 z.label(:idle)
                 z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
                 z.bytes(0x3E, 0x80, 0x32, 0x01, 0x40) # LD A,$80 ; LD ($4001),A
@@ -419,61 +536,104 @@ module VBlank
                 z.word(0x3A, mail.call(PLAYS)) # LD A,(plays)
                 z.bytes(0xB7) # OR A
                 z.jump(0xCA, :idle) # JP Z
+                # Both timers stopped and started again together, so the second comes round with the
+                # 256th sample of this play, and the count of them from nought.
+                z.word(0x21, (TIMERS << 8) | TIMERS_STOPPED) # LD HL,timers and stopped
+                z.jump(0xCD, :set_fm) # CALL
+                z.word(0x21, (TIMERS << 8) | TIMERS_COUNTING) # LD HL,timers and counting
+                z.jump(0xCD, :set_fm) # CALL
+                # LOOPS made 1 for a recording that goes round inside the bank it ends on, which is
+                # nearly all of them, and 2 for one that goes back to another bank. Showing a bank
+                # takes longer than a tick, and a short loop comes round hundreds of times a second.
+                z.word(0x3A, mail.call(LOOPS)) # LD A,(loops)
+                z.bytes(0xB7) # OR A
+                z.jump(0xCA, :loop_known) # JP Z
+                z.word(0x2A, mail.call(LOOP_BANK)) # LD HL,(loop bank)
+                z.bytes(0xED)
+                z.word(0x5B, mail.call(END_BANK)) # LD DE,(end bank)
+                z.bytes(0xB7, 0xED, 0x52) # OR A ; SBC HL,DE
+                z.bytes(0x3E, 0x01) # LD A,1
+                z.jump(0xCA, :loop_noted) # JP Z
+                z.bytes(0x3C) # INC A
+                z.label(:loop_noted)
+                z.word(0x32, mail.call(LOOPS)) # LD (loops),A
+                z.label(:loop_known)
+                z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
+                z.jump(0x32, :end_low_patched) # LD (the compare),A
                 z.word(0x2A, mail.call(BANK)) # LD HL,(bank)
                 z.call_bank
                 z.word(0x2A, mail.call(AT)) # LD HL,(at)
                 z.bytes(0xED)
                 z.word(0x5B, mail.call(Z80_STEP)) # LD DE,(step)
                 z.bytes(0x0E, 0x00) # LD C,0
+                z.bytes(0xD9) # EXX
+                z.bytes(0x21, 0x00, 0x40, 0x11, 0x01, 0x40) # LD HL,$4000 ; LD DE,$4001
+                z.bytes(0x06, 0x00) # LD B,0
+                z.bytes(0xD9) # EXX
+
+                # The sample is read before its tick is awaited, so it reaches the DAC as soon as the
+                # tick is seen: the read is the one thing here that can be made to wait.
                 z.label(:loop)
-                z.bytes(0x3E, ChipWrites::DAC_SAMPLE, 0x32, 0x00, 0x40) # LD A,$2A ; LD ($4000),A
-                z.bytes(0x7E, 0x32, 0x01, 0x40) # LD A,(HL) ; LD ($4001),A
-                z.bytes(0x79, 0x83, 0x4F) # LD A,C ; ADD A,E ; LD C,A
-                z.bytes(0x7D, 0x8A, 0x6F) # LD A,L ; ADC A,D ; LD L,A
-                z.jump(0xD2, :same_window) # JP NC
-                z.bytes(0x24) # INC H
-                z.jump(0xC2, :same_window) # JP NZ
-                z.bytes(0x26, 0x80) # LD H,$80
-                z.bytes(0xE5) # PUSH HL
-                z.word(0x2A, mail.call(BANK_NOW)) # LD HL,(bank now)
-                z.bytes(0x23) # INC HL
-                z.call_bank
-                z.bytes(0xE1) # POP HL
-                z.label(:same_window)
-                z.word(0x3A, mail.call(END_HIGH_NOW)) # LD A,(end's high byte, on the last bank)
-                z.bytes(0xBC) # CP H
-                z.jump(0xC2, :not_near_end) # JP NZ
-                z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
-                z.bytes(0xBD) # CP L
-                z.jump(0xCA, :ended) # JP Z
-                z.jump(0xD2, :timing) # JP NC: the end is still above L
-                z.label(:ended)
-                z.word(0x3A, mail.call(LOOPS)) # LD A,(loops)
-                z.bytes(0xB7) # OR A
-                z.jump(0xCA, :idle) # JP Z
-                z.word(0x2A, mail.call(LOOP_BANK)) # LD HL,(loop bank)
-                z.call_bank
-                z.word(0x2A, mail.call(LOOP_AT)) # LD HL,(loop at)
-                z.label(:timing)
-                z.bytes(0x3E, WAIT_ROUNDS) # LD A,rounds
-                z.label(:rounds)
-                z.bytes(0x3D) # DEC A
-                z.jump(0xC2, :rounds) # JP NZ
+                z.bytes(0x7E) # LD A,(HL)
+                z.bytes(0xD9) # EXX
+                z.label(:tick)
+                z.bytes(0xCB, 0x46) # BIT 0,(HL): the first timer's flag
+                z.jump(0xCA, :tick) # JP Z
+                z.bytes(0x12) # LD (DE),A: the sample to the DAC, whose register is the one named
+                z.bytes(0x04) # INC B
+                z.bytes(0xD9) # EXX
+                emit_sample_passed.call(:sounded, :sounded_passed, patched: true)
+                # THE TICK'S FLAG IS CLEARED AFTER HL HAS MOVED ON, NOT BEFORE. The chip takes a while
+                # over each value written to it, a third of a sample's time. Moving HL on first puts
+                # more than that while between the DAC's write and this one, and the rest of the
+                # loop and the wait for the tick put as much between this one and the DAC's next.
+                z.label(:sounded_passed)
+                z.bytes(0xD9) # EXX
+                z.bytes(0x7E, 0xE6, 0x02) # LD A,(HL) ; AND 2: the second timer's flag
+                z.jump(0xC2, :second_timer) # JP NZ
+                emit_timers_written.call(SAMPLE_TICK_SEEN)
+                z.bytes(0xD9) # EXX
+                z.label(:mail)
                 z.word(0x3A, mail.call(NEW_PLAY)) # LD A,(new play)
                 z.bytes(0xB8) # CP B
-                z.jump(0xC2, :new_play) # JP NZ
-                z.jump(0xC3, :loop) # JP
+                z.jump(0xCA, :loop) # JP Z
+                z.jump(0xC3, :new_play) # JP
 
-                # EVERY SAMPLE TAKES THE SAME TIME, wherever it lies. A sample in the recording's last
-                # 256 bytes is tested against the end's low byte as well, four instructions more; one
-                # anywhere else comes here and spends the same 37 cycles doing nothing (a read and
-                # two loads of A, which the wait loads again, and the jump back). Without it a
-                # recording played faster than it was recorded up to its last 256 bytes and slower
-                # inside them, so a short one and a long one were heard at different pitches.
-                z.label(:not_near_end)
-                z.word(0x3A, mail.call(END_AT)) # LD A,(end's low byte)
-                z.bytes(0x3E, 0x00, 0x3E, 0x00) # LD A,0 ; LD A,0
-                z.jump(0xC3, :timing) # JP
+                # The second timer has come round: what the count of samples is short of 256 is the
+                # ticks a stop covered, and that many samples are passed over. More than half of 256
+                # short is not believed: it is what a tick counted twice would look like, and passing
+                # over most of a round for it would be heard.
+                z.label(:second_timer)
+                emit_timers_written.call(BOTH_TICKS_SEEN)
+                z.bytes(0xAF, 0x90) # XOR A ; SUB B
+                z.bytes(0x06, 0x00) # LD B,0
+                z.bytes(0xD9) # EXX
+                z.jump(0xCA, :mail) # JP Z
+                z.jump(0xFA, :mail) # JP M
+                z.word(0x32, mail.call(TICKS_MISSED)) # LD (ticks missed),A
+                z.label(:missed)
+                emit_sample_passed.call(:missed, :missed_passed)
+                z.label(:missed_passed)
+                z.word(0x3A, mail.call(TICKS_MISSED)) # LD A,(ticks missed)
+                z.bytes(0x3D) # DEC A
+                z.word(0x32, mail.call(TICKS_MISSED)) # LD (ticks missed),A
+                z.jump(0xC2, :missed) # JP NZ
+                z.jump(0xC3, :mail) # JP
+
+                # FM register H set to L, and the DAC's named again. A is lost.
+                z.label(:set_fm)
+                z.word(0x3A, 0x4000) # LD A,($4000)
+                z.bytes(0x87) # ADD A,A
+                z.jump(0xDA, :set_fm) # JP C: the chip is still taking the last write
+                z.bytes(0x7C) # LD A,H
+                z.word(0x32, mail.call(FM_ADDRESS)) # LD (FM address),A
+                z.word(0x32, 0x4000) # LD ($4000),A
+                z.bytes(0x7D) # LD A,L
+                z.word(0x32, 0x4001) # LD ($4001),A
+                z.bytes(0x3E, ChipWrites::DAC_SAMPLE) # LD A,$2A
+                z.word(0x32, mail.call(FM_ADDRESS)) # LD (FM address),A
+                z.word(0x32, 0x4000) # LD ($4000),A
+                z.bytes(0xC9) # RET
 
                 # The bank in HL shown in the window and noted, END_HIGH_NOW set for it. HL is lost. The
                 # window's bank register is one bit wide and takes nine writes, the lowest bit first.
@@ -494,6 +654,7 @@ module VBlank
                 z.bytes(0xAF) # XOR A
                 z.label(:noted)
                 z.word(0x32, mail.call(END_HIGH_NOW)) # LD (end high now),A
+                z.jump(0x32, :end_high_patched) # LD (the compare),A
                 z.bytes(0xC9) # RET
               end.assembled
             end
