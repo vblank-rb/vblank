@@ -201,7 +201,7 @@ module VBlank
 
       # The verbs whose refused part is the build's limit and not the console's: a fade of part of the screen
       # asks a console that blends (Console::Questions), and how the processor does it is decided when it
-      # is made. Until then the lowering refuses it as not made yet (Backends::DOS::Lowering::NOT_LOWERED_YET), never in the words of hardware the console lacks.
+      # is made. Until then the lowering refuses it as not made yet (Backends::DOS::Lowering#refuse_unmade_fades!), never in the words of hardware the console lacks.
       UNMADE_VERBS = %i[fade].freeze
 
       # Answers#refusals, less the lines whose verb is one of UNMADE_VERBS.
@@ -251,7 +251,7 @@ module VBlank
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
                                                each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite]
+                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

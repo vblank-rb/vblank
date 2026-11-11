@@ -259,6 +259,8 @@ module VBlank
           # in al, dx / in ax, dx and out dx, al / out dx, ax: the port number is always in DX.
           def in_from_dx(register) = emit([register == :al ? 0xEC : 0xED].pack("C"))
           def out_to_dx(register) = emit([register == :al ? 0xEE : 0xEF].pack("C"))
+          # rep outsb: CX bytes from DS:SI sent to the port in DX, one after another.
+          def outs_bytes = emit([0xF3, 0x6E].pack("C*"))
           def in_byte(port) = emit([0xE4, port].pack("C*"))
           def out_byte(port) = emit([0xE6, port].pack("C*"))
 

@@ -107,6 +107,70 @@ class TestDOSDrawing < Minitest::Test
     assert_equal 5, run[:which]
   end
 
+  # A FADE AND A TINT MOVE THE CARD'S PALETTE, not the picture: every colour the game shows, a sprite's over
+  # the picture among them, toward black, then white, then a colour, each a little further every pass and
+  # then lifted, with the interpreter's own rounding on every pass.
+  def test_fades_and_a_tint_walk_every_colour_and_lift_again
+    run = checked(frames: 40) do
+      screen :bitmap
+      image :block, width: 6, height: 6, data: [:white] * 36
+      clear_screen :blue
+      fill_rect 10, 10, 60, 60, :red
+      fill_rect 80, 10, 60, 60, :green
+      fill_rect 150, 10, 60, 60, :yellow
+      sprite :block, at: [30, 30], over_picture: true
+      passes = var :passes, 0
+      game_loop do
+        fade :black, passes * 10 if passes < 10
+        fade :white, (passes - 10) * 10 if passes >= 10 && passes < 20
+        tint :orange, (passes - 20) * 10 if passes >= 20 && passes < 30
+        tint :orange, 0 if passes >= 30
+        passes += 1
+      end
+    end
+
+    assert_equal %i[red green yellow white].map { |color| VBlank::Graphics::Color.resolve(color) },
+                 [run.screen.pixel(12, 12), run.screen.pixel(82, 12), run.screen.pixel(152, 12), run.screen.pixel(32, 32)],
+                 "every colour as it was drawn, once the tint is lifted"
+  end
+
+  # A fade still on when the game stops is on the picture the game stops with.
+  def test_a_fade_in_force_when_the_game_halts_is_shown
+    run = checked do
+      screen :bitmap
+      clear_screen :white
+      fade :black, 100
+      halt
+    end
+
+    assert_equal 0, run.screen.pixel(10, 10)
+  end
+
+  # Part way to black every colour is darker than it was drawn and not yet black.
+  def test_a_fade_part_way_darkens_and_does_not_blacken
+    run = checked(frames: 3) do
+      screen :bitmap
+      clear_screen :white
+      game_loop { fade :black, 50 }
+    end
+    shown = run.screen.pixel(10, 10)
+
+    assert_operator shown, :<, VBlank::Graphics::Color.resolve(:white)
+    assert_operator shown, :>, 0
+  end
+
+  def test_a_fade_of_part_of_the_screen_is_refused_by_name
+    error = assert_raises(DOS::Lowering::NotMadeYet) do
+      checked do
+        screen :bitmap
+        clear_screen :white
+        game_loop { fade :black, 50, inside: [0, 0, 40, 40] }
+      end
+    end
+
+    assert_match(/fades part of the screen/, error.message)
+  end
+
   # THE CARD SHOWS WHAT THE GAME DREW. The game draws in a picture of its own, and the card is sent the rows
   # that changed as each retrace begins: a square that moves leaves nothing behind it on the card, and the
   # whole of what was drawn before the loop is there, though no pass after the first drew it again.

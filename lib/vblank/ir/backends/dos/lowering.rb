@@ -36,7 +36,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -82,6 +82,9 @@ module VBlank
           # Whether the game keeps and puts back patches of its picture, and so carries the runtime's routines
           # for that (Runtime::Regions).
           def regions? = @program.walk.any? { |node| %i[save_region restore_region].include?(node.kind) }
+
+          # Whether +program+ fades or tints, and so carries the runtime's walk of the palette (Runtime::Fades).
+          def self.walks_colors?(program) = program.walk.any? { |node| %i[fade tint].include?(node.kind) }
 
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
@@ -135,6 +138,7 @@ module VBlank
             refuse_unmade_screens!
             refuse_unmade_text!
             refuse_unmade_sprites!
+            refuse_unmade_fades!
           end
 
           # A DOS game saves in a file of 32K, written a byte at any time (Runtime::Saving). A game that names
@@ -354,6 +358,7 @@ module VBlank
             when :blit then emit_blit(node)
             when :blit_pose then emit_blit_pose(node)
             when :inside then emit_inside(node)
+            when :fade, :tint then emit_walk(node)
             when :save_region then emit_save_region(node)
             when :restore_region then emit_restore_region(node)
             when :draw_text then emit_draw_text(node)
@@ -602,6 +607,29 @@ module VBlank
             @asm.mov(:si, place)
             @asm.call("rt_restore_region")
             @asm.label(nothing_kept)
+          end
+
+          # The part of the build a game with such a fade waits for, for a test run to count skips by.
+          PART_FADE = "a fade of part of the screen (`inside:`, `outside:`, `under:`)"
+
+          # A fade of part of the screen is not a walk of the palette, which changes every pixel there is: how
+          # the processor fades some of them is decided when it is made (Console::DOSAnswers, `fade`).
+          def refuse_unmade_fades!
+            return unless @program.walk.any? { |node| node.kind == :fade && (node.under || node.reaches || node.area) }
+
+            raise NotMadeYet.new("This game fades part of the screen. The #{CONSOLE.title} build does not make that yet. " \
+                                 "To fix this, fade the whole screen for now.", part: PART_FADE)
+          end
+
+          # Reference#exec_fade and #exec_tint, on a console with no blend: the walk the step asks for
+          # (PaletteWalk.walk_for), its steps held to their range, handed to the runtime to work the palette
+          # out from as the pass ends (Runtime::Fades).
+          def emit_walk(node)
+            walk = PaletteWalk.walk_for(node)
+            emit_value(walk.steps)
+            @asm.mov(:ecx, walk.toward)
+            @asm.mov(:edx, walk.color)
+            @asm.call("rt_walk")
           end
 
           # Reference#exec_blit_pose: one of the pictures, by the number the game works out, and nothing

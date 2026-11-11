@@ -137,8 +137,9 @@ module VBlank
             @stopped = false
           end
 
-          # The game's own picture as the game waits at the end of the pass: the picture the pass drew.
-          def read_picture_drawn = picture_now(nil)
+          # The game's own picture as the game waits at the end of the pass: the picture the pass drew, a
+          # palette entry a pixel. Its colours are the card's palette once the pass is shown (#picture_of_pass).
+          def read_picture_drawn = entries_drawn_now
 
           # THE CARD IS HELD TO THE GAME'S PICTURE on every pass. What a pass drew is read from the game's own
           # picture, so a row the runtime never sent to the card would otherwise go unseen. By the time a pass
@@ -155,7 +156,11 @@ module VBlank
           # The card showing something other than what the game drew.
           class CardNotSent < StandardError; end
 
-          def picture_of_pass(_camera, drawn) = drawn
+          # THE COLOURS OF A PASS'S PICTURE ARE THE PALETTE AS THE PASS IS SHOWN. A fade or a tint moves the
+          # palette and not the picture, and the program sends the moved palette to the card as the retrace
+          # begins, with the picture. So the entries are taken as the game is found waiting and their colours
+          # once that retrace has come, before the next one sends the next pass's.
+          def picture_of_pass(_camera, drawn) = picture_of(drawn)
 
           # The sprites the pass placed, from the runtime's table (Runtime::Sprites), in the order they are drawn.
           def read_sprites
@@ -199,15 +204,24 @@ module VBlank
             @core.run_frame
           end
 
-          # The picture the game has drawn now, as 15-bit colours: each pixel's palette entry, through the palette.
-          def picture_now(_camera)
+          # The picture the game has drawn now, in the colours the card's palette has now.
+          def picture_now(_camera) = picture_of(entries_drawn_now)
+
+          # The picture the player is shown as the game has drawn it now, a palette entry a pixel, with the
+          # card held to the one before it (#refuse_card_not_showing!).
+          def entries_drawn_now
             width, height = kit.description.screen_size
-            drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: DOS.picture_shown_after_data(sprites: @places.runtime.key?(Runtime::Sprites::PLACED)))
+            sprites = @places.runtime.key?(Runtime::Sprites::PLACED)
+            drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: DOS.picture_shown_after_data(sprites: sprites))
             refuse_card_not_showing!(@stopped ? drawn : @picture_before)
             @picture_before = drawn
+          end
+
+          # +entries+ as 15-bit colours, each through the card's palette as it is now.
+          def picture_of(entries)
+            width, height = kit.description.screen_size
             colors = @core.palette.map { |red, green, blue| (red >> 1) | ((green >> 1) << 5) | ((blue >> 1) << 10) }
-            Picture.new(shown: drawn.bytes.map { |entry| colors.fetch(entry) },
-                        width: width, height: height, camera_x: 0, camera_y: 0)
+            Picture.new(shown: entries.bytes.map { |entry| colors.fetch(entry) }, width: width, height: height, camera_x: 0, camera_y: 0)
           end
 
           # The picture's check, worked out once for a picture shown frame after frame.

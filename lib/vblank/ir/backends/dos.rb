@@ -20,6 +20,7 @@ require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
 require_relative "dos/runtime/regions"
+require_relative "dos/runtime/fades"
 require_relative "dos/lowering/sprites"
 require_relative "dos/lowering/clock"
 require_relative "dos/lowering"
@@ -119,15 +120,18 @@ module VBlank
         def build(program, title: "VBLANK", cache: BuildCache.for(DOS, program))
           memory = Memory.new
           sprites = Lowering::Sprites.count_in(program)
+          walks = Lowering.walks_colors?(program)
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
-                                  area: Lowering.area_used_by?(program), sprites: sprites)
+                                  area: Lowering.area_used_by?(program), sprites: sprites,
+                                  walks: walks)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
           lowering.emit(asm)
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
-                                    sprites: sprites.positive?, regions: lowering.regions?)
+                                    sprites: sprites.positive?, regions: lowering.regions?,
+                                    walks: walks)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")

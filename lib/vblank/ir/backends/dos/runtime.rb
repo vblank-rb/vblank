@@ -149,7 +149,8 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:)
+            Fades.reserve(memory) if walks
             Sprites.reserve(memory, sprites) if sprites.positive?
             memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }
@@ -173,14 +174,15 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:)
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:)
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], Console::DOS.screen_height]]
             starts += Sprites.starts(memory) if sprites
             emit_start(asm, memory, palette, starts, saves, clock, sprites)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves, sprites)
+            emit_frame(asm, memory, saves, sprites, walks)
+            Fades.emit(asm, memory, palette) if walks
             Sprites.emit(asm, memory) if sprites
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
@@ -309,7 +311,7 @@ module VBlank
           end
 
           # The end of a pass, stopping, and the wait for a retrace they share.
-          def emit_frame(asm, memory, saves, sprites)
+          def emit_frame(asm, memory, saves, sprites, walks)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -335,7 +337,9 @@ module VBlank
             asm.call("rt_sprites_over_picture") if sprites # before a reader is told the pass has ended
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
+            asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
+            asm.call("rt_walk_send") if walks
             asm.call("rt_show_picture")
             # The buttons, taken from the keyboard's interrupt with interrupts off, so a key cannot go down
             # between the two halves and be lost.
@@ -394,7 +398,9 @@ module VBlank
             asm.call("rt_save_flush") if saves
             asm.call("rt_sprites_over_picture") if sprites
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
+            asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
+            asm.call("rt_walk_send") if walks
             asm.call("rt_show_picture")
             asm.mov(at.call(Frame::SHOWN), Frame::END_SHOWN)
             asm.label("rt_stopped")
@@ -406,7 +412,9 @@ module VBlank
             asm.label("rt_fault")
             asm.call("rt_save_flush") if saves
             asm.call("rt_sprites_over_picture") if sprites
+            asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
+            asm.call("rt_walk_send") if walks
             asm.call("rt_show_picture") # what the pass drew before it went wrong
             asm.mov(at.call(Frame::STATE), Frame::WENT_WRONG)
             asm.jmp("rt_stopped")
