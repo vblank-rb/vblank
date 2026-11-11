@@ -37,7 +37,7 @@ module VBlank
             return sprites_following_lists(program, console) if console.poses_keep_own_lists?
 
             pictures = program.walk.select { |node| node.kind == :bitmap }
-            lists = pictures.to_h { |node| [node.name, node.colors] }
+            lists = pictures.to_h { |node| [node.name, colors_compared(node.colors, program.start_file)] }
             list_names = pictures.to_h { |node| [node.name, node.colors_name] }
             sprites = Stacking.objects_in_draw_order(program).uniq { |node| [node.declared || node.name, node.poses] }
             sprites.filter_map do |node|
@@ -72,6 +72,26 @@ module VBlank
               "was told to follow them with `draw_with({ #{lists} })`. The #{console.title} build does not make " \
               "that yet. It draws each picture in the colors of its own list. To fix this, give all the pictures " \
               "of the #{SpriteWords.member_word(node)} the same `colors:` list. Then tell it to `draw_with` that list."
+          end
+
+          # A PICTURE'S LIST AS IT IS COMPARED WITH ANOTHER: +colors+ as they are, except where the
+          # program reads its data pack as it starts (+start_file+) and a pose is drawn in the bank
+          # its frame names. That pose's list is a marker for each place of "the bank frame N names"
+          # (StartFile::ChosenColor), so two frames give two lists even where both name one bank,
+          # which the build cannot tell: the bank is in the player's file. Nothing in that file may
+          # stop the game, so such places are compared without the frame that picks the bank, and
+          # poses of one slot's banks count as one list. Where the frames name one bank this is the
+          # all-in-one build's answer; where they name two, which that build refuses, the build
+          # for a computer draws each pose in its own frame's bank.
+          def colors_compared(colors, start_file)
+            return colors unless colors && start_file
+
+            colors.map do |color|
+              next color unless StartFile.marker?(color)
+
+              source = start_file.colors.fetch(StartFile.entry_of(color))
+              source.is_a?(StartFile::ChosenColor) ? source.with(choice: nil) : color
+            end
           end
 
           # Each different list this sprite's pictures were given, with the first picture given
