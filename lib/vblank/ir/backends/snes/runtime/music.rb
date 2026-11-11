@@ -63,6 +63,15 @@ module VBlank
             HELD_IN = "rt music held in"
             HELD_WALK = "rt music held walk"
             CHANNEL_FOUND = "rt music channel found"
+            # ...and, for a part that plays a recording, so that a new level reaches its note with no
+            # walk to find it: the place its last note took (Recordings), as the place's offset one up,
+            # nought for a part on a console voice; the number Recordings knows the part by; that
+            # number for the note being played; and the level doubled, a word to each level in a
+            # part's record.
+            HELD_PLACE = "rt music held place"
+            HELD_OWNER = "rt music held owner"
+            NOTE_OWNER = "rt music note owner"
+            LEVEL_TWICE = "rt music level twice"
             # A NOTE THAT WOBBLES ITS PITCH (SNES::Music#wobble_record), in a game with one. The sound
             # chip has no wobble, so the player does it a frame at a time, as the interpreter counts
             # it (IR::Tunes::Wobble): each console voice's record, nought for a voice holding still;
@@ -129,6 +138,8 @@ module VBlank
               # ...and a word past the last part, which taking a part out of a full list reads as it
               # moves the rest down (rt_music_unhold).
               memory.reserve(HELD_ORDER, (SNES::Music::PARTS + 1) * 2)
+              [HELD_PLACE, HELD_OWNER].each { |name| memory.reserve(name, SNES::Music::PARTS * 2) }
+              [NOTE_OWNER, LEVEL_TWICE].each { |name| memory.reserve(name, 2) }
             end
 
             # +level_at+ is where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or nil;
@@ -757,6 +768,7 @@ module VBlank
                 SNES::Music::PARTS.times do |p|
                   asm.stz(asm.abs(memory[HELD], p * 2))
                   asm.stz(asm.abs(memory[HELD_IN], p * 2))
+                  asm.stz(asm.abs(memory[HELD_PLACE], p * 2)) if recorded # the next tune's part may be a console voice's
                 end
                 asm.stz(at.call(HELD_END))
               end
@@ -784,6 +796,7 @@ module VBlank
               asm.sec
               asm.sbc(m::RECORDED_CHANNEL - 1) # the part's own number in Recordings' places
               asm.sta(asm.direct(Sound::R1))
+              asm.sta(at.call(NOTE_OWNER)) if level_at
               asm.ldx(at.call(NOTE))
               asm.lda(asm.long_x("music_data", m::NOTE_RECORDING))
               asm.bne("rt_music_recorded_note_plays")
@@ -811,12 +824,12 @@ module VBlank
               asm.sta(asm.direct(Sound::R2))
               asm.jsl(asm.long("rt_recordings_note"))
               asm.cmp(0)
-              asm.beq("rt_music_recorded_note_done") # no place: not heard
+              asm.branch_long(:beq, "rt_music_recorded_note_done") # no place: not heard
               asm.label("rt_music_recorded_note_log")
               asm.ldx(at.call(NOTE))
               asm.lda(asm.long_x("music_data", m::NOTE_HEAD))
               asm.tax
-              asm.jsr(asm.abs("rt_sound_group"))
+              emit_log_of_group(asm)
               emit_recorded_note_level(asm, at, memory) if level_at
               asm.label("rt_music_recorded_note_done")
               asm.rts
@@ -838,6 +851,11 @@ module VBlank
               asm.lda(at.call(LOUDNESS_TABLE))
               asm.label("rt_music_recorded_level_rest")
               asm.sta(asm.abs_y(memory[HELD]))
+              asm.lda(at.call(NOTE_OWNER))
+              asm.sta(asm.abs_y(memory[HELD_OWNER]))
+              asm.lda(asm.abs(memory[Recordings::PLACE])) # the place the note took, or the one it glides in
+              asm.inc
+              asm.sta(asm.abs_y(memory[HELD_PLACE]))
               asm.lda(asm.abs_y(memory[HELD_IN]))
               asm.bne("rt_music_recorded_level_listed")
               asm.lda(1)
@@ -861,7 +879,18 @@ module VBlank
               asm.ldx(at.call(LOUDNESS))
               asm.lda(asm.long_x("music_data"))
               asm.tax
-              asm.jsr(asm.abs("rt_sound_group"))
+              emit_log_of_group(asm)
+            end
+
+            # The entry a group logs put in the sound log, for a group known to be that entry and
+            # nothing more, X where it is: a recorded note's head and its loudness at a level
+            # (SongTable#recorded_note_layout, #recorded_level_record). Walking such a group a command
+            # at a time (rt_sound_group) takes several times the instructions, and a chord under a
+            # falling music volume logs two for every part.
+            def emit_log_of_group(asm)
+              asm.lda(asm.long_x("music_data", SNES::Music::COMMAND_FIRST))
+              asm.sta(asm.direct(Sound::R0))
+              asm.jsl(asm.long("rt_sound_log"))
             end
 
             # LOUDNESS = where the level's entry is in the record at LOUDNESS_TABLE.
@@ -1098,28 +1127,33 @@ module VBlank
             # A part that plays a recording, its record on the stack and its entry in X: its sounding
             # note's place given the new loudness, and logged only if it has one
             # (Reference::Mixer#rescale_music). On to the next part.
-            def emit_relevel_recorded_part(asm, at)
+            #
+            # EIGHT PARTS TAKE A NEW LEVEL ON ONE FRAME, and that frame may be one a chord starts on,
+            # which is the longest the music has. So a recorded part's turn here looks nothing up that
+            # was known when its note started: the place the note took and the number Recordings knows
+            # the part by were kept then (HELD_PLACE, HELD_OWNER), its record is in HELD, and what it
+            # logs is one entry read straight from that record.
+            def emit_relevel_recorded_part(asm, at, memory)
               m = SNES::Music
-              asm.lda(asm.long_x("music_data", m::CHANNEL))
-              asm.cmp(m::RECORDED_CHANNEL)
-              asm.bcc("rt_music_relevel_console")
-              asm.sec
-              asm.sbc(m::RECORDED_CHANNEL - 1)
-              asm.sta(asm.direct(Sound::R0))
-              asm.pla
-              asm.sta(at.call(LOUDNESS_TABLE))
-              emit_level_entry(asm, at)
+              asm.ldx(asm.abs_y(memory[HELD_PLACE]))
+              asm.beq("rt_music_relevel_console") # a part on a console voice, A still what it holds
+              asm.stx(asm.direct(Sound::R2))
+              asm.clc
+              asm.adc(at.call(LEVEL_TWICE))
+              asm.sta(at.call(LOUDNESS))
               asm.tax
               asm.lda(asm.long_x("music_data", m::LEVEL_VOLUMES))
               asm.sta(asm.direct(Sound::R1))
-              asm.jsl(asm.long("rt_recordings_rescale"))
+              asm.lda(asm.abs_y(memory[HELD_OWNER]))
+              asm.sta(asm.direct(Sound::R0))
+              asm.jsl(asm.long("rt_recordings_rescale_place"))
               asm.cmp(0)
-              asm.branch_long(:beq, "rt_music_relevel_next")
+              asm.beq("rt_music_relevel_next")
               asm.ldx(at.call(LOUDNESS))
               asm.lda(asm.long_x("music_data"))
               asm.tax
-              asm.jsr(asm.abs("rt_sound_group"))
-              asm.brl("rt_music_relevel_next")
+              emit_log_of_group(asm)
+              asm.bra("rt_music_relevel_next")
               asm.label("rt_music_relevel_console")
             end
 
@@ -1134,6 +1168,11 @@ module VBlank
               asm.rts
               asm.label("rt_music_relevel_moved")
               asm.sta(at.call(LEVEL_SET))
+              if recorded
+                asm.eor(full)
+                asm.asl
+                asm.sta(at.call(LEVEL_TWICE))
+              end
               asm.stz(at.call(HELD_WALK)) # where in HELD_ORDER, two bytes a part
               asm.label("rt_music_relevel_part")
               asm.lda(at.call(HELD_WALK))
@@ -1146,9 +1185,9 @@ module VBlank
               asm.tay
               asm.lda(asm.abs_y(memory[HELD]))
               asm.branch_long(:beq, "rt_music_relevel_next")
+              emit_relevel_recorded_part(asm, at, memory) if recorded
               asm.pha
               asm.jsr(asm.abs("rt_music_entry"))
-              emit_relevel_recorded_part(asm, at) if recorded
               asm.pla
               asm.jsr(asm.abs("rt_music_loudness"))
               asm.label("rt_music_relevel_next")

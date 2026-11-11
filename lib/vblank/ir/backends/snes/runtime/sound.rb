@@ -738,11 +738,14 @@ module VBlank
               asm.bne("rt_sound_queue_make_room_try")
               asm.label("rt_sound_queue_drop")
               asm.inc(asm.abs(memory[DROPPED]))
-              if samples # a loudness dropped is no longer waiting (Recordings#emit_shapes)
+              if samples # a loudness dropped is no longer waiting (Recordings#emit_shapes), nor one a note's start stood for
                 asm.ldx(asm.abs(memory[QUEUE_HEAD]))
                 asm.lda(memory.indexed(asm, QUEUE,ENTRY_COMMAND))
+                asm.cmp(START_NOTE)
+                asm.beq("rt_sound_queue_drop_loudness")
                 asm.cmp(NOTE_VOLUME)
                 asm.bne("rt_sound_queue_drop_counted")
+                asm.label("rt_sound_queue_drop_loudness")
                 asm.lda(memory.indexed(asm, QUEUE,ENTRY_REGISTER))
                 asm.tax
                 asm.lda(0)

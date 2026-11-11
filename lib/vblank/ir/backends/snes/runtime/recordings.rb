@@ -320,6 +320,10 @@ module VBlank
               asm.rtl
               asm.label("rt_recordings_play_heard")
               if memory.reserved?(Sound::QUEUE)
+                # The note's start works its loudness out as it reaches the front of the queue, so it
+                # stands for the word about loudness too: nothing more waits for this place until then.
+                asm.lda(1)
+                asm.sta(place.call(VOLUME_WAITING))
                 emit_queued_entry(asm, at, Sound::START_NOTE)
                 asm.lda(1)
                 asm.rtl
@@ -338,12 +342,11 @@ module VBlank
             # PLACE set: its loudness, in Sound::NOTE_VOLUME_WRITES.
             def emit_voice_routines(asm, at, row, place)
               asm.label("rt_recordings_voice_start")
+              emit_clear_loudness_waiting(asm, at, place)
               emit_voice_start(asm, at, row)
               asm.rtl
               asm.label("rt_recordings_voice_volume")
-              asm.ldy(at.call(PLACE))
-              asm.lda(0)
-              asm.sta(place.call(VOLUME_WAITING))
+              emit_clear_loudness_waiting(asm, at, place)
               emit_registers(asm, at)
               asm.jsr(asm.abs("rt_recordings_volume"))
               asm.rtl
@@ -375,6 +378,7 @@ module VBlank
               loudness = -> { asm.jsr(asm.abs("rt_recordings_loudness")) }
 
               asm.label("rt_recordings_voice_start")
+              emit_clear_loudness_waiting(asm, at, place)
               emit_registers(asm, at)
               told.call(-> { asm.lda(Sound::HOLD_PITCH) }, pitch, lambda {
                 pitch.call
@@ -387,9 +391,7 @@ module VBlank
               asm.rtl
 
               asm.label("rt_recordings_voice_volume")
-              asm.ldy(at.call(PLACE))
-              asm.lda(0)
-              asm.sta(place.call(VOLUME_WAITING))
+              emit_clear_loudness_waiting(asm, at, place)
               emit_registers(asm, at)
               told.call(voice_command.call(Sound::VOICE_LOUDNESS), -> { asm.lda(0) }, loudness)
               asm.rtl
@@ -404,6 +406,14 @@ module VBlank
               asm.label("rt_recordings_loudness_scaled")
               asm.lda(place.call(LOUD))
               asm.jmp(asm.abs("rt_recordings_level_times"))
+            end
+
+            # The place at PLACE has no word about its loudness waiting in the queue any more: the
+            # one that stood for it is being sent.
+            def emit_clear_loudness_waiting(asm, at, place)
+              asm.ldy(at.call(PLACE))
+              asm.lda(0)
+              asm.sta(place.call(VOLUME_WAITING))
             end
 
             # The place's voice told all about its note, key-on last.
@@ -604,13 +614,26 @@ module VBlank
               asm.jsr(asm.abs("rt_recordings_heard_volume"))
               asm.rtl
 
-              # rt_recordings_rescale(owner, volume): the note +owner+'s part sounds now, at +volume+;
-              # A = 1, or nought when it has none (Reference::Mixer#rescale_music).
-              asm.label("rt_recordings_rescale")
-              asm.lda(asm.direct(Sound::R0))
-              asm.sta(at.call(NOTE_OWNER))
-              asm.jsr(asm.abs("rt_recordings_sounding"))
+              # rt_recordings_rescale_place(owner, volume, place): the note +owner+'s part sounds now, at
+              # +volume+; A = 1, or nought when it has none (Reference::Mixer#rescale_music).
+              #
+              # A MUSIC VOLUME FALLING tells every part this on one frame, and a walk over the places
+              # for each part is most of what that frame would cost. So the player keeps the +place+
+              # the part's last note took, as its offset one up, and only that one is asked: a part has
+              # one note sounding at most, since its next note either takes the same place or leaves
+              # the old one falling away, so if that place is no longer the part's, held and not
+              # falling, the part has no note anywhere.
+              asm.label("rt_recordings_rescale_place")
+              asm.ldy(asm.direct(Sound::R2))
+              asm.lda(place.call(HELD - 1))
+              asm.beq("rt_recordings_note_release_none")
+              asm.lda(place.call(OWNER - 1))
+              asm.cmp(asm.direct(Sound::R0))
+              asm.bne("rt_recordings_note_release_none")
+              asm.lda(place.call(PHASE - 1))
+              asm.cmp(FALLING)
               asm.bcs("rt_recordings_note_release_none")
+              asm.dey
               asm.sty(at.call(PLACE))
               asm.lda(asm.direct(Sound::R1))
               asm.sta(place.call(LOUD))
