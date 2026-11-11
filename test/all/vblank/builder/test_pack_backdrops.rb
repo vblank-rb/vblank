@@ -58,10 +58,10 @@ module PackBackdropGames
   end
 
   # A game whose own `screen` line is given what +screen_options+ makes of the pack, showing the
-  # pack's one cell.
-  private def game_with_backdrop(from, &screen_options)
+  # pack's one cell, built as +options+ say.
+  private def game_with_backdrop(from, options: VBlank::Cartridge::Options.new, &screen_options)
     test = self
-    b = Builder.new
+    b = Builder.new(options: options)
     b.instance_eval do
       pack = test.backdrop_pack_of(self, from)
       screen :tiled, **instance_exec(pack, &screen_options)
@@ -82,23 +82,25 @@ module PackBackdropGames
   TINT_LIFTED_PASS = 10
 
   # +written_out+ gives the logos' and the title's `screen` lines the two colours written in the
-  # game, where they are otherwise taken from the pack.
-  private def scenes_with_backdrops(from, written_out: false)
-    scenes_under(from, written_out: written_out) do |level|
+  # game, where they are otherwise taken from the pack. +options+ are how each of these is built.
+  private def scenes_with_backdrops(from, written_out: false, options: VBlank::Cartridge::Options.new)
+    scenes_under(from, written_out: written_out, options: options) do |level|
       level.store!((level - 10).clamp(0, 100))
       tint :red, level
     end
   end
 
   # The same scenes under a tint that holds still, so nothing but a scene arriving writes colours.
-  private def scenes_under_a_held_tint(from) = scenes_under(from) { |_level| tint :red, 50 }
+  private def scenes_under_a_held_tint(from, options: VBlank::Cartridge::Options.new)
+    scenes_under(from, options: options) { |_level| tint :red, 50 }
+  end
 
   # The same scenes under a tint for the first passes and a fade toward black from pass
   # +FADE_PASS+ on, which takes the tint's place while the logos are still up.
   FADE_PASS = 3
 
-  private def scenes_under_a_tint_then_a_fade(from)
-    scenes_under(from) do |level|
+  private def scenes_under_a_tint_then_a_fade(from, options: VBlank::Cartridge::Options.new)
+    scenes_under(from, options: options) do |level|
       level.store!(level + 1)
       if level < 100 + FADE_PASS
         tint :red, 50
@@ -110,9 +112,9 @@ module PackBackdropGames
 
   # The three scenes, the block run on each pass before the scene is, with the variable `level`,
   # which starts at 100.
-  private def scenes_under(from, written_out: false, &each_pass)
+  private def scenes_under(from, written_out: false, options: VBlank::Cartridge::Options.new, &each_pass)
     test = self
-    b = Builder.new
+    b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       pack = test.backdrop_pack_of(self, from)
@@ -145,6 +147,14 @@ module PackBackdropGames
     b.program
   end
 
+  # The pack file an all-in-one build of these games makes from the made-up original: what a game
+  # built with its pack left out is handed as it starts.
+  private def backdrop_pack_file(from)
+    builder = Builder.new
+    backdrop_pack(builder, from)
+    builder.made_data_pack_file
+  end
+
   # Called back from a game block, where `self` is the builder.
   def backdrop_pack_of(builder, from) = backdrop_pack(builder, from)
   def pack_cell_of(builder, pack, name) = pack_cell(builder, pack, name)
@@ -156,11 +166,10 @@ end
 # colour, or a bank's, or another place of either.
 #
 # The answer key is the made-up original's own colours (PackBackdropGames::BANKS). A scene's own
-# backdrop is in test/console/gba/, as a scene's own backdrop of a colour is.
+# backdrop is in test/console/gba/, as a scene's own backdrop of a colour is. The same games built
+# with the pack left out are test/pack_backdrop_at_start_tests.rb's.
 class TestPackBackdrops < Minitest::Test
   include PackBackdropGames
-
-  READS_PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
   private def screen_of(program) = game_player.run(program, frames: 4).screen
 
@@ -218,18 +227,6 @@ class TestPackBackdrops < Minitest::Test
       end
 
       assert_includes error.message, "a slot of colors"
-    end
-  end
-
-  # A build that leaves its pack out cannot know the colour while it builds.
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
-    Dir.mktmpdir do |folder|
-      builder = Builder.new(options: READS_PACK_AT_START)
-      pack = backdrop_pack(builder, backdrop_original(folder))
-      error = assert_raises(ArgumentError) { builder.screen :tiled, backdrop: pack[:palette] }
-
-      assert_includes error.message, "backdrop:"
-      assert_includes error.message, "not made that way yet"
     end
   end
 end

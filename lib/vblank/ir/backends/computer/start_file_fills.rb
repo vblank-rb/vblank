@@ -15,8 +15,9 @@ module VBlank
         # first entry is; and each picture read from it, into the runtime's pixels: a background's
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
         # it is drawn in, into the image pixels; and each background whose map is read from it, a
-        # tile for every cell. That routine is written last, once the art is laid out and it is
-        # known where in the pixels each picture is.
+        # tile for every cell; and each colour that is no part of a picture, a screen's backdrop,
+        # into an array of the game's own. That routine is written last, once the art is laid out
+        # and it is known where in the pixels each picture is.
         #
         # So the game as C, JavaScript or Ruby holds none of the original's bytes, and a game that
         # reads no file is written as it was before there was one. The art here lays out a picture
@@ -49,7 +50,45 @@ module VBlank
 
             [Statements::Function.new(name: start_file_routine,
                                       body: build_start_file_table_fills + build_start_file_picture_fills +
-                                            build_start_file_background_fills + build_start_file_recording_fills)]
+                                            build_start_file_background_fills + build_start_file_recording_fills +
+                                            build_start_file_color_fills)]
+          end
+
+          # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE (IR::StartFile::Color): a
+          # screen's backdrop today. The game keeps one array of them, written as its size alone,
+          # and the routine fills each entry from the file; a statement that takes a colour then
+          # reads its entry (#start_file_color) where a game holding its data writes a number. An
+          # array and not a read at each statement, so a colour is read from the file once however
+          # often a scene arrives, and anything else that needs colours known only as the game
+          # starts takes more entries of the same array and is filled by the same call.
+          #
+          # Every colour the program names, each once, in the order the program names them.
+          def start_file_colors
+            @start_file_colors ||= @program.walk.filter_map { |node| node.backdrop_from_file if node.kind == :screen }.uniq
+          end
+
+          def start_file_colors_name = @names.own("start_file_colors")
+
+          # The array's declaration, which goes with the tables; nothing for a program with no such colour.
+          def start_file_color_arrays
+            return [] if start_file_colors.empty?
+
+            [Statements::StartFileArray.new(name: start_file_colors_name, type: "int32_t", count: start_file_colors.length)]
+          end
+
+          # The colour +where+ (an IR::StartFile::Color) as a statement reads it: its entry of the array.
+          def start_file_color(where)
+            Statements::Index.new(start_file_colors_name, Statements::Int.new(start_file_colors.index(where)))
+          end
+
+          # One call for each run of entries kept one way: here each colour is a run of one.
+          def build_start_file_color_fills
+            formats = {}
+            start_file_colors.each_with_index.map do |where, entry|
+              format = formats[where.format] ||= drawing_array("start_file_color_format", "int32_t", color_format_rules(where.format))
+              eval_call("rg_start_file_fill_colors", start_file_colors_name, Statements::Int.new(entry), Statements::Int.new(1),
+                        Statements::Int.new(where.at), format)
+            end
           end
 
           # A BACKGROUND WHOSE MAP, TILES AND COLOURS ARE READ FROM THE FILE (IR::StartFile::Background).

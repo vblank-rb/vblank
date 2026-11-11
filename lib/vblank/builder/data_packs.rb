@@ -42,7 +42,8 @@ module VBlank
     # starts (IR::StartFile). The pack's layout follows from the slots' shapes and sizes alone
     # (Original::Pack.layout), so the build knows where each slot will be in the file: a table given
     # a slot is read from there (#table_from_start_file), and so is a picture given a slot of colours
-    # or tiles of a slot of tiles, or both (#define_picture_from_start_file). The program holds none
+    # or tiles of a slot of tiles, or both (#define_picture_from_start_file), and a screen's backdrop
+    # given a slot of colours (#pack_backdrop_in_start_file). The program holds none
     # of a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
     # on what a slot holds: a table read from the file is not one whose entries a build looks at (a
     # pose stepped through by a table's entries), and a picture read from the file is a whole box of
@@ -757,27 +758,35 @@ module VBlank
       # backdrop a game would get by writing the colour out, on its own `screen` line or a
       # scene's, and builds the same bytes.
       def pack_backdrop_color(slot, place)
-        where = "`screen ... backdrop:`"
-        refuse_slot_from_elsewhere!(slot, where)
-        refuse_slot_read_wrongly!(slot, :colors, where)
-        refuse_pack_backdrop_left_out!(slot)
-        colors = pack_slot_values(slot, :colors, where)
-        place = 0 if place.nil?
-        return Graphics::Color.resolve(colors.fetch(place)) & 0x7FFF if place.is_a?(Integer) && place.between?(0, colors.length - 1)
-
-        raise ArgumentError, "`screen ... backdrop_place: #{place.inspect}` asks for a place that the backdrop's colors " \
-                             "do not have. backdrop: was given #{colors.length} colors of slot :#{slot.layout.name}, at " \
-                             "places 0 to #{colors.length - 1}. To fix this, use a place in that range."
+        place = pack_backdrop_place(slot, place)
+        Graphics::Color.resolve(pack_slot_values(slot, :colors, PACK_BACKDROP_LINE).fetch(place)) & 0x7FFF
       end
 
-      # A build that leaves its pack out holds none of the original's colours, and a backdrop's
-      # colour is part of the program every lowering writes. Reading it at power-on is not made yet.
-      def refuse_pack_backdrop_left_out!(slot)
-        return unless pack_left_out?
+      # THE SAME BACKDROP WITH THE PACK LEFT OUT: where the colour is in the file the program is
+      # handed as it starts (an IR::StartFile::Color), which a `screen` keeps in place of the
+      # colour. The build holds none of the original's colours, and each backend that plays such a
+      # program reads this one as it starts. The slot's size is the game's own word, so a place
+      # the slot does not have is refused here as it is all-in-one.
+      def pack_backdrop_in_start_file(slot, place)
+        place = pack_backdrop_place(slot, place)
+        IR::StartFile::Color.new(at: colors_in_pack(slot) + (place * slot.layout.item_bytes), format: slot.layout.format)
+      end
 
-        raise ArgumentError, "`screen ... backdrop:` reads its color from slot :#{slot.layout.name} of the data pack, " \
-                             "and this build reads its pack as the game starts. A backdrop from the pack is not made " \
-                             "that way yet. To fix this, build the game all-in-one."
+      # How the errors of a backdrop from the pack name the line.
+      PACK_BACKDROP_LINE = "`screen ... backdrop:`"
+
+      # The place of +slot+ (a DSL::PackSlot on colours) that a backdrop shows: +place+, or the
+      # first where it is nil. Refuses a slot that is not this pack's or holds no colours, and a
+      # place past the colours the handle is on.
+      def pack_backdrop_place(slot, place)
+        refuse_slot_from_elsewhere!(slot, PACK_BACKDROP_LINE)
+        refuse_slot_read_wrongly!(slot, :colors, PACK_BACKDROP_LINE)
+        place = 0 if place.nil?
+        return place if place.is_a?(Integer) && place.between?(0, slot.count - 1)
+
+        raise ArgumentError, "`screen ... backdrop_place: #{place.inspect}` asks for a place that the backdrop's colors " \
+                             "do not have. backdrop: was given #{slot.count} colors of slot :#{slot.layout.name}, at " \
+                             "places 0 to #{slot.count - 1}. To fix this, use a place in that range."
       end
 
       # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.

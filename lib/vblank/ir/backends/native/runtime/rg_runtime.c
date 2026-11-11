@@ -508,6 +508,10 @@ static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32
                     (start_file_channel(kept, format[RG_COLOR_BLUE_AT], bits) << 10));
 }
 
+void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format) {
+  for (int32_t place = 0; place < count; place++) colors[first + place] = start_file_color(at, format, place);
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];

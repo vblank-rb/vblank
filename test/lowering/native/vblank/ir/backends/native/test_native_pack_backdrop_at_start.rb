@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "pack_backdrop_at_start_tests"
+
+# A SCREEN'S BACKDROP FROM THE PACK, ITS PACK LEFT OUT, played as C and checked against the
+# interpreter on every frame (PackBackdropAtStartTests in test/pack_backdrop_at_start_tests.rb,
+# which says why these are not in test/all/). The C runtime reads the colour from the file it is
+# handed before the game's first statement, and the game's `screen` is handed it from there.
+class TestNativePackBackdropAtStart < Minitest::Test
+  include PackBackdropAtStartTests
+
+  def test_the_backdrop_as_c_holds_none_of_the_originals_colors
+    assert_backdrop_written_without_the_originals_color { |program| VBlank::IR::Backends::Native.new.lower(program) }
+  end
+end

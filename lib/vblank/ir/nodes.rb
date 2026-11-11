@@ -1621,11 +1621,18 @@ module VBlank
         # rather than at the next break (see IR::LatePages); nil, the default, always waits.
         # +late_pace+: how many breaks a pass may take and be on time; nil is one.
         # +backdrop+: the colour shown wherever nothing is drawn, as a 15-bit colour; nil is black.
+        # +backdrop_from_file+: where that colour is in the file the program is handed as it starts
+        # (a StartFile::Color), for a program that holds none of it; absent on every other screen. A
+        # screen has one of the two or neither, never both.
         # +pixel_size+: on the game's first screen, how many of the console's pixels across and down
         # one of the game's is shown as; nil is one. The program carries it for the whole game
         # (Program#pixel_size); here it is the line that asked, for a console that cannot.
         operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int,
-                 pixel_size: :int
+                 pixel_size: :int, backdrop_from_file: :file_color
+
+        # The backdrop this screen names in either form: its colour, where in the start file its
+        # colour is (a StartFile::Color), or nil for a screen that names none.
+        def backdrop_or_place_in_file = backdrop_from_file || backdrop
       end
 
       class ScrollBackground

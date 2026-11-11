@@ -35,6 +35,8 @@ module VBlank
     #   the map holds is known only once the file is read, so the program holds a tile for each
     #   bank and a map of the right size that names the first, and its lists of colours are
     #   BANK COLOURS (.bank_colors), which name a bank and hold none of its colours.
+    # - a screen's backdrop (Nodes::Screen#backdrop_from_file, a Color): the one colour the screen
+    #   shows wherever nothing is drawn. The program holds no colour for it.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -86,9 +88,26 @@ module VBlank
         def tiles_drawn = columns * rows
       end
 
+      # ONE COLOUR IN THE FILE: the two bytes from +at+ on, kept as +format+ (a Console::ColorFormat).
+      # It stands where a program built holding its data keeps a colour of fifteen bits, for a
+      # colour that is no part of a picture: a screen's backdrop today. A list of colours read
+      # from the file is one of these for each of its places, two bytes apart.
+      Color = Data.define(:at, :format)
+
+      # The fifteen bits of the colour +where+ (a Color) names in +bytes+, the file.
+      def self.color_in(bytes, where) = FormatReading.colors(bytes.byteslice(where.at, 2), where.format).first & 0x7FFF
+
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
-      # name here and one branch there.
-      READ_KINDS = %i[table bitmap sample background].freeze
+      # name here and one branch there. A screen reads only its backdrop, and most screens read
+      # nothing (.place_in_file).
+      READ_KINDS = %i[table bitmap sample background screen].freeze
+
+      # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
+      def self.place_in_file(node)
+        return nil unless READ_KINDS.include?(node.kind)
+
+        node.kind == :screen ? node.backdrop_from_file : node.from_file
+      end
 
       # BANK COLOURS: a list of colours that names a bank of the file's colours and holds none of
       # them. A program built with its pack left out knows that a background's tiles are drawn
@@ -181,23 +200,33 @@ module VBlank
 
         filled = program.copy
         filled.start_file = nil
-        read = filled.walk.select { |node| READ_KINDS.include?(node.kind) && node.from_file }
+        read = filled.walk.select { |node| place_in_file(node) }
         read.each { |node| fill_node(filled, node, bytes.b) }
         VBlank.logger.debug("start file") do
-          "read the #{file.called}, #{file.size} bytes, into #{read.map { |node| ":#{node.name}" }.join(', ')}"
+          into = read.map { |node| node.kind == :screen ? "a screen's backdrop" : ":#{node.name}" }
+          "read the #{file.called}, #{file.size} bytes, into #{into.join(', ')}"
         end
         filled
       end
 
-      # What +node+ (a table, a picture, a recording or a background) of +program+ reads from the file.
+      # What +node+ (a table, a picture, a recording, a background or a screen) of +program+ reads
+      # from the file.
       def self.fill_node(program, node, bytes)
         case node.kind
         when :table then fill_table(node, bytes)
         when :bitmap then fill_picture(node, bytes)
         when :sample then fill_recording(node, bytes)
         when :background then fill_background(program, node, bytes)
+        when :screen then fill_backdrop(node, bytes)
         else raise ArgumentError, "a #{node.kind} is not read from the file (READ_KINDS names the kinds that are)"
         end
+      end
+
+      # A screen's backdrop, read from the place it names: the colour a `screen` keeps when the game
+      # is built holding its data, so everything that plays the filled program finds a colour there.
+      def self.fill_backdrop(node, bytes)
+        node.backdrop = color_in(bytes, node.backdrop_from_file)
+        node.backdrop_from_file = nil
       end
 
       # A recording's samples, read from the place it names: one byte each, as long as the zeros the
@@ -317,7 +346,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :fill_table, :fill_picture, :picture_places, :fill_background,
+      private_class_method :fill_node, :fill_recording, :fill_table, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :declare_background_tile
     end
   end

@@ -272,7 +272,7 @@ module VBlank
       end
 
       def refuse_scene_backdrop_beside_backdrop_list!(node)
-        return if node.backdrop.nil?
+        return if node.backdrop_or_place_in_file.nil?
 
         raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name} for the whole game. " \
                              "The `screen` at #{node.source} gives a backdrop of its own. To fix this, remove backdrop: " \

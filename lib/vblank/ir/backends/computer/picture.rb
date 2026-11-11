@@ -643,8 +643,10 @@ module VBlank
           def screen_change(function, screen, two_pages, backdrop)
             two_pages &&= @program.described_console.painted_pages == 2
             # A backdrop that follows a list (nil) is left as the list has it, which rg_screen.c reads
-            # as a colour below nought.
-            change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), Statements::Int.new(backdrop || -1))
+            # as a colour below nought. One read from the start file is its entry of the colours
+            # filled from it (StartFileFills#start_file_color).
+            shown = backdrop.is_a?(IR::StartFile::Color) ? start_file_color(backdrop) : Statements::Int.new(backdrop || -1)
+            change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), shown)
             always = @handover.always_up
             put_back = [*always.map_choices.map { |var| assign(var, Statements::Int.new(0)) },
                         *(always.painted_tiles + always.painted_pictures).map { |run| tile_copy(run) }]

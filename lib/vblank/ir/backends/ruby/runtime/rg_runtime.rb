@@ -317,6 +317,12 @@ def rg_start_file_color(colors_at, rules, format, place)
     (rg_start_file_channel(kept, rules[format + RG_COLOR_BLUE_AT], bits) << 10)
 end
 
+# Colours that are no part of a picture, into the game's own array of them (rg_runtime.h,
+# rg_start_file_fill_colors).
+def rg_start_file_fill_colors(colors, first, count, at, format)
+  count.times { |place| colors[first + place] = rg_start_file_color(at, format, 0, place) }
+end
+
 # One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
 # the first picture filled puts an unfrozen copy in their place; the picture reads them from there
 # on. The +total+ in the rules is how many there are, which the C needs.

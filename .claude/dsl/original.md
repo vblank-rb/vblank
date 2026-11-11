@@ -84,8 +84,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `pack[:logo_colors].bank(2)` is that bank's first colour, and `backdrop_place:` picks another place.
   It goes on the game's own `screen` line or a scene's, as a colour written in the game does, and
   builds the same bytes as that colour written out (`screen.md`). Built all-in-one, the build reads
-  the slot. **A build that reads its pack as the game starts refuses it for now**, naming the slot.
-  Worked example: `test/all/vblank/builder/test_pack_backdrops.rb`.
+  the slot. A build that reads its pack as the game starts reads the colour then, and shows the same
+  screen. Worked examples: `test/all/vblank/builder/test_pack_backdrops.rb`, and with the pack left
+  out `test/pack_backdrop_at_start_tests.rb`.
 
   **Releases that keep the data at different places**: a slot's `at:` may be a Hash by release name,
   `slots.colors :palette, at: { "US" => 0x10, "EU" => 0x30 }, count: 16`. The keys are the release names
@@ -270,6 +271,14 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.
   The build does not know a bank's colours, so what needs them while the game is built is refused at the line.
   Worked example: `test/pack_background_tests.rb`.
+- `screen :tiled, backdrop: pack[:palette]` (also `.bank(n)` and `backdrop_place:`) — the screen's backdrop,
+  on the game's own `screen` line or a scene's. The program holds no colour for it: the screen keeps where
+  the colour is in the file (`IR::StartFile::Color`), and the runtime reads it at power-on into an array of
+  the game's own, which each `screen` and each scene arriving reads (`rg_start_file_fill_colors`). A `fade`
+  or `tint` moves it with the picture, as built all-in-one. A place the slot does not have is refused at
+  the line, since the slot's size is the game's own word. Worked examples:
+  `test/pack_backdrop_at_start_tests.rb`, and for each scene's own under a tint,
+  `test/console/gba/vblank/builder/test_pack_backdrops_at_start_on_the_advance.rb`.
 
   Any other verb that reads a slot's bytes is refused at the line.
 - `pack.unpacking(release: RELEASE)` — the unpacking program for a copy of that release (an

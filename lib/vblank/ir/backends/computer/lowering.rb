@@ -233,6 +233,7 @@ module VBlank
             @scenes = scene_numbers
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
             @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
+            @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound
           end
@@ -376,7 +377,7 @@ module VBlank
               refuse_picture_from_start_file!(data.name, "a piece of data read a byte at a time")
               bytes = data.kind == :data ? data.bytes : data.pixels
               Statements::ConstArray.new(name: @names.of(:data, data.name), type: "uint8_t", values: bytes.bytes)
-            end
+            end + start_file_color_arrays
           end
 
           # The names of the tables and the data a run reads, by an entry or by copying a run of them.

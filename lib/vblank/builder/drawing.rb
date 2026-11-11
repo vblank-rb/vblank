@@ -112,7 +112,9 @@ module VBlank
       # +backdrop:+ also takes a slot of colours of the data pack, or one bank of it, and is then
       # the colour the slot holds first (+backdrop_place:+ picks another): the colour the original's
       # own screen shows wherever none of its tiles draws (see DataPacks#pack_backdrop_color). It
-      # is a colour like one written in the game, so a scene's own `screen` line takes it.
+      # is a colour like one written in the game, so a scene's own `screen` line takes it. A build
+      # that reads its pack as the game starts reads the colour then
+      # (DataPacks#pack_backdrop_in_start_file).
       #
       # @example A scene whose backdrop is the first colour its original loaded
       #   scene(:logos) do
@@ -162,14 +164,16 @@ module VBlank
         late_rows = resolve_late_pages(late, tear_free)
         if backdrop.is_a?(DSL::PackSlot)
           refuse_backdrop_on_painted_screen!(mode)
-          backdrop = pack_backdrop_color(backdrop, backdrop_place)
+          # A build that leaves its pack out keeps where the colour is in the pack, not the colour.
+          backdrop_from_file = (pack_backdrop_in_start_file(backdrop, backdrop_place) if pack_left_out?)
+          backdrop = backdrop_from_file ? nil : pack_backdrop_color(backdrop, backdrop_place)
           backdrop_place = nil
         end
         followed = followed_backdrop_list(backdrop, backdrop_place, mode)
         node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
                                          late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
                                          backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode),
-                                         pixel_size: size_said))
+                                         pixel_size: size_said, backdrop_from_file: backdrop_from_file))
         @backdrop_list = followed.with(screen: node) if followed
         node
       end

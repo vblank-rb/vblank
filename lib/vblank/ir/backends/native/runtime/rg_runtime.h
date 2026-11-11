@@ -180,7 +180,13 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
  * naming a tile past the file's draws nothing, and one naming a bank past its colours is drawn in
- * colour 0: the file is the player's, and the game plays on. */
+ * colour 0: the file is the player's, and the game plays on.
+ *
+ * rg_start_file_fill_colors: +count+ entries of +colors+ from entry +first+ on, each the fifteen
+ * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
+ * (RG_COLOR_FORMAT_NUMBERS numbers, as above). These are the colours that are no part of a
+ * picture (IR::StartFile::Color): the game keeps them in an array of its own and reads an entry
+ * where a game holding its data writes a colour, as a screen's backdrop does. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
@@ -190,5 +196,6 @@ void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t 
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
+void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 
 #endif

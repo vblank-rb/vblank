@@ -70,7 +70,10 @@ module VBlank
       # scene starts at once.
       #
       # Its +backdrop+ is the colour it shows wherever nothing is drawn: what its own `screen`
-      # names, or else what the game's names (#game_backdrop), 0 being black.
+      # names, or else what the game's names (#game_backdrop), 0 being black. In a program that
+      # reads its data from a file as it starts it can be where the colour is in that file instead
+      # (a StartFile::Color; Nodes::Screen#backdrop_or_place_in_file), which only the builds that
+      # read such a file ever meet.
       Arrival = Data.define(:scene, :screen, :mode, :scenery, :map_choices, :painted_tiles, :painted_pictures,
                             :takes_down_scenery, :takes_down_art, :loads_first, :backdrop) do
         def takes_down_scenery? = takes_down_scenery
@@ -105,7 +108,7 @@ module VBlank
         @funcs = program.children.select { |node| node.kind == :func }.to_h { |func| [func.name, func] }
         @cases = program.walk.select { |node| node.kind == :case }
         @game_screen = program.children.find { |node| node.kind == :screen }
-        @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop }
+        @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop_or_place_in_file }
         @backdrop_follows_list = program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
         @modes = Modes.resolve(program)
         @paced = program.walk.any? { |node| node.kind == :wait_vblank }
@@ -130,7 +133,7 @@ module VBlank
 
       # THE COLOUR THE GAME SHOWS WHEREVER NOTHING IS DRAWN, as its own `screen` — the one in no
       # scene — names it: 0, black, when it names none. A scene that names no backdrop shows this.
-      def game_backdrop = (@game_screen&.backdrop if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
+      def game_backdrop = (@game_screen.backdrop_or_place_in_file if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
 
       # Does any `screen` name a backdrop? A game where none does shows black wherever nothing is
       # drawn, as every game did before a screen could name one, and a backend emits nothing for it.
@@ -158,7 +161,7 @@ module VBlank
         return 0 unless DISPLAYS.key?(node.mode) && self.class.tiles?(node.mode)
         return nil if @backdrop_follows_list && !node.equal?(@game_screen)
 
-        node.backdrop || game_backdrop
+        node.backdrop_or_place_in_file || game_backdrop
       end
 
       # A scene's backdrop as it arrives (Arrival#backdrop): nil, as it is, where the backdrop
@@ -167,7 +170,7 @@ module VBlank
         return 0 unless tiled
         return nil if @backdrop_follows_list
 
-        screen&.backdrop || game_backdrop
+        screen&.backdrop_or_place_in_file || game_backdrop
       end
 
       # The scene whose routine has +node+ at its top, or nil — a scene, and not any other routine.
