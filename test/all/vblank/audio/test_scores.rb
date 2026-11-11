@@ -19,15 +19,28 @@ module ScoresGames
     Score.new(tempo: tempo, parts: [Part.new(plays: plays, notes: notes)])
   end
 
+  # The recorded instruments a song here may name, each by its samples.
+  INSTRUMENT_SAMPLES = Ractor.make_shareable({ piano: [60, -60] * 4000, harp: [40, -40] * 4000 })
+
+  # The instruments of INSTRUMENT_SAMPLES that +scores+ name, on a part or on a note.
+  private def instruments_named(scores)
+    named = scores.flat_map { |score| score.parts.flat_map { |part| [part.plays, *part.notes.map(&:instrument)] } }
+    INSTRUMENT_SAMPLES.keys & named
+  end
+
   # A game that hands over +scores+, names one each pass with the block, and otherwise does
   # nothing. The block is handed the song list and how many passes have run.
+  #
+  # It declares only the instruments its songs name. A console that plays a song on its own voices
+  # alone refuses a game that writes `instrument` at all, so a song of square, wave and noise
+  # parts must bring none in to play there.
   private def game(scores, &body)
+    recorded = instruments_named(scores)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :bitmap
       enable_sound
-      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4
-      instrument :harp, pcm: [40, -40] * 4000, rate: 8000, note: :C4
+      recorded.each { |name| instrument name, pcm: INSTRUMENT_SAMPLES.fetch(name), rate: 8000, note: :C4 }
       music = songs :music, scores
       pass = var :pass, 0
       game_loop do
