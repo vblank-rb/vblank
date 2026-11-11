@@ -4,6 +4,8 @@ require "digest"
 require "tmpdir"
 require "folder_original"
 
+VBlank.require_game_file "fixtures/record_walk/record_walk_part"
+
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
 # It runs in two places only: on the interpreter as a build makes its pack, and in a shell, which
@@ -134,6 +136,48 @@ module CopyReaderTests
 
       assert_equal SPEEDS.map { |speed| (speed * 2) & 0xFF }.pack("C*"),
                    unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4))[:doubled]
+    end
+  end
+
+  # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
+  # records of four words (where from, where to, how many, another follows), two of them here.
+  RECORDS_AT = 100
+  RECORDS = Ractor.make_shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
+
+  private def record_copy
+    bytes = (0...4096).map { |at| (at * 7) & 0xFF }.pack("C*")
+    bytes[RECORDS_AT, 32] = RECORDS.flatten.pack("V*")
+    bytes
+  end
+
+  # What the two records copy into a slot of 1024 bytes, the rest zero.
+  private def records_copied(copy)
+    out = "\0".b * 1024
+    RECORDS.each { |from, to, count, _| out[to, count] = copy.byteslice(from, count) }
+    out
+  end
+
+  # +walk+ is a method of RecordWalkPart (test/fixtures/record_walk), a part in a game file.
+  private def walked_records(folder, copy, walk)
+    from = copy_of(folder, copy)
+    unpacking = VBlank::Builder.new.data_pack(from: from, version: "1") do |slots|
+      slots.pixels :out, count: 1024
+      slots.fill_from_copy do |reader, pack|
+        part = RecordWalkPart.new(reader, pack)
+        walk == :flag ? part.fill_with_flag(RECORDS_AT) : part.fill(RECORDS_AT)
+      end
+    end.unpacking
+    unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 8))[:out]
+  end
+
+  # The loop's test reads a name its body sets from the copy, so the loop is the game's, and the
+  # names it changes are the game's to keep, in a part's method as in a game block.
+  def test_a_routine_walks_records_until_one_says_it_is_the_last
+    Dir.mktmpdir do |folder|
+      copy = record_copy
+
+      assert_equal records_copied(copy), walked_records(folder, copy, :number), "kept as the number read"
+      assert_equal records_copied(copy), walked_records(folder, copy, :flag), "kept as true or false"
     end
   end
 

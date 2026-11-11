@@ -35,6 +35,9 @@ module VBlank
 
         NAMES = [Prism::LocalVariableReadNode, Prism::InstanceVariableReadNode].freeze
 
+        # A `while` or an `until`, whose test and body are asked again each time round.
+        LOOPS = [Prism::WhileNode, Prism::UntilNode].freeze
+
         # What gives a name a value outright, one name of `a, b = 1, 2` among them.
         WHOLE_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableTargetNode].freeze
 
@@ -215,9 +218,19 @@ module VBlank
         # The plain names +sides+ change that are read after +node+, in a conditional or a loop that
         # may turn out to be a test the game makes. A name read nowhere else needs nothing. It
         # stops at a block, whose writes are not in the same scope as the test.
+        #
+        # A loop's test and body are asked again on the next round, so a name a loop changes is
+        # read after the change when it is read in the loop before that change: by the test
+        # (`more = copy.word(at)` read by `while more != 0`), by a line above it, or by the change
+        # itself (`at += 16`). Left plain, the game's loop would ask about the number it held when
+        # the loop was recorded, and never end. A name written and then read further down the same
+        # round only carries a working-out down the lines, as in any game code, and stays plain.
         def names_to_promote(node, sides)
           writes = sides.compact.flat_map { |side| plain_writes_in(side) }
-          kept = writes.select { |write| @locals_by_node[write].read_from?(node.location.end_offset) }
+          kept = writes.select do |write|
+            local = @locals_by_node[write]
+            local.read_from?(node.location.end_offset) || (loop?(node) && read_next_round?(local, node, write))
+          end
           kept.each { |write| @promoted_writes[write] = true }
           kept.map(&:name).uniq
         end
@@ -238,6 +251,15 @@ module VBlank
           return true if local.read_from?(changes.map(&:first).min)
 
           !@first_writes_in_game_code[write] && local.reads.any? { |read| @reads_in_game_code[read] }
+        end
+
+        def loop?(node) = LOOPS.any? { |kind| node.is_a?(kind) }
+
+        # Is +local+ read in +loop+ at or before +write+, so the next round reads what it wrote?
+        def read_next_round?(local, loop, write)
+          from = loop.location.start_offset
+          to = write.location.start_offset
+          local.reads.any? { |read| read.location.start_offset.between?(from, to) }
         end
 
         # The instance variables, slots and attributes +sides+ change, each written on a plain name.
