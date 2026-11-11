@@ -34,9 +34,28 @@ module VBlank
     # A NUMBER of one, two or four bytes: whether the high byte is first.
     NumberFormat = Data.define(:high_byte_first)
 
+    # A CELL OF A BACKGROUND'S MAP, one number of two bytes: which tile (+tile_bits+ wide from bit 0),
+    # whether it is mirrored left to right and upside down (the bits +mirror_bit+ and +flip_bit+),
+    # and which bank of colours it is drawn from (+bank_bits+ wide from bit +bank_at+). A bit the
+    # console keeps for itself, like the Super Nintendo's priority, is not read: a background's
+    # layer says where it is drawn.
+    #
+    # A cell bigger than a tile is the tiles a block of video memory holds, +row_tiles+ tiles to a
+    # row of it: a 16x16 cell at tile t is tiles t, t + 1, t + row_tiles and t + row_tiles + 1. Nil
+    # for a console whose cells are one tile each.
+    MapWordFormat = Data.define(:tile_bits, :mirror_bit, :flip_bit, :bank_at, :bank_bits, :row_tiles) do
+      def tile_of(word) = word & ((1 << tile_bits) - 1)
+      def mirrored?(word) = word[mirror_bit] == 1
+      def flipped?(word) = word[flip_bit] == 1
+      def bank_of(word) = (word >> bank_at) & ((1 << bank_bits) - 1)
+    end
+
     # Everything one console keeps in its own layout: the kinds of tile it keeps (a list of
-    # TileFormat, one for each number of colours), its colours and its numbers.
-    OriginalFormats = Data.define(:tiles, :colors, :numbers) do
+    # TileFormat, one for each number of colours), its colours, its numbers, and the cells of its
+    # backgrounds' maps (a MapWordFormat, or nil for a console whose map is not one number a cell).
+    OriginalFormats = Data.define(:tiles, :colors, :numbers, :map_words) do
+      def initialize(tiles:, colors:, numbers:, map_words: nil) = super
+
       # The kind of tile of +colors+ colours, or nil.
       def tiles_of(colors) = tiles.find { |format| format.colors == colors }
     end

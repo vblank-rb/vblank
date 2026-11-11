@@ -27,12 +27,15 @@ module VBlank
       # (OriginalFormats). Tiles of four colours are the Color's, 16 bytes each. Tiles of sixteen
       # are 32 bytes: planes 0 and 1 of each row for all eight rows, then planes 2 and 3 the same
       # way, the left pixel in a byte's top bit. Colours are the Advance's, fifteen bits low byte
-      # first; numbers low byte first.
+      # first; numbers low byte first. A cell of a background's map is a tile number of ten bits,
+      # the bank of colours in the next three, the priority, then mirrored and upside down. A cell
+      # of 16x16 pixels is four tiles of a video memory sixteen tiles to a row.
       ORIGINAL_FORMATS = Ractor.make_shareable(
         OriginalFormats.new(
           tiles: [TWO_PLANE_TILES,
                   TileFormat.new(plane_bits: [0, 8, 128, 136], row_bits: 16, column_bits: (0...8).map { |x| 7 - x })],
-          colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS
+          colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS,
+          map_words: MapWordFormat.new(tile_bits: 10, mirror_bit: 14, flip_bit: 15, bank_at: 10, bank_bits: 3, row_tiles: 16)
         )
       )
 

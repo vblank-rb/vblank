@@ -49,6 +49,7 @@ require_relative "builder/saves"               # All four save parts held as one
 require_relative "builder/debug"               # The probe-only verbs, defined but deliberately not mixed in
 require_relative "builder/game_effects"        # uses: a game's own effect packs, for its build alone
 require_relative "builder/data_packs"          # data_pack: the original's data, read through the pack made from the copy
+require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -106,6 +107,7 @@ module VBlank
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
     include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
+    include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.

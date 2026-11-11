@@ -310,7 +310,15 @@ module VBlank
       # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
       #   the next frame
       # @return [Background] a handle: scroll_by / scroll_to / show_map
-      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, held: false)
+      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, held: false, colors: nil, across: nil,
+                     cell: nil)
+        if tiles.is_a?(DSL::PackSlot)
+          # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
+          return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
+                                               walls: walls, above_row: above_row, held: held)
+        end
+
+        refuse_pack_background_settings!(name, colors, across, cell)
         refuse_bad_above_row!(name, above_row)
         refuse_bad_held!(name, held)
         declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row, held: held)
@@ -352,6 +360,16 @@ module VBlank
       end
 
       private
+
+      # colors:, across: and cell: describe a background whose tiles come from the data pack.
+      def refuse_pack_background_settings!(name, colors, across, cell)
+        given = { colors: colors, across: across, cell: cell }.compact.keys
+        return if given.empty?
+
+        raise ArgumentError, "background :#{name} was given #{given.map { |key| "#{key}:" }.join(', ')}, which only a " \
+                             "background drawn from the data pack takes. To fix this, give it `tiles: pack[:video]`, " \
+                             "or leave #{given.map { |key| "#{key}:" }.join(', ')} out."
+      end
 
       # A status bar the console can keep where it is put: on a tiled screen, one tileset, every
       # map no bigger than the console's grid of 32 by 32 cells, its top a number written in the

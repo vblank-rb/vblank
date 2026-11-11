@@ -82,6 +82,7 @@ module VBlank
       def data_pack(from:, version: nil, formats: [], cache: nil, &)
         refuse_second_data_pack!
         refuse_missing_pack_version!(version)
+        @data_pack_platform = from.platform
         reading = copy_reading_for(from.platform, formats)
         return declare_pack_read_at_start(from, version, reading, &) if @build_options.pack_at_start
 

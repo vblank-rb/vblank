@@ -20,9 +20,12 @@ module VBlank
     module Hardware
       # How an Advance game keeps its tiles, colours and numbers in the cartridge (OriginalFormats):
       # tiles of sixteen colours, two pixels a byte with the left one in the low half; colours of
-      # fifteen bits; everything low byte first.
+      # fifteen bits; everything low byte first. A cell of a background's map is a tile number of
+      # ten bits, then mirrored and upside down, then the bank of colours in the top four bits.
       ORIGINAL_FORMATS = Ractor.make_shareable(
-        OriginalFormats.new(tiles: [LOW_HALF_FIRST_TILES], colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS)
+        OriginalFormats.new(tiles: [LOW_HALF_FIRST_TILES], colors: FIFTEEN_BIT_COLORS, numbers: LOW_BYTE_FIRST_NUMBERS,
+                            map_words: MapWordFormat.new(tile_bits: 10, mirror_bit: 10, flip_bit: 11, bank_at: 12,
+                                                         bank_bits: 4, row_tiles: nil))
       )
 
       # The sizes a sprite is drawn at, in pixels across and down, each mapped to the two shape and
