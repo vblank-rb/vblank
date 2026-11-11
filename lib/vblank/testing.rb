@@ -36,6 +36,7 @@ require_relative "testing/rewritten_blocks"
 require_relative "testing/cartridge_cache"
 require_relative "testing/plays_alike"
 require_relative "testing/heard_alike"
+require_relative "testing/pack_parity"
 
 module VBlank
   module Testing
