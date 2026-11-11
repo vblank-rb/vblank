@@ -217,7 +217,7 @@ module VBlank
       # With +golden+, a list of files, each run plays those of them it loads. With +progress+, a
       # run plays what that record shows is left of it.
       def play_runs(chosen, golden: nil, progress: nil)
-        chosen = chosen_by_console(chosen)
+        chosen = chosen_by_variant(chosen_by_console(chosen))
         labels = chosen.map { |lowering, console| label(lowering, console) }
         results = []
         chosen.zip(labels).each do |(lowering, console), name|
@@ -298,6 +298,19 @@ module VBlank
         abort "#{Lowering::CONSOLE_SETTING} is #{console}, and no run here plays games as the " \
               "#{Console.for(console).title}. Leave #{Lowering::CONSOLE_SETTING} out, or set it to " \
               "#{Lowering.in_words(chosen.map(&:last).uniq)}."
+      end
+
+      # Of +chosen+, the runs whose console has the variant VARIANT names; all of them when it names none.
+      def chosen_by_variant(chosen)
+        variant = Lowering.named_variant(ENV)
+        return chosen if variant.nil?
+
+        left = chosen.select { |_, played_as| Lowering.variant_of?(played_as, variant) }
+        return left unless left.empty?
+
+        abort "#{Lowering::VARIANT_SETTING} is #{variant}, and no run here plays games as a console with a " \
+              "variant of that name. Leave #{Lowering::VARIANT_SETTING} out, or name a variant of the " \
+              "#{Lowering.in_words(chosen.map { |_, played_as| Console.for(played_as).title }.uniq)}."
       end
 
       # One run: whether it passed and how long it took. Every one is played whatever the one

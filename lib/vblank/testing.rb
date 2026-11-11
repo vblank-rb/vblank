@@ -56,6 +56,20 @@ module VBlank
     def self.console = CONSOLE
     def game_console = Testing.console
 
+    # The variant of its console this run builds games as (Lowering::VARIANT_SETTING), or nil for the
+    # plain console, which is every run not told one.
+    VARIANT = Lowering.variant_from(ENV, CONSOLE)
+
+    def self.variant = VARIANT
+
+    # A GAME THAT NAMES NO VARIANT FOR THE RUN'S CONSOLE is built as the run's, so a test written once is
+    # played as each variant a run is started for. One that names its own keeps it, and so does a build
+    # told one outright (`game.program(variant: :none)`).
+    module BuiltAsRunVariant
+      def variant_for(console) = super || (Testing.variant if console.to_sym == Testing.console)
+    end
+    Cartridge::Game.prepend(BuiltAsRunVariant)
+
     # A TEST'S PROGRAM THAT NAMES NO CONSOLE is laid out as the Advance while its block runs, which
     # is the screen those tests were written for, and is played as its run's console
     # (PlaysRunConsole). The library assumes none, so a game's build that names none stops and says

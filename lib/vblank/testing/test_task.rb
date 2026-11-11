@@ -66,6 +66,10 @@ module VBlank
         @console || (run.plays_any_console? && Lowering.named_console(ENV)) || run.console
       end
 
+      # The variant of its console the run builds games as, the one VARIANT names, or nil for the plain
+      # console (Lowering::VARIANT_SETTING).
+      def variant = Lowering.named_variant(ENV)
+
       # Set inside the block, where the task is being made: a native run is made with the
       # process runner loaded, which is settled as the task is defined.
       def lowering=(lowering)
@@ -100,6 +104,7 @@ module VBlank
         refuse_native_run_without_zig! if run.needs == "zig"
         refuse_js_run_without_node! if run.needs == "node"
         return say_nothing_played(run) if other_console_named?
+        return say_nothing_built(run) if variant_of_other_console_named?
 
         print_heading(run)
         command = [FileUtils::RUBY, *yjit_switch, *args].join(" ")
@@ -122,6 +127,7 @@ module VBlank
       def print_heading(run)
         rule = "=" * 92
         as = console == run.console ? "" : " as the #{Console.for(console).title}"
+        as += " with #{Console.for(console).variant(variant).title}" if variant
         $stdout.puts "", rule, " #{run.title} lowering#{as}: #{run.does}", rule
         $stdout.flush
       end
@@ -146,10 +152,11 @@ module VBlank
       # What the run is handed. A checked run's own copy of TESTOPTS loses --ractor
       # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? returns.
       # The console is always set, as VBLANK_CONSOLE, and CONSOLE is not handed on
-      # (Lowering::PLAYED_AS_SETTING says why).
+      # (Lowering::PLAYED_AS_SETTING says why), and the variant the same way, as VBLANK_VARIANT.
       def run_settings
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
                    Lowering::CONSOLE_SETTING => nil, Lowering::FAIL_FAST_SETTING => nil,
+                   Lowering::BUILT_AS_SETTING => variant&.to_s, Lowering::VARIANT_SETTING => nil,
                    Lowering::RESUME_SETTING => nil, Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
         return { Lowering::SETTING => "gba", **shared } unless checked?
 
@@ -170,6 +177,15 @@ module VBlank
       def other_console_named?
         named = Lowering.named_console(ENV)
         !named.nil? && named != console
+      end
+
+      # Does VARIANT name a variant the console this run plays games as does not have? Then the run
+      # plays nothing: the variant is another console's.
+      def variant_of_other_console_named? = !variant.nil? && !Lowering.variant_of?(console, variant)
+
+      def say_nothing_built(run)
+        $stdout.puts "The #{run.title} run plays games as the #{Console.for(console).title}, which has no variant " \
+                     "named #{variant}. #{Lowering::VARIANT_SETTING} names it, so this run plays no tests."
       end
 
       def say_nothing_played(run)

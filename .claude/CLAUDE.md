@@ -148,6 +148,7 @@ rake test:lowering:ruby                                         # the Ruby lower
 rake test:lowering:gbc                                          # the Game Boy Color lowering's run alone (takes TEST= too)
 rake test:lowering:ps1                                          # the PlayStation lowering's run alone (takes TEST= too)
 CONSOLE=gbc rake test:all                                       # only the runs that play games as one console (any task, TEST= too)
+VARIANT=mode_x rake test:lowering:dos                           # a run's games built as a variant of its console (any task, TEST= too)
 rake test:playthroughs                                          # one module's tests: every file in test/lowering/gba/vblank/playthroughs/
 VBLANK_SUITE_LOCK=checkout rake test                            # in a worktree: go ahead beside another checkout's run
 FAIL_FAST=1 rake test:all                                       # stop at the first failing test; no later run starts

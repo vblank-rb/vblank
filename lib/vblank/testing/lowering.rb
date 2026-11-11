@@ -166,6 +166,38 @@ module VBlank
                              "#{in_words(others)} run."
       end
 
+      # THE SETTING THAT PLAYS A RUN'S GAMES AS A VARIANT OF ITS CONSOLE (Console::Variant): `VARIANT=mode_x
+      # rake test:lowering:dos` builds every game of the run as DOS's :mode_x, the screen of another size,
+      # so a variant's build is held to everything the plain console's is without a second copy of the
+      # tests. A game that names a variant itself (`variants:`) keeps its own. It works as CONSOLE does:
+      # with any task, and a run whose console has no variant of that name plays nothing and says so.
+      VARIANT_SETTING = "VARIANT"
+
+      # The variant a run's test processes build as, which TestTask hands them. VARIANT is the person's
+      # choice of which runs to play, so it is not handed on, as CONSOLE is not (PLAYED_AS_SETTING).
+      BUILT_AS_SETTING = "VBLANK_VARIANT"
+
+      # The variant VARIANT names in +env+, as a Symbol, or nil when it is unset or empty.
+      def named_variant(env)
+        named = env[VARIANT_SETTING]
+        named.to_sym unless named.nil? || named.empty?
+      end
+
+      # Whether +console+ (its name) has the variant named +variant+.
+      def variant_of?(console, variant) = Console.for(console).variants.key?(variant)
+
+      # The variant a run playing games as +console+ builds them as, given +env+: the one VBLANK_VARIANT
+      # names, or VARIANT for a test file played without the rake tasks, or nil for the plain console. A
+      # name VARIANT gives that the console has no variant by is refused (Console::Kit#variant). One handed
+      # down is another console's when a test starts a suite of its own as that console, which is then
+      # played plain.
+      def variant_from(env, console)
+        built_as = env[BUILT_AS_SETTING]
+        return Console.for(console).variant(named_variant(env))&.name if built_as.nil? || built_as.empty?
+
+        built_as.to_sym if variant_of?(console, built_as.to_sym)
+      end
+
       def refuse_unknown_lowering!(name)
         raise ArgumentError, "There is no lowering named #{name.inspect}. Name " \
                              "#{in_words(NAMES.map(&:inspect))}."

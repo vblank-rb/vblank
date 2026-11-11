@@ -136,6 +136,45 @@ class TestSuitesSplit < Minitest::Test
     assert_equal :gba, VBlank::Testing::Lowering.console_from({}, native)
   end
 
+  # VARIANT builds a run's games as a variant of the console it plays them as. Left out, or empty, they
+  # are built for the plain console, and what a run's test processes are handed wins over it.
+  def test_variant_picks_the_variant_a_run_builds_games_as
+    lowering = VBlank::Testing::Lowering
+
+    assert_equal :mode_x, lowering.variant_from({ "VARIANT" => "mode_x" }, :dos)
+    assert_equal :superfx, lowering.variant_from({ "VBLANK_VARIANT" => "superfx", "VARIANT" => "mode_x" }, :snes)
+    assert_nil lowering.variant_from({ "VARIANT" => "" }, :dos)
+    assert_nil lowering.variant_from({}, :dos)
+  end
+
+  # A test that starts a suite of its own as another console hands the run's variant down with the rest
+  # of its settings. That suite is played plain: the variant is not its console's.
+  def test_a_variant_handed_down_to_another_console_is_left_out
+    assert_nil VBlank::Testing::Lowering.variant_from({ "VBLANK_VARIANT" => "mode_x" }, :gba)
+  end
+
+  # A variant is one console's, so a run playing games as another refuses the name, and a task can ask
+  # first and play nothing.
+  def test_variant_of_another_console_is_refused
+    lowering = VBlank::Testing::Lowering
+
+    refute lowering.variant_of?(:gbc, :mode_x)
+    assert lowering.variant_of?(:dos, :mode_x)
+    error = assert_raises(ArgumentError) { lowering.variant_from({ "VARIANT" => "mode_x" }, :gbc) }
+    assert_match(/no variant named :mode_x/, error.message)
+  end
+
+  # A game that names no variant for the run's console is built as the run's, one that names its own keeps
+  # it, and a build told one outright is that one.
+  def test_a_game_is_built_as_the_variant_of_its_run
+    plain = VBlank.game("PLAIN", consoles: [game_console]) { game_loop {} }
+    own = VBlank.game("OWN", consoles: %i[snes], variants: { snes: :superfx }) { game_loop {} }
+
+    assert_equal [VBlank::Testing.variant], [plain.program(console: game_console).variant]
+    assert_equal :superfx, own.program(console: :snes).variant
+    assert_nil plain.program(console: game_console, variant: :none).variant
+  end
+
   # A cartridge's run plays its own console's cartridge, so CONSOLE can only name that one.
   def test_console_cannot_move_a_cartridge_run_to_another_console
     color = VBlank::Testing::Lowering.run_named(:gbc)

@@ -147,7 +147,9 @@ module VBlank
       def folder = File.join(@root, FOLDER)
       def state_path = File.join(folder, STATE_FILE)
       def save = File.write(state_path, JSON.generate(@state))
-      def key_for(lowering, console) = "#{lowering}-#{console}"
+      # A run played as a variant of its console (Lowering::VARIANT_SETTING) keeps a record of its own, so
+      # what it passed is never counted as the plain console's.
+      def key_for(lowering, console) = [lowering, console, Lowering.named_variant(ENV)].compact.join("-")
       def record_path(key) = File.join(folder, "#{key}.tests")
 
       def seed_in(key)

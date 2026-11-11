@@ -57,7 +57,7 @@ module VBlank
         def program_played(program)
           return program unless program.kind == :program && program.console.nil?
 
-          program.copy.tap { |copy| copy.console = Testing.console }
+          program.copy.tap { |copy| copy.console, copy.variant = Testing.console, Testing.variant }
         end
       end
 
@@ -139,7 +139,7 @@ module VBlank
         def program_played(program)
           return program unless program.kind == :program && program.console.nil?
 
-          program.copy.tap { |copy| copy.console = console }
+          program.copy.tap { |copy| copy.console, copy.variant = console, (Testing.variant if console == Testing.console) }
         end
 
         def inspect = "VBlank::Testing::CartridgeCheckedPlayer.for(#{console.inspect})"
