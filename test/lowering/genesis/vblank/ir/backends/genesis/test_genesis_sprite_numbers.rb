@@ -7,7 +7,49 @@ require "test_helper"
 # whether they show as variables, read where they live. A program built by hand can give any of
 # them as a sum, a product or an item of a list, which calls the runtime between two sprites of
 # the walk: the sprites after it must still land in the rows after it.
+#
+# A SPRITE THAT BELONGS TO A SCENE shows while its own flag is set and its scene is up, which the
+# builder writes as a product of the two. The Genesis tests each instead of multiplying, so two
+# dozen sprites in a scene cost about what they cost outside one.
 class TestGenesisSpriteNumbers < Minitest::Test
+  # Two dozen sprites that step along each pass, declared in the one scene (+in_scene+) or
+  # outside it, and moved by the scene either way.
+  def self.walkers(in_scene:)
+    VBlank.game("WALKERS", consoles: %i[genesis]) do
+      screen :tiled
+      image(:dot, "#" => :red, "." => :blue) { (["#.#.#..#"] * 8).join("\n") }
+      declared = -> { Array.new(24) { |i| sprite :"dot_#{i}", at: [0, 0], facing: { down: :dot } } }
+      dots = declared.call unless in_scene
+      t = var :t, 0
+      scene(:play) do
+        dots = declared.call if in_scene
+        dots.each_with_index { |dot, i| dot.move_to ((i % 8) * 30) + (t & 7), (i / 8) * 40 }
+      end
+      state = var :state, 0
+      game_loop do
+        t += 1
+        case_var(:state) { when_val 0, :play }
+      end
+    end
+  end
+
+  # How much more of a frame the sprites of a scene may take than the same sprites outside one.
+  MOST_OVER_NO_SCENE = 1.1
+
+  def test_sprites_of_a_scene_stand_where_the_interpreter_puts_them
+    game_player.run(self.class.walkers(in_scene: true).program(console: :genesis), frames: 12)
+  end
+
+  def test_sprites_of_a_scene_cost_about_what_they_cost_outside_one
+    in_scene, outside = [true, false].map do |where|
+      rom = self.class.walkers(in_scene: where).build_rom(console: :genesis, out: StringIO.new, err: StringIO.new, profile: false)
+      1 - rom.profile(out: StringIO.new, frames: 20).idle_share
+    end
+
+    assert_operator in_scene, :<=, outside * MOST_OVER_NO_SCENE,
+                    "in a scene they take #{(in_scene * 100).round(1)}% of a frame and outside one #{(outside * 100).round(1)}%"
+  end
+
   CLEAR = VBlank::Graphics::Color.rgb(0, 0, 1)
   INKS = [VBlank::Graphics::Color.rgb(31, 0, 0), VBlank::Graphics::Color.rgb(0, 31, 0),
           VBlank::Graphics::Color.rgb(0, 0, 31), VBlank::Graphics::Color.rgb(31, 31, 31)].freeze

@@ -968,15 +968,18 @@ module VBlank
             #
             # THE WALK'S REGISTERS ARE THE RUNTIME'S from rt_sprites_begin to rt_sprites_end, so
             # nothing written between two sprites may change them. A sprite's numbers are nearly
-            # always variables, read where they live. One that has to be worked out could call
-            # anything, so the walk's registers go on the stack while it is (#emit_sprite_numbers_worked_out).
+            # always variables, or sums of them the lowering writes in place with D0, D1, D2 and A0
+            # alone (Lowering#value_keeps_counters?). One that calls the runtime could change
+            # anything, so the walk's registers go on the stack while it is worked out
+            # (#emit_sprite_numbers_worked_out).
             def emit_sprite_placing(obj, returns: false)
               skip = fresh("sprite_off")
               numbers = [obj.pose, obj.x, obj.y]
               numbers << obj.recolor unless obj.recolors.empty?
-              if [obj.active, *numbers].all? { |number| operand_of(number) }
-                emit_jump_unless_showing(obj.active, skip)
-                emit_sprite_numbers_read(numbers)
+              shown = shown_when(obj.active)
+              if shown && numbers.all? { |number| value_keeps_counters?(number) }
+                emit_jump_unless_shown(shown, skip, near: shown.tests.empty? && numbers.all? { |number| operand_of(number) })
+                emit_sprite_numbers_in_place(numbers)
               else
                 emit_sprite_numbers_worked_out(obj.active, numbers, skip)
               end
@@ -992,24 +995,70 @@ module VBlank
               @asm.rts if returns
             end
 
-            # On to +skip+, the end of the sprite's placing a few instructions on, unless +active+ is 1.
-            # A sprite that shows goes on past the branch, so where +active+ is a variable the branch
-            # is a near one (M68000#branch_near).
-            def emit_jump_unless_showing(active, skip)
-              place = operand_of(active)
-              return jump_unless(Build.binop(:==, active, Build.int(1)), skip) unless place.mode == :disp
+            # WHEN A SPRITE SHOWS, as tests: +tests+ are comparisons that must all hold, and +flag+ a
+            # value that must be 1, or nil.
+            #
+            # A sprite shows while its `active` is 1. The builder makes that a PRODUCT for a sprite
+            # that belongs to a scene, or is declared under an `if`: its own flag times "is this the
+            # scene that is up", times each condition it was written under (Builder#gated_by_scene).
+            # A comparison is 0 or 1, so the product is 1 exactly when every comparison holds and
+            # what is left is 1, which is a compare and a branch each. Worked out as written it is
+            # a multiply of two long words for every such sprite on every pass, which the 68000 has
+            # no instruction for: a call, and three of its word multiplies.
+            ShownWhen = Data.define(:tests, :flag)
 
-              @asm.cmp(:l, @asm.imm(1), place)
-              @asm.branch_near(:ne, skip)
+            # +active+ as tests (ShownWhen), or nil where it is not a product of comparisons and at most
+            # one value besides, each written in place and changing nothing by being worked out or
+            # left out (IR::Unchanging): the tests stop at the first that fails.
+            def shown_when(active)
+              factors = product_factors(active)
+              tests, flags = factors.partition { |factor| comparison?(factor) }
+              return unless flags.length <= 1
+              return unless factors.all? { |factor| value_keeps_counters?(factor) && Unchanging.value?(factor) { |part| folded(part) } }
+
+              ShownWhen.new(tests: tests, flag: flags.first)
+            end
+
+            def product_factors(node) = binop?(node, :*) ? product_factors(node.lhs) + product_factors(node.rhs) : [node]
+
+            # On to +skip+, the end of the sprite's placing, unless it shows (ShownWhen). A sprite that
+            # shows goes on past every branch. +near+ where +skip+ is only a few instructions on, so
+            # the branch after a flag that is a variable can be a near one (M68000#branch_near).
+            def emit_jump_unless_shown(shown, skip, near:)
+              place = shown.flag && operand_of(shown.flag)
+              if near && place&.mode == :disp
+                @asm.cmp(:l, @asm.imm(1), place)
+                @asm.branch_near(:ne, skip)
+              elsif shown.flag
+                jump_unless(Build.binop(:==, shown.flag, Build.int(1)), skip)
+              end
+              shown.tests.each { |test| jump_unless(test, skip) }
             end
 
             # The registers a sprite's numbers go in, in the order #emit_sprite_placing lists them: which
-            # picture, across, down, and for a sprite drawn in a list of colours, which list.
+            # picture, across, down, and for a sprite drawn in a list of colours, which list. And where
+            # each waits while the others are worked out, since working one out uses D0, D1 and D2.
             SPRITE_NUMBER_REGISTERS = [1, 2, 3, 5].freeze
+            SPRITE_NUMBER_WAITS_IN = [7, 6, 3, 5].freeze
 
-            # +numbers+, each a number or a variable, into their registers.
-            def emit_sprite_numbers_read(numbers)
-              numbers.each_with_index { |number, i| emit_operand_load(operand_of(number), SPRITE_NUMBER_REGISTERS.fetch(i)) }
+            # +numbers+, each written in place (Lowering#value_keeps_counters?), into their registers:
+            # the ones that need working out first, then the numbers and variables read where they are.
+            def emit_sprite_numbers_in_place(numbers)
+              worked_out = numbers.each_index.reject { |i| operand_of(numbers[i]) }
+              worked_out.each do |i|
+                value(numbers[i])
+                @asm.move(:l, @asm.d(0), @asm.d(SPRITE_NUMBER_WAITS_IN.fetch(i)))
+              end
+              numbers.each_with_index do |number, i|
+                next if worked_out.include?(i)
+
+                emit_operand_load(operand_of(number), SPRITE_NUMBER_REGISTERS.fetch(i))
+              end
+              worked_out.each do |i|
+                waits_in = SPRITE_NUMBER_WAITS_IN.fetch(i)
+                register = SPRITE_NUMBER_REGISTERS.fetch(i)
+                @asm.move(:l, @asm.d(waits_in), @asm.d(register)) unless waits_in == register
+              end
             end
 
             # The registers the walk keeps (Runtime::Tiles#emit_sprites).

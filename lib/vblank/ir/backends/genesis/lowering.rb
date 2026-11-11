@@ -707,10 +707,13 @@ module VBlank
             case node.op
             when *IN_PLACE_OPS, *COMPARISONS, :and, :or then both
             when :<<, :>> then both && folded(node.rhs)&.between?(0, 31) == true
-            when :* then both && [node.lhs, node.rhs].any? { |by| one_shift?(folded(by)) }
+            when :* then both && [node.lhs, node.rhs].any? { |by| one_shift?(folded(by)) || few_doublings?(folded(by)) }
             else false
             end
           end
+
+          # Is +number+ one a product by which is written as doublings and adds (#emit_product_by_small_number)?
+          def few_doublings?(number) = !number.nil? && number.between?(3, MOST_DOUBLED) && !one_shift?(number)
 
           # Is +number+ a power of two a product by which is one shift (#emit_product_by_power_of_two)?
           def one_shift?(number) = !number.nil? && number.positive? && number.nobits?(number - 1) && number <= (1 << 30)
@@ -1533,7 +1536,7 @@ module VBlank
             return value_of_comparison(node) if COMPARISONS.include?(node.op)
             return value_of_both_or_either(node) if %i[and or].include?(node.op)
             return if %i[<< >>].include?(node.op) && emit_shift_by_number(node)
-            return if node.op == :* && emit_product_by_power_of_two(node)
+            return if node.op == :* && (emit_product_by_power_of_two(node) || emit_product_by_small_number(node))
             return if node.op == :/ && emit_divide_by_number(node)
             return if node.op == :% && emit_remainder_by_number(node)
 
@@ -1761,6 +1764,35 @@ module VBlank
               next unless number&.positive? && (number & (number - 1)).zero? && number <= (1 << 30)
 
               return emit_shift(other, :lsl, number.bit_length - 1)
+            end
+            false
+          end
+
+          # The biggest number a product by which is written as doublings and adds.
+          MOST_DOUBLED = 255
+
+          # A PRODUCT BY A SMALL NUMBER WRITTEN IN THE PROGRAM, as doublings and adds: the number's
+          # bits read from the top, the sum so far doubled for each and the other side added in where
+          # the bit is set, so ten times is three doublings and an add. The 68000 has no multiply of
+          # two long words, and the runtime's (rt_mul32) is three of its word multiplies and a call,
+          # several times as long as this for any number up to MOST_DOUBLED. The sum wraps as the
+          # product does. True when it was done so.
+          #
+          # These are the products the builder itself writes all through a game: a place in a table
+          # of records (an index times how many numbers a record has), a sprite's picture from the
+          # way it faces (the way times how many frames each has).
+          def emit_product_by_small_number(node)
+            [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
+              number = folded(by)
+              next unless few_doublings?(number)
+
+              value(other)
+              @asm.move(:l, @asm.d(0), @asm.d(1))
+              (number.bit_length - 2).downto(0) do |bit|
+                @asm.add(:l, @asm.d(0), @asm.d(0))
+                @asm.add(:l, @asm.d(1), @asm.d(0)) if number[bit] == 1
+              end
+              return true
             end
             false
           end
