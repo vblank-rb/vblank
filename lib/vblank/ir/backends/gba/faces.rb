@@ -26,8 +26,9 @@ module VBlank
         # THE TEAR-FREE SCREEN TAKES TWO PIXELS AT A TIME. There a pixel is one byte, and video
         # memory refuses a lone byte. So a picture with no see-through pixel is drawn a pair at a
         # time, both worked out and the pair written whole (#emit_pixel_pairs); only a pixel left
-        # over at either end of a row, and every pixel of a picture with see-through pixels, reads
-        # its pair, puts its own half in and writes the pair back.
+        # over at either end of a row reads its pair, puts its own half in and writes the pair back.
+        # A picture with see-through pixels goes a pair at a time too, and reads a pair back only
+        # where one of its two pixels is see-through (#emit_see_through_pixel_pairs).
         #
         # THE DIRECT SCREEN IS FILLED TOO, two bytes of colour a pixel. A game draws a place only
         # on the tear-free screen (Builder#draw_place), but a program can hold a fill without a
@@ -1546,8 +1547,8 @@ module VBlank
             emit(ASM.orr_reg(into, into, 12))
           end
 
-          # The pixels of a span on the tear-free screen: two at a time when the picture has no
-          # see-through pixel, one at a time when it has.
+          # The pixels of a span on the tear-free screen, two at a time: by one loop when the
+          # picture has no see-through pixel, and by another when it has.
           #
           #   r0 u, r1 v, r2 the step across, r3 the step down, r4 the pixel's byte on the page,
           #   r5 how many are left, r6 the picture's palette numbers, r7 and r8 the masks that
@@ -1573,16 +1574,144 @@ module VBlank
             place_label(done)
           end
 
-          # The pair loop for a picture with no see-through pixel and the single-pixel loop for
-          # one with, each pixel shaded when +lit+.
+          # The pair loop for a picture with no see-through pixel and the one for a picture with
+          # some, each pixel shaded when +lit+.
+          #
+          # THE TWO LOOPS SHARE THEIR ENDS, since the routine has only so much room in the quick
+          # memory: what both start from, the pixel a span starts with on the right half of a pair,
+          # and the one it ends with on the left half (+last+). Each of those pixels is held against
+          # the see-through number, which for a picture with none is a number no pixel is.
           def emit_pixel_pair_and_single_loops(done, lit:)
-            one_at_a_time = gensym
-            emit(ASM.add_imm(11, 10, 1)) # NO_CLEAR is -1
+            even = gensym
+            see_through = gensym
+            last = gensym
+            # Lit, the shading's table takes r10, so the see-through number is in r7 until the count.
+            clear = lit ? 7 : 10
+            emit_pair_loop_setup(lit: lit)
+            load_var(clear, :_face_clear) if lit
+            emit(ASM.tst_imm(4, 1))
+            emit_branch(:bcond, even, cond: :eq)
+            emit_lone_pixel(:high, lit: lit, clear: clear)
+            emit(ASM.subs_imm(5, 5, 1))
+            emit_branch(:bcond, done, cond: :eq)
+            place_label(even)
+            emit(ASM.add_imm(11, clear, 1)) # NO_CLEAR is -1
             emit(ASM.cmp_imm(11, 0))
-            emit_branch(:bcond, one_at_a_time, cond: :ne)
-            emit_pixel_pairs(done, lit: lit)
-            place_label(one_at_a_time)
-            emit_single_pixels(lit: lit)
+            emit_branch(:bcond, see_through, cond: :ne)
+            emit_pixel_pairs(done, last, lit: lit)
+            place_label(see_through)
+            emit_see_through_pixel_pairs(last, lit: lit)
+          end
+
+          # A PICTURE WITH SEE-THROUGH PIXELS, A PAIR AT A TIME TOO. A grate or a door with gaps is
+          # mostly runs: bars that are all drawn and gaps that are all see-through. So the two
+          # pixels of a pair are worked out as #emit_pixel_pairs works them out, and then:
+          #
+          #   - neither is see-through: the pair is written whole, as there, for two compares more;
+          #   - both are: nothing is written, and the pair is passed over;
+          #   - one is: the pair is read from video memory, the drawn half put in, and written back.
+          #     Only a pair an edge of a bar falls inside pays those trips to video memory, where a
+          #     pixel at a time every drawn pixel paid them.
+          #
+          # The loop counts pixels, two a turn, so what is left at its end says whether a last
+          # pixel stands alone. That frees a register a lit fill needs: its shade, its step and its
+          # table take r8, r9 and r10, so the see-through number is in r5 there, where the count was.
+          #
+          #   r7 the pixels left, less two; r10 the see-through number (lit: r5); r11 and lr the two
+          #   pixels, r12 spare
+          #
+          # LIT, a pixel's number is looked up in the shading's table before the pair is looked at,
+          # and no number is left to mean see-through. So a see-through pixel is marked with a bit
+          # above the byte (SEE_THROUGH_MARK), which no palette number has.
+          #
+          # +last+ is placed at the pixel a span ends with on the left half of a pair, which the
+          # other loop jumps to as well, with the see-through number where this one keeps it.
+          def emit_see_through_pixel_pairs(last, lit: false)
+            pairs = gensym
+            tail = gensym
+            mixed = gensym
+            counted = gensym
+            past = gensym
+            clear = lit ? 5 : 10
+            emit(ASM.sub_imm(7, 5, 2))
+            load_var(5, :_face_clear) if lit
+            emit(ASM.cmp_imm(7, 0))
+            emit_branch(:bcond, tail, cond: :lt)
+            place_label(pairs)
+            emit_see_through_pair(mixed, clear, lit: lit)
+            place_label(counted)
+            emit(ASM.subs_imm(7, 7, 2))
+            emit_branch(:bcond, pairs, cond: :ge)
+
+            # What is left is two less than nought for none and one less for a pixel on its own: a
+            # span ending on the left half of a pair.
+            place_label(tail)
+            emit(ASM.tst_imm(7, 1))
+            emit_branch(:bcond, past, cond: :eq)
+            place_label(last)
+            emit_lone_pixel(:low, lit: lit, clear: clear)
+            emit_branch(:b, past)
+
+            place_label(mixed)
+            emit_pair_with_see_through_pixel(counted, clear, lit: lit)
+            place_label(past)
+          end
+
+          # The bit a lit fill marks a see-through pixel with, above the byte a palette number is.
+          SEE_THROUGH_MARK = 0x100
+
+          # Two pixels side by side, written as their pair when neither is see-through, and the
+          # pair after it next; a pair with a see-through pixel goes to +mixed+.
+          def emit_see_through_pair(mixed, clear, lit:)
+            if lit
+              [11, 14].each do |into|
+                emit_pair_pixel(into)
+                emit(ASM.cmp_reg(into, clear))
+                emit_shaded_number(into) # changes no flag
+                emit_if(:eq, ASM.orr_imm(into, into, SEE_THROUGH_MARK))
+              end
+              emit(ASM.orr_reg(12, 11, 14))
+              emit(ASM.tst_imm(12, SEE_THROUGH_MARK))
+              emit_branch(:bcond, mixed, cond: :ne)
+            else
+              emit_pair_pixel(11)
+              emit_pair_pixel(14)
+              emit(ASM.cmp_reg(11, clear))
+              emit_if(:ne, ASM.cmp_reg(14, clear))
+              emit_branch(:bcond, mixed, cond: :eq)
+            end
+            emit(ASM.orr_reg_lsl(11, 11, 14, 8))
+            emit(ASM.store_halfword_post(11, 4, 2))
+          end
+
+          # A pair with a see-through pixel: passed over when both are, and otherwise read from
+          # video memory, the drawn half put in, and written back. Then on to +counted+.
+          def emit_pair_with_see_through_pixel(counted, clear, lit:)
+            if lit
+              emit(ASM.and_reg(12, 11, 14))
+              emit(ASM.tst_imm(12, SEE_THROUGH_MARK))
+              emit(ASM.add_imm_cond(:ne, 4, 4, 2))
+              emit_branch(:bcond, counted, cond: :ne)
+              emit(ASM.load_halfword(12, 4))
+              emit(ASM.tst_imm(11, SEE_THROUGH_MARK))
+              left_see_through = :ne
+              right_see_through = :eq
+            else
+              emit(ASM.cmp_reg(11, clear))
+              emit_if(:eq, ASM.cmp_reg(14, clear))
+              emit(ASM.add_imm_cond(:eq, 4, 4, 2))
+              emit_branch(:bcond, counted, cond: :eq)
+              emit(ASM.load_halfword(12, 4))
+              emit(ASM.cmp_reg(11, clear))
+              left_see_through = :eq
+              right_see_through = :ne
+            end
+            emit_if(left_see_through, ASM.and_imm(12, 12, 0xFF))
+            emit_if(left_see_through, ASM.orr_reg_lsl(12, 12, 14, 8))
+            emit_if(right_see_through, ASM.and_imm(12, 12, 0xFF00))
+            emit_if(right_see_through, ASM.orr_reg(12, 12, 11))
+            emit(ASM.store_halfword_post(12, 4, 2))
+            emit_branch(:b, counted)
           end
 
           # A picture with no see-through pixel covers every pixel of the span, so two pixels side
@@ -1610,30 +1739,13 @@ module VBlank
           #
           # LIT (+lit+), r8 is the shade instead, r9 its step a pixel and r10 the shading's table,
           # and the lone pixels read the picture's shifts from memory.
-          def emit_pixel_pairs(done, lit: false)
+          #
+          # What it starts from, and the pixel a span starts with on the right half of a pair, are
+          # behind it (#emit_pixel_pair_and_single_loops); the pixel a span ends with on the left
+          # half is at +last+, in the other loop.
+          def emit_pixel_pairs(done, last, lit: false)
             pairs = gensym
-            even = gensym
             tail = gensym
-            load_var(8, :_face_rows_shift)
-            emit(ASM.rsb_imm(11, 9, 16)) # u and its step moved up 16 - log2 width...
-            emit(ASM.mov_reg_lsl_reg(0, 0, 11))
-            emit(ASM.mov_reg_lsl_reg(2, 2, 11))
-            emit(ASM.rsb_imm(11, 8, 16)) # ...and v and its step 16 - log2 height
-            emit(ASM.mov_reg_lsl_reg(1, 1, 11))
-            emit(ASM.mov_reg_lsl_reg(3, 3, 11))
-            if lit
-              load_var(8, :_face_shade)
-              load_var(9, :_face_step_shade)
-              load_var(10, :_face_shading)
-            end
-
-            # A span starting on the right half of a pair: that pixel on its own.
-            emit(ASM.tst_imm(4, 1))
-            emit_branch(:bcond, even, cond: :eq)
-            emit_lone_pixel(:high, lit: lit)
-            emit(ASM.subs_imm(5, 5, 1))
-            emit_branch(:bcond, done, cond: :eq)
-            place_label(even)
 
             # The pairs, two to a turn of the loop, so the loop's own count and jump are paid once
             # for four pixels. An odd number of pairs starts at the second of the two.
@@ -1652,12 +1764,31 @@ module VBlank
             emit(ASM.subs_imm(7, 7, 1))
             emit_branch(:bcond, pairs, cond: :ne)
 
-            # A span ending on the left half of a pair: that pixel on its own.
+            # A span ending on the left half of a pair: that pixel on its own. Lit, the other loop
+            # keeps the see-through number where the count is here.
             place_label(tail)
             emit(ASM.tst_imm(5, 1))
             emit_branch(:bcond, done, cond: :eq)
-            emit_lone_pixel(:low, lit: lit)
-            emit_branch(:b, done)
+            load_var(5, :_face_clear) if lit
+            emit_branch(:b, last)
+          end
+
+          # What a pair loop starts from: u, v and their steps moved up for the picture's repeat
+          # (see #emit_pixel_pairs), r8 log2 of the picture's height, and lit, the shade in r8, its
+          # step a pixel in r9 and the shading's table in r10.
+          def emit_pair_loop_setup(lit:)
+            load_var(8, :_face_rows_shift)
+            emit(ASM.rsb_imm(11, 9, 16)) # u and its step moved up 16 - log2 width...
+            emit(ASM.mov_reg_lsl_reg(0, 0, 11))
+            emit(ASM.mov_reg_lsl_reg(2, 2, 11))
+            emit(ASM.rsb_imm(11, 8, 16)) # ...and v and its step 16 - log2 height
+            emit(ASM.mov_reg_lsl_reg(1, 1, 11))
+            emit(ASM.mov_reg_lsl_reg(3, 3, 11))
+            return unless lit
+
+            load_var(8, :_face_shade)
+            load_var(9, :_face_step_shade)
+            load_var(10, :_face_shading)
           end
 
           # Two pixels side by side, written as their pair, and the pair after it next.
@@ -1694,8 +1825,10 @@ module VBlank
 
           # One pixel alone, the +half+ (:low or :high) of its pair, put in with what the other
           # half holds. Its shifts are held in registers: it is once a row at most. Lit, r8 and
-          # r9 hold the shade, so the shifts are read from memory instead.
-          def emit_lone_pixel(half, lit: false)
+          # r9 hold the shade, so the shifts are read from memory instead. +clear+ is the register
+          # holding the see-through number, for a picture with see-through pixels: a pixel of that
+          # number is worked out and stepped past the same, and not written.
+          def emit_lone_pixel(half, lit: false, clear: nil)
             width_shift, rows_shift = lit ? [14, 11] : [9, 8]
             if lit
               load_var(width_shift, :_face_shift)
@@ -1708,6 +1841,7 @@ module VBlank
             emit(ASM.mov_reg_lsr_reg(11, 0, 11)) # across
             emit(ASM.add_reg(11, 11, 12))
             emit(ASM.ldrb_reg(11, 6, 11))
+            emit(ASM.cmp_reg(11, clear)) if clear # nothing from here to the store changes a flag
             emit_shaded_number(11) if lit
             emit(ASM.bic_imm(12, 4, 1))
             emit(ASM.load_halfword(14, 12))
@@ -1718,7 +1852,7 @@ module VBlank
               emit(ASM.and_imm(14, 14, 0xFF00))
               emit(ASM.orr_reg(14, 14, 11))
             end
-            emit(ASM.store_halfword(14, 12))
+            clear ? emit_if(:ne, ASM.store_halfword(14, 12)) : emit(ASM.store_halfword(14, 12))
             emit(ASM.add_reg(0, 0, 2))
             emit(ASM.add_reg(1, 1, 3))
             emit(ASM.add_imm(4, 4, 1))
@@ -1800,47 +1934,6 @@ module VBlank
               end
               across[0]
             end
-          end
-
-          # The pixels of a span one at a time: for a picture with see-through pixels, where a pixel
-          # that is not drawn leaves its half of the pair as it was. Lit, every register is taken,
-          # so the shade is kept in memory and stepped there, pixel by pixel.
-          def emit_single_pixels(lit: false)
-            pixel = gensym
-            skip = gensym
-            odd = gensym
-            put = gensym
-            place_label(pixel)
-            emit_picture_place(11)
-            emit(ASM.ldrb_reg(11, 6, 11))
-            emit(ASM.cmp_reg(11, 10))
-            emit_branch(:bcond, skip, cond: :eq)
-            if lit
-              load_var(14, :_face_shade)
-              emit(ASM.lsr_imm(14, 14, 16))
-              emit(ASM.orr_reg_lsl(11, 11, 14, 8))
-              load_var(14, :_face_shading)
-              emit(ASM.ldrb_reg(11, 14, 11))
-            end
-            emit(ASM.bic_imm(12, 4, 1))            # the pair this pixel shares
-            emit(ASM.load_halfword(14, 12))
-            emit(ASM.tst_imm(4, 1))
-            emit_branch(:bcond, odd, cond: :ne)
-            emit(ASM.and_imm(14, 14, 0xFF00))
-            emit(ASM.orr_reg(14, 14, 11))
-            emit_branch(:b, put)
-            place_label(odd)
-            emit(ASM.and_imm(14, 14, 0xFF))
-            emit(ASM.orr_reg_lsl(14, 14, 11, 8))
-            place_label(put)
-            emit(ASM.store_halfword(14, 12))
-            place_label(skip)
-            emit_shade_step_in_memory if lit
-            emit(ASM.add_reg(0, 0, 2))
-            emit(ASM.add_reg(1, 1, 3))
-            emit(ASM.add_imm(4, 4, 1))
-            emit(ASM.subs_imm(5, 5, 1))
-            emit_branch(:bcond, pixel, cond: :ne)
           end
 
           # The shade word a step on, through the registers +shade+ and +step+ (r11 and lr unless

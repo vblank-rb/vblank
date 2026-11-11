@@ -26,11 +26,12 @@ class TestFaceFillCost < Minitest::Test
   # A face wider and taller than the view, so every pixel of the screen is one of its pixels: two
   # wholes ahead at its left and +far+ at its right, so it leans away and perspective has work to do.
   # +lit+ lights it through the shading, a different light at each corner.
-  private def whole_screen_face(perspective, see_through: nil, far: 2.0, lit: false)
+  # +data+ is the picture's pixels, the tile's unless given.
+  private def whole_screen_face(perspective, see_through: nil, far: 2.0, lit: false, data: TILE)
     b = Builder.new
     b.instance_eval do
       screen :bitmap, tear_free: true
-      image :tile, width: 64, height: 64, data: TILE, transparent: see_through
+      image :tile, width: 64, height: 64, data: data, transparent: see_through
       shading :dark, colors: TILE_COLORS, levels: LEVELS
       place :wall, shading: lit ? :dark : nil do
         face point(-3.0, 3.0, 2.0), point(3.0, 3.0, far), point(3.0, -3.0, far), point(-3.0, -3.0, 2.0),
@@ -53,6 +54,30 @@ class TestFaceFillCost < Minitest::Test
   # picture one, whether it uses it or not. Nothing on it is see-through, so it is as quick.
   def test_a_picture_naming_a_see_through_colour_it_never_uses_is_as_quick
     assert_fill_under(17, whole_screen_face(:none, see_through: 0x7C1F), "reading its pair back cost 37")
+  end
+
+  # A GRATE: the tile with every other bar of five pixels see-through, so half of it shows what is
+  # behind, and the bars' edges fall on either half of a pair of the screen's pixels. A pair with no
+  # see-through pixel is written whole, one that is all see-through is passed over, and only a pair
+  # with one of each reads video memory back.
+  SEE_THROUGH = 0x7C1F
+  GRATE = TILE.each_with_index.map { |color, at| ((at % 64) / 5).odd? ? SEE_THROUGH : color }
+
+  def test_a_grate_costs_under_twenty_cycles_a_pixel_without_perspective
+    assert_fill_under(20, whole_screen_face(:none, see_through: SEE_THROUGH, data: GRATE), "a pixel at a time it cost 37")
+  end
+
+  def test_a_lit_grate_costs_under_thirty_two_cycles_a_pixel_without_perspective
+    assert_fill_under(32, whole_screen_face(:none, see_through: SEE_THROUGH, data: GRATE, lit: true),
+                      "a pixel at a time, its shade kept in memory, it cost 47")
+  end
+
+  # In perspective a picture with see-through pixels is still drawn a stretch of eight pixels at a
+  # time, each a call of its own, where one with none runs whole stretches together: so it costs
+  # twice that one's. The pairs are what this holds.
+  def test_a_grate_leaning_away_costs_under_sixty_four_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(64, whole_screen_face(:every_8_pixels, see_through: SEE_THROUGH, data: GRATE, far: 5.0),
+                      "a pixel at a time it cost 72")
   end
 
   # Every eight pixels the place on the picture is worked out exactly, and between it steps two
