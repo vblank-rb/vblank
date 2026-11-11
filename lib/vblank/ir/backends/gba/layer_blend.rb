@@ -478,12 +478,28 @@ module VBlank
           # The scenery is read off the picture rather than off the stack, because what the
           # register names is a hardware layer number and only the picture knows which
           # background got which.
+          #
+          # THE SPRITES ARE ONE LAYER TO THE DISPLAY, named on the far side or not as a whole.
+          # At each pixel it mixes the near side with the one thing directly behind it, and
+          # only where that thing is on the far side; anywhere else the near side is drawn at
+          # full strength. So with a sprite behind the see-through layer and the sprites not
+          # named, the layer is solid over that sprite. Naming them costs a sprite in front
+          # nothing: there the sprite is the front thing, it is not the near side, and nothing
+          # is mixed.
           def far_side_bits(screenful, layer)
             kept = IR::Stacking.at_or_above(@picture, layer).map(&:name)
             behind = screenful.scenery.reject { |node| kept.include?(node.name) }
             bits = BLD_BACKDROP | bits_for(behind)
-            bits |= BLD_OBJ if screenful.objects.any? { |node| !kept.include?(node.name) }
+            bits |= BLD_OBJ if screenful.objects.any? { |node| !kept.include?(node.name) || put_behind?(node, layer) }
             bits
+          end
+
+          # Can the game put +object+ behind +layer+ as it runs (`put_in_layer`)? Where it was
+          # declared says nothing of that: a character declared in front of the clouds walks
+          # under them in the next room.
+          def put_behind?(object, layer)
+            line = @picture.stack.index(layer)
+            (object.layers || []).any? { |name| @picture.stack.index(name) < line }
           end
 
           # The register bits naming these backgrounds, by the hardware layer each one
