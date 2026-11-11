@@ -38,15 +38,18 @@ module VBlank
             include Backends::NotMadeYet
           end
 
+          include ControlFlow
+
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
-          # #emit_statement and #value_of_kind, and each part's (Paint, Faces), which each part writes
-          # in a case of its own. A declaration writes nothing where it is. Read by
-          # test_ps1_kind_coverage.rb.
+          # #emit_statement and #value_of_kind, and each part's (Paint, Faces, and the loops and tests
+          # every cartridge lowering shares, ControlFlow), which each part writes in a case of its own.
+          # A declaration writes nothing where it is. Read by test_ps1_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
-            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            program set add sub copy negate abs negate_abs clamp call call_one_of
+            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
             timer_start timer_stop on_timer show_light_now rumble
-          ] + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS +
+            Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
             case node.kind
@@ -59,14 +62,9 @@ module VBlank
             when :abs then emit_abs(node)
             when :negate_abs then emit_negate_abs(node)
             when :clamp then emit_clamp(node)
-            when :if then emit_if(node)
-            when :loop then emit_loop(node)
-            when :repeat then emit_repeat(node)
-            when :every then emit_beat(node)
-            when :after then emit_beat(node)
+            when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
-            when :case then emit_case(node)
             when :halt then emit_halt(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
@@ -517,73 +515,23 @@ module VBlank
             emit_store(node.var)
           end
 
-          def emit_if(node)
-            body = node.children
-            otherwise = node.else&.children || []
-            known = folded(node.cond)
-            return (known.zero? ? otherwise : body).each { |child| statement(child) } if known
+          # --- what ControlFlow asks of a lowering, in the R3000's instructions ---
 
-            other = fresh_label("else")
-            done = fresh_label("end_if")
-            jump_unless(node.cond, other)
-            body.each { |child| statement(child) }
-            @asm.b(done) unless otherwise.empty?
-            @asm.label(other)
-            otherwise.each { |child| statement(child) }
-            @asm.label(done)
-          end
+          def place_label(label) = @asm.label(label)
+          def jump(label) = @asm.b(label)
+          def emit_store_zero(name) = emit_store_number(name, 0)
+          def emit_increment(name) = emit_sum(name, :+, Build.int(1))
+          # Only an `if` has another side.
+          def children_of(node) = [node.children, (node.else&.children if node.kind == :if) || []]
+          def loop_statements(node) = console_loop(node).each_time
+          def game_loops = @plan.game_loops
 
-          def emit_loop(node)
-            console_loop(node).before.each { |child| statement(child) }
-            statement(Build.set(@loop_running, (loops_ending_passes.index(node) || -1) + 1)) if @loop_running
-            top = fresh_label("loop")
-            @asm.label(top)
-            console_loop(node).each_time.each { |child| statement(child) }
-            @asm.b(top)
+          def emit_copy_variable(from, to)
+            emit_load_variable(from)
+            emit_store(to)
           end
 
           def console_loop(node) = @plan.console_loop(node)
-
-          # The game loops that end each pass by placing the display's writes
-          # (IR::Frames::ConsoleLoop#pass_end), which a halt has to end as the running one does.
-          def loops_ending_passes
-            @loops_ending_passes ||= @plan.game_loops.select { |node| console_loop(node).pass_end.any? }
-          end
-
-          # Which of those is running, counted from 1, and nought for none, in a game with any.
-          def keep_loop_running
-            @loop_running = keep_local(:loop_running) if loops_ending_passes.any?
-          end
-
-          # Reference#exec_repeat: the count worked out once, before the first pass; the index counting 0,
-          # 1, 2... and stored in the game's variable at the top of each pass; and +stop_when+ asked BEFORE
-          # the body, so a loop already finished on its first pass runs the body no times.
-          #
-          # A count written in the program is compared with as it is, with no place of its own. The index is
-          # in v0 once it has been compared, so the game's variable is set from there.
-          def emit_repeat(node)
-            known = folded(node.count)
-            index = keep_local(:index)
-            count = known ? Build.int(known) : keep_local(:count)
-            unless known
-              emit_value(node.count)
-              emit_store(count)
-            end
-            emit_store_number(index, 0)
-            top = fresh_label("repeat")
-            done = fresh_label("end_repeat")
-            @asm.label(top)
-            jump_unless(Build.binop(:<, Build.var_ref(index), known ? count : Build.var_ref(count)), done)
-            emit_store(node.index) if node.index
-            jump_if(node.stop_when, done)
-            node.children.each { |child| statement(child) }
-            emit_sum(index, :+, Build.int(1))
-            @asm.b(top)
-            @asm.label(done)
-          end
-
-          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
-          def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
           def emit_call(node)
             raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @funcs.key?(node.target)
@@ -607,21 +555,6 @@ module VBlank
             @asm.lw(:t1, 0, :t1)
             @asm.jalr(:t1)
             @asm.label(none)
-          end
-
-          # Reference#exec_case: the variable read ONCE, before the first clause. A scene's usual last act
-          # is to set it to the next scene, and reading it again per clause would run that one too, in the
-          # same pass.
-          def emit_case(node)
-            state = keep_local(:state)
-            emit_value(node.var)
-            emit_store(state)
-            node.clauses.each do |number, target|
-              skip = fresh_label("next_clause")
-              jump_unless(Build.binop(:==, Build.var_ref(state), Build.int(number)), skip)
-              emit_scene(target)
-              @asm.label(skip)
-            end
           end
 
           # A scene taking over is remembered, so what a scene does as it arrives happens on the frame it
@@ -1031,6 +964,9 @@ module VBlank
                 when :<= then jump_on_below(:v1, :v0, label, holds: true)
                 end
               end
+              # Only where working the right side out changes nothing: otherwise it may have changed
+              # the variable after v0 took it.
+              note_compared_variable(condition.lhs) if Unchanging.value?(condition.rhs) { |part| folded(part) }
             else
               emit_value(condition)
               @asm.beq(:v0, :zero, label)
@@ -1058,7 +994,16 @@ module VBlank
               # Below the number holds for < and <=, and fails for >= and >.
               %i[< <=].include?(op) ? @asm.beq(:t0, :zero, label) : @asm.bne(:t0, :zero, label)
             end
+            note_compared_variable(condition.lhs)
             true
+          end
+
+          # A variable compared is still in v0 on the way past the branch, so one read straight after,
+          # with no label between, is taken from there with no load (#emit_load_variable): a loop's index
+          # is compared with its count and then handed to the game's variable every time round.
+          def note_compared_variable(operand)
+            name = operand.is_a?(Node) && operand.kind == :var_ref ? operand.name : operand
+            @stored = [name, :v0, @asm.here] if name.is_a?(Symbol) || name.is_a?(String)
           end
 
           # Jump to +label+ when +lower+ < +higher+ is +holds+, as signed numbers.

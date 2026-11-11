@@ -35,17 +35,20 @@ module VBlank
             include Backends::NotMadeYet
           end
 
+          include ControlFlow
+
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
-          # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest), which
-          # each part writes in a case of its own. A declaration writes nothing where it is. Read by
+          # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest, and the
+          # loops and tests every cartridge lowering shares, ControlFlow), which each part writes in a
+          # case of its own. A declaration writes nothing where it is. Read by
           # test_gbc_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
-            case halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            program set add sub copy negate abs negate_abs clamp call call_one_of
+            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
             save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
             on_timer show_light_now show_held_tiles
-          ] + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS + TileRuns::STATEMENT_KINDS +
-            SpriteTiles::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
+          ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS +
+            TileRuns::STATEMENT_KINDS + SpriteTiles::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
             case node.kind
@@ -58,14 +61,9 @@ module VBlank
             when :abs then emit_abs(node)
             when :negate_abs then emit_negate_abs(node)
             when :clamp then emit_clamp(node)
-            when :if then emit_if(node)
-            when :loop then emit_loop(node)
-            when :repeat then emit_repeat(node)
-            when :every then emit_beat(node)
-            when :after then emit_beat(node)
+            when *ControlFlow::STATEMENT_KINDS then emit_control_flow_statement(node)
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
-            when :case then emit_case(node)
             when :halt then emit_halt(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
@@ -857,70 +855,25 @@ module VBlank
             store(node.var)
           end
 
-          def emit_if(node)
-            body, otherwise = children_of(node)
-            known = folded(node.cond)
-            return (known.zero? ? otherwise : body).each { |child| statement(child) } if known
+          # --- what ControlFlow asks of a lowering, in the SM83's instructions ---
 
-            other = fresh("else")
-            done = fresh("end_if")
-            jump_unless(node.cond, other)
-            body.each { |child| statement(child) }
-            @asm.jump(done) unless otherwise.empty?
-            @asm.label(other)
-            otherwise.each { |child| statement(child) }
-            @asm.label(done)
-          end
+          def fresh_label(what) = fresh(what)
+          def place_label(label) = @asm.label(label)
+          def jump(label) = @asm.jump(label)
+          def emit_value(operand) = value(operand)
+          def emit_store(name) = store(name)
+          def emit_increment(name) = add_in_place(place_of(name), 1)
+          def loop_statements(node) = children_of(node).first
 
-          def emit_loop(node)
-            console_loop(node).before.each { |child| statement(child) }
-            statement(Build.set(@loop_running, (loops_ending_passes.index(node) || -1) + 1)) if @loop_running
-            top = fresh("loop")
-            @asm.label(top)
-            children_of(node).first.each { |child| statement(child) }
-            @asm.jump(top)
-          end
-
-          # The game loops that end each pass by placing the display's writes
-          # (IR::Frames::ConsoleLoop#pass_end), which a halt has to end as the running one does.
-          def loops_ending_passes
-            @loops_ending_passes ||= game_loops.select { |node| console_loop(node).pass_end.any? }
-          end
-
-          # Which of those is running, counted from 1, and nought for none, in a game with any: a
-          # halt can be anywhere, in a routine called from any loop or from none (#emit_halt).
-          def keep_loop_running
-            @loop_running = keep_local(:loop_running) if loops_ending_passes.any?
-          end
-
-          # Reference#exec_repeat: the count worked out once, before the first pass; the index
-          # counting 0, 1, 2... and stored in the game's variable at the top of each pass; and
-          # +stop_when+ asked BEFORE the body, so a loop already finished on its first pass runs the
-          # body no times.
-          def emit_repeat(node)
-            count = keep_local(:count)
-            index = keep_local(:index)
-            value(node.count)
-            store(count)
+          def emit_store_zero(name)
             load_constant(0)
-            store(index)
-            top = fresh("repeat")
-            done = fresh("end_repeat")
-            @asm.label(top)
-            jump_unless(Build.binop(:<, Build.var_ref(index), Build.var_ref(count)), done)
-            if node.index
-              value(index)
-              store(node.index)
-            end
-            jump_if(node.stop_when, done)
-            children_of(node).first.each { |child| statement(child) }
-            add_in_place(place_of(index), 1)
-            @asm.jump(top)
-            @asm.label(done)
+            store(name)
           end
 
-          # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
-          def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
+          def emit_copy_variable(from, to)
+            value(from)
+            store(to)
+          end
 
           def emit_call(node)
             raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @funcs.key?(node.target)
@@ -957,21 +910,6 @@ module VBlank
             @asm.add_hl(:de)
             @asm.call("rt_far_call_hl")
             @asm.label(none)
-          end
-
-          # Reference#exec_case: the variable read ONCE, before the first clause. A scene's usual last
-          # act is to set it to the next scene, and reading it again per clause would run that one
-          # too, in the same pass.
-          def emit_case(node)
-            state = keep_local(:state)
-            value(node.var)
-            store(state)
-            node.clauses.each do |number, target|
-              skip = fresh("next_clause")
-              jump_unless(Build.binop(:==, Build.var_ref(state), Build.int(number)), skip)
-              emit_scene(target)
-              @asm.label(skip)
-            end
           end
 
           # A scene taking over is remembered, so what a scene does as it arrives happens on the frame

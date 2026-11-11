@@ -104,6 +104,12 @@ writing an instruction is shared, because two copies of a decision drift apart:
   each table is kept, constant folding, the game loop in the console's order, and the refusals
   every console makes alike (a step only the Advance has, what the console's answers refuse, a
   routine that calls itself).
+- `Backends::ControlFlow` — the loops, tests and choices between scenes (`if`, `loop`, `repeat`,
+  `every`, `after`, `case`): where each label goes and which way each jump points. It is mixed into
+  the lowering and calls a dozen things of it written in that processor's instructions (a fresh
+  label, a jump, a jump unless a condition holds, a load, a store), which the comment atop the module
+  lists. `test/all/vblank/ir/backends/test_control_flow.rb` walks it over a chip that only writes
+  down what it was asked for.
 - `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
   the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
   `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.
