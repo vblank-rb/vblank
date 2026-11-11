@@ -26,7 +26,19 @@ module VBlank
       # Lowering::NOT_LOWERED_YET says (Reference#music_playing).
       def music_playing = nil
 
+      # NO SAMPLES YET. Beetle PSX mixes the sound chip's output and hands it over, and the emulator
+      # gem counts those samples without keeping them (RubyPS1Emulator::Core#sound_frames). So a
+      # reader has none to give, and says so; silence would read as a program that makes no sound.
+      def last_frame_sound = refuse_ps1_samples!
+      def loudest_by_frame = refuse_ps1_samples!
+
       private
+
+      def refuse_ps1_samples!
+        raise ArgumentError, "The emulator for a PlayStation program gives no sound samples yet, so this reader " \
+                             "cannot say what the program put out. It counts the samples and does not keep them. " \
+                             "Compare the sound of a cartridge for another console instead."
+      end
 
       def refuse_ps1_reader!(question)
         raise ArgumentError, "The Verifier cannot read this back from a PlayStation program yet, so it cannot say " \

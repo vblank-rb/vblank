@@ -47,6 +47,7 @@ module VBlank
         @written_lengths = []
         @file = nil
         @energies = []
+        @loudest = []
       end
 
       # Keep the sound of the frames just played: one String of samples for each, in order.
@@ -83,6 +84,14 @@ module VBlank
       def energy_by_frame
         each_frame_from(@energies.size) { |frame| @energies << frame.unpack("s<*").sum(&:abs) }
         @energies.dup
+      end
+
+      # THE LOUDEST SAMPLE OF EACH FRAME, oldest first (FrameSound#loudest: the furthest a sample is
+      # from nought on either speaker). Worked out once for each frame and kept, as #energy_by_frame
+      # is, and what is handed back is the caller's own list.
+      def loudest_by_frame
+        each_frame_from(@loudest.size) { |frame| @loudest << FrameSound.loudest_of(frame.unpack("s<*")) }
+        @loudest.dup
       end
 
       # The sound of the whole run as one String of samples, which for a long run is all of

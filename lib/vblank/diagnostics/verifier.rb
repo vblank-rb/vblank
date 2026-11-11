@@ -818,6 +818,24 @@ module VBlank
         @sound.last_frame.unpack("s<*")
       end
 
+      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST, as a FrameSound: its samples, and the
+      # loudest of them. One name and one meaning on every console whose emulator hands its sound
+      # over, for a cartridge built here or anybody's file: 16-bit samples, left and right by turns,
+      # and the loudest the furthest any is from nought on either speaker. A run that has played no
+      # frame has no samples, and its loudest is 0. A PlayStation program's reader refuses, since its
+      # emulator hands over none yet (PS1Reading).
+      def last_frame_sound
+        ensure_rendered!
+        FrameSound.from_bytes(@sound.last_frame)
+      end
+
+      # The loudest sample of every frame played so far, oldest first: FrameSound#loudest for each,
+      # worked out once a frame and kept, so it can be asked after every frame of a long run.
+      def loudest_by_frame
+        ensure_rendered!
+        @sound.loudest_by_frame
+      end
+
       # True when the run produced no sound at all (energy exactly 0).
       def silent?
         audio_energy.zero?

@@ -13,6 +13,7 @@ require_relative "diagnostics/func_dumper"
 require_relative "diagnostics/sm83_listing"      # A routine of a Game Boy Color cartridge
 require_relative "diagnostics/missing_emulator"  # Why the emulator would not load, and what to do about it
 require_relative "diagnostics/emulator"          # The one seam to the emulator backend; swap emulators here
+require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
