@@ -22,6 +22,7 @@ require_relative "dos/runtime/mode_x"
 require_relative "dos/runtime/saving"
 require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
+require_relative "dos/runtime/camera"
 require_relative "dos/runtime/regions"
 require_relative "dos/runtime/fades"
 require_relative "dos/lowering/sprites"
@@ -124,9 +125,11 @@ module VBlank
           memory = Memory.new(Screen.of(program))
           sprites = Lowering::Sprites.count_in(program)
           walks = Lowering.walks_colors?(program)
+          camera = Lowering.moves_camera?(program)
+          second = sprites.positive? || camera
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
                                   area: Lowering.area_used_by?(program), sprites: sprites,
-                                  walks: walks)
+                                  walks: walks, camera: camera)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
@@ -134,18 +137,18 @@ module VBlank
           Runtime.emit(asm, memory, palette: lowering.palette, starts: lowering.starts, pictures: lowering.pictures?,
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
                                     sprites: sprites.positive?, regions: lowering.regions?,
-                                    walks: walks)
+                                    walks: walks, camera: camera)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")
           refuse_too_much_art!(art.bytesize)
           data_segment = art_segment + (art.bytesize / 16)
-          shown = DOS.picture_shown_after_data(memory.screen, sprites: sprites.positive?)
+          shown = DOS.picture_shown_after_data(memory.screen, second: second)
           after_pictures = shown + Runtime::Rows.picture_paragraphs(memory.screen)
           assembled = asm.assemble(art: art_segment, data: data_segment, back: data_segment + PICTURE_AFTER_DATA,
                                    shown: data_segment + shown, save: data_segment + after_pictures)
           places = Places.new(variables: lowering.variables, lists: {},
-                              runtime: Runtime.places(memory, sprites: sprites.positive?),
+                              runtime: Runtime.places(memory, sprites: sprites.positive?, camera: camera),
                               source_program: program, code: asm.here,
                               bytes: ByteCounts.new(code: asm.here, data: art.bytesize), routines: [])
           Cartridge::DOSEXE.new(assembled.bytes.ljust(art_segment * 16, "\0") + art, title: title, entry: [0, 0],
@@ -163,11 +166,12 @@ module VBlank
         # It is a segment's worth, or for a screen of more pixels than that, as many as it has (Runtime::Rows).
         PICTURE_AFTER_DATA = EXTRA_PARAGRAPHS
 
-        # A game with sprites has a second picture after the first: the one shown, the game's with the sprites
-        # over it (Runtime::Sprites). Where the picture the player is shown is, in paragraphs past the data
-        # segment: the second where there is one (+sprites+), the game's own where there is not.
-        def self.picture_shown_after_data(screen, sprites:)
-          PICTURE_AFTER_DATA + (sprites ? Runtime::Rows.picture_paragraphs(screen) : 0)
+        # A game with sprites or a camera has a second picture after the first: the one shown, the game's with
+        # the sprites over it (Runtime::Sprites) as the view has it (Runtime::Camera). Where the picture the
+        # player is shown is, in paragraphs past the data segment: the second where there is one (+second+),
+        # the game's own where there is not.
+        def self.picture_shown_after_data(screen, second:)
+          PICTURE_AFTER_DATA + (second ? Runtime::Rows.picture_paragraphs(screen) : 0)
         end
 
         # The save memory of a game that saves, in a segment of its own after those (Runtime::Saving).

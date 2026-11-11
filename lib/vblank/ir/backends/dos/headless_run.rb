@@ -128,13 +128,13 @@ module VBlank
           # picture the run ends on, and the game goes no further.
           def ends_before_first_picture?(frames) = frames.zero?
 
-          def end_before_first_picture(variables, lists, sprites, sounds, _camera)
+          def end_before_first_picture(variables, lists, sprites, sounds, camera)
             hold_after_this_pass
             @sprites = sprites
             width, height = screen_size
             off = Array.new(width * height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: width, height: height, camera_x: 0, camera_y: 0),
-                          sounds)
+            picture = Picture.new(shown: off, width: width, height: height, camera_x: camera[0], camera_y: camera[1])
+            record_moment(:end, variables, lists, picture, sounds)
           end
 
           def start_run(_program)
@@ -174,7 +174,15 @@ module VBlank
           # palette and not the picture, and the program sends the moved palette to the card as the retrace
           # begins, with the picture. So the entries are taken as the game is found waiting and their colours
           # once that retrace has come, before the next one sends the next pass's.
-          def picture_of_pass(_camera, drawn) = picture_of(drawn)
+          def picture_of_pass(camera, drawn) = picture_of(drawn, camera)
+
+          # Where the view was over the game's picture when the picture shown was last made (Runtime::Camera);
+          # [0, 0] for a game with no camera.
+          def read_camera
+            return [0, 0] unless @places.runtime.key?(Runtime::Camera::SHOWN_X)
+
+            [Runtime::Camera::SHOWN_X, Runtime::Camera::SHOWN_Y].map { |name| [read32(runtime_place(name))].pack("V").unpack1("l<") }
+          end
 
           # The sprites the pass placed, from the runtime's table (Runtime::Sprites), in the order they are drawn.
           def read_sprites
@@ -219,24 +227,25 @@ module VBlank
           end
 
           # The picture the game has drawn now, in the colours the card's palette has now.
-          def picture_now(_camera) = picture_of(entries_drawn_now)
+          def picture_now(camera) = picture_of(entries_drawn_now, camera || read_camera)
 
           # The picture the player is shown as the game has drawn it now, a palette entry a pixel, with the
           # card held to the one before it (#refuse_card_not_showing!).
           def entries_drawn_now
             width, height = screen_size
-            sprites = @places.runtime.key?(Runtime::Sprites::PLACED)
-            after_data = DOS.picture_shown_after_data(screen_built_for, sprites: sprites)
+            second = [Runtime::Sprites::PLACED, Runtime::Camera::SHOWN_X].any? { |name| @places.runtime.key?(name) }
+            after_data = DOS.picture_shown_after_data(screen_built_for, second: second)
             drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: after_data)
             refuse_card_not_showing!(@stopped ? drawn : @picture_before)
             @picture_before = drawn
           end
 
           # +entries+ as 15-bit colours, each through the card's palette as it is now.
-          def picture_of(entries)
+          def picture_of(entries, camera)
             width, height = screen_size
             colors = @core.palette.map { |red, green, blue| (red >> 1) | ((green >> 1) << 5) | ((blue >> 1) << 10) }
-            Picture.new(shown: entries.bytes.map { |entry| colors.fetch(entry) }, width: width, height: height, camera_x: 0, camera_y: 0)
+            Picture.new(shown: entries.bytes.map { |entry| colors.fetch(entry) }, width: width, height: height,
+                        camera_x: camera[0], camera_y: camera[1])
           end
 
           # The picture's check, worked out once for a picture shown frame after frame.

@@ -71,7 +71,6 @@ module VBlank
               screen = Edges.new(left: 0, top: 0, right: memory.screen.width, bottom: memory.screen.height)
               emit_place(asm, memory)
               emit_over_picture(asm, memory)
-              Runtime.emit_copy_changed_rows(asm, memory, "rt_sprites_picture_rows", from: :back, to: :shown, forget: false)
               Runtime.emit_blit_routine(asm, memory, screen, name: "rt_sprite_blit", marks: false)
             end
 
@@ -174,7 +173,7 @@ module VBlank
               asm.jne("rt_sprites_rows")
               asm.label("rt_sprites_rows_marked")
               # 2. The game's picture, where anything changed.
-              asm.call("rt_sprites_picture_rows")
+              asm.call("rt_picture_rows")
               # 3. The sprites over it.
               asm.mov(:cx, placed)
               asm.test(:cx, :cx)

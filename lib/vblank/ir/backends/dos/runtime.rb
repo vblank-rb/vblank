@@ -154,8 +154,9 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:, walks:)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:, camera: false)
             Fades.reserve(memory) if walks
+            Camera.reserve(memory) if camera
             Sprites.reserve(memory, sprites) if sprites.positive?
             ModeX.reserve(memory) if memory.screen.mode == :mode_x
             memory.reserve(AREA, AREA_BYTES) if area
@@ -167,8 +168,8 @@ module VBlank
           end
 
           # Where each of the runtime's names is, for a reader.
-          def places(memory, sprites: false)
-            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : [])
+          def places(memory, sprites: false, camera: false)
+            names = Frame::WORDS + [Frame::FAULT, Frame::STEPS] + (sprites ? Sprites::PLACES : []) + (camera ? Camera::PLACES : [])
             names.to_h { |name| [name, memory[name]] }
           end
 
@@ -180,16 +181,19 @@ module VBlank
 
           # The start, then the routines. +palette+ is the 15-bit colours of palette entries 0, 1, 2...
           # +starts+ is [offset, number] for places that begin on something other than nought.
-          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:)
+          # +sprites+ and +camera+ are whether the game has sprites over its picture and whether it moves
+          # the view over it: with either, the player is shown a second picture made from the game's.
+          def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, camera: false)
+            second = sprites || camera
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
             starts += Sprites.starts(memory) if sprites
-            emit_start(asm, memory, palette, starts, saves, clock, sprites)
+            emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves, sprites, walks)
+            emit_frame(asm, memory, saves, second, walks)
             Fades.emit(asm, memory, palette) if walks
-            Sprites.emit(asm, memory) if sprites
+            emit_picture_shown(asm, memory, sprites: sprites, camera: camera) if second
             emit_keyboard(asm, memory)
             emit_timer(asm, memory)
             emit_number_routines(asm)
@@ -218,7 +222,7 @@ module VBlank
           # itself follows it, a space and then what was typed after the program's name.
           PSP_TAIL_LENGTH = 0x80
 
-          def emit_start(asm, memory, palette, starts, saves, clock, sprites)
+          def emit_start(asm, memory, palette, starts, saves, clock, second)
             ica = Diagnostics::DOSMemory
             asm.label("start")
             # ES is the program's PSP, whose command tail says whether a reader asked for the gate: " HOLD", its
@@ -244,7 +248,7 @@ module VBlank
             asm.xor(:eax, :eax)
             asm.stos(32, rep: true)
             # The game's picture starts as the card's does once its mode is set: every pixel the first entry.
-            ([:back] + (sprites ? [:shown] : [])).each do |picture|
+            ([:back] + (second ? [:shown] : [])).each do |picture|
               Rows.emit_picture_segment(asm, memory.screen, picture)
               asm.xor(:eax, :eax)
               Rows.emit_fill_picture(asm, memory.screen, "rt_start_#{picture}")
@@ -308,7 +312,7 @@ module VBlank
           end
 
           # The end of a pass, stopping, and the wait for a retrace they share.
-          def emit_frame(asm, memory, saves, sprites, walks)
+          def emit_frame(asm, memory, saves, second, walks)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -331,7 +335,7 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
-            asm.call("rt_sprites_over_picture") if sprites # before a reader is told the pass has ended
+            asm.call("rt_picture_shown") if second # before a reader is told the pass has ended
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
             asm.call("rt_walk_work") if walks
@@ -393,7 +397,7 @@ module VBlank
             # Stopping: the game is marked as halted, and the last picture is shown by the retrace after it.
             asm.label("rt_halt")
             asm.call("rt_save_flush") if saves
-            asm.call("rt_sprites_over_picture") if sprites
+            asm.call("rt_picture_shown") if second
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
@@ -403,12 +407,12 @@ module VBlank
             asm.label("rt_stopped")
             asm.jmp("rt_stopped")
 
-            emit_show_picture(asm, memory, sprites ? :shown : :back)
+            emit_show_picture(asm, memory, second ? :shown : :back)
 
             # Going wrong: what went wrong is already in FAULT, and the game goes no further.
             asm.label("rt_fault")
             asm.call("rt_save_flush") if saves
-            asm.call("rt_sprites_over_picture") if sprites
+            asm.call("rt_picture_shown") if second
             asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
             asm.call("rt_walk_send") if walks
@@ -487,6 +491,20 @@ module VBlank
             asm.pop(:ds)
             asm.pop(:ax)
             asm.iret
+          end
+
+          # rt_picture_shown: THE PICTURE SHOWN made from the game's as a pass ends, in a game that has one
+          # (Sprites and Camera say why each wants it), and the routines it is made with. rt_picture_rows
+          # brings the rows marked as changed over from the game's picture, as the view has them in a game
+          # with a camera.
+          def emit_picture_shown(asm, memory, sprites:, camera:)
+            asm.label("rt_picture_shown")
+            asm.call("rt_camera_rows") if camera
+            asm.jmp(sprites ? "rt_sprites_over_picture" : "rt_picture_rows")
+            Sprites.emit(asm, memory) if sprites
+            return Camera.emit(asm, memory) if camera
+
+            emit_copy_changed_rows(asm, memory, "rt_picture_rows", from: :back, to: :shown, forget: false)
           end
 
           # rt_show_picture: the rows that changed, copied to the card from the picture the player is shown

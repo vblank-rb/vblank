@@ -36,7 +36,7 @@ module VBlank
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
             program set add sub copy if loop repeat halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
-            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint save_init save_store save_write save_erase
+            draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera save_init save_store save_write save_erase
           ] + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped held pressed save_read save_sum] + Clock::VALUE_KINDS).freeze
@@ -85,6 +85,10 @@ module VBlank
 
           # Whether +program+ fades or tints, and so carries the runtime's walk of the palette (Runtime::Fades).
           def self.walks_colors?(program) = program.walk.any? { |node| %i[fade tint].include?(node.kind) }
+
+          # Whether +program+ moves the view over its picture, and so is shown a picture made from its own
+          # (Runtime::Camera).
+          def self.moves_camera?(program) = program.walk.any? { |node| node.kind == :camera }
 
           # Whether +program+ holds any drawing to an area, and so keeps one (Runtime::AREA).
           def self.area_used_by?(program) = program.walk.any? { |node| node.kind == :inside }
@@ -358,6 +362,7 @@ module VBlank
             when :screen then nil # mode 13h is set at power-on, and a screen of one page is all there is
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
+            when :camera then emit_camera(node)
             when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
             when :blit_pose then emit_blit_pose(node)
@@ -661,6 +666,12 @@ module VBlank
             @asm.mov(:si, X86.mem(:bx, 0))
             @asm.pop(:ds)
             emit_blit_call(node)
+          end
+
+          # Reference#exec_camera: the view put where the game says, for the picture shown to be made with.
+          def emit_camera(node)
+            emit_operands(node.x, node.y)
+            @asm.call("rt_camera")
           end
 
           def emit_pixel(node)
