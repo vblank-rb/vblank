@@ -1178,8 +1178,11 @@ module VBlank
       # coordinate. +index+ is itself a value operand. An out-of-range index is made
       # safe by the read: a power-of-two table wraps it (a free mask), any other size
       # clamps it, so a read never reaches outside the table.
-      def table_get(name, index)
-        Nodes.build(:table_get, name: name, index: to_value_node(index))
+      # +in_range+: the caller's own sums keep +index+ inside the table (see Nodes::TableGet).
+      def table_get(name, index, in_range: false)
+        return Nodes.build(:table_get, name: name, index: to_value_node(index)) unless in_range
+
+        Nodes.build(:table_get, name: name, index: to_value_node(index), in_range: true)
       end
 
       # --- expression values (the AST an assignment or condition is built from) ---

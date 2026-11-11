@@ -1900,11 +1900,15 @@ module VBlank
         def entry_count = from_file ? entries_in_file : values.length
       end
 
+      # An entry of table +name+. An index outside the table is held to it: wrapped for a table
+      # whose length is a power of two, held to its ends for any other. +in_range+ is set by a
+      # builder whose own sums keep the index inside the table (IR::PlaceDrawing's faces table), so
+      # a lowering may read the entry without holding the index; the answer is the same.
       class TableGet
         include Node
         kind :table_get
         category :value
-        operands name: :name, index: :value
+        operands name: :name, index: :value, in_range: :flag
       end
 
       class TimerStart

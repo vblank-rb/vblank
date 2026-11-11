@@ -88,11 +88,7 @@ module VBlank
               raise LoweringError, "read of undefined table #{node.name.inspect}"
             end
             @lowering.value(node.index)                               # r0 = index
-            if info.pow2
-              @primitives.emit_and_const(ACC, ACC, info.count - 1, TMP) # wrap: index & (count - 1)
-            else
-              emit_clamp_acc(0, info.count - 1)                    # clamp: 0..count-1
-            end
+            emit_hold_index(info) unless node.in_range # the builder's own sums keep it inside (Nodes::TableGet)
             shift = { 1 => 0, 2 => 1, 4 => 2 }.fetch(info.elem_bytes)
             if shift == 2
               # A word is read in one instruction that scales the index itself, and through r1, so the
@@ -106,6 +102,16 @@ module VBlank
             @emitter.emit_load_data_address(TMP, node.name)               # r1 = table base
             @emitter.emit(ASM.add_reg(ADDR, TMP, ACC))                      # r12 = &table[index]
             emit_table_load(info)                                  # r0 = element
+          end
+
+          # The index in the accumulator held to the table +info+: wrapped where its length is a
+          # power of two, held to its ends where it is not.
+          def emit_hold_index(info)
+            if info.pow2
+              @primitives.emit_and_const(ACC, ACC, info.count - 1, TMP) # wrap: index & (count - 1)
+            else
+              emit_clamp_acc(0, info.count - 1)                    # clamp: 0..count-1
+            end
           end
 
           # Load the element at ADDR into the accumulator, picking the load that matches
