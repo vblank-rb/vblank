@@ -152,6 +152,116 @@ class TestPS1R3000 < Minitest::Test
     assert_equal [0x1500FFFF, 0x2508FFFF], linked.image.unpack("V*")
   end
 
+  # A BRANCH'S SLOT IS FILLED WITH THE INSTRUCTION BEFORE IT where running that instruction after the
+  # branch has decided comes to the same thing: the processor runs the slot either way.
+  ADDIU_T1 = 0x25290001 # addiu t1, t1, 1
+  BNE_T0 = 0x15000000   # bne t0, zero
+
+  def test_a_branch_takes_the_instruction_before_it_for_its_slot
+    asm = R3000.new("slot")
+    asm.label("top")
+    asm.addiu(:t1, :t1, 1)
+    asm.bne(:t0, :zero, "top")
+    linked = VBlank::IR::Backends::PS1::Linker.new([asm.section]).link
+
+    assert_equal [BNE_T0 | 0xFFFF, ADDIU_T1], linked.image.unpack("V*"), "the label names the branch now"
+  end
+
+  def test_a_branch_leaves_the_instruction_that_makes_what_it_tests
+    asm = R3000.new("slot")
+    asm.label("top")
+    asm.addiu(:t0, :t0, -1)
+    asm.bne(:t0, :zero, "top")
+
+    assert_equal [0x2508FFFF, BNE_T0, 0], words(asm)
+  end
+
+  # Code that jumps to a label between the two runs the branch and not the instruction before it.
+  def test_a_branch_leaves_an_instruction_a_label_parts_it_from
+    asm = R3000.new("slot")
+    asm.addiu(:t1, :t1, 1)
+    asm.label("top")
+    asm.bne(:t0, :zero, "top")
+
+    assert_equal [ADDIU_T1, BNE_T0, 0], words(asm)
+  end
+
+  # A load cannot go in a slot, and a branch straight after a load cannot read what it loaded: so the
+  # instruction between a load and a branch that reads the load stays where it is.
+  def test_a_branch_leaves_a_load_and_the_instruction_keeping_it_from_one
+    load = R3000.new("slot")
+    load.lw(:t1, 0, :sp)
+    load.bne(:t0, :zero, "top")
+    kept = R3000.new("slot")
+    kept.lw(:t0, 0, :sp)
+    kept.addiu(:t1, :t1, 1)
+    kept.bne(:t0, :zero, "top")
+
+    assert_equal [0x8FA90000, 0, BNE_T0, 0], words(load)
+    assert_equal [0x8FA80000, ADDIU_T1, BNE_T0, 0], words(kept)
+  end
+
+  # A call writes the way back into ra as it jumps, before its slot runs: an instruction that reads or
+  # writes ra means something else there.
+  def test_a_call_takes_an_argument_for_its_slot_and_leaves_ra_alone
+    argument = R3000.new("slot")
+    argument.addu(:a0, :t0, :zero)
+    argument.jal("there")
+    saving = R3000.new("slot")
+    saving.sw(:ra, 0, :sp)
+    saving.jal("there")
+
+    assert_equal [0x0C000000, 0x01002021], words(argument)
+    assert_equal [0xAFBF0000, 0x0C000000, 0], words(saving)
+  end
+
+  def test_a_return_takes_the_instruction_before_it_unless_it_makes_the_address
+    leaving = R3000.new("slot")
+    leaving.addiu(:sp, :sp, 16)
+    leaving.jr(:ra)
+    making = R3000.new("slot")
+    making.addu(:t9, :t0, :zero)
+    making.jr(:t9)
+
+    assert_equal [0x03E00008, 0x27BD0010], words(leaving)
+    assert_equal [0x0100C821, 0x03200008, 0], words(making)
+  end
+
+  # An address is two instructions the Linker fills in where they stand, and reading lo is counted
+  # from where it stands: neither moves.
+  def test_a_branch_leaves_an_instruction_the_linker_fills_in_and_a_read_of_lo
+    address = R3000.new("slot")
+    address.la(:t1, "there")
+    address.b("there")
+    lo = R3000.new("slot")
+    lo.mflo(:t1)
+    lo.b("there")
+    lo.mult(:a0, :a1)
+
+    assert_equal [0x3C090000, 0x35290000, 0x10000000, 0], words(address)
+    assert_equal [0x00004812, 0x10000000, 0, 0x00850018], words(lo)
+  end
+
+  # ...and an instruction moved into a slot is still one instruction since lo was read.
+  def test_an_instruction_moved_into_a_slot_is_counted_once_after_reading_lo
+    asm = R3000.new("slot")
+    asm.mflo(:v0)
+    asm.addiu(:t1, :t1, 1)
+    asm.b("there")
+    asm.mult(:a0, :a1)
+
+    assert_equal [0x00001012, 0x10000000, ADDIU_T1, 0x00850018], words(asm)
+  end
+
+  # The slot a branch was handed is its own, and the instruction in it is not the next branch's.
+  def test_a_branch_leaves_the_instruction_in_the_slot_before_it
+    asm = R3000.new("slot")
+    asm.b("there") { asm.addiu(:t1, :t1, 1) }
+    asm.b("there")
+
+    assert_equal [0x10000000, ADDIU_T1, 0x10000000, 0], words(asm)
+  end
+
   def test_an_immediate_out_of_range_is_refused
     assert_raises(R3000::Error) { R3000.new("x").addiu(:t0, :t0, 0x8000) }
     assert_raises(R3000::Error) { R3000.new("x").ori(:t0, :t0, -1) }

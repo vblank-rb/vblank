@@ -21,8 +21,9 @@ module VBlank
         #
         # - THE BRANCH DELAY SLOT. "The instruction following the branch will always be executed" (psx-spx,
         #   CPU): by the time the processor knows it must jump, it has already fetched the next
-        #   instruction, and it runs it. Every branch and jump here is followed by a NOP in that slot,
-        #   unless the caller hands it a block whose one instruction goes there instead.
+        #   instruction, and it runs it. A caller can hand a branch a block whose one instruction goes in
+        #   that slot. Handed none, the branch takes the instruction written just before it, where that
+        #   comes to the same thing (#take_slot_filler), and a NOP where it does not.
         # - THE LOAD DELAY SLOT. "The loaded data is NOT available to the next opcode" (psx-spx, CPU): a
         #   load's value arrives one instruction late, and the instruction right after it still sees the
         #   register's old value. The assembler remembers the register the last instruction loaded, and
@@ -101,6 +102,7 @@ module VBlank
             @fixups = []
             @loaded = nil
             @since_hi_lo = 2
+            @slot_filler = nil
           end
 
           # --- the section ---
@@ -176,8 +178,8 @@ module VBlank
 
           def mfhi(rd) = read_hi_lo(0x10, rd)
           def mflo(rd) = read_hi_lo(0x12, rd)
-          def mthi(rs) = r_type(0x11, rs: rs)
-          def mtlo(rs) = r_type(0x13, rs: rs)
+          def mthi(rs) = r_type(0x11, rs: rs, fills_slot: false)
+          def mtlo(rs) = r_type(0x13, rs: rs, fills_slot: false)
 
           SIGNED_IMMEDIATES.each do |op, opcode|
             class_eval("def #{op}(rt, rs, number) = emit_immediate(:#{op}, #{opcode}, rt, rs, number, -0x8000..0x7FFF)",
@@ -267,16 +269,18 @@ module VBlank
           def b(target, &) = beq(:zero, :zero, target, &)
 
           def j(target, &slot) = jump(0x02, target, slot)
-          def jal(target, &slot) = jump(0x03, target, slot)
+          def jal(target, &slot) = jump(0x03, target, slot, links: true)
 
           def jr(rs, delay: :nop, &slot)
-            r_type(0x08, rs: rs)
-            delay_slot(slot) unless delay == :none
+            filler = take_slot_filler([rs]) unless slot || delay == :none
+            r_type(0x08, rs: rs, fills_slot: false)
+            fill_delay_slot(filler, slot) unless delay == :none
           end
 
           def jalr(rs, delay: :nop, &slot)
-            r_type(0x09, rs: rs, rd: :ra)
-            delay_slot(slot) unless delay == :none
+            filler = take_slot_filler([rs], links: true) unless slot || delay == :none
+            r_type(0x09, rs: rs, rd: :ra, fills_slot: false)
+            fill_delay_slot(filler, slot) unless delay == :none
           end
 
           # --- the system ---
@@ -306,7 +310,7 @@ module VBlank
 
           def emit_multiply_divide(function, rs, rt)
             emit_word(0) while @since_hi_lo < 2
-            r_type(function, rs: rs, rt: rt)
+            r_type(function, rs: rs, rt: rt, fills_slot: false)
           end
 
           def emit_immediate(op, opcode, rt, rs, number, range)
@@ -317,7 +321,7 @@ module VBlank
 
           def emit_load(op, opcode, rt, distance, base)
             refuse_distance!(op, distance)
-            i_type(opcode, rs: base, rt: rt, immediate: distance, writes: rt)
+            i_type(opcode, rs: base, rt: rt, immediate: distance, writes: rt, fills_slot: false)
             @loaded = register(rt)
           end
 
@@ -329,9 +333,56 @@ module VBlank
           # A branch: +word+ with the two registers it compares (rs, then rt) put in, its distance filled in
           # by the Linker, and its delay slot.
           def emit_branch(word, (rs, rt), target, slot)
+            filler = take_slot_filler([rs, rt]) unless slot
             fixup(:branch16, target)
             emit(word | (register(rs) << 21) | (register(rt) << 16), reads: [rs, rt])
-            delay_slot(slot)
+            fill_delay_slot(filler, slot)
+          end
+
+          # The last instruction written, while a branch written next could take it for its slot: where
+          # it is, its word, the registers it reads and the one it writes (by number), and the register
+          # the instruction before it loaded.
+          SlotFiller = Data.define(:at, :word, :reads, :writes, :after_load)
+
+          # THE INSTRUCTION BEFORE A BRANCH, FOR ITS SLOT. The slot runs whether the branch is taken or
+          # not, and before whatever the branch goes to, so the instruction written just before a branch
+          # can be moved into the slot instead of a NOP: it still runs once, before everything after.
+          # What changes is that the branch now decides BEFORE that instruction runs, and a few other
+          # things stand where they stood, so it is left alone, and the slot is a NOP, when:
+          #
+          # - it writes a register the branch reads (+reads+): the branch would test the old value;
+          # - a label stands between the two: code jumping there runs the branch alone;
+          # - the Linker fills it in (half of an address): the hole is noted where it stands;
+          # - it is a load, a read of HI or LO, a multiply or a divide, which are counted from where
+          #   they stand (the two delays at the top of this file), or itself in a slot;
+          # - the instruction before it loaded a register the branch reads: the branch would then
+          #   come straight after the load;
+          # - the branch is a call (+links+) and it reads or writes ra: a call writes the way back
+          #   into ra as it jumps, before the slot runs.
+          #
+          # A label naming the instruction itself is fine: it then names the branch, and code jumping
+          # there runs the branch and then the slot, the same two instructions.
+          #
+          # Gives back the instruction's word, taken off the end of the section, or nil.
+          def take_slot_filler(reads, links: false)
+            filler = @slot_filler
+            return unless filler && filler.at == here - 4 && !labelled_here?
+            return if @fixups.any? { |fixup| fixup.offset >= filler.at }
+
+            read = reads.map { |name| register(name) } - [register(:zero)]
+            return if read.include?(filler.writes) || read.include?(filler.after_load)
+            return if links && (filler.writes == register(:ra) || filler.reads.include?(register(:ra)))
+
+            @bytes = @bytes.byteslice(0, filler.at)
+            @since_hi_lo -= 1
+            @slot_filler = nil
+            filler.word
+          end
+
+          # The slot after a branch: +filler+, the word #take_slot_filler gave, or what the block emits,
+          # or a NOP.
+          def fill_delay_slot(filler, slot)
+            filler ? emit_word(filler) : delay_slot(slot)
           end
 
           def register(name)
@@ -342,25 +393,29 @@ module VBlank
             raise Error, "#{op} reaches -32768 to 32767 bytes, not #{distance}" unless distance.between?(-0x8000, 0x7FFF)
           end
 
-          def r_type(function, rs: :zero, rt: :zero, rd: :zero, shift: 0)
+          # +fills_slot+ is whether a branch written next can take this instruction for its slot
+          # (#take_slot_filler).
+          def r_type(function, rs: :zero, rt: :zero, rd: :zero, shift: 0, fills_slot: true)
             emit((register(rs) << 21) | (register(rt) << 16) | (register(rd) << 11) | (shift << 6) | function,
-                 reads: [rs, rt])
+                 reads: [rs, rt], writes: rd, fills_slot: fills_slot)
           end
 
-          def i_type(opcode, rs: :zero, rt: :zero, immediate: 0, writes: nil, reads: [rs])
+          def i_type(opcode, rs: :zero, rt: :zero, immediate: 0, writes: nil, reads: [rs], fills_slot: true)
             reads = [rs] if writes
-            emit((opcode << 26) | (register(rs) << 21) | (register(rt) << 16) | (immediate & 0xFFFF), reads: reads)
+            emit((opcode << 26) | (register(rs) << 21) | (register(rt) << 16) | (immediate & 0xFFFF), reads: reads,
+                                                                                                        writes: writes, fills_slot: fills_slot)
           end
 
           def read_hi_lo(function, rd)
-            r_type(function, rd: rd)
+            r_type(function, rd: rd, fills_slot: false)
             @since_hi_lo = 0
           end
 
-          def jump(opcode, target, slot)
+          def jump(opcode, target, slot, links: false)
+            filler = take_slot_filler([], links: links) unless slot
             fixup(:jump26, target)
             emit(opcode << 26)
-            delay_slot(slot)
+            fill_delay_slot(filler, slot)
           end
 
           # The instruction the block emits, or a NOP, in the slot after a branch. The slot is the
@@ -372,18 +427,29 @@ module VBlank
             raise Error, "a delay slot holds one instruction, and the block gave #{(here - start) / 4}" unless here - start == 4
             # A load in the slot would arrive late at the branch's target too, where no NOP can be put.
             raise Error, "a load cannot go in a delay slot" if @loaded
+            @slot_filler = nil # the slot's instruction is this branch's
           end
 
-          # Puts a NOP after a load when the instruction to come reads what it loaded.
-          def emit(word, reads: [])
+          # Puts a NOP after a load when the instruction to come reads what it loaded. +writes+ is the
+          # register the instruction writes, and +fills_slot+ whether a branch written next can take it
+          # for its slot (#take_slot_filler), which is then told what it reads and writes and the
+          # register the instruction before it loaded.
+          def emit(word, reads: [], writes: nil, fills_slot: false)
             emit_word(0) if @loaded && reads.any? { |name| name != :zero && register(name) == @loaded }
+            after_load = @loaded
+            at = here
             emit_word(word)
+            return unless fills_slot
+
+            @slot_filler = SlotFiller.new(at: at, word: word, reads: reads.map { |name| register(name) },
+                                          writes: writes && register(writes), after_load: after_load)
           end
 
           def emit_nop_after_load = (emit_word(0) if @loaded)
 
           def emit_word(word)
             @loaded = nil
+            @slot_filler = nil
             @since_hi_lo += 1
             @bytes << [word & 0xFFFF_FFFF].pack("V")
           end
