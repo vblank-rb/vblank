@@ -100,7 +100,7 @@ class TestJSPacmanPortShell < Minitest::Test
       out = open_shell(folder, ["settle", "text said", "play 3", "picker", *CHOOSE_LOAD_ROM, "choose #{copy_of_the_cartridge(folder)}",
                                 *AFTER_CHOOSING, "play 2"], version: "2")
 
-      assert_match "not the data pack this build reads", out.grep(/\Atext said/).first
+      refute_match(/data pack/, out.grep(/\Atext said/).first.to_s, "a pack kept by an older build was told to the player as a refusal")
       assert_includes out, "picker 0"
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end

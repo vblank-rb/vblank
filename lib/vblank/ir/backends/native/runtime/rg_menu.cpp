@@ -189,6 +189,26 @@ void settings_problems_window() {
   if (!open) rg_window_mark_problems_seen();
 }
 
+// What a shell tells the player, over the picture until it is answered (rg_window_tell). It is
+// one more window drawn each frame, so the shell's menu plays on under it and nothing waits for
+// its button: a box of the system's own stops the program until it is answered, and one shown
+// before the program had read an event could not be answered at all.
+void shell_told_window() {
+  if (!rg_window_told()[0]) return;
+  ImGuiViewport *viewport = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(ImVec2(viewport->GetCenter().x, viewport->Pos.y + viewport->Size.y - 12.0f), ImGuiCond_Always,
+                          ImVec2(0.5f, 1.0f));
+  ImGui::SetNextWindowSize(ImVec2(viewport->Size.x * 0.9f, 0.0f), ImGuiCond_Always);
+  bool open = true;
+  if (ImGui::Begin("Load ROM", &open,
+                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove)) {
+    ImGui::TextWrapped("%s", rg_window_told());
+    if (ImGui::Button("OK")) open = false;
+  }
+  ImGui::End();
+  if (!open) rg_window_clear_told();
+}
+
 }  // namespace
 
 bool rg_menu_start(SDL_Window *window, SDL_Renderer *renderer) {
@@ -240,6 +260,7 @@ void rg_menu_draw(void) {
   ImGui::NewFrame();
 
   settings_problems_window();
+  shell_told_window();
   controls_window();
   variables_window();
 

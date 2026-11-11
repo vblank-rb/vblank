@@ -74,7 +74,7 @@ module VBlankScript
                        refused: lambda { |words|
                          warn words
                          window.notice(words)
-                       }, play_game: play_game)
+                       }, kept_pack_refused: ->(words) { warn words }, play_game: play_game)
   end
 end
 

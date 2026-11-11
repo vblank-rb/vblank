@@ -243,6 +243,11 @@ const char *rg_window_problems(void) { return problems_read; }
 int rg_window_problems_unseen(void) { return problems_unseen; }
 void rg_window_mark_problems_seen(void) { problems_unseen = 0; }
 
+static char told[1024];
+void rg_window_tell(const char *words) { snprintf(told, sizeof told, "%s", words); }
+const char *rg_window_told(void) { return told; }
+void rg_window_clear_told(void) { told[0] = '\0'; }
+
 /* --- pause, step, fast forward --- */
 
 void rg_window_pause(void) { paused = 1; }

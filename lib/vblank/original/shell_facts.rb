@@ -42,8 +42,9 @@ module VBlank
       # handed back as its start file (#menu_start_file) the next time it plays.
       Menu = Data.define(:choice_variable, :load_rom, :settings, :line_variable)
 
-      # The menu's start file for a cursor on +line+: that one byte.
-      def self.menu_start_file(line) = [line].pack("C")
+      # The menu's start file for a cursor on +line+: that byte, then 1 when the pack kept in the
+      # game's folder is one this build does not read (+read_again+), which the menu then says.
+      def self.menu_start_file(line, read_again: false) = [line, read_again ? 1 : 0].pack("C*")
 
       # The names in an unpacking a shell reads its answer from (Original::Unpacking): the list of
       # the pack's bytes, and the variables set when it gets to its end and when something went wrong.
@@ -52,9 +53,17 @@ module VBlank
       # The shell's sentences: for a kept pack it does not read (+kept_pack_refused+, {path} and
       # {refusal}), an unpacking that stopped part way (+unpacking_stopped+, {named} for the file and
       # {fault}), and a file that cannot be read (+unreadable+, {named} and {why}).
+      #
+      # +kept_pack_refused+ is for whoever made the build, where a program's complaints go (a
+      # terminal, a log): it names a path and sizes. A player is never shown it, since a pack an
+      # older build kept is no fault of theirs: the menu says the data must be read again
+      # (Shell.read_again_sentence).
       Words = Data.define(:kept_pack_refused, :unpacking_stopped, :unreadable)
 
-      def self.kept_pack_refused_message(title, path, refusal) = "#{path}: #{refusal} Load your copy of #{title} again to make it."
+      # +original_title+ is the title of the original the player owns, never this program's.
+      def self.kept_pack_refused_message(original_title, path, refusal)
+        "#{path}: #{refusal} Load your copy of #{original_title} again to make it."
+      end
 
       def self.unpacking_stopped_message(named, fault)
         "#{named} is a copy this game reads, and its unpacking stopped part way (fault #{fault}). This is a fault in " \
@@ -63,9 +72,9 @@ module VBlank
 
       def self.unreadable_message(named, why) = "#{named} cannot be read (#{why})."
 
-      # The Words of a game called +title+.
-      def self.words_for(title)
-        Words.new(kept_pack_refused: kept_pack_refused_message(title, "{path}", "{refusal}"),
+      # The Words of a game whose original is called +original_title+.
+      def self.words_for(original_title)
+        Words.new(kept_pack_refused: kept_pack_refused_message(original_title, "{path}", "{refusal}"),
                   unpacking_stopped: unpacking_stopped_message("{named}", "{fault}"),
                   unreadable: unreadable_message("{named}", "{why}"))
       end

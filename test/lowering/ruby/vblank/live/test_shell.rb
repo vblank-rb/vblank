@@ -46,20 +46,26 @@ class TestShell < Minitest::Test
   end
 
   # The shell played once: the menu with +buttons+ held, LOAD ROM picking +picked+ (a path, or nil
-  # for nothing), and the game, once it plays, for GAME_PASSES passes. What happened, by name.
-  Played = Data.define(:game_pictures, :refusals, :times_asked)
+  # for nothing), and the game, once it plays, for GAME_PASSES passes. What happened, by name:
+  # +refusals+ are what the player was told, +kept_pack_refusals+ what whoever made the build was
+  # told of a kept pack not read, and +menu_pictures+ every picture before the game's.
+  Played = Data.define(:game_pictures, :refusals, :times_asked, :kept_pack_refusals, :menu_pictures)
 
   private def play_shell(shell, folder, picked:, buttons: CHOOSE_LOAD_ROM, menu_frames: 400)
     refusals = []
+    kept_pack_refusals = []
     asked = 0
     game_device = Headless.new(frames: GAME_PASSES)
-    shell.play(Headless.new(frames: menu_frames, buttons: buttons), folder_path: File.join(folder, "kept"),
-                                                                    choose_copy: lambda {
-                                                                      asked += 1
-                                                                      picked
-                                                                    }, refused: ->(words) { refusals << words },
-                                                                    play_game: ->(game) { Session.new(game: game).play(game_device) })
-    Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
+    menu_device = Headless.new(frames: menu_frames, buttons: buttons)
+    shell.play(menu_device, folder_path: File.join(folder, "kept"),
+                            choose_copy: lambda {
+                              asked += 1
+                              picked
+                            }, refused: ->(words) { refusals << words },
+                            kept_pack_refused: ->(words) { kept_pack_refusals << words },
+                            play_game: ->(game) { Session.new(game: game).play(game_device) })
+    Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked,
+               kept_pack_refusals: kept_pack_refusals, menu_pictures: menu_device.pictures)
   end
 
   private def kept_pack(folder) = File.binread(File.join(folder, "kept", PACK_FILE))
@@ -124,17 +130,57 @@ class TestShell < Minitest::Test
     end
   end
 
-  # A pack names the build of the game it was made for, so a new build refuses the pack an older
-  # one kept, asks for the copy again, and keeps the new build's pack.
+  # A PACK AN OLDER BUILD KEPT IS ROUTINE: a port grows a part at a time, and each part changes
+  # its pack. A new build does not read it, tells the player nothing went wrong (no refusal), says
+  # on its menu that the data must be read again from the copy of the original, by the original's
+  # own title, asks for the copy as on a first start, and writes its pack over the old one.
   def test_a_new_build_of_the_port_asks_for_the_copy_again
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
       played = play_shell(shell(folder, version: "2"), folder, picked: copy_at(folder))
 
       assert_equal 1, played.times_asked
-      assert_match "not the data pack this build reads", played.refusals.first
+      assert_empty played.refusals, "a pack kept by an older build was told to the player as a refusal"
+      assert_match "not the data pack this build reads", played.kept_pack_refusals.first
+      assert_match "your copy of Made Up", played.kept_pack_refusals.first
+      assert_equal [GRAY], colors_on(played.menu_pictures.first, READ_AGAIN_ROWS), "the menu does not say the data must be read again"
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
+  end
+
+  # A kept pack of another size (the port gained a slot) is the same: the menu, and no refusal.
+  def test_a_kept_pack_of_another_size_starts_at_the_menu_and_is_replaced
+    Dir.mktmpdir do |folder|
+      FileUtils.mkdir_p(File.join(folder, "kept"))
+      File.binwrite(File.join(folder, "kept", PACK_FILE), all_in_one_pack.byteslice(0, 100))
+      played = play_shell(shell(folder), folder, picked: copy_at(folder))
+
+      assert_empty played.refusals
+      assert_equal [GRAY], colors_on(played.menu_pictures.first, READ_AGAIN_ROWS)
+      assert_equal all_in_one_pictures, played.game_pictures
+      assert_equal all_in_one_pack, kept_pack(folder)
+    end
+  end
+
+  # A first start, with no pack kept, says nothing of reading the data again.
+  def test_a_first_start_does_not_say_the_data_must_be_read_again
+    Dir.mktmpdir do |folder|
+      played = play_shell(shell(folder), folder, picked: copy_at(folder))
+
+      assert_empty colors_on(played.menu_pictures.first, READ_AGAIN_ROWS)
+    end
+  end
+
+  # What the menu says of a pack to read again is the original's title, not this program's, and
+  # fits the screen a row of words at a time.
+  def test_the_menu_names_the_original_the_player_owns
+    sentence = VBlank::Original::Shell.read_again_sentence("The Made Up Original")
+    rows = VBlank::Original::Shell.read_again_rows(sentence.upcase, 120) { |words| words.length * 6 }
+
+    assert_match "Load your copy of The Made Up Original.", sentence
+    assert_equal sentence.upcase, rows.join(" ")
+    assert_operator rows.map(&:length).max, :<=, 20
+    assert_operator rows.size, :>, 1
   end
 
   def test_a_copy_of_the_right_size_that_is_no_release_is_refused
@@ -179,6 +225,8 @@ class TestShell < Minitest::Test
   # white under the cursor, and yellow once it is chosen.
   LOAD_ROM_ROWS = (80...88)
   SETTINGS_ROWS = (92...100)
+  # The rows under the menu's lines, where it says the game's data must be read again.
+  READ_AGAIN_ROWS = (104...160)
   GRAY, WHITE, YELLOW = %i[gray white yellow].map { |name| Color.resolve(name) }
 
   # The colours of the words on +rows+ of +picture+ (a Headless::Picture), black left out.

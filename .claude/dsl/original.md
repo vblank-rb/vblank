@@ -396,14 +396,28 @@ release's unpacking, writes the pack â€” byte for byte the all-in-one build's â€
 as Ruby, the unpacking runs in a Ractor of its own (`Live::BackgroundUnpacking`), so the window keeps
 showing its bar however long the routine works between writes; closing the window then keeps no pack.
 The desktop program does the same with a thread of its own (`play_part_on_thread`, `rg_sdl.c`), and
-the web page with a worker (`rg_shell_unpack_in_worker`, `rg_shell.js`). A
-pack for another `version:` fails the check, so the menu asks again. SETTINGS opens the window's menu.
+the web page with a worker (`rg_shell_unpack_in_worker`, `rg_shell.js`).
+**A pack an older build kept is routine, and is never told as a failure.** A port grows a part at a
+time and each part changes its pack (`version:`, or a slot more), so a player who takes a new build
+starts it over the old build's pack. That pack fails the check, and the shell then starts at its menu as
+on a first start, with one sentence under the menu's lines: "This version must read the game's data
+again. Load your copy of TITLE." (`Original::Shell.read_again_sentence`), where TITLE is the
+**original's** title (`Original::Game`'s `title:`), what the player owns, never the port's own name.
+LOAD ROM writes the new pack over the old one. No box, no path and no byte counts are shown; why the
+pack was not read goes where a program's complaints go (the error stream, the terminal, the browser's
+console) for whoever made the build, and to `Live::Shell#play`'s `kept_pack_refused:`, which the
+shell check listens to. The menu learns it from its start file's second byte.
+**Nothing a shell tells the player stops the program.** A file refused, or an unpacking that
+stopped, is told in words the player can close and the menu plays on under them: the desktop program
+draws its own box over the picture (`rg_window_tell`; a button pressed closes it too), where a box
+of the system's, put up as the program started, could not be answered on a Mac. SETTINGS opens the
+window's menu.
 **The line chosen shows as chosen**, in yellow for a few frames (`Original::Shell::CHOSEN_FRAMES`),
 before the file chooser opens or the settings do, and stays up behind them. **It is one window (one
 device, one canvas) from the menu to the game**: the chooser is that window's own, the unpacking's
 bar is drawn in it, and a chooser closed with nothing picked, or a file refused, shows the menu
-again with its cursor on the line it was left on (the menu's `shell_line`, handed back to it as its
-start file, one byte). The menu sets `shell_choice` to 1 for LOAD ROM and 2 for SETTINGS as it halts.
+again with its cursor on the line it was left on (the menu's `shell_line`, handed back to it as the
+first byte of its start file). The menu sets `shell_choice` to 1 for LOAD ROM and 2 for SETTINGS as it halts.
 The web page (`--format web --shell`) and the desktop program (`--format native --shell`, a folder) do
 the same, each made from `Original::ShellFacts`, every sentence they refuse a file in among them. Every
 release reads one slot list. Worked example: `test/lowering/ruby/vblank/live/test_shell.rb`.

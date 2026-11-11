@@ -192,13 +192,22 @@ static void free_names(char **names, int count) {
 
 /* --- telling the player --- */
 
-/* The window all of this is shown in, for as long as rg_shell_pack_path runs. */
+/* The window all of this is shown in, for as long as rg_shell_pack_path runs, and the file a test
+ * asked to have every box written down in (--shell-told), or NULL. */
 static const rg_shell_window *shell_window;
+static const char *told_file;
 
-/* A refusal, printed, and shown in a box on the window unless +quiet+ (a test's run). */
-static void tell(const char *words, int quiet) {
+/* A refusal, printed, and shown in a box over the window's picture. The box holds nothing up: the
+ * window draws it and the flow goes on, to the menu again, in a test's run as in a player's. */
+static void tell(const char *words) {
   fprintf(stderr, "%s\n", words);
-  if (!quiet) shell_window->tell(words);
+  shell_window->tell(words);
+  if (!told_file) return;
+  SDL_IOStream *told = SDL_IOFromFile(told_file, "ab");
+  if (!told) return;
+  SDL_WriteIO(told, words, strlen(words));
+  SDL_WriteIO(told, "\n", 1);
+  SDL_CloseIO(told);
 }
 
 /* --- the folder and the pack --- */
@@ -255,12 +264,12 @@ static char *part_file(const char *name) {
 }
 
 /* What a part that stopped on a fault left to be told (rg_sdl.c's write_part_fault writes the words
- * beside its answer): told, in a box on the window unless +quiet+, and removed. */
-static void tell_part_fault(const char *result, int quiet) {
+ * beside its answer): told, and removed. */
+static void tell_part_fault(const char *result) {
   char *path = NULL;
   if (SDL_asprintf(&path, "%s.fault", result) < 0) return;
   char *words = SDL_LoadFile(path, NULL);
-  if (words && *words) tell(words, quiet);
+  if (words && *words) tell(words);
   SDL_free(words);
   SDL_RemovePath(path);
   SDL_free(path);
@@ -270,7 +279,7 @@ static void tell_part_fault(const char *result, int quiet) {
  * file (an unpacking's copy, the menu's line), played from the script of buttons in +keys+ where a
  * test names one, and its answer written to +result+; +fast+ for an unpacking. Whether it ended
  * well. The player closing the window ends the program, and the part with it. */
-static int run_part(const char *name, const char *start_file, const char *keys, const char *result, int fast, int quiet) {
+static int run_part(const char *name, const char *start_file, const char *keys, const char *result, int fast) {
   char *exe = part_file(name);
   if (!exe) return 0;
   /* A part that is stopped writes no answer, so the answer of the part before it must not be left
@@ -305,7 +314,7 @@ static int run_part(const char *name, const char *start_file, const char *keys, 
     fprintf(stderr, "%s: the part %s cannot be started (%s)\n", rg_shell_facts->title, exe, SDL_GetError());
   }
   SDL_free(exe);
-  if (!ok) tell_part_fault(result, quiet);
+  if (!ok) tell_part_fault(result);
   /* A part writes its answer beside the file and moves it into place (rg_sdl.c's write_part_result);
    * one stopped as it wrote leaves the half it had written, which goes here. */
   char *writing = NULL;
@@ -387,23 +396,31 @@ static char *file_name_of(const char *path) {
   return copy;
 }
 
-/* Whether the pack kept at +path+ passes the check: 1, or 0, the player told why when a file is there
- * (in a box unless +quiet+). */
-static int kept_pack_passes(const char *path, int quiet) {
+/* What is kept at a pack's path: nothing, a pack this build reads, or a file it does not. */
+typedef enum { NO_PACK_KEPT, KEPT_PACK_READ, KEPT_PACK_NOT_READ } kept_pack;
+
+/* What is kept at +path+.
+ *
+ * A PACK THIS BUILD DOES NOT READ IS NOT TOLD TO THE PLAYER IN A BOX. It is what an older build of
+ * the game kept, which every player who takes a new build has; nothing went wrong and there is
+ * nothing in its path or its size a player can use. Why it was not read goes on the error stream,
+ * for whoever made the build, and the menu says the data must be read again (its start file's
+ * second byte, Original::Shell.menu_program). LOAD ROM then writes the new pack over it. */
+static kept_pack look_for_kept_pack(const char *path) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
   uint8_t *bytes = SDL_LoadFile(path, &size);
-  if (!bytes) return 0;
+  if (!bytes) return NO_PACK_KEPT;
   char refusal[RG_WORDS_ROOM];
   int refused = rg_start_file_refusal(bytes, (int32_t)size, shell->pack_rules, &shell->pack_words, refusal, sizeof refusal);
   SDL_free(bytes);
-  if (!refused) return 1;
+  if (!refused) return KEPT_PACK_READ;
   char words[RG_WORDS_ROOM];
   const char *names[] = {"path", "refusal"};
   const char *values[] = {path, refusal};
   rg_words_fill(words, sizeof words, shell->kept_pack_refused_words, 2, names, values);
-  tell(words, quiet);
-  return 0;
+  fprintf(stderr, "%s\n", words);
+  return KEPT_PACK_NOT_READ;
 }
 
 /* The bytes of the file at +path+ (called +named+), or NULL with why in +words+. */
@@ -491,7 +508,7 @@ static uint8_t *copy_from_folder(const char *path, const char *named, size_t *si
 /* The pack made from the copy at +copy+ (a file, or a folder for a release that is several files,
  * called +named+), read once, checked, and unpacked by its release's part; written to +pack_path+. 1
  * when it is written, else 0, the player told why. */
-static int make_pack(const char *copy, const char *named, const char *pack_path, const char *result, int quiet) {
+static int make_pack(const char *copy, const char *named, const char *pack_path, const char *result) {
   const rg_shell_description *shell = rg_shell_facts;
   size_t size = 0;
   char words[RG_WORDS_ROOM] = "";
@@ -500,7 +517,7 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
   uint8_t *copy_bytes = is_folder(copy) ? copy_from_folder(copy, named, &size, &release, sha1, words)
                                         : copy_from_file(copy, named, &size, &release, sha1, words);
   if (!copy_bytes) {
-    if (*words) tell(words, quiet);
+    if (*words) tell(words);
     return 0;
   }
 
@@ -511,7 +528,7 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
   char *checked = NULL;
   int handed = SDL_asprintf(&checked, "%s.copy", pack_path) >= 0 && SDL_SaveFile(checked, copy_bytes, size);
   SDL_free(copy_bytes);
-  int unpacked = handed && run_part(release->part, checked, NULL, result, 1, quiet);
+  int unpacked = handed && run_part(release->part, checked, NULL, result, 1);
   if (checked) SDL_RemovePath(checked);
   SDL_free(checked);
   if (!unpacked) return 0;
@@ -530,7 +547,7 @@ static int make_pack(const char *copy, const char *named, const char *pack_path,
     const char *names[] = {"named", "fault"};
     const char *values[] = {named, fault_text};
     rg_words_fill(words, sizeof words, shell->unpacking_stopped_words, 2, names, values);
-    tell(words, quiet);
+    tell(words);
     SDL_free(made);
     return 0;
   }
@@ -605,8 +622,9 @@ char *rg_shell_pack_path(const rg_shell_asked *asked, const rg_shell_window *win
     return NULL;
   }
 
-  int quiet = asked->copy != NULL || asked->picks != NULL;
-  if (kept_pack_passes(pack_path, quiet)) {
+  told_file = asked->told;
+  kept_pack kept = look_for_kept_pack(pack_path);
+  if (kept == KEPT_PACK_READ) {
     SDL_free(result);
     return pack_path;
   }
@@ -614,8 +632,9 @@ char *rg_shell_pack_path(const rg_shell_asked *asked, const rg_shell_window *win
   rg_shell_picks picks = {NULL, NULL};
   if (asked->picks) picks.next = picks.lines = SDL_LoadFile(asked->picks, NULL);
   /* SETTINGS opens the window's menu, where the settings are, and plays the menu again under it.
-   * The menu is handed the line its cursor starts on as its start file, one byte, and its answer
-   * says the line it was left on, so a menu played again comes back as it was left. */
+   * The menu is handed the line its cursor starts on as the first byte of its start file, and its
+   * answer says the line it was left on, so a menu played again comes back as it was left. The
+   * second byte is 1 when the pack kept is one this build does not read, which the menu says. */
   int settings_open = 0;
   int asks = 0;
   int32_t line = 0;
@@ -625,8 +644,8 @@ char *rg_shell_pack_path(const rg_shell_asked *asked, const rg_shell_window *win
     int32_t choice = 0;
     size_t answer_size = 0;
     const char *keys = settings_open && asked->settings_keys ? asked->settings_keys : asked->menu_keys;
-    uint8_t start_line = (uint8_t)line;
-    int played = menu_start && SDL_SaveFile(menu_start, &start_line, 1) && run_part(shell->menu_part, menu_start, keys, result, 0, quiet);
+    uint8_t start[2] = {(uint8_t)line, kept == KEPT_PACK_NOT_READ};
+    int played = menu_start && SDL_SaveFile(menu_start, start, sizeof start) && run_part(shell->menu_part, menu_start, keys, result, 0);
     char *answer = played ? SDL_LoadFile(result, &answer_size) : NULL;
     if (!answer || !result_variable(answer, shell->choice_variable, &choice)) {
       SDL_free(answer);
@@ -642,7 +661,7 @@ char *rg_shell_pack_path(const rg_shell_asked *asked, const rg_shell_window *win
     if (!ask_for_copy(asked, &picks, ++asks, &picked)) break;
     if (!picked) continue;
     char *named = file_name_of(picked);
-    int made = named && make_pack(picked, named, pack_path, result, quiet);
+    int made = named && make_pack(picked, named, pack_path, result);
     SDL_free(named);
     SDL_free(picked);
     if (made) {

@@ -58,15 +58,23 @@ module VBlank
       # Plays the shell on +device+ until the player stops it: the game, once there is a pack in
       # +folder_path+ (made here if it is not there yet). +choose_copy+ is called with no arguments
       # when LOAD ROM is chosen and gives back the path of the file picked, or nil when none was;
-      # +refused+ is handed the words for a file refused, or a kept pack that cannot be read;
+      # +refused+ is handed the words for a file refused, or a pack that cannot be written;
       # +open_settings+ is called when SETTINGS is chosen. +play_game+ is handed the game, as a
       # LiveGame holding its pack, and plays it (a Session's #play); its answer is #play's.
-      def play(device, folder_path:, choose_copy:, refused:, open_settings: -> {}, play_game: nil)
+      #
+      # A PACK KEPT BY AN OLDER BUILD IS NOT A REFUSAL. It is what a player who takes a new build
+      # of a port always has, so +refused+ never hears of it: the menu says that the data must be
+      # read again (Original::Shell.menu_program), and LOAD ROM does what it does on a first
+      # start, the new pack written over the old. +kept_pack_refused+ is handed why the kept pack
+      # was not read, a path and sizes among it, for whoever made the build and for a check that
+      # a pack it expects to be read is read (ShellCheck).
+      def play(device, folder_path:, choose_copy:, refused:, open_settings: -> {}, play_game: nil, kept_pack_refused: ->(_words) {})
         play_game ||= ->(game) { Session.new(game: game).play(device) }
-        pack = kept_pack(folder_path, refused)
+        pack = kept_pack(folder_path, kept_pack_refused)
+        read_again = pack.nil? && File.file?(File.join(folder_path, @facts.pack_file))
         line = 0
         until pack
-          chosen = play_menu(device, line) or return nil
+          chosen = play_menu(device, line, read_again) or return nil
           line = chosen.line
           case chosen.choice
           when :load_rom then pack = load_copy(device, folder_path, choose_copy, refused)
@@ -126,9 +134,9 @@ module VBlank
         @facts.pack_for(sha1, outcome.bytes)
       end
 
-      # The pack kept in +folder_path+ when it passes the check, else nil; a file there that does
-      # not is handed to +refused+ (the menu then asks for the copy again).
-      def kept_pack(folder_path, refused)
+      # The pack kept in +folder_path+ when it passes the check, else nil; why a file there does
+      # not is handed to +kept_pack_refused+ (the menu then asks for the copy again).
+      def kept_pack(folder_path, kept_pack_refused)
         path = File.join(folder_path, @facts.pack_file)
         return nil unless File.file?(path)
 
@@ -136,15 +144,17 @@ module VBlank
         refusal = @facts.pack_rules.refusal(bytes)
         return bytes unless refusal
 
-        refused.call(Original::ShellFacts.kept_pack_refused_message(@facts.title, path, refusal))
+        kept_pack_refused.call(Original::ShellFacts.kept_pack_refused_message(@facts.releases_title, path, refusal))
         nil
       end
 
-      # What the player chose on the menu, played with its cursor starting on +line+: a MenuChoice,
-      # or nil when the device stopped it. The menu's last picture, the line shown as chosen, stays
-      # on the device until the next thing is shown.
-      def play_menu(device, line)
-        menu = IR::Backends::Ruby::LiveGame.new(@menu).hand_file(Original::ShellFacts.menu_start_file(line))
+      # What the player chose on the menu, played with its cursor starting on +line+, saying that
+      # the data must be read again when +read_again+: a MenuChoice, or nil when the device
+      # stopped it. The menu's last picture, the line shown as chosen, stays on the device until
+      # the next thing is shown.
+      def play_menu(device, line, read_again)
+        start = Original::ShellFacts.menu_start_file(line, read_again: read_again)
+        menu = IR::Backends::Ruby::LiveGame.new(@menu).hand_file(start)
         rate = Session.new(game: menu, keep_last_picture: false).play(device)
         return nil unless rate.stopped_itself?
 

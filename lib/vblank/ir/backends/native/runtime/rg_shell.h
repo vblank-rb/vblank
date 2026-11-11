@@ -67,7 +67,7 @@ typedef struct {
   const char *bytes_list; /* the unpacking's list of the pack's bytes, and its two variables */
   const char *finished_variable;
   const char *fault_kind_variable;
-  const char *kept_pack_refused_words; /* {path} and {refusal} */
+  const char *kept_pack_refused_words; /* {path} and {refusal}: for the error stream, never the player */
   const char *unpacking_stopped_words; /* {named} and {fault} */
   const char *unreadable_words;        /* {named} and {why} */
 } rg_shell_description;
@@ -86,6 +86,8 @@ typedef struct {
   const char *settings_keys; /* ...and the one once SETTINGS has opened the window's menu */
   const char *pick_pictures; /* the window saved each time the copy is asked for, as it stands then:
                               * this name with ".1.bmp" for the first time, ".2.bmp" for the second */
+  const char *told;          /* a file that gets a line for everything the shell puts in a box for the
+                              * player, in order: a test's way to see what was told, and that nothing was */
 } rg_shell_asked;
 
 /* THE WINDOW A SHELL IS SHOWN IN, which the program that owns it hands over (rg_sdl.c): one window
@@ -103,7 +105,8 @@ typedef struct {
   /* The file the player picks in the system's dialog, or the folder when +folder+, the dialog the
    * window's own; NULL for none. Freed with SDL_free. */
   char *(*pick_copy)(int folder);
-  /* +words+ in a box that is the window's own, until the player closes it. */
+  /* +words+ in a box the window draws over its picture until the player closes it. It comes back
+   * at once: nothing waits for the box, and the menu plays on under it. */
   void (*tell)(const char *words);
   /* The window's menu, where the settings are, opened over the picture. */
   void (*open_settings)(void);

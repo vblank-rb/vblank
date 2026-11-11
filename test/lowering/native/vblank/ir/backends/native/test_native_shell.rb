@@ -133,17 +133,66 @@ class TestNativeShell < Minitest::Test
       File.write(picks, "\n#{wrong_copy_at(dir)}\n#{copy_at(dir)}\n")
       windows = File.join(dir, "windows.txt")
       pictures = File.join(dir, "asked")
+      told = File.join(dir, "told.txt")
       played = play(shell_exe(shell), dir, "picked", env: { "VBLANK_WINDOW_LOG" => windows },
-                                                     options: [*shell_options(dir), "--shell-picks", picks, "--shell-pick-pictures", pictures])
+                                                     options: [*shell_options(dir), "--shell-picks", picks, "--shell-pick-pictures", pictures,
+                                                               "--shell-told", told])
 
+      # The file refused is told in a box the window draws, which nothing waits for: the menu
+      # played on under it, or this run would not have got to its third pick.
+      assert_equal 1, File.readlines(told).size, "the shell put these in a box:\n#{File.read(told)}"
+      assert_match "not a release of Made Up that this game knows", File.read(told)
       assert_equal 1, File.readlines(windows).size, "the shell and its parts opened these windows:\n#{File.read(windows)}"
       assert_equal %w[asked.1.bmp asked.2.bmp asked.3.bmp], Dir.children(dir).grep(/\Aasked\./).sort,
                    "the dialog was not asked for once for each pick"
       (1..3).each { |ask| assert_load_rom_shows_as_chosen(File.binread("#{pictures}.#{ask}.bmp"), "as the dialog opened, time #{ask}") }
+      assert_empty grays_on(File.binread("#{pictures}.1.bmp"), READ_AGAIN_ROWS), "a first start says the data must be read again"
       assert_includes played.complaints, "not a release of Made Up that this game knows"
       refute_empty played.variables, "the game did not play after the copy was picked"
       assert_equal all_in_one_pack, kept_pack(dir)
     end
+  end
+
+  # A PACK AN OLDER BUILD KEPT IS ROUTINE, AND NEVER A BOX. A port grows a part at a time and each
+  # part changes its pack, so a player who takes a new build starts it over the old build's pack: one
+  # of another version, or of another size. The shell was started over one by a person, put up a box
+  # of the system's as it started, and the box could not be answered: the program never came back.
+  #
+  # Started over either pack, the shell tells the player nothing in a box (--shell-told gets a line
+  # for each box, and there is none), shows its menu saying the data must be read again, takes the
+  # copy as on a first start, and writes its own pack over the old one. Why the pack was not read
+  # goes on the error stream, naming the original the player owns and not this program.
+  def test_a_pack_kept_by_an_older_build_starts_at_the_menu_with_no_box
+    Dir.mktmpdir do |dir|
+      shell = Native.new.build_desktop_shell(port_without_copy(dir), File.join(dir, "made-up-shell"), console: :gba, err: nil)
+      { "another version" => all_in_one_pack(version: "0"), "another size" => all_in_one_pack.byteslice(0, 100) }.each do |which, older|
+        FileUtils.rm_rf(File.join(dir, "kept"))
+        FileUtils.mkdir_p(File.join(dir, "kept"))
+        File.binwrite(File.join(dir, "kept", "data.pack"), older)
+        picks = File.join(dir, "picks.txt")
+        File.write(picks, "#{copy_at(dir)}\n")
+        told = File.join(dir, "told-#{which.tr(' ', '-')}.txt")
+        pictures = File.join(dir, "over-#{which.tr(' ', '-')}")
+        played = play(shell_exe(shell), dir, "over", options: [*shell_options(dir), "--shell-picks", picks, "--shell-pick-pictures", pictures,
+                                                                "--shell-told", told])
+
+        refute_path_exists told, "a pack of #{which} was told to the player in a box"
+        assert_says_the_data_must_be_read_again File.binread("#{pictures}.1.bmp"), "over a pack of #{which}"
+        assert_includes played.complaints, "your copy of Made Up", "the error stream does not name the original (#{which})"
+        refute_empty played.variables, "the game did not play after the copy was picked over a pack of #{which}"
+        assert_equal all_in_one_pack, kept_pack(dir), "the pack of #{which} was not replaced"
+      end
+    end
+  end
+
+  # The rows of the window under the menu's lines, where the menu says the data must be read again
+  # (screen rows 108 to 140), in gray: a BMP's gray has its three bytes alike, neither black nor white.
+  READ_AGAIN_ROWS = (324...420)
+
+  private def grays_on(bmp, rows) = pixels_on(bmp, rows).select { |pixel| pixel.bytes.uniq.size == 1 && pixel.getbyte(0).between?(0x30, 0xC0) }
+
+  private def assert_says_the_data_must_be_read_again(bmp, moment)
+    refute_empty grays_on(bmp, READ_AGAIN_ROWS), "the menu does not say the data must be read again #{moment}"
   end
 
   # The menu's two lines in the window's picture (Original::Shell.menu_program draws LOAD ROM at

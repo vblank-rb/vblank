@@ -71,9 +71,17 @@ module VBlank
       # halts and hands back as the menu's start file when it plays the menu again.
       MENU_LINE = :shell_line
 
-      # The menu's start file: one byte, the line the cursor starts on.
+      # The menu's start file (ShellFacts.menu_start_file): the line the cursor starts on, then 1
+      # when the pack kept in the game's folder is one this build does not read, else 0.
       MENU_START = :shell_start
       MENU_START_TITLE = "menu line"
+      MENU_START_BYTES = 2
+
+      # Where the menu says the game's data must be read again: this many rows under its last
+      # line, a row of words every so many rows, with this much room left at each side.
+      READ_AGAIN_GAP = 8
+      READ_AGAIN_STEP = 10
+      READ_AGAIN_MARGIN = 8
 
       # The menu's routine that draws its picture.
       MENU_PICTURE = :shell_menu_picture
@@ -92,7 +100,7 @@ module VBlank
         end
         refuse_without_data_pack!(game, data_pack)
         releases = refuse_unusable_releases!(data_pack.original)
-        new(game: program, menu: menu_program(game.title, program),
+        new(game: program, menu: menu_program(game.title, program, releases.title),
             unpackings: releases.readable.map { |release| data_pack.unpacking(release: release) },
             facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
             original: data_pack.original)
@@ -120,7 +128,7 @@ module VBlank
                                      line_variable: MENU_LINE.to_s),
           unpacking: ShellFacts::UnpackingNames.new(bytes: Unpacking::BYTES.to_s, finished: Unpacking::FINISHED.to_s,
                                                     fault_kind: Unpacking::FAULT_KIND.to_s),
-          words: ShellFacts.words_for(title.to_s)
+          words: ShellFacts.words_for(releases.title.to_s)
         )
       end
 
@@ -156,20 +164,30 @@ module VBlank
       # the settings are shut. So the line under the cursor (MENU_LINE) is read as it halts and
       # handed back as its start file, one byte, and the menu comes back as it was left. A game
       # is handed its data pack the same way (IR::StartFile), so every runtime has the means already.
-      def self.menu_program(title, game)
+      #
+      # A PACK KEPT BY AN OLDER BUILD IS SAID HERE, AND NOWHERE ELSE. A port grows a part at a time,
+      # and each part changes its pack, so a player who takes a new build finds the pack the old
+      # one kept. Nothing went wrong and the player did nothing: the copy is read again, as on the
+      # first start. So the runtime says only that such a pack is there (the start file's second
+      # byte), and the menu says under its lines, in the words of #read_again_rows, that the
+      # data must be read again from the player's copy of +original_title+, the original's own
+      # title: what the player owns, where +title+ is this program's.
+      def self.menu_program(title, game, original_title)
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
         named = title.to_s.upcase.gsub(MENU_LETTERS, "").strip
+        sentence = read_again_sentence(original_title).upcase.gsub(MENU_LETTERS, "")
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: options)
-          maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: 1, checks: [])
+          maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: MENU_START_BYTES, checks: [])
           maker.instance_eval do
             screen :bitmap
-            start = table MENU_START, DSL::StartFileEntries.new(at: 0, count: 1), width: :byte, signed: false
+            start = table MENU_START, DSL::StartFileEntries.new(at: 0, count: MENU_START_BYTES), width: :byte, signed: false
             line = var MENU_LINE, 0
             choice = var MENU_CHOICE, 0
             chosen_for = var :shell_chosen_for, 0 # frames the chosen line has shown as chosen; 0 while none is
             middle = screen_height / 2
             line.store!(start[0].clamp(0, MENU_LINES.length - 1))
+            read_again = Shell.read_again_rows(sentence, screen_width - (2 * READ_AGAIN_MARGIN)) { |words| text_width(words) }
             func(MENU_PICTURE) do
               clear_screen :black
               draw_text named, :center, middle - 40, :white unless named.empty?
@@ -177,6 +195,10 @@ module VBlank
               MENU_LINES.each_with_index do |words, place|
                 draw_text words, :center, middle + (12 * place), %i[gray white], showing: line == place
                 ((chosen_for > 0) & (line == place)).record_branch { draw_text words, :center, middle + (12 * place), :yellow }
+              end
+              (start[1] != 0).record_branch do
+                top = middle + (12 * (MENU_LINES.length - 1)) + text_height + READ_AGAIN_GAP
+                read_again.each_with_index { |words, row| draw_text words, :center, top + (READ_AGAIN_STEP * row), :gray }
               end
             end
             # Drawn before the loop's first wait too, so the menu's first picture is the menu and a
@@ -199,6 +221,24 @@ module VBlank
             finalize_program
           end
           maker.program
+        end
+      end
+
+      # What the menu says when the pack kept in the game's folder is one this build does not
+      # read: what happened, then what to do, naming the original the player owns.
+      def self.read_again_sentence(original_title)
+        "This version must read the game's data again. Load your copy of #{original_title}."
+      end
+
+      # +sentence+ cut into rows of words, each no wider than +width+ by the block's measure of a
+      # row's words (a word wider than that has a row to itself).
+      def self.read_again_rows(sentence, width)
+        sentence.split.each_with_object([]) do |word, rows|
+          if rows.any? && yield("#{rows.last} #{word}") <= width
+            rows[-1] = "#{rows.last} #{word}"
+          else
+            rows << word
+          end
         end
       end
 

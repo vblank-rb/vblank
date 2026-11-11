@@ -106,7 +106,7 @@ class TestPacmanPortShell < Minitest::Test
       second = play_shell(shell(version: "2"), folder, picked: copy_of_the_cartridge(folder))
 
       assert_equal 1, second.times_asked
-      assert_match "not the data pack this build reads", second.refusals.first
+      assert_empty second.refusals, "a pack kept by an older build was told to the player as a refusal"
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
   end

@@ -448,6 +448,26 @@ static _Noreturn void refuse_to_start(const char *what) {
   quit(1);
 }
 
+/* A BOX OF THE SYSTEM'S OWN, for the few things said as the program ends, or as it starts with no
+ * menu to say them in. SDL runs a loop of its own until the box is answered, so nothing else of
+ * the program moves while it is up.
+ *
+ * THE PROGRAM'S EVENTS ARE READ FIRST. A shell once put such a box up as it started, before it
+ * had read one event, and on a Mac the box's button did nothing: the program never came back and
+ * had to be force-quit. A program that has read no event has not finished starting as the system
+ * sees it. So the events waiting are read before the box goes up, and the box is given no window:
+ * by itself it needs nothing of a window that may not be on the screen yet. Nobody has yet seen
+ * one of these answered on a Mac after this; a shell says nothing in one (tell_in_shell_window).
+ *
+ * A run with nobody at it shows none: a script's, or one on SDL's stand-in for a display, where a
+ * box with no window would be a real one on the screen of whoever runs the tests. */
+static void show_system_box(SDL_MessageBoxFlags kind, const char *message) {
+  const char *driver = SDL_GetCurrentVideoDriver();
+  if (scripted || (driver && strcmp(driver, "dummy") == 0)) return;
+  SDL_PumpEvents();
+  SDL_ShowSimpleMessageBox(kind, rg_game_title, message, NULL);
+}
+
 /* The folder a game's save goes in is named for the game, and a folder's name can hold less than
  * a game's title can: a letter, a digit or a space stays, and anything else becomes an
  * underscore. */
@@ -499,7 +519,7 @@ static void read_save_file(void) {
            "starts a new one.",
            save_path, (int)rg_save_size());
   fprintf(stderr, "%s cannot start: %s\n", rg_game_title, message);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, message, window);
+  show_system_box(SDL_MESSAGEBOX_ERROR, message);
   quit(1);
 }
 
@@ -1793,7 +1813,7 @@ static void sdl_fault(const char *format, va_list args) {
   char message[512];
   vsnprintf(message, sizeof message, format, args);
   fprintf(stderr, "%s\n", message);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, message, window);
+  show_system_box(SDL_MESSAGEBOX_ERROR, message);
   quit(1);
 }
 
@@ -2106,6 +2126,7 @@ static void send_part_buttons(SDL_IOStream *to, uint32_t held) {
 /* A menu, a frame at a time: its picture shown, then the window's events, the frame's wait and a
  * pause (the window's menu open over it holds it here), and the buttons sent for its next frame. */
 static void show_menu_part(part_output *output, SDL_IOStream *buttons) {
+  uint32_t held_before = buttons_held();
   while (wait_for_part_picture(output)) {
     present_part_picture();
     write_files_due();
@@ -2114,7 +2135,12 @@ static void show_menu_part(part_output *output, SDL_IOStream *buttons) {
     if (scripted) press_scripted_keys();
     read_and_apply_events();
     hold_while_paused();
-    send_part_buttons(buttons, buttons_held());
+    uint32_t held = buttons_held();
+    /* A button pressed answers what the shell told the player, as its OK does, and does what it
+     * does on the menu as well: a player with no mouse is never left under the box. */
+    if (held & ~held_before) rg_window_clear_told();
+    held_before = held;
+    send_part_buttons(buttons, held);
   }
 }
 
@@ -2191,12 +2217,16 @@ static char *pick_shell_copy(int folder) {
   return picked.path;
 }
 
-/* rg_shell_window's tell: a box that is the window's own. */
+/* rg_shell_window's tell: a box the window draws over its picture (rg_window_tell), which nothing
+ * waits for.
+ *
+ * NOT A BOX OF THE SYSTEM'S. SDL runs a loop of its own until one of those is answered, and one a
+ * shell put up as it started, before the program had read an event, could not be answered on a
+ * Mac: the program never came back (show_system_box). A box drawn here is answered through the
+ * events the window already reads, and a player who never answers it still has the menu under it. */
 static void tell_in_shell_window(const char *words) {
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, rg_game_title, words, window);
-  SDL_ResetKeyboard();
-  read_events();
-  keys_down = keys_tapped = 0;
+  rg_window_tell(words);
+  window_owed_a_drawing = true;
 }
 
 static void open_shell_settings(void) {
@@ -2211,6 +2241,7 @@ static const rg_shell_window window_for_shell = {show_shell_part, pick_shell_cop
  * if the game has none. The last picture a part drew stays up until the game shows its first. */
 static void end_shell_showing(void) {
   showing_shell = false;
+  rg_window_clear_told();
   if (part_texture) SDL_DestroyTexture(part_texture);
   part_texture = NULL;
   if (rg_window_menu_is_open() && !rg_game_has_menu) rg_window_menu_toggle();
@@ -2387,7 +2418,7 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
-  rg_shell_asked shell_asked = {NULL, NULL, NULL, NULL, NULL, NULL};
+  rg_shell_asked shell_asked = {NULL, NULL, NULL, NULL, NULL, NULL, NULL};
   const char *save_file_asked_for = NULL;
   const char *settings_file_asked_for = NULL;
   int usual_settings_asked_for = 0;
@@ -2406,6 +2437,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--shell-settings-keys") == 0 && i + 1 < argc) shell_asked.settings_keys = argv[i + 1];
     if (strcmp(argv[i], "--shell-picks") == 0 && i + 1 < argc) shell_asked.picks = argv[i + 1];
     if (strcmp(argv[i], "--shell-pick-pictures") == 0 && i + 1 < argc) shell_asked.pick_pictures = argv[i + 1];
+    if (strcmp(argv[i], "--shell-told") == 0 && i + 1 < argc) shell_asked.told = argv[i + 1];
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
     if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
 #endif
@@ -2456,7 +2488,7 @@ int main(int argc, char **argv) {
     if (rg_window_problems()[0] && !scripted) {
       char message[1200];
       snprintf(message, sizeof message, "The window cannot use some of the settings file. It uses the rest.\n\n%s", rg_window_problems());
-      SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, rg_game_title, message, window);
+      show_system_box(SDL_MESSAGEBOX_WARNING, message);
     }
   }
   attach_keyboard_pad();

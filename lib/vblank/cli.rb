@@ -1245,7 +1245,7 @@ module VBlank
                                 refused: lambda { |words|
                                   warn words
                                   window.notice(words)
-                                }, play_game: ->(playing) { play_shell_game(window, game, playing) })
+                                }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) })
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise Thor::Error, e.message

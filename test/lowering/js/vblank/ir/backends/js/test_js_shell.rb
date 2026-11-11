@@ -125,20 +125,34 @@ class TestJSShell < Minitest::Test
     end
   end
 
-  # A pack names the build of the game it was made for: a new build refuses the pack an older one
-  # kept, asks for the copy again, and keeps a pack of its own.
+  # A PACK AN OLDER BUILD KEPT IS ROUTINE (a port grows a part at a time): a new build does not
+  # read it, tells the player of no refusal, says on its menu that the data must be read again,
+  # asks for the copy as on a first visit, and keeps a pack of its own over the old one.
+  READ_AGAIN_ROWS = (104...160)
+
   def test_a_new_build_of_the_port_asks_for_the_copy_again
     Dir.mktmpdir do |folder|
       open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play])
-      out = open_shell(folder, ["settle", "text said", "play 3", "picker"], version: "2")
+      out = open_shell(folder, ["settle", "text said", "play 3", "picture", "picker"], version: "2")
 
-      assert_match "not the data pack this build reads", out.grep(/\Atext said/).first
+      refute_match(/data pack/, out.grep(/\Atext said/).first.to_s, "a pack kept by an older build was told to the player as a refusal")
+      assert_nil said(out)
+      assert_equal [GRAY], colors_on(pictures_in(out).last, READ_AGAIN_ROWS), "the menu does not say the data must be read again"
       assert_includes out, "picker 0"
 
       again = open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play], version: "2")
 
       assert_nil said(again)
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
+    end
+  end
+
+  # A first visit, with no pack kept, says nothing of reading the data again.
+  def test_a_first_visit_does_not_say_the_data_must_be_read_again
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "picture"])
+
+      assert_empty colors_on(pictures_in(out).last, READ_AGAIN_ROWS)
     end
   end
 

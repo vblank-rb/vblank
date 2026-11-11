@@ -300,6 +300,14 @@ const char *rg_window_problems(void);
 int rg_window_problems_unseen(void);
 void rg_window_mark_problems_seen(void);
 
+/* WHAT A SHELL TELLS THE PLAYER (a file that is no copy the game reads, an unpacking that
+ * stopped), shown in a box over the picture until the player closes it or presses a button. The
+ * box is drawn by the window with everything else it draws, so nothing waits for it: the shell's
+ * menu plays on under it, and a box nobody answers holds nothing up. Empty for none. */
+void rg_window_tell(const char *words);
+const char *rg_window_told(void);
+void rg_window_clear_told(void);
+
 #ifdef __cplusplus
 }
 #endif

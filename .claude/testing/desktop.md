@@ -58,6 +58,9 @@ window's own. `test_native_shell.rb` stands in for the person:
   opens. A part is handed the shell's environment, so one line is one window for all of them.
 - `--shell-menu-keys` and `--shell-settings-keys` are scripts the menu is played from, read from
   the start each time the menu plays.
+- `--shell-told FILE` gets a line for everything the shell puts in a box for the player, in order.
+  A file that is not there is a run that told nothing: how a test holds that a pack an older build
+  kept is no box. The box is drawn by the window and nothing waits for it, in a test as for a person.
 
 The real dialog cannot be clicked by a test: that it is a sheet on the window is looked at by a
 person.
