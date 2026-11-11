@@ -193,10 +193,13 @@ module VBlank
 
         # --- sound and music ---
         enable_sound: works,
-        define_sound: works("the sound chip plays a square as a short recording of one wave, on a voice of its own."),
+        define_sound: works("the sound chip plays a square as a short recording of one wave, on a voice of its own. " \
+                            "A fade moves the voice's loudness a step at a time, at the same pace as on the Advance."),
         beep: works("see `define_sound`."),
-        noise: works("the sound chip has a noise voice."),
-        wave: works("the waveform is played as a short recording of one wave."),
+        noise: works("the sound chip plays the Advance's noise as a recording, at the pitch the game names. " \
+                     "A metallic noise is a recording of the Advance's rattle."),
+        wave: works("the waveform is played as a short recording of seven waves. Its loudness is one of the same " \
+                    "five steps as on the Advance."),
         stop_wave: works,
         song: works,
         play_song: works,
@@ -264,8 +267,8 @@ module VBlank
         "sprites and tiled backgrounds" => %i[sprite tiles background status_bar canvas tile_pictures sprite_tiles
                                               layers layer draw_in_order hide_sprites picture_groups colors recolor
                                               color_walk],
-        "sound" => %i[enable_sound define_sound beep noise wave stop_wave song play_song stop_music hold_music
-                      release_music music_volume fade_music_in fade_music_out songs sound_effects sample instrument],
+        "sound" => %i[song play_song stop_music hold_music release_music music_volume fade_music_in fade_music_out songs
+                      sound_effects sample instrument],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 

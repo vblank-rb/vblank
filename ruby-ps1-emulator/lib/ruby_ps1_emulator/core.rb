@@ -8,7 +8,8 @@ module RubyPS1Emulator
   # ONE PLAYSTATION, PLAYED A FRAME AT A TIME with nobody watching: a program (a PS-X EXE) loaded into
   # Beetle PSX (a libretro core, see CoreLibrary), its buttons set from Ruby, and everything a test wants
   # to read back handed over as plain bytes — main RAM, video RAM and the picture shown in it, the
-  # graphics chip's display settings, the scratchpad and the processor's registers — and where the
+  # graphics chip's display settings, the scratchpad, the processor's registers, the sound chip's
+  # registers and memory, and the sound it made — and where the
   # processor's time went, by address, and how long the graphics chip spent drawing, for a profiler.
   #
   #   core = RubyPS1Emulator::Core.new("game.exe")
@@ -44,6 +45,8 @@ module RubyPS1Emulator
     GPU_STATE = 0x8002
     SCRATCHPAD = 0x8003
     CPU_REGISTERS = 0x8004
+    SPU_REGISTERS = 0x8005
+    SOUND_RAM = 0x8006
     PROCESSOR_TIME = 0x8007
     GPU_BUSY = 0x8008
 
@@ -105,6 +108,7 @@ module RubyPS1Emulator
       @buttons = Array.new(2) { [] }
       @frames = 0
       @sound_frames = 0
+      @audio = []
       @kept = [] # what the core holds a pointer to, kept from the garbage collector
       load_library
       @quiet_log = quiet_log
@@ -183,6 +187,27 @@ module RubyPS1Emulator
     # The processor's registers by name (REGISTER_NAMES): the 32 general ones, LO, HI and the
     # program counter.
     def registers = REGISTER_NAMES.zip(memory(CPU_REGISTERS).unpack("L<*")).to_h
+
+    # --- the sound ---
+
+    # THE SOUND CHIP'S REGISTERS AS THE PROGRAM LAST WROTE THEM: 256 halfwords from 1F801C00h, by their
+    # distance from there in bytes (a voice's are 10h apart from 0, the chip's own from 180h). What a
+    # register reads back on the console is not always what was written (key on and key off read as
+    # nought, a voice's envelope as where it has got to), so these are kept as written, which is what a
+    # check of the program's writes wants.
+    def spu_registers = memory(SPU_REGISTERS).unpack("v*").each_with_index.to_h { |value, i| [i * 2, value] }
+
+    # Sound RAM, all 512K of it, as bytes: the ADPCM blocks the program put there.
+    def sound_ram = memory(SOUND_RAM)
+
+    # The sound made since this was last asked: left and right in turn, each a signed 16-bit sample, at
+    # 44100 pairs a second. What is not asked for piles up, so a reader that plays many frames asks
+    # after each.
+    def take_audio
+      samples = @audio
+      @audio = []
+      samples
+    end
 
     # --- the time ---
 
@@ -277,8 +302,9 @@ module RubyPS1Emulator
         retro_set_video_refresh: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
                                                              Fiddle::TYPE_SIZE_T]) { nil },
         retro_set_audio_sample: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]) { nil },
-        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) do |_data, frames|
+        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) do |data, frames|
           @sound_frames += frames
+          @audio.concat(Fiddle::Pointer.new(data.to_i, frames * 4)[0, frames * 4].unpack("s<*"))
           frames
         end,
         retro_set_input_poll: closure(Fiddle::TYPE_VOID, []) { nil },

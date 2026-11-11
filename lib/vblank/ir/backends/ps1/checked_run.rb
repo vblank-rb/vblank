@@ -38,6 +38,28 @@ module VBlank
 
           def prepare_interpreter(interpreter) = interpreter.fill_faces_with(@faces)
 
+          # THE SOUND LOG AND THE SOUND CHIP ITSELF, past the moments: every entry of the log, and the first
+          # time the game was found waiting with a register of the chip holding something other than what
+          # the interpreter's log says it must, as far as the entries the program had logged then
+          # (SPUWrites.after). The log agreeing is not enough: a write dropped on the way or sent to the wrong
+          # register would leave the log right and the sound wrong.
+          def further_difference(_program, _before)
+            self.class.sounds_difference(@interpreter_sounds, audio_played) || spu_difference
+          end
+
+          def spu_difference
+            memory = rom.built.sound_memory or return nil
+            logged_entries = audio_played.take(@interpreter_sounds.size)
+            spu_reads.each_with_index do |(logged, registers), i|
+              wrong = SPUWrites.after(logged_entries.take(logged), memory).filter_map do |register, value|
+                got = registers.fetch(register)
+                format("register %<register>03Xh holds %<got>04Xh, the log says %<value>04Xh", register: register, got: got, value: value) if got != value
+              end
+              return "the wait at the end of pass #{i + 1}: the sound chip: #{wrong.join(', ')}" unless wrong.empty?
+            end
+            nil
+          end
+
           # Reference#fill_faces_with's filler: one face as the chip fills it.
           class FacesByChip
             def initialize(polygon_fill)

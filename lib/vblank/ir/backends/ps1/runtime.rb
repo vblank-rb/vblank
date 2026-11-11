@@ -7,6 +7,7 @@ require_relative "runtime/pads"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
 require_relative "runtime/faces"
+require_relative "runtime/sound"
 
 module VBlank
   module IR
@@ -14,7 +15,8 @@ module VBlank
       class PS1
         # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
-        # (Frame, Pads), the lists (Lists), the painted screen (Paint), and the faces of a place (Faces).
+        # (Frame, Pads), the lists (Lists), the painted screen (Paint), the faces of a place (Faces), and
+        # the sound chip (Sound).
         #
         # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
         # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
@@ -28,28 +30,31 @@ module VBlank
           module_function
 
           # The runtime's own places in RAM, asked for before the game's; Faces's only for a game that
-          # fills faces (+faces+).
-          def reserve(memory, faces:)
+          # fills faces (+faces+), and Sound's for one that makes sound (+sound+).
+          def reserve(memory, faces:, sound: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
+            Sound.reserve(memory) if sound
           end
 
           # The runtime's sections: the entry point, then everything else. +main+ is the label of the
           # game's main routine; +frame_begins+ the label of the game's routine run at each frame
           # boundary (its timers moving on), or nil for none. +faces+ is whether the game fills the
-          # faces of a place, so carries Faces and its table.
-          def sections(memory, main:, frame_begins: nil, faces: false)
+          # faces of a place, so carries Faces and its table; +sound+ whether it makes sound, so carries
+          # Sound, its loops in sound memory first copied there (the game's section "sound_memory").
+          def sections(memory, main:, frame_begins: nil, faces: false, sound: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
             Int32.emit(asm)
-            Frame.emit(asm, memory)
+            Frame.emit(asm, memory, sound: sound)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
             Faces.emit(asm, memory) if faces
-            emit_start(asm)
+            Sound.emit(asm, memory) if sound
+            emit_start(asm, sound: sound)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
           end
@@ -60,8 +65,9 @@ module VBlank
 
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place, then its number, a word each, and a place of nought after
-          # the last), its lists' headers, its pictures in video RAM, and the whole screen to draw on.
-          def emit_start(asm)
+          # the last), its lists' headers, its pictures in video RAM, its loops in sound memory (+sound+),
+          # and the whole screen to draw on.
+          def emit_start(asm, sound: false)
             asm.label("rt_start")
             asm.addiu(:sp, :sp, -4)
             asm.sw(:ra, 0, :sp)
@@ -75,6 +81,7 @@ module VBlank
             asm.label("rt_start_lists")
             asm.jal("rt_lists_start")
             asm.jal("rt_paint_upload")
+            asm.jal("rt_sound_upload") if sound
             asm.jal("rt_paint_start")
             asm.lw(:ra, 0, :sp)
             asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }

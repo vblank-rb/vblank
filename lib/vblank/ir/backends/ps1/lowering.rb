@@ -48,7 +48,7 @@ module VBlank
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
             timer_start timer_stop on_timer show_light_now rumble
-          ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS +
+          ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
@@ -84,6 +84,7 @@ module VBlank
             when :rumble then emit_nothing(node)
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
             when *Faces::STATEMENT_KINDS then emit_faces_statement(node)
+            when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -139,8 +140,8 @@ module VBlank
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group pixels_overlap],
-                                                    "sound" => %i[enable_sound beep noise wave stop_wave play_song stop_music
-                                                                  hold_music play_from_list play_sound_effect play_sample stop_sample],
+                                                    "sound" => %i[play_song stop_music hold_music play_from_list play_sound_effect
+                                                                  play_sample stop_sample],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]
                                                   })
@@ -196,6 +197,7 @@ module VBlank
 
           include Paint
           include Faces
+          include Sound
 
           def initialize(program, memory:, cache: BuildCache.for(PS1, program))
             @program = program
@@ -218,6 +220,7 @@ module VBlank
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
+            prepare_sound
           end
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
@@ -251,7 +254,7 @@ module VBlank
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             # The pictures are known once every routine is made, so their tables come last.
-            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections]
+            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections, *sound_memory_sections]
           end
 
           private

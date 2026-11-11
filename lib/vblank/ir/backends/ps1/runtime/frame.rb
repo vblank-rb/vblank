@@ -109,11 +109,12 @@ module VBlank
             end
 
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
-            # stopping and going wrong.
-            def emit(asm, memory)
+            # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
+            # rt_sound_frame.
+            def emit(asm, memory, sound: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              emit_wait(asm, at)
+              emit_wait(asm, at, sound)
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
               emit_stopping(asm, at)
@@ -168,7 +169,7 @@ module VBlank
             # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
             # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at)
+            def emit_wait(asm, at, sound)
               asm.label("rt_wait_vblank")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
@@ -191,6 +192,7 @@ module VBlank
               asm.jal("rt_pad_await")
               asm.jal("rt_read_buttons")
               asm.sw(:zero, at.call(WAITING), :gp)
+              asm.jal("rt_sound_frame") if sound # the fades of the frames the pass took, and its voices started (Sound)
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
 

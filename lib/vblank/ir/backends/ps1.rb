@@ -17,11 +17,15 @@ require_relative "ps1/r3000"
 require_relative "ps1/linker"
 require_relative "ps1/memory"
 require_relative "ps1/face_pieces" # what the runtime cuts a face of a place into, before the runtime that cuts it
+require_relative "ps1/adpcm"
+require_relative "ps1/sound_memory"
+require_relative "ps1/spu_writes" # what each sound is on the sound chip, before the runtime that writes it
 require_relative "ps1/runtime"
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
 require_relative "ps1/lowering/paint"
 require_relative "ps1/lowering/faces"
+require_relative "ps1/lowering/sound"
 require_relative "ps1/lowering"
 require_relative "ps1/headless_run"
 require_relative "ps1/polygon_fill" # the chip's fill of a triangle, the answer key the checked run draws faces with
@@ -43,7 +47,7 @@ module VBlank
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
       # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), and
       # the places drawn on it in 3D, each face cut by the processor and filled by the graphics chip
-      # (Runtime::Faces).
+      # (Runtime::Faces), and its beeps, noise and waveforms on the sound chip (Runtime::Sound).
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
@@ -52,8 +56,12 @@ module VBlank
         # slot, its name]), where the runtime keeps how the run stands (Runtime::Frame's names), where
         # every label of the code went, and the program it was built from. +bytes+ gives what the program's
         # sections come to (ByteCounts), and +routines+ where each of the game's routines went
-        # (GameRoutine), for a profile naming where a frame's time went.
-        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines) do
+        # (GameRoutine), for a profile naming where a frame's time went. +sound_entries+ is every entry
+        # of the interpreter's sound log by the number the program's own log keeps it as (empty for a game
+        # that makes no sound), and +sound_memory+ the loops it put in the sound chip's memory
+        # (SoundMemory, or nil), which the writes for those entries name.
+        Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines, :sound_entries,
+                             :sound_memory) do
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
@@ -71,17 +79,19 @@ module VBlank
         # +program+ as a PS-X EXE (Cartridge::PS1EXE), carrying its Places.
         def build(program, title: "VBLANK", cache: BuildCache.for(PS1, program))
           memory = Memory.new
-          Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face })
+          sound = Lowering::Sound.sounds?(program)
+          Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
-                                             faces: lowering.fills_faces?)
+                                             faces: lowering.fills_faces?, sound: sound)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, bytes: byte_counts(linked),
-                             routines: game_routines(lowering, linked))
+                             routines: game_routines(lowering, linked), sound_entries: lowering.sound_entries,
+                             sound_memory: lowering.sound_memory)
           Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), load_at: memory.program_at,
                                               built: built)
         end

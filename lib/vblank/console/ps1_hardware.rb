@@ -82,6 +82,39 @@ module VBlank
       JOY_BAUD = 0x1F80_104E
       SPU_MAIN_VOLUME = 0x1F80_1D80
       SPU_CONTROL = 0x1F80_1DAA
+
+      # --- the sound chip (SPU), its registers 16 bits each from SPU (psx-spx, "Sound Processing Unit") ---
+      SPU = 0x1F80_1C00
+      # A voice's registers, 10h apart, from SPU + voice * 10h:
+      SPU_VOICE_BYTES = 0x10
+      SPU_VOLUME_LEFT = 0x0 # Bit 15 clear: a fixed volume, half the loudness in bits 0-14
+      SPU_VOLUME_RIGHT = 0x2
+      SPU_PITCH = 0x4 # How fast it reads its sound: 1000h is 44100 samples a second
+      SPU_START = 0x6 # Where its sound starts in sound memory, counted in 8-byte steps
+      SPU_ADSR_LOW = 0x8 # Its envelope: attack, decay and sustain level
+      SPU_ADSR_HIGH = 0xA # ...sustain and release
+      # The chip's own, as distances from SPU:
+      SPU_KEY_ON = 0x188 # Voices 0-15 started, a bit each (voices 16-23 at 18Ah)
+      SPU_KEY_OFF = 0x18C # Voices 0-15 let go, a bit each (16-23 at 18Eh)
+      SPU_TRANSFER_ADDRESS = 0x1A6 # Where in sound memory the next written halfword goes, in 8-byte steps
+      SPU_TRANSFER_FIFO = 0x1A8 # Halfwords for sound memory, 32 at a time
+      SPU_CONTROL_AT = 0x1AA
+      SPU_RAM_CONTROL = 0x1AC # 0004h before sound memory is reached, as psx-spx says
+      SPU_STATUS = 0x1AE
+      # SPU_CONTROL's bits: the chip on, its sound let out, and how sound memory is reached.
+      SPU_ON = 0x8000
+      SPU_UNMUTED = 0x4000
+      SPU_MANUAL_WRITE = 0x0010
+      SPU_TRANSFER_MODE = 0x0030
+      SPU_RAM_CONTROL_NORMAL = 0x0004
+      # SPU_STATUS's bit: the chip still busy with a transfer.
+      SPU_TRANSFER_BUSY = 0x0400
+      # The loudest the main volume, a fixed volume of the same shape as a voice's.
+      SPU_MAIN_LOUDEST = 0x3FFF
+      # The first byte of sound memory a program's sounds may use: the first 1000h hold what the chip
+      # writes as it plays, the CD's sound and voices 1 and 3 (psx-spx, "SPU Memory layout").
+      SPU_FIRST_FREE = 0x1000
+      SPU_RAM_BYTES = 0x8_0000
       # The second of the three timers: its count, 16 bits that turn round, and how it counts. Told to
       # count the ends of lines (TIMER1_COUNTS_LINES, the clock source bits set to the horizontal
       # retrace) and never to stop or start again, it counts how many lines the screen has drawn, so two

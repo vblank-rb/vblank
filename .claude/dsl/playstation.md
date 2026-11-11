@@ -147,10 +147,10 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
 - `enable_sound` — works: the same as on the Advance.
-- `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own.
+- `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own. A fade moves the voice's loudness a step at a time, at the same pace as on the Advance.
 - `beep` — works: see `define_sound`.
-- `noise` — works: the sound chip has a noise voice.
-- `wave` — works: the waveform is played as a short recording of one wave.
+- `noise` — works: the sound chip plays the Advance's noise as a recording, at the pitch the game names. A metallic noise is a recording of the Advance's rattle.
+- `wave` — works: the waveform is played as a short recording of seven waves. Its loudness is one of the same five steps as on the Advance.
 - `stop_wave` — works: the same as on the Advance.
 - `song` — works: the same as on the Advance.
 - `play_song` — works: the same as on the Advance.
@@ -173,5 +173,5 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`, `sprite`; the steps `draw_column_at`, `save_region`, `restore_region`, `camera`
 - fades, lights and screen effects: the verbs `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `fade`, `tint`, `pixelate`, `shade_outside`
 - sprites and tiled backgrounds: the verbs `sprite`, `tiles`, `background`, `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_in_order`, `hide_sprites`, `picture_groups`, `colors`, `recolor`, `color_walk`; the steps `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`
-- sound: the verbs `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
+- sound: the verbs `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`
