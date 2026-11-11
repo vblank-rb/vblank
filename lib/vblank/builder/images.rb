@@ -263,8 +263,17 @@ module VBlank
       # drawn in the second colour of this one. So the shape and the shading stay exactly
       # as drawn and only the colours move, which is what a character flashing while it
       # cannot be hit looks like on this console.
+      #
+      # THE COLOURS CAN COME FROM THE DATA PACK: a slot of colours, or one bank of it.
+      #
+      #   colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)
+      #
+      # A retail game repaints a sprite by writing other colours over its palette, and the colours
+      # it writes are its own data. A list from the pack is the list those colours written here
+      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list).
       def colors(name, list)
         refuse_bad_color_list_name!(name)
+        list = pack_color_list(name, list) if list.is_a?(DSL::PackSlot)
         unless list.is_a?(Array) && list.length.between?(2, PICTURE_COLORS)
           raise ArgumentError,
                 "colors :#{name} needs a list of 2 to #{PICTURE_COLORS} colors, the first meaning see-through. " \

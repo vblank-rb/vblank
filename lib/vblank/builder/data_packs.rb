@@ -704,6 +704,44 @@ module VBlank
         read
       end
 
+      # THE COLOURS OF A LIST DECLARED FROM THE PACK (`colors :name, pack[:palette].bank(2)`): what
+      # +slot+ (a DSL::PackSlot on a slot of colours, or on one bank of it) holds, in the slot's
+      # order, for `colors` to keep as it keeps colours written in the game.
+      #
+      # Every colour is kept as the slot has it, the first too. A console's palette keeps a real
+      # colour in its first place, which a picture never draws (place 0 is see-through to one) and
+      # which a backdrop following the list shows, so the list is the one a game would get by
+      # writing the slot's colours out, and builds the same bytes.
+      def pack_color_list(name, slot)
+        where = "colors :#{name}"
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        refuse_pack_color_list_too_long!(name, slot)
+        refuse_pack_color_list_left_out!(name)
+        pack_slot_values(slot, :colors, where)
+      end
+
+      # A list holds as many colours as one picture can be drawn from (Images::PICTURE_COLORS), and
+      # a slot often holds a whole palette of several banks.
+      def refuse_pack_color_list_too_long!(name, slot)
+        return if slot.count <= Images::PICTURE_COLORS
+
+        most = Images::PICTURE_COLORS
+        raise ArgumentError, "colors :#{name} was given #{slot.count} colors of slot :#{slot.layout.name}. A list of " \
+                             "colors can have #{most} of them, the first meaning see-through. To fix this, give it " \
+                             "one bank of the slot, like `pack[:#{slot.layout.name}].bank(0, size: #{most})`."
+      end
+
+      # A build that leaves its pack out holds none of the original's colours, and a list's colours
+      # are part of the program every lowering writes. Filling a list at power-on is not made yet.
+      def refuse_pack_color_list_left_out!(name)
+        return unless pack_left_out?
+
+        raise ArgumentError, "colors :#{name} reads its colors from the data pack, and this build reads its pack as " \
+                             "the game starts. A list of colors from the pack is not made that way yet. To fix this, " \
+                             "build the game all-in-one."
+      end
+
       # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.
       def refuse_slot_read_while_left_out!(handle, where)
         return unless pack_left_out?

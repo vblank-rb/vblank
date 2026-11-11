@@ -65,6 +65,20 @@ from that copy. The game's code says each piece's shape and size; it never depen
   is a picture of that many colours, so what the console does with one given `data:` it does with this.
   Worked examples: `test/all/vblank/builder/test_data_packs.rb` and `test/pack_at_start_tests.rb`.
 
+- `colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)` — **a list of colours from a slot of
+  colours**, for a sprite the original repaints by writing other colours over its palette. The second
+  argument is one bank of the slot (`bank(n, size: k)`: `k` colours from colour `n * k`, 16 when `size:`
+  is left out) or the whole slot, 2 to 16 colours either way. It is the list those colours written in
+  the game would be, in the slot's order, so every verb that takes a list's name takes it: a picture's
+  or a sprite's `colors: :logo_cycle_3`, `draw_with`, `recolor :screen_colors, NAMES, showing: step`,
+  `color_walk`, and `screen :tiled, backdrop:` (`sprites.md`, `screen.md`). **Place 0 is kept as the
+  slot has it**: see-through to a picture, as in any list, and the colour shown to a backdrop that
+  follows the list. A game that writes the same colours by hand builds the same bytes. Built
+  all-in-one, the build reads the slot. **A build that reads its pack as the game starts refuses it
+  for now**, naming the list. Friendly errors at the line: a slot or bank of more than 16 colours
+  (take one bank), a slot that does not hold colours, a slot of another game's pack. Worked example:
+  `test/all/vblank/builder/test_pack_color_lists.rb`, where a sprite is recoloured through three banks.
+
   **Releases that keep the data at different places**: a slot's `at:` may be a Hash by release name,
   `slots.colors :palette, at: { "US" => 0x10, "EU" => 0x30 }, count: 16`. The keys are the release names
   as the original lists them, Strings. Name every release the game reads. Do not name a release that
