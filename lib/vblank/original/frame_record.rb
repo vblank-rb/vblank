@@ -106,8 +106,11 @@ module VBlank
 
       # ONE FRAME A GAME NAMES (`pack[:frames].frame(at, layout:)`): the +slot+ of bytes it is in (an
       # Original::Slot), the byte it starts at, how many pieces it has where its layout does not
-      # say (nil where it does), and its +layout+ (an Original::FrameLayout).
-      Source = Data.define(:slot, :at, :count, :layout) do
+      # say (nil where it does), its +layout+ (an Original::FrameLayout), and the values its pose
+      # gives the layout's reader (FrameLayout#pose_values_for: numbers by name, none for a layout
+      # of options). One frame given two sets of values is two sources, and two records.
+      Source = Data.define(:slot, :at, :count, :layout, :pose) do
+        def initialize(slot:, at:, count:, layout:, pose: {}) = super
         # Where the frame's first piece is in the slot.
         def first_piece_at = at + layout.count_bytes_before_pieces
 
@@ -123,7 +126,7 @@ module VBlank
           held = [named, most_pieces, room].min
           pieces = Array.new(held) do |piece|
             from = first_piece_at + (piece * layout.piece_bytes)
-            FrameRecord.piece_bytes(layout.piece_from { |byte| slot_bytes.getbyte(from + byte) })
+            FrameRecord.piece_bytes(layout.piece_from(pose: pose) { |byte| slot_bytes.getbyte(from + byte) })
           end
           [*FrameRecord.header_bytes(held, named), *pieces.flatten].pack("C*")
         end
@@ -144,12 +147,14 @@ module VBlank
       # and for the frames that say their own count as many pieces as their slot could hold between
       # them. Frames laid over each other could ask for more; a record that does not fit keeps the
       # pieces that do, and one with no room for its header has none (entry 0), which draws nothing.
+      # Frames of one slot read with different pose values are each a slot's worth, since one
+      # frame given two sets of values is two records.
       Section = Data.define(:sources) do
         # The section's size in bytes.
         def size
           return 0 if sources.empty?
 
-          pieces = sources.group_by { |source| [source.slot.name, source.layout] }.sum do |(_, layout), group|
+          pieces = sources.group_by { |source| [source.slot.name, source.layout, source.pose] }.sum do |(_, layout), group|
             counted, given = group.partition { |source| source.layout.counted }
             given.sum(&:most_pieces) + [counted.sum(&:most_pieces), group.first.slot.byte_size / layout.piece_bytes].min
           end

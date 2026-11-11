@@ -61,13 +61,17 @@ module VBlank
       end
 
       # The frames of one slot kept one way (+entries+, each a FrameRecord::Source and its number
-      # in the section): where each starts, the count the game gave it, and its number.
+      # in the section): where each starts, the count the game gave it, its number, and the values
+      # its pose gives the layout's reader, in the order the reader reads them (none for a layout
+      # of options). Those are a row of the table, so one loop reads frames given different values.
       def emit_frames(entries, number)
         source = entries.first.first
         layout = source.layout
+        names = layout.pose_names
+        row = 3 + names.length
         slot_at = @slot_places.fetch(source.slot.name)
-        frames = @builder.table(made_name(:"frames_#{number}"), entries.flat_map { |frame, index| [frame.at, frame.count || 0, index] },
-                                width: :word, signed: true)
+        rows = entries.flat_map { |frame, index| [frame.at, frame.count || 0, index, *names.map { |name| frame.pose.fetch(name) }] }
+        frames = @builder.table(made_name(:"frames_#{number}"), rows, width: :word, signed: true)
         at = variable(:at)
         first = variable(:first)
         named = variable(:named)
@@ -77,11 +81,11 @@ module VBlank
         waited = variable(:pieces_since_wait)
         section_end = @section_at + @section.size
         @builder.repeat(entries.length) do |frame|
-          at.store!(frames[frame * 3] + slot_at)
+          at.store!(frames[frame * row] + slot_at)
           if layout.counted
             named.store!(layout.count_from { |byte| pack_byte(at + byte) })
           else
-            named.store!(frames[(frame * 3) + 1])
+            named.store!(frames[(frame * row) + 1])
           end
           first.store!(at + layout.count_bytes_before_pieces)
           held.store!(named)
@@ -96,11 +100,13 @@ module VBlank
             if held > most
               held.store!(most)
             end
-            emit_bytes(value_of(@section_at) + (frames[(frame * 3) + 2] * FrameRecord::ENTRY_BYTES), entry_bytes(out - @section_at))
+            emit_bytes(value_of(@section_at) + (frames[(frame * row) + 2] * FrameRecord::ENTRY_BYTES), entry_bytes(out - @section_at))
             emit_bytes(out, FrameRecord.header_bytes(held, named))
             out.increase!(FrameRecord::HEADER_BYTES)
+            # Each value is read from the table again wherever the reader asks for it, as a byte is.
+            pose = ->(name) { frames[(frame * row) + 3 + names.index(name)] }
             @builder.repeat(held) do |piece|
-              emit_piece(layout, first + (piece * layout.piece_bytes), out)
+              emit_piece(layout, first + (piece * layout.piece_bytes), out, pose)
               out.increase!(FrameRecord::PIECE_BYTES)
             end
             waited.increase!(held + 1)
@@ -121,10 +127,11 @@ module VBlank
 
       # One piece, its bytes from +from+ in the pack's list, written as a record's at +to+. Each
       # part is worked out once into a variable, since a record keeps most parts in two bytes.
-      def emit_piece(layout, from, to)
+      # +pose+ makes the game's value of a pose value by its name.
+      def emit_piece(layout, from, to, pose)
         start = variable(:piece_at)
         start.store!(from)
-        read = layout.piece_from { |byte| pack_byte(start + byte) }
+        read = layout.piece_from(pose: pose) { |byte| pack_byte(start + byte) }
         kept = read.to_h.to_h do |part, worked_out|
           next [part, worked_out] if worked_out.is_a?(Integer)
 

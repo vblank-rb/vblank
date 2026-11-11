@@ -14,6 +14,7 @@ require "all/vblank/builder/test_pack_color_lists"
 require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
 require "pack_pose_of_shapes_games"
+require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
@@ -991,6 +992,18 @@ module PackGames
     ].freeze
   end
 
+  # POSES WHOSE FRAMES THE GAME READS WITH A READER OF ITS OWN, given a value from each pose
+  # (PackPoseReadByTheGameGames): the reader run as game code with the pack left out.
+  class PosesReadByTheGame < Kit
+    include PackPoseReadByTheGameGames
+
+    GAMES = [
+      game(:poses_of_one_frame_read_by_the_game_for_two_blocks, passes: 3) do |folder, options|
+        built(*poses_read_by_the_game_and_file(original(folder), options: options))
+      end
+    ].freeze
+  end
+
   # A POSE IN THE COLOURS OF THE BANK ITS FRAME NAMES (PackPoseBankColorGames).
   class PosesInBankColors < Kit
     include PackPoseBankColorGames
@@ -1341,7 +1354,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank].freeze
 
   # Every registered game.

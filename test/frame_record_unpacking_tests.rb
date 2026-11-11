@@ -4,6 +4,7 @@ require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
+require "pack_pose_read_by_the_game_games"
 
 # THE FRAMES A GAME NAMES, WRITTEN BY ITS PACK'S UNPACKING AS RECORDS OF VBLANK'S OWN
 # (Original::FrameRewrite, Original::FrameRecord). An unpacking is game code, so the run's player
@@ -135,6 +136,40 @@ module FrameRecordUnpackingTests
   # A slot the game's own routine fills is read for its frames once the routine has run.
   def test_the_unpacking_writes_the_frames_of_a_slot_its_routine_fills
     assert_unpacking_writes_the_builds_pack(by_routine: true)
+  end
+
+  # A FRAME THE GAME READS WITH A READER OF ITS OWN (PackPoseReadByTheGameGames), given a value
+  # from each pose: the reader's sums, run on the game's values, are the routine, and write the
+  # records the build worked out in Ruby from the same reader. One frame given two values is two
+  # records, each its own tiles.
+  def test_the_unpacking_writes_the_records_of_frames_a_games_reader_reads
+    Dir.mktmpdir do |folder|
+      read = ReadByTheGame.new
+      whole = read.builder(folder, VBlank::Cartridge::Options.new)
+      left_out = read.builder(folder, LEFT_OUT)
+      copy = read.copy(folder)
+      sha1 = Digest::SHA1.hexdigest(copy)
+      release = VBlank::Original::Release.from("Test", { "sha1" => sha1, "size" => copy.bytesize })
+      unpacking = left_out.declared_data_pack.unpacking(release: release)
+      # Its tiles are 10 KB, a frame of the unpacking each 256 bytes.
+      played = game_player.hand_file(copy).run(unpacking.program, frames: 80)
+      unpacked = unpacking.pack_file_in(played, sha1: sha1, build_version: "1")
+
+      assert unpacking.finished_in?(played), "the unpacking got to its end"
+      assert_nil unpacking.fault_in(played)
+      assert_equal whole.made_data_pack_file.unpack1("H*"), unpacked.unpack1("H*")
+      shown = game_player.run(whole.program, frames: 3).screen.to_a
+      assert_operator shown.flatten.uniq.length, :>, 2, "the all-in-one build draws the poses"
+      assert_equal shown, game_player.hand_file(unpacked).run(left_out.program, frames: 3).screen.to_a
+    end
+  end
+
+  # The games of PackPoseReadByTheGameGames, kept apart from this module's own made-up original.
+  class ReadByTheGame
+    include PackPoseReadByTheGameGames
+
+    def builder(folder, options) = poses_read_by_the_game_builder(original(folder), options: options)
+    def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
   end
 
   # The all-in-one build's unpacking writes the records too: it is the program every backend is

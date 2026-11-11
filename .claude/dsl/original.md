@@ -442,7 +442,11 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `Original::FrameRewrite` writes it, as game code). A piece of a record names its tiles and its bank of colours and
   holds no pixel. The build that holds the pack, the interpreter and each runtime read that record and know no
   layout, so a way of keeping a frame that no layout says yet is added to `FrameLayout#piece_from` alone, in Ruby
-  (`tile_high_bit:` was, and `test/pack_pose_of_split_tiles_at_start_tests.rb` plays it on every build). The game's
+  (`tile_high_bit:` was, and `test/pack_pose_of_split_tiles_at_start_tests.rb` plays it on every build). A port need
+  not wait for that: `FrameLayout.new(..., piece: READER)` reads a piece with a few lines of its own Ruby, given the
+  values its pose names (`frame(at, layout:, with: { block: 5 })`), and the unpacking runs those lines as game code
+  (`Original::FrameReader`, `sprites.md`). A frame's values are a row of the unpacking's table of frames, so one
+  frame given two sets is two records. The game's
   source does not change: the
   slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
   `test/frame_record_unpacking_tests.rb`.

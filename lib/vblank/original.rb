@@ -18,6 +18,7 @@ require_relative "original/decompilation"  # The decompilation, built and proven
 require_relative "original/pack_note"      # One note of music in a data pack, a record of VBlank's own
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
 require_relative "original/frame_layout"   # How the original keeps one frame of a sprite, piece by piece
+require_relative "original/frame_reader"   # A piece read by a few lines of the game's own Ruby
 require_relative "original/frame_record"   # One frame of a sprite in a data pack, a record of VBlank's own
 require_relative "original/pack"          # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own

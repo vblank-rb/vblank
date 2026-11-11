@@ -164,8 +164,9 @@ module VBlank
 
     # ONE FRAME OF A SPRITE IN A SLOT OF BYTES: the slot's handle (+slot+), the byte the frame
     # starts at, how many pieces it has where its layout does not say (+count+), and how it is kept
-    # (+piece_layout+, an Original::FrameLayout). An image reads it (Builder::PackPoses).
-    PackFrame = Data.define(:slot, :at, :count, :piece_layout)
+    # (+piece_layout+, an Original::FrameLayout), and the values the pose gives that layout's
+    # reader (+pose+, by name). An image reads it (Builder::PackPoses).
+    PackFrame = Data.define(:slot, :at, :count, :piece_layout, :pose)
 
     # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names (PackSlot#notes).
     PackNotes = Data.define(:slot, :instruments)
@@ -354,8 +355,9 @@ module VBlank
 
       # A handle on the frame of a sprite from byte +at+ (0 first) of a slot of bytes, kept as
       # +layout+ (an Original::FrameLayout) says, for an image's `frame:`. +count+ is how many pieces
-      # it has, for a layout whose frames do not say.
-      def frame(at, layout:, count: nil)
+      # it has, for a layout whose frames do not say. +with+ is the values the pose gives the
+      # layout's own reader by name (`with: { block: 5 }`), checked here against those it reads.
+      def frame(at, layout:, count: nil, with: {})
         # +layout+ here is the frame's; the slot's own is self.layout.
         refuse_run_counted_from_slot_start!("frame")
         refuse_frame_of_view!
@@ -364,7 +366,12 @@ module VBlank
                                "byte wide. To fix this, call it on a slot like `slots.numbers :frames, width: :byte, ...`."
         end
 
-        DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout)
+        unless layout.is_a?(Original::FrameLayout)
+          raise ArgumentError, "`frame` was given layout: #{layout.inspect}. To fix this, give it a " \
+                               "VBlank::Original::FrameLayout, which says how the original keeps a frame."
+        end
+
+        DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout, pose: layout.pose_values_for(with))
       end
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.

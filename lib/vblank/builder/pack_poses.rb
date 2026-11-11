@@ -309,7 +309,7 @@ module VBlank
           refuse_frame_past_slot!(name, frame) if first + (frame.count * layout.piece_bytes) > slot_bytes
         end
         Original::FrameRecord::Source.new(slot: frame.slot.layout, at: frame.at, count: (frame.count unless layout.counted),
-                                          layout: layout)
+                                          layout: layout, pose: frame.pose)
       end
 
       # THE FRAMES THE GAME HAS NAMED SO FAR, each once, in the order it named them: the frames

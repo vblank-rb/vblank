@@ -87,16 +87,42 @@ module VBlank
     # size's two: `shape_bit: 6, shape_size_bit: 4`. +tile_order+ must be given with them, as with
     # +size_at+ (on the Advance it is :across_rows, its one-dimensional sprite mapping), and they
     # take the place of +big_bit+ and +size_at+.
+    #
+    # A PIECE KEPT IN A WAY NO OPTION HERE SAYS. A port reads it with a few lines of its own Ruby,
+    # +piece+, and the layout then says only where the pieces are: +piece_bytes+, +counted+ and the
+    # count's +count_bytes+ (with +high_byte_first+ where that is 2). The reader is handed the
+    # piece's bytes and the values the pose gives, and gives back a Piece (below):
+    #
+    #   FRAME = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READER)
+    #   image :craft, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: FRAME, with: { block: 5 }), ...
+    #
+    # A VALUE FROM THE POSE, NOT THE FRAME: an original may add to what a piece's bytes say
+    # something the object holds (the block of sprite memory its tiles were loaded to), and the
+    # pose gives it by name, `with: { block: 5 }`, read by the reader as `pose[:block]`. One frame
+    # given two such values is two records. What a reader may write, and what is refused, is told
+    # in Original::FrameReader.
     FrameLayout = Data.define(:piece_bytes, :counted, :x_at, :y_at, :tile_at, :tile_row_at, :row_tiles, :flags_at,
                               :mirrored_bit, :upside_down_bit, :big_bit, :high_byte_first, :count_bytes,
                               :position_bytes, :tile_bytes, :tile_bits, :flags_bytes, :size_at, :columns_bit,
                               :rows_bit, :size_bits, :tile_order, :bank_bit, :bank_bits, :tile_high_bit, :tile_high_bits,
-                              :shape_bit, :shape_size_bit) do
-      def initialize(piece_bytes:, counted:, x_at:, y_at:, tile_at:, flags_at:, mirrored_bit: nil, upside_down_bit: nil,
-                     tile_row_at: nil, row_tiles: 16, big_bit: nil, high_byte_first: nil, count_bytes: 1,
+                              :shape_bit, :shape_size_bit, :piece) do
+      def initialize(piece_bytes:, counted:, x_at: nil, y_at: nil, tile_at: nil, flags_at: nil, mirrored_bit: nil,
+                     upside_down_bit: nil, tile_row_at: nil, row_tiles: 16, big_bit: nil, high_byte_first: nil, count_bytes: 1,
                      position_bytes: 1, tile_bytes: 1, tile_bits: nil, flags_bytes: 1, size_at: nil, columns_bit: nil,
                      rows_bit: nil, size_bits: 2, tile_order: nil, bank_bit: nil, bank_bits: nil, tile_high_bit: nil,
-                     tile_high_bits: nil, shape_bit: nil, shape_size_bit: nil)
+                     tile_high_bits: nil, shape_bit: nil, shape_size_bit: nil, piece: nil)
+        places = { x_at:, y_at:, tile_at:, flags_at:, mirrored_bit:, upside_down_bit:, tile_row_at:, big_bit:, tile_bits:,
+                   size_at:, columns_bit:, rows_bit:, tile_order:, bank_bit:, bank_bits:, tile_high_bit:, tile_high_bits:,
+                   shape_bit:, shape_size_bit: }
+        unless piece.nil?
+          refuse_places_with_reader!(places, row_tiles:, size_bits:, position_bytes:, tile_bytes:, flags_bytes:)
+          refuse_bad_widths!([count_bytes], high_byte_first)
+          refuse_bad_places!(piece_bytes, {})
+          refuse_bad_bits!(counted, [], 1, 1, nil, 1)
+          FrameReader.try(piece, piece_bytes)
+          return super
+        end
+        refuse_no_places!(x_at:, y_at:, tile_at:, flags_at:)
         widths = [count_bytes, position_bytes, tile_bytes, flags_bytes]
         refuse_bad_widths!(widths, high_byte_first)
         refuse_bad_places!(piece_bytes, { x_at => position_bytes, y_at => position_bytes, tile_at => tile_bytes,
@@ -114,7 +140,28 @@ module VBlank
       end
 
       # Whether a piece of this layout names the bank of colours it is drawn from.
-      def names_bank? = !bank_bit.nil?
+      def names_bank? = piece ? FrameReader.try(piece, piece_bytes).names_bank : !bank_bit.nil?
+
+      # The names of the values a pose gives this layout's reader (`frame(at, layout:, with:)`), in
+      # the order it reads them: none for a layout of the options above.
+      def pose_names = piece ? FrameReader.try(piece, piece_bytes).pose_names : []
+
+      # +given+ (a frame's `with:`) as the values this layout's reader reads, by name in the order
+      # it reads them, or a refusal: a value it does not read, one it reads and was not given, or
+      # one that is not a whole number.
+      def pose_values_for(given)
+        names = pose_names
+        unless given.is_a?(Hash) && given.keys.sort == names.sort
+          raise ArgumentError, "A frame was given with: #{given.inspect}, and its layout reads #{pose_values_in_words(names)}. " \
+                               "To fix this, give with: the values its layout's piece: reader reads, and no others."
+        end
+        unless given.values.all? { |value| value.is_a?(Integer) && value.between?(-(2**31), (2**31) - 1) }
+          raise ArgumentError, "A frame was given with: #{given.inspect}. A pose value is a whole number, like " \
+                               "`with: { block: 5 }`."
+        end
+
+        names.to_h { |name| [name, given.fetch(name)] }
+      end
 
       # How many bytes of a frame come before its first piece: its count, where it has one.
       def count_bytes_before_pieces = counted ? count_bytes : 0
@@ -131,8 +178,12 @@ module VBlank
       # How many pieces a frame says it has, from the bytes it starts with.
       def count_from(&byte) = part(0, count_bytes, &byte)
 
-      # One piece as the pack keeps it (a FrameRecord::Piece).
-      def piece_from(&byte)
+      # One piece as the pack keeps it (a FrameRecord::Piece). +pose+ is the values the pose gives a
+      # reader of the game's (#pose_values_for): numbers by name, or, in the unpacking, a block that
+      # makes the game's value of a name each time it is asked, as the byte block does.
+      def piece_from(pose: {}, &byte)
+        return FrameReader.piece(piece, piece_bytes, pose, &byte) if piece
+
         FrameRecord::Piece.new(
           x: signed(part(x_at, position_bytes, &byte), position_bytes), y: signed(part(y_at, position_bytes, &byte), position_bytes),
           tile: first_tile(&byte), column_step: column_step(&byte), row_step: row_step(&byte),
@@ -244,6 +295,35 @@ module VBlank
         [*values, numbers.sum].reduce { |sum, term| sum + term }
       end
 
+      def pose_values_in_words(names)
+        return "no pose values" if names.empty?
+
+        "the pose #{names.length == 1 ? 'value' : 'values'} #{names.map(&:inspect).join(', ')}"
+      end
+
+      # +places+ are the options that say where a part of a piece is, none of which a layout with a
+      # reader may give: the reader says where every part is. The rest must be left at their defaults.
+      def refuse_places_with_reader!(places, row_tiles:, size_bits:, position_bytes:, tile_bytes:, flags_bytes:)
+        given = places.compact.keys
+        given << :row_tiles unless row_tiles == 16
+        given << :size_bits unless size_bits == 2
+        { position_bytes:, tile_bytes:, flags_bytes: }.each { |name, width| given << name unless width == 1 }
+        return if given.empty?
+
+        raise ArgumentError, "A frame layout was given piece: and #{given.map { |name| "#{name}:" }.join(', ')}. The " \
+                             "piece: reader says where each part of a piece is. To fix this, give piece:, piece_bytes:, " \
+                             "counted: and count_bytes: alone, or leave out piece:."
+      end
+
+      def refuse_no_places!(**places)
+        missing = places.select { |_, at| at.nil? }.keys
+        return if missing.empty?
+
+        raise ArgumentError, "A frame layout needs #{missing.map { |name| "#{name}:" }.join(', ')}, the byte of each part " \
+                             "of a piece. Or give piece:, a reader of the game's own, where no option here says how the " \
+                             "original keeps a piece."
+      end
+
       def refuse_bad_widths!(widths, high_byte_first)
         unless widths.all? { |width| [1, 2].include?(width) }
           raise ArgumentError, "A frame layout needs count_bytes:, position_bytes:, tile_bytes: and flags_bytes: each 1 " \
@@ -351,6 +431,50 @@ module VBlank
         raise ArgumentError, "A frame layout with size_at: needs tile_order:. Give :down_columns when the tile after " \
                              "a piece's first is below it, as on a Genesis. Give :across_rows when it is to the " \
                              "right. Got #{tile_order.inspect}."
+      end
+    end
+
+    # ONE PIECE AS A READER OF THE GAME'S GIVES IT BACK (FrameLayout's +piece+). Each part is a
+    # whole number worked out from the piece's bytes and the pose's values:
+    #
+    #   x, y          where the piece's top left is, from the object's place
+    #   tile          its first tile, counted from the first tile of the pose's `tiles:`
+    #   columns, rows how many tiles across and down it is (1 each where not given)
+    #   column_step   how many tiles on the tile one column to the right is (1 where not given)
+    #   row_step      how many tiles on the tile one row down is (columns where not given: the
+    #                 tiles across a row, then the next row)
+    #   mirrored, upside_down  1 where the whole piece is turned so, 0 where not (true and false
+    #                 are taken too, for a reader whose pieces always or never turn)
+    #   bank          which bank of colours it is drawn from, for a pose given a whole slot of
+    #                 colours (0 where not given, and the layout then names no bank)
+    #
+    # It is a record of the reader's answer and not FrameRecord::Piece itself: the steps have
+    # defaults a reader rarely needs to say, and the turns are two parts, not one sum of bits.
+    FrameLayout::Piece = Data.define(:x, :y, :tile, :columns, :rows, :column_step, :row_step, :mirrored, :upside_down, :bank) do
+      def initialize(x:, y:, tile:, columns: 1, rows: 1, column_step: 1, row_step: nil, mirrored: 0, upside_down: 0, bank: 0)
+        super
+      end
+
+      # The piece as the pack keeps it (a FrameRecord::Piece), every part a number or a game's value.
+      def record
+        mirror = turn(mirrored, FrameRecord::MIRRORED)
+        flip = turn(upside_down, FrameRecord::UPSIDE_DOWN)
+        # A game's value goes on the left of the sum, where there is one.
+        turns = mirror.is_a?(Integer) ? flip + mirror : mirror + flip
+        FrameRecord::Piece.new(x: x, y: y, tile: tile.clamp(0, FrameRecord::MOST), column_step: column_step,
+                               row_step: row_step.nil? ? columns : row_step, columns: columns, rows: rows,
+                               turns: turns, bank: bank)
+      end
+
+      private
+
+      # +worth+ where +part+ is 1 or true, 0 where it is 0 or false.
+      def turn(part, worth)
+        case part
+        when true then worth
+        when false then 0
+        else (part & 1) * worth
+        end
       end
     end
   end

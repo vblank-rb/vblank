@@ -84,4 +84,141 @@ class TestFrameLayout < Minitest::Test
 
     assert_includes error.message, "shape_bit:"
   end
+
+  # A PIECE READ BY A READER THE GAME WRITES (piece:), here an original whose piece names a block of
+  # sprite memory counted from the object's own block, the object's block given by the pose. The
+  # blocks are 8 tiles across and 4 down, two across a row of 16 tiles: the answer key is that table
+  # written out, block by block.
+  BLOCK_STARTS = [0, 8, 64, 72, 128, 136, 192, 200, 256, 264, 320, 328, 384, 392, 448, 456].freeze
+  BLOCK_START = ->(block) { ((block & 1) << 3) + (((block >> 1) & 3) << 6) + ((block >> 3) << 8) }
+  READ_PIECE = lambda do |bytes, pose|
+    block = (bytes[2] + pose[:block]) & 15
+    big = (bytes[4] >> 5) & 1
+    VBlank::Original::FrameLayout::Piece.new(
+      x: bytes.signed(0), y: bytes.signed(1), tile: BLOCK_START.(block) | bytes[3], columns: big + 1, rows: big + 1,
+      row_step: 16, mirrored: (bytes[4] >> 6) & 1, upside_down: (bytes[4] >> 7) & 1
+    )
+  end
+  READ = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READ_PIECE)
+
+  private def read_piece(bytes, layout: READ, pose: { block: 5 })
+    layout.piece_from(pose: pose) { |at| bytes.pack("C*").getbyte(at) }
+  end
+
+  private def reader_layout(&reader) = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: reader)
+
+  def test_a_reader_the_game_writes_reads_each_part_of_a_piece
+    piece = read_piece([0xFD, 5, 2, 0x12, 0x60])
+
+    assert_equal [-3, 5, BLOCK_STARTS.fetch(7) | 0x12], [piece.x, piece.y, piece.tile]
+    assert_equal [2, 2, 1, 16], [piece.columns, piece.rows, piece.column_step, piece.row_step]
+    assert_equal VBlank::Original::FrameRecord::MIRRORED, piece.turns
+  end
+
+  def test_the_block_the_pose_gives_is_added_and_wraps_at_sixteen
+    assert_equal BLOCK_STARTS.fetch(1) | 3, read_piece([0, 0, 12, 3, 0x80]).tile
+    assert_equal VBlank::Original::FrameRecord::UPSIDE_DOWN, read_piece([0, 0, 12, 3, 0x80]).turns
+    assert_equal BLOCK_STARTS.fetch(2), read_piece([0, 0, 2, 0, 0], pose: { block: 0 }).tile
+  end
+
+  def test_a_reader_names_the_pose_values_it_reads
+    assert_equal [:block], READ.pose_names
+    assert_equal [], LAYOUT.pose_names
+  end
+
+  def test_a_reader_of_one_argument_needs_no_pose
+    layout = reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: bytes[0], y: bytes[1], tile: bytes[2]) }
+    piece = read_piece([4, 6, 9, 0, 0], layout: layout, pose: {})
+
+    assert_equal [4, 6, 9, 1, 1, 1, 1, 0, 0],
+                 [piece.x, piece.y, piece.tile, piece.columns, piece.rows, piece.column_step, piece.row_step, piece.turns, piece.bank]
+  end
+
+  def test_a_reader_that_gives_a_bank_names_its_bank
+    layout = reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[2], bank: bytes[4] & 3) }
+
+    assert_predicate layout, :names_bank?
+    refute_predicate READ, :names_bank?
+  end
+
+  def test_the_pose_values_a_frame_is_given_are_checked
+    assert_equal({ block: 5 }, READ.pose_values_for({ block: 5 }))
+    assert_includes assert_raises(ArgumentError) { READ.pose_values_for({}) }.message, "block"
+    assert_includes assert_raises(ArgumentError) { READ.pose_values_for({ block: 5, colour: 1 }) }.message, "colour"
+    assert_includes assert_raises(ArgumentError) { READ.pose_values_for({ block: :five }) }.message, "whole number"
+    assert_includes assert_raises(ArgumentError) { LAYOUT.pose_values_for({ block: 5 }) }.message, "block"
+  end
+
+  def test_a_reader_that_indexes_a_ruby_array_with_a_byte_is_refused
+    sizes = [1, 2, 4, 8]
+    error = assert_raises(ArgumentError) do
+      reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: 0, columns: sizes[bytes[4] & 3]) }
+    end
+
+    assert_includes error.message, "Array"
+  end
+
+  def test_a_reader_that_looks_up_a_ruby_hash_with_a_byte_is_refused
+    sizes = { 0 => 1, 1 => 2 }
+    error = assert_raises(ArgumentError) do
+      reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: 0, columns: sizes[bytes[4] & 1]) }
+    end
+
+    assert_includes error.message, "Hash"
+  end
+
+  def test_a_reader_that_tests_a_byte_is_refused
+    tests = [
+      ->(bytes) { bytes[4] == 1 ? 2 : 1 },
+      ->(bytes) { (bytes[4] & 0x20) > 0 ? 2 : 1 }, # rubocop:disable Style/NumericPredicate
+      ->(bytes) { (bytes[4] & 1).zero? ? 1 : 2 },
+      lambda do |bytes|
+        case bytes[4]
+        when 0..3 then 1
+        else 2
+        end
+      end
+    ]
+    tests.each do |columns_of|
+      error = assert_raises(ArgumentError) do
+        reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: 0, columns: columns_of.(bytes)) }
+      end
+
+      assert_includes error.message, "shifts, masks and sums"
+    end
+  end
+
+  def test_a_reader_with_a_byte_on_the_right_of_a_shift_is_refused
+    error = assert_raises(ArgumentError) do
+      reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: 0, columns: 1 << (bytes[4] & 3)) }
+    end
+
+    assert_includes error.message, "on the left"
+  end
+
+  def test_a_reader_that_does_not_give_back_a_piece_is_refused
+    error = assert_raises(ArgumentError) { reader_layout { |bytes| { x: bytes[0], y: bytes[1], tile: bytes[2] } } }
+
+    assert_includes error.message, "FrameLayout::Piece"
+  end
+
+  def test_a_reader_that_reads_past_its_piece_is_refused
+    error = assert_raises(ArgumentError) { reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[5]) } }
+
+    assert_includes error.message, "byte 5"
+  end
+
+  def test_a_reader_with_the_layouts_own_places_is_refused
+    error = assert_raises(ArgumentError) do
+      VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READ_PIECE, x_at: 0)
+    end
+
+    assert_includes error.message, "x_at:"
+  end
+
+  def test_a_layout_with_neither_a_reader_nor_places_is_refused
+    error = assert_raises(ArgumentError) { VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true) }
+
+    assert_includes error.message, "piece:"
+  end
 end
