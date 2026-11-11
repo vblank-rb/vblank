@@ -323,7 +323,8 @@ def rg_background_put_up(background)
   rg_mark_from_corner(background)
   @rg_scenery_kept = false
   return rg_request_repaint if @rg_turns[rg_keeper_of(background)].turned || rg_bar?(background) ||
-                               rg_held_above_row?(background) || rg_bar_showing || rg_held_to_box?(background)
+                               rg_held_above_row?(background) || rg_bar_showing || rg_held_to_box?(background) ||
+                               rg_placed_fade_in_picture?
 
   rg_background_stamp(background)
   rg_stamp_in_stack_order(background)
@@ -966,6 +967,7 @@ def rg_tiled_scene_take_down(brings_scenery)
   @rg_scenery_kept = false
   rg_clear_to(@rg_backdrop)
   rg_stamp_in_stack_order(-1)
+  rg_request_repaint if rg_placed_fade_in_picture? # a placed fade stays across the change
   true
 end
 
