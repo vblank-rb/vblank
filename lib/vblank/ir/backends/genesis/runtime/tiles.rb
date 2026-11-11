@@ -285,158 +285,168 @@ module VBlank
               asm.label("rt_cells_let_go_done")
             end
 
-            # SPRITES. rt_sprites_begin forgets the sprites of the last pass. rt_sprite_place(poses, pose,
-            # x, y, whose, which, palettes) places one: +poses+ is the place of the sprite's table of pictures
-            # (how many, then each picture's number), +pose+ which of them it shows — none for a number outside
-            # the table — and +whose+ the sprite's number for a reader (SpriteNames). Each piece of the
-            # picture is a row of the table, at the sprite's place plus the piece's own; a piece wholly
-            # off the screen is not written, and nor is any piece once the table's 80 rows are used.
+            # SPRITES, PLACED IN ONE WALK. A pass places its sprites one after another, back to front,
+            # with nothing else between them, so where the walk has got to stays in registers from
+            # rt_sprites_begin to rt_sprites_end, as a console's own games keep it while they walk
+            # their objects:
             #
-            # A sprite DRAWN IN A LIST OF COLOURS (`draw_with`) names, in +palettes+, a table of how many lists
-            # it can be drawn with and the palette of each, in the bits of a piece's word that name it; +which+
-            # is the one the game names now. Every piece is then drawn from that palette, and a +which+ the
-            # table has no list for draws it from the palette its own picture names. A sprite drawn with
-            # none has nought for +palettes+.
+            #   A2  where the next row of the sprite table is noted, which is just under the last one
+            #   A3  where the next sprite's row for a reader goes (DRAWN)
+            #   D4  the link the next row takes, which is also how many rows the table has left
+            #
+            # rt_sprites_begin forgets the sprites of the last pass and starts the walk, and
+            # rt_sprites_end writes down how many rows and how many sprites it came to. Between them
+            # the lowering only loads a sprite's numbers and calls (Lowering::Picture#emit_sprite_placing).
+            #
+            # rt_sprite_place places one sprite: A0 is its table of pictures (how many, then where each
+            # picture's pieces are, a long each: #picture_words), D1 which of them it shows — none for a
+            # number outside the table — D2 and D3 its place, and D0 the sprite's number for a reader
+            # (SpriteNames). Each piece of the picture is a row of the table, at the sprite's place plus
+            # the piece's own; a piece wholly off the screen is not written, and nor is any piece once
+            # the table's 80 rows are used.
+            #
+            # A sprite DRAWN IN A LIST OF COLOURS (`draw_with`) is placed by rt_sprite_place_recolored,
+            # which takes two numbers more: D6 is a table of how many lists it can be drawn with and the
+            # palette of each, in the bits of a piece's word that name it, and D5 is the one the game
+            # names now. Every piece is then drawn from that palette, and a D5 the table has no list for
+            # draws it from the palette its own picture names.
+            #
+            # A READER'S ROW is four words: whose, which picture, where. A game has a row of it for
+            # every sprite it can declare (Console::Description#sprite_places is the table's 80), so the
+            # walk never counts them.
             def emit_sprites(asm, memory, at)
               asm.label("rt_sprites_begin")
               asm.clr(:w, at.call(SPRITE_COUNT))
               asm.clr(:w, at.call(DRAWN))
+              asm.lea(asm.abs_l(memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)), asm.a(2))
+              asm.lea(asm.abs_l(memory[DRAWN], 2), asm.a(3))
+              asm.moveq(MOST_SPRITES, asm.d(4))
               asm.rts
 
-              asm.label("rt_sprite_place")
-              emit_palette_chosen(asm)
-              asm.movea(:l, asm.d(0), asm.a(0))
-              asm.moveq(0, asm.d(5))
-              asm.move(:w, asm.post(0), asm.d(5))
-              asm.cmp(:l, asm.d(5), asm.d(1))
-              asm.branch(:cc, "rt_sprite_place_done")
-              asm.lsl(:l, 1, asm.d(1))
-              asm.moveq(0, asm.d(6))
-              asm.move(:w, asm.idx(0, 0, 1), asm.d(6)) # the picture's number
-              emit_drawn_note(asm, memory, at)
-              asm.lea(asm.abs_l("art sprite pictures"), asm.a(0))
-              asm.lsl(:l, 2, asm.d(6))
-              asm.movea(:l, asm.idx(0, 0, 6), asm.a(0))
-              asm.moveq(0, asm.d(5))
-              asm.move(:w, asm.post(0), asm.d(5))
-              asm.subq(:w, 1, asm.d(5))
-              asm.branch(:mi, "rt_sprite_place_done")
-              emit_pieces_all_on_screen(asm, memory, at)
-              asm.label("rt_sprite_place_piece")
-              asm.move(:w, asm.post(0), asm.d(7))
-              asm.ext(:l, asm.d(7))
-              asm.add(:l, asm.d(2), asm.d(7)) # the piece's left, as the chip counts it
-              asm.move(:w, asm.post(0), asm.d(0)) # its tile and palette
-              asm.move(:l, asm.a(4), asm.d(6))
-              asm.branch(:mi, "rt_sprite_place_own_palette")
-              asm.and(:w, asm.imm(PALETTE_CLEARED), asm.d(0))
-              asm.or(:w, asm.d(6), asm.d(0))
-              asm.label("rt_sprite_place_own_palette")
-              asm.moveq(0, asm.d(6))
-              asm.move(:w, asm.post(0), asm.d(6))
-              asm.lsr(:w, 8, asm.d(6)) # its size
-              asm.move(:w, asm.post(0), asm.d(1))
-              asm.ext(:l, asm.d(1))
-              asm.add(:l, asm.d(3), asm.d(1)) # its top
-              emit_piece_written(asm, memory, at)
-              asm.dbra(asm.d(5), "rt_sprite_place_piece")
-              asm.label("rt_sprite_place_done")
+              asm.label("rt_sprites_end")
+              asm.moveq(MOST_SPRITES, asm.d(0))
+              asm.sub(:w, asm.d(4), asm.d(0))
+              asm.move(:w, asm.d(0), at.call(SPRITE_COUNT))
+              asm.move(:l, asm.a(3), asm.d(0))
+              asm.sub(:l, asm.imm(memory[DRAWN] + 2), asm.d(0))
+              asm.lsr(:w, 3, asm.d(0))
+              asm.move(:w, asm.d(0), at.call(DRAWN))
               asm.rts
+
+              emit_sprite_placed(asm, recolored: false)
+              emit_sprite_placed(asm, recolored: true)
+              emit_pieces_tested(asm)
             end
 
             # A piece's word with the two bits that name its palette cleared, for a sprite drawn in a list.
             PALETTE_CLEARED = 0x9FFF
 
-            # A PICTURE'S PIECES, as rt_sprite_place reads them: how many, then the box they all lie in,
-            # then each piece as the row of the sprite table it becomes, last word first.
+            # A PICTURE'S PIECES, as rt_sprite_place reads them: the picture's number for a reader, how
+            # many pieces less one, the box they all lie in, then each piece as the row of the sprite
+            # table it becomes, last long word first.
             #
             # The box is what lets a sprite standing wholly on the screen skip every test a piece
             # otherwise takes: its left edge from the sprite's place and how many places across the
             # screen keep the whole box on it, then the same for its top. A picture wider or taller
-            # than the screen has no such place, and says nought.
+            # than the screen has no such place, and has nought there.
             #
-            # A piece is its left as the chip counts it from the sprite's place (SPRITE_ORIGIN more),
-            # its tile and palette, its size in the high byte with the link's byte empty, and its top.
+            # A piece is its tile and palette, its left as the chip counts it from the sprite's place
+            # (SPRITE_ORIGIN more), its top, and its size in the high byte with the link's byte empty.
             # +tiles_from+ is the tile in video memory the pictures' tile 0 is (Lowering::Picture#sprite_tiles_from).
-            def picture_words(pieces, tiles_from)
-              return [0, 0, 0, 0, 0] if pieces.empty?
+            def picture_words(number, pieces, tiles_from)
+              return [number, -1, 0, 0, 0, 0] if pieces.empty?
 
               left = pieces.map(&:dx).min
               top = pieces.map(&:dy).min
               across = pieces.map { |piece| piece.dx + (piece.columns * 8) }.max - left
               down = pieces.map { |piece| piece.dy + (piece.rows * 8) }.max - top
-              [pieces.length, left, [Paint::WIDTH - across + 1, 0].max, top, [Paint::HEIGHT - down + 1, 0].max] +
+              [number, pieces.length - 1, left, [Paint::WIDTH - across + 1, 0].max, top, [Paint::HEIGHT - down + 1, 0].max] +
                 pieces.flat_map do |piece|
-                  [piece.dx + SPRITE_ORIGIN, (piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT),
-                   piece.size_bits << 8, piece.dy + SPRITE_ORIGIN]
+                  [(piece.tile + tiles_from) | (piece.palette << Art::PALETTE_SHIFT), piece.dx + SPRITE_ORIGIN,
+                   piece.dy + SPRITE_ORIGIN, piece.size_bits << 8]
                 end
             end
 
-            # THE PIECES OF A SPRITE THAT IS WHOLLY ON THE SCREEN, each copied into the table's notes
-            # with the sprite's place added, as a console's own games copy a frame's pieces: four words
-            # read, two of them added to, four written. Nothing of such a sprite is off the screen, so
-            # no piece is tested, and the rows it takes are counted once for all of them.
+            # Where a piece keeps each of its words (#picture_words).
+            PIECE_LEFT = 2
+            PIECE_TOP = 4
+            PIECE_SIZE = 6
+            PIECE_WORDS_BYTES = 8
+
+            # rt_sprite_place, or rt_sprite_place_recolored: the sprite's picture found, its row for a
+            # reader written, and, where it stands wholly on the screen, its pieces copied into the
+            # table's notes with its place added, as a console's own games copy a frame's pieces: two
+            # long words read, each added to, two written. Nothing of such a sprite is off the screen,
+            # so no piece is tested, and the rows are known to be there before the first is written.
             #
-            # A0 is at the picture's box (#picture_words) and D5 its pieces less one. A sprite any part
-            # of whose box is off the screen, or whose pieces the table has not rows enough for, goes
-            # on to the loop that tests each piece, with A0 at the first of them.
+            # A sprite any part of whose box is off the screen, or whose pieces the table has not rows
+            # enough for, goes on to the loop that tests each piece (#emit_pieces_tested).
             #
             # THE NOTES ARE THE TABLE'S OWN ROWS, kept from the end of their room backwards: the piece
             # noted first, which is drawn behind the rest, is the table's last row, and each row links to
             # the row after it, the one noted before. So a row's link is known as it is noted, 80 less
             # how many are noted already, and the blank copies the rows as they stand
             # (#emit_sprite_table_written).
-            def emit_pieces_all_on_screen(asm, memory, at)
+            #
+            # A row's first long word is its top, then its size and its link in a byte each. The sprite's
+            # top goes in the high half of D3 and the link in the low half, so one add puts both in: the
+            # piece's size has an empty byte under it, which a link of 80 or less never carries out of.
+            def emit_sprite_placed(asm, recolored:)
+              name = recolored ? "rt_sprite_place_recolored" : "rt_sprite_place"
+              asm.label(name)
+              emit_palette_chosen(asm) if recolored
+              asm.cmp(:l, asm.post(0), asm.d(1))
+              asm.branch(:cc, "#{name}_done")
+              asm.add(:w, asm.d(1), asm.d(1))
+              asm.add(:w, asm.d(1), asm.d(1))
+              asm.movea(:l, asm.idx(0, 0, 1, :w), asm.a(0)) # the picture
+              asm.move(:w, asm.d(0), asm.post(3)) # the reader's row: whose
+              asm.move(:w, asm.post(0), asm.post(3)) # which picture
+              asm.move(:w, asm.d(2), asm.post(3))
+              asm.move(:w, asm.d(3), asm.post(3)) # and where
+              asm.move(:w, asm.post(0), asm.d(5)) # its pieces, less one
+              asm.branch(:mi, "#{name}_done")
               asm.movea(:w, asm.post(0), asm.a(1)) # the box's left from the sprite's place
-              asm.moveq(0, asm.d(6))
-              asm.move(:w, asm.post(0), asm.d(6))
-              asm.movea(:w, asm.post(0), asm.a(3)) # and its top
-              asm.moveq(0, asm.d(7))
-              asm.move(:w, asm.post(0), asm.d(7))
-              asm.move(:l, asm.d(2), asm.d(0))
-              asm.add(:l, asm.a(1), asm.d(0))
-              asm.cmp(:l, asm.d(6), asm.d(0))
-              asm.branch(:cc, "rt_sprite_place_piece")
-              asm.move(:l, asm.d(3), asm.d(0))
-              asm.add(:l, asm.a(3), asm.d(0))
-              asm.cmp(:l, asm.d(7), asm.d(0))
-              asm.branch(:cc, "rt_sprite_place_piece")
-              asm.move(:w, at.call(SPRITE_COUNT), asm.d(4))
-              asm.move(:w, asm.d(4), asm.d(0))
-              asm.add(:w, asm.d(5), asm.d(0))
-              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(0))
-              asm.branch(:cc, "rt_sprite_place_piece")
-              asm.addq(:w, 1, asm.d(0))
-              asm.move(:w, asm.d(0), at.call(SPRITE_COUNT))
-              asm.lea(asm.abs_l(memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)), asm.a(1))
-              asm.move(:w, asm.d(4), asm.d(0))
-              asm.lsl(:w, 3, asm.d(0))
-              asm.sub(:w, asm.d(0), asm.a(1)) # past the row the next piece is noted in
-              asm.neg(:w, asm.d(4))
-              asm.add(:w, asm.imm(MOST_SPRITES), asm.d(4)) # that row's link
-              asm.moveq(-1, asm.d(6)) # the bits of a piece's word that are kept, and the palette put in
-              asm.moveq(0, asm.d(7))
-              asm.move(:l, asm.a(4), asm.d(0))
-              asm.branch(:mi, "rt_sprite_place_on_screen")
-              asm.move(:w, asm.imm(PALETTE_CLEARED), asm.d(6))
-              asm.move(:w, asm.d(0), asm.d(7))
-              asm.label("rt_sprite_place_on_screen")
-              asm.move(:w, asm.post(0), asm.d(0))
+              asm.add(:l, asm.d(2), asm.a(1))
+              asm.cmp(:w, asm.post(0), asm.a(1))
+              asm.branch(:cc, "#{name}_off_across")
+              asm.movea(:w, asm.post(0), asm.a(1)) # and its top
+              asm.add(:l, asm.d(3), asm.a(1))
+              asm.cmp(:w, asm.post(0), asm.a(1))
+              asm.branch(:cc, "#{name}_off")
+              asm.cmp(:w, asm.d(5), asm.d(4))
+              asm.branch(:ls, "#{name}_off") # fewer rows left than pieces
+              asm.swap(asm.d(3))
+              asm.move(:w, asm.d(4), asm.d(3))
+              emit_palette_masks(asm, name) if recolored
+              asm.label("#{name}_piece")
+              if recolored
+                asm.move(:w, asm.post(0), asm.d(0))
+                asm.and(:w, asm.d(6), asm.d(0))
+                asm.or(:w, asm.d(7), asm.d(0))
+                asm.swap(asm.d(0))
+                asm.move(:w, asm.post(0), asm.d(0))
+              else
+                asm.move(:l, asm.post(0), asm.d(0))
+              end
               asm.add(:w, asm.d(2), asm.d(0))
-              asm.move(:w, asm.d(0), asm.pre(1)) # across
-              asm.move(:w, asm.post(0), asm.d(0))
-              asm.and(:w, asm.d(6), asm.d(0))
-              asm.or(:w, asm.d(7), asm.d(0))
-              asm.move(:w, asm.d(0), asm.pre(1)) # its tile and palette
-              asm.move(:w, asm.post(0), asm.d(0))
-              asm.or(:w, asm.d(4), asm.d(0))
-              asm.move(:w, asm.d(0), asm.pre(1)) # its size, and its link
-              asm.move(:w, asm.post(0), asm.d(0))
-              asm.add(:w, asm.d(3), asm.d(0))
-              asm.move(:w, asm.d(0), asm.pre(1)) # up and down
-              asm.subq(:w, 1, asm.d(4))
-              asm.dbra(asm.d(5), "rt_sprite_place_on_screen")
+              asm.move(:l, asm.d(0), asm.pre(2)) # its tile and palette, and across
+              asm.move(:l, asm.post(0), asm.d(0))
+              asm.add(:l, asm.d(3), asm.d(0))
+              asm.move(:l, asm.d(0), asm.pre(2)) # up and down, its size, and its link
+              asm.subq(:w, 1, asm.d(3))
+              asm.dbra(asm.d(5), "#{name}_piece")
+              asm.move(:w, asm.d(3), asm.d(4))
+              asm.label("#{name}_done")
               asm.rts
+              asm.label("#{name}_off_across")
+              asm.addq(:l, 4, asm.a(0)) # past the box's top
+              asm.label("#{name}_off")
+              return if recolored # the loop that tests each piece is next (#emit_sprites)
+
+              asm.moveq(-1, asm.d(0))
+              asm.movea(:l, asm.d(0), asm.a(4)) # every piece from the palette its picture names
+              asm.bra("rt_sprite_place_tested")
             end
 
             # A4: the palette the sprite is drawn from, as the bits of a piece's word that name it, or -1 for the
@@ -444,84 +454,90 @@ module VBlank
             def emit_palette_chosen(asm)
               asm.moveq(-1, asm.d(7))
               asm.movea(:l, asm.d(7), asm.a(4))
-              asm.tst(:l, asm.d(6))
-              asm.branch(:eq, "rt_sprite_place_chosen")
-              asm.movea(:l, asm.d(6), asm.a(3))
+              asm.movea(:l, asm.d(6), asm.a(1))
               asm.moveq(0, asm.d(6))
-              asm.move(:w, asm.post(3), asm.d(6))
+              asm.move(:w, asm.post(1), asm.d(6))
               asm.cmp(:l, asm.d(6), asm.d(5))
               asm.branch(:cc, "rt_sprite_place_chosen")
               asm.lsl(:l, 1, asm.d(5))
               asm.moveq(0, asm.d(7))
-              asm.move(:w, asm.idx(3, 0, 5), asm.d(7))
+              asm.move(:w, asm.idx(1, 0, 5), asm.d(7))
               asm.movea(:l, asm.d(7), asm.a(4))
               asm.label("rt_sprite_place_chosen")
             end
 
-            # The reader's row for the sprite: whose, which picture, where. D2 and D3 are its place.
-            def emit_drawn_note(asm, memory, at)
-              asm.moveq(0, asm.d(5))
-              asm.move(:w, at.call(DRAWN), asm.d(5))
-              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(5))
-              asm.branch(:cc, "rt_sprite_place_noted")
-              asm.lsl(:l, 3, asm.d(5))
-              asm.lea(asm.abs_l(memory[DRAWN], 2), asm.a(1))
-              asm.add(:l, asm.d(5), asm.a(1))
-              asm.move(:w, asm.d(4), asm.post(1))
-              asm.move(:w, asm.d(6), asm.post(1))
-              asm.move(:w, asm.d(2), asm.post(1))
-              asm.move(:w, asm.d(3), asm.post(1))
-              asm.addq(:w, 1, at.call(DRAWN))
-              asm.label("rt_sprite_place_noted")
+            # D6 and D7 from A4 (#emit_palette_chosen): the bits of a piece's word that are kept, and the
+            # palette put in.
+            def emit_palette_masks(asm, name)
+              asm.moveq(-1, asm.d(6))
+              asm.moveq(0, asm.d(7))
+              asm.move(:l, asm.a(4), asm.d(0))
+              asm.branch(:mi, "#{name}_piece")
+              asm.move(:w, asm.imm(PALETTE_CLEARED), asm.d(6))
+              asm.move(:w, asm.d(0), asm.d(7))
             end
 
-            # The piece at (D7, D1), counted as the chip counts, with the tile and palette in D0 and the size in
-            # D6, into the table's notes (#emit_pieces_all_on_screen), if any of it is on the screen and the
-            # table has a row for it.
-            def emit_piece_written(asm, memory, at)
+            # rt_sprite_place_tested: THE PIECES OF A SPRITE THAT IS NOT WHOLLY ON THE SCREEN, each
+            # tested by itself and noted if any of it shows and the table has a row for it. A0 is at
+            # the first of them (#picture_words), D5 is how many less one, D2 and D3 the sprite's place,
+            # and A4 its palette (#emit_palette_chosen).
+            def emit_pieces_tested(asm)
+              asm.label("rt_sprite_place_tested")
+              asm.move(:w, asm.disp(0, PIECE_LEFT), asm.d(7))
+              asm.ext(:l, asm.d(7))
+              asm.add(:l, asm.d(2), asm.d(7)) # the piece's left, as the chip counts it
+              asm.move(:w, asm.disp(0, PIECE_TOP), asm.d(1))
+              asm.ext(:l, asm.d(1))
+              asm.add(:l, asm.d(3), asm.d(1)) # its top
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.disp(0, PIECE_SIZE), asm.d(6))
+              asm.lsr(:w, 8, asm.d(6)) # its size
               emit_piece_side(asm, 2) # its width, in pixels
-              asm.add(:l, asm.d(7), asm.d(4))
-              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(4))
+              asm.add(:l, asm.d(7), asm.d(0))
+              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(0))
               asm.branch(:le, "rt_sprite_place_skip") # its right edge at or past the screen's left
               asm.cmp(:l, asm.imm(Paint::WIDTH + SPRITE_ORIGIN), asm.d(7))
               asm.branch(:ge, "rt_sprite_place_skip")
               emit_piece_side(asm, 0) # its height
-              asm.add(:l, asm.d(1), asm.d(4))
-              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(4))
+              asm.add(:l, asm.d(1), asm.d(0))
+              asm.cmp(:l, asm.imm(SPRITE_ORIGIN), asm.d(0))
               asm.branch(:le, "rt_sprite_place_skip")
               asm.cmp(:l, asm.imm(Paint::HEIGHT + SPRITE_ORIGIN), asm.d(1))
               asm.branch(:ge, "rt_sprite_place_skip")
-              asm.move(:w, at.call(SPRITE_COUNT), asm.d(4))
-              asm.cmp(:w, asm.imm(MOST_SPRITES), asm.d(4))
-              asm.branch(:cc, "rt_sprite_place_done")
-              asm.lea(asm.abs_l(memory[SPRITES] + (MOST_SPRITES * SPRITE_BYTES)), asm.a(1))
-              asm.lsl(:w, 3, asm.d(4))
-              asm.sub(:w, asm.d(4), asm.a(1))
-              asm.move(:w, asm.d(7), asm.pre(1))
-              asm.move(:w, asm.d(0), asm.pre(1))
+              asm.tst(:w, asm.d(4))
+              asm.branch(:eq, "rt_sprite_place_full")
+              asm.move(:w, asm.d(7), asm.pre(2))
+              asm.move(:w, asm.ind(0), asm.d(0)) # its tile and palette
+              asm.move(:l, asm.a(4), asm.d(7))
+              asm.branch(:mi, "rt_sprite_place_own_palette")
+              asm.and(:w, asm.imm(PALETTE_CLEARED), asm.d(0))
+              asm.or(:w, asm.d(7), asm.d(0))
+              asm.label("rt_sprite_place_own_palette")
+              asm.move(:w, asm.d(0), asm.pre(2))
               asm.lsl(:w, 8, asm.d(6))
-              asm.lsr(:w, 3, asm.d(4))
-              asm.neg(:w, asm.d(4))
-              asm.add(:w, asm.imm(MOST_SPRITES), asm.d(4)) # the row's link
-              asm.or(:w, asm.d(4), asm.d(6))
-              asm.move(:w, asm.d(6), asm.pre(1))
-              asm.move(:w, asm.d(1), asm.pre(1))
-              asm.addq(:w, 1, at.call(SPRITE_COUNT))
+              asm.or(:w, asm.d(4), asm.d(6)) # the row's link
+              asm.move(:w, asm.d(6), asm.pre(2))
+              asm.move(:w, asm.d(1), asm.pre(2))
+              asm.subq(:w, 1, asm.d(4))
               asm.label("rt_sprite_place_skip")
+              asm.addq(:l, PIECE_WORDS_BYTES, asm.a(0))
+              asm.dbra(asm.d(5), "rt_sprite_place_tested")
+              asm.label("rt_sprite_place_full")
+              asm.rts
             end
 
-            # D4: one side of the piece whose size is in D6, in pixels — across from the two bits at
+            # D0: one side of the piece whose size is in D6, in pixels — across from the two bits at
             # +shift+ 2, down from the two at 0, each a count of tiles less one.
             def emit_piece_side(asm, shift)
-              asm.moveq(3, asm.d(4))
+              asm.moveq(3, asm.d(0))
               if shift.zero?
-                asm.and(:l, asm.d(6), asm.d(4))
+                asm.and(:l, asm.d(6), asm.d(0))
               else
-                asm.move(:l, asm.d(6), asm.d(4))
-                asm.lsr(:l, shift, asm.d(4))
+                asm.move(:l, asm.d(6), asm.d(0))
+                asm.lsr(:l, shift, asm.d(0))
               end
-              asm.addq(:l, 1, asm.d(4))
-              asm.lsl(:l, 3, asm.d(4))
+              asm.addq(:l, 1, asm.d(0))
+              asm.lsl(:l, 3, asm.d(0))
             end
 
             # rt_upload (and rt_upload_whole, which is the same, the screen being off): the maps noted
@@ -611,7 +627,7 @@ module VBlank
             # with no sprites, one row that is off the screen.
             #
             # The notes are rows already, each linked to the row after it and kept at the end of the
-            # table (#emit_pieces_all_on_screen), so they are copied as they stand, two long words a row.
+            # table (#emit_sprite_placed), so they are copied as they stand, two long words a row.
             # The chip starts at row 0 whatever is noted, so the row noted last, the one in front, is
             # written there too, with the link it has: the row after its own. The row noted first is the
             # table's last, and its link is cleared here, since 80 names no row.

@@ -520,11 +520,9 @@ module VBlank
               data.data_words(@art.color_memory)
               data.label("art tile bytes")
               data.data_longs(@art.tile_data.bytesize)
-              data.label("art sprite pictures")
-              data.data_longs(@art.sprite_pictures.each_value.map { |picture| pieces_label(picture.number) })
               @art.sprite_pictures.each_value do |picture|
                 data.label(pieces_label(picture.number))
-                data.data_words(Runtime::Tiles.picture_words(picture.pieces, sprite_tiles_from))
+                data.data_words(Runtime::Tiles.picture_words(picture.number, picture.pieces, sprite_tiles_from))
               end
               write_held_colors(data)
               write_backdrop_colors(data)
@@ -540,7 +538,8 @@ module VBlank
               end
               @pose_tables.each do |obj, label|
                 data.label(label)
-                data.data_words(obj.poses.length, *obj.poses.map { |pose| @art.sprite_pictures.fetch(pose).number })
+                data.data_longs(obj.poses.length)
+                data.data_longs(obj.poses.map { |pose| pieces_label(@art.sprite_pictures.fetch(pose).number) })
               end
               (@recolor_tables || []).each do |lines|
                 data.label(recolor_table_label(lines))
@@ -956,26 +955,71 @@ module VBlank
 
                 emit_sprite_placing(object_named(item))
               end
+              call_routine("rt_sprites_end")
               @asm.label(done)
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
-            # One sprite placed, if it is showing.
-            def emit_sprite_placing(obj)
+            # ONE SPRITE PLACED, if it is showing: its numbers into the registers the runtime reads
+            # them from (Runtime::Tiles#emit_sprites) and a call. +returns+ for a placing that is
+            # itself called (#emit_ordered_run): it goes to the runtime with a jump, whose return is
+            # then the placing's own.
+            #
+            # THE WALK'S REGISTERS ARE THE RUNTIME'S from rt_sprites_begin to rt_sprites_end, so
+            # nothing written between two sprites may change them. A sprite's numbers are nearly
+            # always variables, read where they live. One that has to be worked out could call
+            # anything, so the walk's registers go on the stack while it is (#emit_sprite_numbers_worked_out).
+            def emit_sprite_placing(obj, returns: false)
               skip = fresh("sprite_off")
-              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
-              runtime_call("rt_sprite_place", [LabelAddress.new(pose_table(obj)), obj.pose, obj.x, obj.y,
-                                               Build.int(@sprite_names.name_number(obj.declared)), *recolor_operands(obj)])
+              numbers = [obj.pose, obj.x, obj.y]
+              numbers << obj.recolor unless obj.recolors.empty?
+              if [obj.active, *numbers].all? { |number| operand_of(number) }
+                jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+                emit_sprite_numbers_read(numbers)
+              else
+                emit_sprite_numbers_worked_out(obj.active, numbers, skip)
+              end
+              @asm.lea(@asm.abs_l(pose_table(obj)), @asm.a(0))
+              emit_operand_load(@asm.imm(@sprite_names.name_number(obj.declared)), 0)
+              routine = "rt_sprite_place"
+              unless obj.recolors.empty?
+                @asm.move(:l, @asm.imm(recolor_table_label(@recolor_lines.fetch(obj))), @asm.d(6))
+                routine = "rt_sprite_place_recolored"
+              end
+              returns ? @asm.jmp(@asm.abs_l(routine)) : call_routine(routine)
               @asm.label(skip)
+              @asm.rts if returns
             end
 
-            # Which list the sprite is drawn with, as the game sets it now, and the table of the palettes the
-            # lists have; or two noughts for a sprite drawn in no list but its own.
-            def recolor_operands(obj)
-              return [Build.int(0), Build.int(0)] if obj.recolors.empty?
+            # The registers a sprite's numbers go in, in the order #emit_sprite_placing lists them: which
+            # picture, across, down, and for a sprite drawn in a list of colours, which list.
+            SPRITE_NUMBER_REGISTERS = [1, 2, 3, 5].freeze
 
-              [obj.recolor, LabelAddress.new(recolor_table_label(@recolor_lines.fetch(obj)))]
+            # +numbers+, each a number or a variable, into their registers.
+            def emit_sprite_numbers_read(numbers)
+              numbers.each_with_index { |number, i| emit_operand_load(operand_of(number), SPRITE_NUMBER_REGISTERS.fetch(i)) }
+            end
+
+            # The registers the walk keeps (Runtime::Tiles#emit_sprites).
+            WALK_REGISTERS = %i[d4 a2 a3].freeze
+
+            # +active+ worked out, then +numbers+ if it is 1, each into its register, with the walk's
+            # registers kept on the stack meanwhile; or on to +skip+ for a sprite that is not showing.
+            def emit_sprite_numbers_worked_out(active, numbers, skip)
+              showing = fresh("sprite_showing")
+              @asm.movem_push(:l, *WALK_REGISTERS)
+              value(active)
+              @asm.subq(:l, 1, @asm.d(0))
+              @asm.branch(:eq, showing)
+              @asm.movem_pop(:l, *WALK_REGISTERS)
+              @asm.bra(skip)
+              @asm.label(showing)
+              numbers.each { |number| push_value(number) }
+              numbers.each_index.reverse_each do |i|
+                @asm.move(:l, @asm.post(M68000::SP), @asm.d(SPRITE_NUMBER_REGISTERS.fetch(i)))
+              end
+              @asm.movem_pop(:l, *WALK_REGISTERS)
             end
 
             def recolor_table_label(lines) = "art recolors #{@recolor_tables.index(lines)}"
@@ -1010,8 +1054,7 @@ module VBlank
               @asm.data_longs(placings)
               run.objects.each_with_index do |name, place|
                 @asm.label(placings[place])
-                emit_sprite_placing(object_named(name))
-                @asm.rts
+                emit_sprite_placing(object_named(name), returns: true)
               end
               @asm.label(past)
               keyed = @keyed_sorts&.fetch(run.order, nil)
@@ -1020,7 +1063,7 @@ module VBlank
                 if keyed
                   @asm.move(:w, at(keyed.entries, k * 2), @asm.d(0))
                 else
-                  outside ? emit_order_entry_read(run.order, k, outside) : value(Build.list_get(run.order, Build.int(k)))
+                  outside ? emit_order_entry_read(run.order, k, outside) : emit_order_entry_called(run.order, k)
                   @asm.lsl(:l, 2, @asm.d(0))
                 end
                 @asm.lea(@asm.pc_rel(table), @asm.a(0))
@@ -1042,6 +1085,14 @@ module VBlank
               @asm.branch(:cc, outside)
               @asm.moveq(0, @asm.d(0)) unless bytes == 4
               @asm.move(Runtime::Lists::SLOT_SIZES.fetch(bytes), @asm.abs_l(place, Runtime::Lists::HEADER + (k * bytes)), @asm.d(0))
+            end
+
+            # D0 = entry +k+ of an order list the game takes items from the front of, which only the
+            # runtime can find: a call, with the walk's registers kept on the stack meanwhile (#emit_sprite_placing).
+            def emit_order_entry_called(order, k)
+              @asm.movem_push(:l, *WALK_REGISTERS)
+              value(Build.list_get(order, Build.int(k)))
+              @asm.movem_pop(:l, *WALK_REGISTERS)
             end
 
             # The run's entry D1 was outside the order list: the game stopped as the runtime stops it

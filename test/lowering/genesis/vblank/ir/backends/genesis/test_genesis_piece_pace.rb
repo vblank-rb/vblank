@@ -195,13 +195,17 @@ end
 # must cost about what the same pictures cost flat, since a piece is a row of the sprite table
 # either way.
 class TestGenesisPiecePace < Minitest::Test
-  # How much of a frame the pass that writes the line may take, and an ordinary pass with pieces
-  # against the same pass with flat pictures. Measured, the first is about two fifths of a frame,
-  # of which the sprites are three quarters and the line of letters the rest: each letter's cell is
-  # a word read from a table of the told cells, not found by a test for each told cell, and the
+  # How much of a frame the pass that writes the line may take, how much an ordinary pass may, and
+  # an ordinary pass with pieces against the same pass with flat pictures. Measured, the first is
+  # about a third of a frame, of which the line of letters is a third: each letter's cell is a
+  # word read from a table of the told cells, not found by a test for each told cell, and the
   # loop and its table reads test and branch as a 68000 routine written by hand would. The second
-  # is about a fifth more: three rows of the table a sprite where the flat picture takes fewer.
-  MOST_OF_A_FRAME = 0.42
+  # is under a quarter, the sprites being half of it: the walk that places them keeps its place
+  # in registers, and a sprite wholly on the screen is two compares and two long words copied a
+  # piece. The third is about a fifth more: three rows of the table a sprite where the flat
+  # picture takes fewer.
+  MOST_OF_A_FRAME = 0.36
+  MOST_OF_AN_ORDINARY_FRAME = 0.25
   MOST_OVER_FLAT = 1.25
 
   PASSES = 32
@@ -262,6 +266,8 @@ class TestGenesisPiecePace < Minitest::Test
 
       assert_operator with_pieces, :<=, flat * MOST_OVER_FLAT,
                       "pieces take #{(with_pieces * 100).round(1)}% of a frame and flat pictures #{(flat * 100).round(1)}%"
+      assert_operator with_pieces, :<=, MOST_OF_AN_ORDINARY_FRAME,
+                      "an ordinary pass takes #{(with_pieces * 100).round(1)}% of a frame"
     end
   end
 
