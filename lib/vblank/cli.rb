@@ -571,7 +571,8 @@ module VBlank
       their screens differ. Each is a game file (a .rb, built first) or a .gba.
       Both must be cartridges for one of these consoles, with one screen size:
       #{COMPARED_TITLES}.
-      A game file for several consoles needs --console, one of #{COMPARED_NAMES.join(", ")}.
+      A game file for several consoles needs --console, one of:
+      #{COMPARED_NAMES.join(", ")}.
 
       Exit status: 0 the same, 1 different, 2 not compared (a file that is not
       there, a script that gave up).
@@ -583,8 +584,9 @@ module VBlank
 
       What to press, as for vblank run:
         #{PRESSES.gsub("\n", "\n  ")}
-        --console NAME           #{COMPARED_NAMES.join(" or ")}: which console's cartridge to
-                                 build a game file for several consoles as.
+        --console NAME           #{COMPARED_NAMES.join(", ")}:
+                                 which console's cartridge to build a game file
+                                 for several consoles as.
         --same WHICH             tape or script. Default: tape.
                                  tape: both get the same presses on the same
                                  frames.
