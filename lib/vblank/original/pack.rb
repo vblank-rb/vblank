@@ -111,8 +111,12 @@ module VBlank
               slots: slots.transform_values { |bytes| bytes.b.freeze }.freeze, frame_records: frame_records.b.freeze)
       end
 
-      # The bytes slot +name+ holds.
-      def bytes_of(name) = slots.fetch(name.to_sym)
+      # The bytes slot +name+ holds, or those a view reads, where +name+ is a view's (a SlotView).
+      def bytes_of(name)
+        return name.cut_from(slots.fetch(name.slot.name)) if name.is_a?(SlotView)
+
+        slots.fetch(name.to_sym)
+      end
 
       # Where the fixed part of the file is (the layout atop the class): the format version after
       # the mark, the copy's SHA-1 after that, and the build version, which starts the part whose

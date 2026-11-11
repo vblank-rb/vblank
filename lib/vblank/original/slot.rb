@@ -34,7 +34,31 @@ module VBlank
     # slot the routine renders or decompresses slowly names more, so a shell's bar gives it its
     # share of the time rather than of the bytes (Builder::DataPacks#define_unpacking_progress). It
     # changes nothing in the pack.
+    #
+    # A VIEW OF A SLOT is some of a slot's bytes read in a shape of their own: +count+ items of that
+    # shape from a byte of the slot on (#viewed). A console keeps tiles of two kinds and a map in
+    # one block of video memory, and a port that keeps the block as one slot reads each part
+    # through a view, so its unpacking writes the bytes once. A view is a Slot too, with its own
+    # shape, size and layout, and no slot of the pack: its +name+ is a SlotView, which says whose
+    # bytes it reads and from where, and the two things that find a slot's bytes by its name find
+    # a view's by that (Pack#bytes_of, SlotStarts#fetch).
     Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format, :cost)
+
+    # THE NAME OF A VIEW (see Slot): +size+ bytes of +slot+, a slot the pack names, from its byte
+    # +at+ on. It reads as text where a slot's name does, in a build's messages and in the names
+    # of the lists of a view of colours (`:video_at_64_0`).
+    SlotView = Data.define(:slot, :at, :size) do
+      def to_s = "#{slot.name}_at_#{at}"
+
+      # The view's bytes, cut from +slot_bytes+, all that its slot holds.
+      def cut_from(slot_bytes) = slot_bytes.byteslice(at, size)
+    end
+
+    # WHERE EACH SLOT'S BYTES START IN THE PACK'S FILE, by the slot's name (+by_name+,
+    # Pack::Layout#slot_starts), and so where a view's start: so far into its slot.
+    SlotStarts = Data.define(:by_name) do
+      def fetch(name) = name.is_a?(SlotView) ? by_name.fetch(name.slot.name) + name.at : by_name.fetch(name)
+    end
 
     class Slot
       TILE_SIDE = IR::FormatReading::TILE_SIDE
@@ -185,6 +209,46 @@ module VBlank
         end
 
         super
+      end
+
+      # Whether this is a view of a slot, and not a slot the pack names.
+      def view? = name.is_a?(SlotView)
+
+      # The slot of the pack the bytes are in: this one, or the one a view reads.
+      def declared = view? ? name.slot : self
+
+      # A VIEW OF THIS SLOT'S BYTES from byte +at+ on, in the shape the block makes: the block is
+      # handed a name and a count and gives back a Slot of them (`Slot.tiles(name, count: count,
+      # colors: 256)`). +count+ is how many items the view holds, or nil for as many as reach the
+      # slot's end. +verb+ names the game's line for the errors (`as_tiles`). A view of a view
+      # reads the same slot, further in.
+      def viewed(verb, at:, count:)
+        unless at.is_a?(Integer) && at.between?(0, byte_size - 1) && (count.nil? || (count.is_a?(Integer) && count.positive?))
+          raise ArgumentError, "`#{verb}` on slot :#{name} was given at: #{at.inspect} and count: #{count.inspect}. " \
+                               "at: must be a byte of the slot, 0 to #{byte_size - 1}. count: must be 1 or more. " \
+                               "Leave count: out to read to the end of the slot."
+        end
+
+        from = at + (view? ? name.at : 0)
+        label = :"#{declared.name}_at_#{from}"
+        count ||= count_to_end(verb, at, yield(label, 1))
+        made = yield(label, count)
+        unless at + made.byte_size <= byte_size
+          raise ArgumentError, "`#{verb}` reads #{made.byte_size} bytes from byte #{at} of slot :#{name}. The slot holds " \
+                               "#{byte_size} bytes, so the view ends after the slot ends. To fix this, correct at: or count:."
+        end
+
+        made.with(name: SlotView.new(slot: declared, at: from, size: made.byte_size))
+      end
+
+      # How many items like +one+ (a Slot of one) the bytes from +at+ to the slot's end are.
+      private def count_to_end(verb, at, one)
+        left = byte_size - at
+        return left / one.item_bytes if (left % one.item_bytes).zero?
+
+        raise ArgumentError, "`#{verb}` reads slot :#{name} from byte #{at} to its end, which is #{left} bytes. One of " \
+                             "these #{one.shape} is #{one.item_bytes} bytes, so the bytes do not make a whole number of " \
+                             "them. To fix this, give count:, or correct at:."
       end
 
       # Whether the slot names a cost other than a plain copy's.

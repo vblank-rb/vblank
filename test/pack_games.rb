@@ -8,6 +8,7 @@ require "pack_at_start_tests"
 require "pack_sound_tests"
 require "pack_scores_at_start_tests"
 require "pack_background_tests"
+require "pack_slot_view_games"
 require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
 require "all/vblank/builder/test_pack_poses"
@@ -1176,8 +1177,32 @@ module PackGames
     ].freeze
   end
 
+  # ONE SLOT READ IN SEVERAL SHAPES THROUGH VIEWS (PackSlotViewGames): a stretch of video memory
+  # kept as one slot of sixteen-colour tiles, and parts of it read as tiles of a byte a pixel, a
+  # map of bytes, a picture of pixels and tables of numbers.
+  class SlotViews < Kit
+    include PackSlotViewGames
+
+    GAMES = [
+      # Only a console that turns a background plays it; every other refuses it however it is built.
+      game(:backgrounds_of_two_shapes_viewed_in_one_slot, passes: 5) do |folder, options|
+        built(*two_shapes_game_and_file(slot_view_original(folder), views: true, options: options) do |layer|
+          layer.turns_around(*PIVOT, map_point: MIDDLE).scale(2.0)
+          spin = var :spin, 0
+          game_loop do
+            spin += 11
+            layer.rotate spin
+          end
+        end)
+      end,
+      game(:pixels_and_tables_viewed_in_a_slot_of_tiles, passes: 9) do |folder, options|
+        built(*table_and_pixels_game_and_file(slot_view_original(folder), views: true, options: options))
+      end
+    ].freeze
+  end
+
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesInBankColors,
-          Sounds, Scores].freeze
+          Sounds, Scores, SlotViews].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

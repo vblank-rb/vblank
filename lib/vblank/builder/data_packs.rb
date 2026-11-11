@@ -105,7 +105,7 @@ module VBlank
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
-                                       slots: slots.list,
+                                       slots: slots.list, platform: from.platform,
                                        make_unpacking: lambda { |_release|
                                          frames = pack_frame_section
                                          made[frames] ||= unpacking_program(bytes, copy_release_slots, slots.routine, reading,
@@ -152,12 +152,13 @@ module VBlank
         refuse_places_not_matching_releases!(slots, from, nil)
         layout = Original::Pack.layout(slots.list, build_version: version)
         @program.start_file = IR::StartFile.new(called: PACK_FILE_TITLE, size: layout.size, checks: layout.checks)
-        @pack_slot_starts = layout.slot_starts
+        @pack_slot_starts = Original::SlotStarts.new(by_name: layout.slot_starts)
         # The records of the frames the game goes on to name follow the last slot (PackPoses).
         @pack_frames_at = layout.size
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = {}
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
+                                       platform: from.platform,
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
                                          frames = pack_frame_section
@@ -941,7 +942,9 @@ module VBlank
 
       def refuse_slot_from_elsewhere!(handle, where)
         refuse_slot_on_first_screen!(handle)
-        return if @data_pack_slots&.fetch(handle.layout.name, nil) == handle.layout
+        # A view of a slot (Original::Slot#viewed) is this pack's where the slot it reads is.
+        declared = handle.layout.declared
+        return if @data_pack_slots&.fetch(declared.name, nil) == declared
 
         raise ArgumentError, "#{where} was given slot :#{handle.layout.name}, and this game's data pack has no such slot. " \
                              "Use a slot from this game's `data_pack`."

@@ -19,7 +19,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
     `pack[:video_bytes].numbers(first, count)` is `count` of them from number `first` on, for a
     background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
-    its video memory; any other verb takes the whole slot.
+    its video memory; any other verb takes the whole slot. Where the bigger slot has another shape
+    (tiles), take the map as a view of it: `pack[:video].as_numbers(at:, count:, width: :byte, signed:
+    false)` ("A view", below).
   - `slots.pixels :walls, count: 64 * 64 * 106` — **pixels, one byte each**: pictures of up to 256
     colours, row by row, as a computer game keeps its art. A byte is a byte in every layout, so the line
     names none. How the original lays its art out (column by column, in posts, in pages) is the game's
@@ -209,6 +211,51 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `image ..., colors: pack[:palette], places: pack[:walls].tile(3)` and `table :speeds, pack[:speeds]`.
   A table takes the slot's width and sign; a `width:` or `signed:` on the line that differs is refused.
   `pack.rom_sha1` and `pack.build_version` are the pack's header.
+- **A view: some of a slot's bytes, read in another shape.** A slot has one shape, and a console keeps
+  several things in one block: its video memory holds tiles of sixteen colours, tiles of a byte a pixel
+  and maps, side by side. A port that keeps the block as one slot reads each part through a view, so its
+  unpacking writes the bytes once:
+  - `pack[:video].as_tiles(at: 0x8000, count: 256, colors: 256)`
+  - `pack[:video].as_numbers(at: 0xC000, count: 1024, width: :byte, signed: false)`
+  - `pack[:video].as_colors(at: 0x40, count: 16)`, `.as_pixels(at:, count:)`, `.as_samples(at:, count:)`
+
+  `at:` is a byte of the slot, 0 first, whatever the slot's own shape, and `count:` how many tiles,
+  numbers, colours, pixels or samples the view holds; **`count:` left out reads to the slot's end**. Each
+  takes what the `slots.` line of its shape takes (`colors:`, `width:` and `signed:`, `layout:`,
+  `byte_order:`) and is read in the original's layout unless it names one. What comes back is a handle
+  like any other: every verb takes it as it takes a slot of that shape, all-in-one and with the pack
+  left out, and it narrows as one does (`.tile(4)`, `.tiles(...)`, `.numbers(first, count)`, `.bank(n)`,
+  `.pixels(...)`, `.number(i)`, `.envelope(i)`). A view of a view counts its `at:` from the first view's
+  start. The pack holds the slot and nothing for a view, and nothing in a runtime knows of one: to a
+  build that reads its pack as the game starts a view is a place in the file, as a slot is. The banks of
+  a view of colours are the lists `:<slot>_at_<byte>_<bank>` (`:video_at_64_0`).
+  **Friendly errors at the line**: a view that ends after its slot ends; an `at:` that is no byte of the
+  slot; bytes to the slot's end that are no whole number of items when `count:` is left out; a view
+  asked of tiles, a bank or a run of a slot (ask the slot itself); `.frame` on a view (a frame is read
+  from a slot the pack names); and a view given to a verb that reads another shape, as for a slot.
+  Not offered: a view as notes, which are records the unpacking writes into a slot of their own.
+  Worked examples: `test/pack_slot_view_games.rb` (one slot of video read by a background as
+  sixteen-colour tiles and by a turning one as a byte map over tiles of 256 colours),
+  `test/console/gba/vblank/builder/test_pack_slot_views_on_the_advance.rb`,
+  `test/all/vblank/dsl/test_pack_slot_views.rb`.
+- **`number`, `envelope`, `snes_envelope` and `frame` count from the slot's first number**, so each is
+  refused on a run (`pack[:bytes].numbers(8, 16).number(0)`): ask the slot itself, or a view of it.
+
+```ruby
+# One slot for a stretch of the original's video memory, read three ways.
+pack = data_pack from: ORIGINAL, version: "1.0" do |slots|
+  slots.tiles   :video,        count: 2048, colors: 16     # 64 KB, filled by the unpacking
+  slots.numbers :city_map,     count: 1024, width: :half, signed: false
+  slots.colors  :title_colors, count: 256
+  slots.fill_from_copy { |copy, pack| … }
+end
+video = pack[:video]
+background :city, tiles: video, map: pack[:city_map], colors: pack[:title_colors], across: 32
+sword = background :sword, tiles: video.as_tiles(at: 0x8000, count: 256, colors: 256),
+                           map: video.as_numbers(at: 0xC000, count: 1024, width: :byte, signed: false),
+                           colors: pack[:title_colors], across: 32
+sword.turns_around(120, 72, map_point: [128, 128]).scale(2.0)
+```
 
 ```ruby
 ORIGINAL = VBlank::Original::Game.new(title: "Space Pinball", setting: "SPACE_PINBALL_ROM",
