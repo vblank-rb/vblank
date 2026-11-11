@@ -329,7 +329,7 @@ module VBlank
         if colors.is_a?(DSL::PackSlot) && pack_left_out?
           raise ArgumentError, "image :#{name} takes its colors from slot :#{colors.layout.name}. This build reads its pack " \
                                "as the game starts, so a picture of pixels must hold its own colors. To fix this, give " \
-                               "the game's own list, like `colors: [:black, :white, ...]`."
+                               "the game's own list, like `colors: [:black, :white, ...]`. Or build the game all-in-one."
         end
 
         list = colors.is_a?(DSL::PackSlot) ? pack_slot_values(colors, :colors, "image :#{name}'s colors:") : colors

@@ -71,7 +71,7 @@ module VBlank
 
         raise ArgumentError, "#{verb} has a Score that reads notes from the data pack, and this build reads its pack as " \
                              "the game starts. The build cannot know where the last note ends. To fix this, give the " \
-                             "Score its length in ticks, like `length: 864`."
+                             "Score its length in ticks, like `length: 864`. Or build the game all-in-one."
       end
 
       # THE SONG A SCORE MAKES (Audio::Score#to_song), where some of its parts read their notes

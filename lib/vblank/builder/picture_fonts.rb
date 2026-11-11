@@ -192,7 +192,8 @@ module VBlank
       def declare_lettering_font(name, glyphs, height:, blank:, spacing:, fold:)
         unless fold.nil?
           raise ArgumentError, "font :#{name} reads its letters from the pack as the game starts. " \
-                               "Such a font cannot fold one case into another. To fix this, give a letter for each case."
+                               "Such a font cannot fold one case into another. To fix this, give a letter for each case. " \
+                               "Or build the game all-in-one."
         end
 
         sizes = glyphs.transform_values { |slice| [slice.count / height, height] }
