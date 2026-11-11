@@ -204,4 +204,23 @@ class TestDOSDrawing < Minitest::Test
       probe&.close
     end
   end
+
+  # A TEAR-FREE SCREEN IS THE PAINTED SCREEN AS IT ALWAYS IS ON A PC: one picture in memory, sent to the card
+  # in the retrace. So what a game paints once is there on every pass after, where a console that shows
+  # two pictures in turn shows it on every other one, and the program is the one `screen :bitmap` builds.
+  def test_a_tear_free_screen_keeps_what_was_painted_once_on_every_pass
+    game = lambda do |tear_free|
+      VBlank.game("DOSGAME", consoles: %i[dos]) do
+        screen :bitmap, tear_free: tear_free
+        clear_screen :blue
+        fill_rect 10, 10, 30, 30, :red
+        passes = var :passes, 0
+        game_loop { passes += 1 }
+      end.program(console: :dos)
+    end
+    seen = [3, 4].map { |frames| DOS::CheckedRun.new.run(game.call(true), frames: frames).screen.pixel(20, 20) }
+
+    assert_equal [VBlank::Graphics::Color.resolve(:red)] * 2, seen
+    assert_equal DOS.new.build(game.call(false)).bytes, DOS.new.build(game.call(true)).bytes
+  end
 end

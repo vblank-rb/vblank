@@ -540,9 +540,10 @@ module VBlank
                           # channel (DOSHardware::DAC_BITS), more than the five a game's colour has, so every
                           # colour a game names is shown exactly as written.
                           list_colors: 256, color_bits: 5,
-                          # A tear-free painted screen is a second picture in memory, drawn while the first
-                          # is shown, then copied to the card in the retrace.
-                          painted_pages: 2,
+                          # Every painted screen is tear-free already: the game paints one picture in memory,
+                          # and the rows that changed are copied to the card in the retrace. There is one such
+                          # picture, not two shown in turn, so what a game paints once stays painted.
+                          painted_pages: 1,
                           # The PC's clock chip (the CMOS clock) keeps the date and the time.
                           clock_keeps_date: true,
                           # The dots the card counts, and the dots one frame takes: 449 lines of 800.

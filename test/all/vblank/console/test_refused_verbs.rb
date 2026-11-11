@@ -118,8 +118,9 @@ class TestRefusedVerbs < Minitest::Test
   # ...and the verbs the console does are not caught by a refusal meant for another.
   def test_a_verb_that_works_beside_a_refused_one_still_builds
     VBlank::Console.kits.each do |kit|
-      # The PlayStation's answers say a sprite works, and its build does not make one yet.
-      next unless kit.answers.answer(:sprite).works? && kit.name != :ps1
+      # The PlayStation's and DOS's answers say a sprite of a tiled screen works, and their builds do not make
+      # one yet.
+      next unless kit.answers.answer(:sprite).works? && !%i[ps1 dos].include?(kit.name)
 
       VBlank.build("WORKS", console: kit.name, out: StringIO.new, err: StringIO.new, &tiled_game { nil })
     end

@@ -32,7 +32,8 @@ module VBlank
                       "in mode 13h (the variants :mode_x and :vesa_640x480 are 320 × 240 and 640 × 480), so a " \
                       "game laid out from `screen_width` and `screen_height` fills it. A painted picture has a " \
                       "colour of fifteen bits in each pixel, kept as one of 256 colours in the card's palette. " \
-                      "`tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` " \
+                      "`tear_free: true` changes nothing: every painted screen is drawn in memory and sent to the card " \
+                      "between frames, so none tears, and what a game paints once stays painted. `screen :rotozoom` " \
                       "works too: the processor draws the turned background. `pixel_size: 2` is refused: the " \
                       "build does not show a painted screen bigger yet."),
         setting: works,

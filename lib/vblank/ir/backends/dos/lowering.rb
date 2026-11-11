@@ -182,13 +182,15 @@ module VBlank
                                  part: VARIANT_PART)
           end
 
-          # A screen drawn from tiles, or one that keeps two pictures (`tear_free: true`), is not made yet.
+          # A screen drawn from tiles is not made yet. A tear-free screen (`tear_free: true`) is the painted
+          # screen as it always is here: one picture in memory, sent to the card in the retrace
+          # (Console::Description, painted_pages).
           def refuse_unmade_screens!
             @program.walk.each do |node|
               next unless node.kind == :screen
-              next if node.mode == :bitmap && !node.buffered
+              next if node.mode == :bitmap
 
-              raise NotMadeYet.new("This game shows a screen of tiles or a tear-free screen. The #{CONSOLE.title} build " \
+              raise NotMadeYet.new("This game shows a screen of tiles. The #{CONSOLE.title} build " \
                                    "does not make that yet. To fix this, use `screen :bitmap` for now.",
                                    part: Console::DOSAnswers::NOT_MADE_YET_PART)
             end
