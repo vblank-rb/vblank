@@ -19,7 +19,7 @@ module VBlank
     #
     # BUILT ALL-IN-ONE, the pieces are read here, and the pose is the picture of pieces a port
     # would have written by hand (`image ..., pieces:`), drawn from the tiles each piece names,
-    # turned as it says: a big piece is the four tiles its layout names, turned as one. So every
+    # turned as it says: a piece of several tiles is the tiles its layout names, turned as one. So every
     # console draws it from those pieces, and every build draws it as any pose. With the pack left
     # out nothing here can be known, and the build says so.
     module PackPoses
@@ -32,8 +32,10 @@ module VBlank
         tile_places = pack_tile_places(opts[:tiles], "image :#{name}")
         refuse_slot_from_elsewhere!(frame.slot, "image :#{name}'s frame:")
         origin = refuse_bad_origin!(name, opts[:origin])
-        pieces = frame_pieces(name, frame).map do |piece|
-          [origin[0] + piece.x, origin[1] + piece.y, pack_piece_places(name, piece, frame.piece_layout, tile_places)]
+        pieces = frame_pieces(name, frame).flat_map do |piece|
+          pack_piece_blocks(name, piece, frame.piece_layout, tile_places).map do |left, top, places|
+            [origin[0] + piece.x + left, origin[1] + piece.y + top, places]
+          end
         end
         refuse_piece_left_of_origin!(name, pieces)
         image name, pieces: pieces, colors: opts[:colors]
@@ -44,8 +46,9 @@ module VBlank
         bytes = @data_pack_contents.bytes_of(frame.slot.layout.name).bytes
         layout = frame.piece_layout
         refuse_frame_past_slot!(name, frame) unless frame.at.is_a?(Integer) && frame.at.between?(0, bytes.length - 1)
-        count = layout.counted ? bytes.fetch(frame.at) { refuse_frame_past_slot!(name, frame) } : frame.count
-        first = frame.at + (layout.counted ? 1 : 0)
+        first = frame.at + layout.count_bytes_before_pieces
+        refuse_frame_past_slot!(name, frame) if first > bytes.length
+        count = layout.counted ? layout.count_of(bytes[frame.at, layout.count_bytes]) : frame.count
         refuse_frame_count!(name, frame, count)
         Array.new(count) do |at|
           record = bytes[first + (at * layout.piece_bytes), layout.piece_bytes]
@@ -55,18 +58,36 @@ module VBlank
         end
       end
 
-      # The places of +piece+, row by row: its tile, or the four tiles of a big piece, turned as it says.
-      def pack_piece_places(name, piece, layout, tile_places)
+      # +piece+ as the blocks a picture of pieces is made of, each [left, top, places] from the
+      # piece's own top left. Its tiles are laid out as its layout orders them and the whole piece
+      # is turned as it says, so a mirrored piece of four columns has its last column first. A
+      # picture's pieces are 8x8 or 16x16, so the piece is then cut into blocks of 16x16 where two
+      # tiles are left each way and of 8x8 along an odd edge: a piece of 4 by 4 tiles is four blocks.
+      def pack_piece_blocks(name, piece, layout, tile_places)
         side = Original::Slot::TILE_SIDE
-        tiles_a_side = piece.big ? 2 : 1
-        size = side * tiles_a_side
-        rows = Array.new(size) do |y|
-          Array.new(size) do |x|
-            tile = pack_tile_at(tile_places, piece.tile + ((y / side) * layout.row_tiles) + (x / side), "image :#{name}")
+        rows = Array.new(piece.rows * side) do |y|
+          Array.new(piece.columns * side) do |x|
+            tile = pack_tile_at(tile_places, layout.piece_tile(piece, x / side, y / side), "image :#{name}")
             tile[((y % side) * side) + (x % side)]
           end
         end
-        turned_rows(rows, mirrored: piece.mirrored, upside_down: piece.upside_down).flatten
+        rows = turned_rows(rows, mirrored: piece.mirrored, upside_down: piece.upside_down)
+        block_places(piece.columns, piece.rows).map do |column, row, tiles|
+          [column * side, row * side, rows[row * side, tiles * side].flat_map { |line| line[column * side, tiles * side] }]
+        end
+      end
+
+      # Where each block of a piece +columns+ by +rows+ tiles starts, in tiles, and how many tiles
+      # a side it is (1 or 2): each [column, row, tiles].
+      def block_places(columns, rows)
+        (0...rows).step(2).flat_map do |row|
+          (0...columns).step(2).flat_map do |column|
+            next [[column, row, 2]] if column + 2 <= columns && row + 2 <= rows
+
+            [row, row + 1].select { |r| r < rows }.product([column, column + 1].select { |c| c < columns })
+                          .map { |r, c| [c, r, 1] }
+          end
+        end
       end
 
       def refuse_pack_pose_left_out!(name)
