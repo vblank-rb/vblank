@@ -212,6 +212,9 @@ module VBlank
             @shade = program.walk.select { |node| node.kind == :shade_outside }.last
             # ...and whether it takes turns with the scenes it is off in, set as each frame ends.
             @switches_shade = @shade && IR::LightScenes.switches?(program)
+            # ...and whether a scene it is on in has a fade placed in the stack to take off
+            # (Reference#lift_placed_fade_for_light).
+            @light_lifts_placed_fade = @switches_shade && program.walk.any? { |node| IR::LightScenes.placed_fade?(node) }
             # What each timer does when it ticks: its handler, wherever that is written, since it
             # is the timer's from power-on (Nodes::OnTimer.of). And the number the runtime knows
             # each timer by.
@@ -716,6 +719,7 @@ module VBlank
             bends_first = @program.described_console.sprites_placed_before_wait
             [*(bends_first ? bends : []),
              *(@switches_shade ? [eval_call("rg_shade_switch", variable(IR::LightScenes::ON))] : []),
+             *(@light_lifts_placed_fade ? [eval_call("rg_lift_placed_fade_for_light", variable(IR::LightScenes::ON))] : []),
              eval_call("rg_wait_vblank"),
              assign(Frames::COUNT, call("rg_add", count, Statements::Int.new(1))),
              assign(Frames::SEEN, count),
