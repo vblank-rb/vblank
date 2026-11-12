@@ -670,16 +670,23 @@ module VBlank
       #
       # It is one choice for the whole game too, like the place.
       #
+      # A status bar stays as drawn unless the game writes `status_bar: true`: then it is in
+      # blocks too, and its blocks start at its own top row, as the rest of the screen's start
+      # at the top. One choice for the whole game as well.
+      #
       # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
       # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen
       # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
-      def pixelate(size, under: nil, sprites: true)
+      # @param status_bar [Boolean] whether a status bar is put in blocks with the backgrounds
+      def pixelate(size, under: nil, sprites: true, status_bar: false)
         refuse_unusable_block_size!(size)
         check_effect_layer!(:pixelate, under) if under
         refuse_second_pixelate_place!(under)
         refuse_second_pixelate_sprites!(sprites)
+        refuse_second_pixelate_bar!(status_bar)
 
-        record(Build.pixelate(size: DSL::Value.node_for(size), under: under, keeps_sprites: !sprites))
+        record(Build.pixelate(size: DSL::Value.node_for(size), under: under, keeps_sprites: !sprites,
+                              bar_in_blocks: status_bar))
         ensure_var(size)
       end
 
@@ -956,6 +963,22 @@ module VBlank
               "This game pixelates with `sprites: false` in one place and with the sprites in blocks " \
               "in another. The build sets which things are in blocks one time, before the game runs. " \
               "To fix this, give every `pixelate` the same `sprites:`."
+      end
+
+      # ...and whether a status bar is among them: one choice for the whole game.
+      def refuse_second_pixelate_bar!(status_bar)
+        unless [true, false].include?(status_bar)
+          raise ArgumentError,
+                "The `status_bar:` setting of `pixelate` must be true or false. You gave #{status_bar.inspect}."
+        end
+
+        @pixelate_bar = status_bar unless defined?(@pixelate_bar)
+        return if @pixelate_bar == status_bar
+
+        raise ArgumentError,
+              "This game pixelates with `status_bar: true` in one place and with the status bar as drawn " \
+              "in another. The build sets which things are in blocks one time, before the game runs. " \
+              "To fix this, give every `pixelate` the same `status_bar:`."
       end
 
       # SWITCH THE LIGHT OFF IN THE SCENES IT IS OFF IN: those that see through a layer, or

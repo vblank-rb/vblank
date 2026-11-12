@@ -61,7 +61,7 @@ module VBlank
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
-            Mosaic.reserve(memory) if c.mosaic
+            Mosaic.reserve(memory, split: c.bar?) if c.mosaic
           end
 
           def reserve_music(memory, carries)

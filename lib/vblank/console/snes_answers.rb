@@ -87,8 +87,12 @@ module VBlank
         pixelate: works("the mosaic of a Super Nintendo puts the backgrounds in blocks, but it cannot put " \
                         "the sprites in blocks. If a game pixelates, it must write `sprites: false` " \
                         "(`pixelate 8, sprites: false`). Then the sprites stay as drawn. Without it, the " \
-                        "build refuses the game. A status bar also stays as drawn. Each block starts at " \
-                        "the top left of the screen and shows the colour of its first pixel."),
+                        "build refuses the game. A status bar stays as drawn, unless the game writes " \
+                        "`status_bar: true`. Each block shows the colour of its first pixel. The blocks " \
+                        "start at the top left of the screen. On a screen split by a status bar or by a " \
+                        "background held above a row (`above_row:`), the blocks start again at the row of " \
+                        "the split. The line table that shows the split also writes the mosaic again on " \
+                        "that row, so this costs no processor time."),
         pixelate_in: works("see `pixelate`."),
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,

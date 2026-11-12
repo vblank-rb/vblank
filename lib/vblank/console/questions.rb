@@ -137,8 +137,13 @@ module VBlank
       # The screen in blocks, and the part of it a console whose blocks reach only its backgrounds
       # cannot do (Console::Description#sprites_in_blocks): the sprites in blocks too. A line that
       # leaves them as drawn (`sprites: false`) asks only what the verb's own answer decides.
+      #
+      # A line that puts a status bar in blocks too asks for blocks that start again at the bar's
+      # top (Console::Description#blocks_start_at_split).
       def pixelate_question(node, console)
-        if node.keeps_sprites || console.sprites_in_blocks != false
+        if node.bar_in_blocks && console.blocks_start_at_split == false
+          Question.new(:pixelate, "This line puts the status bar in blocks (`pixelate` with `status_bar: true`)", false)
+        elsif node.keeps_sprites || console.sprites_in_blocks != false
           Question.new(:pixelate, "This line shows the screen in blocks (`pixelate`)", nil)
         else
           Question.new(:pixelate, "This line shows the sprites in blocks too (`pixelate` with no `sprites: false`)", false)

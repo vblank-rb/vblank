@@ -127,6 +127,24 @@ class TestPixelate < Minitest::Test
     assert_match(/true or false/, error.message)
   end
 
+  # ...and so is whether a status bar is among them.
+  def test_a_game_that_chooses_both_ways_for_its_status_bar_is_refused
+    error = assert_raises(ArgumentError) do
+      tiled_room do
+        pixelate 6, sprites: false, status_bar: true
+        pixelate_out sprites: false
+      end
+    end
+
+    assert_match(/same `status_bar:`/, error.message)
+  end
+
+  def test_status_bar_takes_true_or_false
+    error = assert_raises(ArgumentError) { tiled_room { pixelate 4, status_bar: :yes } }
+
+    assert_match(/true or false/, error.message)
+  end
+
   # --- beside the other things a display does to a picture ---
 
   # A layer holds things, and blocks are something done to the picture from a place in it.

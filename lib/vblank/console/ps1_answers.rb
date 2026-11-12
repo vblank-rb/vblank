@@ -98,7 +98,8 @@ module VBlank
         flash_screen: works,
         fade_level: works,
         shake_screen: works,
-        pixelate: works("each block is the colour of one of its pixels, drawn by the graphics chip."),
+        pixelate: works("the build does not make `pixelate` yet. Until it does, the build refuses a game that " \
+                        "pixelates, and names `pixelate`."),
         pixelate_in: works("see `pixelate`."),
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,

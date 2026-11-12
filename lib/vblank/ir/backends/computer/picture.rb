@@ -72,6 +72,7 @@ module VBlank
             @sprites = @objects.each_key.with_index.to_h # sprite name -> the number rg_screen.c knows it by
             @drawn_sprites = DrawnSprites.new(@program) # the names a run gives its sprites by
             @left_out_of_blocks = names_left_out_of_blocks
+            @bar_in_blocks = Blocks.bar_in_blocks!(@program, LoweringError)
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
             @tile_runs = by_name(@program.walk, :tile_run)
@@ -124,6 +125,12 @@ module VBlank
           # Reference#in_blocks?, all of it but the size: is this background or sprite drawn in
           # blocks while the picture is shown in them? By its name, as the interpreter asks.
           def shown_in_blocks?(thing) = !@left_out_of_blocks.nil? && !@left_out_of_blocks.include?(thing.name)
+
+          # ...and for a background, which a status bar is only where the program puts its bar in
+          # blocks too (Reference#paint_status_bar).
+          def background_in_blocks?(bg)
+            shown_in_blocks?(bg) && (!bg.bar? || @bar_in_blocks)
+          end
 
           def refuse_picture!(what)
             raise LoweringError, "this program uses #{what}, which #{build_name} cannot draw yet. " \
@@ -461,7 +468,7 @@ module VBlank
                bg.scene ? @scenes.fetch(bg.scene, NEVER_ARRIVES) : EVERY_SCENE, bg.bar? ? NOT_A_BAR : @stacking.depths.of_scenery(bg),
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
                see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
-               tile_count, steps.length, shown_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
+               tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR]
             end
             @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file

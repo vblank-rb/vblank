@@ -23,6 +23,7 @@ enum { NOTHING_ON_SHEET = -1 };
 static int32_t sheet[CELLS];
 static int32_t onto_sheet;
 static int32_t rows_tall = 1;
+static int64_t rows_split = -1; /* the row a split screen's blocks start again at, or -1 */
 
 /* Scenery up, in the order it went up (Reference @bg_shown): one entry for every time a
  * background is put up, even one already up, exactly as the interpreter keeps it. The repeats
@@ -457,6 +458,16 @@ static int64_t rows_shown_of(int32_t background) {
   return above != RG_NOT_A_BAR && above < rows ? above : rows;
 }
 
+/* Reference#block_split: the row the screen is split at, where its blocks start again (the top of
+ * the status bar showing, or the row a background showing is held above), or -1. */
+static int64_t block_split(void) {
+  int32_t bar = bar_showing();
+  if (bar >= 0) return bar_top_shown(bar);
+  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
+    if (showing(bg) && background_field(bg, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR) return background_field(bg, RG_BG_ABOVE_ROW);
+  return -1;
+}
+
 /* Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. */
 void rg_background_set_tile(int32_t background, int32_t col, int32_t row, int32_t tile) {
   /* A tile only another scene's declaration of the name has changes nothing here. */
@@ -596,8 +607,12 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
 }
 
 /* The row of the picture that screen row +py+ is drawn from: its own, or the row at the top of
- * its block while a background is being painted for blocks. */
-static int64_t row_drawn_from(int64_t py) { return py - py % rows_tall; }
+ * its block while a background is being painted for blocks (Blocks.block_top), the blocks below
+ * +rows_split+ counted from it. */
+static int64_t row_drawn_from(int64_t py) {
+  if (rows_split >= 0 && py >= rows_split) return rows_split + (py - rows_split) / rows_tall * rows_tall;
+  return py - py % rows_tall;
+}
 
 /* The background and the line of the screen the game is being asked about, when it is being
  * asked, and how far across it answered. */
@@ -719,11 +734,34 @@ static void paint_background(int32_t background) {
   else paint_window(background);
 }
 
-/* Reference#paint_status_bar: from its top row to the bottom of the screen, its map from its own
+/* Reference#paint_status_bar_rows: from its top row to the bottom of the screen, its map from its own
  * corner, never scrolled; past the end of its map the backdrop stays. */
-static void paint_status_bar(int32_t bar) {
+static void paint_status_bar_rows(int32_t bar) {
   int64_t top = bar_top_shown(bar);
-  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, py - top, 0, 0, py);
+  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, row_drawn_from(py) - top, 0, 0, py);
+}
+
+/* Reference#paint_status_bar: the status bar as drawn, or in blocks while the picture is shown in them and
+ * the game puts its bar there too (RG_BG_IN_BLOCKS), its blocks starting at its own top row. */
+static void paint_status_bar(int32_t bar) {
+  int32_t block = rg_hook_block_size();
+  if (block == 1 || !background_field(bar, RG_BG_IN_BLOCKS)) {
+    paint_status_bar_rows(bar);
+    return;
+  }
+  for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
+  onto_sheet = 1;
+  rows_tall = block;
+  rows_split = bar_top_shown(bar);
+  paint_status_bar_rows(bar);
+  onto_sheet = 0;
+  rows_tall = 1;
+  rows_split = -1;
+  for (int64_t py = bar_top_shown(bar); py < RG_SCREEN_HEIGHT; py++)
+    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
+      int32_t color = sheet[py * RG_SCREEN_WIDTH + px - px % block];
+      if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
+    }
 }
 
 /* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
@@ -748,9 +786,11 @@ static void paint_scenery_in_blocks(int32_t background, int32_t block, const bac
   for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
   onto_sheet = 1;
   rows_tall = block;
+  rows_split = block_split();
   paint_background(background);
   onto_sheet = 0;
   rows_tall = 1;
+  rows_split = -1;
   int32_t wide = background_field(background, RG_BG_CAN_TURN) && block == 2 ? 1 : block;
   for (int64_t py = 0, rows = scenery_rows(); py < rows; py++)
     for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {

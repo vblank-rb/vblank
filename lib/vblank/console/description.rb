@@ -145,7 +145,7 @@ module VBlank
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
-                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory) do
+                              :pose_lists, :sprites_in_blocks, :blocks_start_at_split, :voices_read_sound_memory) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -185,6 +185,11 @@ module VBlank
       # backgrounds alone (the Super Nintendo's mosaic), and nil where it has no blocks at all,
       # which its answers refuse whole.
       #
+      # +blocks_start_at_split+ marks whether the display can start its blocks again partway down
+      # the screen, where a status bar starts (Backends::Blocks.block_top), which a status bar put
+      # in blocks asks for (`pixelate ..., status_bar: true`). False where its mosaic counts every
+      # line from the top of the screen, whatever the game writes between lines.
+      #
       # +voices_read_sound_memory+ marks a sound chip that plays each of the game's four voices as a
       # loop it reads out of a memory of its own (the PlayStation's: Backends::PS1::SoundMemory), where
       # the Game Boy family's chip makes its square waves, waveform and hiss itself. A desktop, web or
@@ -192,7 +197,7 @@ module VBlank
       # sounds like the console it was made as.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
-                     voices_read_sound_memory: false, **rest) = super
+                     blocks_start_at_split: true, voices_read_sound_memory: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -316,7 +321,10 @@ module VBlank
                               face_fill_skips_outside_window: true,
                               # The painted screen is drawn through a background that resizes, so
                               # told to read half a pixel a step it shows each pixel as four.
-                              shows_bigger_pixels: true)
+                              shows_bigger_pixels: true,
+                              # Its mosaic counts every line from the screen's top (mGBA,
+                              # GBAVideoSoftwareRendererDrawBackgroundMode0: y -= y % mosaicV).
+                              blocks_start_at_split: false)
 
     # The Game Boy Color: a smaller screen, eight buttons, forty sprites and ten on a row, one
     # background, nothing that turns, lists of four colours, and a clock that counts days. What

@@ -982,22 +982,66 @@ module VBlank
             # backgrounds are put in blocks, BG1's the lowest. A painted screen is one picture, the
             # text over it included, so every layer it shows is in blocks, as the interpreter shows
             # the whole of a painted picture in blocks. On a tiled screen a background is in blocks
-            # unless it is a status bar or the game's place leaves it as drawn (`under:`), as
-            # Reference#paint_scenery and #place_blocks decide; a layer whose scenes differ in that
-            # is not made yet.
+            # unless the game's place leaves it as drawn (`under:`), or it is a status bar the game
+            # does not put in blocks too (`status_bar: true`), as Reference#paint_scenery, #paint_bar
+            # and #place_blocks decide.
+            #
+            # A LAYER WHOSE SCENES DIFFER in that (a menu's status bar as drawn, and a stage's clouds
+            # in blocks, on one layer) is among these bits too, and each scene taking over notes the
+            # layers it leaves as drawn (#emit_scene_mosaic), which the blank takes out of the byte
+            # (Runtime::Mosaic::KEPT_LAYERS). A layer one background holds in every scene, or none
+            # does, keeps its one answer, and a game with no such layer has none of it.
             def mosaic_backgrounds
               return ALL_MOSAIC_LAYERS if painted?
 
-              places = Blocks.places(@program)
-              kept = places.first ? Stacking.at_or_above(Stacking.picture(@program), places.first).map(&:name) : []
-              @layers.group_by { |_, layer| layer }.sum do |layer, held|
-                blocky = held.map { |bg, _| !bg.bar? && !kept.include?(bg.name) }.uniq
-                refuse_unmade!("a layer whose backgrounds are in blocks in one scene and not in another") if blocky.length > 1
-                blocky == [true] ? 1 << layer : 0
-              end
+              @layers.reduce(0) { |bits, (bg, layer)| background_in_blocks?(bg) ? bits | (1 << layer) : bits }
             end
 
             ALL_MOSAIC_LAYERS = 0x0F
+
+            # Reference#in_blocks? and #paint_status_bar, all but the size: whether +bg+ is in blocks while
+            # the picture is.
+            def background_in_blocks?(bg)
+              choice = blocks_choice
+              (!bg.bar? || choice.bars) && !choice.kept.include?(bg.name)
+            end
+
+            # What the program chose for its blocks, worked out once: the names left as drawn
+            # (`under:`), and whether a status bar is in blocks (`status_bar: true`).
+            BlocksChoice = Data.define(:kept, :bars)
+
+            # Raises for a program that chooses both ways (Blocks.bar_in_blocks!), which the builder
+            # refuses before it gets here.
+            def blocks_choice
+              @blocks_choice ||= begin
+                places = Blocks.places(@program)
+                kept = places.first ? Stacking.at_or_above(Stacking.picture(@program), places.first).map(&:name) : []
+                BlocksChoice.new(kept: kept, bars: Blocks.bar_in_blocks!(@program, LoweringError))
+              end
+            end
+
+            # The layers whose backgrounds are in blocks in one scene and not in another, a bit each.
+            def mosaic_layers_by_scene
+              @layers.group_by { |_, layer| layer }.sum do |layer, held|
+                held.map { |bg, _| background_in_blocks?(bg) }.uniq.length > 1 ? 1 << layer : 0
+              end
+            end
+
+            # A scene taking over, in a game with a layer whose scenes differ (#mosaic_backgrounds):
+            # the layers of those whose background in this scene is left as drawn, noted for the blank.
+            def emit_scene_mosaic(arrival)
+              return unless Runtime::Mosaic.kept?(@memory)
+
+              differing = mosaic_layers_by_scene
+              return if differing.zero?
+
+              kept = arrival.scenery.reduce(0) do |bits, bg|
+                @layers.key?(bg) && !background_in_blocks?(bg) ? bits | (1 << layer_of(bg)) : bits
+              end
+              Runtime::Mosaic.reserve_kept_layers(@memory)
+              @asm.lda(kept & differing)
+              @asm.sta(@asm.abs(@memory[Runtime::Mosaic::KEPT_LAYERS]))
+            end
 
             # Reference#exec_pixelate: blocks of this size from the next picture on (Runtime::Mosaic).
             # Which backgrounds are in them is settled as the cartridge is built (#mosaic_backgrounds).
@@ -1207,6 +1251,7 @@ module VBlank
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
+              emit_scene_mosaic(arrival)
               # (A scene's own status bar on the third layer is a scene's own scenery on no layer of
               # the two.)
               own_scenery = !@scene_layers.zero? || scene_bars?

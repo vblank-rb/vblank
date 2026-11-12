@@ -1039,7 +1039,7 @@ module VBlank
                 asm.cmp(BAR_LEAVES)
                 asm.bne("rt_bar_table_stays")
                 asm.lda(asm.abs(memory[HDMA_CHANNELS]))
-                asm.and_a(~(1 << (BAR_CHANNEL >> 4)) & 0xFFFF)
+                asm.and_a(~bar_channel_bits(memory) & 0xFFFF)
                 asm.sta(asm.abs(memory[HDMA_CHANNELS]))
                 asm.sep(0x20)
                 asm.lda(LAYERS_SHOWN)
@@ -1119,9 +1119,16 @@ module VBlank
               asm.lda(table & 0xFFFF)
               asm.sta(asm.abs(channel + h::A1TL))
               asm.lda(asm.abs(memory[HDMA_CHANNELS]))
-              asm.ora(1 << (BAR_CHANNEL >> 4))
+              asm.ora(bar_channel_bits(memory))
               asm.sta(asm.abs(memory[HDMA_CHANNELS]))
               asm.label("rt_bar_table_kept")
+            end
+
+            # The channels that go on and off with the bar's table, a bit each as HDMAEN takes them:
+            # the bar's, and in a game that pixelates the split's, which writes MOSAIC on the same
+            # line (Mosaic::SPLIT_CHANNEL).
+            def bar_channel_bits(memory)
+              (1 << (BAR_CHANNEL >> 4)) | (Mosaic.splits?(memory) ? Mosaic.split_channel_bit : 0)
             end
 
             # BENDS. rt_bends_prepare (JSL, as a pass ends): for each layer in +bent+, the line table

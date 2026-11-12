@@ -61,6 +61,38 @@ module VBlank
             "in another. The build sets which things are in blocks one time, before the game runs. " \
             "To fix this, give every `pixelate` the same `sprites:`."
         end
+
+        # WHETHER A STATUS BAR IS IN BLOCKS, one choice for a whole program for the same reason:
+        # true where `pixelate ..., status_bar: true` puts it in them. Raises +error+ for a
+        # program that chooses both ways.
+        def bar_in_blocks!(program, error)
+          choices = program.walk.select { |node| node.kind == :pixelate }.map { |node| node.bar_in_blocks == true }.uniq
+          raise error, mixed_bar_message if choices.size > 1
+
+          choices == [true]
+        end
+
+        def mixed_bar_message
+          "This program pixelates with `status_bar: true` in one place and with the status bar as drawn " \
+            "in another. The build sets which things are in blocks one time, before the game runs. " \
+            "To fix this, give every `pixelate` the same `status_bar:`."
+        end
+
+        # WHERE THE BLOCKS START AGAIN DOWN A SPLIT SCREEN. A screen split in two by a line table
+        # (a background held above a row, or a status bar from its top down) starts its blocks
+        # again at the split: from there down a block starts at every row that is a multiple of the
+        # size counted from +split+, and above it from the screen's top. A display whose mosaic
+        # counts its lines down the screen does this when its blocks are switched off and on again
+        # between two lines, which is the one place its count is set back (bsnes, sfc/ppu/io.cpp,
+        # the MOSAIC write, and sfc/ppu/mosaic.cpp, PPU::Mosaic::scanline).
+        #
+        # The first row of the block that row +row+ is in, for blocks +tall+ rows high on a screen
+        # split at +split+ (nil for none).
+        def block_top(row, tall, split)
+          return row - (row % tall) unless split && row >= split
+
+          split + ((row - split) / tall * tall)
+        end
       end
     end
   end

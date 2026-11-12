@@ -64,13 +64,19 @@ module VBlank
         # @param frames [Integer, nil] how long the walk takes, in frames
         # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
         # `sprites: false` puts the backgrounds alone in blocks, as it does for `pixelate`, and
-        # holds for the whole game the same way.
+        # holds for the whole game the same way. So does `status_bar: true`.
         #
         # @param under [Symbol, nil] a layer left as drawn with everything in front of it
         # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
-        def pixelate_out(frames: nil, duration: nil, under: nil, sprites: true)
+        # @param status_bar [Boolean] whether a status bar is put in blocks with the backgrounds
+        def pixelate_out(frames: nil, duration: nil, under: nil, sprites: true, status_bar: false)
           note_verb_written(:pixelate_out)
           @screen_pixelate_sprites = sprites unless sprites
+          unless [true, false].include?(status_bar)
+            raise ArgumentError,
+                  "The `status_bar:` setting of `pixelate_out` must be true or false. You gave #{status_bar.inspect}."
+          end
+          @screen_pixelate_bar = status_bar if status_bar
           start_pixelate_walk(FULL, frames, duration, under: under)
         end
 
@@ -212,7 +218,8 @@ module VBlank
             once_a_frame(ROUTINE) do
               if active == 1
                 shown = broken.to_i + 1
-                pixelate shown, under: @screen_pixelate_place, sprites: @screen_pixelate_sprites != false
+                pixelate shown, under: @screen_pixelate_place, sprites: @screen_pixelate_sprites != false,
+                                status_bar: @screen_pixelate_bar == true
                 if broken == target
                   active = 0
                 else

@@ -250,6 +250,7 @@ module VBlank
           @block = 1               # how many pixels a block of the picture is each way (see #exec_pixelate)
           @block_kept = []         # ...and the names of what is left as drawn all the same (see #place_blocks)
           @sprites_kept_from_blocks = false # ...and whether every sprite is too (see #place_blocks)
+          @bar_in_blocks = false   # ...and whether a status bar is in them with the rest (see #paint_status_bar)
           @lists = {}              # name -> ListValue (a bounded, run-time-sized collection)
           @layer_stack = []        # the layers the program declared, backmost first
           @see_through = nil       # ...and which of them you can see through, and by how much
@@ -2102,12 +2103,15 @@ module VBlank
         # top-left corner and never scrolls; its see-through pixels, and the rows past the end of
         # its map, leave the backdrop, since the backgrounds under it are not painted there (see
         # #scenery_rows).
-        def paint_status_bar(bar)
+        #
+        # +tall+ is how many rows a block is, for a bar being put into blocks: its blocks start at
+        # its own top row (Blocks.block_top), as the display's do where its line table starts the bar.
+        def paint_status_bar_rows(bar, tall = 1)
           map = map_of(bar)
           swapped = background_swap(bar)
           top = bar_top_shown(bar)
           (top...@screen.height).each do |py|
-            my = py - top
+            my = Blocks.block_top(py, tall, top) - top
             row = map[my / bar.tile_h]
             next unless row
 
@@ -2163,6 +2167,16 @@ module VBlank
         # is the picture as drawn, unless set.
         def rows_shown_of(bg) = bg.above_row ? [scenery_rows, bg.above_row].min : scenery_rows
 
+        # THE ROW THE SCREEN IS SPLIT AT, where its blocks start again (Blocks.block_top): the top
+        # of the status bar showing, or the row a background showing is held above. Nil for a
+        # screen in one piece. The build lets a screen have one of the two at a time.
+        def block_split
+          bar = bar_showing
+          return bar_top_shown(bar) if bar
+
+          showing_scenery.find(&:above_row)&.above_row
+        end
+
         def paint_background_window(bg, tall = 1)
           turn = @bg_affine[bg.name]
           return paint_affine_background_window(bg, turn, tall) if turn
@@ -2182,12 +2196,13 @@ module VBlank
           base_x, off_y = scroll_shown(bg)
           off_y %= map_h
           width = @screen.width
+          split = block_split
 
           rows_shown_of(bg).times do |py|
             # A bending background sits somewhere different on every row: this row's own
             # sideways offset, on top of wherever the background is scrolled to.
             off_x = (base_x + bend_offset_at(bg.name, py)) % map_w # Ruby % wraps negatives into 0..map_w-1
-            my = (off_y + py - (py % tall)) % map_h
+            my = (off_y + Blocks.block_top(py, tall, split)) % map_h
             row = map[my / tile_h]
             next unless row # no cell row here — the backdrop stays, and layers behind show
 
@@ -2225,9 +2240,10 @@ module VBlank
           map_h = map.length * tile_h
           base_x, off_y = scroll_shown(bg)
           width = @screen.width
+          split = block_split
 
           rows_shown_of(bg).times do |py|
-            my = off_y + py - (py % tall)
+            my = off_y + Blocks.block_top(py, tall, split)
             next if my.negative? || my >= map_h
 
             row = map[my / tile_h]
@@ -2275,9 +2291,10 @@ module VBlank
           pivot_x = turn.pivot_x
           pivot_y = turn.pivot_y
           pa, pb, pc, pd = Affine.matrix(turn.angle, turn.size)
+          split = block_split
 
           scenery_rows.times do |py|
-            dy = py - (py % tall) - pivot_y
+            dy = Blocks.block_top(py, tall, split) - pivot_y
             @screen.width.times do |px|
               dx = px - pivot_x
               tex_dx = ((pa * dx) + (pb * dy)) / Affine::ONE_TH
@@ -2626,6 +2643,22 @@ module VBlank
 
           @block_kept = places.first ? names_at_or_above(places.first) : []
           @sprites_kept_from_blocks = Blocks.keeps_sprites?(program, ProgramError)
+          @bar_in_blocks = Blocks.bar_in_blocks!(program, ProgramError)
+        end
+
+        # Paint the status bar +bar+: as drawn, or in blocks while the picture is shown in them and
+        # the program puts its bar there too (`status_bar: true`). Its blocks start at its own top
+        # row, and across at the screen's left edge as everything's do.
+        def paint_status_bar(bar)
+          return paint_status_bar_rows(bar) unless @bar_in_blocks && in_blocks?(bar.name)
+
+          sheet = framebuffer_like_screen(fill: nil)
+          drawing_into(sheet) { paint_status_bar_rows(bar, @block) }
+          width = @screen.width
+          (bar_top_shown(bar)...@screen.height).each do |py|
+            row = Array.new(width) { |px| sheet.stored_pixel(px - (px % @block), py) }
+            @screen.paint_row(0, py, row, from: 0, count: width)
+          end
         end
 
         # Is the thing called +name+ shown in blocks right now?

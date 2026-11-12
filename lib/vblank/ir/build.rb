@@ -953,9 +953,13 @@ module VBlank
       # which is all some displays can do. It is one choice for the whole program too, for
       # the same reason. Given only when set, so a program that never names it is the tree
       # it always was.
-      def pixelate(size:, under: nil, keeps_sprites: false)
+      #
+      # +bar_in_blocks+ puts a status bar in blocks with the backgrounds, its blocks starting at
+      # its own top row. One choice for the whole program as well, and given only when set.
+      def pixelate(size:, under: nil, keeps_sprites: false, bar_in_blocks: false)
         Nodes.build(:pixelate, size: to_value_node(size), **under_field(under),
-                               **(keeps_sprites ? { keeps_sprites: true } : {}))
+                               **(keeps_sprites ? { keeps_sprites: true } : {}),
+                               **(bar_in_blocks ? { bar_in_blocks: true } : {}))
       end
 
       # An operand given only when there is one, so a whole-percentage fade is the node it
