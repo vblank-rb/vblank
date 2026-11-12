@@ -38,7 +38,9 @@ module VBlank
     # whose slow pass counts itself before its work is done (the readings on the last frame that
     # shows each pass, the picture on the frame after; to compare the tape's last pass, play a frame
     # past it). After `lead_ins:` the two are compared from the FIRST cartridge's pass as its lead-in
-    # left it, the second played on to it, so every pass of the first from there is compared. A second
+    # left it, the second played on to it, so every pass of the first from there is compared. As it
+    # plays on, a second led in by the first's lead-in cut short (or from power-on) is held what the
+    # first's lead-in held on each of those frames, so a press after the cut still reaches it. A second
     # its lead-in left past that pass (a port a few passes ahead of its original after the same
     # lead-in) is refused naming both passes: lead it in for fewer frames, or not at all.
     # `skipping_still_frames_of: :second`

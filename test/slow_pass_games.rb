@@ -22,8 +22,9 @@ module SlowPassGames
   LEAD_IN_FRAMES = { long: 40, short: 30 }.freeze
 
   # +slow+ makes every fourth pass take two frames; +jump_on+ moves the box four pixels further on
-  # that pass alone, a real difference for a comparison to find.
-  private def stepping_box(console:, slow: false, jump_on: nil)
+  # that pass alone, a real difference for a comparison to find. +right_jumps+ moves it four pixels
+  # further on each pass RIGHT is down.
+  private def stepping_box(console:, slow: false, jump_on: nil, right_jumps: false)
     columns = MAP_COLUMNS.fetch(console)
     busy = BUSY_STEPS.fetch(console)
     VBlank.build("STEPPING", console: console, out: StringIO.new, err: StringIO.new) do
@@ -43,6 +44,9 @@ module SlowPassGames
         end
         x += 1
         x += 4 if jump_on && passes == jump_on
+        if right_jumps
+          x += 4 if held(:right)
+        end
         x = 20 if x > 100
         box.x = x
       end
@@ -125,5 +129,38 @@ module SlowPassGames
     end
     assert_plays_alike slow, stepping_box(console: console), watch_steps, by_passes: :passes, passes_compared_at: :end,
                                                                          lead_ins: [long, short], readings: { x: :x }
+  end
+
+  # A PRESS WHILE THE SECOND CATCHES UP. The first's lead-in taps RIGHT on the frame after the short
+  # lead-in ends, and the quick second, led in by the short one or not at all, is still behind the
+  # slow first there: it plays that frame while it catches up, and is held what the first's lead-in
+  # held on it, so the tap moves its box too. The answer key is the second led in as far as the tap.
+  # Compared at each pass's end, since read on a slow pass's first frame its box has not moved yet.
+  # A second lead-in that tapped on a frame of its own is not the first's cut short, and is not
+  # held the first's tap again.
+  private def assert_catch_up_press_reaches_second(console)
+    slow = stepping_box(console: console, slow: true, right_jumps: true)
+    quick = stepping_box(console: console, right_jumps: true)
+    tap_on = LEAD_IN_FRAMES.fetch(:short) + 1
+    long = tapping_lead_in(tap_on, LEAD_IN_FRAMES.fetch(:long))
+    short = lead_in_of(LEAD_IN_FRAMES.fetch(:short))
+    through_tap = tapping_lead_in(tap_on, tap_on)
+    assert_operator pass_after(stepping_box(console: console), through_tap), :<, pass_after(slow, long),
+                    "the quick build is still behind the slow one's lead-in after the tap"
+
+    own_tap = tapping_lead_in(tap_on - 2, LEAD_IN_FRAMES.fetch(:short))
+    [through_tap, short, nil, own_tap].each do |second_lead_in|
+      assert_plays_alike slow, quick, watch_steps, by_passes: :passes, passes_compared_at: :end,
+                                                   lead_ins: [long, second_lead_in], readings: { x: :x }
+    end
+  end
+
+  # A lead-in of +frames+ frames that holds RIGHT on frame +tap_on+ alone.
+  private def tapping_lead_in(tap_on, frames)
+    VBlank.playthrough("tap #{tap_on} of #{frames}") do
+      wait frames: tap_on - 1
+      hold :right, frames: 1
+      wait frames: frames - tap_on if frames > tap_on
+    end
   end
 end

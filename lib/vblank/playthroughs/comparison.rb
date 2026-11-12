@@ -248,10 +248,10 @@ module VBlank
       # error to say which of the two it was about.
       # +count_passes+ marks that the console keeps the game loop's count of passes (see Passes).
       Start = Data.define(:which, :cartridge, :save, :lead_in, :count_passes) do
-        # A console switched on with the cartridge in it, and led in.
-        def console
+        # A console switched on with the cartridge in it, and led in (Playthrough::Started).
+        def power_on_and_lead_in
           saying_which_cartridge do
-            Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, count_passes: count_passes).game
+            Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, count_passes: count_passes)
           end
         end
 
@@ -396,12 +396,16 @@ module VBlank
       # Play both on +tape+ and compare them, and say what was found.
       def run(tape)
         ignored = @ignored.frame_ranges_on(tape)
-        consoles = starts.map(&:console)
+        first_started, second_started = starts.map(&:power_on_and_lead_in)
+        consoles = [first_started.game, second_started.game]
         refuse_screens_not_described!(consoles)
         show_layers_asked_for(consoles)
         reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
         lined_up = @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part)
-        lined_up&.start_after_lead_ins!(second_led_in: !@lead_ins.last.nil?) if @lead_ins.any?
+        if @lead_ins.any?
+          lined_up&.start_after_lead_ins!(second_led_in: !@lead_ins.last.nil?, first_lead_in_keys: first_started.lead_in_keys,
+                                          second_lead_in_keys: second_started.lead_in_keys)
+        end
         sprite_boxes = @sprite_boxes&.start_watch(consoles, cartridges, @likeness.screen_size)
         readings_before = @readings.start_watch(consoles) if lined_up&.at_end?
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),

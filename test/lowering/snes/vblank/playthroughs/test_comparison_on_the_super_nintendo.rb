@@ -84,6 +84,10 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
     assert_second_behind_catches_up(:snes)
   end
 
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:snes)
+  end
+
   def test_a_difference_is_placed_on_the_console_s_screen
     failure = assert_raises(Minitest::Assertion) { assert_plays_alike walker(20), walker(28), walk }
 

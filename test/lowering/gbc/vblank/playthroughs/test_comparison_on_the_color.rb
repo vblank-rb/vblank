@@ -66,6 +66,10 @@ class TestComparisonOnTheColor < Minitest::Test
     assert_second_behind_catches_up(:gbc)
   end
 
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:gbc)
+  end
+
   def test_a_rectangle_off_the_color_s_screen_is_refused_naming_its_size
     error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(20), walk, ignoring_rectangles: [[150, 0, 20, 8]] }
 

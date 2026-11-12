@@ -56,6 +56,7 @@ module VBlank
           @second_frames = 0
           @both_shown = 0
           @buttons_since_step = []
+          @catch_up_keys = nil
         end
 
         # Whether a step is a pass of the game loop.
@@ -83,9 +84,24 @@ module VBlank
         # if that first frame already shows a pass past the first's (see play_second_to_step!).
         # Its count is never put in the first's lap: it is behind, and plays on until its count
         # first shows the first's pass, modulo the wrap.
-        def start_after_lead_ins!(second_led_in:)
+        #
+        # The presses while the second catches up continue the first's lead-in, frame by frame,
+        # where the second's lead-in is the first's cut short: where it held, on every frame it
+        # played, what the first's held on that frame (+first_lead_in_keys+ and +second_lead_in_keys+,
+        # one key mask a frame, empty for none). Then on the frame the second plays that is its Nth
+        # since power-on, it is held what the first's lead-in held on its Nth, and a press after the
+        # cut still reaches it. A second from power-on has played nothing, so it is held the first's
+        # lead-in from its first frame: the one road to where comparing starts that is known. A
+        # second whose lead-in took a road of its own (a press on another frame) is held none of
+        # the first's, since that would press again what it pressed already. Once it has played as
+        # many frames as the first's lead-in, or reached the first step compared, it is held the
+        # buttons of the pass as ever (THE BUTTONS). A press on a frame of the first's lead-in after
+        # the second has caught up comes too late for the second, which is already comparing.
+        def start_after_lead_ins!(second_led_in:, first_lead_in_keys:, second_lead_in_keys:)
           return unless @passes
 
+          cut_short = first_lead_in_keys.take(second_lead_in_keys.size) == second_lead_in_keys
+          @catch_up_keys = cut_short ? first_lead_in_keys.drop(second_lead_in_keys.size) : []
           @start_pass = @first.read_after_frame!
           @start_pass_as_read = @first.count_as_read
           @second_from_power_on = !second_led_in
@@ -116,7 +132,8 @@ module VBlank
         # did not move on (or had shown nothing before).
         private def step_ended(before, after) = before && after > before ? before : nil
 
-        # Play the second cartridge on, held the buttons the first was (see THE BUTTONS), until
+        # Play the second cartridge on, held the buttons the first was (see THE BUTTONS; the first
+        # time after lead-ins, the first's lead-in's while it catches up: start_after_lead_ins!), until
         # its count shows +step+ or a later one, and answer whether it shows that very step,
         # which is then compared. It plays at least one frame the first time, since nothing is
         # shown before a frame is played. Compared at the end of each step, it plays on until its
@@ -131,9 +148,11 @@ module VBlank
           buttons = [buttons.compact.reduce(0, :|)] if @every_frame && @passes
           still = 0
           shown_before_last_frame = nil
+          catch_up_keys = @catch_up_keys || []
+          @catch_up_keys = nil
           until second_reached?(step)
             before = @second.current_step
-            @second.step_and_read!(buttons.size > 1 ? buttons.shift : buttons.first)
+            @second.step_and_read!(catch_up_keys.shift || (buttons.size > 1 ? buttons.shift : buttons.first))
             @second_frames += 1
             yield if block_given?
             refuse_second_past_from_power_on!(step) if before.nil?

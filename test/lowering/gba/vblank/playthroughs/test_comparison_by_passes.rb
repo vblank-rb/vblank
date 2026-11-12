@@ -229,6 +229,11 @@ class TestComparisonByPasses < Minitest::Test
     assert_second_behind_catches_up(:gba)
   end
 
+  # The frames the second plays to catch up are held what the first's lead-in held on them.
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:gba)
+  end
+
   # A second with no lead-in plays on from power-on, and one whose count already shows a pass past
   # the first's on its first frame would go past the passes before without showing them.
   def test_a_second_from_power_on_already_past_the_first_is_refused

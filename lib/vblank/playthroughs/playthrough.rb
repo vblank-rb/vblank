@@ -100,17 +100,19 @@ module VBlank
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
-      # something else: the presses are made and the frames go by, and nothing is kept of
+      # something else: the presses are made and the frames go by, and no tape is kept of
       # them. A moment it names is nobody's to ask for, and a wait in it that never ends
       # gives up as any wait does, saying it was this script's.
       #
-      # It is played by a playing that has no cartridge to say a tape was recorded on, and
-      # is never asked for what it came to: it is here for its hands on the console. +stepper+
-      # plays its frames (a WindowStepper, for a window).
+      # It is played by a playing that has no cartridge to say a tape was recorded on: it is
+      # here for its hands on the console. +stepper+ plays its frames (a WindowStepper, for a
+      # window). What comes back is the buttons it held on each frame, as the console reads
+      # them, for a comparison whose other cartridge plays on past its own lead-in (see
+      # Comparison::LinedUp#start_after_lead_ins!).
       def play_as_lead_in(game, stepper: game)
         playing = Playing.new(@name, nil, game, nil, stepper: stepper, save: nil, folder: nil)
         steps_for_playing.each { |step| step.play(playing) }
-        game
+        playing.keys_by_frame
       end
 
       # Play the script on +first+ to learn its presses, then play +first+ and +second+ side
@@ -173,13 +175,15 @@ module VBlank
                  power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
         stepper = window ? window_stepper(cartridge, game, window) : game
-        lead_in&.play_as_lead_in(game, stepper: stepper)
-        Started.new(game: game, stepper: stepper)
+        lead_in_keys = lead_in ? lead_in.play_as_lead_in(game, stepper: stepper) : []
+        Started.new(game: game, stepper: stepper, lead_in_keys: lead_in_keys)
       end
 
       # A GAME SWITCHED ON AND READY TO PLAY: +game+, the running game a playing asks, and +stepper+,
       # what plays its frames — the game itself, or a WindowStepper showing it in a window.
-      Started = Data.define(:game, :stepper)
+      # +lead_in_keys+ is the buttons the lead-in held on each of its frames, as the console reads
+      # them: empty for none.
+      Started = Data.define(:game, :stepper, :lead_in_keys)
 
       # What steps +game+ in +window+, at the console's frame rate and with the game's sound.
       def self.window_stepper(cartridge, game, window)
@@ -509,6 +513,9 @@ module VBlank
           @progress.step("Playing on from #{name}")
           @at_each_moment&.call(name, @game)
         end
+
+        # The buttons held on each frame played so far, one key mask a frame.
+        def keys_by_frame = @taping.keys_by_frame
 
         # What this playing came to. The frames and the moments are the tape's own, so the
         # two can never disagree.

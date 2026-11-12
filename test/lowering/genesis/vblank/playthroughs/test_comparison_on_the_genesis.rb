@@ -60,6 +60,10 @@ class TestComparisonOnTheGenesis < Minitest::Test
     assert_second_behind_catches_up(:genesis)
   end
 
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:genesis)
+  end
+
   def test_a_drift_names_the_genesis_s_sprite_table
     drift = walk.compare(walker(20), walker(28)).drift
 
