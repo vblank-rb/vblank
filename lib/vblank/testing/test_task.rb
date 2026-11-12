@@ -79,6 +79,7 @@ module VBlank
       end
 
       def define
+        @ruby_opts << "-r#{bundler_setup_path}" if bundler_setup_path
         @ruby_opts << "-r#{File.expand_path('quiet_warnings.rb', __dir__)}"
         @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if checked?
         @defined = true
@@ -125,6 +126,19 @@ module VBlank
         $stdout.puts "", rule, " #{run.title} lowering#{as}: #{run.does}", rule
         $stdout.flush
       end
+
+      # The bundler/setup RUBYOPT names, or nil where this rake process runs without bundler.
+      # Bundler puts it there for every process started after it is set up, whether by
+      # `bundle exec`, `require "bundler/setup"` or `Bundler.setup`.
+      #
+      # It goes first on the run's command line, ahead of the files below. Ruby reads the `-r`
+      # files on its command line before the ones in RUBYOPT. Up to Ruby 4.0 that did not matter:
+      # RubyGems set bundler up itself as it loaded, before either. Ruby 4.1 stopped doing that,
+      # so processes.rb's `require "minitest"` would take the newest minitest installed, and
+      # bundler, coming after, would refuse it as not the Gemfile's and stop the run before a
+      # test played. Every run gets it, so each sets bundler up at the same point; the file
+      # RUBYOPT names then loads nothing a second time.
+      def bundler_setup_path = ENV.fetch("RUBYOPT", "")[%r{-r(\S*bundler/setup)(?:\.rb)?(?=\s|\z)}, 1]
 
       def checked? = Lowering.run_named(lowering).checked?
 

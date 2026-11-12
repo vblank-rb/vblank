@@ -86,9 +86,17 @@ module VBlank
       # are on in a child when they are on here.
       def child_command
         warnings = $VERBOSE ? ["-w"] : []
-        [RbConfig.ruby, *warnings, *LOAD_PATHS.map { |path| "-I#{path}" }, "-r#{__FILE__}", *COMMAND,
-         "--seed=#{Minitest.seed}"]
+        bundler = bundler_setup_path
+        [RbConfig.ruby, *warnings, *LOAD_PATHS.map { |path| "-I#{path}" }, *("-r#{bundler}" if bundler),
+         "-r#{__FILE__}", *COMMAND, "--seed=#{Minitest.seed}"]
       end
+
+      # The bundler/setup RUBYOPT names, or nil without bundler. A child sets it up ahead of this
+      # file, which requires minitest, for the reason TestTask#bundler_setup_path gives: from
+      # Ruby 4.1 nothing else would before this file's line, so the child would take the newest
+      # minitest installed and bundler would stop it. The same lookup as TestTask's, which cannot
+      # load this file: it would start minitest in the Rakefile.
+      def bundler_setup_path = ENV.fetch("RUBYOPT", "")[%r{-r(\S*bundler/setup)(?:\.rb)?(?=\s|\z)}, 1]
 
       # --- the parent ---
 
