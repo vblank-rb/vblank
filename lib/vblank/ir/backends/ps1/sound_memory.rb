@@ -23,7 +23,11 @@ module VBlank
         #   steps a second (Beetle PSX, spu.c SPU_RunNoise), below the 131072 of a high hit; and it has no
         #   rattle. Read as a recording, the noise is the Advance's at any pitch, a voice's own.
         #
-        # Every sample is a four-bit level at shift 0, so each comes back exactly (ADPCM).
+        # Every sample of those is a four-bit level at shift 0, so each comes back exactly (ADPCM).
+        #
+        # - A RECORDING the game plays (`sample`, `play_sample`) is its own samples, encoded as near as the
+        #   chip's filters bring them, once for each way it is played: once through, or round from where it
+        #   holds (#recording_samples).
         class SoundMemory
           SQUARE_SAMPLES = 56
           WAVE_SAMPLES = Audio::Sound::WAVE_SAMPLES * 7
@@ -50,12 +54,37 @@ module VBlank
           # when it or a song makes any.
           def initialize(program)
             @loops = {}
-            next_free = Console::PS1Hardware::SPU_FIRST_FREE
-            made(program).each do |name, samples|
-              bytes = ADPCM.encode(samples, loop: true)
-              @loops[name] = Loop.new(name: name, start: next_free / 8, bytes: bytes)
-              next_free += bytes.bytesize
-            end
+            @next_free = Console::PS1Hardware::SPU_FIRST_FREE
+            made(program).each { |name, samples| keep(name, ADPCM.encode(samples, loop: true)) }
+            recordings(program).each { |(name, back), (samples, loop_from)| keep([:recording, name, back], ADPCM.encode(samples, loop: back.positive?, loop_from: loop_from)) }
+          end
+
+          # The name of recording +name+ played going +back+ samples at its end (nought for once through).
+          def self.recording(name, back) = [:recording, name, back]
+
+          # A LOOP MUST START ON A BLOCK, and a recording holds from wherever it was told to, so the part it
+          # holds over is laid out again from the next block on: the samples up to that block go on as the
+          # recording does, and the part held over follows, turned to start where they leave off, and
+          # written as many times over as makes a whole number of blocks — at most 28, past a size it is
+          # written once and filled out to a block from its own start, which the ear does not tell from it.
+          # The chip then plays the same samples the recording holds, in the same order, for ever.
+          MOST_LOOP_SAMPLES = 0x1_0000
+
+          def self.recording_samples(data, back)
+            return [data, 0] unless back.positive?
+
+            from = data.size - back
+            held = data[from..]
+            aligned = from.ceildiv(ADPCM::SAMPLES_A_BLOCK) * ADPCM::SAMPLES_A_BLOCK
+            lead = Array.new(aligned - from) { |i| held[i % back] }
+            turned = held.rotate((aligned - from) % back)
+            times = ADPCM::SAMPLES_A_BLOCK / back.gcd(ADPCM::SAMPLES_A_BLOCK)
+            body = if back * times <= MOST_LOOP_SAMPLES
+                     turned * times
+                   else
+                     turned + Array.new((-back) % ADPCM::SAMPLES_A_BLOCK) { |i| turned[i % back] }
+                   end
+            [data[0...from] + lead + body, aligned]
           end
 
           # Every loop's bytes, one after another, as they go into sound memory from its first free byte.
@@ -104,6 +133,31 @@ module VBlank
           end
 
           private
+
+          def keep(name, bytes)
+            if @next_free + bytes.bytesize > Console::PS1Hardware::SPU_RAM_BYTES
+              raise LoweringError, "This game's sounds and recordings come to more than the PlayStation's sound chip holds " \
+                                   "(#{(Console::PS1Hardware::SPU_RAM_BYTES - Console::PS1Hardware::SPU_FIRST_FREE) / 1024} KB). " \
+                                   "To fix this, make its recordings shorter, or use fewer of them."
+            end
+            @loops[name] = Loop.new(name: name, start: @next_free / 8, bytes: bytes)
+            @next_free += bytes.bytesize
+          end
+
+          # Each recording the program plays, by [its name, how far back it reads at its end], as the
+          # samples sound memory keeps and where their loop starts (SoundMemory.recording_samples).
+          def recordings(program)
+            declared = program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
+            program.walk.select { |node| node.kind == :play_sample }.filter_map do |node|
+              sample = declared[node.name] or next
+              info = Assets::Sample.of(sample)
+              back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
+              [[node.name, back], nil]
+            end.uniq.to_h do |(name, back), _|
+              data = declared.fetch(name).bytes.unpack("c*").map { |sample| sample << 8 }
+              [[name, back], self.class.recording_samples(data, back)]
+            end
+          end
 
           def made(program)
             nodes = program.walk.to_a

@@ -48,7 +48,7 @@ module VBlank
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
       # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), and
       # the places drawn on it in 3D, each face cut by the processor and filled by the graphics chip
-      # (Runtime::Faces), and its beeps, noise, waveforms, songs and sound effects on the sound chip
+      # (Runtime::Faces), and its beeps, noise, waveforms, songs, sound effects and recordings on the sound chip
       # (Runtime::Sound, Runtime::Music).
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
@@ -62,8 +62,9 @@ module VBlank
         # of the interpreter's sound log by the number the program's own log keeps it as (empty for a game
         # that makes no sound), and +sound_voicing+ what the writes for those entries are worked out with
         # (SPUWrites::Voicing: the loops in the sound chip's memory, and the songs' parts), or nil.
+        # +recording_names+ is the game's recordings by the number a place playing one keeps.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines, :sound_entries,
-                             :sound_voicing) do
+                             :sound_voicing, :recording_names) do
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
         end
@@ -85,23 +86,25 @@ module VBlank
           songs = sound && Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          samples = sound && Lowering::Sound.samples?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
                                   songs: songs, follows_level: follows_level, effects: effects,
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
-                                           swells: Music.swells_under_level?(program), slides: Music.slides?(program) })
+                                           swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
+                                  samples: samples)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
-                                             music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level))
+                                             music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, bytes: byte_counts(linked),
                              routines: game_routines(lowering, linked), sound_entries: lowering.sound_entries,
-                             sound_voicing: (lowering.sound_voicing if lowering.sound?))
+                             sound_voicing: (lowering.sound_voicing if lowering.sound?), recording_names: lowering.recording_names)
           Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), load_at: memory.program_at,
                                               built: built)
         end

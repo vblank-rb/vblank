@@ -38,6 +38,9 @@ module VBlank
 
           def prepare_interpreter(interpreter) = interpreter.fill_faces_with(@faces)
 
+          # The recordings sounding at a moment, each with its level, as both sides keep them.
+          def sounding_levels(run) = run.active_samples.map { |name| [name, run.level_of(name)] }
+
           # THE SOUND LOG AND THE SOUND CHIP ITSELF, past the moments: every entry of the log, and the first
           # time the game was found waiting with a register of the chip holding something other than what
           # the interpreter's log says it must, as far as the entries the program had logged then

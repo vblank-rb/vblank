@@ -108,8 +108,9 @@ module VBlank
               memory.reserve(LOGGED_BY_PASS, Frame::STEPS_KEPT * LOGGED_SLOT_BYTES)
             end
 
-            # +songs+ for a game with songs, whose player (Music) runs where each wait ends.
-            def emit(asm, memory, songs: false)
+            # +songs+ for a game with songs, whose player (Music) runs where each wait ends; +samples+ for one
+            # that plays recordings, whose count (Recordings) moves on there first.
+            def emit(asm, memory, songs: false, samples: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_on(asm, at)
               emit_log(asm, at)
@@ -120,8 +121,8 @@ module VBlank
               emit_silence(asm)
               emit_keys(asm, at)
               emit_fades(asm, at)
-              emit_frame(asm, at, songs)
-              emit_upload(asm)
+              emit_frame(asm, at, songs, samples)
+              emit_upload(asm, samples ? Recordings::FIRST_VOICE + Recordings::PLACES : SPUWrites::VOICES)
               emit_volume_table(asm)
             end
 
@@ -278,17 +279,21 @@ module VBlank
             end
 
             # rt_sound_keys: the voices let go and the voices started this pass, each told to the chip in
-            # one write, and both forgotten.
+            # one write to each half of its register (voices 0 to 15, then 16 to 23), and both forgotten.
             def emit_keys(asm, at)
               asm.label("rt_sound_keys")
               asm.lui(:t1, h::IO >> 16)
               asm.lw(:t0, at.call(KEYS_OFF), :gp)
               asm.beq(:t0, :zero, "rt_sound_keys_on")
               asm.sh(:t0, spu_at(h::SPU_KEY_OFF), :t1)
+              asm.srl(:t0, :t0, 16)
+              asm.sh(:t0, spu_at(h::SPU_KEY_OFF + 2), :t1)
               asm.label("rt_sound_keys_on")
               asm.lw(:t0, at.call(KEYS_ON), :gp)
               asm.beq(:t0, :zero, "rt_sound_keys_done")
               asm.sh(:t0, spu_at(h::SPU_KEY_ON), :t1)
+              asm.srl(:t0, :t0, 16)
+              asm.sh(:t0, spu_at(h::SPU_KEY_ON + 2), :t1)
               asm.label("rt_sound_keys_done")
               asm.sw(:zero, at.call(KEYS_OFF), :gp)
               asm.sw(:zero, at.call(KEYS_ON), :gp)
@@ -350,13 +355,14 @@ module VBlank
             # took, the voices' fades (Reference#advance_frame's order: the mix, then the player); then the
             # voices started and let go; and, kept for the pass, how many entries the log holds, with the
             # pass's number (LOGGED_BY_PASS).
-            def emit_frame(asm, at, songs)
+            def emit_frame(asm, at, songs, samples)
               asm.label("rt_sound_frame")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
               asm.lw(:t0, at.call(Frame::FRAMES_TAKEN), :gp)
               asm.sw(:t0, at.call(TICKS_LEFT), :gp)
               asm.label("rt_sound_frame_tick")
+              asm.jal("rt_recordings_frame") if samples
               asm.jal("rt_music_frame") if songs
               asm.jal("rt_sound_fades")
               asm.lw(:t0, at.call(TICKS_LEFT), :gp)
@@ -364,6 +370,7 @@ module VBlank
               asm.sw(:t0, at.call(TICKS_LEFT), :gp)
               asm.bgtz(:t0, "rt_sound_frame_tick")
               asm.jal("rt_sound_keys")
+              asm.jal("rt_recordings_kept_for_pass") if samples
               asm.lw(:t0, at.call(Frame::PASSES), :gp)
               asm.andi(:t1, :t0, Frame::STEPS_KEPT - 1)
               asm.sll(:t1, :t1, 2)
@@ -383,7 +390,7 @@ module VBlank
             # (it moves on by itself), the queue is filled, and the chip told to write it (transfer mode 1,
             # manual), and then waited on until it is no longer busy, before the next (psx-spx, "SPU RAM
             # Manual Write"). RAM_CONTROL is set to 0004h first, as psx-spx says it must be.
-            def emit_upload(asm)
+            def emit_upload(asm, voices)
               asm.label("rt_sound_upload")
               asm.lui(:t1, h::IO >> 16)
               asm.li(:t0, h::SPU_ON)
@@ -417,7 +424,7 @@ module VBlank
               asm.label("rt_sound_upload_voices")
               asm.li(:t0, ADSR_LOW)
               asm.li(:t2, ADSR_HIGH)
-              SPUWrites::VOICES.times do |voice|
+              voices.times do |voice|
                 asm.sh(:t0, spu_at(SPUWrites.register(voice, h::SPU_ADSR_LOW)), :t1)
                 asm.sh(:t2, spu_at(SPUWrites.register(voice, h::SPU_ADSR_HIGH)), :t1)
               end

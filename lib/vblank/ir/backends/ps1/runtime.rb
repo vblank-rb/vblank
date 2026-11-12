@@ -9,6 +9,7 @@ require_relative "runtime/paint"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
 require_relative "runtime/music"
+require_relative "runtime/recordings"
 
 module VBlank
   module IR
@@ -34,12 +35,14 @@ module VBlank
           # fills faces (+faces+), Sound's for one that makes sound (+sound+), and Music's for one with songs
           # (+songs+): as much of them as its songs ask for, by whether it sets the music volume
           # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
-          # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:).
-          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {})
+          # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
+          # and Recordings' for one that plays recordings (+samples+).
+          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
             Sound.reserve(memory) if sound
+            Recordings.reserve(memory) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
           end
 
@@ -49,8 +52,10 @@ module VBlank
           # faces of a place, so carries Faces and its table; +sound+ whether it makes sound, so carries
           # Sound, its loops in sound memory first copied there (the game's section "sound_memory"); +songs+
           # whether it plays songs, so carries Music, with its +effects+ and the address of its music volume
-          # (+music_level_at+) if it sets one.
-          def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil)
+          # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
+          # which reads the game's table "recording_plays".
+          def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
+                       samples: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
@@ -60,7 +65,8 @@ module VBlank
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
             Faces.emit(asm, memory) if faces
-            Sound.emit(asm, memory, songs: songs) if sound
+            Sound.emit(asm, memory, songs: songs, samples: samples) if sound
+            Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
             emit_start(asm, sound: sound)
             emit_frame_begins(asm, frame_begins)

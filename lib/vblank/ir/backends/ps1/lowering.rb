@@ -140,7 +140,6 @@ module VBlank
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group pixels_overlap],
-                                                    "sound" => %i[play_sample stop_sample],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]
                                                   })

@@ -133,6 +133,37 @@ class TestPS1Sound < Minitest::Test
     assert_operator run.loudest_each_frame.last(5).max, :<, 50
   end
 
+  # Thirty samples of a square wave, up then down.
+  CLIP = ([100] * 15) + ([-100] * 15)
+
+  def test_a_recording_sounds_and_ends_with_the_interpreter
+    run = PS1::CheckedRun.new.run(recording_program(loop: false), frames: 40)
+
+    assert_empty run.active_samples, "thirty samples are gone in a frame"
+    assert_includes run.audio, [:sample, :clip]
+  end
+
+  def test_a_looping_recording_is_heard_at_the_rate_it_was_recorded
+    run = PS1::CheckedRun.new.run(recording_program(loop: true), frames: 20)
+
+    assert_equal [:clip], run.active_samples
+    run = PS1::HeadlessRun.new(keep_sound: true)
+    run.run(recording_program(loop: true), frames: 20)
+    # Fifteen samples up and fifteen down at 13000 a second is 433 waves a second.
+    assert_in_delta 13_000 / 30.0, pitch_of(run), 12
+  end
+
+  def test_a_held_recording_reads_back_from_a_block_as_it_does_from_its_hold
+    data = Array.new(100) { |i| i * 7 }
+    samples, loop_from = PS1::SoundMemory.recording_samples(data, 37)
+    played = samples + samples[loop_from..] # once through, and once round again
+
+    assert_equal 0, loop_from % PS1::ADPCM::SAMPLES_A_BLOCK
+    assert_equal 0, (samples.size - loop_from) % PS1::ADPCM::SAMPLES_A_BLOCK
+    expected = data + Array.new(played.size - data.size) { |i| data[63 + (i % 37)] }
+    assert_equal expected, played
+  end
+
   def test_each_loop_reads_back_from_its_blocks_exactly
     square = PS1::SoundMemory.square_samples(2)
     wave = PS1::SoundMemory.wave_samples(VBlank::Audio::Sound.wavetable(:sine))
@@ -148,6 +179,16 @@ class TestPS1Sound < Minitest::Test
     samples.zip(decoded).each { |want, got| assert_in_delta want, got, 2048 }
   end
 
+  # A smooth wave is what the filters are for: guessed from the samples before, it comes back far closer
+  # than four bits at a shift alone could bring it.
+  def test_the_filters_bring_a_smooth_recording_closer_than_four_bits_alone
+    samples = Array.new(28 * 20) { |i| (Math.sin(i / 9.0) * 20_000).round }
+    decoded = PS1::ADPCM.decode(PS1::ADPCM.encode(samples, loop: false)).take(samples.size)
+    worst = samples.zip(decoded).drop(28).map { |want, got| (want - got).abs }.max
+
+    assert_operator worst, :<, 300
+  end
+
   private
 
   def program_of(&game)
@@ -158,6 +199,21 @@ class TestPS1Sound < Minitest::Test
   end
 
   def checked(frames:, &game) = PS1::CheckedRun.new.run(program_of(&game), frames: frames)
+
+  def recording_program(loop:)
+    build = VBlank::IR::Build
+    program = build.program(build.enable_sound, build.sample(:clip, CLIP.pack("c*"), 13_000), build.play_sample(:clip, loop: loop),
+                            build.loop_(build.wait_vblank))
+    program.console = :ps1
+    program
+  end
+
+  def pitch_of(run)
+    left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE / 6)
+    middle = left.sum.fdiv(left.size)
+    rises = left.each_cons(2).count { |before, after| before < middle && after >= middle }
+    rises * SAMPLE_RATE.fdiv(left.size)
+  end
 
   # The strongest pitch of the sound a game makes after its first few frames, in Hz, found by counting where
   # the left speaker's sound crosses its middle going up.

@@ -14,7 +14,7 @@ module VBlank
           # player walks (Runtime::Music). Mixed into Lowering.
           module Sound
             STATEMENT_KINDS = %i[enable_sound beep noise wave stop_wave play_song stop_music hold_music play_from_list
-                                 play_sound_effect].freeze
+                                 play_sound_effect play_sample stop_sample].freeze
 
             def emit_sound_statement(node)
               case node.kind
@@ -28,9 +28,29 @@ module VBlank
               when :hold_music then emit_hold_music(node)
               when :play_from_list then emit_play_from_list(node)
               when :play_sound_effect then emit_play_sound_effect(node)
+              when :play_sample then emit_play_sample(node)
+              when :stop_sample then emit_stop_sample(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
+
+            # Whether +program+ plays recordings of its own, and so carries their count (Runtime::Recordings).
+            def self.samples?(program) = program.walk.any? { |node| node.kind == :play_sample }
+
+            # What the plays are to the author, for a program too full for them.
+            PLAYS = R3000::Holding.new(what: "the game's recordings", fix: "play fewer different recordings")
+
+            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays".
+            def recordings_section
+              asm = R3000.new("recording plays", holds: PLAYS)
+              asm.label("recording_plays")
+              @plays.each { |row| asm.data_words(row) }
+              asm.data_words(0) if @plays.empty? # a label has to be somewhere
+              asm.section
+            end
+
+            # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
+            def recording_names = @samples.keys
 
             # Whether +program+ makes any sound.
             def self.sounds?(program) = program.walk.any? { |node| STATEMENT_KINDS.include?(node.kind) }
@@ -69,7 +89,7 @@ module VBlank
               asm.label("sound_memory")
               asm.data_bytes(@sound_memory.bytes.bytes)
               asm.label("sound_memory_end")
-              [asm.section, *(music_section if Sound.songs?(@program))]
+              [asm.section, *(music_section if Sound.songs?(@program)), *(recordings_section if Sound.samples?(@program))]
             end
 
             # How many sound effects the game has.
@@ -83,6 +103,65 @@ module VBlank
               @defined_sounds = @program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
               @sound_memory = Sound.sounds?(@program) ? SoundMemory.new(@program) : nil
               @music = PS1::Music.new(@program)
+              @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
+              @plays = [] # each play's row of "recording_plays"
+            end
+
+            # Reference#exec_play_sample (Reference::Mixer#start): a row of the table for the play — where its
+            # recording starts in sound memory, the voice's pitch and volume, and the count the interpreter's
+            # mix keeps for it — and the runtime handed its number.
+            def emit_play_sample(node)
+              declared = @samples.fetch(node.name) { raise LoweringError, "the sample #{node.name.inspect} is not declared" }
+              info = Assets::Sample.of(declared)
+              refuse_shaped_recording!(node.name, info)
+              clock = CONSOLE.sample_clock(declared.rate)
+              frequency = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(node.pitch || info.note || :C4)
+              back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
+              step = IR::Mixing.step(info, frequency, clock.rate)
+              refuse_unreadable_play!(node.name, step, back)
+              loudness = VBlank::Audio::Sound::MIX_LEVELS.fetch(node.volume, VBlank::Audio::Sound::MIX_LEVELS[:full])
+              advance = step * clock.samples_a_frame
+              row = [@sound_memory.start_of(SoundMemory.recording(node.name, back)), recording_pitch(step),
+                     (loudness * SPUWrites::LOUDEST) / VBlank::Audio::Sound::MIX_LEVELS[:full], info.length, back,
+                     advance >> VBlank::Audio::Sound::STEP_SHIFT, advance & ((1 << VBlank::Audio::Sound::STEP_SHIFT) - 1),
+                     sound_entry_number([:sample, node.name]), @samples.keys.index(node.name)]
+              @plays << row unless @plays.include?(row)
+              runtime_call("rt_recordings_play", [Build.int(@plays.index(row))])
+            end
+
+            # Reference#exec_stop_sample (Reference::Mixer#stop): the recording's places freed, or every place.
+            def emit_stop_sample(node)
+              name = node.name ? @samples.keys.index(node.name) : Runtime::Recordings::ALL
+              runtime_call("rt_recordings_stop", [Build.int(name), Build.int(sound_entry_number([:stop_sample]))])
+            end
+
+            # THE VOICE'S PITCH for a play read +step+ samples of its recording for each of the mix's, in
+            # 65536ths: the chip reads 4096ths of a sample for each of its 44100 a second, which is the rate
+            # the mix runs at (Console::Description#recording_voice_hz), so a sixteenth of the step.
+            def recording_pitch(step) = (step / 16.0).round.clamp(1, SPUWrites::PITCH_TOP)
+
+            # A recording with a shape (`envelope:`), which the build does not make yet.
+            def refuse_shaped_recording!(name, info)
+              return if info.envelope.nil? || info.envelope.plain?
+
+              raise NotMadeYet.new("The sample #{name.inspect} has a shape (`envelope:`). The #{CONSOLE.title} build does not " \
+                                   "make that yet. To fix this, build the game for the Game Boy Advance alone for now " \
+                                   "(`consoles: %i[gba]`).", part: "sound: recordings with a shape")
+            end
+
+            # A play the chip cannot read with the interpreter's count: one read more than four times as fast
+            # as the chip plays (its pitch register reads at most 3FFFh, Beetle PSX spu.c), and one so fast
+            # that a single sample of the mix goes past the whole part a recording holds (the interpreter logs
+            # that once, where the program's count would log each time round).
+            def refuse_unreadable_play!(name, step, back)
+              if step / 16.0 > SPUWrites::PITCH_TOP
+                raise LoweringError, "The sample #{name.inspect} plays more than four times faster than its recording. A " \
+                                     "PlayStation cannot read a recording that fast. To fix this, play it at a lower note."
+              end
+              return unless back.positive? && step > (back << VBlank::Audio::Sound::STEP_SHIFT)
+
+              raise LoweringError, "The sample #{name.inspect} plays so fast that one step goes past the whole part it " \
+                                   "holds. To fix this, hold it from an earlier point, or play it at a lower note."
             end
 
             # A song doing what the player does not do yet, refused by name.

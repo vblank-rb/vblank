@@ -61,8 +61,31 @@ module VBlank
             @keep_sound = keep_sound
           end
 
+          # THE RECORDINGS SOUNDING at the moment the run ended, or the one a watching block is asked at
+          # (Reference#active_samples): the program's own count (Runtime::Recordings), place by place, as the
+          # interpreter's mixer keeps them voice by voice.
+          def active_samples = @sounding || []
+
+          # A recording sounds at full from its first sample to its last: one with a shape is not made yet
+          # (Reference#level_of).
+          def level_of(name) = active_samples.include?(name) ? Audio::Envelope::FULL : nil
+
+          # Whose each recording sounding is as the run ended (Reference#sound_owners): the game's own, the
+          # only ones made yet.
+          def sound_owners = recordings_at(:end).map { :game }
+
+          # The plays that found every place busy, and the most of them songs held at one of those moments
+          # (Reference#sound_drops), as the program counted them.
+          def sound_drops
+            places = Console::PLAYSTATION.recordings_at_once
+            return Diagnostics::SoundDrops::Reading.new(dropped: 0, music_held: 0, voices: places) unless playing_recordings?
+
+            Diagnostics::SoundDrops::Reading.new(dropped: read32(runtime_place(Runtime::Recordings::DROPS)),
+                                                 music_held: read32(runtime_place(Runtime::Recordings::DROPS_MUSIC)), voices: places)
+          end
+
           # The rest of what the interpreter answers, each refused by name.
-          refuses :clock_at, :mixed_sound, :active_samples
+          refuses :clock_at, :mixed_sound
 
           # HOW MANY LINES THE SCREEN HAD DRAWN since the last blank began when +pass+ went to sleep, by
           # the pass's number as #frames_took has it, read off the console's line timer
@@ -85,6 +108,26 @@ module VBlank
           def next_song_number = song_taken_up(Runtime::Music)
 
           def in_interpreter_words(entries) = entries.map { |entry| SongTable.interpreter_entry(entry) }
+
+          def playing_recordings? = @places.runtime.key?(Runtime::Recordings::PLACES_STATE)
+
+          # The recordings the places held at the moment of +frame+, place by place: as the pass's wait ended
+          # (Runtime::Recordings::KEPT_BY_PASS), the interpreter's mix at that frame boundary, or as they are
+          # now for the moment the run ended. None for a game that plays none.
+          def recordings_at(frame)
+            return [] unless playing_recordings?
+
+            places = Runtime::Recordings::PLACES
+            numbers = if frame == :end
+                        Array.new(places) do |place|
+                          read32(runtime_place(Runtime::Recordings::PLACES_STATE) + (place * Runtime::Recordings::PLACE_BYTES))
+                        end
+                      else
+                        kept = runtime_place(Runtime::Recordings::KEPT_BY_PASS) + ((frame % Runtime::Frame::STEPS_KEPT) * places)
+                        Array.new(places) { |place| byte(kept + place) }
+                      end
+            numbers.reject(&:zero?).map { |number| @places.recording_names.fetch(number - 1) }
+          end
 
           def power_on = set_buttons(@held)
 
@@ -204,8 +247,10 @@ module VBlank
             @screen = picture
             @sounds = frame == :end || !sound? ? sounds : logged_by_pass(frame)
             read_sound_entries(@sounds) if sound?
+            @sounding = recordings_at(frame)
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
-                                   sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars), sounding: [])
+                                   sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars),
+                                   sounding: active_samples.map { |name| [name, level_of(name)] })
             @on_vblank&.call(frame) unless frame == :end
           end
 
