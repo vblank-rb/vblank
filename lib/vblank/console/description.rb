@@ -595,7 +595,7 @@ module VBlank
                           sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true,
                           sprite_sizes: nil, tile_planes: nil,
                           backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
-                          bar_is_a_background: false,
+                          bar_is_a_background: false, bar_shares_display: false,
                           # The processor writes the picture's memory whenever it likes.
                           changes_cells_while_drawing: true,
                           # The card's palette changes what a number looks like, and nothing mixes two

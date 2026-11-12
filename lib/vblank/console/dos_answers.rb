@@ -111,6 +111,7 @@ module VBlank
                        "once for each set of colours, and a sprite shows the set the list holds when it is next placed."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,
@@ -176,6 +177,8 @@ module VBlank
         mark: works,
         players_connected: works("1."),
         rumble: works("nothing is felt. A keyboard has no motor, so the game plays the same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
+        shell_screen: works("the program holds nothing of it. Only a build as a shell shows a first screen."),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
@@ -257,7 +260,8 @@ module VBlank
                                                var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
                                                func call scene case_var every after shake_screen
                                                timer table chance rand roll seed randomize list pool
-                                               save_data players_connected drawing_for_local_player tiles background]
+                                               save_data players_connected drawing_for_local_player tiles background
+                                               colors_name_of computer_keys computer_gamepad shell_screen]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

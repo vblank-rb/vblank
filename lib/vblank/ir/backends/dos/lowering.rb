@@ -372,6 +372,7 @@ module VBlank
           def runtime_at(name) = X86.mem(nil, @memory[name], size: 32)
 
           def console_loop(node) = @plan.console_loop(node)
+          def loop_form = @plan.loop_form
           def folded(node) = @plan.folded(node)
 
           # --- statements ---

@@ -75,6 +75,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `recolor` — works: the card has one palette for the whole screen, so each picture drawn with the list is kept once for each set of colours, and a sprite shows the set the list holds when it is next placed.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
@@ -139,6 +140,9 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mark` — works: the same as on the Advance.
 - `players_connected` — works: 1.
 - `rumble` — works: nothing is felt. A keyboard has no motor, so the game plays the same without it.
+- `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `shell_screen` — works: the program holds nothing of it. Only a build as a shell shows a first screen.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.
 - `roll` — works: the same as on the Advance.
