@@ -37,12 +37,14 @@ module VBlank
         module SPUWrites
           H = Console::PS1Hardware
 
-          # The game's voices: the Advance's channels 1 and 2 (the squares), 3 (the wave) and 4 (noise).
-          BEEP_VOICE = 0
+          # The game's voices: the Advance's channels 1 and 2 (the squares), 3 (the wave) and 4 (noise). A
+          # beep plays on the second square, as the interpreter has it (Reference::Player::BEEP_CHANNEL),
+          # so it shares that voice with a song's second square part and leaves the first part's alone.
+          SQUARE_VOICES = { 1 => 0, 2 => 1 }.freeze
+          BEEP_VOICE = SQUARE_VOICES.fetch(2)
           WAVE_VOICE = 2
           NOISE_VOICE = 3
           VOICES = 4
-          SQUARE_VOICES = { 1 => 0, 2 => 1 }.freeze
           CHANNEL_VOICES = SQUARE_VOICES.merge(3 => WAVE_VOICE, 4 => NOISE_VOICE).freeze
 
           # THE LOUDNESS OF A VOICE AT FULL, as its volume register holds it: a quarter of the chip's
