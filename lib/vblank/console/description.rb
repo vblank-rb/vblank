@@ -524,8 +524,16 @@ module VBlank
                                   # measured in Beetle PSX (the sound chip makes a pair of samples every 768
                                   # cycles: test_ps1_boot.rb).
                                   cycles_a_second: 33_868_800, cycles_a_frame: 566_122,
-                                  # The sound chip's 24 voices each read a recording of their own. The
-                                  # framework plays 16 at once, the most the desktop builds' mixer holds.
+                                  # The sound chip's 24 voices each read a recording of their own. Four of
+                                  # them are the game's square, wave and noise voices
+                                  # (Backends::PS1::SPUWrites::VOICES), so 20 are left for recordings, and
+                                  # the build plays 16 at once, on voices 4 to 19 (Runtime::Recordings).
+                                  # Sixteen, and not 20, because a recording past the console's number is
+                                  # dropped and counted (Reference::Mixer#record_drop), and the desktop, web
+                                  # and Ruby builds made as the PlayStation mix their recordings in a mixer
+                                  # of 16 voices (Audio::Sound::MIXER_VOICES): at 20 the console would sound
+                                  # a play those builds drop. Sixteen is also the framework's number on
+                                  # every console that mixes, so a game sized for one fits the others.
                                   samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
                                   recordings_at_once: 16, mixes_recordings: true,
                                   recording_voice_hz: 44_100, lowest_square_hz: nil, voice_output_hz: 44_100,
