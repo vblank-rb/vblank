@@ -16,7 +16,8 @@ module VBlank
     # The keys are the player's, kept in the settings file the desktop build keeps them in
     # (Settings, SettingsFile), and to begin with as mGBA and the desktop build have them: the
     # arrows are the pad, X is A, Z is B, Enter is Start, Backspace is Select, A and S are the
-    # shoulder buttons L and R. A gamepad plugged in plays too (PAD_BUTTONS). As in the desktop
+    # shoulder buttons L and R. A gamepad plugged in plays too (PAD_BUTTONS); in a game for several
+    # players each one is the next player, and the keyboard's right hand is player 2 (Seats). As in the desktop
     # build, P pauses and carries on, Tab held fast forwards, F3, F11 and M switch the frame rate,
     # fullscreen and mute, and F1 opens the menu (Menu, WindowMenu), which holds the game while it
     # is open; so does the key above Tab, and on a gamepad the guide button, or Back and Start
@@ -210,6 +211,8 @@ module VBlank
         scale ||= @player_settings.window.scale
         @kept_from_game = [] # keys pressed for the menu, kept from the game until they come up
         @pads = {} # the gamepads plugged in, by SDL's number for each
+        @seats = Seats.new # the player each of them is
+        @several_players = false # a game for two or more (#seat_players)
         @pad_down = Hash.new { |downs, id| downs[id] = [] } # the buttons down on each, as SDL reported
         @pad_kept = [] # gamepad buttons pressed for the menu, kept from the game until they come up
         @shown_this_second = 0
@@ -328,13 +331,26 @@ module VBlank
       # SDL has heard). The keyboard is read when it is asked, whichever pass it is asked for. A
       # key pressed for the menu is not the game's until it comes up: Enter on Resume is not Start.
       #
-      # Every gamepad plugged in holds buttons too, alongside the keyboard (SDL.pad_buttons), and
-      # a gamepad button pressed for the menu is kept from the game the same way.
+      # Every gamepad plugged in holds buttons too, and a gamepad button pressed for the menu is kept
+      # from the game the same way. In a game for several players (#seat_players) each gamepad is
+      # the player it took when it was plugged in, and the keyboard's right hand is player 2 where
+      # no button of player 1's and no hotkey has the key (Seats); in any other, all are player 1's.
       def held_buttons(_pass)
         keys = @sdl.SDL_GetKeyboardState(nil)
-        from_keys = @player_settings.buttons_held { |code| keys[code] != 0 && !@kept_from_game.include?(code) }
-        (from_keys + @pads.values.flat_map { |pad| pad_held(pad) }).uniq
+        down = ->(code) { keys[code] != 0 && !@kept_from_game.include?(code) }
+        from_keys = @player_settings.buttons_held(&down)
+        return (from_keys + @pads.values.flat_map { |pad| pad_held(pad) }).uniq unless @several_players
+
+        second = Seats.second_player_buttons(down: down, free: ->(code) { key_free?(code) })
+        from_pads = @pads.flat_map { |id, pad| Seats.buttons_as_player(pad_held(pad), @seats.player_of(id)) }
+        (from_keys + second + from_pads).uniq
       end
+
+      # The game seats +most_players+ (0 for none named), told by the Session before the first pass.
+      def seat_players(most_players) = @several_players = Seats.several_players?(most_players)
+
+      # Whether key +code+ is nobody's: no button of player 1's and no hotkey.
+      private def key_free?(code) = @player_settings.button_of_key(code).nil? && @player_settings.hotkey_of_key(code).nil?
 
       # A frame's sound, the left speaker's +samples+ and the +right+ one's, 16-bit numbers at +rate+
       # a second, into the speaker's queue. The speaker is opened the first time, at that rate.
@@ -873,14 +889,19 @@ module VBlank
         end
       end
 
-      # A gamepad plugged in is opened and read from then on, and one pulled out is let go. SDL
-      # reports the same of every pad already plugged in when the window opens.
+      # A gamepad plugged in is opened and read from then on, as the lowest free player (Seats), and
+      # one pulled out is let go, its player free again. SDL reports the same of every pad already
+      # plugged in when the window opens.
       def open_or_close_pad(type)
         id = @event[PAD_ID_AT, 4].unpack1("L")
         if type == EVENT_GAMEPAD_ADDED
           pad = @sdl.SDL_OpenGamepad(id)
-          @pads[id] = pad if live?(pad)
+          return unless live?(pad)
+
+          @pads[id] = pad
+          @seats.join(id)
         elsif (pad = @pads.delete(id))
+          @seats.leave(id)
           @sdl.SDL_CloseGamepad(pad)
         end
       end

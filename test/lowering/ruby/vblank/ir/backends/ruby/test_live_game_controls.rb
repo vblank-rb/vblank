@@ -37,4 +37,28 @@ class TestLiveGameControls < Minitest::Test
 
     assert_equal [0], game.controls.to_a
   end
+
+  # The game carries the most players it seats, which tells the window whether each gamepad is a
+  # player of its own (Live::Seats): 0 for a game that names no `players:`.
+  def test_the_game_carries_the_players_it_seats
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: 4))
+    builder.instance_eval { game_loop { wait_vblank } }
+    builder.finalize_program
+
+    assert_equal 4, VBlank::IR::Backends::Ruby.new.live_game(builder.program).seats
+    assert_equal 0, game_of { game_loop { wait_vblank } }.seats
+  end
+
+  # The session tells the window, before the first pass.
+  def test_the_session_tells_the_device_the_players_the_game_seats
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: 2))
+    builder.instance_eval { game_loop { wait_vblank } }
+    builder.finalize_program
+    device = VBlank::Live::Headless.new(frames: 2)
+    told = []
+    device.define_singleton_method(:seat_players) { |most| told << most }
+    VBlank::Live::Session.new(builder.program, uncapped: true).play(device)
+
+    assert_equal [2], told
+  end
 end

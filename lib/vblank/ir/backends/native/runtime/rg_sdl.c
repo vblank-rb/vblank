@@ -63,6 +63,9 @@
  * pressing the buttons of a gamepad SDL makes up for it (a "virtual joystick"), which is then
  * read exactly as a real one plugged in beside it is. One way in means a real controller needs
  * nothing of its own, and a test that presses keys goes down the same path a player's fingers do.
+ * The keyboard's gamepad is player 1's. In a game for several players each real gamepad is the
+ * player it took when it was plugged in, and the keyboard's right hand is player 2 (rg_seats.h
+ * explains which keys, and why).
  *
  * The keys start as mGBA's, so a player who has used it already knows them: the arrows for
  * the pad, X for A, Z for B, A and S for the shoulders, Return for Start and Backspace for
@@ -141,6 +144,7 @@
 #include "rg_runtime.h"
 #include "rg_save.h"
 #include "rg_screen.h"
+#include "rg_seats.h"
 #include "rg_settings_root.h"
 #include "rg_shell.h"
 #include "rg_sound.h"
@@ -293,6 +297,9 @@ static SDL_Joystick *keyboard_pad;   /* the gamepad SDL makes up for the keyboar
 static SDL_JoystickID keyboard_pad_id;
 static uint32_t keys_down;           /* the keys down now, a bit per button */
 static uint32_t keys_tapped;         /* ...and those that went down since the buttons were last read */
+static uint32_t second_keys_down;    /* player 2's keys down now, a bit per button (rg_seats.h) */
+static uint32_t second_keys_tapped;  /* ...and those that went down since the buttons were last read */
+static rg_seats seats;               /* the player each real gamepad is */
 
 /* --trace: say on the error stream what the window made of the buttons. A fault that only shows
  * with a real keyboard or controller cannot be seen by a test, so this is how a person shows it:
@@ -1216,15 +1223,18 @@ static void open_speaker(void) {
   if (speaker) SDL_ResumeAudioStreamDevice(speaker);
 }
 
-/* A gamepad arrived — a real one plugged in, or the keyboard's own — and is read from now on. */
+/* A gamepad arrived — a real one plugged in, or the keyboard's own — and is read from now on. A real
+ * one is the lowest player no gamepad has (rg_seats.h); the keyboard's is player 1's. */
 static void open_pad(SDL_JoystickID id) {
   for (int i = 0; i < MOST_PADS; i++) {
     if (pads[i]) continue;
     pads[i] = SDL_OpenGamepad(id);
+    if (pads[i] && id != keyboard_pad_id) rg_seats_join(&seats, id);
     return;
   }
 }
 
+/* ...and one pulled out leaves its player free for the next. */
 static void close_pad(SDL_JoystickID id) {
   for (int i = 0; i < MOST_PADS; i++) {
     if (!pads[i] || SDL_GetGamepadID(pads[i]) != id) continue;
@@ -1232,6 +1242,7 @@ static void close_pad(SDL_JoystickID id) {
     pads[i] = NULL;
     pad_buttons_down[i] = 0;
   }
+  rg_seats_leave(&seats, id);
 }
 
 /* The player chose to quit (Escape, or Quit in the menu): a script's run ends as its last line
@@ -1290,6 +1301,10 @@ static void key_changed(const SDL_KeyboardEvent *key) {
     if (key->down && rg_window_menu_is_open() && moves >= 0 && moves != RG_MENU_ENTER) press_menu((rg_menu_key)moves);
     return;
   }
+  /* One of player 2's keys coming up lets go of player 2's button whoever has the key now, so a key
+   * given to player 1 or a hotkey while it was held does not leave player 2's button held. */
+  int second_up = rg_seats_second_player_button(code);
+  if (!key->down && second_up >= 0) second_keys_down &= ~(1u << (uint32_t)second_up);
   if (key->down && rg_window_capture_key(code)) return;
   if (key->down && rg_menu_wants_keyboard()) return;
   if (key->down && code == RG_KEY_ESCAPE) quit_play();
@@ -1314,6 +1329,13 @@ static void key_changed(const SDL_KeyboardEvent *key) {
     return;
   }
   int button = rg_window_key_button(code);
+  /* In a game for several players, a key no button of player 1's and no hotkey has may be one of
+   * player 2's (rg_seats.h). */
+  int second = rg_seats_several_players(rg_game_seats[0]) ? rg_seats_second_player_button(code) : -1;
+  if (button < 0 && second >= 0 && key->down) {
+    second_keys_down |= 1u << (uint32_t)second;
+    second_keys_tapped |= 1u << (uint32_t)second;
+  }
   if (button < 0) return;
   uint32_t bit = 1u << (uint32_t)button;
   if (key->down) {
@@ -1498,48 +1520,66 @@ static void trace_frame(uint32_t held) {
 }
 
 /* The keyboard presses its gamepad's buttons, and then every gamepad is read: a button down on
- * any of them is down. A key that went down and came up again between two frames still counts
+ * any of one player's is down for that player. A key that went down and came up again between two frames still counts
  * for the frame that follows, so a quick tap is never lost. A real gamepad is read by the buttons
  * a player has chosen for it; the keyboard's has the console's layout, whatever was chosen.
  *
- * Every one of them is the FIRST player's: the window seats one player, however many gamepads are
- * plugged in, so a game for more plays here with the others never connected. Giving each gamepad a
- * player of its own is more than a number per pad (which pad is whose when one is pulled out and
- * plugged in again, the keyboard's own pad among them, and a menu that says so), and is not done
- * yet; the runtime reads up to RG_MOST_PLAYERS, so it is only this function that changes.
+ * In a game for several players each gamepad is the player it took when it was plugged in
+ * (rg_seats.h), the keyboard's own gamepad is player 1's, and the keyboard's right hand presses
+ * player 2's buttons directly; in any other game every one of them is player 1's. The menu is
+ * everybody's: any gamepad opens and works it.
  *
- * Returns the buttons held, a bit each; read_buttons hands them to the game, and a shell's part
- * shown in this window is sent them. */
-static uint32_t buttons_held(void) {
+ * Fills +masks+ (RG_MOST_PLAYERS of them) with each player's buttons held, a bit each, and returns
+ * how many players to hand the runtime: read_buttons hands them to the game, and a shell's part
+ * shown in this window is sent all of them as one player's. */
+static int32_t players_held(uint32_t *masks) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
   for (uint32_t i = 0; i < BUTTONS; i++) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
   SDL_UpdateGamepads();
 
-  uint32_t held = 0;
+  bool several = rg_seats_several_players(rg_game_seats[0]);
+  memset(masks, 0, RG_MOST_PLAYERS * sizeof *masks);
+  masks[1] = second_keys_down | second_keys_tapped;
+  second_keys_tapped = 0;
   for (int pad = 0; pad < MOST_PADS; pad++) {
     if (!pads[pad]) continue;
-    bool keyboards = SDL_GetGamepadID(pads[pad]) == keyboard_pad_id;
+    SDL_JoystickID id = SDL_GetGamepadID(pads[pad]);
+    bool keyboards = id == keyboard_pad_id;
+    int player = keyboards || !several ? 1 : rg_seats_player(&seats, id);
+    if (player < 1 || player > RG_MOST_PLAYERS) continue;
+    uint32_t *held = &masks[player - 1];
     for (uint32_t i = 0; i < BUTTONS; i++) {
       if (keyboards) {
-        if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) held |= 1u << i;
+        if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
         continue;
       }
       for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
         int chosen = rg_window_pad_button((int)i, slot);
         if (chosen == RG_NO_PAD) continue;
         if ((pad_buttons_kept >> (uint32_t)chosen) & 1u) continue; /* pressed for the menu */
-        if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) held |= 1u << i;
+        if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) *held |= 1u << i;
       }
     }
   }
+  return rg_seats_players_holding(masks, RG_MOST_PLAYERS);
+}
+
+/* Every player's buttons held as one, for a shell's part: its menu is one player's, worked from
+ * any gamepad or key. */
+static uint32_t buttons_held(void) {
+  uint32_t masks[RG_MOST_PLAYERS];
+  int32_t count = players_held(masks);
+  uint32_t held = 0;
+  for (int32_t player = 0; player < count; player++) held |= masks[player];
   return held;
 }
 
 static void read_buttons(void) {
-  uint32_t held = buttons_held();
-  rg_players_read(1, &held);
-  if (tracing) trace_frame(held);
+  uint32_t masks[RG_MOST_PLAYERS];
+  int32_t count = players_held(masks);
+  rg_players_read(count, masks);
+  if (tracing) trace_frame(masks[0]);
 }
 
 /* A key as a script names it: SDL's name for it, with an underscore for each space (Right_Shift). */
@@ -2222,6 +2262,7 @@ static char *pick_shell_copy(int folder) {
   SDL_ResetKeyboard();
   read_events();
   keys_down = keys_tapped = 0;
+  second_keys_down = second_keys_tapped = 0;
   return picked.path;
 }
 
@@ -2405,6 +2446,12 @@ static void print_usage(const char *program) {
     printf("To open the menu with a gamepad, press Back and Start together, or the guide\n"
            "button. In the menu, the D-pad moves, A chooses and B closes the menu.\n");
   printf("The settings file changes the keys and the gamepad buttons.\n\n");
+  if (rg_seats_several_players(rg_game_seats[0]))
+    printf("More players:\n"
+           "  Each gamepad is one player. The first gamepad is player 1, the second is\n"
+           "  player 2, and so on. A gamepad keeps its player until you disconnect it.\n"
+           "  Player 2 can also use these keys: I, J, K and L move, O is A, U is B,\n"
+           "  7 is L, 9 is R, 8 is Select and 0 is Start.\n\n");
   printf("Files:\n"
          "  The save and the settings are kept in a folder named for the game, among\n"
          "  the files this computer keeps for each program. The settings are a text\n"

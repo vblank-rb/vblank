@@ -28,6 +28,8 @@ module VBlank
     #   watch(game, player:, players:, input_delay:)
     #                                optional: a device with nobody at the controls is told which game it plays
     #                                (answering `state`), and how the match is set up, before the first pass
+    #   seat_players(most_players)   optional: the most players the game seats (0 for none named), told
+    #                                before the first pass, for a window that seats several (Seats)
     #   notice(words)                a line for the person about the match (a player left), said
     #                                where the device can, in a match over a network only
     #   now                          the time, in seconds, from any start that does not move back
@@ -114,6 +116,7 @@ module VBlank
         @lateness = LatenessTally.new(frame_seconds: @frame_seconds)
         @pass_began = nil # when the game was handed the buttons for the pass it is playing; nil in the first
         @started = @frame_began = @device.now
+        @device.seat_players(@game.seats) if @device.respond_to?(:seat_players)
         @device.wait_until(@frame_began)
       end
 
@@ -202,7 +205,10 @@ module VBlank
 
       # Every connected player's buttons for the pass that starts, this machine's +held+ among them.
       def exchange_buttons(held)
-        masks = @network.exchange(pass: @passes, local_mask: IR::Buttons.player_mask(Array(held), 1), game: @game)
+        # Every gamepad and key at this machine is its one player in a match, whichever player the
+        # window seated it as.
+        local_mask = IR::Buttons.masks(held).reduce(0, :|)
+        masks = @network.exchange(pass: @passes, local_mask: local_mask, game: @game)
         announce_new_events
         masks
       end

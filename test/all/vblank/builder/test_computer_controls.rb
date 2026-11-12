@@ -58,6 +58,24 @@ class TestComputerControls < Minitest::Test
     assert_match(/:west :north :left_stick :right_stick/, said)
   end
 
+  # A game for two or more players has player 2 on the keyboard's right hand (I J K L, O, U and
+  # the digits 7 to 0), so none of those can be one of player 1's added keys. A game for one
+  # player has no player 2, and is free to take them.
+  def test_a_game_for_more_players_keeps_player_twos_keys
+    said = assert_raises(ArgumentError) { built_for_players(2) { computer_keys a: :o } }.message
+
+    assert_match(/presses player 2's :a on a computer/, said)
+    assert built_for_players(2) { computer_keys a: :d }
+    assert built_for_players(1) { computer_keys a: :o, l: 7 }
+    assert built_with { computer_keys a: :o }
+  end
+
+  private def built_for_players(most, &block)
+    builder = Builder.new(options: VBlank::Cartridge::Options.new(players: most))
+    builder.instance_eval(&block)
+    builder
+  end
+
   def test_keys_are_named_in_one_line
     said = refusal do
       computer_keys a: :d

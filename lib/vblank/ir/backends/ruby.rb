@@ -139,10 +139,10 @@ module VBlank
                      "# Play it with `ruby` and this file's name. It needs Ruby 4.0 or newer, fiddle and SDL3.\n"
         # The library files a script carries, in the order they load: what the play code names
         # first, then the play code itself.
-        SCRIPT_PARTS = %w[vblank/ir/buttons.rb vblank/ir/program_error.rb vblank/ir/backends/ruby/live_game.rb
-                          vblank/graphics/menu_font.rb vblank/live/window_menu.rb vblank/live/lateness.rb vblank/live/rate.rb
-                          vblank/live/menu.rb vblank/live/settings.rb vblank/live/settings_file.rb
-                          vblank/live/session.rb vblank/live/sdl.rb].freeze
+        SCRIPT_PARTS = %w[vblank/ir/buttons.rb vblank/ir/computer_controls.rb vblank/ir/program_error.rb
+                          vblank/ir/backends/ruby/live_game.rb vblank/graphics/menu_font.rb vblank/live/window_menu.rb
+                          vblank/live/lateness.rb vblank/live/rate.rb vblank/live/menu.rb vblank/live/settings.rb
+                          vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/session.rb vblank/live/sdl.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.

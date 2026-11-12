@@ -177,11 +177,11 @@ module VBlank
           end
 
           write_output(game, path, console: console, settings: settings, data: data, err: err, progress: progress,
-                       pack_at_start: pack_at_start) do |text, data_file, described|
+                       pack_at_start: pack_at_start) do |text, data_file, described, program|
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.screen_size,
-                      shoulders: described.buttons.include?(:l))
+                      shoulders: described.buttons.include?(:l), players: program.most_players || 1)
           end
         end
 
@@ -300,7 +300,7 @@ module VBlank
           program = checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: pack_at_start)
           progress.step("Writing JavaScript")
           text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?, code: game.identifying_code)
-          File.write(path, yield(text, data_file, program.described_console))
+          File.write(path, yield(text, data_file, program.described_console, program))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file
           progress.done
           path

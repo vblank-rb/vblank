@@ -30,6 +30,8 @@ extern const char rg_game_title[];
 
 /* The keys and gamepad buttons the game adds to the window's layout (rg_window_use_game_controls). */
 extern const int32_t rg_game_controls[];
+/* The most players the build seats (`players:`), 0 for none named: one number (rg_seats.h). */
+extern const int32_t rg_game_seats[];
 
 /* What the game does when one of its timers ticks. The runtime calls it once for each tick with
  * one timer in mind, and the game runs that timer's handler, if it has one:

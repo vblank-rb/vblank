@@ -83,6 +83,9 @@ def rg_driver_fault(message) = raise(RgFault, message)
 # lays them out (Live::Settings reads them).
 def rg_live_controls = @rg_game_controls
 
+# The most players the build seats (`players:`), 0 for none named (Live::Seats).
+def rg_live_seats = @rg_game_seats[0]
+
 # THE SAVE MEMORY, for whoever keeps it in a file (Live::Session): its size, its bytes as a String, and
 # the file's bytes put into it as the game starts.
 def rg_live_save_size = rg_save_size

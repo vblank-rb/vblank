@@ -46,6 +46,16 @@ module VBlank
       LAYOUT_KEYS = Ractor.make_shareable({ a: %i[x], b: %i[z], select: %i[backspace right_shift], start: %i[enter], right: %i[right],
                       left: %i[left], up: %i[up], down: %i[down], r: %i[s], l: %i[a] })
 
+      # Player 2's keys, on the keyboard's right hand, for a game two people play at one keyboard:
+      # I J K L the pad, O for A and U for B (A on the right, as the console has it), 7 and 9 the
+      # shoulders and 8 and 0 Select and Start, above them. They are away from player 1's (the
+      # arrows, and Z X A S on the left) and from the window's own keys. Each window reads them
+      # the same (rg_seats.h, Live::Seats, rg_page.js's PAGE_SECOND_PLAYER_KEYS), only in a game
+      # whose `players:` seats two or more, and only where nobody else has the key. Players 3 and 4 are gamepads only: four people do not fit round one
+      # keyboard, and most keyboards lose keys when that many are held at once.
+      SECOND_PLAYER_KEYS = Ractor.make_shareable({ o: :a, u: :b, 8 => :select, 0 => :start, l: :right, j: :left,
+                                                   i: :up, k: :down, 9 => :r, 7 => :l })
+
       # The keys the window keeps for itself, and what for: no button can have one. The desktop
       # window's hotkeys, the web page's (F for fullscreen), Escape, which stops choosing a key, and
       # the key above Tab, which opens the menu.
@@ -64,11 +74,13 @@ module VBlank
       LAYOUT_PADS = 1
 
       # The entries for +given+ (button => key name, or a list of them), as [button, :key, name]
-      # triples, or a friendly error naming what cannot be.
-      def self.keys_entries!(given)
+      # triples, or a friendly error naming what cannot be. +most_players+ is the most players the
+      # build seats: a game for two or more keeps player 2's keys free.
+      def self.keys_entries!(given, most_players: nil)
         entries = entries_of(given, :computer_keys)
         refuse_same_twice!(entries, :computer_keys)
         entries.each { |button, name| refuse_key!(button, name) }
+        entries.each { |button, name| refuse_second_player_key!(button, name) } if most_players && most_players > 1
         refuse_crowded!(entries, :computer_keys, "keys", most: MOST_KEYS) { |button| LAYOUT_KEYS.fetch(button).length }
         entries.map { |button, name| [button, :key, name] }
       end
@@ -131,6 +143,15 @@ module VBlank
                              "key no button has, for example :d or :space."
       end
 
+      def self.refuse_second_player_key!(button, name)
+        theirs = SECOND_PLAYER_KEYS[name]
+        return unless theirs
+
+        raise ArgumentError, "`computer_keys #{button}: #{name.inspect}` names a key that presses player 2's :#{theirs} on a " \
+                             "computer. This game is for more than one player, and player 2 must keep the key. To fix " \
+                             "this, choose a key no button has, for example :d or :space."
+      end
+
       def self.refuse_pad!(button, name)
         return if FREE_PADS.include?(name)
 
@@ -151,7 +172,8 @@ module VBlank
         end
       end
 
-      private_class_method :entries_of, :refuse_button!, :refuse_same_twice!, :refuse_key!, :refuse_pad!, :refuse_crowded!
+      private_class_method :entries_of, :refuse_button!, :refuse_same_twice!, :refuse_key!, :refuse_second_player_key!,
+                           :refuse_pad!, :refuse_crowded!
     end
   end
 end

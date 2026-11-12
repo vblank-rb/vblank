@@ -325,7 +325,7 @@ module VBlank
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [Statements::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *tables, *art, *@drawing_arrays, title_array, controls_array, *sound_tables,
+             *tables, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| Statements::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
@@ -347,6 +347,13 @@ module VBlank
           def controls_array
             Statements::ConstArray.new(name: @names.own("controls"), type: "int32_t",
                                        values: ComputerControls.runtime_numbers(@program.computer_controls), exported: true)
+          end
+
+          # The most players the build seats (`players:`), 0 for a game that names none, as the
+          # window, the Ruby window and the web page read it: only a game for two or more gives
+          # player 2 keys and each gamepad a player of its own (rg_seats.h, Live::Seats).
+          def seats_array
+            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.most_players || 0], exported: true)
           end
 
           # A program that waits for frames shows nothing until its first frame is set up

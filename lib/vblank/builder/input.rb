@@ -97,10 +97,11 @@ module VBlank
       #   computer_keys a: :d, left: :space
       #
       # A key presses one button, so a key VBlank already gives a button, or keeps for the window
-      # (P, N, M, F, Tab, Escape, the key above Tab), is a friendly error. A player can still change
+      # (P, N, M, F, Tab, Escape, the key above Tab), is a friendly error, and so is one of player 2's
+      # keys (I J K L, O, U, 7 to 0) in a game for more than one player. A player can still change
       # every key in Controls, and Reset puts the game's layout back.
       def computer_keys(**keys)
-        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys))
+        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, most_players: @program.most_players))
       end
 
       # MORE GAMEPAD BUTTONS FOR A BUTTON ON A COMPUTER, as `computer_keys` adds keys: the free ones
