@@ -61,6 +61,50 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
     end
   end
 
+  # A stage laid out as Super Nintendo games lay one out: a bar 32 rows tall held above its last
+  # row, over an arena that does not scroll. The blocks grow a size a pass, from 2, so most sizes
+  # do not divide the bar's height, and a block straddles the bar's last row on all of those.
+  ARENA_BAR_ROWS = 32
+
+  private def arena_under_a_held_bar(grows: true, held: true)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:stripes, "#" => :red, "." => :blue) { STRIPES }
+      image(:steps, "#" => :green, "." => :white) { STEPS }
+      image(:bar_art, "#" => :yellow, "." => :black) { STRIPES }
+      tiles :set, "a" => :stripes, "b" => :steps
+      tiles :bar_tiles, "a" => :bar_art, "b" => :bar_art
+      background(:arena, tiles: :set, map: ROOM).scroll_to 0, 0
+      background(:bar, tiles: :bar_tiles, map: ROOM.first(4), above_row: ARENA_BAR_ROWS).scroll_to 0, 0 if held
+      size = var :size, 1
+      game_loop do
+        size.approach! 15, 1 if grows
+        pixelate size, sprites: false
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Each size from 2 to 15: from the bar's last row down the picture is
+  # the arena's alone, in its own blocks from the screen's top, the rows of a straddling block too,
+  # which read the arena at the block's first row as the console's display does.
+  def test_an_arena_under_a_32_row_bar_in_blocks_of_every_size
+    program = arena_under_a_held_bar
+    sharp = game_player.run(arena_under_a_held_bar(grows: false, held: false), frames: 2).screen
+    (1..14).each do |frames|
+      run = game_player.run(program, frames: frames)
+      screen = run.screen
+      size = run[:size] - framework_drawing_lag
+      (0...240).step(5).each do |x|
+        (ARENA_BAR_ROWS...200).each do |y|
+          assert_equal sharp.pixel(x - (x % size), y - (y % size)), screen.pixel(x, y), "blocks of #{size}: (#{x}, #{y})"
+        end
+      end
+    end
+  end
+
   # A menu with a status bar as drawn beside its room, and a stage with clouds over the room in that
   # layer: the layer is in blocks on the stage and not on the menu, and the game goes from one to the
   # other and back.
