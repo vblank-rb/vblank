@@ -122,7 +122,7 @@ module VBlank
                    end
             back = if !node.loop
                      Statements::Int.new(0)
-                   elsif settings&.holds_from
+                   elsif settings&.holds_from || settings&.length
                      start_file_sound_number(StartFileHold.new(recording: sample.name))
                    else
                      Statements::Int.new(info.loop_length.positive? ? info.loop_length : info.length)
@@ -204,9 +204,33 @@ module VBlank
             recordings_with_settings_in_start_file.flat_map do |sample|
               settings = sample.settings_from_file
               rows = @start_file_note_rows.select { |row| row.recording == sample.name }
-              [*(start_file_step_fills(sample, rows) if settings.rate), *(start_file_hold_fills(sample, rows) if settings.holds_from),
-               *(start_file_shape_fills(sample, rows) if settings.envelope)]
+              backs = if settings.length
+                        start_file_length_fills(sample, rows)
+                      elsif settings.holds_from
+                        start_file_hold_fills(sample, rows)
+                      end
+              [*(start_file_step_fills(sample, rows) if settings.rate), *backs, *(start_file_shape_fills(sample, rows) if settings.envelope)]
             end
+          end
+
+          # A RECORDING'S LENGTH FROM THE FILE: the length its entry in the table of recordings holds
+          # (rg_mix_fill_length), and how far back each play and each note's row reads at its end,
+          # which is the length less the sample it holds from, whether that sample is in the file or
+          # the game's (rg_mix_fill_backs). A looping play that holds from no sample reads it all again;
+          # a note's row reads nothing again.
+          def start_file_length_fills(sample, rows)
+            settings = sample.settings_from_file
+            length = [*start_file_number_rules(settings.length), sample.bytes.bytesize]
+            hold = settings.holds_from ? [1, *start_file_number_rules(settings.holds_from), -1] : [0, 0, 0, 0, 0, sample.holds_from || -1]
+            entry = 1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + 1
+            plays = @start_file_sound_numbers.each_index.select { |at| @start_file_sound_numbers[at] == StartFileHold.new(recording: sample.name) }
+            in_rows = rows.map { |row| 1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT }
+            [eval_call("rg_mix_fill_length", @names.own("recordings"), drawing_array("start_file_lengths", "int32_t", [*length, 1, entry])),
+             *{ start_file_sound_numbers_name => [plays, 1], @names.own("note_sounds") => [in_rows, 0] }.filter_map do |array, (entries, whole)|
+               next if entries.empty?
+
+               eval_call("rg_mix_fill_backs", array, drawing_array("start_file_backs", "int32_t", [*length, *hold, whole, entries.size, *entries]))
+             end]
           end
 
           # A whole number of 64 bits as two of 32, the high half first: how a runtime is handed a
@@ -319,7 +343,7 @@ module VBlank
                *(shape ? [shape.attack, shape.decay, shape.sustain, shape.release] : [0, 0, 0, 0])]
             end
             samples = kept_recordings.flat_map { |sample| sample.bytes.unpack("c*") }
-            [sound_table("recordings", [recordings.size, *heads.flatten], writable: recording_shapes_read_from_start_file?),
+            [sound_table("recordings", [recordings.size, *heads.flatten], writable: recordings_table_written_at_start?),
              Statements::ConstArray.new(name: recording_samples_name, type: "int8_t", values: samples, exported: true,
                                         writable: recordings_read_from_start_file?)]
           end
@@ -355,9 +379,11 @@ module VBlank
           # samples are then zeros in the array above, which the runtime overwrites in place.
           def recordings_read_from_start_file? = @sound_log.recordings.any?(&:from_file)
 
-          # Whether a recording takes its shape from that file, which the routine writes into the
-          # table of recordings.
-          def recording_shapes_read_from_start_file? = @sound_log.recordings.any? { |sample| sample.settings_from_file&.envelope }
+          # Whether a recording takes its shape or its length from that file, which the routine
+          # writes into the table of recordings.
+          def recordings_table_written_at_start?
+            @sound_log.recordings.any? { |sample| sample.settings_from_file&.envelope || sample.settings_from_file&.length }
+          end
 
           # rg_mix.h and rg_music.h declare each array const unless told it is written: the samples
           # when a recording reads them from the start file, the table of recordings when one reads
@@ -365,7 +391,7 @@ module VBlank
           # Must be asked once the sound's tables are made, which is what finds those rows.
           def written_sound_array_defines
             [("RG_RECORDING_SAMPLES_WRITABLE" if recordings_read_from_start_file?),
-             ("RG_RECORDINGS_WRITABLE" if recording_shapes_read_from_start_file?),
+             ("RG_RECORDINGS_WRITABLE" if recordings_table_written_at_start?),
              ("RG_NOTE_SOUNDS_WRITABLE" unless @start_file_note_rows.empty?),
              ("RG_MUSIC_WRITABLE" unless @start_file_note_fills.empty?)].compact.map { |name| Statements::Define.new(name) }
           end

@@ -90,4 +90,18 @@ void rg_mix_fill_steps(int32_t *into, const int32_t *rules);
 void rg_mix_fill_holds(int32_t *into, const int32_t *rules);
 void rg_mix_fill_shapes(int32_t *into, const int32_t *rules);
 
+/* A RECORDING'S LENGTH IN THE FILE (IR::StartFile::RecordingSettings#length): how many of its
+ * samples it plays, 1 at least and the room the game holds for them at most.
+ *
+ * rg_mix_fill_length: that length. +rules+: its four numbers, the room, how many entries, and each
+ * entry of +into+ (a recording's length in the table of recordings).
+ *
+ * rg_mix_fill_backs: how far back a play or a note reads at the recording's end, which is the
+ * length less the sample it holds from. +rules+: the length's four numbers and the room; 1 where
+ * the sample it holds from is in the file, those four numbers (or four 0s), and the sample the game
+ * gave (-1 for none; a sample past the end is the last); 1 where holding from none reads it all again
+ * (a play that loops) or 0 where it reads nothing again (a note); how many entries; each entry. */
+void rg_mix_fill_length(int32_t *into, const int32_t *rules);
+void rg_mix_fill_backs(int32_t *into, const int32_t *rules);
+
 #endif

@@ -473,6 +473,29 @@ def rg_mix_fill_holds(into, rules)
   rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = length - holds_from }
 end
 
+# rg_mix.c's start_file_length.
+def rg_start_file_length(rules) = rg_start_file_setting(rules, 0).clamp(1, rules[RG_FILE_NUMBER_NUMBERS])
+
+def rg_mix_fill_length(into, rules)
+  rest = RG_FILE_NUMBER_NUMBERS + 1
+  length = rg_start_file_length(rules)
+  rules[rest].times { |i| into[rules[rest + 1 + i]] = length }
+end
+
+def rg_mix_fill_backs(into, rules)
+  length = rg_start_file_length(rules)
+  hold = RG_FILE_NUMBER_NUMBERS + 1
+  rest = hold + 1 + RG_FILE_NUMBER_NUMBERS + 1
+  from_file = rules[hold] != 0
+  holds_from = from_file ? rg_start_file_setting(rules, hold + 1) : rules[hold + 1 + RG_FILE_NUMBER_NUMBERS]
+  back = if !from_file && holds_from.negative?
+           rules[rest] == 1 ? length : 0
+         else
+           length - holds_from.clamp(0, length - 1)
+         end
+  rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = back }
+end
+
 def rg_mix_fill_shapes(into, rules)
   at = rules[0]
   full = rules[2]

@@ -587,6 +587,35 @@ void rg_mix_fill_holds(int32_t *into, const int32_t *rules) {
   for (int32_t i = 0; i < count; i++) into[rest[2 + i]] = length - (int32_t)holds_from;
 }
 
+/* A recording's length from the file, of the +room+ its samples have: 1 at least, all of them at most. */
+static int32_t start_file_length(const int32_t *rules) {
+  int64_t length = start_file_setting(rules);
+  int32_t room = rules[RG_FILE_NUMBER_NUMBERS];
+  return length < 1 ? 1 : length > room ? room : (int32_t)length;
+}
+
+void rg_mix_fill_length(int32_t *into, const int32_t *rules) {
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS + 1;
+  int32_t length = start_file_length(rules);
+  for (int32_t i = 0; i < rest[0]; i++) into[rest[1 + i]] = length;
+}
+
+void rg_mix_fill_backs(int32_t *into, const int32_t *rules) {
+  int32_t length = start_file_length(rules);
+  const int32_t *hold = rules + RG_FILE_NUMBER_NUMBERS + 1;
+  const int32_t *rest = hold + 1 + RG_FILE_NUMBER_NUMBERS + 1;
+  int64_t holds_from = hold[0] ? start_file_setting(hold + 1) : hold[1 + RG_FILE_NUMBER_NUMBERS];
+  int32_t back;
+  if (!hold[0] && holds_from < 0) {
+    back = rest[0] ? length : 0;
+  } else {
+    if (holds_from < 0) holds_from = 0;
+    if (holds_from > length - 1) holds_from = length - 1;
+    back = length - (int32_t)holds_from;
+  }
+  for (int32_t i = 0; i < rest[1]; i++) into[rest[2 + i]] = back;
+}
+
 void rg_mix_fill_shapes(int32_t *into, const int32_t *rules) {
   int32_t at = rules[0], full = rules[2], count = rules[3];
   const uint8_t *kept = rg_start_file_bytes() + at;

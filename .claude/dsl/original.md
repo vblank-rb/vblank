@@ -353,7 +353,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
   all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
   where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
-  still, and a hold outside the recording is its first sample or its last. **`rate:` from the pack on the Advance
+  still, and a hold outside the recording is its first sample or its last. **`length: pack[:lengths].number(3)`**
+  is how many of the slot's samples the recording plays: the slot holds the most a recording can be, and a
+  recording that reads back to an earlier sample does so from its own end, not through the rest of the slot.
+  The build holds the whole slot's room and the runtime writes the length at power-on (`rg_mix_fill_length`,
+  `rg_mix_fill_backs`); one below 1 is 1 and one past the slot is all of it. Built all-in-one, a length past
+  the recording is a friendly error. **`rate:` from the pack on the Advance
   needs the game to name the rate its sound is mixed at**, `enable_sound mix_rate: 13379` (`sound.md`): there the
   sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
   rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose

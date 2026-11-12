@@ -229,7 +229,7 @@ module VBlank
       # left out; nil for a recording that reads none of them from there. A slot's place and the
       # width of its numbers are the game's own words, so the build knows where each number will
       # be without knowing it.
-      def recording_settings_in_start_file(rate:, holds_from:, envelope:)
+      def recording_settings_in_start_file(rate:, holds_from:, envelope:, length: nil)
         return nil unless pack_left_out?
 
         shape = if envelope.is_a?(DSL::PackEnvelope)
@@ -237,7 +237,8 @@ module VBlank
                                                    kept_as: :envelope)
                 end
         settings = IR::StartFile::RecordingSettings.new(rate: pack_number_in_start_file(rate),
-                                                        holds_from: pack_number_in_start_file(holds_from), envelope: shape)
+                                                        holds_from: pack_number_in_start_file(holds_from), envelope: shape,
+                                                        length: pack_number_in_start_file(length))
         settings unless settings.to_h.values.all?(&:nil?)
       end
 

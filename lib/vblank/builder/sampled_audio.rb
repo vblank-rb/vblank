@@ -25,7 +25,12 @@ module VBlank
       # @param from [String, nil] a .wav file to load (or use pcm:)
       # @param rate [Integer, nil] samples per second — defaults to the WAV's rate, or 8192 for pcm:
       # @return [Sample]
-      def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil)
+      #
+      # +length+ is how many of the samples the recording plays, from its first: for a recording
+      # in a slot of the data pack that holds the most a recording can be, with the recording's own
+      # length a number of the pack (`length: pack[:lengths].number(3)`), so one that reads back to
+      # an earlier sample does so from its own end, not through the rest of the slot.
+      def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil)
         raise ArgumentError, "A sample name must be a Symbol. You gave #{name.inspect}." unless name.is_a?(Symbol)
         if VBlank::Audio::Music::CONSOLE_VOICE_NAMES.include?(name)
           raise ArgumentError, "The recording #{name.inspect} has the name of one of the console's own " \
@@ -36,15 +41,17 @@ module VBlank
 
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
-        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope)
+        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
         rate = pack_setting_value(rate, "sample :#{name}'s rate:", IR::StartFile::RECORDING_STAND_IN_RATE)
         holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:", IR::StartFile::RECORDING_STAND_IN_HOLD)
+        length = pack_setting_value(length, "sample :#{name}'s length:", nil)
         envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
         # The Super Nintendo's sound chip's own settings: its build writes them to the chip, and
         # every other build plays the ordinary envelope nearest them (Audio::SNESEnvelope).
         chip_envelope = envelope if envelope.is_a?(Audio::SNESEnvelope)
         envelope = chip_envelope.closest_envelope if chip_envelope
         bytes, rate = sample_data(name, pcm, from, rate)
+        bytes = bytes.byteslice(0, recording_length(name, length, bytes.bytesize)) if length
         start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)
           raise ArgumentError, "sample :#{name} must have a positive rate. The rate is how many samples play in one second. You gave #{rate.inspect}."
@@ -69,13 +76,23 @@ module VBlank
       #   piano.play(:C4, :E4, :G4)   # ...or a chord
       #
       # @return [Instrument]
-      def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil)
+      def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil)
         note_verb_written(:instrument)
         DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note,
-                                          envelope: envelope, holds_from: holds_from))
+                                          envelope: envelope, holds_from: holds_from, length: length))
       end
 
       private
+
+      # How many samples +length+ keeps of a recording of +room+ samples. With the pack left out it
+      # is a stand-in, all of them, which the runtime cuts as the game starts (IR::StartFile::RecordingSettings).
+      def recording_length(name, length, room)
+        return room if length.nil?
+        return length if length.is_a?(Integer) && length.between?(1, room)
+
+        raise ArgumentError, "sample :#{name} has `length: #{length.inspect}`, and it holds #{room} samples. A length is " \
+                             "how many of its samples it plays, a whole number from 1 to #{room}."
+      end
 
       # WHERE A HELD NOTE READS BACK TO, as a sample number. A recording is finite and a note can
       # outlast it: a piano recorded for half a second, held for two. Without this the note ends

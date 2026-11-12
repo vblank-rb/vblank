@@ -144,10 +144,15 @@ module PackSoundTests
   # release that are none of them plain.
   ENVELOPE_AT = 0x1E4
 
+  # One byte of the copy's filler, 24: how many of the recording's 32 samples it plays, when a
+  # game reads its length.
+  LENGTH_AT = 0x1C9
+
   SETTINGS_SLOTS = [VBlank::Original::Slot.samples(:bang, at: SOUND_AT, count: SOUND_COUNT),
                     VBlank::Original::Slot.numbers(:tuning, at: SETTINGS_AT, count: 1, width: :half, signed: false),
                     VBlank::Original::Slot.numbers(:holds, at: HOLDS_AT, count: 1, width: :byte, signed: false),
-                    VBlank::Original::Slot.numbers(:shapes, at: ENVELOPE_AT, count: 4, width: :byte, signed: false)].freeze
+                    VBlank::Original::Slot.numbers(:shapes, at: ENVELOPE_AT, count: 4, width: :byte, signed: false),
+                    VBlank::Original::Slot.numbers(:lengths, at: LENGTH_AT, count: 1, width: :byte, signed: false)].freeze
   Ractor.make_shareable(SETTINGS_SLOTS)
 
   private def settings_pack_file
@@ -158,7 +163,8 @@ module PackSoundTests
   # numbers the copy holds there. It sounds it four ways: a note the game plays (A), the recording
   # going round (B), a song's long note, which takes the recording's own shape (up), and a sound
   # effect's note with a shape of its part's (down).
-  # +mix_rate+ is the rate the game names for its mix, or nil for none.
+  # +mix_rate+ is the rate the game names for its mix, or nil for none. +from_pack+ naming
+  # :length reads each recording's length from the pack, and :written_length gives the same number.
   private def settings_at_start_game(folder, from_pack:, options: VBlank::Cartridge::Options.new, mix_rate: nil)
     from = options.pack_at_start ? original_nowhere(folder) : original(folder)
     held_rate = COPY.byteslice(SETTINGS_AT, 2).unpack1("v")
@@ -179,17 +185,21 @@ module PackSoundTests
         slots.numbers :tuning, at: SETTINGS_AT, count: 1, width: :half, signed: false
         slots.numbers :holds, at: HOLDS_AT, count: 1, width: :byte, signed: false
         slots.numbers :shapes, at: ENVELOPE_AT, count: 4, width: :byte, signed: false
+        slots.numbers :lengths, at: LENGTH_AT, count: 1, width: :byte, signed: false
       end
-      instrument :tone, pcm: pack[:bang], note: :C4,
+      length = if from_pack.include?(:length) then pack[:lengths].number(0)
+               elsif from_pack.include?(:written_length) then COPY.getbyte(LENGTH_AT)
+               end
+      instrument :tone, length: length, pcm: pack[:bang], note: :C4,
                         rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
                         holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from,
                         envelope: from_pack.include?(:envelope) ? pack[:shapes].envelope(0) : held_shape
       # A note the game plays itself is over inside a frame, before a shape has climbed, so the
       # one the A button plays has none.
-      flat = instrument :flat, pcm: pack[:bang], note: :C4,
+      flat = instrument :flat, pcm: pack[:bang], note: :C4, length: length,
                                rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
                                holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from
-      round = sample :round, pcm: pack[:bang], note: :C4,
+      round = sample :round, pcm: pack[:bang], note: :C4, length: length,
                              rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
                              holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from,
                              envelope: from_pack.include?(:envelope) ? pack[:shapes].envelope(0) : held_shape
@@ -215,6 +225,24 @@ module PackSoundTests
   private def assert_console_refuses(program, file = nil)
     player = file ? game_player.hand_file(file) : game_player
     assert_raises(VBlank::IR::Guardrails::ValidationError) { player.run(program, frames: 1) }
+  end
+
+  # A RECORDING'S LENGTH READ AS THE GAME STARTS: the slot holds the most a recording can be, and
+  # the recording plays its own 24 samples, so one that loops reads back from its own end.
+  def test_a_recordings_length_read_as_the_game_starts_sounds_as_the_same_length_given
+    Dir.mktmpdir do |folder|
+      return assert_console_refuses(settings_at_start_game(folder, from_pack: %i[holds_from length])) unless console_mixes_recordings?
+
+      presses = ->(frame) { { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }.fetch(frame, []) }
+      wanted = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: %i[written_length]), frames: 80)
+      whole = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: []), frames: 80)
+      left_out = settings_at_start_game(folder, from_pack: %i[holds_from length], options: PACK_AT_START)
+      heard = game_player.hand_file(settings_pack_file).input_each_frame(&presses).run(left_out, frames: 80)
+
+      refute_equal whole.mixed_sound, wanted.mixed_sound, "24 of the 32 samples sound otherwise than all of them"
+      assert_equal wanted.audio, heard.audio
+      assert_equal wanted.mixed_sound, heard.mixed_sound
+    end
   end
 
   def test_a_game_reading_settings_as_it_starts_holds_none_of_them

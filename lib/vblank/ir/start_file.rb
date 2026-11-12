@@ -207,12 +207,18 @@ module VBlank
       # same numbers refuses them (.rate_held, .hold_held): a rate below 1 plays as 1, so the
       # recording all but stands still, and a held note that would read back to a sample outside
       # the recording reads back to its first sample or its last.
-      RecordingSettings = Data.define(:rate, :holds_from, :envelope) do
-        def initialize(rate: nil, holds_from: nil, envelope: nil) = super
+      #
+      # +length+ is how many of its samples the recording plays, a Number: the rest of what the
+      # build made room for is left out, so a recording that reads back to an earlier sample does
+      # so from its own end. One below 1 is 1 and one past the room is all of it, and a hold the
+      # game wrote past the end is the last sample.
+      RecordingSettings = Data.define(:rate, :holds_from, :envelope, :length) do
+        def initialize(rate: nil, holds_from: nil, envelope: nil, length: nil) = super
       end
 
       def self.rate_held(rate) = [rate, 1].max
       def self.hold_held(holds_from, length) = holds_from.clamp(0, length - 1)
+      def self.length_held(length, room) = length.clamp(1, room)
 
       # WHAT A RECORDING HOLDS FOR A SETTING IT READS FROM THE FILE, until the file is read:
       # numbers a build can lay a recording out with and must work nothing out from. The envelope
@@ -587,6 +593,10 @@ module VBlank
         end
         settings = node.settings_from_file or return
 
+        if settings.length
+          node.bytes = node.bytes.byteslice(0, length_held(number_in(bytes, settings.length), node.bytes.bytesize))
+          node.holds_from = hold_held(node.holds_from, node.bytes.bytesize) if node.holds_from
+        end
         node.rate = rate_held(number_in(bytes, settings.rate)) if settings.rate
         node.holds_from = hold_held(number_in(bytes, settings.holds_from), node.bytes.bytesize) if settings.holds_from
         node.envelope = envelope_in(bytes, settings.envelope) if settings.envelope
