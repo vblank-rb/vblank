@@ -46,6 +46,13 @@
 #define RG_CONSOLE_BLENDS 1
 #endif
 
+/* Whether the console's sound chip plays each of the game's voices as a loop it reads out of sound
+ * memory, as the PlayStation's does (rg_spu.c; Console::Description#voices_read_sound_memory), rather
+ * than making a square wave, a waveform and a hiss itself, as the Game Boy family's do. */
+#ifndef RG_VOICES_READ_SOUND_MEMORY
+#define RG_VOICES_READ_SOUND_MEMORY 0
+#endif
+
 /* How many pieces of sprites the console draws on one line of the screen, the rest of the line's
  * left out, or 0 where every piece is drawn (Console::Description#sprite_pieces_drawn_a_line). */
 #ifndef RG_SPRITE_PIECES_A_LINE

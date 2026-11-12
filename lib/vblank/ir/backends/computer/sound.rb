@@ -431,7 +431,19 @@ module VBlank
           def sound_tables
             # The music is written first: writing it is what finds the rows of note_sounds_table.
             @sound_tables ||= [sound_rules_table, waveform_table, music_table, note_sounds_table, effects_table, beep_table,
-                               wave_table, hit_table, mix_table, *recordings_tables, *song_list_tables, *effect_list_tables]
+                               wave_table, hit_table, mix_table, *recordings_tables, *song_list_tables, *effect_list_tables,
+                               *spu_tables]
+          end
+
+          # WHERE THE CONSOLE'S VOICES READ SOUND MEMORY (the PlayStation), what its sound chip plays them
+          # from (runtime/rg_spu.c): the chip's numbers, where each loop starts, and the loops, the same
+          # sound memory the console's own build makes (PS1::SPUTables). None for any other console.
+          def spu_tables
+            return [] unless @program.described_console.voices_read_sound_memory
+
+            memory = PS1::SoundMemory.new(@program)
+            [sound_table("spu_rules", PS1::SPUTables.rules), sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms)),
+             sound_table("spu_memory", PS1::SPUTables.memory(memory))]
           end
 
           # +writable+ is for a table the routine that reads the start file writes into.

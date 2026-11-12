@@ -711,6 +711,7 @@ static void play_note(part_walk *part, const int32_t *note) {
       rg_sound_log("part_wave %d %d %d", (int)playing, (int)part->number, (int)pitch);
       if (EFFECTS_PLAY_WAVE) wave_put_in(part->tone);
       wave_start(ticks, wave_quarters_at(sounded));
+      voice_struck(RG_WAVE_VOICE);
     }
     break;
   case PART_NOISE:
@@ -721,6 +722,7 @@ static void play_note(part_walk *part, const int32_t *note) {
     } else {
       rg_sound_log("part_noise %d %d %d", (int)playing, (int)part->number, (int)pitch);
       noise_start(ticks, part->tone, sounded, fade);
+      voice_struck(RG_NOISE_VOICE);
       if (level_variable) swell_start(part->voice, note, part->tone, sounded, fade);
     }
     break;
@@ -734,6 +736,7 @@ static void play_note(part_walk *part, const int32_t *note) {
       hold_note((held_note){part->voice, 0, written, ticks, note_eighths(part, note), fade});
     }
     square_start(part->voice, ticks, note_eighths(part, note), sounded, fade, note_slide(note));
+    if (pitch != 0) voice_struck(part->voice);
     /* ...and one that slides is not held under the music volume either, for the same reason. */
     if (level_variable && note_slide(note) == 0) swell_start(part->voice, note, note_eighths(part, note), sounded, fade);
     break;
@@ -853,6 +856,7 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
       rg_sound_log("part_wave %d %d %d", (int)number, (int)part->number, (int)pitch);
       wave_put_in(part->tone);
       wave_start(ticks, wave_quarters_at(volume));
+      voice_struck(RG_WAVE_VOICE);
     }
     break;
   case PART_NOISE:
@@ -862,9 +866,13 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
     } else {
       rg_sound_log("part_noise %d %d %d", (int)number, (int)part->number, (int)pitch);
       noise_start(ticks, part->tone, volume, fade);
+      voice_struck(RG_NOISE_VOICE);
     }
     break;
-  default: square_start(part->voice, ticks, note_eighths(part, note), pitch == 0 ? 0 : volume, fade, note_slide(note)); break;
+  default:
+    square_start(part->voice, ticks, note_eighths(part, note), pitch == 0 ? 0 : volume, fade, note_slide(note));
+    if (pitch != 0) voice_struck(part->voice);
+    break;
   }
 }
 

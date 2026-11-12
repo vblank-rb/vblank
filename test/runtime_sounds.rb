@@ -22,6 +22,8 @@ module RuntimeSounds
   # A waveform of the game's own: high for a quarter of its length, which no named shape is.
   THIN_PULSE = ([15] * 8 + [0] * 24).freeze
 
+  SIDES = %i[left right].freeze # the speakers, each compared on its own
+
   def test_a_beep_sounds_as_on_the_native_runtime
     program = sound_program do
       enable_sound
@@ -306,16 +308,24 @@ module RuntimeSounds
 
   # Every sample of +frames+ frames, from each speaker, the same from both runtimes, and some of
   # them not silence. +only+ hears one voice (:square1, :square2, :wave, :noise).
+  #
+  # A program that names no console is played as the Advance and again as the PlayStation, whose
+  # voices are its sound chip's, reading loops out of sound memory (runtime/rg_spu.c), and not the
+  # Game Boy family's: each runtime keeps both, so both are held alike.
   def assert_sounds_like_the_native_runtime(program, frames:, only: nil, buttons: {})
-    %i[left right].each do |side|
-      native, under_test = [:native, runtime_under_test].map do |on|
-        VBlank::Diagnostics::SoundRecording.of(program, on: on, frames: frames, buttons: buttons, only: only, side: side)
-      end
+    played_as = program.console ? [program] : [program, program.copy.tap { |copy| copy.console = :ps1 }]
+    played_as.each do |each_program|
+      SIDES.each do |side|
+        native, under_test = [:native, runtime_under_test].map do |on|
+          VBlank::Diagnostics::SoundRecording.of(each_program, on: on, frames: frames, buttons: buttons, only: only, side: side)
+        end
 
-      refute native.samples.all?(&:zero?), "the native runtime made no sound on the #{side}, so there is nothing to compare"
-      first = native.first_difference(under_test)
-      assert_nil first, "the two runtimes' sound on the #{side} differs first at sample #{first} " \
-                        "(#{native.samples.length} samples against #{under_test.samples.length})"
+        console = each_program.console || :gba
+        refute native.samples.all?(&:zero?), "the native runtime made no sound on the #{side} as #{console}, so there is nothing to compare"
+        first = native.first_difference(under_test)
+        assert_nil first, "the two runtimes' sound on the #{side} as #{console} differs first at sample #{first} " \
+                          "(#{native.samples.length} samples against #{under_test.samples.length})"
+      end
     end
   end
 end

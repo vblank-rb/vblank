@@ -511,6 +511,7 @@ def rg_play_note(part, note)
       rg_sound_log("part_wave #{@rg_playing} #{part.number} #{pitch}")
       rg_wave_put_in(part.tone) if rg_effects_play_wave != 0
       rg_wave_start(ticks, rg_wave_quarters_at(sounded))
+      rg_voice_struck(RG_WAVE_VOICE)
     end
   when RG_PART_NOISE
     rg_sound_log("loudness #{part.voice} #{sounded}") if @rg_level_variable
@@ -520,6 +521,7 @@ def rg_play_note(part, note)
     else
       rg_sound_log("part_noise #{@rg_playing} #{part.number} #{pitch}")
       rg_noise_start(ticks, part.tone, sounded, fade)
+      rg_voice_struck(RG_NOISE_VOICE)
       rg_swell_start(part.voice, note, part.tone, sounded, fade) if @rg_level_variable
     end
   else
@@ -531,6 +533,7 @@ def rg_play_note(part, note)
       rg_hold_note(RgHeldNote.new(part.voice, 0, written, ticks, rg_note_eighths(part, note), fade))
     end
     rg_square_start(part.voice, ticks, rg_note_eighths(part, note), sounded, fade, rg_note_slide(note))
+    rg_voice_struck(part.voice) if pitch != 0
     rg_swell_start(part.voice, note, rg_note_eighths(part, note), sounded, fade) if @rg_level_variable && rg_note_slide(note) == 0
   end
 end
@@ -635,6 +638,7 @@ def rg_play_effect_note(effect, part, note)
       rg_sound_log("part_wave #{number} #{part.number} #{pitch}")
       rg_wave_put_in(part.tone)
       rg_wave_start(ticks, rg_wave_quarters_at(volume))
+      rg_voice_struck(RG_WAVE_VOICE)
     end
   when RG_PART_NOISE
     if pitch == 0
@@ -643,9 +647,11 @@ def rg_play_effect_note(effect, part, note)
     else
       rg_sound_log("part_noise #{number} #{part.number} #{pitch}")
       rg_noise_start(ticks, part.tone, volume, fade)
+      rg_voice_struck(RG_NOISE_VOICE)
     end
   else
     rg_square_start(part.voice, ticks, rg_note_eighths(part, note), pitch == 0 ? 0 : volume, fade, rg_note_slide(note))
+    rg_voice_struck(part.voice) if pitch != 0
   end
 end
 

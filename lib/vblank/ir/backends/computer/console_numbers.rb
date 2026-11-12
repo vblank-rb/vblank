@@ -30,6 +30,7 @@ module VBlank
               "RG_CONSOLE_RUMBLES" => console.rumbles,
               "RG_SPRITE_PIECES_A_LINE" => console.sprite_pieces_drawn_a_line || 0,
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits,
+              "RG_VOICES_READ_SOUND_MEMORY" => console.voices_read_sound_memory,
               "RG_CONSOLE_PLAYS_BIOS_START_UP" => start_up && console.plays_bios_start_up }
               .merge(StartFileNumbers.names)
           end

@@ -123,6 +123,15 @@ static int32_t rg_hook_mixed_slice(const int32_t **samples);     /* the newest m
 static void rg_hook_moment_printed(void);                        /* a windowless run prints a moment */
 static void rg_hook_visit_sound_state(void);                     /* the state image visits each feature's fields */
 
+/* What the sound chip of a console whose voices read sound memory is told beside the voices (rg_spu.c,
+ * joined in below them): a voice struck by a song's note or by the game's own beep, hit or wave, the
+ * waveform the wave voice holds, and a square note started, whose slide counts from there. Every
+ * console's build keeps them, and only such a console's plays them. */
+static inline void voice_struck(int32_t voice);
+static inline void game_voice_struck(int32_t voice);
+static inline void spu_waveform_put_in(int32_t which);
+static inline void spu_slide_started(int32_t voice);
+
 /* How much one step of loudness moves the speaker. Two voices at their loudest then swing
  * through half of what a sample can hold. All four at once, at their loudest, can ask for more
  * than a sample holds, and the sum is then held at the end of what it can (see
@@ -150,8 +159,13 @@ typedef struct {
 } fading_volume;
 
 /* +fade+ is the voice's four bits of it (Audio::NoteFade#bits): the 64ths of a second each step
- * lasts, and 8 when it counts up. A fade that only ever counts down is its step alone. */
+ * lasts, and 8 when it counts up. A fade that only ever counts down is its step alone.
+ *
+ * Where the voices read sound memory the fade is the program's runtime's work, counted a frame at a
+ * time (rg_spu.c, spu_fade_a_frame): a step is then so many 256ths of a 64th of a second, counted
+ * from nought. */
 static fading_volume volume_from(int32_t volume, int32_t fade) {
+  if (RG_VOICES_READ_SOUND_MEMORY) return (fading_volume){volume, (fade & FADE_STEP_BITS) * 256, 0, (fade & FADE_UP) != 0};
   int32_t hold = (fade & FADE_STEP_BITS) * RG_SOUND_RATE / 64;
   return (fading_volume){volume, hold, hold, (fade & FADE_UP) != 0};
 }
@@ -241,6 +255,7 @@ static void square_start(int32_t voice, int32_t wave_ticks, int32_t eighths_high
   square->loudness = volume_from(volume, fade);
   square->slide = slide;
   square->slide_left = slide_step_ticks(slide);
+  spu_slide_started(voice);
 }
 
 /* The console's own order of high and low through a wave, for each tone: which of the eight
@@ -313,6 +328,7 @@ static void wave_load(int32_t which) {
   const int32_t *steps = &rg_game_waveforms[1 + (which * WAVE_STEPS)];
   for (int32_t i = 0; i < WAVE_STEPS; i++) wave.steps[i] = steps[i];
   loaded_waveform = which;
+  spu_waveform_put_in(which);
   wave.switched_on = 1;
   wave.wave_ticks = 0;
   wave_set_loudness(wave.quarters);
@@ -441,7 +457,12 @@ static int16_t held_in_range(int32_t sum) {
   return (int16_t)sum;
 }
 
+#include "rg_spu.c"
+
 int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
+#if RG_VOICES_READ_SOUND_MEMORY
+  if (RG_VOICES_READ_SOUND_MEMORY) return spu_render_frame(left, right);
+#endif
   sample_carry += (uint64_t)RG_SOUND_RATE * RG_CONSOLE_TICKS_A_FRAME;
   int32_t count = (int32_t)(sample_carry / RG_CONSOLE_TICKS_A_SECOND);
   sample_carry %= RG_CONSOLE_TICKS_A_SECOND;
@@ -502,6 +523,7 @@ void rg_sound_beep(int32_t which) {
   rg_hook_voice_taken_by_game(BEEP_VOICE);
   sides[BEEP_VOICE] = 0;
   square_start(BEEP_VOICE, beep[0], beep[1], beep[2], beep[3], 0);
+  game_voice_struck(BEEP_VOICE);
 }
 
 void rg_sound_wave(int32_t which) {
@@ -512,6 +534,7 @@ void rg_sound_wave(int32_t which) {
   sides[RG_WAVE_VOICE] = 0;
   wave_load(said[0]);
   wave_start(said[1], said[2]);
+  game_voice_struck(RG_WAVE_VOICE);
   loaded_waveform = -1; /* no player's waveform is there now (see the music feature's wave_put_in) */
 }
 
@@ -528,6 +551,7 @@ void rg_sound_noise(int32_t which) {
   rg_sound_log("noise %d", (int)which);
   sides[RG_NOISE_VOICE] = 0;
   noise_start(hit[0], hit[1], hit[2], hit[3]);
+  game_voice_struck(RG_NOISE_VOICE);
 }
 
 /* --- the sound features' share of the frame --- */
@@ -615,6 +639,7 @@ void rg_sound_visit_state(void) {
   hiss = (noise_voice){(int32_t)noise_numbers[0], (int32_t)noise_numbers[1], (uint32_t)noise_numbers[2], (int32_t)noise_numbers[3],
                        (int32_t)noise_numbers[4], loudness_from(noise_numbers + NOISE_LOUDNESS_AT), noise_numbers[5], noise_numbers[6]};
 
+  rg_spu_visit_state();
   rg_hook_visit_sound_state();
 }
 

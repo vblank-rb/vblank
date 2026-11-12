@@ -22,6 +22,7 @@ require_relative "ps1/sound_memory"
 require_relative "ps1/spu_writes" # what each sound is on the sound chip, before the runtime that writes it
 require_relative "ps1/music" # the song table, before the player that reads it
 require_relative "ps1/runtime"
+require_relative "ps1/spu_tables" # the sound chip's numbers and loops a computer's build made as the PlayStation plays
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
 require_relative "ps1/lowering/paint"
