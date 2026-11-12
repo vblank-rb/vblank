@@ -38,6 +38,90 @@ class TestBackgroundAboveRow < Minitest::Test
     b.program
   end
 
+  # The bar scrolled once, on the third pass, to its blue rows, and never again.
+  private def scrolled_once(beside_two: false)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:field_tile, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:top_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:low_tile, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :field_set, "#" => :field_tile
+      tiles :bar_set, "t" => :top_tile, "l" => :low_tile
+      background :field, tiles: :field_set, map: Array.new(32) { "#" * 32 }
+      background :walls, tiles: :field_set, map: Array.new(32) { "#" * 32 } if beside_two
+      bar = background :bar, tiles: :bar_set, map: Array.new(32) { |row| (row / 4 == 1 ? "l" : "t") * 32 },
+                             above_row: ROWS
+      passes = var :passes, 0
+      game_loop do
+        passes += 1
+        bar.scroll_to 0, ROWS if passes == 3
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The same bar declared in a scene the game loop calls on every pass. With +top_scroll+, the
+  # scene's top gives it scroll 0 as well, outside any test.
+  private def scrolled_once_in_scene(top_scroll: false)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:field_tile, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:top_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:low_tile, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :field_set, "#" => :field_tile
+      tiles :bar_set, "t" => :top_tile, "l" => :low_tile
+      var :state, 0
+      passes = var :passes, 0
+      scene(:stage) do
+        background :field, tiles: :field_set, map: Array.new(32) { "#" * 32 }
+        bar = background :bar, tiles: :bar_set, map: Array.new(32) { |row| (row / 4 == 1 ? "l" : "t") * 32 },
+                               above_row: ROWS
+        bar.scroll_to 0, 0 if top_scroll
+        bar.scroll_to 0, ROWS if passes == 3
+      end
+      game_loop do
+        passes += 1
+        case_var(:state) { when_val 0, :stage }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Nine passes after the one scroll: the bar's blue rows above its row, the field under it.
+  private def assert_scroll_held(program)
+    screen = game_player.run(program, frames: 12).screen
+
+    assert_equal BLUE, screen.pixel(100, 0)
+    assert_equal BLUE, screen.pixel(100, ROWS - 1)
+    assert_equal GREEN, screen.pixel(100, ROWS)
+  end
+
+  # A scroll given on one pass holds on the passes after, as a plain background's does: on the
+  # first two layers, on the third beside two others, and in a scene. A line at a scene's top that
+  # gives a scroll runs on every pass the scene is up, and puts the bar back there each pass.
+  def test_a_scroll_given_once_holds_on_the_passes_after
+    assert_scroll_held(scrolled_once)
+  end
+
+  def test_a_scroll_given_once_holds_beside_two_backgrounds
+    assert_scroll_held(scrolled_once(beside_two: true))
+  end
+
+  def test_a_scroll_given_once_holds_in_a_scene
+    assert_scroll_held(scrolled_once_in_scene)
+  end
+
+  def test_a_scroll_at_the_scene_s_top_is_given_again_on_every_pass
+    program = scrolled_once_in_scene(top_scroll: true)
+
+    assert_equal BLUE, game_player.run(program, frames: 3).screen.pixel(100, 0), "the pass that scrolls"
+    assert_equal RED, game_player.run(program, frames: 12).screen.pixel(100, 0), "the passes after"
+  end
+
   # Only the first scene holds one, so the second has both layers on every row again.
   private def two_scenes
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
