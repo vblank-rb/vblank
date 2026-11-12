@@ -66,7 +66,7 @@ module VBlank
     # a player's machine, where nothing but the shipped game runs. It is built into a program of
     # its own (#unpacking_program; Original::Unpacking says why one of its own, and what a shell
     # build must still add to play it there). Built all-in-one, that program is played to its end
-    # here, built as Ruby (#play_unpacking), and the pack is made from what it wrote; every backend
+    # here, built as C or as Ruby (#play_unpacking), and the pack is made from what it wrote; every backend
     # plays the same program and is held to the interpreter's pack byte for byte. Either way the
     # game holds handles and reads the pack, as above.
     #
@@ -631,20 +631,6 @@ module VBlank
                              "`pack.unpacking(release: release)`."
       end
 
-      # How far a routine may go on the interpreter before it is taken to be stuck. A routine reads
-      # each byte of the copy and writes each byte of the pack a few times at most, and waits for
-      # the next frame at most once a byte; so the frames it can need, and the steps one frame can
-      # take, follow from the two sizes. A routine past either is in a loop that does not end.
-      UNPACKING_STEPS_A_BYTE = 64
-      UNPACKING_SPARE_FRAMES = 100
-      UNPACKING_SPARE_STEPS = 100_000
-
-      def most_unpacking_frames(unpacking) = unpacking.copy_size + unpacking.byte_size + UNPACKING_SPARE_FRAMES
-
-      def most_unpacking_steps_a_frame(unpacking)
-        ((unpacking.copy_size + unpacking.byte_size) * UNPACKING_STEPS_A_BYTE) + UNPACKING_SPARE_STEPS
-      end
-
       # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
       def unpacked_slot_bytes(unpacking, cache)
         return play_unpacking(unpacking) if cache.nil?
@@ -652,22 +638,19 @@ module VBlank
         Original::PackCache.new(cache).slot_bytes(unpacking) { play_unpacking(unpacking) }
       end
 
-      # Each slot's bytes as +unpacking+ writes them. It is played built as Ruby, as a shell plays it
-      # on a player's machine (Original::Unpacking#run_as_ruby): the interpreter is plain and slow on
-      # purpose, many times slower on a port's loops. The interpreter stays the answer key:
-      # every run of the tests holds the Ruby lowering to it frame by frame, unpackings among them
-      # (test/copy_reader_tests.rb, the packing tests), and it plays a routine the Ruby runtime
-      # cannot play yet. The first fault the routine met (a block not packed the way it declares, a
-      # read past the copy's end, a write past a slot) stops the build here, as a slot past the
-      # copy's end does.
+      # Each slot's bytes as +unpacking+ writes them, played the fastest way this machine has
+      # (Original::Unpacking#run_fastest): built as C where zig is installed, else as Ruby, as a
+      # shell plays it on a player's machine. The interpreter is plain and slow on purpose, many
+      # times slower on a port's loops. It stays the answer key: every run of the tests holds the C
+      # and Ruby lowerings to it frame by frame, unpackings among them (test/copy_reader_tests.rb,
+      # the packing tests), the C run that plays an unpacking to its end is held to it byte for byte
+      # (test/lowering/native/vblank/original/test_unpacking_as_c.rb), and it plays a routine
+      # neither can play yet. The first fault the routine met (a block not packed the way it
+      # declares, a read past the copy's end, a write past a slot) stops the build here, as a slot
+      # past the copy's end does.
       def play_unpacking(unpacking)
-        most_frames = most_unpacking_frames(unpacking)
-        ran = begin
-          unpacking.run_as_ruby(frames: most_frames)
-        rescue IR::Backends::Ruby::RuntimeGap
-          unpacking.run_on(IR::Backends::Reference.new, frames: most_frames, max_steps: most_unpacking_steps_a_frame(unpacking))
-        end
-        refuse_faulted_or_unfinished_unpacking!(unpacking, ran, most_frames)
+        ran = unpacking.run_fastest
+        refuse_faulted_or_unfinished_unpacking!(unpacking, ran, unpacking.most_frames)
         unpacking.slot_bytes_in(ran)
       rescue IR::ProgramError => e
         raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"

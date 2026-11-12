@@ -166,8 +166,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
   no `at:` and no routine is refused.
 - **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game
   code**, a program of its own (`Original::Unpacking`), so the same routine fills the pack as the game is
-  built (played to its `halt` on the interpreter) and on the player's machine (see "With the pack left
-  out" below). The
+  built (played to its `halt` the fastest way the machine has, below) and on the player's machine (see
+  "With the pack left out" below). The
   slots with `at:` are copied first, then the routine runs. Inside it, normal Ruby works as in a game block
   (`while` on a number read from the copy is a loop in the routine), and:
   - `copy.byte(at)` (0 to 255), `copy.half(at)`, `copy.word(at)`: low byte first; `big_endian: true` for
@@ -260,12 +260,19 @@ from that copy. The game's code says each piece's shape and size; it never depen
   as the all-in-one build is made, and the pack keeps the result. Never redo it each time the game
   plays. VBlank takes a format in only when many games use it.
 
+  **How an all-in-one build runs the routine**: the fastest way the machine has
+  (`Original::Unpacking#run_fastest`): built as C and optimised where zig 0.17 is installed, else
+  built as Ruby, else on the interpreter. A byte-at-a-time copy of 300 MB takes seconds as C and
+  minutes as Ruby. The compiled routine is kept by its C, so a build whose routine has not changed
+  does not compile it again. Every way writes the same pack, byte for byte. A game's test that makes
+  the pack as a build does calls `unpacking.run_fastest` (or `run_as_c`, `run_as_ruby` for one way).
+
   **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
-  ".cache/packs"`, a folder git ignores. An all-in-one build runs the routine on the interpreter,
-  which for a big port takes most of a minute; with `cache:` a later build with the same copy, the
-  same routine, the same slots and the same VBlank reads the bytes back instead
-  (`Original::PackCache`). Leave it out and every build runs the routine. A build that leaves the
-  pack out never runs the routine, so it keeps nothing.
+  ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
+  routine, the same slots and the same VBlank reads the bytes back instead (`Original::PackCache`).
+  The key is the whole routine, so a change to any part of it runs all of it again. Leave it out and
+  every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
+  nothing.
 
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines

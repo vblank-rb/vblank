@@ -208,6 +208,16 @@ module VBlank
                                   "project in mise (zig = \"0.17.0\") and run `mise install`."
           end
 
+          # Whether the zig this backend is written against is installed, so a C build can be made
+          # here: what a build that has another way to play a program asks before choosing C
+          # (Original::Unpacking#run_fastest).
+          def installed?
+            version
+            true
+          rescue Computer::Error
+            false
+          end
+
           def cache_key(sources, folders, flags)
             digest = Digest::SHA256.new
             digest << version << "\0" << flags.join("\0")

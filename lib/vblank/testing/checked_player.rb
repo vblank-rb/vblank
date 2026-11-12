@@ -86,11 +86,66 @@ module VBlank
       end
     end
 
+    # A PORT'S UNPACKING PLAYED AS C IS ALSO PLAYED AS A BUILD PLAYS IT: optimised, to its end, with
+    # nobody watching (Original::Unpacking#run_as_c, IR::Backends::Native::FinalStateRun), and what it
+    # left is held to what the checked run ended on, every variable and every list, byte for byte. The
+    # checked run holds the C to the interpreter frame by frame, so every unpacking a test plays on the
+    # native run holds the build's fast C run to the interpreter too.
+    #
+    # Must be mixed into a Computer::HeadlessRun: it reads the run's #vars and its private
+    # #list_items, the variables and lists the checked run ended on.
+    module UnpackingPlayedToItsEnd
+      def hand_file(bytes)
+        @unpacking_copy = bytes
+        super
+      end
+
+      def run(program, max_steps: nil, frames: nil)
+        super.tap do
+          refuse_final_state_mismatch!(self.class.program_played(program), frames) if program.kind == :program && program.for_unpacking
+        end
+      end
+
+      private
+
+      def refuse_final_state_mismatch!(program, frames)
+        ended = IR::Backends::Native::FinalStateRun.new(stuck_after: Original::Unpacking::SECONDS_WITHOUT_FRAME)
+                                                   .run(program, frames: frames || IR::Backends::Reference::DEFAULT_FRAMES,
+                                                                 file: @unpacking_copy)
+        played = Original::Unpacking::PackedRun.new(vars: ended.vars, lists: ended.lists, runner: :c)
+        mismatch = variable_mismatch(played) || list_mismatch(played)
+        return unless mismatch
+
+        raise Minitest::Assertion, "The unpacking played to its end as a build plays it (Original::Unpacking#run_as_c) " \
+                                   "did not end as the checked run did: #{mismatch}."
+      end
+
+      # The first variable +played+ ended on another number than the checked run, in words, or nil.
+      def variable_mismatch(played)
+        name, value = played.vars.find { |named, number| vars.fetch(named, 0) != number }
+        name && "variable #{name} is #{value}, and the checked run ended with #{vars.fetch(name, 0)}"
+      end
+
+      # The first list +played+ ended holding other numbers than the checked run, in words, or nil.
+      def list_mismatch(played)
+        played.lists.each_key do |name|
+          numbers = played.list(name)
+          checked = list_items(name) || []
+          next if numbers == checked
+
+          at = (0...[numbers.length, checked.length].max).find { |place| numbers[place] != checked[place] }
+          return "list #{name} holds #{numbers[at].inspect} at #{at}, and the checked run's holds #{checked[at].inspect}"
+        end
+        nil
+      end
+    end
+
     # What a test's player is on the native lowering's run: the game played as C and checked
     # against the interpreter on every frame (Computer::Check says what it compares).
     class CheckedPlayer < IR::Backends::Native::CheckedRun
       include DisagreementFailsTest
       include PlaysRunConsole
+      include UnpackingPlayedToItsEnd
     end
 
     # The same, on the JavaScript lowering's run: the game played as JavaScript under node

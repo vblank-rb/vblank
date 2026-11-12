@@ -530,14 +530,15 @@ class TestDataPacks < Minitest::Test
     end
   end
 
-  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR. A routine copying 256 KB a byte
-  # at a time in a loop of its own, as a port's decoder works, takes the interpreter longer than
-  # the bound; played as Ruby it takes a small part of it, which leaves room for a busy machine.
-  # The pack is the copy, byte for byte.
-  LOOPED_COPY_BYTES = 256 << 10
-  MOST_UNPACKING_SECONDS = 2
+  # AN ALL-IN-ONE BUILD UNPACKS AT A SPEED A BIG PORT CAN WAIT FOR. A routine copying 16 MB a byte
+  # at a time in a loop of its own, as a port's decoder works, takes the Ruby run many times the
+  # bound and the interpreter far longer; played as C (Original::Unpacking#run_fastest) it takes a
+  # small part of it, compiling the routine the first time included, which leaves room for a busy
+  # machine. The pack is the copy, byte for byte.
+  LOOPED_COPY_BYTES = 16 << 20
+  MOST_UNPACKING_SECONDS = 4
 
-  def test_an_all_in_one_unpacking_of_a_quarter_megabyte_takes_under_two_seconds
+  def test_an_all_in_one_unpacking_of_sixteen_megabytes_takes_under_four_seconds
     Dir.mktmpdir do |folder|
       bytes = Random.new(3).bytes(LOOPED_COPY_BYTES)
       builder = Builder.new
