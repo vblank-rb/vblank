@@ -190,8 +190,22 @@ module VBlank
           end
         end
 
-        # Which shape each `repeat` of the program can take (LoopForm).
-        def loop_form = @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) })
+        # Which shape each `repeat` of the program can take (LoopForm). A loop is kept apart from the
+        # game's variables in a routine the frame boundary can call again while it is going, and in a
+        # timer's handler that can wait: the next frame's ticks run that handler again from its start
+        # while the call that waits is part way through its loop.
+        def loop_form
+          @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) } +
+                                                          @tick_handlers.values.select { |handler| frame_ends_under?(handler) })
+        end
+
+        # Whether a frame can end part way through the statements under +root+: a wait of their own, or a
+        # call of a routine that waits.
+        def frame_ends_under?(root)
+          statements = Reach.statements_under(root)
+          statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
+            Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+        end
 
         # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
         # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
@@ -228,9 +242,7 @@ module VBlank
         def waits?(name)
           (@waits ||= {}).fetch(name) do
             @waits[name] = false
-            statements = Reach.statements_under(@funcs.fetch(name))
-            @waits[name] = statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
-                           Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+            @waits[name] = frame_ends_under?(@funcs.fetch(name))
           end
         end
 
