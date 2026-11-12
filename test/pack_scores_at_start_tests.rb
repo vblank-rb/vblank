@@ -521,7 +521,9 @@ module PackScoresAtStartTests
   def test_a_recorded_parts_loudness_in_512ths_plays_as_the_volume_with_a_fraction
     test = self
     scores = ->(notes_of, _settings, _timing) { test.declare_loud_scores(self, notes_of) }
-    unless VBlank::Console.described(game_console).mixes_recordings
+    # A loudness is only a part's volume, which every console that plays an instrument takes:
+    # the Genesis plays this song, and the Color, which has no instruments, refuses it.
+    unless VBlank::Console.for(game_console).answers.answer(:instrument).works?
       return Dir.mktmpdir do |folder|
         left_out = scored_game({ loud: LOUD_TUNE }, folder: folder, &scores)
         assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.hand_file(pack_file({ loud: LOUD_TUNE })).run(left_out, frames: 1) }
