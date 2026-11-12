@@ -104,6 +104,16 @@ module PackPoseBankColorGames
     game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors, **told
   end
 
+  # Tile +tile+ at (at_x, at_y) of +screen+ shows each of its places in the colour +colors+ holds there.
+  private def assert_tile_drawn_in(colors, screen, tile, at_x, at_y, what)
+    TILES.fetch(tile).each_with_index do |place, at|
+      assert_equal colors.fetch(place), screen.pixel(at_x + (at % 8), at_y + (at / 8)), "#{what}: the pixel at (#{at % 8}, #{at / 8})"
+    end
+  end
+
+  # +colors+ as a `colors` list, its first place see-through.
+  private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
+
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
 end
 
@@ -121,16 +131,6 @@ class TestPackPoseBankColors < Minitest::Test
       instance_exec(first, second, &more) if more
     end
   end
-
-  # Tile +tile+ at (at_x, at_y) of +screen+ shows each of its places in the colour +colors+ holds there.
-  private def assert_tile_drawn_in(colors, screen, tile, at_x, at_y, what)
-    TILES.fetch(tile).each_with_index do |place, at|
-      assert_equal colors.fetch(place), screen.pixel(at_x + (at % 8), at_y + (at / 8)), "#{what}: the pixel at (#{at % 8}, #{at / 8})"
-    end
-  end
-
-  # +colors+ as a `colors` list, its first place see-through.
-  private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
 end
 
 class TestPackPoseBankColors < Minitest::Test
