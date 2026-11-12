@@ -71,7 +71,7 @@ module VBlank
                   second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
-                  third_layer: picture.status_bar_on_third_layer?(program),
+                  third_layer: picture.third_layer?(program),
                   chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
                   recorded_pans: IR::Tunes.recorded_pans?(program))
             end

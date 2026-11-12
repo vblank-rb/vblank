@@ -147,11 +147,15 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
-        background: works("two backgrounds at a time, and a status bar beside them. Three backgrounds with no " \
-                          "status bar among them are refused: this build does not make that yet. The backgrounds " \
-                          "are scrolled and changed as on the Advance. `above_row:` " \
+        background: works("two backgrounds at a time, and a status bar or a background held above a row beside " \
+                          "them. Three backgrounds with neither among them are refused: this build does not make " \
+                          "that yet. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
-                          "screen is drawn. A game with it cannot have a status bar yet. `show_only_inside` is " \
+                          "screen is drawn. A game with it cannot have a status bar yet. Beside two other " \
+                          "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
+                          "see-through. It must be in front of the other backgrounds, its tiles must have no " \
+                          "see-through pixel, and each cell of its map that can show must have a tile. If not, or " \
+                          "if a layer is see-through, the build refuses the game. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \

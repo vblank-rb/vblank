@@ -127,9 +127,14 @@ module VBlank
           # The same for the backgrounds' tiles (+background_tiles+).
           class TooManyBackgroundTiles < TooMuch; end
 
-          # A status bar on the third layer whose art does not fit four-colour tiles. Nothing a
-          # second build tries can help, so it is not one of TooMuch.
-          class BarArtTooColorful < LoweringError; end
+          # A background on the third layer, a status bar or one held above a row, whose art does not
+          # fit four-colour tiles. Nothing a second build tries can help, so it is not one of TooMuch.
+          class ThirdLayerArtTooColorful < LoweringError; end
+
+          # A background held above a row on the third layer that could show see-through there
+          # (Lowering::Picture#refuse_held_see_through!). Not one of TooMuch, for the same reason; kept
+          # beside ThirdLayerArtTooColorful, the other art the third layer cannot show.
+          class HeldArtSeeThrough < LoweringError; end
 
           attr_reader :background_tiles, :sprite_tiles, :grids, :sprite_pictures
 
@@ -308,21 +313,33 @@ module VBlank
             [number, palette]
           end
 
-          # THE CELL +image+ (8×8) MAKES ON THE THIRD LAYER, for the status bar +bar+ (a name, for the
-          # words of a refusal): its four-colour tile's number and its list, of the bar's eight. A
-          # tile of more than three colours, or more colours than the eight lists hold, is refused
-          # naming the bar and the tile (+tile+).
-          def bar_cell(image, bar:, tile:)
+          # THE BACKGROUND A THIRD-LAYER CELL IS MADE FOR, as a refusal names it: its name, and whether
+          # it is held above a row (+held_above+) or a status bar.
+          ThirdLayerOwner = Data.define(:name, :held_above) do
+            def kind = held_above ? "background" : "status bar"
+
+            def layer_words
+              return "a background held above a row beside two other backgrounds" if held_above
+
+              "a status bar beside two backgrounds or beside a sprite behind a background"
+            end
+          end
+
+          # THE CELL +image+ (8×8) MAKES ON THE THIRD LAYER, for +owner+ (a ThirdLayerOwner): its
+          # four-colour tile's number and its list, of the layer's eight. A tile of more than three
+          # colours, or more colours than the eight lists hold, is refused naming the background and
+          # the tile (+tile+).
+          def bar_cell(image, owner:, tile:)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             colors = drawn.map { |at| image.color_at(at) }.uniq
             if colors.length > BAR_OWN_COLORS
-              raise BarArtTooColorful, "The status bar :#{bar} shows the tile :#{tile} in #{colors.length} colours. " \
-                                       "On a Super Nintendo, a status bar beside two backgrounds or beside a sprite " \
-                                       "behind a background uses tiles of four colours. A tile shows #{BAR_OWN_COLORS} colours and see-through. To fix this, " \
-                                       "draw the tile :#{tile} in #{BAR_OWN_COLORS} colours or fewer."
+              raise ThirdLayerArtTooColorful, "The #{owner.kind} :#{owner.name} shows the tile :#{tile} in #{colors.length} colours. " \
+                                              "On a Super Nintendo, #{owner.layer_words} uses tiles of four colours. " \
+                                              "A tile shows #{BAR_OWN_COLORS} colours and see-through. To fix this, " \
+                                              "draw the tile :#{tile} in #{BAR_OWN_COLORS} colours or fewer."
             end
 
-            palette = bar_palette_for(colors, bar)
+            palette = bar_palette_for(colors, owner)
             places = Array.new(64) do |at|
               image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(image.color_at(at)) + 1
             end
@@ -614,9 +631,9 @@ module VBlank
           def blank_tile = ("\0".b * TILE_BYTES)
           def blank_bar_tile = ("\0".b * BAR_TILE_BYTES)
 
-          # The bar's list holding every one of +colors+, adding them to one with room, or starting
-          # another of the eight; refused naming +bar+ where none is left.
-          def bar_palette_for(colors, bar)
+          # The third layer's list holding every one of +colors+, adding them to one with room, or
+          # starting another of the eight; refused naming +owner+ (a ThirdLayerOwner) where none is left.
+          def bar_palette_for(colors, owner)
             found = @bar_palettes.index { |list| (colors - list).empty? }
             return found if found
 
@@ -625,11 +642,10 @@ module VBlank
             return roomy.tap { @bar_palettes[roomy] |= colors } if roomy
 
             if @bar_palettes.length >= BAR_PALETTES
-              raise BarArtTooColorful, "The tiles of the status bar :#{bar} use more colours than its layer holds. On a " \
-                                       "Super Nintendo, a status bar beside two backgrounds or beside a sprite behind " \
-                                       "a background uses tiles of four colours. " \
-                                       "The layer holds #{BAR_PALETTES} lists of #{BAR_OWN_COLORS} colours, and each " \
-                                       "tile uses one list. To fix this, use fewer colours in the bar's tiles."
+              raise ThirdLayerArtTooColorful, "The tiles of the #{owner.kind} :#{owner.name} use more colours than its layer holds. On a " \
+                                              "Super Nintendo, #{owner.layer_words} uses tiles of four colours. " \
+                                              "The layer holds #{BAR_PALETTES} lists of #{BAR_OWN_COLORS} colours, and each " \
+                                              "tile uses one list. To fix this, use fewer colours in the tiles of :#{owner.name}."
             end
 
             @bar_palettes << colors.dup

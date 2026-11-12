@@ -17,9 +17,9 @@ module VBlank
           #   $5000-$5FFF  BG2's map
           #   $6000-$7FFF  the sprites' tiles, 512 of them
           #
-          # THE THIRD LAYER holds a status bar shown beside two other backgrounds, or beside a sprite
-          # behind a background (+third_layer+,
-          # Lowering::Picture.status_bar_on_third_layer?), and is left off in every other game. Its map
+          # THE THIRD LAYER holds a status bar or a background held above a row shown beside two other
+          # backgrounds, or a status bar beside a sprite behind a background (+third_layer+,
+          # Lowering::Picture.third_layer?), and is left off in every other game. Its map
           # is the last 1K words of the backgrounds' tiles, $3C00-$3FFF, a bar's 32×32 cells, so
           # such a game has 960 tiles of sixteen colours. Its tiles are read from $0000 too, 8 words
           # each, two to one of the others' places (Art::BAR_TILE_BYTES). Retail games keep it apart:
@@ -1073,7 +1073,10 @@ module VBlank
               if memory.reserved?(ROW_HELD)
                 asm.lda(asm.direct(work + 2))
                 asm.sta(asm.direct(work + 4))
-                asm.lda(LAYERS_SHOWN)
+                # Above the row, every layer; but a background held above a row on the third layer
+                # shows alone there, with the sprites, as a Super Nintendo game's bar does
+                # (Lowering::Picture#refuse_held_see_through! explains why it is alone).
+                asm.lda(third_layer ? THIRD_LAYER_SHOWN | SPRITES_SHOWN : LAYERS_SHOWN)
                 asm.sta(asm.direct(work + 2))
               end
               # The lines above the bar, in one step or two; none for a bar at the top.
