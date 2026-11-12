@@ -205,6 +205,18 @@ module VBlank
             Reach.routines_called_from(@program, @tick_handlers.values + @bend_roots).select { |name| waits?(name) }
         end
 
+        # WHETHER A LOWERING THAT WORKS THE BENDS OUT AT EACH WAIT MAKES THEM ONE ROUTINE, which every wait
+        # calls, rather than code in place at each wait: when a bend's steps call a routine that can be
+        # waiting at that boundary (#routines_reentered_at_frame_boundary). The numbers such a call puts
+        # back around the steps are known only once every routine is made, after the waits made in place.
+        # Any other game keeps its bends in place.
+        def bends_in_own_routine?
+          return @bends_in_own_routine unless @bends_in_own_routine.nil?
+
+          called = Reach.routines_called_from(@program, @bend_roots)
+          @bends_in_own_routine = called.intersect?(routines_reentered_at_frame_boundary)
+        end
+
         # The statements a frame boundary can come inside: a wait, and a game loop, whose every pass ends in
         # one. The interpreter ends a frame only in #exec_wait_vblank.
         FRAME_ENDING_KINDS = %i[wait_vblank loop].freeze

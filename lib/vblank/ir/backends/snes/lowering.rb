@@ -305,14 +305,17 @@ module VBlank
               next [chip_routine_section(name)] if on_chip?(name)
 
               @lowering_scene = @scenes.key?(name) ? name : nil
-              routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              with_call_numbers_recorded_for(name) do
+                routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              end
             end
             timers = timer_sections
             @lowering_scene = nil
+            bend_routine = bend_sections
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             placings = sprite_placing_sections
             columns = column_sections
-            [data_section, *table_sections, *routines, *timers, *main, *placings, *columns, *chip_sections]
+            [data_section, *table_sections, *routines, *timers, *bend_routine, *main, *placings, *columns, *chip_sections]
           end
 
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
@@ -483,7 +486,34 @@ module VBlank
             label = "the game's number #{name}"
             @locals[name] = @memory.near_bytes_left >= NEAR_BYTES_LAST + 4 ? @memory.reserve(label, 4) : @memory.reserve_far(label, 4)
             @starts << [@locals[name], start] unless start.zero?
+            record_call_number(name, what)
             name
+          end
+
+          # The numbers each call of a routine keeps of its own (ControlFlow#call_numbers), put back
+          # around the block's code, for every routine the frame boundary can call while a call of it is
+          # waiting there (LoweringPlan#routines_reentered_at_frame_boundary): each pushed a half at a
+          # time before, and pulled back after, so the call that waits goes on from its own loop's turn,
+          # as the interpreter's does, whatever the boundary's call left there. A game whose boundary
+          # calls no such routine has no code here.
+          def with_call_numbers_kept
+            return yield if call_numbers.empty?
+
+            call_numbers.each do |name|
+              at = place_of(name)
+              @asm.lda(at_place(at))
+              @asm.pha
+              @asm.lda(at_place(at + 2))
+              @asm.pha
+            end
+            yield
+            call_numbers.reverse_each do |name|
+              at = place_of(name)
+              @asm.pla
+              @asm.sta(at_place(at + 2))
+              @asm.pla
+              @asm.sta(at_place(at))
+            end
           end
 
           def place_of(name)
@@ -828,7 +858,7 @@ module VBlank
           # The rows of each background bent row by row come first (Reference#work_out_bends): the
           # wait's blank sends the scroll this pass placed, and a row's bend goes out with it.
           def emit_wait_vblank(_node)
-            emit_bends
+            @plan.bends_in_own_routine? ? call_routine(BENDS) : emit_bends
             call_routine("rt_wait_vblank")
             emit_corners_forgotten
             count = place_of(Frames::COUNT)
@@ -1722,13 +1752,15 @@ module VBlank
             each_timer = @timers.flat_map { |name, _| timer_section(name) }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              (1..@timers.size).each do |place_in_order|
-                @timers.each_key do |name|
-                  skip = fresh("not_this_one")
-                  jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
-                  jump_unless(Build.var_ref(timer_number(name, :running)), skip)
-                  call_routine(timer_label(name))
-                  @asm.label(skip)
+              with_call_numbers_kept do
+                (1..@timers.size).each do |place_in_order|
+                  @timers.each_key do |name|
+                    skip = fresh("not_this_one")
+                    jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
+                    jump_unless(Build.var_ref(timer_number(name, :running)), skip)
+                    call_routine(timer_label(name))
+                    @asm.label(skip)
+                  end
                 end
               end
             end
@@ -1736,6 +1768,18 @@ module VBlank
           end
 
           def timer_label(name) = "timer #{name} frame"
+
+          # The routine every wait calls to work out the bends' rows, in a game whose bends are one
+          # (LoweringPlan#bends_in_own_routine?).
+          BENDS = "bends frame"
+
+          # That routine, with the numbers of a call its steps can come inside put back around them
+          # (#with_call_numbers_kept), which are known only once every routine of the game is made.
+          def bend_sections
+            return [] unless @plan.bends_in_own_routine?
+
+            [routine_section(BENDS, [], routine: "the bends") { with_call_numbers_kept { emit_bends } }]
+          end
 
           # One timer, a frame on: its sixtieths, the whole ticks they come to, and its handler run
           # once for each. How many that is is settled before the first of them runs, so a handler

@@ -114,6 +114,28 @@ module VBlank
           @loop_running = keep_local(:loop_running) if loops_ending_passes.any?
         end
 
+        # The block, which makes the routine +name+ and the parts cut off it, with each of the numbers
+        # it keeps for one call of it recorded (#record_call_number) when a frame boundary can call it
+        # again while a call of it is going (LoweringPlan#routines_reentered_at_frame_boundary).
+        def with_call_numbers_recorded_for(name)
+          @recording_call_numbers = @plan.routines_reentered_at_frame_boundary.include?(name)
+          yield
+        ensure
+          @recording_call_numbers = false
+        end
+
+        # The routine's own number +name+, asked for as +what+ (keep_local), among #call_numbers when it
+        # is one of CALL_NUMBERS of a routine being recorded. A lowering's keep_local calls this for each
+        # number it keeps for real, and not for one kept only to be measured.
+        def record_call_number(name, what)
+          (@call_numbers ||= []) << name if @recording_call_numbers && CALL_NUMBERS.include?(what)
+        end
+
+        # The numbers a frame boundary's routines put back around them (#with_call_numbers_recorded_for),
+        # each lowering in its own processor's instructions (its #with_call_numbers_kept). Complete once
+        # every routine of the game is made.
+        def call_numbers = @call_numbers || []
+
         # Reference#exec_repeat: the count worked out once, before the first turn; the index
         # counting 0, 1, 2... and in the game's variable from the top of each turn; and
         # +stop_when+ asked BEFORE the body, so a loop already finished on its first turn runs the

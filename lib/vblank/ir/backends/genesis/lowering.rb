@@ -285,7 +285,9 @@ module VBlank
             keep_order_tables
             routines = @called.flat_map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
-              routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              with_call_numbers_recorded_for(name) do
+                routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              end
             end
             timers = timer_sections
             @lowering_scene = nil
@@ -452,7 +454,26 @@ module VBlank
             name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             @locals[name] = @memory.reserve("the game's number #{name}", 4)
             @starts << [@locals[name], start] unless start.zero?
+            record_call_number(name, what)
             name
+          end
+
+          # The numbers each call of a routine keeps of its own (ControlFlow#call_numbers), put back
+          # around the block's code, for every routine the frame boundary can call while a call of it is
+          # waiting there (LoweringPlan#routines_reentered_at_frame_boundary): each moved onto the stack
+          # before, and off it back to its place after, so the call that waits goes on from its own
+          # loop's turn, as the interpreter's does, whatever the boundary's call left there. A game whose
+          # boundary calls no such routine has no code here.
+          #
+          # A count a loop holds in a data register (#with_counter_held) needs nothing: such a loop has
+          # no call and no wait in it, so it is never part way through at a frame boundary, which comes
+          # only inside rt_wait_vblank; its count is in its place again by the time a routine waits.
+          def with_call_numbers_kept
+            return yield if call_numbers.empty?
+
+            call_numbers.each { |name| @asm.move(:l, at(place_of(name)), @asm.pre(M68000::SP)) }
+            yield
+            call_numbers.reverse_each { |name| @asm.move(:l, @asm.post(M68000::SP), at(place_of(name))) }
           end
 
           # Where the variable +name+ (or a number of a routine's own) is kept, as an address.
@@ -1341,13 +1362,15 @@ module VBlank
             each_timer = @timers.flat_map { |name, _| timer_section(name) }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              (1..@timers.size).each do |place_in_order|
-                @timers.each_key do |name|
-                  skip = fresh("not_this_one")
-                  jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
-                  jump_unless(Build.var_ref(timer_number(name, :running)), skip)
-                  call_routine(timer_label(name))
-                  @asm.label(skip)
+              with_call_numbers_kept do
+                (1..@timers.size).each do |place_in_order|
+                  @timers.each_key do |name|
+                    skip = fresh("not_this_one")
+                    jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
+                    jump_unless(Build.var_ref(timer_number(name, :running)), skip)
+                    call_routine(timer_label(name))
+                    @asm.label(skip)
+                  end
                 end
               end
             end

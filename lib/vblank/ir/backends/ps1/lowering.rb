@@ -220,7 +220,6 @@ module VBlank
             @lists_of_fixed_length = lists_of_fixed_length(program)
             @variables = {}
             @locals = {}
-            @call_numbers = Hash.new { |numbers, label| numbers[label] = [] } # ControlFlow::CALL_NUMBERS, by routine label
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
@@ -259,7 +258,9 @@ module VBlank
             reserve_painted_numbers!
             routines = @called.map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
-              routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))
+              with_call_numbers_recorded_for(name) do
+                routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))
+              end
             end
             @lowering_scene = nil
             timers = timer_sections
@@ -396,7 +397,7 @@ module VBlank
             name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             @locals[name] = @memory.reserve_scratchpad("the game's number #{name}", 4)
             @starts << [@locals[name], start] unless start.zero?
-            @call_numbers[@routine] << name if ControlFlow::CALL_NUMBERS.include?(what)
+            record_call_number(name, what)
             name
           end
 
@@ -926,14 +927,14 @@ module VBlank
             [*each_timer, in_order]
           end
 
-          # The block's code with the numbers each call of a routine keeps of its own (ControlFlow::CALL_NUMBERS)
+          # The block's code with the numbers each call of a routine keeps of its own (ControlFlow#call_numbers)
           # kept on the stack around it, for every routine the handlers can call while a call of it is waiting
           # at this frame boundary (LoweringPlan#routines_reentered_at_frame_boundary): the call that waits goes
           # on from its own loop's turn, as the interpreter's does, whatever the handler's call left there. A bend's
           # steps run at the boundary too, but the PlayStation build does not make bends yet (NOT_LOWERED_YET), so the
           # timers are all that run there.
           def with_call_numbers_kept
-            kept = @plan.routines_reentered_at_frame_boundary.flat_map { |name| @call_numbers[self.class.routine_label(name)] }
+            kept = call_numbers
             return yield if kept.empty?
 
             @asm.addiu(:sp, :sp, -4 * kept.length)
