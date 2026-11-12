@@ -417,9 +417,35 @@ void rg_start_file_hand(const uint8_t *bytes, int32_t size) {
   start_file_size = size;
 }
 
+/* The whole of +file+, whose size can be asked, read straight into the start file's room, so a
+ * copy of hundreds of megabytes is held once as it is read and not twice. 1 when it was read, 0
+ * when it could not be, and -1 when the file cannot say its size (a pipe), which is then read
+ * a piece at a time. */
+static int read_sized_start_file(FILE *file) {
+  if (fseek(file, 0, SEEK_END) != 0) return -1;
+  long size = ftell(file);
+  if (size < 0 || fseek(file, 0, SEEK_SET) != 0) return -1;
+  if (size > INT32_MAX) return 0;
+  uint8_t *bytes = malloc(size > 0 ? (size_t)size : 1);
+  if (!bytes) return 0;
+  if (fread(bytes, 1, (size_t)size, file) != (size_t)size || fgetc(file) != EOF) {
+    free(bytes);
+    return 0;
+  }
+  free(start_file);
+  start_file = bytes;
+  start_file_size = (int32_t)size;
+  return 1;
+}
+
 int rg_start_file_read(const char *path) {
   FILE *file = fopen(path, "rb");
   if (!file) return 0;
+  int sized = read_sized_start_file(file);
+  if (sized >= 0) {
+    fclose(file);
+    return sized;
+  }
   uint8_t *bytes = NULL;
   size_t size = 0;
   size_t room = 0;

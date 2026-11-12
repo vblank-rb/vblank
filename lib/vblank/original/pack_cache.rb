@@ -8,7 +8,7 @@ module VBlank
     # WHAT A PORT'S UNPACKING ROUTINE WROTE, CACHED BETWEEN BUILDS. Built all-in-one, the routine
     # runs as the game is built (Builder::DataPacks#play_unpacking), which for a big port is a long
     # wait every build, though neither the player's copy nor the routine changed. A game that names
-    # a folder caches each slot's bytes there and a later build hits:
+    # a folder caches the pack file there and a later build hits:
     #
     #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
     #
@@ -18,8 +18,13 @@ module VBlank
     # what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
     # so a copy of many megabytes adds nothing to the key's text); the library, every file under its
     # lib by its place there and its contents, since the interpreter that runs the routine is part
-    # of it (so a checkout and a worktree of it share entries); and the Ruby. The folder must be one
-    # git ignores, since what is cached is the original's data.
+    # of it (so a checkout and a worktree of it share entries); the Ruby; and the SHA-1 and build
+    # version the pack's header names. The folder must be one git ignores, since what is cached is
+    # the original's data.
+    #
+    # AN ENTRY IS THE PACK FILE ITSELF (Original::Pack), which the routine's run writes straight
+    # into the folder (Unpacking#write_pack_fastest), so a pack of hundreds of megabytes is never
+    # held twice to be kept.
     #
     # Each change to the library misses once and writes a new entry, so entries are pruned: one no
     # build has read for EXPIRE_DAYS goes when the next is stored, and so does a half-written one
@@ -37,24 +42,37 @@ module VBlank
         @folder = File.expand_path(folder)
       end
 
-      # Each slot's bytes for +unpacking+ (an Original::Unpacking, holding the copy it reads): the
-      # cached entry on a hit, else the block's, which is then stored.
-      def slot_bytes(unpacking)
-        path = File.join(@folder, "#{key(unpacking)}#{ENTRY_EXTENSION}")
-        cached = read(path)
-        return cached if cached
+      # The pack (an Original::Pack) +unpacking+ (an Original::Unpacking, holding the copy it reads)
+      # makes for the copy whose SHA-1 is +sha1+ and the build +build_version+: the cached entry on
+      # a hit; else the one the block writes to the file at the path it is handed, which is then stored.
+      def pack(unpacking, sha1:, build_version:, &write)
+        path = File.join(@folder, "#{key(unpacking, sha1, build_version)}#{ENTRY_EXTENSION}")
+        read(path) || store(path, &write)
+      end
 
-        unpacked = yield
-        store(path, unpacked)
-        unpacked
+      # What a pack that only keeps slots names in its header, where there is no copy's SHA-1 or
+      # build to name (#slot_bytes).
+      SLOTS_ONLY_SHA1 = ("0" * 40).freeze
+      SLOTS_ONLY_VERSION = "slots"
+
+      # Each slot's bytes for +unpacking+, by name: the cached entry's on a hit, else the block's
+      # (a Hash of them, as Unpacking#slot_bytes_in gives), which are then stored. For a game's own
+      # test that plays the routine itself and wants its slots, not a pack file; the entry is a
+      # pack file all the same, named for no copy and no build.
+      def slot_bytes(unpacking)
+        made = pack(unpacking, sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION) do |path|
+          Pack.holding(yield, sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION).write(path)
+        end
+        made.slots
       end
 
       private
 
-      def key(unpacking)
+      def key(unpacking, sha1, build_version)
         digest = Digest::SHA256.new
         digest << library_digest << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
         digest << Digest::SHA256.hexdigest(unpacking.copy_bytes) << "\0"
+        digest << sha1.to_s << "\0" << build_version.to_s << "\0"
         digest << IR::Dump.source(unpacking.program)
         digest.hexdigest
       end
@@ -67,29 +85,50 @@ module VBlank
         end.hexdigest
       end
 
-      # A hit's bytes, its use marked so pruning keeps it; nil on a miss or an entry that cannot be read.
+      # A hit's pack, its use marked so pruning keeps it; nil on a miss or an entry that cannot be read.
       def read(path)
         return unless File.file?(path)
 
-        cached = Marshal.load(File.binread(path)) # rubocop:disable Security/MarshalLoad -- written by #store
+        cached = Pack.read(path)
         File.utime(Time.now, Time.now, path)
         cached
-      rescue TypeError, ArgumentError, EOFError, Errno::ENOENT
+      rescue WrongPack, ArgumentError, Errno::ENOENT
         nil
       end
 
-      # A folder that cannot be written loses the entry, never the build: the routine has run, and
-      # its bytes are handed on, with one line saying the next build will run it again.
-      def store(path, slots)
-        FileUtils.mkdir_p(@folder)
+      # The pack the block writes, stored at +path+. It is written under a name of its own and renamed
+      # once whole. A folder that cannot be written loses the entry, never the build: the pack is
+      # made somewhere else and handed on, with one line saying the next build will run the
+      # routine again.
+      def store(path)
         # Named for the thread, which tells apart builds in other processes, other Ractors (each has
         # threads of its own) and other threads of this one, so no build renames another's file.
         temporary = "#{path}.#{Process.pid}.#{Thread.current.object_id}#{PARTIAL_EXTENSION}"
-        File.binwrite(temporary, Marshal.dump(slots))
+        begin
+          FileUtils.mkdir_p(@folder)
+          File.binwrite(temporary, "")
+        rescue SystemCallError => e
+          warn_not_cached(e)
+          return Pack.read_from_temporary_file { |elsewhere| yield elsewhere }
+        end
+        yield temporary
+        made = Pack.read(temporary)
+        store_entry(temporary, path)
+        made
+      ensure
+        File.delete(temporary) if temporary && File.exist?(temporary)
+      end
+
+      # The whole entry at +temporary+ renamed to +path+, and the old entries pruned.
+      def store_entry(temporary, path)
         File.rename(temporary, path)
         prune
       rescue SystemCallError => e
-        warn "The data pack was not cached in #{@folder}: #{e.message}. The next build unpacks the copy again."
+        warn_not_cached(e)
+      end
+
+      def warn_not_cached(error)
+        warn "The data pack was not cached in #{@folder}: #{error.message}. The next build unpacks the copy again."
       end
 
       def prune

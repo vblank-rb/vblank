@@ -258,13 +258,13 @@ void rg_state_list(const char *name, rg_list *list) {
   if (!values) rg_fault("there is no room to write the state");
   values[0] = list->front;
   values[1] = list->length;
-  for (int32_t i = 0; i < list->capacity; i++) values[i + 2] = list->items[i];
+  for (int32_t i = 0; i < list->capacity; i++) values[i + 2] = rg_list_load(list, i);
   rg_state_numbers(name, values, count);
   if (values[0] < 0 || values[0] >= (list->capacity > 0 ? list->capacity : 1) || values[1] < 0 || values[1] > list->capacity)
     rg_fault("This state is damaged: the list \"%s\" has a place outside its %d slots. Load a state that this game wrote.", name,
              (int)list->capacity);
   list->front = (int32_t)values[0];
   list->length = (int32_t)values[1];
-  for (int32_t i = 0; i < list->capacity; i++) list->items[i] = rg_list_fit(list, (int32_t)values[i + 2]);
+  for (int32_t i = 0; i < list->capacity; i++) rg_list_store(list, i, (int32_t)values[i + 2]);
   free(values);
 }

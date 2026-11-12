@@ -100,8 +100,11 @@ module VBlank
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
-        slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, cache) : copied
-        @data_pack_contents = Original::Pack.from_bytes(Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes)
+        @data_pack_contents = if unpacking
+                                unpacked_pack(unpacking, cache, sha1: copy.sha1, build_version: version)
+                              else
+                                Original::Pack.from_bytes(Original::Pack.holding(copied, sha1: copy.sha1, build_version: version).to_bytes)
+                              end
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
@@ -631,15 +634,17 @@ module VBlank
                              "`pack.unpacking(release: release)`."
       end
 
-      # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
-      def unpacked_slot_bytes(unpacking, cache)
-        return play_unpacking(unpacking) if cache.nil?
+      # The pack the routine writes, for the copy whose SHA-1 is +sha1+ and the build
+      # +build_version+, read back from +cache+ (a folder, or nil for none) where it is kept.
+      def unpacked_pack(unpacking, cache, sha1:, build_version:)
+        play = ->(path) { play_unpacking(unpacking, path, sha1: sha1, build_version: build_version) }
+        return Original::Pack.read_from_temporary_file(&play) if cache.nil?
 
-        Original::PackCache.new(cache).slot_bytes(unpacking) { play_unpacking(unpacking) }
+        Original::PackCache.new(cache).pack(unpacking, sha1: sha1, build_version: build_version, &play)
       end
 
-      # Each slot's bytes as +unpacking+ writes them, played the fastest way this machine has
-      # (Original::Unpacking#run_fastest): built as C where zig is installed, else as Ruby, as a
+      # The pack file +unpacking+ writes, written to +path+, played the fastest way this machine has
+      # (Original::Unpacking#write_pack_fastest): built as C where zig is installed, else as Ruby, as a
       # shell plays it on a player's machine. The interpreter is plain and slow on purpose, many
       # times slower on a port's loops. It stays the answer key: every run of the tests holds the C
       # and Ruby lowerings to it frame by frame, unpackings among them (test/copy_reader_tests.rb,
@@ -648,10 +653,9 @@ module VBlank
       # neither can play yet. The first fault the routine met (a block not packed the way it
       # declares, a read past the copy's end, a write past a slot) stops the build here, as a slot
       # past the copy's end does.
-      def play_unpacking(unpacking)
-        ran = unpacking.run_fastest
+      def play_unpacking(unpacking, path, sha1:, build_version:)
+        ran = unpacking.write_pack_fastest(path, sha1: sha1, build_version: build_version)
         refuse_faulted_or_unfinished_unpacking!(unpacking, ran, unpacking.most_frames)
-        unpacking.slot_bytes_in(ran)
       rescue IR::ProgramError => e
         raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
       end

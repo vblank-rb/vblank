@@ -261,15 +261,19 @@ from that copy. The game's code says each piece's shape and size; it never depen
   plays. VBlank takes a format in only when many games use it.
 
   **How an all-in-one build runs the routine**: the fastest way the machine has
-  (`Original::Unpacking#run_fastest`): built as C and optimised where zig 0.17 is installed, else
-  built as Ruby, else on the interpreter. A byte-at-a-time copy of 300 MB takes seconds as C and
-  minutes as Ruby. The compiled routine is kept by its C, so a build whose routine has not changed
-  does not compile it again. Every way writes the same pack, byte for byte. A game's test that makes
-  the pack as a build does calls `unpacking.run_fastest` (or `run_as_c`, `run_as_ruby` for one way).
+  (`Original::Unpacking#write_pack_fastest`): built as C and optimised where zig 0.17 is installed,
+  else built as Ruby, else on the interpreter. A byte-at-a-time copy of 300 MB takes seconds as C
+  and minutes as Ruby. As C the routine writes the pack file itself, so the build holds the pack
+  once, and a list of bytes costs a byte an item. The compiled routine is kept by its C, so a build
+  whose routine has not changed does not compile it again. Every way writes the same pack, byte for
+  byte. A game's test that makes the pack file as a build does calls
+  `unpacking.write_pack_fastest(path, sha1:, build_version:)`; one that reads the routine's lists
+  and variables calls `unpacking.run_fastest` (or `run_as_c`, `run_as_ruby` for one way).
 
   **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
   ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
-  routine, the same slots and the same VBlank reads the bytes back instead (`Original::PackCache`).
+  routine, the same slots, the same version and the same VBlank reads the pack file back instead
+  (`Original::PackCache`).
   The key is the whole routine, so a change to any part of it runs all of it again. Leave it out and
   every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
   nothing.

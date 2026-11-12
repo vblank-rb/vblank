@@ -75,7 +75,11 @@
  * a line each, then every list as "list", its name, a tab, its width in bytes and its count, a
  * line's end, and then its items oldest first, each in its width with the low byte first. What a
  * build plays this way is a port's unpacking, whose pack is one list of millions of bytes, which
- * as printed numbers would be several times its size. So that a stuck routine can be told from a
+ * as printed numbers would be several times its size. With --list-file NAME PATH as well, the
+ * list called NAME is left out of FILE and its items alone, written the same way, are added to
+ * the end of PATH: a build hands the file it wants the pack in, already holding the pack's
+ * header, and the pack's bytes go straight there (Original::Unpacking#write_pack_as_c), never
+ * through the reader. So that a stuck routine can be told from a
  * long one, it prints one "." on standard output at a frame boundary, at most every
  * DOT_EVERY_CLOCKS of the processor's time, and the reader stops a run that has printed none
  * for a while.
@@ -107,6 +111,8 @@ static char *state_in;             /* the state read in at the first boundary, u
 static const char *final_state_path; /* where a run nobody watches writes its variables and lists */
 static FILE *final_state;            /* ...open while they are written */
 static clock_t last_dot_clock;       /* when such a run last printed a "." to show it is not stuck */
+static const char *list_file_name;   /* the list such a run adds to a file of its own... */
+static const char *list_file_path;   /* ...and that file */
 
 /* The whole of the file at +path+ as text, or NULL where it cannot be read. */
 static char *read_text_file(const char *path) {
@@ -369,7 +375,7 @@ static void headless_sound_logged(const char *line) { printf("sound %s\n", line)
 static void headless_dump_list(const rg_list *list) {
   if (asked_name && strcmp(list->name, asked_name) != 0) return;
   printf("list %s\t", list->name);
-  for (int32_t i = 0; i < list->length; i++) printf(i ? " %d" : "%d", (int)list->items[rg_list_slot(list, i)]);
+  for (int32_t i = 0; i < list->length; i++) printf(i ? " %d" : "%d", (int)rg_list_load(list, rg_list_slot(list, i)));
   fputc('\n', stdout);
 }
 
@@ -413,20 +419,53 @@ static void final_state_dump_variable(const char *name, int32_t value) { fprintf
 
 static void final_state_sound_logged(const char *line) { (void)line; }
 
-/* Written through a buffer of whole items, since a pack's list holds millions of them. */
-static void final_state_dump_list(const rg_list *list) {
+/* The items of +list+, oldest first, each in its width with the low byte first, written to +out+.
+ * A list of bytes is already that in memory, so it goes as the one or two runs of its ring; a
+ * wider one goes through a buffer of whole items, since a pack's list holds millions of them. */
+static void write_list_items(const rg_list *list, FILE *out) {
+  if (list->width == 1) {
+    const int8_t *items = list->items;
+    int32_t first_run = list->capacity - list->front;
+    if (first_run > list->length) first_run = list->length;
+    fwrite(items + list->front, 1, (size_t)first_run, out);
+    fwrite(items, 1, (size_t)(list->length - first_run), out);
+    return;
+  }
   unsigned char buffer[4096];
   size_t width = (size_t)list->width, held = 0;
-  fprintf(final_state, "list %s\t%d %d\n", list->name, (int)list->width, (int)list->length);
   for (int32_t i = 0; i < list->length; i++) {
-    uint32_t item = (uint32_t)list->items[rg_list_slot(list, i)];
+    uint32_t item = (uint32_t)rg_list_load(list, rg_list_slot(list, i));
     for (size_t byte = 0; byte < width; byte++) buffer[held++] = (unsigned char)((item >> (8 * byte)) & 0xFFu);
     if (held + width > sizeof buffer) {
-      fwrite(buffer, 1, held, final_state);
+      fwrite(buffer, 1, held, out);
       held = 0;
     }
   }
-  fwrite(buffer, 1, held, final_state);
+  fwrite(buffer, 1, held, out);
+}
+
+/* The list --list-file names: its items added to the end of its file. */
+static void append_list_file(const rg_list *list) {
+  FILE *out = fopen(list_file_path, "ab");
+  int failed = !out;
+  if (out) {
+    write_list_items(list, out);
+    failed = ferror(out);
+    if (fclose(out) != 0) failed = 1;
+  }
+  if (failed) {
+    fprintf(stderr, "the list %s could not be written to %s\n", list->name, list_file_path);
+    exit(1);
+  }
+}
+
+static void final_state_dump_list(const rg_list *list) {
+  if (list_file_name && strcmp(list->name, list_file_name) == 0) {
+    append_list_file(list);
+    return;
+  }
+  fprintf(final_state, "list %s\t%d %d\n", list->name, (int)list->width, (int)list->length);
+  write_list_items(list, final_state);
 }
 
 static const rg_driver final_state_driver = {final_state_wait_vblank, final_state_halt, headless_fault, final_state_dump_variable,
@@ -490,6 +529,9 @@ int rg_headless_main(int argc, char **argv) {
       }
     } else if (strcmp(argv[i], "--final-state") == 0 && i + 1 < argc) {
       final_state_path = argv[++i];
+    } else if (strcmp(argv[i], "--list-file") == 0 && i + 2 < argc) {
+      list_file_name = argv[++i];
+      list_file_path = argv[++i];
     }
   }
   if (final_state_path) {

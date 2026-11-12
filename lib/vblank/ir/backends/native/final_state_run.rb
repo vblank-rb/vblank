@@ -43,16 +43,23 @@ module VBlank
             @stuck_after = stuck_after
           end
 
+          # One list a run writes to a file of its own rather than into its final state: the list
+          # called +name+ (a Symbol), its items added to the end of the file at +path+, each in its
+          # width with the low byte first, and never read back here.
+          ListFile = Data.define(:name, :path)
+
           # +program+ played for at most +frames+ frames, handed +file+ (bytes, or nil for none) as
-          # its start file, and what it left, as FinalState. IR::ProgramError where the game went
+          # its start file, and what it left, as FinalState. With +list_file+ (a ListFile) that list
+          # is added to its file and is not in the FinalState. IR::ProgramError where the game went
           # wrong, with the C's own sentence, as the interpreter raises it; Stuck for a program that
           # stopped waiting for frames.
-          def run(program, frames:, file: nil)
+          def run(program, frames:, file: nil, list_file: nil)
             exe = Native.new.build_headless(program, mode: :fast)
             Dir.mktmpdir("vblank-final-state") do |dir|
               files = RunFiles.inside(dir)
               File.binwrite(files.start_file, file) if file
-              args = [frames.to_s, "--final-state", files.final_state, *(["--start-file", files.start_file] if file)]
+              args = [frames.to_s, "--final-state", files.final_state, *(["--start-file", files.start_file] if file),
+                      *(["--list-file", list_file.name.to_s, list_file.path] if list_file)]
               status = play(exe, args, files)
               Computer::ProgramRun.refuse_unsuccessful_exit!(exe, status, File.read(files.complaints))
               read_final_state(File.binread(files.final_state))

@@ -5,8 +5,9 @@ require "made_up_original"
 require "pack_games"
 
 # AN ALL-IN-ONE BUILD PLAYS A PORT'S UNPACKING THE FASTEST WAY THE MACHINE HAS
-# (Original::Unpacking#run_fastest): as C where zig is installed, as Ruby where it is not. Whichever
-# plays it, the pack is the one the interpreter writes, byte for byte. This run is the one sure to
+# (Original::Unpacking#write_pack_fastest, #run_fastest): as C where zig is installed, as Ruby where
+# it is not. Whichever plays it, the pack is the one the interpreter writes, byte for byte, and so
+# is the pack file a build writes. This run is the one sure to
 # have zig, so the C is played here; every unpacking a test plays on it is also played to its end
 # as C and held to the checked run (Testing::UnpackingPlayedToItsEnd).
 class TestUnpackingAsC < Minitest::Test
@@ -21,7 +22,7 @@ class TestUnpackingAsC < Minitest::Test
 
   # Each unpacking an all-in-one build plays, kept while a test asks for them (#unpackings_built_by).
   module RecordsUnpackingsPlayed
-    def run_fastest(...)
+    def write_pack_fastest(...)
       Thread.current[RECORDING]&.push(self)
       super
     end
@@ -40,14 +41,34 @@ class TestUnpackingAsC < Minitest::Test
   # The pack +run+ wrote, as bytes: every slot, then the frame records.
   private def pack_in(unpacking, run) = [unpacking.slot_bytes_in(run).transform_values(&:b), unpacking.frame_records_in(run).b]
 
+  # The pack file a build writes, made for these.
+  PACK_SHA1 = "0123456789abcdef0123456789abcdef01234567"
+  BUILD_VERSION = "7"
+
+  # The pack file +unpacking+ writes to a file of its own as a build makes it, by the block given
+  # the path, as bytes.
+  private def pack_file_bytes_written_by
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "made.pack")
+      yield path
+      File.binread(path)
+    end
+  end
+
   # +unpacking+ played as C, as Ruby where the Ruby runtime plays it, and on the interpreter, each
-  # held to the interpreter's pack.
+  # held to the interpreter's pack; and the pack file a build writes as C held to the one made from
+  # the interpreter's run, byte for byte.
   private def assert_one_pack_three_ways(unpacking, name)
     on_interpreter = unpacking.run_on(Reference.new, frames: unpacking.most_frames, max_steps: unpacking.most_steps_a_frame)
     wanted = pack_in(unpacking, on_interpreter)
+    wanted_file = unpacking.pack_file_in(on_interpreter, sha1: PACK_SHA1, build_version: BUILD_VERSION)
 
     assert unpacking.finished_in?(on_interpreter), "#{name}: the unpacking finished on the interpreter"
     assert_equal wanted, pack_in(unpacking, unpacking.run_as_c(frames: unpacking.most_frames)), "#{name}: as C"
+    written = pack_file_bytes_written_by do |path|
+      unpacking.write_pack_as_c(path, sha1: PACK_SHA1, build_version: BUILD_VERSION, frames: unpacking.most_frames)
+    end
+    assert_equal wanted_file, written, "#{name}: the pack file written as C"
     begin
       as_ruby = unpacking.run_as_ruby(frames: unpacking.most_frames)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap
@@ -132,6 +153,28 @@ class TestUnpackingAsC < Minitest::Test
 
       assert_equal :ruby, ran.runner
       assert_equal TILE_BYTES, unpacking.slot_bytes_in(ran).fetch(:walls)
+    end
+  end
+
+  # A build writes its pack file the fastest way too, and it is the same file whichever way wrote
+  # it. Played as C the pack's bytes go straight to the file, so the run given back holds only the
+  # variables and the small lists, which are what the build asks of it.
+  def test_the_pack_file_is_the_same_written_as_c_or_as_ruby
+    Dir.mktmpdir do |folder|
+      unpacking = copying_unpacking(folder)
+      ran_as_c = nil
+      as_c = pack_file_bytes_written_by do |path|
+        ran_as_c = unpacking.write_pack_fastest(path, sha1: PACK_SHA1, build_version: BUILD_VERSION)
+      end
+      as_ruby = without_zig do
+        pack_file_bytes_written_by { |path| unpacking.write_pack_fastest(path, sha1: PACK_SHA1, build_version: BUILD_VERSION) }
+      end
+
+      assert_equal :c_pack_file, ran_as_c.runner
+      assert unpacking.finished_in?(ran_as_c)
+      refute ran_as_c.lists.key?(Unpacking::BYTES)
+      assert_equal as_ruby, as_c
+      assert_equal TILE_BYTES, VBlank::Original::Pack.from_bytes(as_c).bytes_of(:walls)
     end
   end
 

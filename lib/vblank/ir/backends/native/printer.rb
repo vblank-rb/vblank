@@ -123,9 +123,13 @@ module VBlank
             line(0, "};")
           end
 
+          # Each item in the room its width takes (runtime/rg_list.h): a list of bytes costs its
+          # capacity in bytes, not four times it.
+          LIST_ITEM_TYPES = { 1 => "int8_t", 2 => "int16_t", 4 => "int32_t" }.freeze
+
           def print_list_storage(item)
             capacity = integer(item.capacity)
-            line(0, "static int32_t #{item.items.text}[#{capacity}];")
+            line(0, "static #{LIST_ITEM_TYPES.fetch(item.width)} #{item.items.text}[#{capacity}];")
             line(0, "static rg_list #{item.name.text} = { #{item.items.text}, #{capacity}, " \
                     "#{integer(item.width)}, 0, 0, #{string(item.label)} };")
           end
