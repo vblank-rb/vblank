@@ -7,6 +7,7 @@ require_relative "runtime/pads"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
 require_relative "runtime/tiles"
+require_relative "runtime/collide"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
 require_relative "runtime/music"
@@ -58,9 +59,10 @@ module VBlank
           # whether it plays songs, so carries Music, with its +effects+ and the address of its music volume
           # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
           # which reads the game's table "recording_plays". +planes+ is, for a game whose screen is drawn
-          # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other.
+          # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other; +collides+
+          # whether it asks whether two sprites' pixels touch, so carries Collide.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, planes: nil)
+                       samples: false, planes: nil, collides: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
@@ -70,6 +72,7 @@ module VBlank
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
             Tiles.emit(asm, memory, places: planes, faces: faces) if planes
+            Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Recordings.emit(asm, memory) if samples

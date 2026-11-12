@@ -100,7 +100,7 @@ module VBlank
 
           VALUE_KINDS = %i[
             int var_ref binop neg bit_not absolute clamped shift_right held pressed list_get list_len
-            table_get timer_ticks chance data_byte players_connected local_player mul_fix div_fix
+            table_get timer_ticks chance data_byte players_connected local_player mul_fix div_fix pixels_overlap
           ].freeze
 
           def value_of_kind(node)
@@ -125,6 +125,7 @@ module VBlank
             when :local_player then value_of_local_player(node)
             when :mul_fix then value_of_mul_fix(node)
             when :div_fix then value_of_div_fix(node)
+            when :pixels_overlap then value_of_pixels_overlap(node)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end
@@ -139,7 +140,7 @@ module VBlank
                                                                                           place_bar copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
-                                                                                          show_picture_group pixels_overlap],
+                                                                                          show_picture_group],
                                                     "save memory" => %i[save_init save_store save_write save_erase save_read save_sum
                                                                         save_load_list save_store_list]
                                                   })
@@ -195,6 +196,7 @@ module VBlank
 
           include Paint
           include Picture
+          include Collision
           include Faces
           include Sound
 
@@ -262,7 +264,7 @@ module VBlank
             # The pictures are known once every routine is made, so their tables come last: a screen drawn
             # from tiles registers its sprites' pictures with the painted art first.
             [data_section, *table_sections, *routines, *timers, main, *picture_sections, *paint_sections, *face_sections,
-             *sound_sections]
+             *sound_sections, *collision_sections]
           end
 
           private
