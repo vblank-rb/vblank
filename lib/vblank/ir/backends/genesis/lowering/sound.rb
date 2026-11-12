@@ -96,8 +96,11 @@ module VBlank
             # +frequency+, from its start, back to where it holds from at its end. Nothing is logged as it comes
             # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
             # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
-            # another console's sound chip's bytes for the shape, which nothing here reads.
-            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil)
+            # another console's sound chip's bytes for the shape, which nothing here reads. +pan+ is where
+            # the note sits between the speakers, which nothing here reads either: every recording is
+            # mixed into the one stream the sixth FM voice plays, from both speakers.
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil)
+              _ = pan
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?

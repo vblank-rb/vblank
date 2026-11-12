@@ -89,15 +89,21 @@ module VBlank
 
             # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays";
             # and after it, in a game with a recording shaped by the chip's own envelope bytes, those
-            # bytes a row each, labelled "recording_chip_envelopes".
+            # bytes a row each, labelled "recording_chip_envelopes"; and in a game with a recorded note
+            # off the middle of the speakers, each play's two sides, a word a row, labelled
+            # "recording_sides" (Runtime::Recordings::SIDES).
             def recordings_section
               asm = W65816.new("recording plays", holds: PLAYS)
               asm.label("recording_plays")
-              @plays.each { |row| asm.data_words(row) }
+              @plays.each { |row, _| asm.data_words(row) }
               asm.data_words(0) if @plays.empty? # a label has to be somewhere
               if Sound.chip_envelopes?(@program)
                 asm.label("recording_chip_envelopes")
                 @chip_envelopes.each { |row| asm.data_bytes(row) }
+              end
+              if IR::Tunes.recorded_pans?(@program)
+                asm.label("recording_sides")
+                @plays.each { |_, sides| asm.data_words(sides) }
               end
               asm.section
             end
@@ -131,8 +137,9 @@ module VBlank
             # (an Audio::SNESEnvelope, +envelope+ then the nearest shape) and the voice is told them.
             # Nothing is logged as it comes round. Its number in "recording_plays". A note of a part
             # that glides +walks+ its samples, which every frame pays for while it sounds, since its
-            # end cannot be counted ahead; every other note counts its frames.
-            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil)
+            # end cannot be counted ahead; every other note counts its frames. +pan+ is where the note
+            # sits between the speakers (an Audio::Pan, nil for the middle; Runtime::Recordings::SIDES).
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = Console::SUPER_NINTENDO.sample_clock(declared.rate)
@@ -148,8 +155,7 @@ module VBlank
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
                 walks: walks, chip_envelope: chip_envelope_number(envelope ? chip_envelope : declared.chip_envelope)
               )
-              @plays << row unless @plays.include?(row)
-              @plays.index(row)
+              play_number(row, pan)
             end
 
             def declared_sample(name)
@@ -166,7 +172,7 @@ module VBlank
               @sound_waves = (verb_waves + @music.waves).map { |params| DSPWrites.wave_steps(params) }.uniq
               @samples = @program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
               @recordings = [] # [samples, read-back] for each recording the sound unit keeps (#source_of_recording)
-              @plays = []      # each play's row of "recording_plays"
+              @plays = []      # each play's row of "recording_plays", and its word of "recording_sides"
               @chip_envelopes = [Runtime::Recordings::NO_CHIP_ENVELOPE] # each row of "recording_chip_envelopes"
             end
 
@@ -220,8 +226,15 @@ module VBlank
                 logged: sound_entry_number([:sample, node.name]), name: @samples.keys.index(node.name),
                 shape: shape_of(info.envelope), chip_envelope: chip_envelope_number(declared.chip_envelope)
               )
-              @plays << row unless @plays.include?(row)
-              runtime_call("rt_recordings_play", [Build.int(@plays.index(row))])
+              runtime_call("rt_recordings_play", [Build.int(play_number(row, nil))])
+            end
+
+            # The number in "recording_plays" of a play of +row+ heard where +pan+ (an Audio::Pan, nil
+            # for the middle) puts it: the next the first time the two are played together.
+            def play_number(row, pan)
+              play = [row, VBlank::Audio::Pan.shares_word(pan)]
+              @plays << play unless @plays.include?(play)
+              @plays.index(play)
             end
 
             # Reference#exec_stop_sample (Reference::Mixer#stop): the recording's places freed, or every place.

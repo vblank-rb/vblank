@@ -156,6 +156,18 @@ module VBlank
             CHIP_ENVELOPE_BYTES = 4
             NO_CHIP_ENVELOPE = [DSPWrites::ADSR_OFF, 0, DSPWrites::FIXED_TOP, 0].freeze
 
+            # WHERE A NOTE SITS BETWEEN THE SPEAKERS (Audio::Pan). Each voice of the S-DSP has a volume
+            # for the left speaker and one for the right, so a recorded note off the middle is heard
+            # there exactly: each side's register is the note's loudness times that side's share, out
+            # of Audio::Pan::SHARE_FULL, to the nearest whole step, worked out by the console's own
+            # multiplier each time the loudness is.
+            #
+            # Kept in a game with a recorded note off the middle, whose runtime then reads each row's
+            # shares from "recording_sides", a word a row (Audio::Pan.shares_word), into the place's
+            # PLACE_SIDES. A game with none writes the loudness to both, as it always did.
+            SIDES = "rt recordings sides"
+            PLACE_SIDES = 46
+
             module_function
 
             # A row of "recording_chip_envelopes" for +envelope+ (an Audio::SNESEnvelope).
@@ -198,9 +210,10 @@ module VBlank
               frames < NEVER_ENDS ? frames : COUNTS_SAMPLES
             end
 
-            def reserve(memory, glides: false, chip_envelopes: false)
+            def reserve(memory, glides: false, chip_envelopes: false, sides: false)
               memory.reserve(GLIDES, 2) if glides
               memory.reserve(CHIP_ENVELOPES, 2) if chip_envelopes
+              memory.reserve(SIDES, 2) if sides
               [ROW, PLACE, REGISTERS, STOP_NAME, STOP_LOGGED, TICKETS, NOTE_OWNER, NOTE_RANK, BEST, BEST_RANK,
                BEST_TICKET, DROPS, DROPS_MUSIC].each { |name| memory.reserve(name, 2) }
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
@@ -329,6 +342,14 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
+              if memory.reserved?(SIDES) # the row's word of "recording_sides", a word for each row's ROW_BYTES
+                asm.txa
+                (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
+                asm.tax
+                asm.lda(asm.long_x("recording_sides", 0))
+                asm.sta(place.call(PLACE_SIDES))
+                asm.ldx(at.call(ROW))
+              end
               # Its shape: one with none sounds at full from its first sample; one with a shape starts at
               # nothing and climbs (Reference::Mixer#recording_fields).
               asm.lda(row.call(SHAPED))
@@ -423,6 +444,24 @@ module VBlank
                 told.call(-> { asm.lda(Sound::HOLD_ENVELOPE) }, byte.call(0), byte.call(1))
                 told.call(-> { asm.lda(Sound::HOLD_GAIN) }, byte.call(2), -> { asm.lda(0) })
               end
+              # Off the middle, a note's two sides go ahead of it in one more command
+              # (Sound::SIDES_COMMANDS), and the note told whole leaves its volume registers alone, so
+              # its first sample is heard where it sits.
+              emit_loudness_command = lambda do
+                if memory.reserved?(SIDES)
+                  side = lambda do |which|
+                    lambda do
+                      loudness.call
+                      asm.sta(at.call(BEST))
+                      emit_side_loudness(asm, at, place, which)
+                    end
+                  end
+                  told.call(voice_command.call(Sound::VOICE_LOUDNESS), side.call(0), side.call(1))
+                else
+                  told.call(voice_command.call(Sound::VOICE_LOUDNESS), -> { asm.lda(0) }, loudness)
+                end
+              end
+              emit_loudness_command.call if memory.reserved?(SIDES)
               told.call(voice_command.call(Sound::WHOLE_NOTE), lambda {
                 asm.ldx(at.call(ROW))
                 asm.lda(row.call(SOURCE))
@@ -432,7 +471,7 @@ module VBlank
               asm.label("rt_recordings_voice_volume")
               emit_clear_loudness_waiting(asm, at, place)
               emit_registers(asm, at)
-              told.call(voice_command.call(Sound::VOICE_LOUDNESS), -> { asm.lda(0) }, loudness)
+              emit_loudness_command.call
               asm.rtl
 
               asm.label("rt_recordings_loudness")
@@ -960,9 +999,41 @@ module VBlank
               asm.jsr(asm.abs("rt_recordings_level_times"))
               asm.label("rt_recordings_volume_now")
               asm.sta(at.call(BEST))
-              [DSPWrites::VOLUME_LEFT, DSPWrites::VOLUME_RIGHT].each do |register|
-                emit_voice_write(asm, at, register) { asm.lda(at.call(BEST)) }
+              [DSPWrites::VOLUME_LEFT, DSPWrites::VOLUME_RIGHT].each_with_index do |register, side|
+                emit_voice_write(asm, at, register) do
+                  memory.reserved?(SIDES) ? emit_side_loudness(asm, at, place, side) : asm.lda(at.call(BEST))
+                end
               end
+              asm.rts
+              emit_side_times(asm, at) if memory.reserved?(SIDES)
+            end
+
+            # A = the loudness in BEST as side +side+ (0 the left, 1 the right) of the place at PLACE
+            # hears it (SIDES).
+            def emit_side_loudness(asm, at, place, side)
+              asm.ldy(at.call(PLACE))
+              asm.lda(place.call(PLACE_SIDES))
+              asm.xba if side == 1
+              asm.and_a(0xFF)
+              asm.jsr(asm.abs("rt_recordings_side_times"))
+            end
+
+            # rt_recordings_side_times: A = the loudness in BEST times the share in A, out of
+            # Audio::Pan::SHARE_FULL, to the nearest whole step. A share is at most SHARE_FULL and a
+            # loudness at most 127, so the product fits the multiplier's sixteen bits.
+            def emit_side_times(asm, at)
+              h = Console::SNESHardware
+              asm.label("rt_recordings_side_times")
+              asm.sep(0x20)
+              asm.sta(asm.abs(h::WRMPYA))
+              asm.lda(at.call(BEST))
+              asm.sta(asm.abs(h::WRMPYB))
+              4.times { asm.nop } # the eight cycles the multiplier takes
+              asm.rep(0x20)
+              asm.lda(asm.abs(h::RDMPYL))
+              asm.clc
+              asm.adc(Audio::Pan::SHARE_ROUNDING)
+              Audio::Pan::SHARE_SHIFT.times { asm.lsr }
               asm.rts
             end
 

@@ -26,6 +26,40 @@ class TestSongPanCartridge < Minitest::Test
     end
   end
 
+  # A SHADE on a voice that only switches between the speakers plays from the nearest side.
+  def test_the_cartridge_plays_a_shade_from_the_nearest_side
+    require_emulator!
+    game = song_game do
+      voice(:lead) { |v| v.pan(-0.6); v.note :C5, :whole }
+      voice(:harmony) { |v| v.pan 0.2; v.note :E4, :whole }
+    end
+    { square1: :left, square2: :both }.each do |voice, side|
+      assert_heard_from side, loudest_on_each_side(game, voice, frames: 40, from: 10), voice
+    end
+  end
+
+  # A RECORDED PART plays from both speakers on the Advance, wherever it sits: every recording is
+  # mixed into the one stream the console plays from both.
+  def test_the_cartridge_plays_a_recorded_part_from_both_speakers_wherever_it_sits
+    require_emulator!
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      enable_sound
+      instrument :tone, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      song(:tune) do
+        tempo 150
+        voice(:keys, plays: :tone) { |v| v.pan :left; v.note :C4, :whole }
+      end
+      play_song :tune
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+
+    assert_heard_from :both, loudest_on_each_side(b.program, nil, frames: 40, from: 10), "the recorded part"
+  end
+
   # THE GAME'S OWN SOUND — a beep, a hit on the noise voice, a tone on the wave voice — plays from
   # both speakers, on the voice a song's note left at the right.
   def test_the_games_own_sound_after_a_panned_note_plays_from_both_speakers

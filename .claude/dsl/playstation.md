@@ -154,7 +154,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `noise` — works: the sound chip plays the Advance's noise as a recording, at the pitch the game names. A metallic noise is a recording of the Advance's rattle.
 - `wave` — works: the waveform is played as a short recording of seven waves. Its loudness is one of the same five steps as on the Advance.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: the same as on the Advance.
+- `song` — works: a part can sit between the speakers. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording is heard where `pan` puts it: each voice of the sound chip has a volume for the left speaker and one for the right.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.

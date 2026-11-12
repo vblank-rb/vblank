@@ -143,9 +143,13 @@ module VBlank
       # HOW A NOTE WOBBLES ITS PITCH (an Audio::Vibrato), as the note or its part set it, or nil.
       def said_vibrato(part, event) = event[Audio::Music::Part::VIBRATO_SLOT] || part.vibrato
 
-      # THE SPEAKER A NOTE PLAYS FROM, as the note or its part set it: :left or :right, or nil for
-      # both (Audio::Pan.side_of) — which a note that names :center plays from, in a part that pans.
-      def note_side(part, event) = Audio::Pan.side_of(event[Audio::Music::Part::PAN_SLOT] || part.pan)
+      # WHERE A NOTE SITS BETWEEN THE SPEAKERS (an Audio::Pan), as the note or its part set it, or
+      # nil for both whole — which a note that names :center is, in a part that pans.
+      def note_pan(part, event) = event[Audio::Music::Part::PAN_SLOT] || part.pan
+
+      # THE SPEAKER A NOTE PLAYS FROM on a voice that only switches between them: :left or :right,
+      # or nil for both (Audio::Pan.side_of), a shade taken to the nearest of the three.
+      def note_side(part, event) = Audio::Pan.side_of(note_pan(part, event))
 
       # A SQUARE NOTE'S SHAPE, or the shapes it steps through (an Audio::Duty), as the note or its
       # part named a Duty, or nil when neither did — a part that names one shape plays it, as it
@@ -291,6 +295,16 @@ module VBlank
 
       # How many of a song's parts play a recording rather than one of the console's own voices.
       def recorded_parts(song) = parts_on(song, :recorded)
+
+      # Whether +program+ has a song or sound effect with a recorded note off the middle of the
+      # speakers, which a console with a volume for each side of a voice then works out (Audio::Pan).
+      def recorded_pans?(program)
+        program.walk.any? do |node|
+          node.kind == :song && node.voices.any? do |part|
+            part_kind(part) == :recorded && part.events.any? { |event| !Audio::Pan.centered?(note_pan(part, event)) }
+          end
+        end
+      end
 
       # The most recorded parts any one played tune has — how many parts the player has to be
       # ready to find a voice for at once, since one tune plays at a time.

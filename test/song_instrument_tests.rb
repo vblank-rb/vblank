@@ -106,6 +106,32 @@ module SongInstrumentsTests
     assert_equal [:piano], seen[25], "the next note plays it again"
   end
 
+  # A RECORDED PART CAN SIT TO ONE SIDE, the whole part or a note of it, and its notes sound as they
+  # do from the middle. What each speaker hears of it is each console's: the Super Nintendo's voice
+  # volumes are in test/lowering/snes/vblank/ir/backends/snes/test_snes_recorded_pan.rb.
+  def test_a_recorded_part_that_sits_to_one_side_plays_its_notes
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      instrument :piano, pcm: [60, -60] * 4000, rate: 8000, note: :C4
+      song :tune do
+        tempo 360
+        voice :melody, plays: :piano do
+          pan(-0.7)
+          note :C4, :quarter
+          rest :quarter
+          note :G4, :quarter, pan: :right
+        end
+      end
+      play_song :tune
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+
+    assert_equal sounding_by_frame(piano_game, 30), sounding_by_frame(b.program, 30)
+  end
+
   def test_a_note_of_a_recording_can_give_its_pitch_in_hz
     seen = sounding_by_frame(hz_game, 30)
 

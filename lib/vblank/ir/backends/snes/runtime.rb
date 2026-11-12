@@ -60,7 +60,7 @@ module VBlank
             Letterbox.reserve(memory) if c.letterboxes?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
-            Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes) if c.samples
+            Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
             Mosaic.reserve(memory) if c.mosaic
           end
 
@@ -115,7 +115,8 @@ module VBlank
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
             [vectors.section, asm.section, *chip_paint] +
               (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD),
-                                                         chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES)) : []) +
+                                                         chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES),
+                                                         sides: memory.reserved?(Recordings::SIDES)) : []) +
               [lowered[:music], lowered[:plays]].compact
           end
 

@@ -156,7 +156,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `noise` — works: the same as on the Advance.
 - `wave` — works: the same as on the Advance.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: on the square, wave and noise voices. A part played on a recording (`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a time, and the game's own recordings use it (see `sample`).
+- `song` — works: on the square, wave and noise voices. A part played on a recording (`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a time, and the game's own recordings use it (see `sample`). A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.

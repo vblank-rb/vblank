@@ -44,6 +44,26 @@ module VBlank
       COMPUTER_ONLY = "they are for the game built for a computer (the window, `vblank run`, the web page): " \
                       "the cartridge is built byte for byte as without it."
 
+      # What a shade between the speakers (`pan -0.7`, Audio::Pan) does on the square, wave and noise
+      # voices, which switch each speaker on or off and have nothing between: the same on every console.
+      # A sentence of its own, so it can follow whatever an answer says first (PAN_LEAD, where nothing
+      # else does).
+      NEAREST_SIDE = "A square, wave or noise part between the speakers (`pan -0.7`) plays from one " \
+                     "speaker if that side is two or more times as loud as the other side. If not, it " \
+                     "plays from both speakers."
+
+      # The start of an answer that says nothing else first.
+      PAN_LEAD = "a part can sit between the speakers."
+
+      # ...and what it does on a recorded part where every recording is mixed into one sound. Both
+      # follow NEAREST_SIDE, so each starts a sentence.
+      RECORDINGS_FROM_BOTH = "A part that plays a recording plays from both speakers, wherever `pan` puts " \
+                             "it: all recordings are mixed into one sound, and both speakers play it."
+
+      # ...and where each voice of the sound chip has a volume for each speaker.
+      RECORDINGS_WHERE_PANNED = "A part that plays a recording is heard where `pan` puts it: each voice " \
+                                "of the sound chip has a volume for the left speaker and one for the right."
+
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 

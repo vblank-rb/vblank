@@ -155,7 +155,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `noise` — works: a hiss is played on the sound chip's own noise. The sound chip has no metallic noise, so a metallic hit is played as a recording of one. The sound chip's noise is at most 32000 steps a second, so a :high hiss is lower than on the Game Boy Advance.
 - `wave` — works: a Super Nintendo has no wave voice: its sound chip plays recordings, so it plays each waveform as a recording. A note above 4000 Hz plays at 4000 Hz.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: see `define_sound` for the square and wave voices.
+- `song` — works: see `define_sound` for the square and wave voices. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording is heard where `pan` puts it: each voice of the sound chip has a volume for the left speaker and one for the right.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.

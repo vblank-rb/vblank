@@ -44,12 +44,18 @@ module VBlank
             # What the plays are to the author, for a program too full for them.
             PLAYS = R3000::Holding.new(what: "the game's recordings", fix: "play fewer different recordings")
 
-            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays".
+            # The table of the game's plays, one row each (Runtime::Recordings), labelled "recording_plays";
+            # and in a game with a recorded note off the middle of the speakers, each play's two sides, a word
+            # a row, labelled "recording_sides" (Runtime::Recordings::SIDES).
             def recordings_section
               asm = R3000.new("recording plays", holds: PLAYS)
               asm.label("recording_plays")
-              @plays.each { |row| asm.data_words(row) }
+              @plays.each { |row, _| asm.data_words(row) }
               asm.data_words(0) if @plays.empty? # a label has to be somewhere
+              if IR::Tunes.recorded_pans?(@program)
+                asm.label("recording_sides")
+                @plays.each { |_, sides| asm.data_words(sides) }
+              end
               asm.section
             end
 
@@ -125,13 +131,14 @@ module VBlank
             # once through, for one that does not hold), at its written +volume+ as a mix's loudness, shaped by
             # +envelope+ (the note's or its part's), or by the recording's own when it has none. Nothing is
             # logged as it comes round. A Super Nintendo envelope's own bytes (+chip_envelope+) are the Super
-            # Nintendo's: here the note is shaped by the nearest envelope, which +envelope+ already is. Its
-            # number in "recording_plays".
-            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil)
+            # Nintendo's: here the note is shaped by the nearest envelope, which +envelope+ already is. +pan+ is
+            # where it sits between the speakers (an Audio::Pan, nil for the middle; Runtime::Recordings::SIDES).
+            # Its number in "recording_plays".
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil)
               _ = [walks, chip_envelope]
               info = Assets::Sample.of(declared_sample(name))
               play_row(name, frequency, info.loop_length, IR::Tunes.mix_loudness(volume), envelope || info.envelope,
-                       Runtime::Recordings::NOT_LOGGED)
+                       Runtime::Recordings::NOT_LOGGED, pan: pan)
             end
 
             def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the sample #{name.inspect} is not declared" }
@@ -141,8 +148,9 @@ module VBlank
             # The row of a play of +name+ at +frequency+, going +back+ at its end, at +loudness+ out of the mix's
             # full, shaped by +envelope+ (nil or plain for none), logging +logged+ as it comes round: where its
             # recording is in sound memory, the voice's pitch and loudness at full, and the count the
-            # interpreter's mix keeps. Its number in "recording_plays", the same one for a play alike.
-            def play_row(name, frequency, back, loudness, envelope, logged)
+            # interpreter's mix keeps. Its number in "recording_plays", the same one for a play alike and heard
+            # where +pan+ puts it alike.
+            def play_row(name, frequency, back, loudness, envelope, logged, pan: nil)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = CONSOLE.sample_clock(declared.rate)
@@ -154,8 +162,9 @@ module VBlank
                      (loudness * SPUWrites::LOUDEST) / IR::Tunes::MIX_FULL, info.length, back,
                      advance >> VBlank::Audio::Sound::STEP_SHIFT, advance & ((1 << VBlank::Audio::Sound::STEP_SHIFT) - 1),
                      logged, @samples.keys.index(name), shape ? shape.packed : 0]
-              @plays << row unless @plays.include?(row)
-              @plays.index(row)
+              play = [row, VBlank::Audio::Pan.shares_word(pan)]
+              @plays << play unless @plays.include?(play)
+              @plays.index(play)
             end
 
             # Reference#exec_stop_sample (Reference::Mixer#stop): the recording's places freed, or every place.

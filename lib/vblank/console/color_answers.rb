@@ -277,7 +277,8 @@ module VBlank
         stop_wave: works,
         song: works("on the square, wave and noise voices. A part played on a recording " \
                     "(`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a " \
-                    "time, and the game's own recordings use it (see `sample`)."),
+                    "time, and the game's own recordings use it (see `sample`). " \
+                    "#{Answers::NEAREST_SIDE}"),
         play_song: works,
         stop_music: works,
         hold_music: works,

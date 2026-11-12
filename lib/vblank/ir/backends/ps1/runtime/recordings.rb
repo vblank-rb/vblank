@@ -106,9 +106,21 @@ module VBlank
             TAKEN = "rt recordings taken"
             ALL = 0xFFFF # A stop that names no recording
 
+            # WHERE A NOTE SITS BETWEEN THE SPEAKERS (Audio::Pan). Each voice of the sound chip has a volume
+            # for the left speaker and one for the right, so a recorded note off the middle is heard there
+            # exactly: each side's register is the voice's loudness times that side's share, out of
+            # Audio::Pan::SHARE_FULL, to the nearest whole step.
+            #
+            # Kept in a game with a recorded note off the middle: a word a place, the left share in its low
+            # byte and the right in the next, copied from the row's word of "recording_sides" (a word a
+            # row, Audio::Pan.shares_word) as the place takes the row. A game with none writes the
+            # loudness to both, as it always did.
+            SIDES = "rt recordings sides"
+
             module_function
 
-            def reserve(memory)
+            def reserve(memory, sides: false)
+              memory.reserve(SIDES, PLACES * 4) if sides
               [DROPS, DROPS_MUSIC, TICKETS, TAKEN].each { |name| memory.reserve(name, 4) }
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
               memory.reserve(KEPT_BY_PASS, Frame::STEPS_KEPT * PLACES)
@@ -118,15 +130,16 @@ module VBlank
             def emit(asm, memory)
               at = ->(name) { Runtime.at(memory, name) }
               place = ->(field) { at.call(PLACES_STATE) + field }
+              sides = memory.reserved?(SIDES)
               emit_play(asm, at, place)
-              emit_take(asm, at, place)
+              emit_take(asm, at, place, sides: sides)
               emit_note(asm, at, place)
               emit_glide(asm, at, place)
               emit_note_release(asm, at, place)
               emit_stop(asm, at, place)
               emit_frame(asm, at, place)
               emit_shapes(asm, at, place)
-              emit_loudness(asm, at, place)
+              emit_loudness(asm, at, place, sides: sides)
               emit_kept_for_pass(asm, at)
               emit_place_routines(asm, at, place)
             end
@@ -202,7 +215,7 @@ module VBlank
             # the place from its start, at full or at nothing to climb from by its shape
             # (Reference::Mixer#recording_fields); its voice told where the recording starts, its pitch and
             # loudness, and started at the frame boundary. TAKEN says which place.
-            def emit_take(asm, at, place)
+            def emit_take(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_take")
               Music.enter(asm)
@@ -218,6 +231,7 @@ module VBlank
                 asm.lw(:t0, from, :s0)
                 asm.sw(:t0, place.call(to), :t9)
               end
+              emit_copy_row_sides(asm, at) if sides
               asm.sw(:zero, place.call(PHASE), :t9)
               asm.lw(:t0, ENVELOPE, :s0)
               asm.li(:t1, FULL)
@@ -503,7 +517,7 @@ module VBlank
             # level's own top bit added back, so full is the whole loudness).
             # rt_recordings_loud(a0 = a voice's loudness at full): the place a note last took (TAKEN) sounding
             # at it, as the music volume sets (Reference::Player#song_loudness).
-            def emit_loudness(asm, at, place)
+            def emit_loudness(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_loud")
               Music.enter(asm, %i[s1])
@@ -523,17 +537,51 @@ module VBlank
               asm.multu(:t0, :t1)
               asm.mflo(:s2)
               asm.srl(:s2, :s2, Audio::Envelope::SCALE)
-              emit_voice_number(asm, :t3)
-              asm.sll(:t3, :t3, 4)
-              asm.addiu(:a0, :t3, h::SPU_VOLUME_LEFT)
-              asm.move(:a1, :s2)
-              asm.jal("rt_spu_write")
-              emit_voice_number(asm, :t3)
-              asm.sll(:t3, :t3, 4)
-              asm.addiu(:a0, :t3, h::SPU_VOLUME_RIGHT)
-              asm.move(:a1, :s2)
-              asm.jal("rt_spu_write")
+              [h::SPU_VOLUME_LEFT, h::SPU_VOLUME_RIGHT].each_with_index do |register, side|
+                emit_voice_number(asm, :t3)
+                asm.sll(:t3, :t3, 4)
+                asm.addiu(:a0, :t3, register)
+                sides ? emit_side_loudness(asm, at, side) : asm.move(:a1, :s2)
+                asm.jal("rt_spu_write")
+              end
               Music.leave(asm, %i[s2])
+            end
+
+            # The row at s0's word of "recording_sides" into the place at offset s1's word of SIDES.
+            def emit_copy_row_sides(asm, at)
+              asm.la(:t0, "recording_plays")
+              asm.subu(:t0, :s0, :t0)
+              asm.li(:t1, ROW_BYTES)
+              asm.divu(:t0, :t1)
+              asm.mflo(:t0)
+              asm.sll(:t0, :t0, 2)
+              asm.la(:t1, "recording_sides")
+              asm.addu(:t0, :t0, :t1)
+              asm.lw(:t0, 0, :t0)
+              emit_place_sides_at(asm, :t1)
+              asm.sw(:t0, at.call(SIDES), :t1)
+            end
+
+            # +into+ = gp plus the place at offset s1's word of SIDES, less where SIDES is.
+            def emit_place_sides_at(asm, into)
+              asm.li(into, PLACE_BYTES)
+              asm.divu(:s1, into)
+              asm.mflo(into)
+              asm.sll(into, into, 2)
+              asm.addu(into, into, :gp)
+            end
+
+            # a1 = the loudness in s2 as side +side+ (0 the left, 1 the right) of the place at offset s1
+            # hears it (SIDES), to the nearest whole step. Leaves a0 as it is.
+            def emit_side_loudness(asm, at, side)
+              emit_place_sides_at(asm, :t1)
+              asm.lw(:t0, at.call(SIDES), :t1)
+              asm.srl(:t0, :t0, 8) if side == 1
+              asm.andi(:t0, :t0, 0xFF)
+              asm.multu(:s2, :t0)
+              asm.mflo(:a1)
+              asm.addiu(:a1, :a1, Audio::Pan::SHARE_ROUNDING)
+              asm.srl(:a1, :a1, Audio::Pan::SHARE_SHIFT)
             end
 
             # rt_recordings_kept_for_pass: which recording each place holds (the low byte of its HELD) and its

@@ -124,8 +124,8 @@ module VBlank
         # sets them (Music::VoiceContext#slide_up), and only the song's first square part can.
         # +vibrato+ is how each note wobbles its pitch, :none or { depth:, speed:, after: } with the
         # wait in frames (Audio::Vibrato.said), and the square parts and the wave part can. +pan+ is
-        # the speaker each note plays from, :left, :right or :center (Audio::Pan.said), and every
-        # part but one that plays a recording can. +duty+ is a square part's shape, or a list of two
+        # where each note sits between the speakers, :left, :right, :center or a shade from -1.0 to
+        # 1.0 (Audio::Pan.said), and any part can. +duty+ is a square part's shape, or a list of two
         # or four that each note steps through a frame at a time (Audio::Duty.said). +transpose+
         # moves every note by whole semitones and +pitch_offset+ by the voice's own pitch steps after
         # that (Audio::PitchShift); any part can be transposed, and a square part or the wave part

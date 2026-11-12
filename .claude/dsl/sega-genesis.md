@@ -155,7 +155,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `noise` — works: a hiss is played on the PSG's noise voice, and `metallic:` is its rattle.
 - `wave` — works: a Genesis has no wave voice: the first voice of its FM chip plays each waveform as a tone of its own, the first four harmonics of the waveform.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: see `define_sound` for the square and wave voices.
+- `song` — works: see `define_sound` for the square and wave voices. A wave part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording plays from both speakers, wherever `pan` puts it: the FM chip's sixth voice plays it from both.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.

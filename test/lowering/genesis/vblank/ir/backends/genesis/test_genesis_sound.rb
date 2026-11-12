@@ -131,6 +131,27 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta RECORDED_HZ, pitch_while(clip: CLIP * 100) { game_loop { nil } }, 2
   end
 
+  # A RECORDED PART SET TO ONE SIDE is heard from both speakers alike: the FM chip's sixth voice plays
+  # every recording, and it plays from both.
+  def test_a_recorded_part_set_to_one_side_is_heard_from_both_speakers
+    run = Genesis::HeadlessRun.new(keep_sound: true)
+    clip = CLIP
+    run.run(program_of do
+      enable_sound
+      instrument :clip, pcm: clip.unpack("c*") * 100, rate: 13_000, note: :C4
+      song(:tune) do
+        tempo 150
+        voice(:keys, plays: :clip) { |v| v.pan :left; v.note :C4, :whole }
+      end
+      play_song :tune
+      game_loop { nil }
+    end, frames: 20)
+    left, right = run.sound_made.last(SAMPLE_RATE / 6 * 2).each_slice(2).to_a.transpose.map { |side| side.max - side.min }
+
+    assert_operator left, :>, 1000, "the recording is heard"
+    assert_in_delta 1.0, left.fdiv(right), 0.05, "as loud from the right (#{left}, #{right})"
+  end
+
   def test_a_recording_played_once_leaves_the_speaker_still
     run = Genesis::HeadlessRun.new(keep_sound: true)
     run.run(recording_program(loop: false), frames: 40)

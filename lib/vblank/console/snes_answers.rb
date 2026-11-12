@@ -255,7 +255,8 @@ module VBlank
         wave: works("a Super Nintendo has no wave voice: its sound chip plays recordings, so it plays each " \
                     "waveform as a recording. A note above 4000 Hz plays at 4000 Hz."),
         stop_wave: works,
-        song: works("see `define_sound` for the square and wave voices."),
+        song: works("see `define_sound` for the square and wave voices. " \
+                    "#{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_WHERE_PANNED}"),
         play_song: works,
         stop_music: works,
         hold_music: works,

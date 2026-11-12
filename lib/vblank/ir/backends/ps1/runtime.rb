@@ -41,12 +41,13 @@ module VBlank
           # (+songs+): as much of them as its songs ask for, by whether it sets the music volume
           # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
           # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
-          # and Recordings' for one that plays recordings (+samples+); and Tiles' for one whose screen is
+          # and Recordings' for one that plays recordings (+samples+), with each place's sides for one with a
+          # recorded note off the middle of the speakers (+recorded_pans+); and Tiles' for one whose screen is
           # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
           # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers) or with sprites over
           # it (+over_picture+), each shown from pages of its own.
-          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false,
-                      tiles: false, colors: false, by_number: false, over_picture: false)
+          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
+                      samples: false, recorded_pans: false, tiles: false, colors: false, by_number: false, over_picture: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory, shown_apart: by_number || over_picture)
@@ -54,7 +55,7 @@ module VBlank
             Tiles.reserve_sprites(memory) if over_picture
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
-            Recordings.reserve(memory) if samples
+            Recordings.reserve(memory, sides: recorded_pans) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
           end
 

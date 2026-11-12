@@ -221,7 +221,7 @@ module VBlank
         wave: works("the waveform is played as a short recording of seven waves. Its loudness is one of the same " \
                     "five steps as on the Advance."),
         stop_wave: works,
-        song: works,
+        song: works("#{Answers::PAN_LEAD} #{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_WHERE_PANNED}"),
         play_song: works,
         stop_music: works,
         hold_music: works,

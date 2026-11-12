@@ -209,7 +209,8 @@ module VBlank
       # +slide+ is how each note of the song's first square part slides its pitch by itself (a
       # PitchSlide), unless the note sets its own; nil slides nothing. +vibrato+ is how each note
       # of a square or wave part wobbles its pitch (a Vibrato), unless the note sets its own. +pan+
-      # is the speaker each note plays from (a Pan), unless the note sets its own; nil is both.
+      # is where each note sits between the speakers (a Pan), unless the note sets its own; nil is
+      # both.
       # +duties+ is a square part's shapes when it gave a list of them to step through (a Duty, whose
       # first is +duty+), and nil when it gave one.
       #
@@ -241,8 +242,8 @@ module VBlank
         # WHAT A PART'S VOICE CANNOT DO IS REFUSED HERE, where both ways a song reaches the IR meet:
         # a fade on a voice that cannot count one (NoteFade.refuse_without_counting!), a slide off
         # the square voices (PitchSlide.refuse_off_square!), a wobble on a voice with no pitch to
-        # move (Vibrato.refuse_without_pitch!), a side on a recording (Pan.refuse_recorded!), a shape
-        # off the square voices (Duty.refuse_off_square!), and a note that both slides and wobbles.
+        # move (Vibrato.refuse_without_pitch!), a shape off the square voices
+        # (Duty.refuse_off_square!), and a note that both slides and wobbles.
         # +who+ names
         # the part, as the start of a sentence — a Score gives its own, which is its place.
         #
@@ -283,7 +284,6 @@ module VBlank
             PitchSlide.refuse_off_square!(who, wave: wave, noise: noise)
           end
           Vibrato.refuse_without_pitch!(who, noise: noise) if (noise || instrument) && wobbles?
-          Pan.refuse_recorded!(who) if instrument && (pan || events.any? { |event| event[PAN_SLOT] })
           square = Music.plays_square?(wave: wave, instrument: instrument, noise: noise)
           Duty.refuse_off_square!(who, by_part: true) if !square && duties
           Duty.refuse_off_square!(who, by_part: false) if !square && events.any? { |event| event[DUTY_SLOT] }
@@ -389,8 +389,9 @@ module VBlank
           @pitch_offset = steps
         end
 
-        # WHICH SPEAKER EACH NOTE PLAYS FROM — :left, :right, or :center for both, which is what a
-        # part that sets nothing does. The square parts, the wave part and the drums can.
+        # WHERE EACH NOTE SITS BETWEEN THE SPEAKERS — :left, :right, or :center for both, which is
+        # what a part that sets nothing does, or a shade from -1.0 (the left alone) to 1.0 (the right
+        # alone). Any part can; what each voice does with a shade is told at Audio::Pan.
         def pan(side)
           @pan = Pan.said(side, where: "The part #{part_label.inspect}")
         end
