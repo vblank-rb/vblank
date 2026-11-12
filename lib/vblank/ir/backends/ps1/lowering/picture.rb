@@ -14,8 +14,14 @@ module VBlank
           # of the tile it shows, which the runtime copies onto the plane as the map goes up. Every tile a
           # background can show is kept once in a sheet of tiles in video RAM, beside the planes. A sprite is
           # a picture of the painted art (PS1::PaintedArt), drawn in front of every plane.
+          #
+          # Everything such a screen shows is read through a colour table, so its colours changing as the game
+          # runs (a list told to hold another set, a background drawn with other lists, a fade, a tint) are
+          # tables written again by Runtime::Colors, from the sources and tables made here (#color_sections).
           module Picture
-            STATEMENT_KINDS = %i[background scroll_background set_tile show_map present_objects hide_sprites].freeze
+            # The steps that change colours as the game runs (Runtime::Colors).
+            COLOR_CHANGES = %i[color_list_holds background_colors fade tint].freeze
+            STATEMENT_KINDS = (%i[background scroll_background set_tile show_map present_objects hide_sprites] + COLOR_CHANGES).freeze
 
             def emit_picture_statement(node)
               case node.kind
@@ -25,9 +31,16 @@ module VBlank
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
               when :hide_sprites then emit_hide_sprites(node)
+              when :color_list_holds then emit_color_list_holds(node)
+              when :background_colors then emit_background_colors(node)
+              when :fade then emit_palette_walk(node)
+              when :tint then emit_palette_walk(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
+
+            # Whether +program+'s screen is drawn from tiles and changes its colours as it runs.
+            def self.changes_colors?(program) = tiled?(program) && program.walk.any? { |node| COLOR_CHANGES.include?(node.kind) }
 
             # Whether +program+'s screen is drawn from tiles: it says `screen :tiled`, or it has a background
             # or a sprite and paints nothing. A game that paints (Paint) keeps its painted screen.
@@ -65,6 +78,10 @@ module VBlank
               @pose_tables = {}
               @pose_set_tables = {}
               @pick_tables = {}
+              @changes_colors = Picture.changes_colors?(@program)
+              @color_sources = {}
+              @sprite_list_tables = {}
+              @sprite_list_places = {}
             end
 
             def tiled? = @tiled
@@ -74,7 +91,7 @@ module VBlank
             def refuse_unmade_picture!
               painted = !@tiled && (@backgrounds.any? || @objects.any?)
               refuse_unmade!(TILED_SCREEN, "draws sprites or backgrounds on a painted (bitmap) screen") if painted
-              return unless @tiled
+              return refuse_painted_color_changes! unless @tiled
 
               others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled]
               refuse_unmade!(TILED_SCREEN, "shows a `screen :#{others.first}`") unless others.empty?
@@ -82,8 +99,28 @@ module VBlank
                 refuse_unmade!(TILED_SCREEN, "draws a sprite's pose from sprite tiles it loads (`sprite_tiles`)")
               end
               refuse_backdrops_of_its_own!
+              refuse_fades_of_part!
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
+            end
+
+            # A painted screen holds each pixel's colour itself, with no table to write again, so its colours
+            # changing as the game runs are not made yet (the design's open question 7).
+            def refuse_painted_color_changes!
+              kinds = @program.walk.map(&:kind)
+              refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen") if kinds.intersect?(%i[fade tint])
+              return unless kinds.intersect?(%i[color_list_holds background_colors])
+
+              refuse_unmade!(TILED_SCREEN, "changes a list of colours as it runs on a painted (bitmap) screen")
+            end
+
+            # A FADE OF PART OF THE SCREEN, placed under a layer or held to a rectangle, is a blend, which the
+            # colour tables cannot give: every picture drawn through a table changes with it, wherever it is.
+            # How the graphics chip's own mixing does it is decided when it is made (Console::PS1Answers::UNMADE_VERBS).
+            def refuse_fades_of_part!
+              return unless @program.walk.any? { |node| node.kind == :fade && (node.under || node.reaches) }
+
+              refuse_unmade!(FADES, "fades part of the screen (`fade ..., under:` or `inside:`)")
             end
 
             # A `screen` that sets a backdrop of its own beside the game's: a scene's own.
@@ -103,7 +140,6 @@ module VBlank
                   refuse_unmade!(TILED_SCREEN, "has a background whose map is more than #{TileMap.max_grid_size} cells across " \
                                                "or down, or whose maps are of different sizes")
                 end
-                refuse_unmade!(TILED_SCREEN, "draws a background with other colors (`draw_with`)") unless bg.recolors.empty?
               end
             end
 
@@ -176,8 +212,11 @@ module VBlank
                   next
                 end
                 entries = [0, *colors.entries.map { |entry| TextureMemory.texel_for_color(entry.colors.first) }]
-                @plane_tables[bg] = texture_memory.reserve_table(capacity: TextureMemory::TABLE_COLORS.fetch(depth), entries: entries)
+                table = texture_memory.reserve_table(capacity: TextureMemory::TABLE_COLORS.fetch(depth), entries: entries)
+                colors.entries.each_with_index { |entry, at| add_color_patch(entry.source, [table, at + 1], entry.colors) if entry.source }
+                @plane_tables[bg] = table
               end
+              follow_backdrop_list
             end
 
             # How deep each plane is (4, 8 or 15 bits a texel), by its number (Runtime.sections's +plane_depths+).
@@ -424,6 +463,105 @@ module VBlank
               end
             end
 
+            # --- colours that change as the game runs (Runtime::Colors) ---
+
+            # A SOURCE OF COLOURS: its table's label, how many sets it can name (the declared colours first), and
+            # each entry it changes, [where, its colour in each set]: where is [a colour table, a place in it], or
+            # :backdrop.
+            ColorSource = Data.define(:label, :sets, :entries)
+
+            # The source PlaneColors::Source +source+ names, made the first time it is asked for.
+            def color_source(source)
+              @color_sources[source.key] ||= ColorSource.new(label: "colors source #{@color_sources.length}", sets: source.sets, entries: [])
+            end
+
+            # +where+ changes with +source+, showing +colors+, one for each of its sets.
+            def add_color_patch(source, where, colors) = color_source(source).entries << [where, colors]
+
+            # The source a list of colours the game changes is, by the list's name.
+            def list_source(name) = PlaneColors::Source.new(key: [:list, name], sets: 1 + color_list_named(name).recolors.length)
+
+            # A BACKDROP THAT FOLLOWS A LIST (Nodes::ColorList#backdrop_place) is the colour at its place in the set
+            # the list holds now (Reference#exec_color_list_holds), so it is one more entry the list changes.
+            def follow_backdrop_list
+              list = @program.walk.find { |node| node.kind == :color_list && node.backdrop_place } or return
+
+              sets = [list.colors, *list.recolors].map { |set| set.fetch(list.backdrop_place) & 0x7FFF }
+              add_color_patch(list_source(list.name), :backdrop, sets)
+            end
+
+            # Reference#exec_color_list_holds: everything drawn with the list shows the set the game names, from
+            # the picture this pass draws.
+            def emit_color_list_holds(node)
+              runtime_call("rt_colors_hold", [LabelAddress.new(color_source(list_source(node.name)).label), node.which])
+            end
+
+            # Reference#exec_background_colors: the background's tiles show the colours of the step the game
+            # names, by the background's own source (PlaneColors). One that is drawn with no other lists has none.
+            def emit_background_colors(node)
+              for_background(node) do |bg|
+                next if bg.recolors.empty? || bg.follows_several?
+
+                source = PlaneColors::Source.new(key: [:background, bg.object_id], sets: 1 + bg.recolors.length)
+                runtime_call("rt_colors_hold", [LabelAddress.new(color_source(source).label), node.which])
+              end
+            end
+
+            # Reference#exec_fade and #exec_tint, which on a console that cannot blend walk every colour shown
+            # (IR::Fading; PaletteWalk says what the walk is and when it is done, Runtime::Colors does it here).
+            def emit_palette_walk(node)
+              walk = PaletteWalk.walk_for(node)
+              runtime_call("rt_tint_to", [Build.int(walk.toward), walk.steps, Build.int(walk.color)])
+            end
+
+            # Whether the list of colours +name+ is told to hold other sets as the game runs.
+            def changing_list?(name)
+              @changing_lists ||= @program.walk.filter_map { |node| node.name if node.kind == :color_list_holds }.to_set
+              @changing_lists.include?(name) && !color_list_named(name).recolors.empty?
+            end
+
+            # THE TABLES OF COLOURS AND THEIR SOURCES, for Runtime::Colors: the game's colours (the backdrop's, then
+            # every colour table's entries, as each starts), room for the colours shown, how many halfwords those
+            # are, each table's place and size, and each source's sets. Made once every texture has its table and
+            # place (Paint#paint_sections).
+            def color_sections
+              return [] unless @changes_colors
+
+              tables = texture_memory.tables
+              starts = {}.compare_by_identity
+              at = 4 # past the backdrop's word
+              tables.each do |table|
+                starts[table] = at
+                at += table.capacity * 2
+              end
+              halfwords = 2 + tables.sum(&:capacity)
+              asm = R3000.new("colors", holds: TABLES_HOLDING)
+              asm.label(Runtime::Colors::BASE)
+              asm.data_halves(TextureMemory.texel_for_color(@handover.game_backdrop.to_i & 0x7FFF), 0)
+              tables.each { |table| asm.data_halves(Array.new(table.capacity) { |at| table.entries[at] || 0 }) }
+              asm.label(Runtime::Colors::SHOWN)
+              asm.data_halves(Array.new(halfwords, 0))
+              asm.label(Runtime::Colors::HALFWORDS)
+              asm.data_words(halfwords)
+              asm.label(Runtime::Colors::TABLES)
+              asm.data_words(tables.length)
+              tables.each { |table| asm.data_words((table.y << 16) | table.x, (1 << 16) | table.capacity, starts[table], table.capacity / 2) }
+              @color_sources.each_value { |source| write_color_source(asm, source, starts) }
+              [asm.section]
+            end
+
+            # A source's table (Runtime::Colors): the set it holds, how many besides the declared colours, how many
+            # entries, where each is in "colors base", then each set's colours.
+            def write_color_source(asm, source, starts)
+              asm.align
+              asm.label(source.label)
+              asm.data_words(0, source.sets - 1, source.entries.length)
+              asm.data_words(source.entries.map { |where, _| where == :backdrop ? 0 : starts[where.first] + (where.last * 2) })
+              source.sets.times do |set|
+                asm.data_halves(source.entries.map { |_, colors| TextureMemory.texel_for_color(colors.fetch(set)) })
+              end
+            end
+
             # --- sprites ---
 
             # Reference#exec_present_objects: every sprite the frame draws, the back-most first, each placed by
@@ -499,9 +637,20 @@ module VBlank
             def emit_sprite_placing(obj)
               skip = fresh_label("sprite_off")
               jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
-              table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, nil)) : emit_recolored_pose_table(obj)
+              table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, followed_lists(obj))) : emit_recolored_pose_table(obj)
               runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared))])
               @asm.label(skip)
+            end
+
+            # A SPRITE WHOSE POSES FOLLOW THE LISTS THEY ARE DRAWN FROM (Object#follows_each, Reference#object_color_list):
+            # each pose drawn from a list the game changes shows what the list holds now, so its picture is read
+            # through the list's colour table (#sprite_picture_following), and every other pose as it is drawn.
+            # For each pose, the list it follows, or nil.
+            def followed_lists(obj)
+              obj.poses.map do |pose|
+                list = obj.follows_each && obj.list_followed_by_pose(@cache.image(picture_named(pose)).colors_name)
+                list if list && changing_list?(list)
+              end
             end
 
             # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, Reference#object_color_list): its pictures
@@ -509,7 +658,7 @@ module VBlank
             # keeps picks the table: a number naming none of the lists draws its own colours. Kept in a number of
             # the lowering's own, which the placing reads.
             def emit_recolored_pose_table(obj)
-              tables = [nil, *obj.recolors].map { |colors| pose_table(obj.poses, colors_of_list(colors)) }
+              tables = [nil, *obj.recolors].map { |colors| pose_table(obj.poses, Array.new(obj.poses.length, colors_of_list(colors))) }
               choice = @pose_set_tables[tables] ||= "tiles pose sets #{@pose_set_tables.length}"
               picked = @picked_poses ||= keep_local(:picked_poses)
               own = fresh_label("own_colors")
@@ -526,17 +675,19 @@ module VBlank
               Build.var_ref(picked)
             end
 
-            # The colours +entry+ of a sprite's lists stands for: the colours themselves, or those a declared list
-            # holds (Reference#colors_held_by: the game never changes what one holds in a build that makes this).
+            # The colours +entry+ of a sprite's lists stands for: the colours themselves, those a declared list
+            # holds, or, for a list the game changes, its name, whose colours its table holds now
+            # (Reference#colors_held_by).
             def colors_of_list(entry)
               return entry unless entry.is_a?(Symbol)
+              return entry if changing_list?(entry)
 
               color_list_named(entry).colors
             end
 
-            # The table of a sprite's pictures, in the colours +colors+ (nil for their own): how many, then each
-            # one's number (SpriteNames#picture_number) and its picture in the painted art. Sprites that face the
-            # same poses in the same colours read one table.
+            # The table of a sprite's pictures, each pose in its colours in +colors+ (#sprite_picture's: nil for its
+            # own): how many, then each one's number (SpriteNames#picture_number) and its picture in the painted
+            # art. Sprites that face the same poses in the same colours read one table.
             def pose_table(poses, colors) = (@pose_tables[[poses, colors]] ||= "tiles poses #{@pose_tables.length}")
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.
@@ -565,7 +716,7 @@ module VBlank
               @pose_tables.each do |(poses, colors), label|
                 asm.label(label)
                 asm.data_words(poses.length)
-                poses.each { |pose| asm.data_words(@sprite_names.picture_number(pose), sprite_picture(pose, colors).label) }
+                poses.zip(colors) { |pose, color| asm.data_words(@sprite_names.picture_number(pose), sprite_picture(pose, color).label) }
               end
               @pose_set_tables.each do |tables, label|
                 asm.label(label)
@@ -589,6 +740,7 @@ module VBlank
             # +colors+: each pixel shows the colour at its place in that list (Reference#recolor_of_picture).
             def sprite_picture(name, colors)
               return register_image_picture(name) unless colors
+              return sprite_picture_following(name, colors) if colors.is_a?(Symbol)
 
               LabelAddress.new(painted_art.register_picture([:image, name, colors]) do
                 image = @cache.image(picture_named(name))
@@ -599,6 +751,40 @@ module VBlank
                 end
                 drawn
               end)
+            end
+
+            # THE PICTURE +name+ DRAWN WITH THE LIST +list+ THE GAME CHANGES: read through the list's own colour table
+            # for sprites, 256 entries, which the list's source writes as it changes (Runtime::Colors). Each pixel is
+            # an entry of it, by the colours it shows in each of the list's sets (Reference#recolor_of_picture).
+            def sprite_picture_following(name, list)
+              table = @sprite_list_tables[list] ||= texture_memory.reserve_table(capacity: TextureMemory::TABLE_COLORS.fetch(8), entries: [0])
+              LabelAddress.new(painted_art.register_picture([:image, name, :following, list], table: table) do
+                image = @cache.image(picture_named(name))
+                declared = color_list_named(list)
+                sets = [declared.colors, *declared.recolors].map { |set| Assets::Recolor.of(image, set) }
+                drawn = {}
+                (image.width * image.height).times do |at|
+                  next unless image.drawn_at?(at)
+
+                  colors = sets.map { |recolor| recolor.color_for(at, image.raw_at(at)) & 0x7FFF }
+                  drawn[[at % image.width, at / image.width]] = sprite_list_place(list, table, colors)
+                end
+                drawn
+              end)
+            end
+
+            # The place in +list+'s table for sprites of the entry showing +colors+, one for each set, added the first
+            # time it is asked for.
+            def sprite_list_place(list, table, colors)
+              (@sprite_list_places[list] ||= {})[colors] ||= begin
+                if table.entries.length >= table.capacity
+                  refuse_unmade!(TILED_SCREEN, "draws its sprites in more than #{table.capacity - 1} colours of the list " \
+                                               ":#{list}, which it changes as it runs")
+                end
+                table.entries << TextureMemory.texel_for_color(colors.first)
+                add_color_patch(list_source(list), [table, table.entries.length - 1], colors)
+                table.entries.length - 1
+              end
             end
 
             # The sheet's tiles copied into video RAM at power-on, a column of tiles a copy.

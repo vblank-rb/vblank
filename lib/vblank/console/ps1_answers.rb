@@ -82,9 +82,10 @@ module VBlank
         keep_showing: works,
 
         # --- fades, tints and screen effects ---
-        fade: works("`fade` and `tint` change the colours the console shows. How the graphics chip fades part of " \
-                    "the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the " \
-                    "build refuses it and says so."),
+        fade: works("`fade` and `tint` change the colours the console shows. On a screen drawn from tiles every " \
+                    "list of colours the graphics chip reads is worked out again, once, on a pass that changes them. " \
+                    "How the chip fades a painted screen, or part of the screen (`inside:`, `outside:`, `under:`), " \
+                    "is decided when that is made: until then the build refuses it and says so."),
         tint: works,
         fade_in: works,
         fade_out: works,
@@ -112,8 +113,9 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds 256 places on a PlayStation, the first see-through."),
-        recolor: works("a background that draws with more than one list the game changes is not made yet: the " \
-                       "build refuses it and says so."),
+        recolor: works("on a screen drawn from tiles, the list's colours are written into the lists of colours the " \
+                       "graphics chip reads, so everything drawn with it changes on the same pass. On a painted " \
+                       "screen this is not made yet: the build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
         colors_name_of: works,
@@ -133,6 +135,9 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works,
         background: works("a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
+                          "Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 " \
+                          "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
+                          "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \
                           "`show_only_inside` holds it to the chip's drawing area, and a background that turns or " \
                           "resizes is drawn as a textured shape."),
         status_bar: works,
@@ -263,10 +268,8 @@ module VBlank
       # part; test_ps1_kind_coverage.rb holds the parts to the lowering's.
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen],
-        "fades, lights and screen effects" => %i[fade tint fade_in fade_out flash_screen pixelate pixelate_in
-                                                 pixelate_out spotlight iris_in iris_out],
-        "sprites and tiled backgrounds" => %i[status_bar canvas tile_pictures sprite_tiles layers layer
-                                              picture_groups colors recolor color_walk],
+        "fades, lights and screen effects" => %i[pixelate pixelate_in pixelate_out spotlight iris_in iris_out],
+        "sprites and tiled backgrounds" => %i[status_bar canvas tile_pictures sprite_tiles layers layer picture_groups],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 

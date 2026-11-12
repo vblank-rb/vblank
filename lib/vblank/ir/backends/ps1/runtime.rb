@@ -8,6 +8,7 @@ require_relative "runtime/pads"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
 require_relative "runtime/tiles"
+require_relative "runtime/colors"
 require_relative "runtime/collide"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
@@ -41,13 +42,14 @@ module VBlank
           # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
           # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
           # and Recordings' for one that plays recordings (+samples+); and Tiles' for one whose screen is
-          # drawn from tiles (+tiles+).
+          # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false,
-                      tiles: false)
+                      tiles: false, colors: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
             Tiles.reserve(memory) if tiles
+            Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
             Recordings.reserve(memory) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
@@ -62,10 +64,11 @@ module VBlank
           # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
           # which reads the game's table "recording_plays". +planes+ is, for a game whose screen is drawn
           # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other, and
-          # +plane_depths+ how many bits a texel each plane is kept at; +collides+
+          # +plane_depths+ how many bits a texel each plane is kept at, and +colors+ whether its colours change as
+          # it runs, so carries Colors, which reads the game's tables of colours; +collides+
           # whether it asks whether two sprites' pixels touch, so carries Collide.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, planes: nil, plane_depths: nil, collides: false)
+                       samples: false, planes: nil, plane_depths: nil, colors: false, collides: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             DrawList.reserve_late(memory)
@@ -76,7 +79,8 @@ module VBlank
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
-            Tiles.emit(asm, memory, places: planes, depths: plane_depths, faces: faces) if planes
+            Tiles.emit(asm, memory, places: planes, depths: plane_depths, faces: faces, colors: colors) if planes
+            Colors.emit(asm, memory) if colors
             Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound

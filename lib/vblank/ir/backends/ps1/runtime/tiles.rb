@@ -92,14 +92,14 @@ module VBlank
 
             # +places+ is each plane's place in video RAM (TextureMemory::Plane), by its number, and +depths+ how many
             # bits a texel each is kept at; +faces+ whether the game also fills the faces of a place, which leave the
-            # chip's texture window set.
-            def emit(asm, memory, places:, depths:, faces: false)
+            # chip's texture window set; +colors+ whether its colours change as it runs (Runtime::Colors).
+            def emit(asm, memory, places:, depths:, faces: false, colors: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm)
               emit_plane_routines(asm, at)
               emit_cell(asm)
               emit_sprites(asm, at)
-              emit_draw(asm, at, places, depths, faces)
+              emit_draw(asm, at, places, depths, faces, colors)
               emit_plane_drawing(asm, at)
               emit_plane_tables(asm, places, depths)
             end
@@ -300,7 +300,7 @@ module VBlank
             # backdrop is a fill of the page; each plane that is up, the back one first, is a textured
             # rectangle the size of the screen from its page of video RAM; then each sprite the pass
             # placed, as the painted screen draws a picture.
-            def emit_draw(asm, at, places, depths, faces)
+            def emit_draw(asm, at, places, depths, faces, colors)
               h = Console::PS1Hardware
               page = at.call(Paint::PAGE_Y)
               asm.label("rt_tiles_draw")
@@ -308,6 +308,8 @@ module VBlank
               asm.sw(:ra, 0, :sp)
               asm.sw(:s0, 4, :sp)
               asm.sw(:s1, 8, :sp)
+              # The colours the pass changed, in their tables before anything is drawn through them.
+              asm.jal("rt_colors_shown") if colors
               asm.jal("rt_face_chip_put_back") if faces
               # The texels copied into a plane since the last picture are read afresh, not from the chip's cache.
               DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }

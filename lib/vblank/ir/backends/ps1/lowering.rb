@@ -135,9 +135,8 @@ module VBlank
           # kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the painted (bitmap) screen" => %i[draw_column_at camera],
-                                                    "fades, lights and screen effects" => %i[fade tint pixelate shade_outside],
-                                                    "sprites and tiled backgrounds" => %i[color_list_holds background_colors
-                                                                                          place_bar copy_tiles box_background
+                                                    "fades, lights and screen effects" => %i[pixelate shade_outside],
+                                                    "sprites and tiled backgrounds" => %i[place_bar copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group],
@@ -155,10 +154,12 @@ module VBlank
           # The parts a game can need that the build does not make yet and that are no kind of step of
           # their own, so NOT_LOWERED_YET cannot name them (#refuse_unmade_parts!): a backdrop of a colour
           # (the build shows black where nothing is drawn), the second pad (the build reads the first), and
-          # a game that paints and also shows a screen drawn from tiles.
+          # a game that paints and also shows a screen drawn from tiles; and a part of what NOT_LOWERED_YET
+          # names, a fade on a painted screen (Picture#refuse_painted_color_changes!).
           BACKDROP_COLOUR = "a backdrop colour"
           SECOND_PAD = "the second pad"
           TILED_SCREEN = "sprites and tiled backgrounds"
+          FADES = "fades, lights and screen effects"
 
           # The runtime's routines for a binop worked out by a call.
           CALLED_SUMS = Ractor.make_shareable({ :/ => "rt_div32", :% => "rt_mod32", :<< => "rt_shl32", :>> => "rt_shr32" })
@@ -231,7 +232,6 @@ module VBlank
             Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
             @plan.refuse_hardware_only_kinds!
             @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-            @plan.refuse_unmade_followed_lists!(NotMadeYet)
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_parts!
@@ -263,8 +263,8 @@ module VBlank
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             # The pictures are known once every routine is made, so their tables come last: a screen drawn
             # from tiles registers its sprites' pictures with the painted art first.
-            [data_section, *table_sections, *routines, *timers, main, *picture_sections, *paint_sections, *face_sections,
-             *sound_sections, *collision_sections]
+            [data_section, *table_sections, *routines, *timers, main, *picture_sections, *paint_sections, *color_sections,
+             *face_sections, *sound_sections, *collision_sections]
           end
 
           private
@@ -273,9 +273,9 @@ module VBlank
           # the second pad (`players:` more than 1, or `player: 2` and on), refused as not made yet.
           def refuse_unmade_parts!
             # A painted screen's backdrop is black whatever its `screen` names (SceneHandover#backdrop_of), and a
-            # screen drawn from tiles shows the game's (Runtime::Tiles::BACKDROP); one that follows a list of
-            # colours is not made yet.
-            backdrop = @program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
+            # screen drawn from tiles shows the game's (Runtime::Tiles::BACKDROP), and one that follows a list of
+            # colours (Picture#follow_backdrop_list); on a painted screen that is not made yet.
+            backdrop = !tiled? && @program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
             refuse_unmade!(BACKDROP_COLOUR, "shows a backdrop colour where nothing is drawn that follows a list of colours") if backdrop
             # Handing over between a painted screen and one drawn from tiles wipes the picture
             # (SceneHandover.crossing?), which is made with the screens drawn from tiles.

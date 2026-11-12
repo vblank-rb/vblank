@@ -49,7 +49,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
 - `keep_showing` — works: the same as on the Advance.
-- `fade` — works: `fade` and `tint` change the colours the console shows. How the graphics chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
+- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. How the chip fades a painted screen, or part of the screen (`inside:`, `outside:`, `under:`), is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
 - `fade_out` — works: the same as on the Advance.
@@ -71,7 +71,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds 256 places on a PlayStation, the first see-through.
-- `recolor` — works: a background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
+- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen this is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `colors_name_of` — works: the same as on the Advance.
@@ -85,7 +85,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `pool` — works: the same as on the Advance.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: the same as on the Advance.
-- `background` — works: a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. `show_only_inside` holds it to the chip's drawing area, and a background that turns or resizes is drawn as a textured shape.
+- `background` — works: a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. A background of more colours takes 16 bits a pixel, and its colours cannot change. `show_only_inside` holds it to the chip's drawing area, and a background that turns or resizes is drawn as a textured shape.
 - `status_bar` — works: the same as on the Advance.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
@@ -171,6 +171,6 @@ An answer above is what the PlayStation does with a verb. The build for it is st
 and a game that reaches one of these steps is refused, naming the step, until it is made.
 
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`; the steps `draw_column_at`, `camera`
-- fades, lights and screen effects: the verbs `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `fade`, `tint`, `pixelate`, `shade_outside`
-- sprites and tiled backgrounds: the verbs `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `picture_groups`, `colors`, `recolor`, `color_walk`; the steps `color_list_holds`, `background_colors`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
+- fades, lights and screen effects: the verbs `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `pixelate`, `shade_outside`
+- sprites and tiled backgrounds: the verbs `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `picture_groups`; the steps `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`

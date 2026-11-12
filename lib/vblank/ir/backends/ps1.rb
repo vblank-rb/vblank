@@ -111,13 +111,15 @@ module VBlank
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
-                                  samples: samples, tiles: Lowering::Picture.tiled?(program))
+                                  samples: samples, tiles: Lowering::Picture.tiled?(program),
+                                  colors: Lowering::Picture.changes_colors?(program))
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              planes: lowering.plane_places, plane_depths: lowering.plane_depths,
+                                             colors: Lowering::Picture.changes_colors?(program),
                                              collides: lowering.collides?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
