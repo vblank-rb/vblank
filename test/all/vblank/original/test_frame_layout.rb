@@ -126,8 +126,11 @@ class TestFrameLayout < Minitest::Test
     assert_equal [], LAYOUT.pose_names
   end
 
+  READ_WITHOUT_POSE = ->(bytes) { VBlank::Original::FrameLayout::Piece.new(x: bytes[0], y: bytes[1], tile: bytes[2]) }
+  READ_BANK = ->(bytes) { VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[2], bank: bytes[4] & 3) }
+
   def test_a_reader_of_one_argument_needs_no_pose
-    layout = reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: bytes[0], y: bytes[1], tile: bytes[2]) }
+    layout = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READ_WITHOUT_POSE)
     piece = read_piece([4, 6, 9, 0, 0], layout: layout, pose: {})
 
     assert_equal [4, 6, 9, 1, 1, 1, 1, 0, 0],
@@ -135,10 +138,39 @@ class TestFrameLayout < Minitest::Test
   end
 
   def test_a_reader_that_gives_a_bank_names_its_bank
-    layout = reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[2], bank: bytes[4] & 3) }
+    layout = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READ_BANK)
 
     assert_predicate layout, :names_bank?
     refute_predicate READ, :names_bank?
+  end
+
+  # A READER EVERY RACTOR CAN SHARE. A game's tests build in Ractors, and a layout in a constant is
+  # read by all of them, so a reader that cannot cross from one Ractor to another is refused at the
+  # layout's line, not where a test first reads it in a Ractor of its own.
+  def test_a_reader_that_uses_a_local_variable_is_refused
+    widths = [1, 2]
+    # Made with a module as its self, as a reader at the top of one is, so the local is all Ruby refuses.
+    reader = VBlank.instance_exec { ->(bytes) { VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[2], columns: widths.first) } }
+    error = assert_raises(ArgumentError) { VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: reader) }
+
+    assert_includes error.message, "`widths`"
+    assert_includes error.message, "constant"
+  end
+
+  def test_a_reader_written_inside_a_method_is_refused
+    error = assert_raises(ArgumentError) do
+      reader_layout { |bytes| VBlank::Original::FrameLayout::Piece.new(x: 0, y: 0, tile: bytes[2]) }
+    end
+
+    assert_includes error.message, "inside a method"
+    assert_includes error.message, "constant"
+  end
+
+  def test_a_constant_reader_is_read_in_another_ractor
+    layout = VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: READ_WITHOUT_POSE)
+    tile = Ractor.new(Ractor.make_shareable(layout)) { |frame| frame.piece_from { |at| [0, 0, 7, 0, 0].fetch(at) }.tile }.value
+
+    assert_equal 7, tile
   end
 
   def test_the_pose_values_a_frame_is_given_are_checked
@@ -172,6 +204,7 @@ class TestFrameLayout < Minitest::Test
       ->(bytes) { bytes[4] == 1 ? 2 : 1 },
       ->(bytes) { (bytes[4] & 0x20) > 0 ? 2 : 1 }, # rubocop:disable Style/NumericPredicate
       ->(bytes) { (bytes[4] & 1).zero? ? 1 : 2 },
+      ->(bytes) { bytes[4].nil? ? 1 : 2 },
       lambda do |bytes|
         case bytes[4]
         when 0..3 then 1

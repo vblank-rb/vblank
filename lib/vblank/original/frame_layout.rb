@@ -120,6 +120,7 @@ module VBlank
           refuse_bad_places!(piece_bytes, {})
           refuse_bad_bits!(counted, [], 1, 1, nil, 1)
           FrameReader.try(piece, piece_bytes)
+          FrameReader.refuse_unshareable!(piece)
           return super
         end
         refuse_no_places!(x_at:, y_at:, tile_at:, flags_at:)

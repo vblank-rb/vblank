@@ -26,15 +26,22 @@ module VBlank
     #
     # SO A READER IS TRIED ONCE WHEN ITS LAYOUT IS MADE, on stand-ins (Probe) that do the
     # arithmetic and refuse the rest in plain words, the same in every build: a comparison (`==`,
-    # `<`, `zero?`, `case`, a `?:` on one), a byte as the index of an Array or the key of a Hash,
-    # a byte on the right of a shift, a byte past the piece, and an answer that is not a Piece.
+    # `<`, `zero?`, `nil?`, `case`, a `?:` on one), a byte as the index of an Array or the key of a
+    # Hash, a byte on the right of a shift, a byte past the piece, and an answer that is not a
+    # Piece. A reader Ruby cannot share between Ractors is refused too (#refuse_unshareable!).
     # The same try says which of the pose's values it reads (#pose_names), so a frame given others
     # is refused at its line, and whether it names a bank of colours.
     #
     # WHAT THE TRY CANNOT SEE: a test Ruby makes without asking the byte. `if bytes[4]`,
-    # `bytes[4] && 1` and `bytes[4].nil?` take any byte as true, in both builds, so they choose
-    # the same branch always and nothing differs to catch. A branch on something other than a
-    # byte (a constant, a setting) is ordinary Ruby and fine.
+    # `bytes[4] && 1` and `bytes[4] || 1` take any byte as true: Ruby asks no object whether it is
+    # true, and only nil and false are not. So no stand-in can answer otherwise, and running the try
+    # again on other stand-ins (bytes of 0, then of 255) would take the same branch every time. It
+    # was weighed and left: such a test chooses the same branch in both builds, on every byte, so
+    # the build that holds the pack and the unpacking write the same pieces and the two builds show
+    # the same picture. What is wrong is the reader's meaning (a byte of 0 is still true in Ruby),
+    # and the all-in-one build shows that the same as the other. `bytes[4].nil?` asks the byte, so
+    # it is refused with the comparisons. A branch on something other than a byte (a constant, a
+    # setting) is ordinary Ruby and fine.
     module FrameReader
       # The bytes of one piece, as a reader is handed them: `bytes[at]` is byte +at+ (0 first), 0
       # to 255, and `bytes.signed(at)` the same byte read as -128 to 127.
@@ -145,6 +152,7 @@ module VBlank
         def <=>(_other) = Probe.refuse_test!(:<=>)
         def between?(*) = Probe.refuse_test!(:between?)
         def ! = Probe.refuse_test!(:!)
+        def nil? = Probe.refuse_test!(:nil?)
         def then(*) = Probe.refuse_test!(:then)
 
         def method_missing(name, *)
@@ -202,6 +210,47 @@ module VBlank
         raise ArgumentError, "A frame layout's piece: is a reader of one piece, like `piece: ->(bytes, pose) { ... }`. " \
                              "It takes the piece's bytes, and the pose's values where it reads some. Got #{reader.inspect}."
       end
+
+      # A READER EVERY RACTOR CAN SHARE. A game's tests build in Ractors, and a layout kept in a
+      # constant is read by each of them, so its reader must be a Proc that Ruby can share: its
+      # `self` shareable (a module or class, as at the top of one, not an object a method runs on)
+      # and every local variable it uses holding a shareable value (a number, a frozen constant).
+      # One that is not fails only where a test first reads the layout in a Ractor of its own, in
+      # Ruby's words, far from the line that wrote it. So it is refused here.
+      #
+      # The question is put to Ruby itself, by making a COPY of the reader shareable: Ruby refuses
+      # the copy for exactly the reasons it would refuse the reader, and a refused copy changes
+      # nothing (the values it reads are checked, not frozen). The reader the layout keeps is the
+      # one given, not the copy, so two layouts made from one reader stay equal (FrameRewrite
+      # groups frames by layout) and a constant the game makes shareable later is the same Proc.
+      # Asking Ractor.shareable? alone would refuse every reader in a constant, since a Proc is not
+      # shareable until something makes it so (a test's constants are made so after they are
+      # declared). What a copy cannot see is a constant the reader names that is never made
+      # shareable; that one still fails late, as any such constant does.
+      #
+      # Anything that is not a Proc (a Method, an object with `call`) must already be shareable:
+      # making a Method shareable would freeze the object it is called on.
+      def self.refuse_unshareable!(reader)
+        return if Ractor.shareable?(reader)
+        raise Ractor::IsolationError, "it is a #{reader.class}, not a lambda" unless reader.is_a?(Proc)
+
+        Ractor.make_shareable(reader.dup)
+      rescue Ractor::IsolationError => e
+        raise ArgumentError, "A frame layout's piece: reader must be a lambda that each Ractor can share. A game's tests " \
+                             "can run in Ractors, and each Ractor reads the same layout. This reader cannot be shared: " \
+                             "#{unshareable_words(e)}. To fix this, write the reader as a constant, outside any method or " \
+                             "block, like `READ_PIECE = ->(bytes, pose) { ... }`. Keep each table or number it uses in a " \
+                             "constant too, not in a local variable."
+      end
+
+      def self.unshareable_words(error)
+        variable = error.message[/from variable [`'](\w+)'/, 1]
+        return "it uses the local variable `#{variable}`, whose value can change" if variable
+        return "it is written inside a method or a block, so it can use the object that runs there" if error.message.include?("self is not shareable")
+
+        error.message
+      end
+      private_class_method :unshareable_words
 
       PARTS_OF_ONE_OR_TWO = %i[mirrored upside_down].freeze
 
