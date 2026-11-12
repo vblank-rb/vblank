@@ -54,7 +54,9 @@ module FrameRecordUnpackingTests
   SHA1 = Digest::SHA1.hexdigest(COPY).freeze
   SIZE = [64, 64].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
+  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def frames_original(folder)
     path = File.join(folder, "made_up.bin")

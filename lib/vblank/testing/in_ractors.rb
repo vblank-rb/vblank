@@ -51,21 +51,56 @@ module VBlank
       # A block that reaches for a variable around it can never be shared, and is left as it was:
       # the Ractor run names the test that reads it. Freezing a block hands back a new one rather
       # than changing the old, so that case has to put the constant back, which re-enters here and
-      # stops on the first line.
+      # finds it shared already. A String is interned as well (InRactors.shareable says why).
       module FrozenConstants
         def const_added(name)
           super
-          value = const_get(name, false)
-          return if value.is_a?(Module) || value.is_a?(IO) || Ractor.shareable?(value)
-
-          shareable = Ractor.make_shareable(value)
-          return if shareable.equal?(value)
-
-          remove_const(name)
-          const_set(name, shareable)
-        rescue Ractor::IsolationError
-          nil
+          InRactors.share_constant(self, name)
         end
+      end
+
+      # A FIXTURE AS EVERY RACTOR MAY READ IT: +value+ frozen all the way down, and a String
+      # interned besides (`-value`), which is what keeps its bytes when a test writes it out.
+      #
+      # RUBY'S IO WRITES A FROZEN STRING OF A FEW HUNDRED BYTES BY MOVING ITS BYTES. The first time
+      # such a String is written (File.binwrite, IO#write), Ruby (4.0) hands a hidden String its
+      # bytes and points the String itself at the hidden one: ObjectSpace.dump calls it "shared"
+      # afterwards. That changes the fixture, which every Ractor shares, from whichever Ractor
+      # writes it. Two Ractors writing the same fixture for the first time at the same moment each
+      # make a hidden String, the fixture is left pointing at one of them, and the garbage
+      # collector frees the other, and with it the bytes the fixture still reads. The fixture then
+      # holds whatever the memory is used for next: a made-up original written to disk reads back
+      # with another digest, a different one each run, and only when the tests happen to start
+      # together. Ruby copies the bytes of an interned String instead of moving them, so an
+      # interned fixture is never changed by a write.
+      #
+      # Only a String that is the constant itself is interned; one inside an Array, a Hash or a
+      # Data is frozen as it was. So a fixture a test writes to a file must be a constant of its own.
+      def self.shareable(value)
+        return Ractor.make_shareable(-value) if value.instance_of?(String)
+
+        Ractor.shareable?(value) ? value : Ractor.make_shareable(value)
+      end
+
+      # Every constant of +fixtures+, a module of fixtures shared by several test files, made
+      # shareable as a test class's are: for the module's last line, once all are declared.
+      def self.share_constants(fixtures)
+        fixtures.constants(false).each { |name| share_constant(fixtures, name) }
+      end
+
+      # Constant +name+ of +holder+ made shareable (.shareable), put back where that made it a new
+      # object.
+      def self.share_constant(holder, name)
+        value = holder.const_get(name, false)
+        return if value.is_a?(Module) || value.is_a?(IO)
+
+        shareable = shareable(value)
+        return if shareable.equal?(value)
+
+        holder.module_exec(name) { |named| remove_const(named) }
+        holder.const_set(name, shareable)
+      rescue Ractor::IsolationError
+        nil
       end
 
       # A FIXTURE MADE ONCE IN EACH RACTOR, kept under the class's name and +name+, for what cannot

@@ -413,5 +413,7 @@ module M4AAnswers
 
   def self.voice_settings_bytes(rate, hold, length, shape) = [rate, hold, length].pack("V3") + shape.pack("C4")
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  # Must be InRactors.share_constants, not Ractor.make_shareable alone: tests in several Ractors
+  # write COPY to a file at once (InRactors.shareable says what that does to a plain frozen String).
+  VBlank::Testing::InRactors.share_constants(self)
 end
