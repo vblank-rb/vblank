@@ -101,6 +101,38 @@ module ShellTests
     end
   end
 
+  # A PORT WHOSE UNPACKING ROUTINE IS LONG: LONG_ROUTINE_COPIES frame copies written out, each a
+  # word read whose answer places a byte read, a test and a slot write, and every eighth a copy of
+  # bytes, are thousands of statements, and a loop of copy reads ends it. Played in a Ractor, whose
+  # stack is small, by the Ruby shell, and in the web page's worker.
+  LONG_ROUTINE_COPIES = 500
+
+  private def long_routine_port(from)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :frames, count: 64, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          LONG_ROUTINE_COPIES.times do |n|
+            at = copy.word(0x10 + ((n * 4) % 0x100))
+            count = copy.byte((at & 0xFF) + (n % 64))
+            count = 12 if count > 12
+            into[:frames][n % 64] = count
+            copy.copy_bytes at: TILES_AT, count: 4, into: into[:frames], start: n % 60 if (n % 8).zero?
+          end
+          repeat(4) { |k| copy.copy_bytes at: copy.byte(k) & 0xFF, count: 4, into: into[:frames], start: k * 4 }
+        end
+      end
+      frames = table :frames, pack[:frames]
+      step = var :step, 0
+      game_loop do
+        draw_rect_at frames[step] * 4, 40, 4, 4, :white
+        step = (step + 1) & 63
+      end
+    end
+  end
+
   # The made-up original on a machine where no copy of it is set: what a shell is built from, so
   # building one never writes the copy back (#original does).
   private def original_nowhere(folder)

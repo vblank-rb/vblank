@@ -214,6 +214,20 @@ class TestJSShell < Minitest::Test
     end
   end
 
+  # A LONG UNPACKING ROUTINE (ShellTests#long_routine_port), thousands of statements in one
+  # routine, unpacks in the page's worker to the all-in-one build's pack, and the game plays.
+  def test_a_long_unpacking_routine_unpacks_to_the_all_in_one_builds_pack
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "long.html")
+      JS.new.build_shell_page(long_routine_port(original_nowhere(folder)), path, console: :gba, err: nil)
+      out = played_page([*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play],
+                        html: File.read(path, encoding: Encoding::UTF_8), browser: ["idb:#{File.join(folder, 'idb.json')}"])
+
+      assert_nil said(out)
+      assert_equal Dir.mktmpdir { |other| long_routine_port(original(other)).data_pack_file }, kept_pack(folder)
+    end
+  end
+
   def test_the_page_holds_none_of_the_originals_bytes
     Dir.mktmpdir do |folder|
       assert_holds_none_of original_pieces, shell_page_html(folder), "the web page"
