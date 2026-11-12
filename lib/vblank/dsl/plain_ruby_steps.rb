@@ -402,10 +402,11 @@ module VBlank
           def go_round(&before_loop)
             return close_game_loop if @game_loop
 
+            mark = statement_mark
             value = @test.call
             return @stops_when ? !value : !!value unless Steps.game_test?(value)
 
-            open_game_loop(value, &before_loop)
+            open_game_loop(value, mark, &before_loop)
           end
 
           def game? = !@game_loop.nil?
@@ -419,16 +420,31 @@ module VBlank
 
           # A name given a variable by the block must be read as that variable from now on, in the
           # test too, or the loop would ask about the number it held before.
-          def open_game_loop(value, &before_loop)
+          #
+          # What working the test out records (a read's check of its place, the answer of a join
+          # whose right side does something) moves into the loop, to run on every round before the
+          # test is asked: left before the loop it would run once, and the test would ask the same
+          # answer for ever. +mark+ is where the test started recording.
+          def open_game_loop(value, mark, &before_loop)
             @game_loop = stopping_test(value)
             if before_loop
               yield
               @game_loop.discard!
+              mark = statement_mark
               @game_loop = stopping_test(@test.call)
             end
-            @game_loop.open_repeat(MOST_PASSES)
+            @game_loop.open_repeat(MOST_PASSES, test_statements: take_statements_since(mark))
             true
           end
+
+          # Where the builder in use records next, or nil with none: a plain Ruby loop outside a
+          # game. The builder is kept with it, so the statements are taken from the one recording.
+          def statement_mark
+            @builder = VBlank::Builder.in_use
+            @builder&.statement_mark
+          end
+
+          def take_statements_since(mark) = mark ? @builder.take_statements_since(mark) : []
 
           def stopping_test(value)
             held = Steps.as_condition(value)

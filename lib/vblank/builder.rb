@@ -7,6 +7,27 @@
 # A concern with game code of its own comes in the way a part of a game does, since it is written
 # in normal Ruby: a name that holds a variable is changed by assigning to it, and `if` on a test
 # the game makes records that test.
+
+module VBlank
+  # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
+  # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
+  class Builder
+    # The builder of the game being built here, for a part of a game that makes a variable with
+    # no `var` of its own to call.
+    def self.in_use = Ractor.current[:vblank_builder_in_use]
+
+    # Run the block, then put back the builder that was in use before it, whatever the block made.
+    # Builder.new makes each new builder the one in use, so a builder made to build a program
+    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
+    def self.keeping_builder_in_use
+      was = Ractor.current[:vblank_builder_in_use]
+      yield
+    ensure
+      Ractor.current[:vblank_builder_in_use] = was
+    end
+  end
+end
+
 require_relative "builder/randomness"
 require_relative "builder/sound"
 VBlank.require_game_file "builder/music"
@@ -171,6 +192,7 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @hidden_variable_notes = []
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
+      @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
       @variables_with_no_var_line = []
       Ractor.current[:vblank_builder_in_use] = self
@@ -1073,20 +1095,48 @@ module VBlank
       container.children.delete_if { |each_statement| each_statement.equal?(statement) }
     end
 
+    # Where the next statement will be recorded, for #take_statements_since: the open container
+    # and the statement last recorded in it (nil for none), so a statement taken back before it
+    # cannot move the place.
+    StatementMark = Data.define(:container, :last)
+
+    def statement_mark = StatementMark.new(container: @container_stack.last, last: @container_stack.last.children.last)
+
+    # The statements recorded since +mark+, taken out of where they were recorded and handed back.
+    def take_statements_since(mark)
+      children = mark.container.children
+      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+      unless mark.container.equal?(@container_stack.last) && start
+        raise IR::InvariantError, "statements were taken from a place that is no longer where the builder records"
+      end
+
+      children.slice!((start + 1)..)
+    end
+
     # A `repeat` with a stop test, likewise opened and closed rather than given a block.
-    def open_repeat(most_passes, stop_node)
+    #
+    # +test_statements+ are what working the test out recorded: a read's check of its place, the
+    # answer of `a && b` whose right side does something, kept in a variable. The test reads what
+    # they leave, so they must run again on every round, before the test is asked. Such a loop is
+    #
+    #   stopped = 0
+    #   repeat most_passes, stop_when: stopped
+    #     <test_statements>
+    #     if <stop_node> then stopped = 1 else <body> end
+    #
+    # and the body goes in the `else`. A loop whose test records nothing is the plain repeat.
+    def open_repeat(most_passes, stop_node, test_statements: [])
       @repeat_seq += 1
       index = :"__repeat_#{@repeat_seq}"
       ensure_var(index)
-      node = Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node))
-      record(node)
-      @container_stack.push(node)
-      @game_whiles += 1
+      return open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements) unless test_statements.empty?
+
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node)))
     end
 
     def close_repeat
       @game_whiles -= 1
-      @container_stack.pop
+      @open_repeat_container_counts.pop.times { @container_stack.pop }
     end
 
     # Is a `while` on a game test open, in normal Ruby? (see #wait_vblank)
@@ -1114,20 +1164,6 @@ module VBlank
     # reads the expression in place of the variable (#inline_held_expressions). Public for
     # BlockKitInternals#emit_held_place, which holds those places.
     def register_held_expression(name, node) = @held_expressions[name] = node
-
-    # The builder of the game being built here, for a part of a game that makes a variable with
-    # no `var` of its own to call.
-    def self.in_use = Ractor.current[:vblank_builder_in_use]
-
-    # Run the block, then put back the builder that was in use before it, whatever the block made.
-    # Builder.new makes each new builder the one in use, so a builder made to build a program
-    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
-    def self.keeping_builder_in_use
-      was = Ractor.current[:vblank_builder_in_use]
-      yield
-    ensure
-      Ractor.current[:vblank_builder_in_use] = was
-    end
 
     # +name+, or the first of name_2, name_3... that no variable has.
     def free_variable_name(name)
@@ -1170,6 +1206,34 @@ module VBlank
     def recording_game_code? = @container_stack.length > 1
 
     private
+
+    # #open_repeat's loop for a test that records statements. The statements were recorded where
+    # the test was worked out, and move into the loop here. Two containers are opened, the loop
+    # and the `else` the body goes in, and #close_repeat closes both.
+    #
+    # The test is not given #inline_held_expressions: a held place's store is one of the
+    # statements, so it is set afresh each round before the test reads it. Nor does the `else`
+    # gate what is declared in the body (no #open_container), as the plain repeat's body is not.
+    def open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements)
+      stopped = :"#{index}_stopped"
+      ensure_var(stopped)
+      record(Build.set(stopped, 0))
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      test_statements.each { |statement| attach(statement) }
+      ask = Build.if_(stop_node, Build.set(stopped, 1))
+      ask.else = Build.else_
+      record(ask)
+      @container_stack.push(ask.else)
+      @open_repeat_container_counts[-1] += 1
+    end
+
+    # Records +node+, a game `while`'s repeat, and opens it until #close_repeat.
+    def push_open_repeat(node)
+      record(node)
+      @container_stack.push(node)
+      @open_repeat_container_counts.push(1)
+      @game_whiles += 1
+    end
 
     # +node+ (a loop's test), with every read of a variable #register_held_expression named
     # replaced by the expression it holds, and those inside it in turn; +node+ itself where it

@@ -1683,6 +1683,54 @@ class TestPlainRuby < Minitest::Test
     assert_equal 0, player[:none]
   end
 
+  # `count < 5 && marks[count] != 9`: the right side reads a list at a place the loop moves on,
+  # so it is worked out under the left, and its answer is asked afresh on every round, as Ruby's.
+  # The first stops at the 9, the second at its bound, the third at the 9 though it starts on 9.
+  def test_a_while_joined_with_and_asks_both_sides_each_round
+    player = played(frames: 2) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      to_nine = var(:to_nine, 0)
+      to_bound = var(:to_bound, 0)
+      past_one = var(:past_one, 0)
+      game_loop do
+        marks[0] = 1
+        marks[1] = 2
+        marks[2] = 9
+        count = 0
+        count += 1 while count < 5 && marks[count] != 9
+        to_nine.store!(count)
+        count = 0
+        count += 1 until count >= 5 || marks[count] == 7
+        to_bound.store!(count)
+        count = 2
+        begin
+          count += 1
+        end while count < 5 && marks[count] != 0
+        past_one.store!(count)
+      end
+    end
+
+    assert_equal [2, 5, 3], [player[:to_nine], player[:to_bound], player[:past_one]]
+  end
+
+  # ...and one that waits for a frame in its body goes on from the wait, a round a frame.
+  def test_a_while_joined_with_and_goes_on_after_a_wait_in_its_body
+    player = played(frames: 8) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      marks[3] = 9
+      rounds = var(:rounds, 0)
+      count = 0
+      while count < 5 && marks[count] != 9
+        count += 1
+        rounds.increase!(1)
+        wait_vblank
+      end
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 3, player[:rounds]
+  end
+
   def test_a_wait_inside_a_while_lets_frames_pass_while_it_goes_round
     player = played(frames: 4) do
       n = 0

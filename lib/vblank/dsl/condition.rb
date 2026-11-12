@@ -81,9 +81,10 @@ module VBlank
       def take_back_branch(if_node) = @builder.take_back_branch(if_node)
 
       # A loop on this test, stopping once it holds, taken a step at a time as a branch is.
-      def open_repeat(most_passes)
+      # +test_statements+ are what working the test out recorded (Builder#open_repeat).
+      def open_repeat(most_passes, test_statements: [])
         @builder.consume_condition(self)
-        @builder.open_repeat(most_passes, @node)
+        @builder.open_repeat(most_passes, @node, test_statements: test_statements)
       end
 
       def close_repeat = @builder.close_repeat

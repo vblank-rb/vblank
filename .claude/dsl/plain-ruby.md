@@ -77,7 +77,9 @@ plays.
 ## Loops
 
 - **`while` and `until` on a game test are loops in the game.** The build warns about one that never
-  waits for a frame.
+  waits for a frame. The whole test is asked again on every round, as Ruby asks it: `while count < 5
+  && marks[count] != 9`, and `while copy.byte(at) != 0` in an unpacking routine, whose read is
+  checked against the copy's end on each round.
 - **A loop can start on plain numbers and become the game's.** `at = 3`, then `while at < size` with a
   body that moves `at` on under a game test (`if found then … else at += 17 end`): the first round is
   Ruby's, written out once, and the rounds after it are a loop in the game.

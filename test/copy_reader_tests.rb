@@ -265,6 +265,81 @@ module CopyReaderTests
     end
   end
 
+  # A LOOP BOUNDED BY A COUNT AND BY A MARKER OF THE COPY, joined with `&&`, stops at whichever
+  # comes first, as Ruby's does: pieces of four bytes, a piece whose first byte is 0x80 ending each
+  # frame. The second frame is longer than the bound, so the bound stops it.
+  PIECE_BYTES = 4
+  MOST_PIECES = 5
+  PIECES_END = 0x80
+  PIECES_IN_EACH_FRAME = Ractor.make_shareable([3, 7, 1])
+  ORDINARY_PIECE_BYTES = Ractor.make_shareable([1, 2, 3, 4])
+  FRAME_END_PIECE_BYTES = Ractor.make_shareable([PIECES_END, 0, 0, 0])
+
+  private def piece_copy
+    PIECES_IN_EACH_FRAME.flat_map { |pieces| (ORDINARY_PIECE_BYTES * pieces) + FRAME_END_PIECE_BYTES }.pack("C*")
+  end
+
+  # Where each frame starts in the copy: after the pieces of those before it and their end pieces.
+  private def frame_starts = PIECES_IN_EACH_FRAME.each_with_index.map { |_, frame| PIECES_IN_EACH_FRAME.take(frame).sum { |pieces| (pieces + 1) * PIECE_BYTES } }
+
+  private def pieces_counted(copy)
+    frame_starts.map do |at|
+      count = 0
+      count += 1 while count < MOST_PIECES && copy.getbyte(at + (count * PIECE_BYTES)) != PIECES_END
+      count
+    end
+  end
+
+  def test_a_loop_bounded_by_a_count_and_a_marker_of_the_copy_stops_at_either
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, piece_copy)
+      starts = frame_starts
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :counts, count: PIECES_IN_EACH_FRAME.length, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            starts.each_with_index do |at, frame|
+              count = 0
+              count += 1 while count < MOST_PIECES && copy.byte(at + (count * PIECE_BYTES)) != PIECES_END
+              pack[:counts][frame] = count
+            end
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+      played = unpacking.run_on(game_player, frames: 4)
+
+      assert unpacking.finished_in?(played), "the unpacking got to its end"
+      assert_equal({ counts: pieces_counted(piece_copy).pack("C*") }, unpacking.slot_bytes_in(played))
+    end
+  end
+
+  # A loop's test is checked against the copy's end on every round, as a read in its body is: a
+  # copy with no 0 is read past its end on the seventh round, and the build says which byte. A
+  # read past the end does not stop the routine, so the loop has a bound of its own to end on.
+  def test_a_loop_whose_test_reads_past_the_copys_end_is_refused_naming_that_byte
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, [9, 8, 7, 6, 5, 4].pack("C*"))
+      b = VBlank::Builder.new
+      refused = assert_raises(VBlank::Original::WrongCopy) do
+        b.instance_eval do
+          data_pack(from: from, version: "1") do |slots|
+            slots.numbers :until_nought, count: 1, width: :byte, signed: false
+            slots.fill_from_copy do |copy, pack|
+              at = 0
+              at += 1 while at < 10 && copy.byte(at) != 0
+              pack[:until_nought][0] = at
+            end
+          end
+        end
+      end
+
+      assert_match "byte 6 ", refused.message
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
