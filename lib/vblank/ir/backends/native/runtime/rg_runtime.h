@@ -227,19 +227,26 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * unpacking reads the original's frame and writes the record, so this is told nothing of how an
  * original keeps one. How many
  * pieces there are and what each is is in the file, so the game holds a picture of the size it
- * was given and this paints each piece into it, the earlier in front where two overlap. +rules+
- * are RG_FILL_POSE_HEADER_NUMBERS numbers: what is filled, +total+, where the picture's pixels
- * start, its width and height and how it is turned once painted, as rg_start_file_fill_picture
- * has them; where its colours are in the file (-1 where the game holds them), how many colours,
- * how many colours of another list it is drawn with; where the frame's entry is in the file, four
+ * was given and this paints each piece into it, the earlier in front where two overlap. The frame
+ * is painted once, and its pixels written into each copy of the picture the game holds, one for
+ * each list of colours it is drawn in. +rules+ are RG_FILL_POSE_HEADER_NUMBERS numbers: what is
+ * filled, +total+, how many copies, the picture's width and height and how it is turned once
+ * painted, as rg_start_file_fill_picture has them; where its colours are in the file (-1 where the
+ * game holds them), how many colours; where the frame's entry is in the file, four
  * bytes saying where its record starts, and where the records start, which that is counted from
  * (0 for a frame with no record); where
- * the object's place is in the picture, across and down; and where the tiles are in the file and
- * how many. Then the two layouts, the
- * game's own colours where the file has none, and the other list, as rg_start_file_fill_picture
- * has them. Place 0 is see-through. The file is the player's, and the game plays on whatever it
+ * the object's place is in the picture, across and down; where the tiles are in the file and
+ * how many; and the bank a piece must name to be painted (-1 for every piece). Then the two
+ * layouts and the game's own colours where the file has none, as rg_start_file_fill_picture has
+ * them. Then for each copy: where its pixels start, how many colours of another list it is drawn
+ * with, and that list. Place 0 is see-through. The file is the player's, and the game plays on whatever it
  * holds: pieces are read while they end inside the file, a piece or the part of one outside the
  * picture is not painted, and a tile past the file's paints nothing.
+ *
+ * rg_start_file_put_tile_pixels: +count+ of the game's own pixels, +pixels+, into the background
+ * tiles' pixels from +start+ on, of which there are +total+: a tile the game holds for a
+ * background whose map is in the file that draws something the file does not fill (a bank's
+ * stand-in), in the room rg_screen_tile_pixels_room made for that background's tiles.
  *
  * rg_start_file_fill_colors: +count+ entries of +colors+ from entry +first+ on, each the fifteen
  * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
@@ -304,6 +311,7 @@ void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, 
 void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
+void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);

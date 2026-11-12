@@ -511,12 +511,12 @@ end
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
-  kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, entry_at, records_at, origin_x, origin_y,
+  kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
     tiles_at, tile_count, only_bank = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
-  swapped = held_colors + (colors_at.negative? ? colors_count : 0)
+  copy = held_colors + (colors_at.negative? ? colors_count : 0)
   count, first = rg_start_file_frame_pieces(entry_at, records_at)
   places = Array.new(width * height, 0)
   count.times do |piece|
@@ -532,25 +532,50 @@ def rg_start_file_fill_pose(rules)
     @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
     pixels = @rg_game_image_pixels
   end
-  height.times do |row|
-    width.times do |column|
-      from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
-      from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
-      place = places[(from_row * width) + from_column]
-      color = if place.zero?
-                kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
-              elsif place < swapped_count
-                rules[swapped + place]
-              elsif place >= colors_count
-                0
-              elsif colors_at.negative?
-                rules[held_colors + place]
-              else
-                rg_start_file_color(colors_at, rules, color_format, place)
-              end
-      pixels[start + (row * width) + column] = color
+  # The frame painted once, written into each copy of the picture in that copy's colours.
+  copies.times do
+    start = rules[copy]
+    swapped_count = rules[copy + 1]
+    swapped = copy + 2
+    height.times do |row|
+      width.times do |column|
+        from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+        from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+        place = places[(from_row * width) + from_column]
+        color = if place.zero?
+                  kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
+                elsif place < swapped_count
+                  rules[swapped + place]
+                elsif place >= colors_count
+                  0
+                elsif colors_at.negative?
+                  rules[held_colors + place]
+                else
+                  rg_start_file_color(colors_at, rules, color_format, place)
+                end
+        pixels[start + (row * width) + column] = color
+      end
     end
+    copy = swapped + swapped_count
   end
+end
+
+# A tile the game holds that draws something the file does not fill, put into the room made for its
+# background (rg_runtime.h, rg_start_file_put_tile_pixels).
+def rg_start_file_put_tile_pixels(_total, start, count, pixels)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  @rg_game_tile_pixels[start, count] = pixels.first(count)
+end
+
+# The pixels made +total+ long where the game holds the first +held+: room for what the file fills
+# whole, which the game is written without (rg_screen.h, rg_screen_tile_pixels_room and
+# rg_screen_image_pixels_room). Unfrozen, as a fill's copy is.
+def rg_screen_tile_pixels_room(total, held)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.first(held) + Array.new(total - held, RG_SEE_THROUGH)
+end
+
+def rg_screen_image_pixels_room(total, held)
+  @rg_game_image_pixels = @rg_game_image_pixels.first(held) + Array.new(total - held, RG_NOT_DRAWN)
 end
 
 # How String#unpack reads the cells of a map in the file: a byte each (a map of tile numbers), two

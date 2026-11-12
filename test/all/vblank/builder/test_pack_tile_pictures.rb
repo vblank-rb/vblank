@@ -129,6 +129,60 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
+  # A MAP OF +cells+ CELLS FOR #title_belt_game_and_file: still tiles in both banks and each way
+  # turned, every third cell naming tile 2, which takes turns through the belt.
+  def self.title_belt_words(cells)
+    Array.new(cells) do |at|
+      tile = (at % 3).zero? ? 2 : 1 + ((at / 3) % 3)
+      GENESIS_CELL.(tile, bank: (at / 2) % 2, mirrored: (at % 4) == 1, upside_down: (at % 5) == 2)
+    end
+  end
+
+  # A BELT ON A TITLE'S SCREEN: a background of the made-up Genesis original whose map is +words+
+  # (its map kept after its tiles, so it can be as long as a test wants), tile 2 taking turns through
+  # the belt in both banks. With +in_other_lists+ each bank is drawn with two other lists of its own
+  # in turn as the game plays, as a title's colours cycle; such a game is built and measured, and
+  # not yet played alike by every build (the registry plays the game without). Gives back the
+  # program and the pack file the build made (nil for a build that leaves its pack out). Public,
+  # since PackStandInSizeTests builds it from an object of its own.
+  def title_belt_game_and_file(folder, words:, in_other_lists: false, options: VBlank::Cartridge::Options.new)
+    tiles = [*PLACES, *BELT].map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
+    map_at = TILES_AT + tiles.bytesize
+    copy = "\0".b * (map_at + (words.length * 2))
+    levels = MadeUpOriginalLayouts::LEVELS
+    copy[COLORS_AT, 64] = GENESIS_COLORS.(levels + levels.rotate(7))
+    copy[TILES_AT, tiles.bytesize] = tiles
+    copy[map_at, words.length * 2] = words.pack("n*")
+    path = File.join(folder, "made_up.bin")
+    File.binwrite(path, copy)
+    from = VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :genesis,
+                                      settings_file: File.join(folder, "made_up.yml"),
+                                      releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    lists = { other: OTHER, later: LATER }.transform_values { |colors| colors.each_with_index.map { |color, at| at.zero? ? :transparent : color } }
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length
+        slots.tiles :belt, at: BELT_AT, count: BELT.length
+        slots.numbers :map, at: map_at, count: words.length, width: :half, signed: false
+        slots.colors :palette, at: COLORS_AT, count: 32
+      end
+      lists.each { |name, colors| colors name, colors }
+      belt = tile_pictures :belt, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) }
+      title = background :title, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 8
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        belt.show((tick / 2) % 3)
+        title.draw_with({ palette_0: %i[other later], palette_1: %i[later other] }, showing: tick % 3) if in_other_lists
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
   # A game of the made-up original for +platform+ whose map is +words+, its tile 2 taking turns
   # through the slot :belt. +step+ is run every pass, handed the group and a count of passes. With
   # +in_scene+ the background is declared in the scene that shows it, the group outside it. With

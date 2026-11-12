@@ -682,13 +682,13 @@ int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
 }
 
 void rg_start_file_fill_pose(const int32_t *rules) {
-  int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
-  int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], entry_at = rules[9], records_at = rules[10];
-  int32_t origin_x = rules[11], origin_y = rules[12], tiles_at = rules[13], tile_count = rules[14], only_bank = rules[15];
+  int32_t kind = rules[0], total = rules[1], copies = rules[2], width = rules[3], height = rules[4], turn = rules[5];
+  int32_t colors_at = rules[6], colors_count = rules[7], entry_at = rules[8], records_at = rules[9];
+  int32_t origin_x = rules[10], origin_y = rules[11], tiles_at = rules[12], tile_count = rules[13], only_bank = rules[14];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
-  const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
+  const int32_t *copy = held_colors + (colors_at < 0 ? colors_count : 0);
   int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first);
   int32_t *places = calloc((size_t)(width * height), sizeof *places);
   if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
@@ -699,25 +699,34 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   }
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
-  for (int32_t row = 0; row < height; row++) {
-    for (int32_t column = 0; column < width; column++) {
-      int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
-      int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
-      int32_t place = places[(from_row * width) + from_column];
-      uint16_t color = 0xFFFFu;
-      if (place != 0) {
-        color = 0;
-        if (place < swapped_count) {
-          color = (uint16_t)swapped[place];
-        } else if (place < colors_count) {
-          color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+  for (int32_t each = 0; each < copies; each++) {
+    int32_t start = copy[0], swapped_count = copy[1];
+    const int32_t *swapped = copy + 2;
+    for (int32_t row = 0; row < height; row++) {
+      for (int32_t column = 0; column < width; column++) {
+        int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+        int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+        int32_t place = places[(from_row * width) + from_column];
+        uint16_t color = 0xFFFFu;
+        if (place != 0) {
+          color = 0;
+          if (place < swapped_count) {
+            color = (uint16_t)swapped[place];
+          } else if (place < colors_count) {
+            color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+          }
         }
+        if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
+        else image_pixels[start + (row * width) + column] = (int16_t)color;
       }
-      if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
-      else image_pixels[start + (row * width) + column] = (int16_t)color;
     }
+    copy = swapped + swapped_count;
   }
   free(places);
+}
+
+void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels) {
+  memcpy(rg_screen_tile_pixels_to_fill(total) + start, pixels, (size_t)count * sizeof *pixels);
 }
 
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks) {

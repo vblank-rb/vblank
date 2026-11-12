@@ -241,6 +241,7 @@ module VBlank
             @start_file_followed_tiles = [] # ...and which tiles of such a background are drawn from each list it follows
             @start_file_moving_cells = [] # ...and which of its cells show a tile taking turns through pictures
             @start_file_shading_fills = [] # ...and the colours and levels of each lit fill's shading read from it
+            @start_file_tile_writes = [] # ...and the tiles a background read from it holds that draw something it does not fill
             @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound

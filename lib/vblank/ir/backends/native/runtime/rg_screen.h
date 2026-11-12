@@ -172,6 +172,10 @@ extern const int16_t rg_game_image_pixels[];
  * rg_game_image_pixels, made the first time this is asked, which the picture is drawn from from
  * then on. For an image read from the file the game is handed as it starts (rg_start_file_fill_picture). */
 int16_t *rg_screen_image_pixels_to_fill(int32_t count);
+/* The same copy made +total+ pixels long where the game holds only the first +held+ of them: the
+ * rest are pictures the file the game is handed fills whole, which the game is written without,
+ * RG_NOT_DRAWN until then. Called before anything else asks for the copy. */
+void rg_screen_image_pixels_room(int32_t total, int32_t held);
 extern const int32_t rg_game_images[];
 #define RG_IMAGE_FIELDS 3
 /* The most sprites a game may have; the build refuses more. */
@@ -226,6 +230,10 @@ extern const uint16_t rg_game_tile_pixels[];
  * on. For a tile read from the file the game is handed as it starts (rg_start_file_fill_picture),
  * which rg_runtime.c fills whether or not the game has scenery to draw them. */
 uint16_t *rg_screen_tile_pixels_to_fill(int32_t count);
+/* The same copy made +total+ pixels long where the game holds only the first +held+ of them: the
+ * rest are the tiles of backgrounds whose maps are in the file, which the game is written without,
+ * RG_SEE_THROUGH until the file fills them. Called before anything else asks for the copy. */
+void rg_screen_tile_pixels_room(int32_t total, int32_t held);
 
 /* A layer's place in the stack where a thing named none (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
 #define RG_NO_LAYER (-1)

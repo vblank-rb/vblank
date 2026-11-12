@@ -110,6 +110,44 @@ module PackPoseBankColorGames
     game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors, **told
   end
 
+  # The pose each actor of #recolored_actors_builder faces: two share :first.
+  ACTOR_POSES = %i[first second first].freeze
+
+  # ACTORS SHARING POSES OF THE ORIGINAL'S FRAMES, as a title's actors are: a sprite for each of
+  # ACTOR_POSES, each following the list its pose's frame picks, while the lists of banks 1 and 2
+  # are recoloured through two sets of their own as the game plays. +size+ is every pose's size, so
+  # a test can make the poses bigger and see what that costs a build. Gives back the builder, its
+  # program made. Public, since PackStandInSizeTests builds it from an object of its own.
+  def recolored_actors_builder(folder, size:, options: VBlank::Cartridge::Options.new)
+    test = self
+    other = see_through_first(OTHER)
+    dusk = see_through_first(OTHER.rotate(3))
+    from = original(folder)
+    b = Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: TILES.length, colors: 16
+        slots.numbers :frames, at: FRAMES_AT, count: FRAMES.bytesize, width: :byte, signed: false
+        slots.colors :palette, at: COLORS_AT, count: 64
+      end
+      test.declare_poses_for(self, pack, size: size)
+      colors :other, other
+      colors :dusk, dusk
+      ACTOR_POSES.each_with_index do |pose, at|
+        sprite(:"actor_#{at}", at: [24 + (at * 40), 40 + (at * 8)], facing: { standing: pose }).draw_with colors_name_of(pose)
+      end
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        recolor :palette_1, %i[other dusk], showing: pass % 3
+        recolor :palette_2, %i[dusk other], showing: (pass + 1) % 3
+      end
+    end
+    b.finalize_program
+    b
+  end
+
   # Tile +tile+ at (at_x, at_y) of +screen+ shows each of its places in the colour +colors+ holds there.
   private def assert_tile_drawn_in(colors, screen, tile, at_x, at_y, what)
     TILES.fetch(tile).each_with_index do |place, at|

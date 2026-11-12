@@ -56,6 +56,8 @@ module VBlank
           # half of them, two pixels to a byte).
           RUN_TILE_SIDE = 8
           RUN_TILE_PIXELS = RUN_TILE_SIDE * RUN_TILE_SIDE
+          # A tile's pixel where the layer behind shows (RG_SEE_THROUGH).
+          TILE_SEE_THROUGH = 0xFFFF
 
           private
 
@@ -178,20 +180,33 @@ module VBlank
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).
           # +writable+ is for one the routine that reads the start file writes into.
-          def runtime_array(what, type, values, writable: false)
-            Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true, writable: writable)
+          # +grows+ is for one the runtime makes more room in as the game starts (StartFileFills#build_start_file_pixel_room).
+          def runtime_array(what, type, values, writable: false, grows: false)
+            Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true, writable: writable, grows: grows)
           end
 
           # Every picture a sprite can show, once for each list of colors it is drawn with. A pixel
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
           # game's pictures are most of its program, and four bytes a pixel doubled them.
+          #
+          # A PICTURE READ FROM THE START FILE IS NOT WRITTEN AT ALL: the routine reading the file
+          # fills every pixel of it, once for each list it is drawn with, so what the program held
+          # there would be thrown away. Written out, a title's poses each drawn in every set of
+          # colours its lists hold are hundreds of megabytes of stand-ins. So those pictures come
+          # after the pixels written, as room the game makes as it starts (StartFileFills#build_start_file_pixel_room).
           def image_arrays
             pixels = []
             info = []
+            read_at_start = []
             @images.each_key do |name, colors|
               image = picture_named(name)
-              info.push(pixels.length, image.width, image.height)
               from_start_file = picture_from_start_file(name)
+              if from_start_file && colors != SHADING_PLACES
+                read_at_start << [info.length, from_start_file, colors]
+                info.push(nil, image.width, image.height)
+                next
+              end
+              info.push(pixels.length, image.width, image.height)
               record_start_file_fill(:image, pixels.length, from_start_file, colors) if from_start_file
               drawn = if colors == SHADING_PLACES
                         bitmap = @data.fetch(name)
@@ -207,8 +222,15 @@ module VBlank
               record_marked_pixels(:image, pixels.length, drawn)
               pixels.concat(drawn.map { |pixel| image_pixel_kept(pixel) })
             end
-            @image_pixel_count = pixels.length # what the runtime copies them by, to fill an image read from the start file
-            [runtime_array("image_pixels", "int16_t", pixels), runtime_array("images", "int32_t", info), *sprite_name_arrays]
+            @image_pixels_held = pixels.length
+            room_at = read_at_start.reduce(pixels.length) do |at, (info_at, node, colors)|
+              info[info_at] = at
+              record_start_file_fill(:image, at, node, colors)
+              at + (node.width * node.height)
+            end
+            @image_pixel_count = room_at # what the runtime copies them by, to fill an image read from the start file
+            [runtime_array("image_pixels", "int16_t", pixels, grows: room_at > pixels.length), runtime_array("images", "int32_t", info),
+             *sprite_name_arrays]
           end
 
           # Reference#sprites names each sprite it drew by two names: the one the game declared it
@@ -434,26 +456,11 @@ module VBlank
             maps = []
             painted_tiles = []
             run_colors = []
+            tiles_starts = lay_out_background_tiles(tile_pixels)
             fields = @stacking.scenery.flat_map do |bg|
-              tiles_start = tile_pixels.length
+              tiles_start = tiles_starts.fetch(bg)
               steps = color_swaps(bg)
-              # A background whose map is read from the start file has, after the tiles the game
-              # holds for it, a tile for every cell of the map, see-through until the file is read
-              # (StartFileFills#record_start_file_background_fill).
-              cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
-              tile_count = bg.tiles.length + cell_tiles
-              record_start_file_background_fill(tiles_start, bg, steps) if bg.from_file
-              [nil, *steps].each do |swaps|
-                bg.tiles.each do |tile|
-                  if (read_at_start = picture_from_start_file(tile))
-                    record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
-                  end
-                  drawn = tile_colors(tile, swaps)
-                  record_marked_pixels(:tile, tile_pixels.length, drawn)
-                  tile_pixels.concat(drawn)
-                end
-                tile_pixels.concat(Array.new(cell_tiles * RUN_TILE_PIXELS, 0xFFFF))
-              end
+              tile_count = bg.tiles.length + (bg.from_file ? bg.from_file.tiles_drawn : 0)
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
               bg.every_map.each do |map|
@@ -471,11 +478,78 @@ module VBlank
                tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR]
             end
-            @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file
-            [runtime_array("tile_pixels", "uint16_t", tile_pixels), runtime_array("backgrounds", "int32_t", fields),
+            [runtime_array("tile_pixels", "uint16_t", tile_pixels, grows: @tile_pixel_count > tile_pixels.length),
+             runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
              runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
              runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
+          end
+
+          # EVERY BACKGROUND'S TILES, written into +tile_pixels+, and where each background's start
+          # there, by background.
+          #
+          # A BACKGROUND WHOSE MAP IS READ FROM THE START FILE IS NOT WRITTEN AT ALL. Its tiles are
+          # the file's: a tile for every cell of the map, see-through until the routine reading the
+          # file fills it (StartFileFills#record_start_file_background_fill), and before them the
+          # tiles the game holds, which are a tile the game paints (see-through until it does), a
+          # picture read from the file, or a bank's stand-in that the map never names; all of it
+          # again for each set of colours the background is drawn in. Written out, a title's screen
+          # followed through every set of its banks is tens of megabytes of see-through pixels. So
+          # such a background's tiles come after those written, as room the game makes as it starts
+          # (StartFileFills#build_start_file_pixel_room), see-through, and only a held tile that draws
+          # something the file does not fill is written, into that room, by the routine
+          # (#record_start_file_tile_writes).
+          def lay_out_background_tiles(tile_pixels)
+            starts = {}.compare_by_identity
+            read_at_start, written = @stacking.scenery.partition(&:from_file)
+            written.each do |bg|
+              starts[bg] = tile_pixels.length
+              background_tile_chunks(bg, tile_pixels.length).each { |chunk| tile_pixels.concat(chunk.pixels) }
+            end
+            room_at = @tile_pixels_held = tile_pixels.length
+            read_at_start.each do |bg|
+              starts[bg] = room_at
+              background_tile_chunks(bg, room_at).each do |chunk|
+                record_start_file_tile_writes(chunk) unless chunk.filled_at_start
+                room_at += chunk.pixels.length
+              end
+            end
+            @tile_pixel_count = room_at # what the runtime copies them by, to fill a tile read from the start file
+            starts
+          end
+
+          # A run of a background's tile pixels as #background_tile_chunks lays them out: +pixels+ from
+          # +start+, and whether the routine reading the start file fills all of them.
+          TileChunk = Data.define(:start, :pixels, :filled_at_start)
+
+          # The tiles of +bg+ from +start+ in the tile pixels, a chunk a tile, and its cells' tiles read
+          # from the file as one chunk a set: the tiles the game holds and then those cells', once for
+          # the colours it was drawn in and once for each step (#color_swaps). Each fill and each
+          # pixel drawn in a colour read as the game starts is noted here, where its place is known.
+          def background_tile_chunks(bg, start)
+            at = start
+            steps = color_swaps(bg)
+            # A background whose map is read from the start file has, after the tiles the game
+            # holds for it, a tile for every cell of the map, see-through until the file is read
+            # (StartFileFills#record_start_file_background_fill).
+            cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
+            record_start_file_background_fill(start, bg, steps) if bg.from_file
+            [nil, *steps].flat_map do |swaps|
+              held = bg.tiles.map do |tile|
+                read_at_start = picture_from_start_file(tile)
+                record_start_file_fill(:tile, at, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from]) if read_at_start
+                drawn = tile_colors(tile, swaps)
+                record_marked_pixels(:tile, at, drawn)
+                chunk = TileChunk.new(start: at, pixels: drawn, filled_at_start: !read_at_start.nil?)
+                at += drawn.length
+                chunk
+              end
+              next held if cell_tiles.zero?
+
+              cells = TileChunk.new(start: at, pixels: Array.new(cell_tiles * RUN_TILE_PIXELS, TILE_SEE_THROUGH), filled_at_start: true)
+              at += cells.pixels.length
+              [*held, cells]
+            end
           end
 
           # A background's tiles the game paints, added to the two arrays rg_screen.c finds them

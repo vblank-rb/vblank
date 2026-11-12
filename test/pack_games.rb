@@ -1132,6 +1132,11 @@ module PackGames
           recolor :palette_2, :other
         end
       end,
+      # Several sprites sharing poses, each following the list its pose's frame picks, two of
+      # those lists recoloured through sets of their own.
+      game(:actors_sharing_poses_whose_lists_are_recolored, passes: 6) do |folder, options|
+        built_by(recolored_actors_builder(folder, size: SIZE, options: options))
+      end,
       # Only the pieces of the bank given are painted, the file saying which those are.
       game(:pose_of_one_banks_pieces, passes: 3) do |folder, options|
         built_by(game_builder_of(folder, options: options) do |pack|
@@ -1623,6 +1628,9 @@ module PackGames
       end,
       game(:tile_of_a_scene_in_colours_of_its_own_taking_turns_through_pack_pictures, passes: 10) do |folder, options|
         built(*lair_game_and_file(folder, options: options))
+      end,
+      game(:tile_taking_turns_on_a_background_of_many_cells_in_two_banks, passes: 8) do |folder, options|
+        built(*title_belt_game_and_file(folder, words: PackTilePictureGames.title_belt_words(24), options: options))
       end
     ].freeze
   end
