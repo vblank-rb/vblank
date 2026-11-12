@@ -117,6 +117,11 @@ module VBlank
               asm.load([at + VALID], :a)
               asm.load(:a, 0xFF)
               asm.load([memory[Picture::GRID_UP]], :a)
+              # Its view can put a cell in any row of the console's grid, so a grid put up after it
+              # copies every row (Picture#emit_background).
+              asm.load(:a, Art::GRID_CELLS)
+              asm.load([memory[Picture::GRID_ROWS]], :a)
+              asm.load([memory[Picture::GRID_ROWS] + Picture::GRID_ROWS_REACHED], :a)
               asm.load(:a, 1)
               asm.load([at + ON], :a)
               asm.jump("rt_big_prepare")

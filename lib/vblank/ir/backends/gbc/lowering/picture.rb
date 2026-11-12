@@ -215,7 +215,7 @@ module VBlank
             # A GAME WHOSE BACKGROUNDS FIT, and whose scenes bring only their sprite pictures in, keeps
             # every background's tiles from power-on, as a game with no rooms does: each scene's room
             # is its pictures alone. Its screens then come up as they would with every picture already
-            # in, a grid a few rows a blank (Runtime::Picture#emit_rooms).
+            # in, a grid put up as the blank holds it (Runtime::Picture#emit_rooms, #emit_map_rows).
             def plan_tile_rooms
               # Where screens bring their own colours in, a painted tile's list is its screen's, so
               # only its number is settled here.
@@ -1777,7 +1777,8 @@ module VBlank
                     background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg, which))
                   end
                 end
-                @art.grid(cells)
+                # A cell the game changes is on one of its maps, so no row past the tallest holds one.
+                @art.grid(cells, rows: bg.every_map.map { |tile_map| TileMap.size_of(tile_map).last }.max)
               end
             end
 
