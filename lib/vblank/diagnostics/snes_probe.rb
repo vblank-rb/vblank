@@ -68,10 +68,12 @@ module VBlank
 
       # The console's own memories as bsnes holds them (Verifier#video_ram): the 64K of video
       # memory, the 512 bytes of colour memory, and the sound unit's DSP registers, 128 bytes, as the
-      # sound unit's program last wrote them.
+      # sound unit's program last wrote them, and the sound chip's own 64K of memory, where its program,
+      # its table of recordings and the recordings themselves are kept.
       def video_ram = @core.vram
       def color_ram = @core.cgram
       def sound_registers = @core.dsp_registers
+      def sound_ram = @core.apu_ram
 
       # bsnes here draws every layer into one picture and takes no word to leave one out.
       def showing(**)
