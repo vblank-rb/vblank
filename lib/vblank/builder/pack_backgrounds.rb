@@ -55,7 +55,8 @@ module VBlank
     # have worked them out by hand: each different tile as drawn (a tile, its bank and its turn) a
     # picture of 8x8, and the map those pictures, a big cell its tiles. So the console, the
     # interpreter and every build draw it as any background, and a tile that draws nothing is
-    # left empty.
+    # left empty. On a console that draws tiles of 16x16, a cell of 16x16 is one picture of that
+    # size instead, as the original's map is (#big_pack_cells?).
     #
     # WITH THE PACK LEFT OUT nothing of the slots is known here: not which tiles the map names, nor
     # which bank each is drawn from, nor one colour. So the background is declared by where its
@@ -100,27 +101,108 @@ module VBlank
                      else
                        declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
                      end
-        cells = pack_map_cells(map, "#{subject}'s map:").each_slice(across).flat_map do |row|
-          Array.new(tiles_a_side) do |down|
-            row.flat_map { |word| Array.new(tiles_a_side) { |along| words.cell_tile(word, along, down, tiles_a_side) } }
-          end
-        end
-        # The tiles that take turns through pictures are tiles of runs (PackTilePictures).
-        pictures = declare_moving_pack_tiles(name, cells.flatten.uniq.select { |tile| moving.key?(tile.tile) }, moving, bank_lists)
-        rows = cells.map do |row|
-          row.map { |tile| pictures.fetch(tile) { pictures[tile] = pack_background_tile(name, tile, tile_places, bank_lists, pictures.length) } }
-        end
-        cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists) do |tile, number|
-          pack_background_tile(name, tile, tile_places, bank_lists, number)
-        end
-        drawn = pictures.values.compact
+        map_words = pack_map_cells(map, "#{subject}'s map:").each_slice(across).to_a
+        shape = PackMapShape.new(name: name, words: words, tiles_a_side: tiles_a_side, tile_places: tile_places,
+                                 bank_lists: bank_lists)
+        made = if big_pack_cells?(tiles_a_side, moving)
+                 pack_background_of_big_cells(shape, map_words, set_cells)
+               else
+                 pack_background_of_tiles(shape, map_words, set_cells, moving)
+               end
+        drawn = made.pictures.values.compact
         refuse_pack_background_drawing_nothing!(name) if drawn.empty?
         tileset = :"background :#{name} tiles"
         tiles(tileset, drawn.to_h { |picture| [picture, picture] })
         # Which banks the map uses is in the player's copy, so the game may name any bank of the slot.
         # Tiles drawn from the whole table have no list, so there is none to name.
         named = drawn_from_whole_table?(tiles) ? [] : bank_lists
-        background(name, tiles: tileset, map: rows, **others).allow_undrawn_lists(named).allow_set_cells(cells)
+        background(name, tiles: tileset, map: made.rows, **others).allow_undrawn_lists(named).allow_set_cells(made.told)
+      end
+
+      # What making a background's pictures from the pack reads: the background's +name+, the layout
+      # of a cell (+words+, Console::MapWordFormat), how many tiles a cell is across, each tile's
+      # places from the slot, and the bank lists by bank.
+      PackMapShape = Data.define(:name, :words, :tiles_a_side, :tile_places, :bank_lists)
+
+      # What making them gives back: the map's +rows+ of picture names, every +pictures+ made (nil
+      # for what draws nothing) by what it was made from, and the cells `set_cell` may write
+      # (+told+, a DSL::PackCells, or nil).
+      PackMapPictures = Data.define(:rows, :pictures, :told)
+
+      # A CELL OF 16x16 IS ONE TILE OF 16x16 where the console draws such tiles. A Super Nintendo
+      # original keeps such a screen as a map of 32 by 32 cells, and its own game shows it as a layer
+      # of 16x16 tiles: a map of 2 KB, which goes to video memory in the blank as the screen comes in.
+      # Made of 8x8 pictures the same screen is a map of 64 by 64, four times the bytes, and sending
+      # it holds the game for frames as the scene arrives. So where the console has tiles of 16x16
+      # each different cell as drawn is one picture of 16x16, as a game drawing the screen itself
+      # would declare it. Tiles that take turns through pictures are 8x8 pictures of runs
+      # (PackTilePictures), so a background with any keeps its cells as 8x8 tiles.
+      # A program built for no console (a test's) is laid out for none, so it keeps 8x8 tiles.
+      def big_pack_cells?(tiles_a_side, moving)
+        tiles_a_side == 2 && moving.empty? && !@program.console.nil? && @console.big_background_tiles
+      end
+
+      # The map of +map_words+ (rows of cells) as a picture of 16x16 for each cell, kept by its
+      # cell's four tiles. Hands back a PackMapPictures.
+      def pack_background_of_big_cells(shape, map_words, set_cells)
+        pictures = {}
+        rows = map_words.map do |row|
+          row.map do |word|
+            quarters = pack_cell_quarters(shape.words, word)
+            pictures.fetch(quarters) { pictures[quarters] = pack_background_big_cell(shape, quarters, pictures.length) }
+          end
+        end
+        told = declare_pack_cells_written_later(shape.name, set_cells, shape.words, shape.tiles_a_side, pictures,
+                                                shape.bank_lists, big: true) do |quarters, number|
+          pack_background_big_cell(shape, quarters, number)
+        end
+        PackMapPictures.new(rows: rows, pictures: pictures, told: told)
+      end
+
+      # The map of +map_words+ (rows of cells) as a picture of 8x8 for each tile as drawn, a cell
+      # +shape.tiles_a_side+ of them each way. Hands back a PackMapPictures.
+      def pack_background_of_tiles(shape, map_words, set_cells, moving)
+        side = shape.tiles_a_side
+        cells = map_words.flat_map do |row|
+          Array.new(side) do |down|
+            row.flat_map { |word| Array.new(side) { |along| shape.words.cell_tile(word, along, down, side) } }
+          end
+        end
+        # The tiles that take turns through pictures are tiles of runs (PackTilePictures).
+        pictures = declare_moving_pack_tiles(shape.name, cells.flatten.uniq.select { |tile| moving.key?(tile.tile) }, moving,
+                                             shape.bank_lists)
+        rows = cells.map do |row|
+          row.map do |tile|
+            pictures.fetch(tile) do
+              pictures[tile] = pack_background_tile(shape.name, tile, shape.tile_places, shape.bank_lists, pictures.length)
+            end
+          end
+        end
+        told = declare_pack_cells_written_later(shape.name, set_cells, shape.words, side, pictures, shape.bank_lists) do |tile, number|
+          pack_background_tile(shape.name, tile, shape.tile_places, shape.bank_lists, number)
+        end
+        PackMapPictures.new(rows: rows, pictures: pictures, told: told)
+      end
+
+      # The four tiles of the 16x16 cell +word+, as drawn: top left, top right, bottom left, bottom right.
+      def pack_cell_quarters(words, word) = Array.new(4) { |at| words.cell_tile(word, at % 2, at / 2, 2) }.freeze
+
+      # The picture of 16x16 of a cell whose tiles as drawn are +quarters+ (#pack_cell_quarters),
+      # drawn from the list of its bank. Nil for a cell that draws nothing, left empty in the map.
+      def pack_background_big_cell(shape, quarters, number)
+        side = Original::Slot::TILE_SIDE
+        turned = quarters.map do |tile|
+          places = pack_tile_at(shape.tile_places, tile.tile, "background :#{shape.name}")
+          turned_rows(places.each_slice(side).to_a, mirrored: tile.mirrored, upside_down: tile.upside_down)
+        end
+        return nil if turned.flatten.all?(&:zero?)
+
+        places = Array.new(2 * side) do |y|
+          Array.new(2 * side) { |x| turned[((y / side) * 2) + (x / side)][y % side][x % side] }
+        end.flatten
+        picture = :"background :#{shape.name} cell #{number}"
+        define_pack_bank_tile(picture, places, pack_bank_list(shape.name, quarters.first.bank, shape.bank_lists), side: 2 * side)
+        picture
       end
 
       # TILES OF MORE COLOURS THAN A LIST HOLDS ARE DRAWN FROM THE WHOLE TABLE. A tile of sixteen
@@ -157,13 +239,18 @@ module VBlank
       # its pack as the game starts cannot tell that a tile draws nothing, so its block always
       # makes a picture and none is made here.
       #
+      # Where the map's cells are +big+ pictures of 16x16 (#big_pack_cells?), a told cell is one
+      # such picture, kept in +pictures+ by its four tiles, and the block makes it given those.
+      #
       # Hands back a DSL::PackCells for the background's handle, or nil where none are told.
-      def declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists)
+      def declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists, big: false, &)
         return nil if set_cells.nil?
 
         tiles_by_word = {}
-        cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: tiles_by_word)
+        cells = DSL::PackCells.new(format: words, side: big ? 1 : tiles_a_side, tiles_by_word: tiles_by_word)
         pack_cell_words!(name, set_cells, cells).each do |word|
+          next tiles_by_word[cells.read_part(word)] ||= [told_big_cell(name, words, word, pictures, bank_lists, &)] if big
+
           tiles_by_word[cells.read_part(word)] ||= Array.new(tiles_a_side * tiles_a_side) do |at|
             tile = words.cell_tile(word, at % tiles_a_side, at / tiles_a_side, tiles_a_side)
             pictures[tile] = yield(tile, pictures.length) unless pictures.key?(tile)
@@ -171,6 +258,16 @@ module VBlank
           end
         end
         cells
+      end
+
+      # The picture of 16x16 of the told cell +word+, made by the block where the map has none
+      # yet; a cell that draws nothing is see-through all over, as a told 8x8 tile is.
+      def told_big_cell(name, words, word, pictures, bank_lists)
+        quarters = pack_cell_quarters(words, word)
+        pictures[quarters] = yield(quarters, pictures.length) unless pictures.key?(quarters)
+        bank = quarters.first.bank
+        pictures[quarters] ||
+          (pictures[[:big_blank, bank]] ||= pack_background_blank_tile(name, bank, bank_lists, side: 2 * Original::Slot::TILE_SIDE))
       end
 
       # The cell numbers +set_cells+ names, in the order given, each in the layout of +cells+ (a
@@ -203,14 +300,13 @@ module VBlank
 
       # A picture that draws nothing, for a told cell whose tile is see-through all over. It is
       # drawn from the list of +bank+ as the tile it stands for is, so it brings no colours of its own.
-      def pack_background_blank_tile(name, bank, bank_lists)
+      def pack_background_blank_tile(name, bank, bank_lists, side: Original::Slot::TILE_SIDE)
         list = bank_lists.fetch(bank) do
           raise ArgumentError, "background :#{name} was told a cell drawn from bank #{bank} of colors, and its colors: " \
                                "slot holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank " \
                                "its cells use."
         end
-        side = Original::Slot::TILE_SIDE
-        picture = :"background :#{name} blank tile #{bank}"
+        picture = side == Original::Slot::TILE_SIDE ? :"background :#{name} blank tile #{bank}" : :"background :#{name} blank cell #{bank}"
         # It draws no place, so it needs none of its bank's colours: a console that keeps a list of
         # colours a tile gives it the backdrop's alone, not a list for a bank the map may not use.
         image picture, width: side, height: side, places: Array.new(side * side, 0), colors: list
@@ -404,11 +500,7 @@ module VBlank
         return nil if places.all?(&:zero?)
 
         rows = turned_rows(places.each_slice(side).to_a, mirrored: tile.mirrored, upside_down: tile.upside_down)
-        list = bank_lists.fetch(tile.bank) do
-          raise ArgumentError, "background :#{name} has a cell drawn from bank #{tile.bank} of colors, and its colors: " \
-                               "slot holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank " \
-                               "its map uses."
-        end
+        list = pack_bank_list(name, tile.bank, bank_lists)
         picture = :"background :#{name} tile #{number}"
         if list.is_a?(Array)
           # A table of colours, not a list's name: the picture holds its colours itself.
@@ -426,10 +518,18 @@ module VBlank
       # colours where the bank holds them, as the original does: however many of the bank's places
       # a tile draws, a screen the original drew in seven banks takes seven of its eight lists.
       # Every other console draws it as any picture drawn by place from a list.
-      def define_pack_bank_tile(picture, places, list)
-        side = Original::Slot::TILE_SIDE
+      def define_pack_bank_tile(picture, places, list, side: Original::Slot::TILE_SIDE)
         define_placed_image(picture, places: places, width: side, height: side, colors: declared_colors_for_image!(picture, list),
                                      colors_name: list, places_from_pack: true)
+      end
+
+      # The list of bank +bank+ of +bank_lists+, for a cell of the map of background +name+.
+      def pack_bank_list(name, bank, bank_lists)
+        bank_lists.fetch(bank) do
+          raise ArgumentError, "background :#{name} has a cell drawn from bank #{bank} of colors, and its colors: " \
+                               "slot holds #{bank_lists.length} banks. To fix this, give it a slot that holds every bank " \
+                               "its map uses."
+        end
       end
 
       # Each bank of +colors+ (a whole slot of colours), +size+ colours to a bank, as a list named

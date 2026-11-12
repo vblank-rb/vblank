@@ -145,7 +145,7 @@ module VBlank
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
-                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory) do
+                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -190,9 +190,14 @@ module VBlank
       # the Game Boy family's chip makes its square waves, waveform and hiss itself. A desktop, web or
       # Ruby build made as such a console plays its voices that chip's way (runtime/rg_spu.c), so it
       # sounds like the console it was made as.
+      #
+      # +big_background_tiles+ marks a console whose hardware draws a background from tiles of 16x16
+      # as well as 8x8 (the Super Nintendo's, BGMODE's size bits), so a cell of 16x16 is one entry of
+      # its map. A background from the data pack whose cells are 16x16 is built from pictures of that
+      # size there (Builder::PackBackgrounds#big_pack_cells?), as the original's map is.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
-                     voices_read_sound_memory: false, **rest) = super
+                     voices_read_sound_memory: false, big_background_tiles: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -437,6 +442,7 @@ module VBlank
                                      # Its mosaic (MOSAIC, $2106) has a switch for each background
                                      # and none for the sprites.
                                      sprites_in_blocks: false,
+                                     big_background_tiles: true,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
