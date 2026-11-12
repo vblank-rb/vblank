@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "runtime/boot"
+require_relative "runtime/draw_list"
 require_relative "runtime/int32"
 require_relative "runtime/frame"
 require_relative "runtime/pads"
@@ -19,7 +20,8 @@ module VBlank
       class PS1
         # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
-        # (Frame, Pads), the lists (Lists), the painted screen (Paint), the faces of a place (Faces), and
+        # (Frame, Pads), the lists (Lists), the list of drawing commands the DMA hands to the graphics chip
+        # (DrawList), the painted screen (Paint), the faces of a place (Faces), and
         # the sound chip (Sound).
         #
         # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
@@ -65,7 +67,9 @@ module VBlank
                        samples: false, planes: nil, collides: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
+            DrawList.reserve_late(memory)
             Boot.emit(asm, memory, main: main)
+            DrawList.emit(asm, memory, faces: faces)
             Int32.emit(asm)
             Frame.emit(asm, memory, sound: sound, tiles: !planes.nil?)
             Pads.emit(asm, memory)

@@ -16,8 +16,8 @@ module VBlank
           # x 320 holds the game's pictures (PS1::PaintedArt), and the 16 lines under each page their
           # colour tables (PS1::TextureMemory), copied in at power-on.
           #
-          # HOW IT IS DRAWN. The graphics chip draws whatever the processor sends to its GP0 port, a
-          # command at a time. A rectangle of one colour is one command (GP0 60h), and a picture is a
+          # HOW IT IS DRAWN. The graphics chip draws whatever reaches its GP0 port, a command at a time;
+          # the painted screen's commands go into the list the DMA hands to it (Runtime::DrawList). A rectangle of one colour is one command (GP0 60h), and a picture is a
           # textured rectangle for each piece of it (GP0 65h), each texel's colour copied as it is, read
           # from the piece's colour table where it has one (PS1::TextureMemory). Neither is
           # dithered or blended, so the pixels are the colours the game named. The processor works out
@@ -100,7 +100,7 @@ module VBlank
             # into puts nothing back.
             def emit_patches(asm, at)
               h = Console::PS1Hardware
-              port = h::GP0 & 0xFFFF
+              word = ->(index) { DrawList.word_offset_bytes(index) }
               asm.label("rt_paint_save")
               asm.li(:t0, h::SCREEN_WIDTH)
               emit_clip(asm, tag: "rt_paint_save_x", pos: :a0, size: :t4, low: :zero, high: :t0, start: :t6, length: :t7, skip: :t8,
@@ -114,19 +114,19 @@ module VBlank
               asm.sw(:v0, PATCH_HEIGHT, :a2)
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
               asm.lw(:t0, at.call(PAGE_Y), :gp)
               asm.addu(:t0, :t0, :t9)
               asm.sll(:t0, :t0, 16)
               asm.or(:t0, :t0, :t6)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(1), :t1)
               asm.sll(:t0, :v1, 16)
               asm.addu(:t0, :t0, :t8)
               asm.addu(:t0, :t0, :a3)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(2), :t1)
               asm.sll(:t0, :v0, 16)
               asm.or(:t0, :t0, :t7)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(3), :t1)
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
               asm.label("rt_paint_save_none")
@@ -147,19 +147,19 @@ module VBlank
               emit_clip_to_area(asm, at, tag: "rt_paint_restore", empty: "rt_paint_restore_none")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
               asm.sll(:t0, :t9, 16)
               asm.addu(:t0, :t0, :t4)
               asm.addu(:t0, :t0, :v0)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(1), :t1)
               asm.lw(:t0, at.call(PAGE_Y), :gp)
               asm.addu(:t0, :t0, :t7)
               asm.sll(:t0, :t0, 16)
               asm.or(:t0, :t0, :t5)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(2), :t1)
               asm.sll(:t0, :t8, 16)
               asm.or(:t0, :t0, :t6)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(3), :t1)
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
               asm.label("rt_paint_restore_none")
@@ -246,17 +246,23 @@ module VBlank
 
             # rt_paint_fill: a0, a1, a2, a3 = x, y, width, height, t4 = the rectangle command with its
             # colour (GP0 60h). The part inside the area, as one rectangle on the page drawn into.
-            # rt_paint_clear: a0 = the command; the whole area (Reference::Framebuffer#clear).
+            # rt_paint_clear: a0 = the command; the whole area (Reference::Framebuffer#clear), sent to the chip
+            # at once if the DMA is free (Runtime::DrawList's rt_draw_list_kick): the chip takes a while to
+            # fill the screen, and does it while the processor works out what comes next.
             def emit_fill(asm, at, faces)
               area = at.call(AREA)
               asm.label("rt_paint_clear")
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
               asm.move(:t4, :a0)
               asm.lw(:a0, area + AREA_LEFT_OFFSET_BYTES, :gp)
               asm.lw(:a1, area + AREA_TOP_OFFSET_BYTES, :gp)
               asm.lw(:a2, area + AREA_RIGHT_OFFSET_BYTES, :gp)
               asm.lw(:a3, area + AREA_BOTTOM_OFFSET_BYTES, :gp)
               asm.subu(:a2, :a2, :a0)
-              asm.subu(:a3, :a3, :a1)
+              asm.jal("rt_paint_fill") { asm.subu(:a3, :a3, :a1) }
+              asm.lw(:ra, 0, :sp)
+              asm.j("rt_draw_list_kick") { asm.addiu(:sp, :sp, 4) }
 
               asm.label("rt_paint_fill")
               Faces.emit_chip_put_back_call(asm) if faces
@@ -264,7 +270,7 @@ module VBlank
               emit_clip_to_area(asm, at, tag: "rt_paint_fill", empty: "rt_paint_fill_none")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
-              asm.jal("rt_gp0_word") { asm.move(:a0, :v1) }
+              DrawList.emit_command(asm, 3) { asm.move(:a0, :v1) }
               emit_corner_and_size(asm, at)
               asm.lw(:ra, 0, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
@@ -288,21 +294,21 @@ module VBlank
                              skip: :t9, empty: empty)
             end
 
-            # The corner and the size #emit_clip_to_area left, stored to GP0 through t1 (rt_gp0_word's) as
-            # the next words of a command already begun: the corner as a place on the page drawn into,
-            # the size as height << 16 | width. A textured rectangle has its texture's corner between the
-            # two (+between+, a block that stores it). Changes v0.
+            # The corner and the size #emit_clip_to_area left, stored through t1 (as a DrawList command's
+            # routine leaves it) as the next words of a command already begun: the corner as a place on the
+            # page drawn into (its second word), the size as height << 16 | width (its last). A textured
+            # rectangle has its texture's corner between the two (+between+, a block that stores it as the
+            # third word). Changes v0.
             def emit_corner_and_size(asm, at, &between)
-              port = Console::PS1Hardware::GP0 & 0xFFFF
               asm.lw(:v0, at.call(PAGE_Y), :gp)
               asm.addu(:v0, :v0, :t7)
               asm.sll(:v0, :v0, 16)
               asm.or(:v0, :v0, :t5)
-              asm.sw(:v0, port, :t1)
+              asm.sw(:v0, DrawList.word_offset_bytes(1), :t1)
               between&.call
               asm.sll(:v0, :t8, 16)
               asm.or(:v0, :v0, :t6)
-              asm.sw(:v0, port, :t1)
+              asm.sw(:v0, DrawList.word_offset_bytes(between ? 3 : 2), :t1)
             end
 
             # rt_paint_blit: a0 = a picture's place in PaintedArt's table, a1, a2 = x, y. Each piece of it
@@ -349,14 +355,14 @@ module VBlank
               emit_clip_to_area(asm, at, tag: "rt_paint_blit", empty: "rt_paint_blit_next")
               # The draw mode, a command of one word, then the rectangle's four, sent whole.
               asm.lw(:a0, 8, :s0)
-              asm.jal("rt_gp0_word")
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
+              DrawList.emit_command(asm, 1)
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
               emit_corner_and_size(asm, at) do
                 asm.lw(:v0, 12, :s0)
                 asm.sll(:v1, :t9, 8)
                 asm.addu(:v0, :v0, :v1)
                 asm.addu(:v0, :v0, :t4)
-                asm.sw(:v0, h::GP0 & 0xFFFF, :t1)
+                asm.sw(:v0, DrawList.word_offset_bytes(2), :t1)
               end
               asm.label("rt_paint_blit_next")
               asm.addiu(:s0, :s0, PIECE_BYTES)
@@ -383,17 +389,21 @@ module VBlank
               asm.lw(:t0, at.call(PAGED), :gp)
               asm.beq(:t0, :a0, "rt_paint_screen_same")
               asm.sw(:a0, at.call(PAGED), :gp)
-              asm.lw(:t0, at.call(PAGE_Y), :gp)
-              asm.beq(:a0, :zero, "rt_paint_show_t0")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
+              asm.lw(:t0, at.call(PAGE_Y), :gp)
+              asm.beq(:a0, :zero, "rt_paint_screen_drawn")
               asm.xori(:t4, :t0, SECOND_PAGE_TOP_LINE)
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_FILL >> 16) }
+              DrawList.emit_command(asm, 3) { asm.lui(:a0, h::GP0_FILL >> 16) }
               asm.sll(:t0, :t4, 16)
-              asm.sw(:t0, h::GP0 & 0xFFFF, :t1)
+              asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
               asm.li(:t0, (h::SCREEN_HEIGHT << 16) | h::SCREEN_WIDTH)
-              asm.sw(:t0, h::GP0 & 0xFFFF, :t1)
+              asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
               asm.move(:t0, :t4)
+              # What was drawn so far, and the other page's black, drawn before the page shown changes
+              # (Runtime::DrawList). The list's routines change only t1 to t3.
+              asm.label("rt_paint_screen_drawn")
+              asm.jal("rt_draw_list_finish")
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
               # Show the page whose top line is in t0.
@@ -427,19 +437,19 @@ module VBlank
             # in, it signals it has room for another word only once it has had time to store the last, and
             # time does not move on for it while the processor only asks (Beetle PSX measured: a picture
             # sent a word at a time had not arrived after 600 frames). The DMA controller hands the chip
-            # each word as it asks for it: the copy's command goes first through the port, then the
-            # chip is told to take words by DMA (GP1 04h), and channel 2 sends the pixels from RAM a word
-            # a block until they are all gone.
+            # each word as it asks for it: the copy's command goes first through the port, and channel 2,
+            # which the chip takes words from (Runtime::DrawList's rt_draw_list_start), sends the pixels
+            # from RAM a word a block until they are all gone.
+            #
+            # The commands drawn so far, video RAM made black among them (Boot), are sent and drawn first,
+            # so the copies come after them and the port is the processor's alone meanwhile.
             def emit_upload(asm)
               h = Console::PS1Hardware
               asm.label("rt_paint_upload")
               asm.addiu(:sp, :sp, -8)
               asm.sw(:ra, 0, :sp)
               asm.sw(:s0, 4, :sp)
-              asm.lui(:t5, h::IO >> 16)
-              asm.lw(:t0, h::DPCR & 0xFFFF, :t5)
-              asm.ori(:t0, :t0, h::DPCR_GPU_ON)
-              asm.sw(:t0, h::DPCR & 0xFFFF, :t5)
+              asm.jal("rt_draw_list_finish")
               asm.la(:s0, "paint uploads")
               asm.label("rt_paint_upload_piece")
               asm.lw(:t4, 0, :s0)
@@ -447,13 +457,11 @@ module VBlank
               # The copy's three words go in one after another once the chip has room: it signals it has no
               # room for the third until it has the whole command (Beetle PSX measured), so asking
               # between them waits for ever. Its queue holds sixteen.
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_TO_VRAM >> 16) }
+              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_COPY_TO_VRAM >> 16) }
               asm.lui(:t5, h::IO >> 16)
               asm.sw(:t4, h::GP0 & 0xFFFF, :t5)
               asm.lw(:t0, 4, :s0)
               asm.sw(:t0, h::GP0 & 0xFFFF, :t5)
-              asm.li(:t0, h::GP1_DMA_DIRECTION | h::DMA_TO_GP0)
-              asm.sw(:t0, h::GP1 & 0xFFFF, :t5)
               asm.lw(:t0, 8, :s0)
               asm.sw(:t0, h::DMA2_MADR & 0xFFFF, :t5)
               asm.lw(:t0, 12, :s0)
@@ -467,13 +475,11 @@ module VBlank
               asm.lw(:t0, h::DMA2_CHCR & 0xFFFF, :t5)
               asm.and(:t0, :t0, :t1)
               asm.bne(:t0, :zero, "rt_paint_upload_wait")
-              asm.li(:t0, h::GP1_DMA_DIRECTION)
-              asm.sw(:t0, h::GP1 & 0xFFFF, :t5)
               asm.b("rt_paint_upload_piece") { asm.addiu(:s0, :s0, 16) }
               asm.label("rt_paint_upload_end")
               # The chip keeps a small cache of the texels and colour table it read last; what it holds from
               # before the copies is thrown away, so the first picture drawn reads what was copied in.
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
               asm.lw(:ra, 0, :sp)
               asm.lw(:s0, 4, :sp)
               asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }

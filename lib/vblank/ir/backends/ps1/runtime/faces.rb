@@ -249,6 +249,24 @@ module VBlank
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
             end
 
+            # A FACE'S COMMANDS GO STRAIGHT TO THE CHIP'S PORT, not into the list of drawing commands the
+            # painted screen sends by DMA (Runtime::DrawList). A place's faces are many small triangles the
+            # chip draws faster than the processor works them out, so the processor seldom waits for it; and
+            # writing each into the list in RAM cost the processor more than storing it to the port (Beetle
+            # PSX measured, the floor of TestPS1PlaceFloorPace: its routines slower all round, and the list's
+            # own routine dearer than the wait it saved). So rt_fill_face first has the list sent and drawn
+            # (#emit_chip_word), which costs nothing while nothing else has been drawn since the last face, and
+            # the face's commands follow it in the chip's queue.
+            #
+            # The command's first word through rt_gp0_port_word (Boot), +slot+ for the jump's delay slot.
+            def emit_port_command(asm, &slot) = asm.jal("rt_gp0_port_word", &slot)
+
+            # A triangle's words after its command's first, from +registers+ in order, stored to the port
+            # through t1, which rt_gp0_port_word leaves holding the ports' base.
+            def emit_words_stored(asm, registers)
+              registers.each { |register| asm.sw(register, Console::PS1Hardware::GP0 & 0xFFFF, :t1) }
+            end
+
             # +into+ = where the address of corner +number+ is in a piece, from the piece's start less its
             # count's word: the number times a word.
             def emit_corner_slot(asm, into, number) = asm.sll(into, number, 2)
@@ -481,13 +499,19 @@ module VBlank
             end
 
             # The chip word in a0 (+which+ of CHIP_WORDS) sent unless the last face sent the same. Changes t0 to t3.
+            #
+            # The texture window, the first, is also where the list of drawing commands asks to be drawn
+            # first: every command put in it sets the kept window to nought, so the face sending its window
+            # has the list sent and drawn before it, and its own commands follow the list's in the chip's
+            # queue (Runtime::DrawList#face_window_offset_bytes).
             def emit_chip_word(asm, at, which)
               kept = at + CHIP_OFFSET_BYTES + (which * 4)
               same = "rt_fill_face_chip_same_#{which}"
               asm.lw(:t0, kept, FACE_BASE)
               asm.beq(:t0, :a0, same)
               asm.label("rt_fill_face_chip_send_#{which}")
-              asm.jal("rt_gp0_word")
+              asm.jal("rt_draw_list_finish") if which.zero?
+              emit_port_command(asm)
               asm.sw(:a0, kept, FACE_BASE)
               asm.label(same)
             end
@@ -495,19 +519,22 @@ module VBlank
             # rt_face_chip_put_back: the chip's texture window and drawing area given back their own, the
             # whole of video RAM and no window, which the painted screen's drawing counts on (Runtime::Boot),
             # when a face has set them since they last were (CHIP_OFFSET_BYTES). The painted screen's
-            # routines that draw call it first (#emit_chip_put_back_call). Changes t0 to t3, t8 and v1.
+            # routines that draw call it first (#emit_chip_put_back_call), and the words go into the list of
+            # drawing commands ahead of theirs (Runtime::DrawList). Changes t0 to t3, t8 and v1.
             def emit_chip_put_back_routine(asm, at)
               h = Console::PS1Hardware
+              # The drawing area's first word, not the window's, which the list of drawing commands sets to
+              # nought for a reason of its own (#emit_chip_word).
               asm.label("rt_face_chip_put_back")
-              asm.lw(:t0, at + CHIP_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t0, at + CHIP_OFFSET_BYTES + 4, FACE_BASE)
               asm.beq(:t0, :zero, "rt_face_chip_own")
               asm.label("rt_face_chip_set")
               asm.move(:t8, :ra)
               asm.move(:v1, :a0)
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURE_WINDOW >> 16) }
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_DRAWING_AREA_TOP_LEFT >> 16) }
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_TEXTURE_WINDOW >> 16) }
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_DRAWING_AREA_TOP_LEFT >> 16) }
               asm.li(:a0, h::GP0_DRAWING_AREA_BOTTOM_RIGHT | (h::VRAM_WIDTH - 1) | ((h::VRAM_HEIGHT - 1) << 10))
-              asm.jal("rt_gp0_word")
+              DrawList.emit_command(asm, 1)
               CHIP_WORDS.times { |which| asm.sw(:zero, at + CHIP_OFFSET_BYTES + (which * 4), FACE_BASE) }
               asm.move(:a0, :v1)
               asm.move(:ra, :t8)
@@ -773,7 +800,6 @@ module VBlank
             # face. On to rt_fill_face_done once sent.
             def emit_straight_face_fan(asm, at, memory)
               h = Console::PS1Hardware
-              port = h::GP0 & 0xFFFF
               records = Memory.distance_from_scratchpad(memory[FILL_STACK])
               place = STRAIGHT_PLACE_BYTES
               next_place = STRAIGHT_CORNER_BYTES + place
@@ -814,16 +840,16 @@ module VBlank
               asm.lw(:t9, STRAIGHT_CORNER_BYTES + STRAIGHT_TEXEL_U_BYTES, :s6)
               asm.bne(:s4, :zero, "rt_fill_face_straight_shaded")
               asm.label("rt_fill_face_straight_raw")
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              %i[t4 t5 t6 t7 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              emit_port_command(asm) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              emit_words_stored(asm, %i[t4 t5 t6 t7 t8 t9])
               asm.b("rt_fill_face_straight_next")
               asm.label("rt_fill_face_straight_shaded")
               asm.lw(:a0, STRAIGHT_COLOR_BYTES, :s5)
               asm.lw(:a1, STRAIGHT_COLOR_BYTES, :s6)
               asm.lw(:a2, STRAIGHT_CORNER_BYTES + STRAIGHT_COLOR_BYTES, :s6)
               asm.lui(:t0, h::GP0_SHADED_TEXTURED_TRIANGLE >> 16)
-              asm.jal("rt_gp0_word") { asm.or(:a0, :a0, :t0) }
-              %i[t4 t5 a1 t6 t7 a2 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              emit_port_command(asm) { asm.or(:a0, :a0, :t0) }
+              emit_words_stored(asm, %i[t4 t5 a1 t6 t7 a2 t8 t9])
               asm.label("rt_fill_face_straight_next")
               asm.addiu(:s2, :s2, -1)
               asm.bne(:s2, :zero, "rt_fill_face_straight_triangle") { asm.addiu(:s6, :s6, STRAIGHT_CORNER_BYTES) }
@@ -1105,7 +1131,6 @@ module VBlank
             # into; a triangle with no area is left out.
             def emit_fan_routine(asm, at, memory, sent)
               h = Console::PS1Hardware
-              port = h::GP0 & 0xFFFF
               offset = ->(number) { NUMBER_OFFSETS.fetch(number) }
               asm.label("rt_face_fan")
               emit_keep_registers(asm)
@@ -1212,7 +1237,7 @@ module VBlank
               asm.mflo(:t8)
               asm.beq(:t7, :t8, "rt_face_fan_next")
               asm.label("rt_face_fan_send")
-              # The words after the command, ready before it goes, as rt_gp0_word changes only t1 to t3.
+              # The words after the command, ready before it goes, as rt_gp0_port_word changes only t1 to t3.
               asm.lw(:t6, 12, :s6) # the second
               asm.lw(:t7, 8, :s6)
               asm.lw(:t8, SENT_CORNER_BYTES + 12, :s6) # the third
@@ -1220,8 +1245,8 @@ module VBlank
               asm.lw(:t9, SENT_CORNER_BYTES + 8, :s6)
               asm.bne(:v1, :zero, "rt_face_fan_shaded")
               asm.label("rt_face_fan_raw")
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              %i[s3 s4 t6 t7 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              emit_port_command(asm) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              emit_words_stored(asm, %i[s3 s4 t6 t7 t8 t9])
               asm.b("rt_face_fan_next")
               # A lit face's: GP0 34h with the first corner's colour, then each corner's place and texel,
               # and the next corner's colour before its place.
@@ -1229,8 +1254,8 @@ module VBlank
               asm.lw(:a1, 16, :s6) # the second's colour
               asm.lw(:a2, SENT_CORNER_BYTES + 16, :s6) # the third's colour
               asm.lui(:t0, h::GP0_SHADED_TEXTURED_TRIANGLE >> 16)
-              asm.jal("rt_gp0_word") { asm.or(:a0, :a3, :t0) }
-              %i[s3 s4 a1 t6 t7 a2 t8 t9].each { |word| asm.sw(word, port, :t1) }
+              emit_port_command(asm) { asm.or(:a0, :a3, :t0) }
+              emit_words_stored(asm, %i[s3 s4 a1 t6 t7 a2 t8 t9])
               asm.label("rt_face_fan_next")
               asm.b("rt_face_fan_triangle") { asm.addiu(:s6, :s6, SENT_CORNER_BYTES) }
               asm.label("rt_face_fan_done")

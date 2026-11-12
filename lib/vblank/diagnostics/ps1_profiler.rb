@@ -15,9 +15,11 @@ module VBlank
     # that waited. The build records where each of the game's routines went (PS1::GameRoutine); the
     # runtime's code is named by the label before it.
     #
-    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime hands it a command and carries on
-    # until the chip's queue is full, and only then waits (rt_gp0_word_wait and the waits beside it, in
-    # the runtime's list). So the chip's work shows in two places: its own share, the cycles it spent
+    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime puts its commands in a list the
+    # DMA hands to the chip, and waits only where a list must be gone before the next is sent, or where
+    # a pass's picture must be whole (rt_draw_list_send_wait, rt_draw_list_finish_wait and
+    # rt_draw_list_drawn_wait); a place's faces go straight to the chip's port and wait for room in its
+    # queue (rt_gp0_port_word_wait). So the chip's work shows in two places: its own share, the cycles it spent
     # drawing out of all the time measured (+gpu_share+, the emulator's count of the time the chip was
     # paying back what each command cost it), and the processor's waits on it, which are the part of
     # that drawing the processor could not work beside.

@@ -181,6 +181,9 @@ module VBlank
               # A screen drawn from tiles is drawn whole once the pass, its timers' routines too, has placed
               # everything, as the interpreter's picture of the pass has it.
               asm.jal("rt_tiles_draw") if tiles
+              # The pass's drawing commands sent and drawn (Runtime::DrawList), before it counts as ended:
+              # its picture is whole by the time it is shown or read back.
+              asm.jal("rt_draw_list_finish")
               # The page this pass drew, kept where a reader finds it while the game waits: the pages
               # may trade places before the game stops waiting.
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
@@ -325,6 +328,7 @@ module VBlank
               asm.li(:t0, HALTED)
               asm.label("rt_stop_with_state")
               asm.sw(:t0, at.call(STATE), :gp)
+              asm.jal("rt_draw_list_finish") # what the stopping pass drew, drawn before it is shown
               asm.sw(:zero, at.call(VBLANK), :gp)
               asm.jal("rt_show_pass")
               asm.li(:t0, END_SHOWN)

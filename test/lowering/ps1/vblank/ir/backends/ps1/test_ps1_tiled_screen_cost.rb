@@ -6,12 +6,18 @@ require "stringio"
 # What drawing a whole tiled screen costs a PlayStation pass, read from where Beetle PSX says the time
 # went. The runtime draws every pass whole (Runtime::Tiles): four backgrounds that each fill the screen
 # and scroll, and the most sprites the console's description allows. The graphics chip fills every
-# pixel of each background, and the processor waits for room in its queue meanwhile (rt_gp0_word_wait),
-# so that wait is where the chip's time shows. The pass must still take one frame.
+# pixel of each background. The commands go to it in a list by DMA (Runtime::DrawList), each background
+# as soon as it is in the list, and the processor waits only for the chip to finish the pass's picture
+# before it is shown (the list's waits), so that wait is where the chip's time shows. The pass must
+# still take one frame.
+#
+# The picture is drawn at the pass's end from where the pass left everything, and shown at the next
+# blank, so the chip's drawing cannot run beside the next pass's work without the picture showing a
+# frame later than it does: the wait is the chip's own time, less what the processor builds beside it.
 class TestPS1TiledScreenCost < Minitest::Test
   BACKGROUNDS = 4
   SPRITES = VBlank::Console::PLAYSTATION.sprites
-  CHIP_WAIT = /\Art_gp0_word_wait\z/
+  CHIP_WAIT = /\Art_(draw_list_\w+_wait|gp0_port_word_wait)\z/
 
   FULL_SCREEN = VBlank.game("TILE COST", consoles: %i[ps1]) do
     screen :tiled
@@ -35,6 +41,6 @@ class TestPS1TiledScreenCost < Minitest::Test
     wait = result.runtime.select { |spent| spent.routine.to_s.match?(CHIP_WAIT) }.sum(&:share)
 
     assert_equal({ 1 => 20 }, result.passes_by_frames)
-    assert_operator wait, :<, 0.7,"the processor waited on the graphics chip for #{wait.round(4)} of each frame"
+    assert_operator wait, :<, 0.54, "the processor waited on the graphics chip for #{wait.round(4)} of each frame"
   end
 end

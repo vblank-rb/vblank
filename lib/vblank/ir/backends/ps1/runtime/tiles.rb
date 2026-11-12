@@ -110,7 +110,7 @@ module VBlank
             # until another goes up on it, so the plane comes round where the map's grid does.
             # rt_plane_take_down: a0 = the plane. rt_plane_scroll: a0 = the plane, a1, a2 = where its view is.
             def emit_plane_routines(asm, at)
-              port = Console::PS1Hardware::GP0 & 0xFFFF
+              word = ->(index) { DrawList.word_offset_bytes(index) }
               asm.label("rt_plane_put_up")
               asm.addiu(:sp, :sp, -4 * (PUT_UP_KEPT.length + 1))
               asm.sw(:ra, 0, :sp)
@@ -137,13 +137,13 @@ module VBlank
               # 0000h, which the chip does not draw.
               asm.move(:s0, :zero)
               asm.label("rt_plane_put_up_fill")
-              asm.jal("rt_gp0_word") { asm.lui(:a0, Console::PS1Hardware::GP0_FILL >> 16) }
+              DrawList.emit_command(asm, 3) { asm.lui(:a0, Console::PS1Hardware::GP0_FILL >> 16) }
               asm.sll(:t0, :s0, 16)
               asm.addu(:t0, :t0, :s1)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(1), :t1)
               asm.li(:t0, PAGE_SIDE << 16)
               asm.or(:t0, :t0, :s4)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(2), :t1)
               asm.addiu(:s0, :s0, PAGE_SIDE)
               asm.slt(:t0, :s0, :s5)
               asm.bne(:t0, :zero, "rt_plane_put_up_fill")
@@ -155,8 +155,8 @@ module VBlank
               asm.addu(:t0, :t0, :s2)
               asm.lw(:s0, 0, :t0)
               asm.beq(:s0, :zero, "rt_plane_put_up_cell")
-              asm.jal("rt_gp0_word") { asm.lui(:a0, COPY_IN_VRAM >> 16) }
-              asm.sw(:s0, port, :t1)
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, COPY_IN_VRAM >> 16) }
+              asm.sw(:s0, word.call(1), :t1)
               asm.srlv(:t5, :s3, :s6)
               asm.sll(:t5, :t5, 19) # the row's top line, eight lines a row, in the top half
               asm.li(:t6, 1)
@@ -166,9 +166,9 @@ module VBlank
               asm.sll(:t6, :t6, 3)
               asm.addu(:t5, :t5, :t6)
               asm.addu(:t5, :t5, :s1)
-              asm.sw(:t5, port, :t1)
+              asm.sw(:t5, word.call(2), :t1)
               asm.li(:t0, CELL_SIZE)
-              asm.b("rt_plane_put_up_cell") { asm.sw(:t0, port, :t1) }
+              asm.b("rt_plane_put_up_cell") { asm.sw(:t0, word.call(3), :t1) }
               asm.label("rt_plane_put_up_end")
               asm.lw(:ra, 0, :sp)
               PUT_UP_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
@@ -197,7 +197,7 @@ module VBlank
             # show is in video RAM (y << 16 | x), t4, t5 = how many columns and rows the map has. A cell
             # outside the map is left alone (Reference#change_cell). The tile is copied over the cell.
             def emit_cell(asm)
-              port = Console::PS1Hardware::GP0 & 0xFFFF
+              word = ->(index) { DrawList.word_offset_bytes(index) }
               asm.label("rt_plane_cell")
               asm.sltu(:t0, :a1, :t4)
               asm.beq(:t0, :zero, "rt_plane_cell_done")
@@ -210,11 +210,11 @@ module VBlank
               asm.addu(:t6, :t6, :t7)
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
-              asm.jal("rt_gp0_word") { asm.lui(:a0, COPY_IN_VRAM >> 16) }
-              asm.sw(:a3, port, :t1)
-              asm.sw(:t6, port, :t1)
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, COPY_IN_VRAM >> 16) }
+              asm.sw(:a3, word.call(1), :t1)
+              asm.sw(:t6, word.call(2), :t1)
               asm.li(:t0, CELL_SIZE)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(3), :t1)
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
               asm.label("rt_plane_cell_done")
@@ -260,7 +260,6 @@ module VBlank
             # placed, as the painted screen draws a picture.
             def emit_draw(asm, at, places, faces)
               h = Console::PS1Hardware
-              port = h::GP0 & 0xFFFF
               page = at.call(Paint::PAGE_Y)
               asm.label("rt_tiles_draw")
               asm.addiu(:sp, :sp, -12)
@@ -269,14 +268,17 @@ module VBlank
               asm.sw(:s1, 8, :sp)
               asm.jal("rt_face_chip_put_back") if faces
               # The texels copied into a plane since the last picture are read afresh, not from the chip's cache.
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
               asm.lw(:a0, at.call(BACKDROP), :gp)
-              asm.jal("rt_gp0_word")
+              DrawList.emit_command(asm, 3)
               asm.lw(:t0, page, :gp)
               asm.sll(:t0, :t0, 16)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
               asm.li(:t0, SCREEN_SIZE)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
+              # The backdrop and each background are a fill or rectangles the size of the screen, which the
+              # chip takes long to draw: each goes to it as soon as the DMA is free (rt_draw_list_kick).
+              asm.jal("rt_draw_list_kick")
               (places.length - 1).downto(0) do |plane|
                 state = at.call(PLANES) + (plane * PLANE_BYTES)
                 skip = "rt_tiles_draw_not_#{plane}"
@@ -285,6 +287,7 @@ module VBlank
                 asm.addiu(:a0, :gp, state)
                 asm.li(:a1, plane_draw_mode(places.fetch(plane)))
                 asm.jal("rt_plane_draw")
+                asm.jal("rt_draw_list_kick")
                 asm.label(skip)
               end
               drawn = at.call(DRAWN)
@@ -324,7 +327,7 @@ module VBlank
             # s6 the screen's column and the plane's at the left of a rectangle, s7 its width.
             def emit_plane_drawing(asm, at)
               h = Console::PS1Hardware
-              port = h::GP0 & 0xFFFF
+              word = ->(index) { DrawList.word_offset_bytes(index) }
               asm.label("rt_plane_draw")
               asm.addiu(:sp, :sp, -4 * (PLANE_DRAW_KEPT.length + 1))
               asm.sw(:ra, 0, :sp)
@@ -349,21 +352,21 @@ module VBlank
               asm.srl(:t1, :s3, 8)
               asm.sll(:t1, :t1, 4)
               asm.addu(:a0, :s1, :t0)
-              asm.jal("rt_gp0_word") { asm.addu(:a0, :a0, :t1) }
-              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
+              DrawList.emit_command(asm, 1) { asm.addu(:a0, :a0, :t1) }
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
               asm.addu(:t0, :t0, :s2)
               asm.sll(:t0, :t0, 16)
               asm.or(:t0, :t0, :s5)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(1), :t1)
               asm.andi(:t2, :s3, PAGE_SIDE - 1)
               asm.sll(:t2, :t2, 8)
               asm.andi(:t3, :s6, PAGE_SIDE - 1)
               asm.or(:t2, :t2, :t3)
-              asm.sw(:t2, port, :t1)
+              asm.sw(:t2, word.call(2), :t1)
               asm.sll(:t0, :s4, 16)
               asm.or(:t0, :t0, :s7)
-              asm.sw(:t0, port, :t1)
+              asm.sw(:t0, word.call(3), :t1)
               asm.addu(:s5, :s5, :s7)
               asm.addu(:s6, :s6, :s7)
               asm.lw(:t1, PLANE_WIDTH_MASK, :s0)

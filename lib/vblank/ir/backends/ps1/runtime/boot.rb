@@ -49,6 +49,10 @@ module VBlank
               emit_graphics_chip(asm, h)
               emit_region_cleared(asm, memory)
               asm.sw(:s0, Runtime.at(memory, Frame::HELD), :gp)
+              # Must start after the region and the scratchpad are cleared, which would wipe its state. The
+              # chip's drawing settings are its first commands.
+              asm.jal("rt_draw_list_start")
+              emit_drawing_settings(asm, h)
               asm.jal("rt_start")
               emit_interrupts_on(asm, h)
               # The game starts as a frame starts, so its first pass ends in a frame after the one the
@@ -57,27 +61,27 @@ module VBlank
               asm.jal(main)
               asm.label("rt_main_returned")
               asm.j("rt_halt")
-              emit_gp0_word(asm, h)
+              emit_gp0_port_word(asm, h)
             end
 
-            # rt_gp0_word: the word in a0 sent to the graphics chip's drawing port, once the chip signals it
-            # can take a command word (GPUSTAT bit 26). A fill keeps the chip busy for a while, and a word
-            # sent while it is busy would be lost.
+            # rt_gp0_port_word: the word in a0 stored to the graphics chip's drawing port by the processor,
+            # once the chip signals it has room (GPUSTAT bit 28). Two things take this way, each once the list
+            # of drawing commands has been sent and taken (DrawList), so they come after it: the copies of the
+            # pictures into video RAM at power-on (Paint's rt_paint_upload), and the faces of a place
+            # (Faces#emit_port_command says why). Everything else drawn goes in that list.
             #
-            # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_word, and the rest
-            # stored to GP0 straight after, through t1, which rt_gp0_word leaves holding the ports' base.
-            # The chip signals it has no room for a command's last word until it holds the whole command
-            # (Beetle PSX measured: a textured rectangle, and a copy into video RAM, asked for between
-            # their words, waited for ever). Its queue holds sixteen words, and it signals it has room only
-            # once it has taken every whole command it was sent, so any command fits.
-            def emit_gp0_word(asm, h)
-              asm.label("rt_gp0_word")
+            # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_port_word, and the
+            # rest stored to GP0 straight after, through t1, which it leaves holding the ports' base. The
+            # chip signals it has no room for a command's last word until it holds the whole command
+            # (Beetle PSX measured: a copy into video RAM, asked for between its words, waited for ever).
+            def emit_gp0_port_word(asm, h)
+              asm.label("rt_gp0_port_word")
               asm.lui(:t1, h::IO >> 16)
               asm.lui(:t3, h::GPUSTAT_READY_FOR_COMMAND >> 16)
-              asm.label("rt_gp0_word_wait")
+              asm.label("rt_gp0_port_word_wait")
               asm.lw(:t2, h::GP1 & 0xFFFF, :t1)
               asm.and(:t2, :t2, :t3)
-              asm.beq(:t2, :zero, "rt_gp0_word_wait")
+              asm.beq(:t2, :zero, "rt_gp0_port_word_wait")
               asm.sw(:a0, h::GP0 & 0xFFFF, :t1)
               asm.jr(:ra)
             end
@@ -185,35 +189,42 @@ module VBlank
               asm.sh(:zero, h::SPU_CONTROL & 0xFFFF, :s1)
             end
 
-            # The graphics chip reset, told to show 320 × 240 from the top left of video RAM, with the
-            # picture off, drawing allowed anywhere, and every pixel of video RAM black: four fills of 512 × 256 (a fill is at most
-            # 1023 across and 511 down). The picture comes on at the end of the first pass (Frame).
+            # The graphics chip reset and told to show 320 × 240 from the top left of video RAM, with the
+            # picture off. The picture comes on at the end of the first pass (Frame).
             def emit_graphics_chip(asm, h)
               gp1 = ->(value) { emit_port_word(asm, h::GP1, value) }
-              gp0 = lambda do |value|
-                asm.li(:a0, value)
-                asm.jal("rt_gp0_word")
-              end
               gp1.call(h::GP1_RESET)
               gp1.call(h::GP1_DISPLAY_ON | 1) # off
               gp1.call(h::GP1_DISPLAY_MODE | h::DISPLAY_MODE_320_BY_240)
               gp1.call(h::GP1_HORIZONTAL_RANGE | h::HORIZONTAL_FIRST | (h::HORIZONTAL_LAST << 12))
               gp1.call(h::GP1_VERTICAL_RANGE | h::VERTICAL_FIRST | (h::VERTICAL_LAST << 10))
               gp1.call(h::GP1_DISPLAY_START)
-              gp0.call(h::GP0_DRAWING_AREA_TOP_LEFT)
+            end
+
+            # The chip's drawing settings, the first commands in the list (Runtime::DrawList): drawing
+            # allowed anywhere, and every pixel of video RAM black, four fills of 512 × 256 (a fill is at
+            # most 1023 across and 511 down).
+            def emit_drawing_settings(asm, h)
+              setting = lambda do |value|
+                asm.li(:a0, value)
+                DrawList.emit_command(asm, 1)
+              end
+              setting.call(h::GP0_DRAWING_AREA_TOP_LEFT)
               # The chip may draw anywhere in video RAM: the processor keeps every drawing inside the screen,
               # and a tear-free screen's second page is below the first (Runtime::Paint).
-              gp0.call(h::GP0_DRAWING_AREA_BOTTOM_RIGHT | (h::VRAM_WIDTH - 1) | ((h::VRAM_HEIGHT - 1) << 10))
-              gp0.call(h::GP0_DRAWING_OFFSET)
+              setting.call(h::GP0_DRAWING_AREA_BOTTOM_RIGHT | (h::VRAM_WIDTH - 1) | ((h::VRAM_HEIGHT - 1) << 10))
+              setting.call(h::GP0_DRAWING_OFFSET)
               # The draw mode, once, before anything is drawn: drawing where the picture shown is allowed.
               # A screen of one page always draws where it is shown, and the chip's reset leaves that bit
               # clear; Beetle PSX draws there either way, and a console's chip may not. A picture's own
               # draw mode (Runtime::Paint#emit_blit) sets the bit again with its texture page.
-              gp0.call(h::GP0_DRAW_MODE | h::DRAW_ON_SHOWN_PICTURE)
+              setting.call(h::GP0_DRAW_MODE | h::DRAW_ON_SHOWN_PICTURE)
               [[0, 0], [512, 0], [0, 256], [512, 256]].each do |x, y|
-                gp0.call(h::GP0_FILL)
-                gp0.call((y << 16) | x)
-                gp0.call((256 << 16) | 512)
+                DrawList.emit_command(asm, 3) { asm.lui(:a0, h::GP0_FILL >> 16) }
+                asm.li(:t0, (y << 16) | x)
+                asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
+                asm.li(:t0, (256 << 16) | 512)
+                asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
               end
             end
 

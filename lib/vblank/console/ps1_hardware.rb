@@ -147,6 +147,9 @@ module VBlank
       DPCR_GPU_ON = 1 << 11
       # CHCR: from RAM, a block each time the device asks (sync mode 1), and start (bit 24).
       DMA2_FROM_RAM_BY_BLOCKS = 0x0100_0201
+      # CHCR: from RAM, following a linked list of nodes (sync mode 2), and start. Each node is a header
+      # word, how many words follow in its top byte and where the next node is below, then those words.
+      DMA2_FROM_RAM_BY_LIST = 0x0100_0401
       DMA_BUSY = 1 << 24
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
@@ -161,6 +164,10 @@ module VBlank
       # for a command", also asks that the chip be idle, and Beetle PSX does not set it until the chip's
       # time has moved on, which a loop that only reads the port never lets it do.)
       GPUSTAT_READY_FOR_COMMAND = 1 << 28
+      # GPUSTAT bits 26 and 28 both set: the chip idle, ready for a command, and its queue empty, so
+      # everything it was sent is drawn. A wait for this is fine once nothing more is being sent (Beetle
+      # PSX measured: it came at the end of each pass's list of drawing commands).
+      GPUSTAT_DRAWN = (1 << 26) | GPUSTAT_READY_FOR_COMMAND
 
       # GP0 commands.
       GP0_CLEAR_CACHE = 0x01 << 24 # The texture cache emptied, so texels copied in since are read afresh
