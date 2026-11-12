@@ -323,6 +323,10 @@ module VBlank
           # #sections has lowered it.
           def divides? = @divides || false
 
+          # Whether the game multiplies or divides numbers with a fraction (Runtime::Int32's rt_mul_fix
+          # and rt_div_fix), once #sections has lowered it.
+          def fractions? = @fractions || false
+
           # Whether the game moves a whole list to or from save memory, so its runtime carries the
           # routines that do it as a block (Runtime::Saving#emit_list_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
@@ -2119,8 +2123,14 @@ module VBlank
             @asm.branch_long(:bpl, within)
           end
 
-          def value_of_mul_fix(node) = runtime_call("rt_mul_fix", [node.lhs, node.rhs, fraction_bits(node)])
-          def value_of_div_fix(node) = runtime_call("rt_div_fix", [node.lhs, node.rhs, fraction_bits(node)])
+          def value_of_mul_fix(node) = emit_fraction_call("rt_mul_fix", node)
+          def value_of_div_fix(node) = emit_fraction_call("rt_div_fix", node)
+
+          def emit_fraction_call(routine, node)
+            @fractions = true
+            runtime_call(routine, [node.lhs, node.rhs, fraction_bits(node)])
+          end
+
           def value_of_shift_right(node)
             value(node.operand)
             emit_shift_right_of_r0(node.bits)

@@ -41,9 +41,10 @@ module VBlank
                           signs: memory.scratch(2))
             end
 
-            # +divides+ is whether the game has a division a routine works out. One without has no
-            # use for those routines, and they are not small.
-            def emit(asm, scratch, divides: true)
+            # +divides+ is whether the game has a division a routine works out, and +fractions+
+            # whether it multiplies or divides numbers with a fraction. One without has no use for
+            # those routines, and they are not small.
+            def emit(asm, scratch, divides: true, fractions: true)
               emit_mul(asm, scratch)
               if divides
                 emit_unsigned_divide(asm, scratch)
@@ -51,8 +52,10 @@ module VBlank
                 emit_mod(asm, scratch)
               end
               emit_shifts(asm)
-              emit_mul_fix(asm, scratch)
-              emit_div_fix(asm, scratch)
+              if fractions
+                emit_mul_fix(asm, scratch)
+                emit_div_fix(asm, scratch)
+              end
               emit_helpers(asm)
               emit_make_positive(asm, scratch)
             end
