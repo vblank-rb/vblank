@@ -213,7 +213,11 @@ module VBlank
                              "To use another format, name its module in `data_pack formats: [...]`."
       end
 
-      def platform_title(platform) = platform == COMPUTER ? "computer" : Console.for(platform).title
+      def platform_title(platform)
+        return "computer" if platform == COMPUTER
+
+        Console::KITS.key?(platform) ? Console.for(platform).title : platform.to_s
+      end
 
       def refuse_missing_places!(verb, settings)
         missing = %i[at into] - settings.keys
@@ -403,6 +407,36 @@ module VBlank
         end
       end
 
+      # COLOUR +index+ OF A SLOT OF COLOURS, written in the slot's layout from its +red+, +green+
+      # and +blue+, each +bits+ bits deep as the original keeps them (8 for a byte a channel, 6 for a
+      # computer's video card, 5 for the PlayStation's). A channel deeper than the layout's keeps its
+      # top bits; one shallower is widened, its bits repeated, so its brightest is the layout's.
+      # Each may be a number or a value the routine works out, as +index+ may:
+      #
+      #   pack[:palette].write_color(at, red: copy.byte(at * 3), green: copy.byte((at * 3) + 1),
+      #                                  blue: copy.byte((at * 3) + 2), bits: 6)
+      #
+      # A channel written as a number past +bits+ is refused. One the routine works out keeps its
+      # low +bits+ bits.
+      def write_color(index, red:, green:, blue:, bits: 8)
+        refuse_color_of_another_shape!
+        refuse_channel_bits_out_of_range!(bits)
+        refuse_channels_past_bits!(index, bits, red: red, green: green, blue: blue)
+        format = @slot.format
+        number = combine_bits([[red, format.red_at], [green, format.green_at], [blue, format.blue_at]]
+                                .map { |channel, at| scale_channel(channel, bits, format.channel_bits) << at })
+        low_high = [number, number >> 8]
+        bytes = format.high_byte_first ? low_high.reverse : low_high
+        if index.is_a?(Integer)
+          refuse_item_outside_slot!(index, [@slot.count, "color"])
+          return bytes.each_with_index { |byte, at| @list[@start + (index * Slot::COLOR_BYTES) + at] = byte }
+        end
+
+        write_or_emit_fault(index, @slot.count, index * Slot::COLOR_BYTES) do
+          bytes.each_with_index { |byte, at| @list[place((index * Slot::COLOR_BYTES) + at)] = byte }
+        end
+      end
+
       # Where byte +index+ of the slot is in the pack's list.
       def place(index) = index.is_a?(Integer) ? @start + index : DSL::Value.new(@builder, DSL::Value.node_for(index)) + @start
 
@@ -458,6 +492,53 @@ module VBlank
 
         raise ArgumentError, "Slot :#{@slot.name} holds #{kind}s 0 to #{items - 1}. There is no #{kind} #{index}. " \
                              "To fix this, use a #{kind} from 0 to #{items - 1}, or make the slot's count: bigger."
+      end
+
+      # The most bits a channel of a colour is written with: a byte's.
+      MOST_CHANNEL_BITS = 8
+
+      # +channel+, +bits+ deep, scaled to a channel +depth+ bits deep: its top bits where it is deeper, and
+      # its bits repeated where it is shallower, as a console widens a colour it shows (Console::ColorFormat).
+      # The value of a sum the routine works out keeps its low +bits+ bits first.
+      def scale_channel(channel, bits, depth)
+        channel &= (1 << bits) - 1 unless channel.is_a?(Integer)
+        return channel if bits == depth
+        return channel >> (bits - depth) if bits > depth
+
+        shifts = (depth - bits).step(-bits + 1, -bits).to_a
+        combine_bits(shifts.map { |shift| shift.zero? ? channel : shift.positive? ? channel << shift : channel >> -shift })
+      end
+
+      # +parts+ joined by a bitwise or. A value the routine works out goes first, so the or is the
+      # value's (DSL::Value#|) and not a number's.
+      def combine_bits(parts) = parts.sort_by { |part| part.is_a?(Integer) ? 1 : 0 }.reduce(:|)
+
+      def refuse_channel_bits_out_of_range!(bits)
+        return if bits.is_a?(Integer) && bits.between?(1, MOST_CHANNEL_BITS)
+
+        raise ArgumentError, "The unpacking writes a color of slot :#{@slot.name} with bits: #{bits.inspect}. bits: is " \
+                             "how many bits a channel of the original's color has. To fix this, give a number from 1 " \
+                             "to #{MOST_CHANNEL_BITS}."
+      end
+
+      def refuse_channels_past_bits!(index, bits, **channels)
+        most = (1 << bits) - 1
+        channels.each do |part, given|
+          next unless given.is_a?(Integer) && !given.between?(0, most)
+
+          color = index.is_a?(Integer) ? "color #{index}" : "a color"
+          raise ArgumentError, "The unpacking writes #{color} of slot :#{@slot.name} with #{part} #{given}. A channel of " \
+                               "#{bits} bits holds 0 to #{most}. To fix this, give a #{part} from 0 to #{most}, or set " \
+                               "bits: to the number of bits a channel of the original's colors has."
+        end
+      end
+
+      def refuse_color_of_another_shape!
+        return if @slot.shape == :colors
+
+        raise ArgumentError, "The unpacking calls `write_color` on slot :#{@slot.name}, which holds #{@slot.shape}. " \
+                             "`write_color` writes a color of a slot of colors. To fix this, make the slot like " \
+                             "`slots.colors :#{@slot.name}, count: 16`."
       end
 
       def refuse_cell_of_another_shape!

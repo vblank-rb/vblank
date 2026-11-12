@@ -19,17 +19,19 @@ module VBlank
     # #fill_from_copy (see Builder::DataPacks for how and where it runs).
     #
     # Each slot is kept in the layout of the console the original is for (+platform+, the
-    # original's Original::Game#platform), unless it names another with +layout+. An original from a
-    # computer has no console's layout: its numbers are low byte first unless a slot names its
-    # +byte_order+, and a slot of colours or tiles names the layout its routine writes:
+    # original's Original::Game#platform), unless it names another with +layout+. An original of a
+    # platform whose layout VBlank does not read (a PlayStation's, a computer's, any other) is in
+    # VBlank's own layout (Console::VBLANK_FORMATS), which its routine writes; a computer game's
+    # numbers may name their +byte_order+ instead:
     #
     #   slots.tiles :walls, at: 0x4000, count: 64, colors: 4    # a Super Nintendo's tiles of four colours
     #   slots.numbers :sizes, count: 9, width: :half, signed: false   # a computer game's, low byte first
     #   slots.numbers :sizes, count: 9, width: :half, signed: false, byte_order: :high_first
-    #   slots.colors :palette, count: 16, layout: :gba          # a computer game's, as its routine writes them
+    #   slots.colors :palette, count: 16                        # a computer game's, as its routine writes them
+    #   slots.colors :palette, count: 16, layout: :gba          # the same, a console's layout as a shortcut
     class PackSlots
       def initialize(platform:)
-        @platform = platform
+        @layout = Original.layout_for(platform)
         @list = []
         @routine = nil
       end
@@ -44,14 +46,14 @@ module VBlank
       # into). A shell's bar then moves by the work done rather than the bytes written
       # (Original::Slot#cost).
       def colors(name, count:, at: nil, layout: nil, cost: 1)
-        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @platform, cost: cost))
+        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @layout, cost: cost))
       end
 
       # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
       # `colors: 256` is a tile kept a byte a pixel, 64 bytes, in any layout: the pictures of a
       # background that turns and resizes.
       def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1)
-        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform, cost: cost))
+        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @layout, cost: cost))
       end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
@@ -59,7 +61,7 @@ module VBlank
       # console's layout.
       def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1)
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
-                                         layout: layout || (@platform unless byte_order), byte_order: byte_order, cost: cost))
+                                         layout: layout || (@layout unless byte_order), byte_order: byte_order, cost: cost))
       end
 
       # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
@@ -232,13 +234,13 @@ module VBlank
 
       # A view as tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
       def as_tiles(at:, count: nil, colors: nil, layout: nil)
-        console = layout || platform
+        console = layout || Original.layout_for(platform)
         view("as_tiles", at, count) { |name, held| Original::Slot.tiles(name, count: held, colors: colors, layout: console) }
       end
 
       # A view as numbers, each +width+ wide and +signed+ or not.
       def as_numbers(at:, width:, signed:, count: nil, layout: nil, byte_order: nil)
-        console = layout || (platform unless byte_order)
+        console = layout || (Original.layout_for(platform) unless byte_order)
         view("as_numbers", at, count) do |name, held|
           Original::Slot.numbers(name, count: held, width: width, signed: signed, layout: console, byte_order: byte_order)
         end
@@ -246,7 +248,7 @@ module VBlank
 
       # A view as colours, two bytes each.
       def as_colors(at:, count: nil, layout: nil)
-        console = layout || platform
+        console = layout || Original.layout_for(platform)
         view("as_colors", at, count) { |name, held| Original::Slot.colors(name, count: held, layout: console) }
       end
 

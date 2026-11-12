@@ -354,6 +354,11 @@ module VBlank
       end
     end
 
+    # The layouts the games of the console named +name+ keep their data in, where VBlank reads them
+    # (Kit#original_formats); nil for a console whose layout VBlank does not read, and for a name no
+    # console has (a computer, an arcade board).
+    def self.original_formats_of(name) = KITS[name]&.original_formats
+
     # Every console's kit.
     def self.kits = KITS.values
 

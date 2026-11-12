@@ -12,15 +12,18 @@ module VBlank
     # plain numbers works that out from them.
     #
     # A SHAPE (colours, tiles or numbers) IS KEPT IN THE LAYOUT OF THE CONSOLE THE ORIGINAL IS FOR,
-    # and the pack holds the bytes as the original has them (unpacked, where the original packs
-    # them). The original names its platform (Game#platform), and a slot is in that console's
-    # layout unless it names another with +layout+; each console's layouts are numbers in its
-    # hardware file, named by its kit (Console::Kit#original_formats), and one reader reads any of
-    # them (IR::FormatReading). +format+ is the layout the slot is read in: a Console::ColorFormat,
-    # TileFormat or NumberFormat. An original from a computer (COMPUTER) keeps its data in no
-    # console's layout: its numbers are low byte first unless a slot names its byte order, its
-    # pictures are slots of pixels, and a slot of colours or tiles names the console layout its
-    # port's unpacking routine writes.
+    # where VBlank reads that console's layout, and the pack holds the bytes as the original has
+    # them (unpacked, where the original packs them). The original names its platform
+    # (Game#platform), and a slot is in that console's layout unless it names another with
+    # +layout+; each console's layouts are numbers in its hardware file, named by its kit
+    # (Console::Kit#original_formats), and one reader reads any of them (IR::FormatReading).
+    # +format+ is the layout the slot is read in: a Console::ColorFormat, TileFormat or
+    # NumberFormat.
+    #
+    # Every other platform (the PlayStation, a computer, an arcade board, any name) keeps its slots
+    # in VBlank's own layout (VBLANK_LAYOUT, Console::VBLANK_FORMATS), which the port's unpacking
+    # routine writes from however its original keeps them; a console's layout is then a shortcut a
+    # slot names. A computer game's numbers may name their byte order instead.
     #
     # Where the bytes are (+at+) marks a slot as copied out of the copy as the bytes are there. A
     # slot whose bytes are packed in the copy, or spread over it, has no +at+ (nil): the game's
@@ -152,13 +155,13 @@ module VBlank
         end
 
         new(name: name.to_sym, shape: :numbers, at: at, count: count, width: width, signed: signed,
-            format: number_format_of(name, layout, byte_order), cost: cost)
+            format: number_format_of(name, layout, byte_order, width), cost: cost)
       end
 
-      def self.number_format_of(name, layout, byte_order)
+      def self.number_format_of(name, layout, byte_order, width)
         if byte_order
           unless layout.nil? || layout == COMPUTER
-            raise ArgumentError, "Slot :#{name} names layout: :#{layout} and byte_order:. A console's layout already says its " \
+            raise ArgumentError, "Slot :#{name} names layout: :#{layout} and byte_order:. A layout already says its " \
                                  "byte order. To fix this, give only one of them."
           end
 
@@ -167,23 +170,37 @@ module VBlank
                                  ":high_first."
           end
         end
-        return BYTE_ORDERS.fetch(:low_first) if layout == COMPUTER
+        # A number of one byte has no byte order, so any console's layout keeps it alike.
+        return Console::LOW_BYTE_FIRST_NUMBERS if width == :byte && Console::KITS.key?(layout)
 
         formats_of(name, layout || DEFAULT_LAYOUT).numbers
       end
 
-      # The layouts of the console named +layout+ (Console::OriginalFormats).
+      # The layouts +layout+ names (Console::OriginalFormats): a console's own, or VBlank's
+      # (VBLANK_LAYOUT, and COMPUTER, whose numbers are low byte first as VBlank's are).
       def self.formats_of(name, layout)
-        if layout == COMPUTER
-          raise ArgumentError, "Slot :#{name} is from a computer game's original, which keeps its colours and tiles in no " \
-                               "console's layout. Keep its pictures as a slot of pixels, or name the console layout the " \
-                               "unpacking routine writes, like `layout: :gba`."
+        return Console::VBLANK_FORMATS if [VBLANK_LAYOUT, COMPUTER].include?(layout)
+
+        found = Console.original_formats_of(layout)
+        return found if found
+
+        if Console::KITS.key?(layout)
+          raise ArgumentError, "Slot :#{name} names the #{Console.for(layout).title}'s layout, and VBlank reads no data in " \
+                               "that layout. To fix this, leave layout: out. Then the slot is in VBlank's own layout, and " \
+                               "the unpacking writes the data in that layout."
         end
 
-        kit = Console.for(layout)
-        kit.original_formats or
-          raise ArgumentError, "Slot :#{name} is in the #{kit.title}'s layout, and VBlank reads no data in that layout. " \
-                               "Name another layout, like `layout: :gba`."
+        raise ArgumentError, "Slot :#{name} was given layout: #{layout.inspect}. VBlank reads the layouts " \
+                             "#{readable_layouts.map(&:inspect).join(', ')}. To fix this, name one of them, or leave " \
+                             "layout: out."
+      end
+
+      # The layouts a slot can name: each console's that VBlank reads, and VBlank's own.
+      def self.readable_layouts = [*Console::KITS.keys.select { |name| Console.original_formats_of(name) }, VBLANK_LAYOUT]
+
+      # What a slot's +layout+ is called in a message.
+      def self.layout_title(layout)
+        Console::KITS.key?(layout) ? "the #{Console.for(layout).title}'s layout" : "VBlank's own layout"
       end
 
       # How many colours a tile kept a byte a pixel has (Console::BYTE_A_PIXEL_TILES).
@@ -201,11 +218,11 @@ module VBlank
         return found if found
 
         options = kinds.map { |format| "colors: #{format.colors}" }.join(" or ")
-        raise ArgumentError, "Slot :#{name} holds tiles in the #{Console.for(layout).title}'s layout, which keeps tiles " \
+        raise ArgumentError, "Slot :#{name} holds tiles in #{layout_title(layout)}, which keeps tiles " \
                              "of #{kinds.map(&:colors).join(' or ')} colors. Give the slot #{options}, or " \
                              "colors: #{BYTE_A_PIXEL_COLORS} for tiles kept a byte a pixel."
       end
-      private_class_method :formats_of, :tile_format_of, :number_format_of
+      private_class_method :formats_of, :tile_format_of, :number_format_of, :readable_layouts, :layout_title
 
       def initialize(name:, shape:, at:, count:, width:, signed:, format:, cost: 1)
         unless (at.nil? || place?(at) || release_places?(at)) && count.is_a?(Integer) && count.positive?

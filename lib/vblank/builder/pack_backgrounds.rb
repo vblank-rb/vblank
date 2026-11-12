@@ -511,8 +511,7 @@ module VBlank
         return Original::MapCell::FORMAT if map.shape == :map_cells
         return Console::BYTE_MAP_CELLS if map.layout.width == :byte
 
-        formats = Console.for(@data_pack_platform).original_formats if Console::KITS.key?(@data_pack_platform)
-        formats&.map_words or
+        Console.original_formats_of(@data_pack_platform)&.map_words or
           raise ArgumentError, "background :#{name} reads a map of numbers two bytes wide from the data pack, and VBlank " \
                                "does not know how this original's console keeps a cell in two bytes. To fix this, give " \
                                "map: a slot of map cells, like `slots.map_cells :map, count: 1024`, and write each cell " \

@@ -4,6 +4,7 @@ require "digest"
 require "tmpdir"
 require "made_up_original"
 require "made_up_original_layouts"
+require "made_up_vblank_layout_originals"
 require "pack_at_start_tests"
 require "pack_sound_tests"
 require "pack_scores_at_start_tests"
@@ -430,6 +431,24 @@ module PackGames
       game(:tiles_and_tables_of_a_computer_game_as_the_color, passes: 9) do |folder, options|
         layout_tiles_and_tables(folder, options, LAYOUTS.fetch(5))
       end
+    ].freeze
+  end
+
+  # VBLANK'S OWN LAYOUT (MadeUpVBlankLayoutOriginals): a PlayStation, a computer and an arcade
+  # original, whose unpacking writes colours, tiles and numbers in it, shown as a background and a
+  # sprite with no layout: line.
+  class VBlankLayouts < Kit
+    include MadeUpVBlankLayoutOriginals
+
+    private def vblank_layout(folder, options, platform)
+      made_up = ORIGINALS.find { |each| each.platform == platform }
+      built(*vblank_layout_game_and_file(vblank_layout_original(folder, made_up), made_up, options: options))
+    end
+
+    GAMES = [
+      game(:background_and_sprite_of_a_playstation_original, passes: 9) { |folder, options| vblank_layout(folder, options, :ps1) },
+      game(:background_and_sprite_of_a_computer_original, passes: 9) { |folder, options| vblank_layout(folder, options, :pc) },
+      game(:background_and_sprite_of_an_arcade_original, passes: 9) { |folder, options| vblank_layout(folder, options, :arcade) }
     ].freeze
   end
 
@@ -1561,7 +1580,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places].freeze
 
   # Every registered game.

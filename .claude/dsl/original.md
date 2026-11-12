@@ -98,10 +98,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `copy.count_written ..., into:` counts for it. A pack where every slot costs 1 shows the bar by
   bytes, as before.
 
-  Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`.
-  A computer game's numbers (`platform: :pc`) are low byte first, as DOS and Windows games keep them,
-  unless the line names its byte order: `byte_order: :high_first` (or `:low_first`). A line naming both a
-  console's layout and a byte order is refused, since the layout already says it.
+  Each is in the layout of the original's platform (below) unless the line names another, `layout: :gba`
+  (or `layout: :vblank`, VBlank's own). A platform whose layout VBlank does not read (`:ps1`, `:pc`, any
+  other name) is in VBlank's own layout, which its unpacking writes. A computer game's numbers
+  (`platform: :pc`) are low byte first, as DOS and Windows games keep them, unless the line names its
+  byte order: `byte_order: :high_first` (or `:low_first`). A line naming both a layout and a byte order is
+  refused, since the layout already says it. A slot of numbers one byte wide has no byte order, so any
+  console's name is taken as its layout.
 
 - `image :walls, width: 64 * 106, height: 64, colors: WALL_COLOURS, places: pack[:walls], see_through: 255`
   — **a picture of up to 256 colours from a slot of pixels.** `places:` is the whole slot, or
@@ -227,6 +230,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
     number's is, `write_cell` on a slot that is not map cells is refused, and so is a tile past 65535 or a
     bank past 255 written as a number, since the record would keep only its low bits. Worked example:
     `color_cells_game_and_file` in `test/pack_background_tests.rb`.
+  - `pack[:palette].write_color(at, red:, green:, blue:, bits: 8)` writes colour `at` of a slot of colours
+    in the slot's layout, from three channels `bits:` deep as the original keeps them (1 to 8: 8 for a byte
+    a channel, 6 for a computer's video card, 5 for the PlayStation's). A channel deeper than the layout's
+    keeps its top bits; one shallower is widened, its bits repeated, so its brightest is the brightest.
+    Each part may be a number or worked out as the routine runs, as `at` may; one worked out keeps its low
+    `bits:` bits. A channel past `bits:` written as a number is refused, and so is `write_color` on a slot
+    that is not colours. Worked example: `vblank_layout_game_and_file` in
+    `test/made_up_vblank_layout_originals.rb`.
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
     verbs, each place counted from that file's start. A fixed place outside the file is refused.
 
@@ -348,11 +359,16 @@ VBlank.game "PINBALL PORT", consoles: %i[gba] do
 end
 ```
 
-**A slot is kept in the layout of the console the original is for**, and the pack holds the bytes as
-the original has them (unpacked, where the original packs them). The original names its platform:
-`Original::Game.new(..., platform: :gbc)`, one of `:gba` (the default), `:gbc`, `:snes`, `:genesis`, or
-`:pc` for a computer game. VBlank reads each layout itself, for every build and every console the port is
-built for:
+**A slot is kept in the layout of the console the original is for**, where VBlank reads that console's
+layout, and the pack holds the bytes as the original has them (unpacked, where the original packs them).
+**Every other platform's slots are in VBlank's own layout**, which the port's unpacking writes from however
+its original keeps them, as it writes map cells and notes. The original names its platform:
+`Original::Game.new(..., platform: :gbc)`, `:gba` (the default), `:gbc`, `:snes`, `:genesis`, `:ps1`, `:pc`
+for a computer game, or any other name of lowercase letters, digits and underscores (`:arcade`, `:nes`).
+A name a letter or two from one of those six, or the same but for case or punctuation (`:gbcc`, `"GBA"`), is
+refused as a typo, naming the one it looks like, since its slots would be read in VBlank's own layout and show
+a wrong picture with no error; a new platform with such a name (`:ps2`) adds `new_platform: true` to the line. VBlank reads each layout
+itself, for every build and every console the port is built for:
 
 | platform | tiles | colours | numbers |
 |---|---|---|---|
@@ -360,6 +376,12 @@ built for:
 | `:gbc` | 4 colours, 16 bytes: each row's bit 0 plane, then its bit 1 plane, the left pixel in bit 7 | as the Advance's | low byte first |
 | `:snes` | `colors: 4` as the Color's; `colors: 16`, 32 bytes: planes 0 and 1 for all eight rows, then planes 2 and 3 | as the Advance's | low byte first |
 | `:genesis` | 16 colours, 32 bytes, the left pixel in a byte's HIGH half | 2 bytes high byte first, `0000 BBB0 GGG0 RRR0`, each 3 bits widened to 5 as the Genesis shows them | high byte first |
+| `:ps1`, `:pc`, any other: VBlank's own (`Console::VBLANK_FORMATS`, `layout: :vblank`) | `colors: 4` or `colors: 16`, 64 bytes, a byte a pixel row by row, each a place in the tile's bank (its low 2 or 4 bits read), so a map cell's bank still picks the colours | as the Advance's; `write_color` narrows the original's | low byte first, unless the slot names `byte_order:` |
+
+A console's layout is a shortcut a port of any platform can still name (`layout: :gba`), where its
+unpacking writes that console's bytes. Naming the PlayStation's layout is refused, since VBlank reads no
+data in it: leave `layout:` out. Worked example of VBlank's own: `test/made_up_vblank_layout_originals.rb`,
+a PlayStation, a computer and an arcade original, each held to the same screen drawn by the game.
 
 Two layouts are no one console's, since a byte is a byte in every layout: a tile of 256 colours, a byte a
 pixel (`Console::BYTE_A_PIXEL_TILES`, `slots.tiles ..., colors: 256`), and a map of one byte a cell, each
@@ -369,10 +391,7 @@ slot of numbers `width: :byte`). Together they are how a console keeps the layer
 Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them
 (`IR::FormatReading`, and `rg_start_file_fill_picture` in the C, JavaScript and Ruby runtimes, which reads
-a slot of pixels, one byte each in any layout, the same way). A
-`:pc` original keeps its data in no console's layout: its numbers are low byte first unless a slot names
-its `byte_order:`, its pictures are slots of pixels, and a slot of colours or tiles names the console layout
-its unpacking routine writes (`layout: :gba`); one without is refused. On the Color, a tile drawn by
+a slot of pixels, one byte each in any layout, the same way). On the Color, a tile drawn by
 place from a list of four colours or fewer goes into the cartridge place for place, so a Color
 original's tiles are its own bytes there. Worked example: `test/all/vblank/builder/test_data_pack_layouts.rb`.
 
