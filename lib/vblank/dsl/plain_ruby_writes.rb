@@ -34,10 +34,11 @@ module VBlank
         # a value outright (Rewriter#tests_open_before_plain_start). See #tests_followed.
         #
         # +owner+ is the object an instance variable belongs to, for a game's own instance variable
-        # (InstanceVariables.write_target): one the game names is its game variable by now.
+        # (InstanceVariables.write_target): one the game names is its game variable by now. +starting+
+        # is a write in its `initialize`.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
-                  before_plain_start: 0, owner: nil)
-          current = InstanceVariables.write_target(owner, current, value, label) if owner
+                  before_plain_start: 0, owner: nil, starting: false)
+          current = InstanceVariables.write_target(owner, current, value, label, starting: starting) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
           return yield(own_copy(label, value)) if copies && Steps.variable?(value) && !own_variable?(current)
@@ -88,8 +89,9 @@ module VBlank
         # same goes for the verbs, attributes and setters below.
         #
         # +owner+ is #write's.
-        def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil)
-          current = InstanceVariables.change_target(owner, current, label) if owner
+        def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil,
+                   starting: false)
+          current = InstanceVariables.change_target(owner, current, label, starting: starting) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
           return change_variable(current, operator, amount) if Steps.variable?(current)

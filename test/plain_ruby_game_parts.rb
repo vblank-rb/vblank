@@ -344,6 +344,45 @@ class HolderPart
   end
 end
 
+# VALUES ONLY THE BUILD USES, NEVER REFUSED.
+#
+# A flag that keeps a part from declaring a routine twice: false from `initialize`, read by Ruby's
+# `unless` and set true by Ruby while game code is recorded. Nothing the game runs reads it.
+class PlannedOncePart
+  def initialize(builder)
+    @builder = builder
+    @planned = false
+    @steps = builder.var(:planned_once_steps, 0)
+    builder.func(:planned_once_tick) { step }
+  end
+
+  def step
+    plan unless @planned
+    @builder.call(:planned_once_count)
+  end
+
+  def plan
+    @planned = true
+    @builder.func(:planned_once_count) { @steps += 1 }
+  end
+end
+
+# A number a part is made with, inside a routine, and only read after: its `initialize` gives it a
+# start, which is no change the game makes as it plays.
+class ScrolledSpot
+  def initialize(scroll_x) = @scroll_x = scroll_x
+
+  def scrolled(by) = @scroll_x - by
+end
+
+class ScrollPart
+  def initialize(builder)
+    @shown = builder.var(:scroll_part_shown, 0)
+    builder.func(:scroll_part_make) { @spot = ScrolledSpot.new(8) }
+    builder.func(:scroll_part_tick) { @shown = @spot.scrolled(2) }
+  end
+end
+
 # A named instance variable game code reads before anything gives it a number.
 class UnsetNamedPart
   game_variables :aim

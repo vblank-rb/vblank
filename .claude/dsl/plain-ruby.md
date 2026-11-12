@@ -67,8 +67,10 @@ instance variables.
   only while setting up (a counter that makes names, a count a setting-up method works out and game
   code uses as `repeat(@count)` or `@count.times`) is not refused. Nor is one that a routine gives a
   number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
-  String, or one read while it holds nil (`return if @laid_out`). A number one routine gives and
-  another reads is refused: the game can run them in either order.
+  String, or one read while it holds nil (`return if @laid_out`). Nor is a line of `initialize`,
+  wherever the object is made, or one holding `true` or `false`: that is a flag the build keeps for
+  itself (`plan unless @planned`, set true by `plan`). A number one routine gives and another reads is
+  refused: the game can run them in either order.
 
 ## Changing a variable
 
@@ -177,6 +179,8 @@ Each is a friendly error naming the line.
 - An instance variable that is not named and that game code only changes stays the number Ruby gave
   it: the change happens once, while building. Name it if anything reads it as the game plays.
 - An instance variable of a class itself (`@cache` in `def self.table`) is always plain Ruby.
+- An instance variable holding `true` or `false` that is not named is a flag of the build's: `if
+  @open` is decided while building. Name it if the game sets and tests it as it plays.
 
 ## When plain Ruby is not enough
 

@@ -369,19 +369,24 @@ module VBlank
         end
 
         # A `return` in a block belongs to that block, so tests open outside it do not apply.
+        #
+        # A block inside `initialize` (a routine's body, say) is game code, not the object's start.
         def own_scope_text(node)
           outer = @open_tests
           outer_block_tests = @block_tests
           outer_statements = @open_statements
+          outer_initialize = @in_initialize
           @block_tests = node.is_a?(Prism::DefNode) ? [] : @block_tests + outer
           @open_tests = []
           @open_statements = []
+          @in_initialize = node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil?
           @tail_ternaries[node.body.body.last] = true if method_body?(node)
           copied_text(node)
         ensure
           @open_tests = outer
           @block_tests = outer_block_tests
           @open_statements = outer_statements
+          @in_initialize = outer_initialize
         end
 
         def method_body?(node) = node.is_a?(Prism::DefNode) && node.body.is_a?(Prism::StatementsNode)
@@ -703,8 +708,13 @@ module VBlank
           source_between(node.location.start_offset, node.location.end_offset)
         end
 
-        # The object a game's instance variable belongs to, for Writes (InstanceVariables).
-        def owner_option = @follows_instance_variables ? ", owner: self" : ""
+        # The object a game's instance variable belongs to, for Writes (InstanceVariables), and
+        # whether the line is one of its `initialize`, which starts it rather than changing it.
+        def owner_option
+          return "" unless @follows_instance_variables
+
+          @in_initialize ? ", owner: self, starting: true" : ", owner: self"
+        end
 
         def write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)

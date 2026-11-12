@@ -117,13 +117,14 @@ module VBlank
 
         # What Writes.write writes to, where +owner+'s +label+ holds +current+ and a line of game code
         # gives it +value+: a named one's game variable, made here if it held nil; anything else as
-        # it is, the write noted (Uses#note_change).
-        def write_target(owner, current, value, label)
+        # it is, the write noted (Uses#note_change). +starting+ is a line of `initialize`, which
+        # gives the object its start, even where game code makes the object: no change is noted.
+        def write_target(owner, current, value, label, starting: false)
           uses = uses_while_recording(owner)
           return current unless uses
 
           unless uses.named?(owner, label)
-            uses.note_change(owner, label, current, value, operator: false)
+            uses.note_change(owner, label, current, value, operator: false) unless starting
             return current
           end
           return game_variable_of(owner, current, label) unless current.nil?
@@ -133,12 +134,12 @@ module VBlank
         end
 
         # The same for `@busy += 1`, which reads it as well.
-        def change_target(owner, current, label)
+        def change_target(owner, current, label, starting: false)
           uses = uses_while_recording(owner)
           return current unless uses
           return game_variable_of(owner, current, label) if uses.named?(owner, label)
 
-          uses.note_change(owner, label, current, current, operator: true)
+          uses.note_change(owner, label, current, current, operator: true) unless starting
           current
         end
 
@@ -226,13 +227,17 @@ module VBlank
         # A read after its own routine gave it a number outright (`@rows = 2`, then `@rows.times`)
         # is the number that line gives on every pass, so it is left alone. So is a read put into a
         # String or a Symbol, which is Ruby's by nature, and a read of nil (`return if @made`):
-        # naming it would not help, since a game variable cannot start as nil.
+        # naming it would not help, since a game variable cannot start as nil. So is a write in
+        # `initialize`, which starts the object, wherever it is made (+starting+ below), and a
+        # `true` or `false` (#plain_number?).
         class Uses
           # One instance variable of one object, as the build goes on: whether game code read it
           # before changing it, the line that first changed it, the line of a change worked out from
           # Ruby's own number that nothing has given a number outright since, and the routine whose
           # line last gave it a number. A Struct, since each field is set as the build reaches it.
           Use = Struct.new(:read_before_change, :changed_at, :changed_from_ruby_at, :given_in)
+
+          TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
 
           def initialize
             @named_on_builder = Set.new
@@ -263,7 +268,7 @@ module VBlank
           # from what it holds. Only a plain number held is the game's to lose; nil counts, given a
           # number.
           def note_change(owner, label, current, value, operator:)
-            return unless (current.nil? || plain_number?(current)) && Writes.number_kept?(value) && !value.nil?
+            return unless (current.nil? || plain_number?(current)) && plain_number?(value)
 
             use = use_of(owner, label)
             here = Messages::AuthorSource.author_file_and_line
@@ -275,7 +280,11 @@ module VBlank
 
           private
 
-          def plain_number?(value) = STARTS.any? { |kind| value.is_a?(kind) }
+          # A number or a symbol: what a game keeps and a line of game code can mean to change.
+          # `true` and `false` are left out. A plain one in game code is a flag the build keeps for
+          # itself, as a part's `plan unless @planned` is, and nothing the game runs can read it:
+          # a test on it is Ruby's, decided while building.
+          def plain_number?(value) = TRACKED.any? { |kind| value.is_a?(kind) }
 
           def use_of(owner, label) = (@uses[owner] ||= {})[label] ||= Use.new(false, nil, nil, nil)
 

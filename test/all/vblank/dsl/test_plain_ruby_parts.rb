@@ -106,6 +106,14 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal 3, played(HolderPart, :holder_hold)[:holder_held]
   end
 
+  def test_a_true_or_false_flag_only_the_build_reads_is_not_refused
+    assert_equal 3, played(PlannedOncePart, :planned_once_tick)[:planned_once_steps]
+  end
+
+  def test_a_number_set_in_initialize_while_game_code_records_and_read_in_another_routine_is_not_refused
+    assert_equal 6, played(ScrollPart, :scroll_part_make, :scroll_part_tick)[:scroll_part_shown]
+  end
+
   def test_a_named_instance_variable_read_while_it_holds_nil_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnsetNamedPart, :unset_named_tick) }
 
