@@ -114,10 +114,17 @@ module VBlank
             # the whole picture drawn (Tiles' rt_tiles_draw), a pass that halts too; +shown_by+ for one whose
             # painted screen is shown from pages of its own (Paint.shown_by), whose every pass ends with its page
             # copied onto the page shown by that routine of Paint's, a pass that stops too.
-            def emit(asm, memory, sound: false, tiles: false, shown_by: nil)
+            #
+            # +ticks_paint_ahead+ for a game with timers whose screen can be a tear-free painted one, whose
+            # handlers then paint on the page after the pass's (#emit_ticks_on_next_page); +crosses+ for one
+            # that hands over between painted screens and screens drawn from tiles (Tiles::TILES_UP).
+            def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              emit_wait(asm, at, sound, tiles, shown_by)
+              # A screen drawn from tiles is never painted on, unless the game also hands over to a painted one.
+              paint_ahead = ticks_paint_ahead && (crosses || !tiles)
+              emit_wait(asm, at, sound, tiles, shown_by, paint_ahead)
+              emit_ticks_on_next_page(asm, at, crosses) if paint_ahead
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
               emit_stopping(asm, at, tiles, shown_by)
@@ -172,13 +179,17 @@ module VBlank
             # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
             # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound, tiles, shown_by)
+            def emit_wait(asm, at, sound, tiles, shown_by, paint_ahead)
               asm.label("rt_wait_vblank")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
               asm.lw(:t0, at.call(PASSES), :gp)
               asm.addiu(:t0, :t0, 1)
               asm.sw(:t0, at.call(PASSES), :gp)
+              if paint_ahead
+                asm.jal("rt_painted_pages_up")
+                asm.bne(:v0, :zero, "rt_wait_ticks_on_next_page")
+              end
               asm.jal("rt_frame_begins_unless_last")
               # A screen drawn from tiles is drawn whole once the pass, its timers' routines too, has placed
               # everything, as the interpreter's picture of the pass has it.
@@ -186,6 +197,7 @@ module VBlank
               # The pass's drawing commands sent and drawn (Runtime::DrawList), before it counts as ended:
               # its picture is whole by the time it is shown or read back.
               asm.jal("rt_draw_list_finish")
+              asm.label("rt_wait_published")
               # The page this pass drew, kept where a reader finds it while the game waits: the pages
               # may trade places before the game stops waiting.
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
@@ -217,6 +229,44 @@ module VBlank
               asm.lw(:t0, at.call(LAST_PASS_TAKEN), :gp)
               asm.beq(:t0, :zero, "rt_frame_begins")
               asm.jr(:ra)
+            end
+
+            # A HANDLER PAINTS ON THE PAGE AFTER THE PASS'S, on a tear-free painted screen. The interpreter trades
+            # the pages at the frame boundary before the timers move on (Reference#advance_frame), so what a
+            # handler paints goes on the page the next pass draws, and that pass's clear can cover it before
+            # it is ever shown. So here the pass's own commands are sent and drawn first, its page is done, and
+            # the timers run with PAGE_Y naming the other page; then PAGE_Y names the pass's page again, for
+            # the rest of the wait and the trade in the blank (Paint's rt_paint_flip).
+            #
+            # The handler's commands stay in the list (Runtime::DrawList) until the next pass ends: the other
+            # page is the one on the screen until the blank, and drawing on it now would show for the rest of
+            # the frame. A handler that fills the list, or draws something long the list is sent for at once,
+            # sends some of it before the blank.
+            #
+            # rt_painted_pages_up: v0 = 1 while a painted screen of two pages is up, and nought on one page or
+            # on a screen drawn from tiles (+crosses+, Tiles::TILES_UP), which is drawn whole after the timers.
+            def emit_ticks_on_next_page(asm, at, crosses)
+              asm.label("rt_wait_ticks_on_next_page")
+              asm.jal("rt_draw_list_finish")
+              emit_page_traded(asm, at)
+              asm.jal("rt_frame_begins_unless_last")
+              emit_page_traded(asm, at)
+              asm.b("rt_wait_published")
+
+              asm.label("rt_painted_pages_up")
+              asm.lw(:v0, at.call(Paint::PAGED), :gp)
+              return asm.jr(:ra) unless crosses
+
+              asm.lw(:t0, at.call(Tiles::TILES_UP), :gp)
+              asm.sltiu(:t0, :t0, 1)
+              asm.jr(:ra) { asm.and(:v0, :v0, :t0) }
+            end
+
+            # PAGE_Y names the other page.
+            def emit_page_traded(asm, at)
+              asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
+              asm.xori(:t0, :t0, Paint::SECOND_PAGE_TOP_LINE)
+              asm.sw(:t0, at.call(Paint::PAGE_Y), :gp)
             end
 
             # THE MOMENT THE PASS ENDS: END_LINES for it, the lines since the last blank began, and VBLANK
