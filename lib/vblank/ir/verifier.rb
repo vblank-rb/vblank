@@ -62,6 +62,7 @@ module VBlank
         flag:    ->(v) { v == true || v == false },            # an on/off switch (e.g. double buffering)
         shape:   ->(v) { v.is_a?(Audio::Envelope) },                  # how a note starts and how it ends
         chip_shape: ->(v) { v.is_a?(Audio::SNESEnvelope) },           # ...as a console's sound chip keeps it
+        chip_recording: ->(v) { v.is_a?(Audio::SNESRecording) },      # ...and a recording as one keeps it
         start_file: ->(v) { v.is_a?(StartFile)&& v.checks.all?(StartFile::Check) }, # a file the program is handed as it starts
         number_format: ->(v) { v.is_a?(Console::NumberFormat) },      # ...how a table's numbers are kept in it
         file_picture: ->(v) { v.is_a?(StartFile::Picture) || v.is_a?(StartFile::Pose) }, # ...where a picture is in it, or a pose's frame

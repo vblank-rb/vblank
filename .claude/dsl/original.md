@@ -33,7 +33,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
     bytes. With the pack left out the build holds zeros of the recording's length and the runtime fills them
     at power-on from the start file, so every verb a recording plays in (`play`, songs, sound effects)
     works in a shell. A recording given as `pcm:` bytes beside it stays as it was. Worked example:
-    `test/pack_sound_tests.rb`.
+    `test/pack_sound_tests.rb`. **A recording kept in the Super Nintendo sound chip's own format** (BRR)
+    takes the slot as `brr:`, and its loop point can be a number of the pack: `sample :horn, brr:
+    pack[:horn], brr_loop: pack[:loops].number(3), rate: 16_000` (`sound.md`), so the unpacking routine
+    copies the original's bytes and converts nothing. It is built all-in-one only for now: the build
+    decodes it, and a build that leaves its pack out refuses it at the line. Worked example:
+    `test/all/vblank/builder/test_brr_recordings.rb`.
   - `slots.notes :title_0, count: 200` — **notes of music, twelve bytes each in a record of VBlank's own**
     (`Original::PackNote`, whose `LAYOUT` and `bytes_of` a port's tests can use): the tick it starts on and
     how many it lasts (two bytes each, low byte first, 0 for until the next note), a MIDI key (255 a rest),
@@ -448,7 +453,7 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
   rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose
   recordings play at one rate (the Super Nintendo, the PlayStation) needs nothing. `holds_from:` and `envelope:`
-  work everywhere. `envelope: pack[:adsr].snes_envelope(3)` is refused at the line for
+  work everywhere. `envelope: pack[:adsr].snes_envelope(3)` and `brr: pack[:horn]` are refused at the line for
   now. Worked example: `test/pack_sound_tests.rb`.
 - `Score::Part.new(notes: pack[:title_0].notes(instruments: %i[horn bass]), ...)` in `songs` and `sound_effects` — a
   part's notes. **The Score must give `length:`**, in ticks, since where the last note ends is in the pack; one

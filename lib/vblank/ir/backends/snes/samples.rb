@@ -151,6 +151,44 @@ module VBlank
             [brr_blocks(intro, ending: 0) + brr_blocks(loop, ending: LOOP), intro.size / BLOCK_SAMPLES * BLOCK_BYTES]
           end
 
+          # A RECORDING THE GAME GAVE IN BRR (an Audio::SNESRecording), played reading back +back+
+          # samples at its end, as the bytes the sound unit keeps and how far into them its loop point
+          # is: the game's bytes and loop point, unchanged, where the play goes round as the recording
+          # does. The interpreter reads round the decoded loop (Audio::SNESRecording#decoded), which is
+          # some whole number of times round the chip's when the loop takes turns. A play asked to go
+          # round a recording that ends is the same bytes with the last block's loop bit set, round
+          # from the start. A play asked to end one that goes round plays what the interpreter plays
+          # once: the blocks up to the loop point, then the loop's blocks as many times as the decoded
+          # recording goes round it, each time decoded from where the time before ended, as on the
+          # chip, and only the last block ending the recording.
+          def brr_as_given(recording, back)
+            bytes = recording.bytes.bytes
+            return [bytes, recording.loop_at] if recording.loops? && back.positive? && (back % recording.loop_samples).zero?
+
+            last = bytes.size - BLOCK_BYTES
+            if back.zero?
+              [played_once(recording, bytes), 0]
+            elsif back == recording.sample_count
+              bytes[last] |= LOOP
+              [bytes, 0]
+            else
+              raise ArgumentError, "a BRR recording plays round its own loop of #{recording.loop_samples} samples, not #{back}"
+            end
+          end
+
+          # +bytes+ (the recording's) played once through as many times round its loop as its decoded
+          # samples hold, each block's end and loop bits cleared but the last's end bit.
+          def played_once(recording, bytes)
+            return bytes.tap { |given| given[-BLOCK_BYTES] &= ~(LOOP ^ END_ONLY) } unless recording.loops?
+
+            times = (recording.decoded.pcm.bytesize - (recording.loop_at / BLOCK_BYTES * BLOCK_SAMPLES)) / recording.loop_samples
+            blocks = bytes.each_slice(BLOCK_BYTES).to_a
+            blocks = blocks.first(recording.loop_at / BLOCK_BYTES) + (blocks.drop(recording.loop_at / BLOCK_BYTES) * times)
+            blocks = blocks.map { |block| [block.first & ~LOOP, *block.drop(1)] }
+            blocks.last[0] |= END_ONLY
+            blocks.flatten
+          end
+
           # +samples+ (bytes, padded with silence to whole blocks) as BRR blocks, each at the least range
           # that keeps it, the last ending with +ending+.
           def brr_blocks(samples, ending:)

@@ -30,7 +30,12 @@ module VBlank
       # in a slot of the data pack that holds the most a recording can be, with the recording's own
       # length a number of the pack (`length: pack[:lengths].number(3)`), so one that reads back to
       # an earlier sample does so from its own end, not through the rest of the slot.
-      def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil)
+      #
+      # +brr+ is a recording in the Super Nintendo sound chip's own format (Audio::SNESRecording), as
+      # bytes or a slot of the data pack, and +brr_loop+ how many bytes into it its loop starts: the
+      # Super Nintendo plays those bytes as they are, and every other build what the chip decodes.
+      def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
+                 brr: nil, brr_loop: 0)
         raise ArgumentError, "A sample name must be a Symbol. You gave #{name.inspect}." unless name.is_a?(Symbol)
         if VBlank::Audio::Music::CONSOLE_VOICE_NAMES.include?(name)
           raise ArgumentError, "The recording #{name.inspect} has the name of one of the console's own " \
@@ -39,6 +44,8 @@ module VBlank
                                ":#{name}_tone."
         end
 
+        refuse_brr_beside_samples!(name, pcm: pcm, from: from, holds_from: holds_from, length: length) if brr
+        refuse_brr_loop_alone!(name, brr_loop) unless brr
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
         settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
@@ -50,8 +57,18 @@ module VBlank
         # every other build plays the ordinary envelope nearest them (Audio::SNESEnvelope).
         chip_envelope = envelope if envelope.is_a?(Audio::SNESEnvelope)
         envelope = chip_envelope.closest_envelope if chip_envelope
-        bytes, rate = sample_data(name, pcm, from, rate)
-        bytes = bytes.byteslice(0, recording_length(name, length, bytes.bytesize)) if length
+        # A recording in the Super Nintendo sound chip's format is played everywhere else as the
+        # samples the chip decodes from it, round its own loop.
+        chip_recording = snes_recording(name, brr, brr_loop) if brr
+        if chip_recording
+          decoded = chip_recording.decoded
+          bytes = decoded.pcm
+          rate ||= DEFAULT_SAMPLE_RATE
+          holds_from = decoded.holds_from
+        else
+          bytes, rate = sample_data(name, pcm, from, rate)
+          bytes = bytes.byteslice(0, recording_length(name, length, bytes.bytesize)) if length
+        end
         start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)
           raise ArgumentError, "sample :#{name} must have a positive rate. The rate is how many samples play in one second. You gave #{rate.inspect}."
@@ -63,7 +80,7 @@ module VBlank
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate),
                                                    from_file: start_file_offset, chip_envelope: chip_envelope,
-                                                   settings_from_file: settings_from_file))
+                                                   settings_from_file: settings_from_file, chip_recording: chip_recording))
         DSL::Sample.new(self, name)
       end
 
@@ -76,13 +93,60 @@ module VBlank
       #   piano.play(:C4, :E4, :G4)   # ...or a chord
       #
       # @return [Instrument]
-      def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil)
+      def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
+                     brr: nil, brr_loop: 0)
         note_verb_written(:instrument)
-        DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note,
-                                          envelope: envelope, holds_from: holds_from, length: length))
+        DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note, envelope: envelope,
+                                               holds_from: holds_from, length: length, brr: brr, brr_loop: brr_loop))
       end
 
       private
+
+      # A BRR recording's samples and where it loops are its own bytes', so nothing else can give them.
+      def refuse_brr_beside_samples!(name, pcm:, from:, holds_from:, length:)
+        given = { pcm: pcm, from: from, holds_from: holds_from, length: length }.compact.keys
+        return if given.empty?
+
+        raise ArgumentError, "sample :#{name} has brr: and #{given.map { |word| "#{word}:" }.join(' and ')}. A BRR recording " \
+                             "holds its own samples, and its last block says whether it loops, back to brr_loop:. To fix " \
+                             "this, give brr: alone, or pcm: or from: without brr:."
+      end
+
+      # A loop point names a place in BRR bytes, so it means nothing without them.
+      def refuse_brr_loop_alone!(name, brr_loop)
+        return if brr_loop.is_a?(Integer) && brr_loop.zero?
+
+        raise ArgumentError, "sample :#{name} has brr_loop: and no brr:. brr_loop: is where a BRR recording's loop starts. " \
+                             "To fix this, give the recording as brr:, or use holds_from: for samples given as pcm: or from:."
+      end
+
+      # THE RECORDING +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
+      # that loops back +brr_loop+ bytes in (a number of the pack, or the game's own). The chip's
+      # decoding is worked out here, as the game is built, from bytes a build that leaves its pack
+      # out does not hold.
+      def snes_recording(name, brr, brr_loop)
+        if brr.is_a?(DSL::PackSlot)
+          refuse_slot_from_elsewhere!(brr, "sample :#{name}'s brr:")
+          refuse_slot_read_wrongly!(brr, :samples, "sample :#{name}'s brr:")
+          refuse_brr_left_out!(name)
+          brr = @data_pack_contents.bytes_of(brr.layout.name).byteslice(brr.first_pixel, brr.count)
+        end
+        refuse_brr_left_out!(name) if brr_loop.is_a?(DSL::PackNumber)
+        loop_at = pack_setting_value(brr_loop, "sample :#{name}'s brr_loop:", nil)
+        begin
+          Audio::SNESRecording.new(bytes: brr, loop_at: loop_at)
+        rescue ArgumentError => e
+          raise ArgumentError, "sample :#{name}: #{e.message}"
+        end
+      end
+
+      def refuse_brr_left_out!(name)
+        return unless pack_left_out?
+
+        raise ArgumentError, "sample :#{name} reads a BRR recording from the data pack, and this build reads its pack as the " \
+                             "game starts. A BRR recording from the pack is not made that way yet. To fix this, build the " \
+                             "game all-in-one."
+      end
 
       # +holds_from+ as a sample number, read here where it is a number of the pack
       # (#pack_setting_value). A number of the pack with every bit set is no hold

@@ -16,4 +16,5 @@ require_relative "audio/music"        # Music written as a block
 require_relative "audio/score"        # Music handed over as data
 require_relative "audio/envelope"     # How a note starts and ends, so an edge is not a click
 require_relative "audio/snes_envelope" # The Super Nintendo sound chip's own envelope bytes
+require_relative "audio/snes_recording" # A recording in the Super Nintendo sound chip's own format, BRR
 require_relative "audio/wav"         # A recording read from a file

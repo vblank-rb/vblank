@@ -271,7 +271,9 @@ module VBlank
                       "beep, a wave, noise or a song's own part. If every one of those plays a recording, the next " \
                       "recording is not heard. It still ends or loops as on the Advance. A recording whose " \
                       "`envelope:` is the sound chip's own bytes (a `VBlank::Audio::SNESEnvelope`) has them " \
-                      "written to its voice unchanged, and the sound chip shapes each note itself."),
+                      "written to its voice unchanged, and the sound chip shapes each note itself. A recording " \
+                      "given in the sound chip's own format (`brr:`) is played byte for byte as given, from the " \
+                      "loop point given (`brr_loop:`)."),
         instrument: works("see `sample`.")
       })
 

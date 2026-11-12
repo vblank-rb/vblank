@@ -75,11 +75,13 @@ module VBlank
             # Every entry of the sound log the cartridge can write, by the number it writes.
             def sound_entries = @sound_entries.dup
 
-            # The game's recordings as the sound unit keeps them (Samples.recording), each once for
-            # every way it is played — through to its end, or round from where it holds — in the
-            # order their source numbers follow the waves'.
+            # The game's recordings as the sound unit keeps them (Samples.recording, or Samples.brr_as_given
+            # for one in the chip's own format), each once for every way it is played — through to its
+            # end, or round from where it holds — in the order their source numbers follow the waves'.
             def sound_recordings
-              @recordings.map { |bytes, back| Samples.recording(bytes, back) }
+              @recordings.map do |kept, back|
+                kept.is_a?(VBlank::Audio::SNESRecording) ? Samples.brr_as_given(kept, back) : Samples.recording(kept, back)
+              end
             end
 
             # The recordings' names, by the number a place playing one keeps (Runtime::Recordings).
@@ -178,8 +180,11 @@ module VBlank
             # samples, as one instrument's recording played with several envelopes is, are kept
             # once, and every one of them reads the same source. Which recording a place holds is
             # still each one's own name (the row's NAME).
+            #
+            # A recording the game gave in the chip's own format (an Audio::SNESRecording) is kept as
+            # those bytes (Samples.brr_as_given), however its samples compare with another's.
             def source_of_recording(declared, back)
-              kept = [declared.bytes, back]
+              kept = [declared.chip_recording || declared.bytes, back]
               @recordings << kept unless @recordings.include?(kept)
               Samples::FIRST_WAVE + @sound_waves.size + @recordings.index(kept)
             end

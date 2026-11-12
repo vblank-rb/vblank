@@ -149,6 +149,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `song_instrument_tests.rb` (a song part playing a recorded instrument, played by each console that mixes them),
 `note_envelope_tests.rb` (recorded notes with a loudness shape falling away on their voices, played by each console that mixes them),
 `snes_envelope_tests.rb` (an instrument given the Super Nintendo sound chip's own envelope bytes, by hand or from a data pack, played by each console that shapes a recording),
+`brr_recordings.rb` (made-up recordings in the Super Nintendo sound chip's own format, BRR, a made-up original holding one, and the answer key they are decoded by, fullsnes's decoder, for the decoder's test, the games every run plays and the Super Nintendo's test against what bsnes plays),
 `equal_recording_games.rb` (recordings declared under several names with the same samples, for the test every run plays and each lowering's test that its build keeps them once),
 `sound_effect_recording_tests.rb` (sound effects whose parts play a recording, sharing the voices by rank, played by each console that mixes them),
 `screen_backdrop_games.rb` (small tiled games for `screen ... backdrop:`),

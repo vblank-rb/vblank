@@ -21,6 +21,7 @@ require "all/vblank/dsl/test_pack_background_set_cell"
 require "all/vblank/builder/test_pack_tile_pictures"
 require "pack_place_games"
 require "m4a_answers"
+require "brr_recordings"
 
 # EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
@@ -1198,6 +1199,25 @@ module PackGames
           game_loop do
             wait_vblank
             tone.play(:E4) if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built(b.program, b.made_data_pack_file)
+      end,
+      # A recording in the Super Nintendo sound chip's own format and its loop point, from the pack
+      # of a made-up Super Nintendo original (BRRRecordings).
+      game(:recording_in_brr_from_the_pack, passes: 10, presses: { 1 => [:a] },
+                                            refused: refused_by_builder("BRR recording")) do |folder, options|
+        from = BRRRecordings.original_holding(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound
+          pack = data_pack(from: from, version: "1") { |slots| BRRRecordings.declare_slots(slots) }
+          clip = sample :clip, brr: pack[:clip], brr_loop: pack[:loops].number(0), rate: SOUND_RATE
+          game_loop do
+            wait_vblank
+            clip.play(loop: true) if pressed(:a)
           end
         end
         b.finalize_program

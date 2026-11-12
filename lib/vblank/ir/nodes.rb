@@ -1598,7 +1598,7 @@ module VBlank
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
                  envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape,
-                 settings_from_file: :file_recording_settings
+                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording
 
         # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in
         # the file the program is handed as it starts (a StartFile::RecordingSettings), for those
@@ -1608,6 +1608,11 @@ module VBlank
         # whose settings came from a game for that console. A backend for that console may hand it
         # to the chip; +envelope+ is then the nearest shape every other backend plays, and the one
         # that says how long a note holds its voice on all of them.
+
+        # +chip_recording+ is the recording as one console's sound chip keeps it, packed its own way,
+        # for a recording that came from a game for that console. A backend for that console may
+        # hand those bytes to the chip as they are; +bytes+ and +holds_from+ are then what the chip
+        # decodes from them, which every other backend plays.
       end
 
       class SaveInit
