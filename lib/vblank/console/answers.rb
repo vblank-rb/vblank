@@ -40,6 +40,10 @@ module VBlank
 
       VERDICTS = %i[works refused].freeze
 
+      # The answer every console gives for what only a computer's window reads.
+      COMPUTER_ONLY = "they are for the game built for a computer (the window, `vblank run`, the web page): " \
+                      "the cartridge is built byte for byte as without it."
+
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 

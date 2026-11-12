@@ -202,6 +202,7 @@ module VBlank
         players_connected: works("1 while the build reads the first pad alone."),
         rumble: works("nothing is felt. The build reads a digital pad, which has no motor, so the game plays the " \
                       "same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,

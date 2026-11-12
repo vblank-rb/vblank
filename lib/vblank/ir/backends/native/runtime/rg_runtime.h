@@ -28,6 +28,9 @@ void rg_game_dump_state(void);
 /* The game's name, as VBlank.game was given it: the window's title. */
 extern const char rg_game_title[];
 
+/* The keys and gamepad buttons the game adds to the window's layout (rg_window_use_game_controls). */
+extern const int32_t rg_game_controls[];
+
 /* What the game does when one of its timers ticks. The runtime calls it once for each tick with
  * one timer in mind, and the game runs that timer's handler, if it has one:
  *

@@ -190,8 +190,12 @@ module VBlank
       # +state_folder_name+ names the folder (in the place the computer keeps a program's files, as for
       # a game's save) where the menu keeps save states: StateSlots.folder_name says it. Left out, the
       # window has no Save or Load in its menu and no F5 or F9, as in a match with other players.
+      #
+      # +game_controls+ is the keys and gamepad buttons the game adds to the layout, as the list of
+      # numbers the game is built with (LiveGame#controls), nil for none: Settings says what is done
+      # with them.
       def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil,
-                     caption: nil, state_folder_name: nil)
+                     caption: nil, state_folder_name: nil, game_controls: nil)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
@@ -199,7 +203,7 @@ module VBlank
         @height = height
         @closed = false
         @has_menu = menu
-        @player_settings = Settings.new(key_names: KeyNames.new(@sdl))
+        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls)
         @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
                                                            asked: (settings_file unless settings_file == :usual))
         @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []

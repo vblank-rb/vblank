@@ -79,6 +79,10 @@ end
 def rg_driver_halt = throw(:rg_live_stop)
 def rg_driver_fault(message) = raise(RgFault, message)
 
+# The keys and gamepad buttons the game adds to the window's layout, as IR::ComputerControls.runtime_numbers
+# lays them out (Live::Settings reads them).
+def rg_live_controls = @rg_game_controls
+
 # THE SAVE MEMORY, for whoever keeps it in a file (Live::Session): its size, its bytes as a String, and
 # the file's bytes put into it as the game starts.
 def rg_live_save_size = rg_save_size

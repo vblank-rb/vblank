@@ -30,6 +30,10 @@ extern "C" {
 #define RG_WINDOW_BUTTONS 10
 /* Keys a button may have: Right Shift and Backspace are both Select by default. */
 #define RG_WINDOW_KEYS_A_BUTTON 2
+/* Gamepad buttons a button may have: the one it starts on, and one the game adds (a player's
+ * settings file can give it a second too). */
+#define RG_WINDOW_PADS_A_BUTTON 2
+#define RG_NO_PAD (-1)
 
 /* --- the keys that are not a console's: hotkeys --- */
 
@@ -169,8 +173,19 @@ int rg_window_key_hotkey(int key);
 /* The keys of a button (0 for the first, 1 for the second), RG_NO_KEY for none. */
 int rg_window_button_key(int button, int slot);
 int rg_window_hotkey_key(int hotkey);
-/* The gamepad button that is a console button. */
-int rg_window_pad_button(int button);
+/* The gamepad buttons that are a console button (0 for the first, 1 for the second), RG_NO_PAD
+ * for none. */
+int rg_window_pad_button(int button, int slot);
+/* The menu's words for a console button: its keys and its gamepad buttons, "X, D / east, west". */
+void rg_window_button_text(int button, char *text, size_t room);
+
+/* THE GAME'S OWN KEYS AND GAMEPAD BUTTONS (Builder::Input#computer_keys and #computer_gamepad),
+ * added to VBlank's layout: the list the game is built with (rg_game_controls, laid out as
+ * IR::ComputerControls.runtime_numbers says), given before rg_window_use_defaults, and kept, not copied.
+ * They are where the window starts, where Reset puts things back, and they are added again after
+ * each settings file is read wherever nothing else has the key or gamepad button. The settings
+ * file never holds them, so the file every game shares never gives one game's keys to another. */
+void rg_window_use_game_controls(const int32_t *controls);
 
 /* Choosing a key. Each returns NULL when it is done, and otherwise why not, in a sentence a player
  * can read: a key that is another button's, or a hotkey's, is refused and nothing is changed
@@ -178,8 +193,9 @@ int rg_window_pad_button(int button);
  * key a button already has in its other place is moved. The same sentence is the notice. */
 const char *rg_window_bind_key(int button, int slot, int key);
 const char *rg_window_bind_hotkey(int hotkey, int key);
-/* A gamepad button taken by another console button swaps with it, so A and B can be swapped by
- * choosing one. Always done; the result is the same NULL as the others'. */
+/* The button's first gamepad button. One taken by another console button as its first swaps with
+ * it, so A and B can be swapped by choosing one; one another has as its second is taken off it.
+ * Always done; the result is the same NULL as the others'. */
 const char *rg_window_bind_pad(int button, int pad_button);
 void rg_window_reset_keys(void);
 void rg_window_reset_pad(void);

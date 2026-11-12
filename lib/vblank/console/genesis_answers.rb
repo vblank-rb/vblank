@@ -232,6 +232,7 @@ module VBlank
         players_connected: works("always 1: this build reads the first pad only."),
         rumble: works("nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same " \
                       "without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,

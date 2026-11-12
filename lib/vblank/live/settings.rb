@@ -49,6 +49,7 @@ module VBlank
                        dpad_up dpad_down dpad_left dpad_right].freeze
 
       KEYS_A_BUTTON = 2 # The most keys one button can have
+      PADS_A_BUTTON = 2 # The most gamepad buttons one button can have
       ESCAPE = 41 # Gives up choosing a key, and so can be no button's or hotkey's
       LONGEST_LINE = 255
       FAST_SPEEDS = (2..8)
@@ -65,14 +66,23 @@ module VBlank
       # (given a console button, its gamepad button) returns.
       def self.pad_map = BUTTONS.to_h { |button| [PAD_BUTTONS.index(yield(button.setting)), button.setting] }
 
-      def initialize(key_names:)
+      # +game_controls+ is the keys and gamepad buttons the game adds to the layout
+      # (Builder::Input#computer_keys and #computer_gamepad), as the game is built with them: the
+      # list of numbers IR::ComputerControls.runtime_numbers makes, [0] or nil for none. They are where the
+      # window starts and where Reset puts things back, and they are added again after each settings
+      # file is read wherever nothing else has them. The file never holds them (#text), so the file
+      # every game shares never gives one game's keys to the others. This is rg_window.c's
+      # add_game_controls.
+      def initialize(key_names:, game_controls: nil)
         @key_names = key_names
+        @game_keys, @game_pads = game_controls_in(game_controls)
         @now = STARTING.dup
         BUTTONS.each do |button|
           KEYS_A_BUTTON.times { |slot| @now[[:key, button.setting, slot]] = button.keys[slot] }
-          @now[[:pad, button.setting]] = button.pad
         end
         HOTKEYS.each { |hotkey| @now[[:hotkey, hotkey.setting]] = hotkey.key }
+        add_game_keys(@now)
+        fill_starting_pads(@now)
         @owned = {} # the settings the file being written to holds for itself (#mark_inherited)
         @unwritten = false
       end
@@ -92,16 +102,21 @@ module VBlank
       end
 
       # Which console button each of a gamepad's buttons is, by SDL's number for it.
-      def pad_map = @pad_map ||= self.class.pad_map { |button| pad_of(button) }
+      def pad_map
+        @pad_map ||= BUTTONS.each_with_object({}) do |button, map|
+          pads_of(button.setting).each { |pad| map[PAD_BUTTONS.index(pad)] = button.setting }
+        end
+      end
 
       # The console buttons whose keys are down, as +down+ (given a scancode) returns.
       def buttons_held(&down)
         BUTTONS.filter_map { |button| button.setting if keys_of(button.setting).any?(&down) }
       end
 
-      # The keys a console button has, by scancode, and the gamepad button it is.
+      # The keys a console button has, by scancode, and the gamepad buttons it is, the first first.
       def keys_of(button) = Array.new(KEYS_A_BUTTON) { |slot| @now[[:key, button, slot]] }.compact
-      def pad_of(button) = @now[[:pad, button]]
+      def pads_of(button) = Array.new(PADS_A_BUTTON) { |slot| @now[[:pad, button, slot]] }.compact
+      def pad_of(button) = @now[[:pad, button, 0]]
 
       # The key a hotkey has, or nil.
       def hotkey_of(hotkey) = @now[[:hotkey, hotkey]]
@@ -181,25 +196,32 @@ module VBlank
         @notice = nil
       end
 
-      # A gamepad button another console button has swaps with it, so A and B can be swapped by
-      # choosing one.
+      # The button's first gamepad button. One another console button has as its first swaps with
+      # it, so A and B can be swapped by choosing one; one another has as its second is taken off it.
       def bind_pad(button, pad)
         was = pad_of(button)
-        BUTTONS.each { |each| change([:pad, each.setting], was) if each.setting != button && pad_of(each.setting) == pad }
-        change([:pad, button], pad)
+        BUTTONS.each do |each|
+          change([:pad, each.setting, 0], was) if each.setting != button && pad_of(each.setting) == pad
+          (1...PADS_A_BUTTON).each { |slot| change([:pad, each.setting, slot], nil) if @now[[:pad, each.setting, slot]] == pad }
+        end
+        change([:pad, button, 0], pad)
         @notice = @pad_map = nil
       end
 
-      # Keys and gamepad buttons as they start. A key a hotkey has been given since stays with it.
+      # Keys and gamepad buttons as they start, the game's own among them. A key a hotkey has been
+      # given since stays with it.
       def reset_keys
         @problems = []
         @candidate = @now.dup
         BUTTONS.each do |button|
           KEYS_A_BUTTON.times { |slot| @candidate[[:key, button.setting, slot]] = button.keys[slot] }
         end
+        add_game_keys(@candidate)
         clear_clashing_keys
         key_slots.each { |slot, _owner| change(slot, @candidate[slot]) }
-        BUTTONS.each { |button| change([:pad, button.setting], button.pad) }
+        fresh = {}
+        fill_starting_pads(fresh)
+        fresh.each { |slot, pad| change(slot, pad) }
         @notice = @problems.empty? ? nil : "Keys are back as they were. #{@problems.join(' ')}"
         @pad_map = nil
       end
@@ -213,8 +235,8 @@ module VBlank
       def button_text(place)
         button = BUTTONS[place]
         keys = keys_of(button.setting).map { |key| key_name(key) }
-        pad = pad_of(button.setting).to_s.tr("_", " ").sub("dpad", "d-pad")
-        "#{keys.empty? ? 'none' : keys.join(', ')} / #{pad}"
+        pads = pads_of(button.setting).map { |pad| pad.to_s.tr("_", " ").sub("dpad", "d-pad") }
+        "#{keys.empty? ? 'none' : keys.join(', ')} / #{pads.join(', ')}"
       end
 
       def hotkey_text(place) = key_name(hotkey_of(HOTKEYS[place].setting))
@@ -254,16 +276,21 @@ module VBlank
         lines << "frame_time = #{on_off(@now[:frame_time])}" if all || @owned[:frame_time]
         lines << "fast_forward_speed = #{@now[:fast_forward_speed]}" if all || @owned[:fast_forward_speed]
         lines << "" << "# Keys, as SDL names them (Backspace, Right Shift, Left, X). A button has a line for each of its keys."
+        # The game's own keys and gamepad buttons are left out: the game adds them again as it
+        # starts, and the file every game shares must not give them to every game.
         BUTTONS.each do |button|
           next unless all || KEYS_A_BUTTON.times.any? { |slot| @owned[[:key, button.setting, slot]] }
 
-          keys = keys_of(button.setting)
+          keys = keys_of(button.setting) - @game_keys.fetch(button.setting, [])
           lines.concat(keys.empty? ? ["key.#{button.setting} = none"] : keys.map { |key| "key.#{button.setting} = #{key_name(key)}" })
         end
         lines << "" << "# Gamepad buttons: south, east, west, north, back, guide, start, left_stick, right_stick,"
-        lines << "# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right."
+        lines << "# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right. A button has a line for each of its own."
         BUTTONS.each do |button|
-          lines << "pad.#{button.setting} = #{pad_of(button.setting)}" if all || @owned[[:pad, button.setting]]
+          next unless all || PADS_A_BUTTON.times.any? { |slot| @owned[[:pad, button.setting, slot]] }
+
+          first, *more = pads_of(button.setting)
+          [first, *(more - @game_pads.fetch(button.setting, []))].each { |pad| lines << "pad.#{button.setting} = #{pad}" }
         end
         lines << "" << "# Keys the window keeps for itself. A console button cannot use one of them."
         HOTKEYS.each do |hotkey|
@@ -278,6 +305,9 @@ module VBlank
       def read(text)
         @problems = []
         @candidate = @now.dup
+        # The game's own keys come off first and go back on at the end, wherever the file leaves
+        # them free: a key the file gives to something else is the player's, and is no clash.
+        remove_game_controls(@candidate)
         @touched = {}
         # Bytes that are no letters are kept as question marks, so such a line is said and skipped.
         text.dup.force_encoding(Encoding::UTF_8).scrub("?").split("\n", -1).each_with_index do |raw, index|
@@ -293,6 +323,10 @@ module VBlank
         end
         refuse_escape
         clear_clashing_keys
+        # The file holds none of the game's own keys and gamepad buttons (#text), so they are added
+        # again wherever it left them free.
+        add_game_keys(@candidate)
+        add_game_pads(@candidate)
         @now = @candidate
         @pad_map = nil
         @problems
@@ -413,7 +447,73 @@ module VBlank
         pad = PAD_BUTTONS.find { |each| each.to_s.casecmp?(value) }
         return add_problem("\"#{value}\" is not a gamepad button the window knows, so #{button.name} keeps the one it had.") unless pad
 
-        set_as_own([:pad, button.setting], pad)
+        # The first line for a button replaces its gamepad buttons; one after that adds one.
+        touched = [:pad, button.setting]
+        unless @touched[touched]
+          (1...PADS_A_BUTTON).each { |slot| set_as_own([:pad, button.setting, slot], nil) }
+          @touched[touched] = true
+          return set_as_own([:pad, button.setting, 0], pad)
+        end
+        slot = (1...PADS_A_BUTTON).find { |at| @candidate[[:pad, button.setting, at]].nil? }
+        return add_problem("#{button.name} has room for #{PADS_A_BUTTON} gamepad buttons, so \"#{value}\" is left out.") unless slot
+
+        set_as_own([:pad, button.setting, slot], pad)
+      end
+
+      # +numbers+ (IR::ComputerControls.runtime_numbers) as the keys and the gamepad buttons the game adds,
+      # each by the button it adds them to.
+      def game_controls_in(numbers)
+        count, *rest = numbers || [0]
+        keys = Hash.new { |hash, button| hash[button] = [] }
+        pads = Hash.new { |hash, button| hash[button] = [] }
+        rest.first(3 * count).each_slice(3) do |button, kind, code|
+          setting = BUTTONS.fetch(button).setting
+          kind.zero? ? keys[setting] << code : pads[setting] << PAD_BUTTONS.fetch(code)
+        end
+        [keys.to_h { |button, list| [button, list.freeze] }.freeze, pads.to_h { |button, list| [button, list.freeze] }.freeze]
+      end
+
+      # The game's keys put in +into+ (a settings hash), each in its button's first free place,
+      # wherever nothing else has it: a player who gave the key to something else keeps that.
+      def add_game_keys(into)
+        @game_keys.each do |button, keys|
+          keys.each do |key|
+            next if into.any? { |name, value| name.is_a?(Array) && %i[key hotkey].include?(name.first) && value == key }
+
+            slot = KEYS_A_BUTTON.times.find { |at| into[[:key, button, at]].nil? } or next
+            into[[:key, button, slot]] = key
+          end
+        end
+      end
+
+      def add_game_pads(into)
+        @game_pads.each do |button, pads|
+          pads.each do |pad|
+            next if into.any? { |name, value| name.is_a?(Array) && name.first == :pad && value == pad }
+
+            slot = PADS_A_BUTTON.times.find { |at| into[[:pad, button, at]].nil? } or next
+            into[[:pad, button, slot]] = pad
+          end
+        end
+      end
+
+      # The game's keys and gamepad buttons taken out of +from+, wherever they are on the button the
+      # game gave them to (a second gamepad button only: the first is the player's choice).
+      def remove_game_controls(from)
+        @game_keys.each do |button, keys|
+          KEYS_A_BUTTON.times { |slot| from[[:key, button, slot]] = nil if keys.include?(from[[:key, button, slot]]) }
+        end
+        @game_pads.each do |button, pads|
+          (1...PADS_A_BUTTON).each { |slot| from[[:pad, button, slot]] = nil if pads.include?(from[[:pad, button, slot]]) }
+        end
+      end
+
+      # Every button's gamepad buttons as VBlank's layout and the game's have them, put in +into+.
+      def fill_starting_pads(into)
+        BUTTONS.each do |button|
+          PADS_A_BUTTON.times { |slot| into[[:pad, button.setting, slot]] = slot.zero? ? button.pad : nil }
+        end
+        add_game_pads(into)
       end
 
       def read_hotkey(name, value)

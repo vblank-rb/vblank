@@ -111,10 +111,10 @@ static const char *const panel_names[RG_PANEL_COUNT] = {"controls", "variables"}
 typedef struct {
   int scale, fullscreen, volume, muted, show_frame_rate, show_frame_time, fast_speed;
   int keys[RG_WINDOW_BUTTONS][RG_WINDOW_KEYS_A_BUTTON];
-  int pad[RG_WINDOW_BUTTONS];
+  int pad[RG_WINDOW_BUTTONS][RG_WINDOW_PADS_A_BUTTON];
   int hotkeys[RG_HOTKEY_COUNT];
 } settings;
-_Static_assert(sizeof(settings) == sizeof(int) * (SETTINGS_FLAGS + BUTTON_KEY_SLOTS + RG_WINDOW_BUTTONS + RG_HOTKEY_COUNT),
+_Static_assert(sizeof(settings) == sizeof(int) * (SETTINGS_FLAGS + BUTTON_KEY_SLOTS + RG_WINDOW_BUTTONS * RG_WINDOW_PADS_A_BUTTON + RG_HOTKEY_COUNT),
                "every setting is an int, so owner_flag finds its flag in the same place");
 
 static settings now;
@@ -217,6 +217,12 @@ static void set_as_own(settings *in, int *setting, int value) {
 static int button_keys_owned(int button) {
   for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
     if (owned.keys[button][s]) return 1;
+  return 0;
+}
+
+static int button_pads_owned(int button) {
+  for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++)
+    if (owned.pad[button][s]) return 1;
   return 0;
 }
 
@@ -411,7 +417,108 @@ int rg_window_button_key(int button, int slot) {
   return now.keys[button][slot];
 }
 int rg_window_hotkey_key(int hotkey) { return is_hotkey(hotkey) ? now.hotkeys[hotkey] : RG_NO_KEY; }
-int rg_window_pad_button(int button) { return is_button(button) ? now.pad[button] : 0; }
+int rg_window_pad_button(int button, int slot) {
+  return is_button(button) && slot >= 0 && slot < RG_WINDOW_PADS_A_BUTTON ? now.pad[button][slot] : RG_NO_PAD;
+}
+
+/* Adds +words+ to the text in +text+, as far as +room+ goes. */
+static void add_words(char *text, size_t room, const char *between, const char *words) {
+  size_t used = strlen(text);
+  if (used + 1 < room) snprintf(text + used, room - used, "%s%s", between, words);
+}
+
+void rg_window_button_text(int button, char *text, size_t room) {
+  if (!room) return;
+  text[0] = '\0';
+  const char *between = "";
+  for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++) {
+    int key = rg_window_button_key(button, s);
+    if (key == RG_NO_KEY) continue;
+    add_words(text, room, between, rg_window_key_name(key));
+    between = ", ";
+  }
+  if (!between[0]) add_words(text, room, "", "none");
+  between = " / ";
+  for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++) {
+    int pad = rg_window_pad_button(button, s);
+    if (pad == RG_NO_PAD) continue;
+    add_words(text, room, between, rg_window_pad_button_name(pad));
+    between = ", ";
+  }
+}
+
+/* --- the game's own keys and gamepad buttons --- */
+
+/* The list the game was built with: how many, then a button, 0 for a key or 1 for a gamepad
+ * button, and its number, for each. NULL for none. */
+static const int32_t *game_controls;
+#define GAME_KEY 0
+
+void rg_window_use_game_controls(const int32_t *controls) { game_controls = controls; }
+
+static int game_control_count(void) { return game_controls ? game_controls[0] : 0; }
+static int game_control_button(int i) { return game_controls[1 + 3 * i]; }
+static int game_control_is_key(int i) { return game_controls[2 + 3 * i] == GAME_KEY; }
+static int game_control_code(int i) { return game_controls[3 + 3 * i]; }
+
+/* Whether the game added +code+ (a key, or a gamepad button) to +button+. */
+static int game_added(int button, int is_key, int code) {
+  for (int i = 0; i < game_control_count(); i++)
+    if (game_control_button(i) == button && game_control_is_key(i) == is_key && game_control_code(i) == code) return 1;
+  return 0;
+}
+
+static int key_taken(const settings *in, int key) {
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
+    for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
+      if (in->keys[b][s] == key) return 1;
+  for (int h = 0; h < RG_HOTKEY_COUNT; h++)
+    if (in->hotkeys[h] == key) return 1;
+  return 0;
+}
+
+static int pad_taken(const settings *in, int pad) {
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
+    for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++)
+      if (in->pad[b][s] == pad) return 1;
+  return 0;
+}
+
+/* The game's keys and gamepad buttons taken out of +in+, wherever they are on the button the game
+ * gave them to (a second gamepad button only: the first is the player's choice). */
+static void remove_game_controls(settings *in) {
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+    for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
+      if (in->keys[b][s] != RG_NO_KEY && game_added(b, 1, in->keys[b][s])) in->keys[b][s] = RG_NO_KEY;
+    for (int s = 1; s < RG_WINDOW_PADS_A_BUTTON; s++)
+      if (in->pad[b][s] != RG_NO_PAD && game_added(b, 0, in->pad[b][s])) in->pad[b][s] = RG_NO_PAD;
+  }
+}
+
+/* The game's keys (+keys+) and gamepad buttons (+pads+) put in +in+, each in its button's first
+ * free place, wherever nothing else has it: a player who gave the key to something else keeps
+ * that. Nothing is marked as changed, since it is how things start. */
+static void add_game_controls(settings *in, int keys, int pads) {
+  for (int i = 0; i < game_control_count(); i++) {
+    int button = game_control_button(i), code = game_control_code(i);
+    if (!is_button(button)) continue;
+    if (game_control_is_key(i)) {
+      if (!keys || key_taken(in, code)) continue;
+      for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++)
+        if (in->keys[button][s] == RG_NO_KEY) {
+          in->keys[button][s] = code;
+          break;
+        }
+    } else {
+      if (!pads || !is_pad_button(code) || pad_taken(in, code)) continue;
+      for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++)
+        if (in->pad[button][s] == RG_NO_PAD) {
+          in->pad[button][s] = code;
+          break;
+        }
+    }
+  }
+}
 
 /* --- save states --- */
 
@@ -503,15 +610,30 @@ const char *rg_window_bind_hotkey(int hotkey, int key) {
 const char *rg_window_bind_pad(int button, int pad_button) {
   if (!is_button(button)) return say("There is no such button.");
   if (!is_pad_button(pad_button)) return say("The window cannot use that gamepad button.");
-  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
-    if (b != button && now.pad[b] == pad_button) set_int(&now.pad[b], now.pad[button]);
-  set_int(&now.pad[button], pad_button);
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+    if (b != button && now.pad[b][0] == pad_button) set_int(&now.pad[b][0], now.pad[button][0]);
+    for (int s = 1; s < RG_WINDOW_PADS_A_BUTTON; s++)
+      if (now.pad[b][s] == pad_button) set_int(&now.pad[b][s], RG_NO_PAD);
+  }
+  set_int(&now.pad[button][0], pad_button);
   rg_window_clear_notice();
   return NULL;
 }
 
+/* Every button's gamepad buttons as VBlank's layout and the game's have them. */
+static void fill_starting_pads(settings *in) {
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+    in->pad[b][0] = button_kinds[b].pad;
+    for (int s = 1; s < RG_WINDOW_PADS_A_BUTTON; s++) in->pad[b][s] = RG_NO_PAD;
+  }
+  add_game_controls(in, 0, 1);
+}
+
 void rg_window_reset_pad(void) {
-  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) set_int(&now.pad[b], button_kinds[b].pad);
+  settings fresh = now;
+  fill_starting_pads(&fresh);
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
+    for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++) set_int(&now.pad[b][s], fresh.pad[b][s]);
 }
 
 /* Every key a button or a hotkey has, in the order a clash is settled in: the later one of two
@@ -573,6 +695,7 @@ void rg_window_reset_keys(void) {
   settings fresh = now;
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
     for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++) fresh.keys[b][s] = button_kinds[b].keys[s];
+  add_game_controls(&fresh, 1, 0);
   char said[256] = "";
   clear_clashing_keys(&fresh, said, sizeof said);
   for (int i = 0; i < KEY_SLOTS; i++) set_int(key_slot(&now, i), *key_slot(&fresh, i));
@@ -595,11 +718,11 @@ void rg_window_use_defaults(void) {
   now.volume = 100;
   now.show_frame_rate = 1;
   now.fast_speed = 4;
-  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
     for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++) now.keys[b][s] = button_kinds[b].keys[s];
-    now.pad[b] = button_kinds[b].pad;
-  }
   for (int h = 0; h < RG_HOTKEY_COUNT; h++) now.hotkeys[h] = hotkey_kinds[h].key;
+  add_game_controls(&now, 1, 0);
+  fill_starting_pads(&now);
   memset(&owned, 0, sizeof owned);
   paused = step_owed = fast_held = changes = 0;
   memset(panels, 0, sizeof panels);
@@ -751,20 +874,28 @@ size_t rg_window_settings_text(char *out, size_t room, rg_settings_part part) {
   if (all || owned.show_frame_time) LINE("frame_time = %s\n", now.show_frame_time ? "on" : "off");
   if (all || owned.fast_speed) LINE("fast_forward_speed = %d\n", now.fast_speed);
   LINE("\n# Keys, as SDL names them (Backspace, Right Shift, Left, X). A button has a line for each of its keys.\n");
+  /* The game's own keys and gamepad buttons are left out: the game adds them again as it starts,
+   * and the file every game shares must not give them to every game. */
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
     if (!all && !button_keys_owned(b)) continue;
     int written = 0;
     for (int s = 0; s < RG_WINDOW_KEYS_A_BUTTON; s++) {
-      if (now.keys[b][s] == RG_NO_KEY) continue;
+      if (now.keys[b][s] == RG_NO_KEY || game_added(b, 1, now.keys[b][s])) continue;
       LINE("key.%s = %s\n", button_kinds[b].setting, rg_window_key_name(now.keys[b][s]));
       written++;
     }
     if (!written) LINE("key.%s = none\n", button_kinds[b].setting);
   }
   LINE("\n# Gamepad buttons: south, east, west, north, back, guide, start, left_stick, right_stick,\n");
-  LINE("# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right.\n");
-  for (int b = 0; b < RG_WINDOW_BUTTONS; b++)
-    if (all || owned.pad[b]) LINE("pad.%s = %s\n", button_kinds[b].setting, pad_kinds[now.pad[b]].setting);
+  LINE("# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right. A button has a line for each of its own.\n");
+  for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
+    if (!all && !button_pads_owned(b)) continue;
+    for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++) {
+      int pad = now.pad[b][s];
+      if (pad == RG_NO_PAD || (s > 0 && game_added(b, 0, pad))) continue;
+      LINE("pad.%s = %s\n", button_kinds[b].setting, pad_kinds[pad].setting);
+    }
+  }
   LINE("\n# Keys the window keeps for itself. A console button cannot use one of them.\n");
   for (int h = 0; h < RG_HOTKEY_COUNT; h++)
     if (all || owned.hotkeys[h]) LINE("hotkey.%s = %s\n", hotkey_kinds[h].setting, rg_window_key_name(now.hotkeys[h]));
@@ -843,7 +974,11 @@ static const char *button_setting_list(void) {
 int rg_window_settings_read(const char *text, char *problems, size_t room) {
   if (room) problems[0] = '\0';
   settings candidate = now;
+  /* The game's own keys come off first and go back on at the end, wherever the file leaves them
+   * free: a key the file gives to something else is the player's, and is no clash. */
+  remove_game_controls(&candidate);
   int touched_keys[RG_WINDOW_BUTTONS] = {0};
+  int touched_pads[RG_WINDOW_BUTTONS] = {0};
   int said = 0;
   int line_number = 0;
   char copy[256];
@@ -928,7 +1063,16 @@ int rg_window_settings_read(const char *text, char *problems, size_t room) {
       int pad = pad_button_with_setting(value);
       if (button < 0) NO_SUCH_BUTTON(name + 4);
       else if (pad < 0) PROBLEM("\"%s\" is not a gamepad button the window knows, so %s keeps the one it had.", value, button_kinds[button].name);
-      else set_as_own(&candidate, &candidate.pad[button], pad);
+      else {
+        /* The first line for a button replaces its gamepad buttons; one after that adds one. */
+        if (!touched_pads[button])
+          for (int s = 1; s < RG_WINDOW_PADS_A_BUTTON; s++) set_as_own(&candidate, &candidate.pad[button][s], RG_NO_PAD);
+        int slot = touched_pads[button] ? 1 : 0;
+        while (slot && slot < RG_WINDOW_PADS_A_BUTTON && candidate.pad[button][slot] != RG_NO_PAD) slot++;
+        touched_pads[button] = 1;
+        if (slot == RG_WINDOW_PADS_A_BUTTON) PROBLEM("%s has room for %d gamepad buttons, so \"%s\" is left out.", button_kinds[button].name, RG_WINDOW_PADS_A_BUTTON, value);
+        else set_as_own(&candidate, &candidate.pad[button][slot], pad);
+      }
     } else if (strncmp(name, "hotkey.", 7) == 0) {
       int hotkey = hotkey_with_setting(name + 7);
       int key = equal_ignoring_case(value, "none") ? RG_NO_KEY : key_named(value);
@@ -956,6 +1100,9 @@ int rg_window_settings_read(const char *text, char *problems, size_t room) {
     size_t used = strlen(problems);
     snprintf(problems + used, room - used, "%s", clashes);
   }
+  /* The file holds none of the game's own keys and gamepad buttons (rg_window_settings_text), so
+   * they are added again wherever it left them free. */
+  add_game_controls(&candidate, 1, 1);
 
   /* What is read is not due to be written back, but a window that is already open has to be
    * told what changed in it. */

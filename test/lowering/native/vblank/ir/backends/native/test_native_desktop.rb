@@ -199,6 +199,35 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GAME'S OWN KEYS (computer_keys): the window starts with them, beside VBlank's. How the window
+  # keeps them is tested with no window (test_native_window.rb); this is that the game's build hands
+  # them to it.
+  def test_the_window_starts_with_the_keys_the_game_adds
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("ADDS KEYS", consoles: %i[gba]) do
+        computer_keys a: :d
+        screen :bitmap
+        frames = 0
+        held_a = var(:held_a, 0)
+        held_right = var(:held_right, 0)
+        game_loop do
+          clear_screen :black
+          frames += 1
+          held_a.increase! 1 if held(:a)
+          held_right.increase! 1 if held(:right)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "adds"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      held_d = play_window(exe, dir, ["0", "0 keydown:D", "0", "0", "0", "0 keyup:D", "0 keydown:Right", "0", "0 keyup:Right"], frames: 12)
+
+      assert_match(/^  A +X, D$/, help)
+      assert_match(/^  Right +Right$/, help, "the right arrow is still Right")
+      assert_operator held_d.variables[:held_a], :>=, 3, "D presses A"
+      assert_operator held_d.variables[:held_right], :>=, 1, "and the right arrow still presses Right"
+    end
+  end
+
   # A game that counts its frames and, for each console button, the frames it was held: what the
   # window does to itself must leave every one of these as a run with none of it would, and what a
   # button does must show in its own. It plays a long note so there is a sound to hear.

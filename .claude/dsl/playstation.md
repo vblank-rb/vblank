@@ -140,6 +140,8 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mark` — works: the same as on the Advance.
 - `players_connected` — works: 1 while the build reads the first pad alone.
 - `rumble` — works: nothing is felt. The build reads a digital pad, which has no motor, so the game plays the same without it.
+- `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.
 - `roll` — works: the same as on the Advance.

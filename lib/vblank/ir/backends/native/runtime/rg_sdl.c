@@ -767,6 +767,7 @@ static char *settings_file_in(const char *folder) {
  * --settings-file named, which is then the only one there is. */
 static void load_settings(const char *asked, int usual_files_asked) {
   rg_window_use_key_names(scancode_name, scancode_named);
+  rg_window_use_game_controls(rg_game_controls);
   rg_window_use_defaults();
   char said[2048] = "";
 
@@ -1520,9 +1521,16 @@ static uint32_t buttons_held(void) {
     if (!pads[pad]) continue;
     bool keyboards = SDL_GetGamepadID(pads[pad]) == keyboard_pad_id;
     for (uint32_t i = 0; i < BUTTONS; i++) {
-      SDL_GamepadButton button = keyboards ? keyboard_pad_buttons[i] : (SDL_GamepadButton)rg_window_pad_button((int)i);
-      if (!keyboards && (pad_buttons_kept >> (uint32_t)button) & 1u) continue; /* pressed for the menu */
-      if (SDL_GetGamepadButton(pads[pad], button)) held |= 1u << i;
+      if (keyboards) {
+        if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) held |= 1u << i;
+        continue;
+      }
+      for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
+        int chosen = rg_window_pad_button((int)i, slot);
+        if (chosen == RG_NO_PAD) continue;
+        if ((pad_buttons_kept >> (uint32_t)chosen) & 1u) continue; /* pressed for the menu */
+        if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) held |= 1u << i;
+      }
     }
   }
   return held;
@@ -2365,6 +2373,7 @@ static void print_usage(const char *program) {
     if (*c == '/' || *c == '\\') name = c + 1; /* the program's own name, not the folders it is in */
   }
   rg_window_use_key_names(scancode_name, scancode_named);
+  rg_window_use_game_controls(rg_game_controls);
   rg_window_use_defaults();
 
   printf("Usage: %s [options]\n\n", name);

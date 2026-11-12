@@ -89,7 +89,40 @@ module VBlank
       # The motor on for every frame.
       STEADY_RUMBLE = 0xFF
 
+      # MORE KEYS FOR A BUTTON ON A COMPUTER: the desktop window, `vblank run` and the web page
+      # start with VBlank's keys (the arrows, X for A, Z for B, Return for Start) and these besides.
+      # Nothing is taken away, and a console's cartridge is built as it would be without it.
+      #
+      #   computer_keys a: :d                  # D presses A, and X still does
+      #   computer_keys a: :d, left: :space
+      #
+      # A key presses one button, so a key VBlank already gives a button, or keeps for the window
+      # (P, N, M, F, Tab, Escape, the key above Tab), is a friendly error. A player can still change
+      # every key in Controls, and Reset puts the game's layout back.
+      def computer_keys(**keys)
+        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys))
+      end
+
+      # MORE GAMEPAD BUTTONS FOR A BUTTON ON A COMPUTER, as `computer_keys` adds keys: the free ones
+      # are :west, :north, :left_stick and :right_stick.
+      #
+      #   computer_gamepad a: :west
+      def computer_gamepad(**buttons)
+        add_computer_controls!(:pad, IR::ComputerControls.pads_entries!(buttons))
+      end
+
       private
+
+      # A game names its keys once, and its gamepad buttons once.
+      def add_computer_controls!(kind, entries)
+        given = @program.computer_controls || []
+        if given.any? { |_, each, _| each == kind }
+          verb = kind == :key ? "computer_keys" : "computer_gamepad"
+          raise ArgumentError, "This game already names its `#{verb}`. To fix this, name them all in one line."
+        end
+        @program.computer_controls = given + entries
+        nil
+      end
 
       # +pattern+ as the eight bits IR::Rumble reads; a friendly error for one that is not eight
       # frames.

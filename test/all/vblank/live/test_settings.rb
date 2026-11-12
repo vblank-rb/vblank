@@ -30,6 +30,60 @@ class TestSettings < Minitest::Test
     assert_equal 19, settings.hotkey_of(:pause)
   end
 
+  # --- the game's own keys and gamepad buttons (computer_keys, computer_gamepad) ---
+
+  # D (7) and the west button for A, as a game built with `computer_keys a: :d` and
+  # `computer_gamepad a: :west` hands them over.
+  D_AND_WEST_ADDED_TO_A = VBlank::IR::ComputerControls.runtime_numbers([%i[a key d], %i[a pad west]]).freeze
+
+  def test_a_game_adds_its_keys_and_gamepad_buttons_and_takes_none_away
+    settings = with_game_controls
+
+    assert_equal [27, 7], settings.keys_of(:a)
+    assert_equal [79], settings.keys_of(:right)
+    assert_equal %i[east west], settings.pads_of(:a)
+    assert_equal :a, settings.pad_map[2]
+    assert_equal "X, key 7 / east, west", settings.button_text(0)
+  end
+
+  def test_putting_the_keys_back_puts_the_games_back
+    settings = with_game_controls
+    settings.bind_key(:a, 1, nil)
+    settings.bind_pad(:a, :north)
+    settings.reset_keys
+
+    assert_equal [27, 7], settings.keys_of(:a)
+    assert_equal %i[east west], settings.pads_of(:a)
+  end
+
+  def test_the_games_keys_are_not_written_and_come_back_when_a_file_is_read
+    settings = with_game_controls
+    text = settings.text
+
+    assert_includes text, "key.a = X\nkey.b"
+    assert_includes text, "pad.a = east\npad.b"
+    assert_empty settings.read("key.a = X\npad.a = east\n")
+    assert_equal [[27, 7], %i[east west]], [settings.keys_of(:a), settings.pads_of(:a)]
+  end
+
+  def test_a_key_a_file_gives_to_another_button_stays_there
+    settings = with_game_controls
+    settings.read("key.a = X\nkey.r = Q\nkey.r = key 7\n")
+
+    assert_equal [[27], [20, 7]], [settings.keys_of(:a), settings.keys_of(:r)]
+  end
+
+  def test_a_key_a_file_gives_to_another_button_is_no_clash_with_the_games
+    settings = with_game_controls
+
+    assert_empty settings.read("key.b = Z\nkey.b = key 7\n")
+    assert_equal [[27], [29, 7]], [settings.keys_of(:a), settings.keys_of(:b)]
+  end
+
+  def test_a_game_that_adds_nothing_starts_as_vblanks_layout
+    assert_equal fresh.text, Settings.new(key_names: Names.new, game_controls: [0]).text
+  end
+
   def test_the_settings_are_written_as_lines_a_player_can_read
     settings = fresh
     settings.window = settings.window.with(scale: 4, volume: 60)
@@ -208,4 +262,5 @@ class TestSettings < Minitest::Test
   private
 
   def fresh = Settings.new(key_names: Names.new)
+  def with_game_controls = Settings.new(key_names: Names.new, game_controls: D_AND_WEST_ADDED_TO_A)
 end

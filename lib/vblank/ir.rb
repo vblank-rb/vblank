@@ -5,6 +5,7 @@ require_relative "ir/constant_divisor"      # Dividing by a number written in th
 require_relative "ir/program_error"         # A game that goes wrong, as every backend reports it
 require_relative "ir/faults"                # The sentence a program error is reported in
 require_relative "ir/buttons"
+require_relative "ir/computer_controls"     # The keys and gamepad buttons a game adds on a computer
 require_relative "ir/clock"                 # What a game reads of the date and time, on every backend
 require_relative "ir/clock_calendar"        # The calendar a cartridge adds to a time the game set
 require_relative "ir/frames"                # How many frames a pass of the game loop took

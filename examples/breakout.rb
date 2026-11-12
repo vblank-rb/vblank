@@ -143,6 +143,10 @@ module Breakout
     layout = Layout.new(width: screen_width, height: screen_height)
     bricks = layout.bricks
     enable_sound
+    # On a computer, Space starts a game too, and so does a gamepad's left face button, beside
+    # Return and the start button. The cartridges are built as without these.
+    computer_keys start: :space
+    computer_gamepad start: :west
 
     # --- Sound presets (channel 2 SFX) ---
     define_sound :brick,       frequency: 660, duty: :quarter, decay: :fast

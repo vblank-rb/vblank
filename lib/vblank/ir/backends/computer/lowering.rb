@@ -324,7 +324,7 @@ module VBlank
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [Statements::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *tables, *art, *@drawing_arrays, title_array, *sound_tables,
+             *tables, *art, *@drawing_arrays, title_array, controls_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| Statements::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
@@ -338,6 +338,14 @@ module VBlank
           def title_array
             bytes = @title.to_s.each_char.map { |char| char.ord.between?(32, 126) ? char.ord : "?".ord }
             Statements::ConstArray.new(name: @names.own("title"), type: "char", values: bytes + [0], exported: true)
+          end
+
+          # The keys and gamepad buttons the game adds to VBlank's layout, as the window, the Ruby
+          # window and the web page read them (IR::ComputerControls.runtime_numbers): [0] for a game that adds
+          # none.
+          def controls_array
+            Statements::ConstArray.new(name: @names.own("controls"), type: "int32_t",
+                                       values: ComputerControls.runtime_numbers(@program.computer_controls), exported: true)
           end
 
           # A program that waits for frames shows nothing until its first frame is set up

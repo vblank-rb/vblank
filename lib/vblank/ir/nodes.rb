@@ -1433,8 +1433,12 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 start_file: :start_file, mix_rate: :int
+                 start_file: :start_file, mix_rate: :int, computer_controls: :list
 
+        # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
+        # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
+        # game that adds none. A console's cartridge never reads it.
+        #
         # +start_file+ is the file the program is handed as it starts, which some of its tables and
         # pictures are read from (a StartFile), or absent for a program that reads none.
         #

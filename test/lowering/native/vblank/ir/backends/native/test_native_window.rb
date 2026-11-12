@@ -245,6 +245,61 @@ class TestNativeWindow < Minitest::Test
     assert_equal %w[ok east south], ask("bind_pad a south", "reset_pad", "pad_of a", "pad_of b")
   end
 
+  # --- the game's own keys and gamepad buttons (computer_keys, computer_gamepad) ---
+
+  D_AND_WEST_ADDED_TO_A = "game_controls a key D a pad west"
+
+  def test_a_game_adds_its_keys_and_gamepad_buttons_to_the_layout_and_takes_none_away
+    out = ask(D_AND_WEST_ADDED_TO_A, "keys_of a", "owner D", "keys_of right", "pad_of a", "button_text a")
+
+    assert_equal ["X D", "button a", "Right none", "east west", "X, D / east, west"], out
+  end
+
+  def test_putting_the_keys_and_gamepad_back_puts_the_games_back_not_vblanks
+    out = ask(D_AND_WEST_ADDED_TO_A, "bind_key a 1 none", "bind_pad a north", "reset_keys", "reset_pad", "keys_of a", "pad_of a")
+
+    assert_equal ["ok", "ok", "X D", "east west"], out
+  end
+
+  def test_a_player_can_change_the_games_keys
+    assert_equal ["ok", "X Q", "none"], ask(D_AND_WEST_ADDED_TO_A, "bind_key a 1 Q", "keys_of a", "owner D")
+  end
+
+  def test_a_gamepad_button_chosen_takes_the_games_off_the_button_that_had_it
+    assert_equal ["ok", "east", "west"], ask(D_AND_WEST_ADDED_TO_A, "bind_pad b west", "pad_of a", "pad_of b")
+  end
+
+  # The file every game shares must not hand one game's keys to the others, so they are never
+  # written; reading a file puts them back wherever it left them free.
+  def test_the_games_keys_are_not_written_and_come_back_when_a_file_is_read
+    written = ask(D_AND_WEST_ADDED_TO_A, "write").join("\n")
+
+    assert_includes written, "key.a = X\nkey.b"
+    assert_includes written, "pad.a = east\npad.b"
+    assert_equal ["0 problems", "X D", "east west"], ask(D_AND_WEST_ADDED_TO_A, "read\nkey.a = X\npad.a = east\n.", "keys_of a", "pad_of a")
+  end
+
+  def test_a_key_a_file_gives_to_another_button_stays_there
+    assert_equal ["0 problems", "X none", "D none"], ask(D_AND_WEST_ADDED_TO_A, "read\nkey.a = X\nkey.r = D\n.", "keys_of a", "keys_of r")
+  end
+
+  # A file every game shares, written where another game gave D to B, names B alone: D is the
+  # player's there, with no clash said.
+  def test_a_key_a_file_gives_to_another_button_is_no_clash_with_the_games
+    assert_equal ["0 problems", "X none", "Z D"], ask(D_AND_WEST_ADDED_TO_A, "read\nkey.b = Z\nkey.b = D\n.", "keys_of a", "keys_of b")
+  end
+
+  def test_a_game_that_adds_nothing_starts_as_vblanks_layout
+    assert_equal ask("keys_of a", "pad_of a", "write"), ask("game_controls", "keys_of a", "pad_of a", "write")
+  end
+
+  def test_a_buttons_second_gamepad_button_is_a_second_line
+    out = ask("read\npad.a = east\npad.a = north\n.", "pad_of a", "write")
+
+    assert_equal "east north", out[1]
+    assert_includes out.join("\n"), "pad.a = east\npad.a = north\n"
+  end
+
   def test_a_hotkeys_key_is_chosen_and_the_old_one_is_free
     assert_equal ["ok", "Q", "hotkey pause", "none"], ask("bind_hotkey pause Q", "hotkey_of pause", "owner Q", "owner P")
   end

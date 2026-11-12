@@ -238,6 +238,7 @@ module VBlank
                                  "cartridge can wait for a button on it instead, like `pressed(:start, player: 2)`."),
         rumble: works("nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays " \
                       "the same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,

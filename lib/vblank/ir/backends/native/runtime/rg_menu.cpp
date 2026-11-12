@@ -56,7 +56,14 @@ void console_buttons_tab() {
         ImGui::PopID();
       }
       ImGui::TableNextColumn();
-      if (ImGui::Button(rg_window_pad_button_name(rg_window_pad_button(button)), ImVec2(130.0f, 0.0f))) rg_window_capture_pad_for_button(button);
+      char pads[64] = "";
+      for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
+        int pad = rg_window_pad_button(button, slot);
+        if (pad == RG_NO_PAD) continue;
+        size_t used = strlen(pads);
+        snprintf(pads + used, sizeof pads - used, "%s%s", used ? ", " : "", rg_window_pad_button_name(pad));
+      }
+      if (ImGui::Button(pads, ImVec2(130.0f, 0.0f))) rg_window_capture_pad_for_button(button);
       ImGui::PopID();
     }
     ImGui::EndTable();
