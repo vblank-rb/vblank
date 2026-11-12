@@ -281,13 +281,10 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
-            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
-            refuse_unlowered_kinds!
-            @plan.refuse_what_console_lacks!
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet, makes_followed_lists: false)
             refuse_unsupported_save_memory!
             refuse_unfit_paint_squares!
             refuse_lists_in_use_past_eight!
-            @plan.refuse_routines_that_call_themselves!
             refuse_rumble_beside_clock!
             # ...and the ones a game loop keeps of its own in the Color's order (IR::Frames::ConsoleLoop).
             loops = game_loops.flat_map { |node| console_loop(node).variables }
@@ -378,7 +375,8 @@ module VBlank
             end
           end
 
-          # How many bytes +list+ comes to, made on its own and thrown away.
+          # How many bytes +list+ comes to, made on its own and thrown away. The Color measures its own
+          # way rather than on copies of its state, and MeasuredOnCopies::OWN_WAYS gives the reason.
           def bytes_of(list)
             saved = [@asm, @routine, @labels, @constants, @routine_data, @locals.dup, @drawing_tables.length]
             @measuring = true
@@ -397,17 +395,7 @@ module VBlank
 
           private
 
-          # --- refusals ---
-
-          # What a run can reach and this lowering cannot make, refused by name before anything is
-          # made: a step that only means something on the Advance, and one the Color does not do
-          # yet. A step in a routine nothing calls never runs, and is not refused.
-          def refuse_unlowered_kinds!
-            @plan.refuse_hardware_only_kinds!
-            @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-            @plan.refuse_unmade_followed_lists!(NotMadeYet)
-          end
-
+          # --- refusals: the Color's own, after the ones every cartridge lowering makes (LoweringPlan#refuse_unbuildable!) ---
 
           # A Game Boy Color cartridge saves in 32K of battery-backed memory (Runtime::Saving): a game
           # that asks for flash, an EEPROM or more memory is refused, naming what it asked for.

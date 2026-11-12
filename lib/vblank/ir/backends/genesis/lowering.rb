@@ -42,6 +42,7 @@ module VBlank
           include Sound
           include Division
           include ControlFlow
+          include MeasuredOnCopies
           include TileRuns
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
@@ -267,10 +268,7 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
-            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
-            refuse_unlowered_kinds!
-            @plan.refuse_routines_that_call_themselves!
-            @plan.refuse_what_console_lacks!
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet)
             refuse_unmade_picture!
             refuse_unmade_tile_runs!
             assign_background_layers unless painted?
@@ -303,19 +301,10 @@ module VBlank
              *paint_sections, *art_sections, *tile_runs_section, *collision_sections]
           end
 
-          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
-          # (LoweringState#on_copies).
-          def bytes_of(list)
-            LOWERING_STATE.on_copies(self) do
-              @asm = M68000.new("measuring", holds: ROUTINES)
-              @routine = "measuring"
-              @labels = 0
-              list.each { |node| statement(node) }
-              @asm.here
-            end
-          end
-
           private
+
+          # The assembler a run of statements is measured in (MeasuredOnCopies#bytes_of).
+          def measuring_assembler = M68000.new("measuring", holds: ROUTINES)
 
           def by_kind(kind) = @program.walk.select { |node| node.kind == kind }.to_h { |node| [node.name, node] }
 
@@ -326,16 +315,6 @@ module VBlank
           # The variables the game loops keep of their own, in the console's order
           # (IR::Frames::ConsoleLoop).
           def loop_variables = @plan.game_loops.flat_map { |node| console_loop(node).variables }
-
-          # --- refusals ---
-
-          # What a run can reach and this lowering cannot make, refused by name before anything is
-          # made: a step that only means something on the Advance, and one the Genesis build does not
-          # make yet. A step in a routine nothing calls never runs, and is not refused.
-          def refuse_unlowered_kinds!
-            @plan.refuse_hardware_only_kinds!
-            @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-          end
 
           # --- the data ---
 

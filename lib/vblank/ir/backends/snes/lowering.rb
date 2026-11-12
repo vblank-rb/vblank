@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include MeasuredOnCopies
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Paint and the rest, and the
@@ -270,10 +271,10 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
-            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
-            refuse_unlowered_kinds!
-            refuse_what_snes_lacks!
-            @plan.refuse_routines_that_call_themselves!
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet, makes_followed_lists: false)
+            # The see-through amounts a Super Nintendo cannot mix: an even half is made, and
+            # Picture#refuse_see_through_amounts! refuses another, explaining why.
+            refuse_see_through_amounts!
             refuse_what_chip_cannot_run!
             refuse_unmade_picture!
             refuse_unsupported_save_memory!
@@ -326,39 +327,10 @@ module VBlank
           # routines that do it as a block (Runtime::Saving#emit_list_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
 
-          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
-          # (LoweringState#on_copies).
-          def bytes_of(list)
-            LOWERING_STATE.on_copies(self) do
-              @asm = W65816.new("measuring", holds: ROUTINES)
-              @routine = "measuring"
-              @labels = 0
-              list.each { |node| statement(node) }
-              @asm.here
-            end
-          end
-
           private
 
-          # --- refusals ---
-
-          # What a run can reach and this lowering cannot make, refused by name before anything is
-          # made: a step that only means something on the Advance, and one the Super Nintendo build
-          # does not make yet. A step in a routine nothing calls never runs, and is not refused.
-          def refuse_unlowered_kinds!
-            @plan.refuse_hardware_only_kinds!
-            @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-            @plan.refuse_unmade_followed_lists!(NotMadeYet)
-          end
-
-          # What a Super Nintendo cannot do at all, as a game's build refuses it
-          # (LoweringPlan#refuse_what_console_lacks!), then the see-through amounts it cannot mix:
-          # an even half is made, and Picture#refuse_see_through_amounts! says in its own words why
-          # another is not.
-          def refuse_what_snes_lacks!
-            @plan.refuse_what_console_lacks!
-            refuse_see_through_amounts!
-          end
+          # The assembler a run of statements is measured in (MeasuredOnCopies#bytes_of).
+          def measuring_assembler = W65816.new("measuring", holds: ROUTINES)
 
           # --- the data ---
 

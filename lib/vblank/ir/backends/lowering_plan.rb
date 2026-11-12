@@ -28,7 +28,8 @@ module VBlank
       #
       # Answered twice, the two copies drifted apart: one counted the routines a bend's steps call
       # and the other did not, one worked out a table read at a fixed index and the other read it
-      # as the game ran. Kept here, a fix lands on every console at once.
+      # as the game ran, and each refused a game's faults in its own order. Kept here, a fix lands on
+      # every console at once.
       class LoweringPlan
         # How a table keeps its entries, by the width the game declared and whether they are
         # signed: bytes an entry, and the range that holds. Any other table keeps whole words.
@@ -255,6 +256,32 @@ module VBlank
         # notes each background put up in a pass, so that write leaves it at its corner for the pass's frame
         # (Reference#put_up_background).
         def places_at_pass_end?(*kinds) = @program.walk.any? { |node| kinds.include?(node.kind) && placed_at_pass_end?(node) }
+
+        # THE REFUSALS EVERY CARTRIDGE LOWERING MAKES, IN ONE ORDER, before it makes anything; a
+        # console's own refusals come after these. Written in each lowering they drifted, and one game
+        # with two faults was refused for a different one by each console. The order:
+        #
+        # 1. a file handed to the game as it starts, which no cartridge is (refuse_start_file_on_cartridge!);
+        # 2. a step only the Advance has (#refuse_hardware_only_kinds!);
+        # 3. what this lowering does not make yet (#refuse_kinds_not_made_yet!, and a background that
+        #    follows several lists of colours where +makes_followed_lists+ is false): a refusal a test
+        #    run skips on, so it comes before the faults below, which fail (a console's own parts not
+        #    made yet are refused after all of these, by its lowering);
+        # 4. what the console cannot do at all (#refuse_what_console_lacks!), the words the game's own
+        #    build has already refused it in, since the build's checks run before any lowering;
+        # 5. a routine that calls itself (#refuse_routines_that_call_themselves!), which the game can
+        #    change and still be for this console.
+        #
+        # +not_lowered_yet+ is the lowering's table of kinds by part, and +not_made_yet+ its error for
+        # one (an error that includes Backends::NotMadeYet).
+        def refuse_unbuildable!(not_lowered_yet:, not_made_yet:, makes_followed_lists: true)
+          Backends.refuse_start_file_on_cartridge!(@program, @console, @error)
+          refuse_hardware_only_kinds!
+          refuse_kinds_not_made_yet!(not_lowered_yet, not_made_yet)
+          refuse_unmade_followed_lists!(not_made_yet) unless makes_followed_lists
+          refuse_what_console_lacks!
+          refuse_routines_that_call_themselves!
+        end
 
         # A step a run can reach that only means something on the Advance, refused by name. A step in
         # a routine nothing calls never runs, and is not refused.

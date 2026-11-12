@@ -230,11 +230,7 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
           # program itself.
           def sections
-            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
-            @plan.refuse_hardware_only_kinds!
-            @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-            @plan.refuse_routines_that_call_themselves!
-            @plan.refuse_what_console_lacks!
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet)
             refuse_unmade_parts!
             refuse_unmade_picture!
             assign_planes
