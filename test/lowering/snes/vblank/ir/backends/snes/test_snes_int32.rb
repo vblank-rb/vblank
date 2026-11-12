@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "int32_cases"
 
 # The Super Nintendo's arithmetic (SNES::Runtime::Int32, written in 65816) gives the answer
 # IR::Int32 gives, for the values where carrying from half to half is most likely to go wrong: the
@@ -57,6 +58,19 @@ class TestSNESInt32 < Minitest::Test
       end
     end
     assert_empty wrong.first(30), "#{wrong.size} sums were wrong; the first of them are listed"
+  end
+
+  # The fractions every runtime written again is held to (Int32Cases): every value by every value
+  # at every scale, the random ones reaching products past 2**53 and quotients held at the ends of
+  # the range, and by nought.
+  def test_every_fraction_in_int32_cases_matches
+    cases = Int32Cases.cases.select { |name, *| name.end_with?("_fix") } +
+            Int32Cases::BY_ZERO.map(&:first).select { |name, *| name.end_with?("_fix") }
+    answers = []
+    with_cartridge { |core| cases.each_slice(BATCH) { |batch| answers.concat(answers(core, batch)) } }
+
+    wrong = Int32Cases.wrong_answers(cases, answers)
+    assert_empty wrong.first(30), "#{wrong.size} of #{cases.size} were wrong; the first of them are listed"
   end
 
   private def expected(name, a, b, c)
