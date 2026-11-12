@@ -63,6 +63,7 @@ module VBlank
               @grids = {}
               @tile_slots = {}
               @pose_tables = {}
+              @pose_set_tables = {}
               @pick_tables = {}
             end
 
@@ -109,7 +110,6 @@ module VBlank
             def refuse_unmade_sprites!
               @objects.each_value do |obj|
                 refuse_unmade!(TILED_SCREEN, "puts a sprite in another layer") if obj.layers && !obj.layers.empty?
-                refuse_unmade!(TILED_SCREEN, "draws a sprite with other colors (`draw_with`)") unless obj.recolors.empty?
                 unless constant_number?(obj.angle, 0) && constant_number?(obj.scale, Build::SCALE_ONE)
                   refuse_unmade!(TILED_SCREEN, "turns or resizes a sprite")
                 end
@@ -446,18 +446,52 @@ module VBlank
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
-            # One sprite placed if it is showing (Reference#objects_on_screen: its `active` is 1).
+            # One sprite placed if it is showing (Reference#objects_on_screen: its `active` is 1), from the table
+            # of its pictures in the colours it is drawn with now.
             def emit_sprite_placing(obj)
               skip = fresh_label("sprite_off")
               jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
-              runtime_call("rt_sprite_place", [LabelAddress.new(pose_table(obj)), obj.pose, obj.x, obj.y,
-                                               Build.int(@sprite_names.name_number(obj.declared))])
+              table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, nil)) : emit_recolored_pose_table(obj)
+              runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared))])
               @asm.label(skip)
             end
 
-            # The table of a sprite's pictures: how many, then each one's number (SpriteNames#picture_number).
-            # Sprites that face the same poses in the same order read one table.
-            def pose_table(obj) = @pose_tables[obj.poses] ||= "tiles poses #{@pose_tables.length}"
+            # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, Reference#object_color_list): its pictures
+            # are made again in each list it can be drawn with, a table of them each, and the number the game
+            # keeps picks the table: a number naming none of the lists draws its own colours. Kept in a number of
+            # the lowering's own, which the placing reads.
+            def emit_recolored_pose_table(obj)
+              tables = [nil, *obj.recolors].map { |colors| pose_table(obj.poses, colors_of_list(colors)) }
+              choice = @pose_set_tables[tables] ||= "tiles pose sets #{@pose_set_tables.length}"
+              picked = @picked_poses ||= keep_local(:picked_poses)
+              own = fresh_label("own_colors")
+              emit_value(obj.recolor)
+              @asm.addiu(:v0, :v0, 1)
+              @asm.sltiu(:t0, :v0, tables.length)
+              @asm.bne(:t0, :zero, own) { @asm.sll(:v0, :v0, 2) }
+              @asm.move(:v0, :zero)
+              @asm.label(own)
+              @asm.la(:t1, choice)
+              @asm.addu(:t1, :t1, :v0)
+              @asm.lw(:v0, 0, :t1)
+              emit_store(picked)
+              Build.var_ref(picked)
+            end
+
+            # The colours +entry+ of a sprite's lists stands for: the colours themselves, or those a declared list
+            # holds (Reference#colors_held_by: the game never changes what one holds in a build that makes this).
+            def colors_of_list(entry)
+              return entry unless entry.is_a?(Symbol)
+
+              list = @program.walk.find { |node| node.kind == :color_list && node.name == entry } or
+                raise LoweringError, "the list of colours #{entry.inspect} is drawn with and never declared"
+              list.colors
+            end
+
+            # The table of a sprite's pictures, in the colours +colors+ (nil for their own): how many, then each
+            # one's number (SpriteNames#picture_number) and its picture in the painted art. Sprites that face the
+            # same poses in the same colours read one table.
+            def pose_table(poses, colors) = (@pose_tables[[poses, colors]] ||= "tiles poses #{@pose_tables.length}")
 
             # Reference#exec_hide_sprites: the next placing of the sprites places none.
             def emit_hide_sprites(_node) = emit_store_number(sprites_hidden_flag, 1)
@@ -482,12 +516,15 @@ module VBlank
                 asm.label(label)
                 asm.data_words(places)
               end
-              @pose_tables.each do |poses, label|
+              @pose_tables.each do |(poses, colors), label|
                 asm.label(label)
-                asm.data_words(poses.length, *poses.map { |pose| @sprite_names.picture_number(pose) })
+                asm.data_words(poses.length)
+                poses.each { |pose| asm.data_words(@sprite_names.picture_number(pose), sprite_picture(pose, colors).label) }
               end
-              asm.label(Runtime::Tiles::SPRITE_PICTURES)
-              asm.data_words(sprite_pictures.map { |name| register_image_picture(name).label })
+              @pose_set_tables.each do |tables, label|
+                asm.label(label)
+                asm.data_words(tables)
+              end
               upload_tile_sheet
               [asm.section]
             end
@@ -502,10 +539,20 @@ module VBlank
               end
             end
 
-            # Every picture a sprite can show, by its number (SpriteNames#picture_number).
-            def sprite_pictures
-              names = @objects.values.flat_map(&:poses).uniq
-              names.sort_by { |name| @sprite_names.picture_number(name) }
+            # The picture +name+ in the painted art, in its own colours (+colors+ nil) or drawn with the list
+            # +colors+: each pixel shows the colour at its place in that list (Reference#recolor_of_picture).
+            def sprite_picture(name, colors)
+              return register_image_picture(name) unless colors
+
+              LabelAddress.new(painted_art.register_picture([:image, name, colors]) do
+                image = @cache.image(picture_named(name))
+                recolor = Assets::Recolor.of(image, colors)
+                drawn = {}
+                (image.width * image.height).times do |at|
+                  drawn[[at % image.width, at / image.width]] = recolor.color_for(at, image.raw_at(at)) if image.drawn_at?(at)
+                end
+                drawn
+              end)
             end
 
             # The sheet's tiles copied into video RAM at power-on, a column of tiles a copy.

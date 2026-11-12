@@ -43,23 +43,23 @@ module VBlank
             BACKDROP = "rt backdrop"
 
             # The sprites the last pass placed: how many, a word, then a row of DRAWN_BYTES for each:
-            # whose it is (Backends::SpriteNames#name_number), which picture (#picture_number), and its
-            # place across and down, a word each.
+            # whose it is (Backends::SpriteNames#name_number), which picture (#picture_number), its place
+            # across and down, and where the picture it is drawn as is in the painted art (one of its
+            # picture's in other colours, for a sprite drawn with them), a word each.
             DRAWN = "rt drawn sprites"
-            DRAWN_BYTES = 16
+            DRAWN_BYTES = 32
             DRAWN_WHOSE = 0
             DRAWN_PICTURE = 4
             DRAWN_X = 8
             DRAWN_Y = 12
+            DRAWN_ART = 16
             MOST_SPRITES = Console::PLAYSTATION.sprites
+            # A picture in a sprite's table: its number, and where it is in the painted art.
+            POSE_BYTES = 8
 
             # A texture page's side (TextureMemory::PAGE_TEXELS, loaded after the runtime), which a plane is one
             # or two of each way.
             PAGE_SIDE = 256
-
-            # The label of the table of where each picture a sprite can show is in the painted art, by
-            # its number (Backends::SpriteNames#picture_number), which the lowering writes.
-            SPRITE_PICTURES = "tiles sprite pictures"
 
             # The copy inside video RAM: then where from (y << 16 | x), where to, and height << 16 | width.
             COPY_IN_VRAM = h::GP0_COPY_IN_VRAM
@@ -222,9 +222,9 @@ module VBlank
             end
 
             # rt_sprites_begin: no sprite placed yet this pass. rt_sprite_place: a0 = the table of the
-            # sprite's pictures (how many, then each one's number, a word each), a1 = which it shows, a2, a3
-            # = where, t4 = whose it is. A number naming none of its pictures places nothing
-            # (Reference#object_pose_image).
+            # sprite's pictures (how many, then for each its number and where it is in the painted art, a word
+            # each: POSE_BYTES), a1 = which it shows, a2, a3 = where, t4 = whose it is. A number naming none of
+            # its pictures places nothing (Reference#object_pose_image).
             def emit_sprites(asm, at)
               drawn = at.call(DRAWN)
               asm.label("rt_sprites_begin")
@@ -234,15 +234,17 @@ module VBlank
               asm.lw(:t0, 0, :a0)
               asm.sltu(:t1, :a1, :t0)
               asm.beq(:t1, :zero, "rt_sprite_place_done")
-              asm.sll(:t1, :a1, 2)
+              asm.sll(:t1, :a1, 3)
               asm.addu(:t1, :t1, :a0)
+              asm.lw(:t5, 8, :t1)
               asm.lw(:t1, 4, :t1)
               asm.lw(:t2, drawn, :gp)
               asm.sltiu(:t3, :t2, MOST_SPRITES)
               asm.beq(:t3, :zero, "rt_sprite_place_done")
-              asm.sll(:t3, :t2, 4)
+              asm.sll(:t3, :t2, 5)
               asm.addu(:t3, :t3, :gp)
               asm.sw(:t4, drawn + 4 + DRAWN_WHOSE, :t3)
+              asm.sw(:t5, drawn + 4 + DRAWN_ART, :t3)
               asm.sw(:t1, drawn + 4 + DRAWN_PICTURE, :t3)
               asm.sw(:a2, drawn + 4 + DRAWN_X, :t3)
               asm.sw(:a3, drawn + 4 + DRAWN_Y, :t3)
@@ -290,11 +292,7 @@ module VBlank
               asm.addiu(:s1, :gp, drawn + 4)
               asm.label("rt_tiles_draw_sprite")
               asm.beq(:s0, :zero, "rt_tiles_draw_end")
-              asm.lw(:t0, DRAWN_PICTURE, :s1)
-              asm.la(:t1, SPRITE_PICTURES)
-              asm.sll(:t0, :t0, 2)
-              asm.addu(:t0, :t0, :t1)
-              asm.lw(:a0, 0, :t0)
+              asm.lw(:a0, DRAWN_ART, :s1)
               asm.lw(:a1, DRAWN_X, :s1)
               asm.lw(:a2, DRAWN_Y, :s1)
               asm.jal("rt_paint_blit")
