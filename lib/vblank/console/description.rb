@@ -553,9 +553,11 @@ module VBlank
                                   largest_memory_bytes: 1952 * 1024,
                                   work_memory_bytes: 1952 * 1024, work_memory_kept_bytes: 4096,
                                   roomier_memory_bytes: 0, variables_go_far: false,
-                                  # A pass's drawing is sent to the graphics chip as its wait ends.
-                                  # Its build makes no sprites yet, so nothing is refused for their
-                                  # lists: the one that makes them draws each pose from its own.
+                                  # A pass's drawing is sent to the graphics chip as its wait begins, its
+                                  # sprites placed before it, so the frame after the wait shows the pass
+                                  # just ended (Runtime::Tiles' rt_tiles_draw; test_frame_pairing.rb
+                                  # holds it to that on the PlayStation's run). Each pose is a picture
+                                  # of its own, drawn from its own list.
                                   pose_lists: :followed,
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,

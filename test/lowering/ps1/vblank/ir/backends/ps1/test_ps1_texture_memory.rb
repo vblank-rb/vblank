@@ -168,4 +168,20 @@ class TestPS1TextureMemory < Minitest::Test
     assert_operator u + texture.width, :<=, 256
     assert_operator v + texture.height, :<=, 256
   end
+
+  # A screen drawn from tiles keeps its planes, each a whole texture page, two to a column of pages, then
+  # its sheet of tiles; every texture goes past both, and a tile kept at 15 bits takes no colour table.
+  def test_planes_and_the_tile_sheet_come_before_every_texture
+    memory = TextureMemory.new
+    planes = memory.reserve_planes(3)
+    sheet = memory.reserve_columns(8)
+    tile = memory.add_texture(width: 8, height: 8, colors: [nil, 31] * 32, colors_kept: true)
+    picture = memory.add_texture(width: 8, height: 8, colors: [nil, 31] * 32)
+    memory.allocate!
+
+    assert_equal [[320, 0], [320, 256], [576, 0]], planes
+    assert_equal 832, sheet
+    assert_equal [15, nil], [tile.depth, tile.table]
+    assert_operator [tile.x, picture.x].min, :>=, 840
+  end
 end

@@ -26,6 +26,7 @@ require_relative "ps1/spu_tables" # the sound chip's numbers and loops a compute
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
 require_relative "ps1/lowering/paint"
+require_relative "ps1/lowering/picture"
 require_relative "ps1/lowering/faces"
 require_relative "ps1/lowering/sound"
 require_relative "ps1/lowering"
@@ -47,7 +48,9 @@ module VBlank
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
-      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), and
+      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), a
+      # screen drawn from tiles, its backgrounds and its sprites drawn whole by the graphics chip every
+      # pass (Runtime::Tiles), and
       # the places drawn on it in 3D, each face cut by the processor and filled by the graphics chip
       # (Runtime::Faces), and its beeps, noise, waveforms, songs, sound effects and recordings on the sound chip
       # (Runtime::Sound, Runtime::Music).
@@ -93,12 +96,13 @@ module VBlank
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
-                                  samples: samples)
+                                  samples: samples, tiles: Lowering::Picture.tiled?(program))
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
-                                             music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples)
+                                             music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
+                                             planes: lowering.plane_places)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),

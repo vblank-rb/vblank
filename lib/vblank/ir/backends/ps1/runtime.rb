@@ -6,6 +6,7 @@ require_relative "runtime/frame"
 require_relative "runtime/pads"
 require_relative "runtime/lists"
 require_relative "runtime/paint"
+require_relative "runtime/tiles"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
 require_relative "runtime/music"
@@ -36,11 +37,14 @@ module VBlank
           # (+songs+): as much of them as its songs ask for, by whether it sets the music volume
           # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
           # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
-          # and Recordings' for one that plays recordings (+samples+).
-          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false)
+          # and Recordings' for one that plays recordings (+samples+); and Tiles' for one whose screen is
+          # drawn from tiles (+tiles+).
+          def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false,
+                      tiles: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
             Paint.reserve(memory)
+            Tiles.reserve(memory) if tiles
             Sound.reserve(memory) if sound
             Recordings.reserve(memory) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
@@ -53,22 +57,24 @@ module VBlank
           # Sound, its loops in sound memory first copied there (the game's section "sound_memory"); +songs+
           # whether it plays songs, so carries Music, with its +effects+ and the address of its music volume
           # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
-          # which reads the game's table "recording_plays".
+          # which reads the game's table "recording_plays". +planes+ is, for a game whose screen is drawn
+          # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false)
+                       samples: false, planes: nil)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             Boot.emit(asm, memory, main: main)
             Int32.emit(asm)
-            Frame.emit(asm, memory, sound: sound)
+            Frame.emit(asm, memory, sound: sound, tiles: !planes.nil?)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
+            Tiles.emit(asm, memory, places: planes, faces: faces) if planes
             Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
-            emit_start(asm, sound: sound)
+            emit_start(asm, sound: sound, tiles: !planes.nil?)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
           end
@@ -80,8 +86,8 @@ module VBlank
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place, then its number, a word each, and a place of nought after
           # the last), its lists' headers, its pictures in video RAM, its loops in sound memory (+sound+),
-          # and the whole screen to draw on.
-          def emit_start(asm, sound: false)
+          # and the whole screen to draw on, two pages of it for a screen drawn from tiles (+tiles+).
+          def emit_start(asm, sound: false, tiles: false)
             asm.label("rt_start")
             asm.addiu(:sp, :sp, -4)
             asm.sw(:ra, 0, :sp)
@@ -97,6 +103,7 @@ module VBlank
             asm.jal("rt_paint_upload")
             asm.jal("rt_sound_upload") if sound
             asm.jal("rt_paint_start")
+            asm.jal("rt_tiles_start") if tiles
             asm.lw(:ra, 0, :sp)
             asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
           end

@@ -48,7 +48,7 @@ module VBlank
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
             timer_start timer_stop on_timer show_light_now rumble
-          ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
+          ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
@@ -83,6 +83,7 @@ module VBlank
             # the build reads a digital pad, which has no motor: nothing is felt
             when :rumble then emit_nothing(node)
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
+            when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
             when *Faces::STATEMENT_KINDS then emit_faces_statement(node)
             when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
             else emit_declaration_or_refuse(node)
@@ -134,9 +135,8 @@ module VBlank
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the painted (bitmap) screen" => %i[draw_column_at save_region restore_region camera],
                                                     "fades, lights and screen effects" => %i[fade tint pixelate shade_outside],
-                                                    "sprites and tiled backgrounds" => %i[background scroll_background set_tile show_map
-                                                                                          present_objects color_list_holds background_colors
-                                                                                          hide_sprites place_bar copy_tiles box_background
+                                                    "sprites and tiled backgrounds" => %i[color_list_holds background_colors
+                                                                                          place_bar copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group pixels_overlap],
@@ -194,6 +194,7 @@ module VBlank
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
           include Paint
+          include Picture
           include Faces
           include Sound
 
@@ -219,6 +220,7 @@ module VBlank
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
             prepare_sound
+            prepare_picture
           end
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
@@ -231,6 +233,8 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_parts!
+            refuse_unmade_picture!
+            assign_planes
             variables_most_read_first.each do |name|
               @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
             end
@@ -245,14 +249,20 @@ module VBlank
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
+            keep_corner_notes
             keep_loop_running
+            keep_backdrop
             routines = @called.map do |name|
+              @lowering_scene = @scenes.key?(name) ? name : nil
               routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))
             end
+            @lowering_scene = nil
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
-            # The pictures are known once every routine is made, so their tables come last.
-            [data_section, *table_sections, *routines, *timers, main, *paint_sections, *face_sections, *sound_sections]
+            # The pictures are known once every routine is made, so their tables come last: a screen drawn
+            # from tiles registers its sprites' pictures with the painted art first.
+            [data_section, *table_sections, *routines, *timers, main, *picture_sections, *paint_sections, *face_sections,
+             *sound_sections]
           end
 
           private
@@ -260,12 +270,11 @@ module VBlank
           # A backdrop of a colour (`screen ..., backdrop:`, or a list of colours the backdrop follows), and
           # the second pad (`players:` more than 1, or `player: 2` and on), refused as not made yet.
           def refuse_unmade_parts!
-            # A painted screen's backdrop is black whatever its `screen` names (SceneHandover#backdrop_of),
-            # so only a screen drawn from tiles shows one.
-            backdrop = @program.walk.any? do |node|
-              (tiles_screen?(node) && !node.backdrop.to_i.zero?) || (node.kind == :color_list && node.backdrop_place)
-            end
-            refuse_unmade!(BACKDROP_COLOUR, "shows a backdrop colour where nothing is drawn") if backdrop
+            # A painted screen's backdrop is black whatever its `screen` names (SceneHandover#backdrop_of), and a
+            # screen drawn from tiles shows the game's (Runtime::Tiles::BACKDROP); one that follows a list of
+            # colours is not made yet.
+            backdrop = @program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
+            refuse_unmade!(BACKDROP_COLOUR, "shows a backdrop colour where nothing is drawn that follows a list of colours") if backdrop
             # Handing over between a painted screen and one drawn from tiles wipes the picture
             # (SceneHandover.crossing?), which is made with the screens drawn from tiles.
             if @program.walk.any? { |node| tiles_screen?(node) } &&
@@ -276,6 +285,14 @@ module VBlank
               %i[held pressed].include?(node.kind) && node.player.is_a?(Integer) && node.player > 1
             end
             refuse_unmade!(SECOND_PAD, "reads the second pad") if second_pad
+          end
+
+          # The colour a screen drawn from tiles shows where nothing is drawn, from power-on: the game's
+          # (SceneHandover#game_backdrop), black where it names none.
+          def keep_backdrop
+            return unless tiled?
+
+            @starts << [runtime_place(Runtime::Tiles::BACKDROP), Runtime::Tiles.backdrop_command(@handover.game_backdrop)]
           end
 
           def tiles_screen?(node)
@@ -576,11 +593,13 @@ module VBlank
               emit_value(Build.binop(:==, Build.var_ref(@scene), Build.int(-1)))
               emit_store(at_power_on)
               emit_store_number(@scene, number)
+              emit_scene_arrival(scene)
               jump_unless(Build.var_ref(at_power_on), done)
               call_routine(label)
               @asm.b(done)
             else
               emit_store_number(@scene, number)
+              emit_scene_arrival(scene)
             end
             @asm.label(staying)
             call_routine(label)
@@ -605,6 +624,7 @@ module VBlank
           # both as the runtime counted them.
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
+            emit_corners_forgotten
             emit_load_word(:t0, runtime_place(Runtime::Frame::FRAMES_TAKEN))
             emit_load_variable(Frames::COUNT)
             @asm.addu(:v0, :v0, :t0)

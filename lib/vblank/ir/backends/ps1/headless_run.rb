@@ -249,7 +249,19 @@ module VBlank
             picture_of_colors(shown_top == drawn.top_line ? drawn.colors : read_page_colors(shown_top))
           end
 
-          def read_sprites = []
+          # The sprites the pass placed, as the runtime keeps them (Runtime::Tiles::DRAWN): none on a painted
+          # screen, which has no sprites of its own.
+          def read_sprites
+            return [] unless @places.runtime.key?(Runtime::Tiles::DRAWN)
+
+            tiles = Runtime::Tiles
+            at = runtime_place(tiles::DRAWN)
+            Array.new(read32(at)) do |i|
+              row = at + 4 + (i * tiles::DRAWN_BYTES)
+              @drawn_sprites.row(word(row + tiles::DRAWN_WHOSE), word(row + tiles::DRAWN_PICTURE), word(row + tiles::DRAWN_X),
+                                 word(row + tiles::DRAWN_Y))
+            end
+          end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
           # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
@@ -282,7 +294,9 @@ module VBlank
               play_frame
               frames += 1
             end
-            # A game that halts shows the page it showed, not the page it was drawing into.
+            # A game that halts shows the page it showed, not the page it was drawing into; and the sprites
+            # its halting pass placed (Reference#place_pass_end_before_halt).
+            @sprites = read_sprites
             record_moment(:end, read_variables, read_lists, picture_now(nil), read_sounds)
           end
 

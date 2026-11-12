@@ -176,6 +176,9 @@ module VBlank
       # A copy from the processor into video RAM: then y << 16 | x, then height << 16 | width, then the
       # pixels two to a word, the left one in the low half.
       GP0_COPY_TO_VRAM = 0xA0 << 24
+      # A copy from one place in video RAM to another: then where from (y << 16 | x), where to, then
+      # height << 16 | width.
+      GP0_COPY_IN_VRAM = 0x80 << 24
       # The draw mode's texture page: its left edge in 64s of pixels (bits 0-3) and its top in 256s
       # (bit 4); bits 7-8 its depth, 0 for 4-bit and 1 for 8-bit numbers into a colour table (CLUT), and
       # TEXTURE_15_BIT for colours of 15 bits, one a pixel (Backends::PS1::TextureMemory);

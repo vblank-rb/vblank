@@ -147,6 +147,32 @@ module VBlank
           def initialize
             @textures = []
             @tables = []
+            @first_column = FIRST_TEXTURE_COLUMN
+            @extra_uploads = []
+          end
+
+          # PLANES: +count+ pictures of PLANE_SIDE × PLANE_SIDE halfwords of 15-bit colour, each a whole
+          # texture page, kept right of the screen's pages before any texture, two to a column of pages
+          # (lines 0 and 256). Returns each one's corner, [x, y], and moves the textures along past them.
+          # Called once, before #allocate!.
+          PLANE_SIDE = PAGE_TEXELS
+
+          def reserve_planes(count)
+            columns = (count + 1) / 2
+            @first_column = FIRST_TEXTURE_COLUMN + (columns * PLANE_SIDE)
+            Array.new(count) { |plane| [FIRST_TEXTURE_COLUMN + ((plane / 2) * PLANE_SIDE), (plane % 2) * PAGE_TEXELS] }
+          end
+
+          # +halfwords+ columns of video RAM, its whole height, kept for something only ever copied from (a sheet
+          # of tiles), past whatever is kept already and before any texture. Returns the first column. Called
+          # before #allocate!, after #reserve_planes.
+          def reserve_columns(halfwords)
+            @first_column.tap { @first_column += halfwords }
+          end
+
+          # One more copy into video RAM at power-on, of something not a texture: +halfwords+ row by row.
+          def add_upload(x:, y:, width:, height:, halfwords:)
+            @extra_uploads << upload(x, y, width, height, halfwords)
           end
 
           # A texture of +width+ × +height+ texels, from +colors+ row by row (a 15-bit colour, or nil where it
@@ -156,7 +182,10 @@ module VBlank
           # ALIGNED (+align:+ true), it is placed where its page's u and v are multiples of its width and
           # height, which must be powers of two: then the chip's texture window (GP0 E2h) can repeat it
           # across a shape larger than itself, as a face of a place repeats its picture like wallpaper.
-          def add_texture(width:, height:, colors:, align: false)
+          #
+          # +colors_kept+ keeps it at 15 bits, its colours themselves and no table: a tile copied into a plane
+          # (Runtime::Tiles) is copied halfword for halfword, so it must be held as the plane holds its pixels.
+          def add_texture(width:, height:, colors:, align: false, colors_kept: false)
             unless width.between?(1, PAGE_TEXELS) && height.between?(1, PAGE_TEXELS) && colors.length == width * height
               raise ArgumentError, "a texture is 1 to #{PAGE_TEXELS} texels each way, a colour for each; not #{width} × #{height} " \
                                    "with #{colors.length}"
@@ -166,7 +195,7 @@ module VBlank
             end
 
             Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) },
-                        aligned: align).tap { |texture| @textures << texture }
+                        aligned: align, depth: (15 if colors_kept)).tap { |texture| @textures << texture }
           end
 
           # Every texture given its depth, its colour table and its place, and every table its place. Called
@@ -177,10 +206,12 @@ module VBlank
             place_textures
           end
 
-          # What is copied into video RAM at power-on: every texture, then every colour table.
+          # What is copied into video RAM at power-on: every texture, then every colour table, then the rest
+          # (#add_upload).
           def uploads
             textures.map { |texture| upload(texture.x, texture.y, texture.width_halfwords, texture.height, texture.halfwords) } +
-              tables.map { |table| upload(table.x, table.y, table.capacity, 1, Array.new(table.capacity) { |i| table.entries[i] || 0 }) }
+              tables.map { |table| upload(table.x, table.y, table.capacity, 1, Array.new(table.capacity) { |i| table.entries[i] || 0 }) } +
+              @extra_uploads
           end
 
           # How many halfwords of video RAM the textures and tables take.
@@ -199,7 +230,7 @@ module VBlank
           # colours fit in theirs. When the rows for tables are full, a texture that needs a new one keeps
           # its colours themselves, at 15 bits: more room, but no table.
           def share_tables
-            textures.sort_by { |texture| -texture.colors.length }.each do |texture|
+            textures.reject(&:depth).sort_by { |texture| -texture.colors.length }.each do |texture|
               colors = texture.colors
               capacity = TABLE_COLORS.values.find { |most| colors.length <= most }
               texture.table = capacity && find_or_add_table(colors, capacity)
@@ -274,7 +305,7 @@ module VBlank
               top = half + ((top - half + texture.height - 1) / texture.height * texture.height) if texture.aligned
               next if top + texture.height > half + PAGE_TEXELS
 
-              return Shelf.new(top_line: top, height: texture.height, free_column: FIRST_TEXTURE_COLUMN).tap { |shelf| shelves << shelf }
+              return Shelf.new(top_line: top, height: texture.height, free_column: @first_column).tap { |shelf| shelves << shelf }
             end
             nil
           end

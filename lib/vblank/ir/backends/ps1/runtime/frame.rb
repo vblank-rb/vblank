@@ -110,14 +110,15 @@ module VBlank
 
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
-            # rt_sound_frame.
-            def emit(asm, memory, sound: false)
+            # rt_sound_frame; +tiles+ for one whose screen is drawn from tiles, whose every pass ends with
+            # the whole picture drawn (Tiles' rt_tiles_draw), a pass that halts too.
+            def emit(asm, memory, sound: false, tiles: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              emit_wait(asm, at, sound)
+              emit_wait(asm, at, sound, tiles)
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
-              emit_stopping(asm, at)
+              emit_stopping(asm, at, tiles)
             end
 
             # THE INTERRUPT. Every register the handler or the routines it calls may change is kept first,
@@ -169,7 +170,7 @@ module VBlank
             # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
             # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound)
+            def emit_wait(asm, at, sound, tiles)
               asm.label("rt_wait_vblank")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
@@ -177,6 +178,9 @@ module VBlank
               asm.addiu(:t0, :t0, 1)
               asm.sw(:t0, at.call(PASSES), :gp)
               asm.jal("rt_frame_begins_unless_last")
+              # A screen drawn from tiles is drawn whole once the pass, its timers' routines too, has placed
+              # everything, as the interpreter's picture of the pass has it.
+              asm.jal("rt_tiles_draw") if tiles
               # The page this pass drew, kept where a reader finds it while the game waits: the pages
               # may trade places before the game stops waiting.
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
@@ -308,8 +312,16 @@ module VBlank
             # blank after it has come, and the processor goes round a loop from then on, the interrupt still
             # counting frames. Going wrong is the same, with what went wrong written down first (rt_fault,
             # a0 = what went wrong, the list and the numbers already in FAULT).
-            def emit_stopping(asm, at)
+            #
+            # A screen drawn from tiles (+tiles+) is drawn whole as the halting pass's picture first, and
+            # shown, as the interpreter places the halting pass's sprites (Reference#place_pass_end_before_halt).
+            def emit_stopping(asm, at, tiles)
               asm.label("rt_halt")
+              if tiles
+                asm.jal("rt_tiles_draw")
+                asm.li(:t0, 1)
+                asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp)
+              end
               asm.li(:t0, HALTED)
               asm.label("rt_stop_with_state")
               asm.sw(:t0, at.call(STATE), :gp)
