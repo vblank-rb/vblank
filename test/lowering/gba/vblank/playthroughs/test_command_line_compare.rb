@@ -269,6 +269,8 @@ class TestCommandLineCompare < Minitest::Test
       no_script, without_a_script = cli(*led_in, "--lead-ins", "five frames", "five frames", dir: dir)
       agreed, with = cli(*led_in, "--script", "several.rb", "--lead-ins", "five frames", "five frames", dir: dir)
       one_sided, differently = cli(*led_in, "--script", "several.rb", "--lead-ins", "five frames", "-", dir: dir)
+      second_ahead, ahead_status = cli("compare", "walker.rb", "walker.rb", "--tape", "led-in.tape", "--script", "several.rb",
+                                       "--lead-ins", "-", "five frames", "--by-passes", "passes", dir: dir)
 
       assert_equal NOT_COMPARED, without.exitstatus, refused
       assert_match(/recorded after a lead-in.*--lead-ins.*--script/, refused)
@@ -276,6 +278,8 @@ class TestCommandLineCompare < Minitest::Test
       assert_match(/no script file was given.*--script/, no_script)
       assert_equal AGREED, with.exitstatus, agreed
       assert_equal DRIFTED, differently.exitstatus, "one led in and one not are five frames apart: #{one_sided}"
+      assert_equal NOT_COMPARED, ahead_status.exitstatus, "lined up by passes, the second led in is ahead: #{second_ahead}"
+      assert_match(/passes ahead.*`lead_ins:` is --lead-ins/m, second_ahead)
     end
   end
 

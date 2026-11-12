@@ -17,6 +17,10 @@ module SlowPassGames
   # frame and not two, measured on each console's cartridge in its emulator.
   BUSY_STEPS = { gba: 35_000, gbc: 700, snes: 700, genesis: 3_500 }.freeze
 
+  # How many frames each lead-in is: the same on both leaves the quick build passes ahead of the
+  # slow one, and the short one leaves the quick build behind the slow one's long one.
+  LEAD_IN_FRAMES = { long: 40, short: 30 }.freeze
+
   # +slow+ makes every fourth pass take two frames; +jump_on+ moves the box four pixels further on
   # that pass alone, a real difference for a comparison to find.
   private def stepping_box(console:, slow: false, jump_on: nil)
@@ -67,5 +71,59 @@ module SlowPassGames
     refute_nil drift
     assert_equal 12, drift.pass
     assert_includes drift.differed, :x
+  end
+
+  # A lead-in that waits +frames+ frames.
+  private def lead_in_of(frames) = VBlank.playthrough("lead #{frames}") { wait frames: frames }
+
+  # The pass +cartridge+'s count shows once +lead_in+ has been played on it.
+  private def pass_after(cartridge, lead_in)
+    VBlank::Playthroughs::Playthrough.power_on_and_lead_in(cartridge, lead_in: lead_in).game.var(:passes)
+  end
+
+  # AFTER LEAD-INS OF THE SAME FRAMES the slow build is passes behind the quick one, as an original
+  # that runs late now and then is behind its port. The comparison starts on the first cartridge's
+  # pass, whichever is ahead. Here the quick second build is past it, and its passes before that
+  # cannot be compared: an error naming both passes, not a pass between the two silently left out.
+  private def assert_second_ahead_refused(console)
+    slow = stepping_box(console: console, slow: true)
+    lead_in = lead_in_of(LEAD_IN_FRAMES.fetch(:long))
+    behind = pass_after(slow, lead_in)
+    ahead = pass_after(stepping_box(console: console), lead_in)
+    assert_operator ahead - behind, :>=, 3, "the quick build is passes ahead after the same lead-in"
+
+    quick = stepping_box(console: console, jump_on: behind + 2)
+    %i[start end].each do |place|
+      error = assert_raises(VBlank::Playthroughs::Comparison::SecondAheadAfterLeadIns) do
+        assert_plays_alike slow, quick, watch_steps, by_passes: :passes, passes_compared_at: place,
+                                                     lead_ins: [lead_in, lead_in], readings: { x: :x }
+      end
+      assert_match "pass #{behind}", error.message
+      assert_match "pass #{ahead}", error.message
+      assert_match "lead_ins:", error.message
+    end
+  end
+
+  # Led in for fewer frames, or not at all, the quick second build is behind, plays on to the slow
+  # first one's pass, and a difference on the very first pass compared is found there: the pass the
+  # lead-in left the first on, compared at its end, or the pass after it, compared on its first frame.
+  private def assert_second_behind_catches_up(console)
+    slow = stepping_box(console: console, slow: true)
+    long = lead_in_of(LEAD_IN_FRAMES.fetch(:long))
+    short = lead_in_of(LEAD_IN_FRAMES.fetch(:short))
+    first_pass = pass_after(slow, long)
+    assert_operator pass_after(stepping_box(console: console), short), :<, first_pass
+
+    { start: first_pass + 1, end: first_pass }.each do |place, first_compared|
+      quick = stepping_box(console: console, jump_on: first_compared)
+      [short, nil].each do |second_lead_in|
+        drift = watch_steps.compare(slow, quick, by_passes: :passes, passes_compared_at: place,
+                                                 lead_ins: [long, second_lead_in], readings: { x: :x }).drift
+        refute_nil drift, "#{place}, second led in by #{second_lead_in&.name || 'nothing'}"
+        assert_equal first_compared, drift.pass
+      end
+    end
+    assert_plays_alike slow, stepping_box(console: console), watch_steps, by_passes: :passes, passes_compared_at: :end,
+                                                                         lead_ins: [long, short], readings: { x: :x }
   end
 end

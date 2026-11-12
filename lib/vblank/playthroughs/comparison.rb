@@ -401,7 +401,7 @@ module VBlank
         show_layers_asked_for(consoles)
         reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
         lined_up = @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part)
-        lined_up&.skip_passes_under_way! if @lead_ins.any?
+        lined_up&.start_after_lead_ins!(second_led_in: !@lead_ins.last.nil?) if @lead_ins.any?
         sprite_boxes = @sprite_boxes&.start_watch(consoles, cartridges, @likeness.screen_size)
         readings_before = @readings.start_watch(consoles) if lined_up&.at_end?
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),

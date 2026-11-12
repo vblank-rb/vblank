@@ -65,16 +65,36 @@ module VBlank
         # on the frame after it.
         def at_end? = @at_end
 
-        # AFTER A LEAD-IN, a pass can be under way on either cartridge, and the frame it began on
-        # is behind it, so it cannot be compared on its first frame. Each count is read as the
-        # lead-ins left it, and comparing starts at the first pass after both, each compared on
-        # the first frame its cartridge shows it. Compared at their ends, the later of the two
-        # passes the lead-ins left is compared too, since both cartridges still show its end.
-        def skip_passes_under_way!
+        # AFTER A LEAD-IN, COMPARING STARTS ON THE FIRST CARTRIDGE'S PASS, whichever cartridge is
+        # ahead. A lead-in of the same frames on both can leave them passes apart, since one runs
+        # late on frames the other does not, and starting at the later of the two would silently
+        # leave out the passes in between on the one behind.
+        #
+        # The first's count is read as its lead-in left it. That pass is under way, and the frame it
+        # began on is behind it, so it is not compared on its first frame: comparing starts at the
+        # pass after it. Compared at their ends, that pass is compared too, since its end is still
+        # ahead. The second is then played on to it as to any pass, from where its own lead-in left
+        # it, or from power-on where it had none (+second_led_in+ false).
+        #
+        # A second whose lead-in left it past the first's pass has played the passes the comparison
+        # starts on, and they cannot be played again: SecondAheadAfterLeadIns. Where the count wraps,
+        # which of the two is ahead is the nearer way round (Passes::Count#count_in_lap_of!). A
+        # second from power-on is read only once it has played a frame, and is refused the same way
+        # if that first frame already shows a pass past the first's (see play_second_to_step!).
+        # Its count is never put in the first's lap: it is behind, and plays on until its count
+        # first shows the first's pass, modulo the wrap.
+        def start_after_lead_ins!(second_led_in:)
           return unless @passes
 
-          later = [@first.read_after_frame!, @second.read_after_frame!].max
-          @shown = @at_end ? later - 1 : later
+          @start_pass = @first.read_after_frame!
+          @start_pass_as_read = @first.count_as_read
+          @second_from_power_on = !second_led_in
+          if second_led_in
+            @second.read_after_frame!
+            second_pass = @second.count_in_lap_of!(@start_pass)
+            refuse_second_ahead!(second_pass, "the lead-in of the second cartridge left its count") if second_pass > @start_pass
+          end
+          @shown = @at_end ? @start_pass - 1 : @start_pass
         end
 
         # The step to compare now, read off the first cartridge after the frame it has just played
@@ -116,6 +136,7 @@ module VBlank
             @second.step_and_read!(buttons.size > 1 ? buttons.shift : buttons.first)
             @second_frames += 1
             yield if block_given?
+            refuse_second_past_from_power_on!(step) if before.nil?
             still = @second.current_step == before ? still + 1 : 0
             @second.refuse_stood_still!(step, past: @at_end) if still >= MOST_FRAMES_STILL
             shown_before_last_frame = before
@@ -138,6 +159,28 @@ module VBlank
         end
 
         private
+
+        # A second from power-on whose first frame shows a pass past +step+, the first step compared,
+        # would go past the steps before it without showing them: a counter that starts high.
+        def refuse_second_past_from_power_on!(step)
+          return unless @second_from_power_on && @second.current_step > step
+
+          refuse_second_ahead!(@second.current_step, "the first frame of the second cartridge from power-on shows its count")
+        end
+
+        # The second is on +second_pass+, past the pass the first's lead-in left it on, where
+        # comparing starts. Both are counted in one lap. +where+ says how the second got there.
+        def refuse_second_ahead!(second_pass, where)
+          ahead = second_pass - @start_pass
+          raise SecondAheadAfterLeadIns,
+                "The lead-in of the first cartridge left its count of passes at pass #{@start_pass_as_read}, and " \
+                "#{where} at pass #{@second.count_as_read}. The second cartridge is #{ahead} " \
+                "#{ahead == 1 ? 'pass' : 'passes'} ahead. The comparison starts on the pass of the first cartridge, so the " \
+                "passes before it on the second cartridge cannot be compared. Make the lead-in of the second cartridge " \
+                "shorter, or give it no lead-in, like `lead_ins: [lead_in, nil]`. Then the second cartridge plays on to " \
+                "the pass of the first cartridge. If the count of the second cartridge starts past that pass, count from " \
+                "the same number on both."
+        end
 
         # Whether the second cartridge's count has reached +step+: shows it, or a later one; or,
         # compared at the end of each step, shows a later one.

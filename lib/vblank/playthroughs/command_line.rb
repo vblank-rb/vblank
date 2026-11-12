@@ -152,7 +152,8 @@ module VBlank
       def saying_errors_plainly
         yield
       rescue ArgumentError, VBlank::BuildError, GaveUp, Comparison::ReadingFailed, Comparison::ReportNotWritten,
-             Comparison::PassCountFell, Comparison::PassNotReached, Comparison::PictureStoodStill => e
+             Comparison::PassCountFell, Comparison::PassNotReached, Comparison::SecondAheadAfterLeadIns,
+             Comparison::PictureStoodStill => e
         raise Refused, message_with_flags(e.message)
       end
 

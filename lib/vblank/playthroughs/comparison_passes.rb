@@ -40,11 +40,17 @@ module VBlank
       # were on the last frame that showed the pass, and its picture on the frame after that one,
       # since a frame is drawn from the numbers of the frame before. The first cartridge's frame of a
       # drift there is the frame of the picture. The last pass the tape shows has no end on it and is
-      # not compared. The buttons are given as at the start (see LinedUp, THE BUTTONS).
+      # not compared: a tape that is to compare it plays a frame past it. The buttons are given as at
+      # the start (see LinedUp, THE BUTTONS).
       #
-      # AFTER A LEAD-IN (`lead_ins:`), the pass each cartridge is part way through is not compared,
-      # since its first frame is behind it: comparing starts at the next pass. At the end of each
-      # pass, the one both are part way through can be compared, since its end is still ahead.
+      # AFTER A LEAD-IN (`lead_ins:`), comparing starts on the FIRST cartridge's pass as its lead-in
+      # left it, and the second is played on to that pass, from its own lead-in's end or from
+      # power-on. One that runs late on frames the other does not is passes behind after a lead-in of
+      # the same frames, and no pass of either is left out between them. The pass the first is part
+      # way through is not compared, since its first frame is behind it: comparing starts at the next
+      # pass. At the end of each pass it is compared, since its end is still ahead. A second whose
+      # lead-in left it past that pass is refused (SecondAheadAfterLeadIns): lead it in for fewer
+      # frames, or not at all (see LinedUp#start_after_lead_ins!).
       #
       # A count that comes back round is told from one the game sets back (a new game) only by
       # `pass_count_wraps_at:`: with it, any fall is a lap; without it, a fall is an error.
@@ -168,6 +174,26 @@ module VBlank
             @current = raw + @laps
           end
 
+          # The count as the cartridge last showed it, before it was counted on past any wrap: the
+          # number a person reading the game's own counter sees.
+          def count_as_read = @last
+
+          # This count, read once, put in the same lap as +pass+, the other cartridge's count read at
+          # the same point, and answered. Each count is counted on from its own first reading, so
+          # two counts that wrap can read 250 and 3 when the second is 9 passes ahead. Of the passes
+          # this one can be, a whole number of laps apart, it is the one nearer to +pass+: ahead of
+          # it by less than half a lap, or behind it by less than half. A count exactly half a lap
+          # away is taken as ahead, which is refused, and not as behind, which would compare passes
+          # half a lap apart. A count that never wraps is answered as read.
+          def count_in_lap_of!(pass)
+            return @current unless @wraps_at
+
+            ahead = (@current - pass) % @wraps_at
+            ahead -= @wraps_at if ahead * 2 > @wraps_at
+            @laps += pass + ahead - @current
+            @current = pass + ahead
+          end
+
           # Play the cartridge one frame, holding +keys+, and read the pass it shows after it.
           def step_and_read!(keys)
             @game.step(1, keys: keys)
@@ -243,6 +269,11 @@ module VBlank
       # of frames short of it, or it showed none of the first's passes at all. The message says
       # which pass and where the count was.
       class PassNotReached < StandardError; end
+
+      # THE SECOND CARTRIDGE'S LEAD-IN LEFT IT PAST THE FIRST'S PASS, where the comparison starts:
+      # its passes before that one could not be compared with the first's. The message names both
+      # passes and how to lead the second in less far.
+      class SecondAheadAfterLeadIns < StandardError; end
     end
   end
 end

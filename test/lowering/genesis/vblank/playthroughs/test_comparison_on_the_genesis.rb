@@ -54,6 +54,12 @@ class TestComparisonOnTheGenesis < Minitest::Test
     assert_difference_found_at_pass_end(:genesis)
   end
 
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:genesis)
+    assert_second_behind_catches_up(:genesis)
+  end
+
   def test_a_drift_names_the_genesis_s_sprite_table
     drift = walk.compare(walker(20), walker(28)).drift
 

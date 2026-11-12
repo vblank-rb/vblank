@@ -78,6 +78,12 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
     assert_difference_found_at_pass_end(:snes)
   end
 
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:snes)
+    assert_second_behind_catches_up(:snes)
+  end
+
   def test_a_difference_is_placed_on_the_console_s_screen
     failure = assert_raises(Minitest::Assertion) { assert_plays_alike walker(20), walker(28), walk }
 

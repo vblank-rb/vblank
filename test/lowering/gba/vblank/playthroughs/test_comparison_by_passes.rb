@@ -208,7 +208,8 @@ class TestComparisonByPasses < Minitest::Test
   end
 
   # AFTER A LEAD-IN a pass can be under way on either cartridge, and its first frame is behind
-  # it, so it is not compared: comparing starts at the next pass, each on its first frame.
+  # it, so it is not compared: comparing starts at the first cartridge's next pass, each on its
+  # first frame, the second played on to it.
   def test_a_pass_under_way_when_the_lead_ins_end_is_not_compared
     quick = passing
     late = passing(late: true)
@@ -216,10 +217,69 @@ class TestComparisonByPasses < Minitest::Test
     slow_begins = first_frame(late, long.play(late).tape) { |game| game.var(:passes) == 4 } # pass 4 takes two frames
     begins_there = first_frame(quick, long.play(quick).tape) { |game| game.var(:passes) == 4 }
     into_first = ->(game) { game.var(:frames_into) }
-    leads = [VBlank.playthrough("quick lead") { wait frames: begins_there - 1 },
-             VBlank.playthrough("late lead") { wait frames: slow_begins }]
+    leads = [VBlank.playthrough("late lead") { wait frames: slow_begins },
+             VBlank.playthrough("quick lead") { wait frames: begins_there - 1 }]
 
-    assert_plays_alike quick, late, watch, by_passes: :passes, lead_ins: leads, readings: { into: into_first }
+    assert_plays_alike late, quick, watch, by_passes: :passes, lead_ins: leads, readings: { into: into_first }
+  end
+
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:gba)
+    assert_second_behind_catches_up(:gba)
+  end
+
+  # A second with no lead-in plays on from power-on, and one whose count already shows a pass past
+  # the first's on its first frame would go past the passes before without showing them.
+  def test_a_second_from_power_on_already_past_the_first_is_refused
+    slow = stepping_box(console: :gba, slow: true)
+    lead_in = lead_in_of(LEAD_IN_FRAMES.fetch(:long))
+
+    error = assert_raises(VBlank::Playthroughs::Comparison::SecondAheadAfterLeadIns) do
+      watch_steps.compare(slow, stepping_box(console: :gba), by_passes: [:passes, ->(game) { game.var(:passes) + 1000 }],
+                                                             lead_ins: [lead_in, nil])
+    end
+    assert_match "pass #{pass_after(slow, lead_in)}", error.message
+    assert_match "from power-on", error.message
+  end
+
+  # A COUNT THAT WRAPS: which cartridge is ahead after the lead-ins is the nearer way round. Here
+  # the quick build's count has come round and the slow first one's has not, so the quick one reads
+  # lower and is ahead.
+  def test_a_second_ahead_past_a_wrap_is_refused
+    slow = stepping_box(console: :gba, slow: true)
+    lead_in = lead_in_of(LEAD_IN_FRAMES.fetch(:long))
+    first_pass = pass_after(slow, lead_in)
+    second_pass = pass_after(stepping_box(console: :gba), lead_in)
+    shift = 15 - (first_pass % 16) # the slow build's count reads 15, the last before it comes round
+    sixteenths = ->(game) { (game.var(:passes) + shift) % 16 }
+    assert_operator (second_pass + shift) % 16, :<, 15 / 2
+
+    error = assert_raises(VBlank::Playthroughs::Comparison::SecondAheadAfterLeadIns) do
+      watch_steps.compare(slow, stepping_box(console: :gba), by_passes: sixteenths, pass_count_wraps_at: 16,
+                                                             lead_ins: [lead_in, lead_in])
+    end
+    assert_match "pass 15", error.message
+    assert_match "pass #{(second_pass + shift) % 16}", error.message
+  end
+
+  # Here the slow first build's count has come round and the quick one's has not: the quick one
+  # reads higher and is behind, so it plays on to the slow one's pass and every pass is compared.
+  def test_a_second_behind_past_a_wrap_plays_on_to_the_first
+    slow = stepping_box(console: :gba, slow: true)
+    long = lead_in_of(LEAD_IN_FRAMES.fetch(:long))
+    short = lead_in_of(LEAD_IN_FRAMES.fetch(:short))
+    first_pass = pass_after(slow, long)
+    shift = 8 - (first_pass % 8) # the slow build's count reads 0, just come round
+    eighths = ->(game) { (game.var(:passes) + shift) % 8 }
+    assert_operator (pass_after(stepping_box(console: :gba), short) + shift) % 8, :>, 8 / 2
+
+    drift = watch_steps.compare(slow, stepping_box(console: :gba, jump_on: first_pass + 2), by_passes: eighths,
+                                                                                           pass_count_wraps_at: 8,
+                                                                                           lead_ins: [long, short],
+                                                                                           readings: { x: :x }).drift
+    refute_nil drift
+    assert_equal 2, drift.pass
   end
 
   # A PASS THAT FINISHES ON ITS SECOND FRAME (SlowPassGames): read on its first frame its work is

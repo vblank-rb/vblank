@@ -60,6 +60,12 @@ class TestComparisonOnTheColor < Minitest::Test
     assert_difference_found_at_pass_end(:gbc)
   end
 
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:gbc)
+    assert_second_behind_catches_up(:gbc)
+  end
+
   def test_a_rectangle_off_the_color_s_screen_is_refused_naming_its_size
     error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(20), walk, ignoring_rectangles: [[150, 0, 20, 8]] }
 
