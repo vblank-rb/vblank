@@ -88,7 +88,7 @@ module VBlank
               @pose_tables = {}
               @pose_set_tables = {}
               @pick_tables = {}
-              @changes_colors = Picture.changes_colors?(@program)
+              @changes_colors = Picture.changes_colors?(@program) || Paint.by_number?(@program)
               @color_sources = {}
               @sprite_list_tables = {}
               @sprite_list_places = {}
@@ -102,7 +102,8 @@ module VBlank
             def refuse_unmade_picture!
               painted = !@tiled && (@backgrounds.any? || @objects.any?)
               refuse_unmade!(TILED_SCREEN, "draws sprites or backgrounds on a painted (bitmap) screen") if painted
-              return refuse_painted_color_changes! unless @tiled
+              refuse_fades_of_part!
+              return unless @tiled
 
               others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled]
               refuse_unmade!(TILED_SCREEN, "shows a `screen :#{others.first}`") unless others.empty?
@@ -110,23 +111,13 @@ module VBlank
                 refuse_unmade!(TILED_SCREEN, "draws a sprite's pose from sprite tiles it loads (`sprite_tiles`)")
               end
               refuse_backdrops_of_its_own!
-              refuse_fades_of_part!
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
             end
 
-            # A painted screen holds each pixel's colour itself, with no table to write again, so its colours
-            # changing as the game runs are not made yet (the design's open question 7).
-            def refuse_painted_color_changes!
-              kinds = @program.walk.map(&:kind)
-              refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen") if kinds.intersect?(%i[fade tint])
-              return unless kinds.intersect?(%i[color_list_holds background_colors])
-
-              refuse_unmade!(TILED_SCREEN, "changes a list of colours as it runs on a painted (bitmap) screen")
-            end
-
             # A FADE OF PART OF THE SCREEN, placed under a layer or held to a rectangle, is a blend, which the
-            # colour tables cannot give: every picture drawn through a table changes with it, wherever it is.
+            # colour tables cannot give: every picture drawn through a table changes with it, wherever it is, a
+            # painted screen drawn by number (PS1::PaintedNumbers) as much as one drawn from tiles.
             # How the graphics chip's own mixing does it is decided when it is made (Console::PS1Answers::UNMADE_VERBS).
             def refuse_fades_of_part!
               return unless @program.walk.any? { |node| node.kind == :fade && (node.under || node.reaches) }
@@ -591,8 +582,12 @@ module VBlank
             end
 
             # Reference#exec_color_list_holds: everything drawn with the list shows the set the game names, from
-            # the picture this pass draws.
+            # the picture this pass draws. A painted screen draws nothing with a list (Reference#exec_blit draws
+            # a picture's own colours) but a sprite, a background and a backdrop, which this build refuses there
+            # (#refuse_unmade_picture!, Lowering#refuse_unmade_parts!), so on one it changes nothing.
             def emit_color_list_holds(node)
+              return unless @tiled
+
               runtime_call("rt_colors_hold", [LabelAddress.new(color_source(list_source(node.name)).label), node.which])
             end
 
@@ -630,11 +625,14 @@ module VBlank
             def color_sections
               return [] unless @changes_colors
 
-              # A picture kept at 15 bits, past what the lists of colours hold, has no list for a fade to walk.
-              if fades? && texture_memory.textures.any? { |texture| texture.depth == 15 }
+              # A picture kept at 15 bits, past what the lists of colours hold, has no list for a fade to walk. On a
+              # painted screen drawn by number, its texels are numbers too, and walked as the page is copied.
+              if @tiled && fades? && texture_memory.textures.any? { |texture| texture.depth == 15 }
                 refuse_unmade!(FADES, "fades or tints pictures whose colours do not fit the lists of colours the PlayStation keeps")
               end
-              tables = texture_memory.tables
+              # A painted screen drawn by number walks only the table it is shown through: its pictures' tables
+              # hold numbers, which must stay as they are.
+              tables = @tiled ? texture_memory.tables : [@numbers_table]
               starts = {}.compare_by_identity
               at = 4 # past the backdrop's word
               tables.each do |table|

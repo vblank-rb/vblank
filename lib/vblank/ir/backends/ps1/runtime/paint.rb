@@ -53,6 +53,18 @@ module VBlank
             SHOWN_PAGE_Y = "rt paint shown page y"
             PASS_SHOWN_PAGE_Y = "rt paint pass shown page y"
 
+            # A SCREEN DRAWN BY NUMBER (PS1::PaintedNumbers) is drawn into the pages as any painted screen, and
+            # shown from two pages of its own, right of them, from column PAGE_X: each pass's page is copied
+            # there in its colours as the pass ends (rt_paint_numbers_shown), into the one not shown, which is
+            # shown in the blank (NUMBERS_COPY_PENDING). The copy reads the page through the colour table whose name
+            # (TextureMemory::Table#field) is in NUMBERS_TABLE. PASS_PAGE_Y, SHOWN_PAGE_Y and PASS_SHOWN_PAGE_Y
+            # then name the pages shown, from PAGE_X, which is where a reader reads them.
+            PAGE_X = "rt paint page x"
+            NUMBERS_TABLE = "rt paint numbers table"
+            NUMBERS_COPY_PENDING = "rt paint numbers copy pending"
+            # How wide a copy's piece is: half a texture page of bytes, its two triangles one texture page.
+            NUMBERS_PIECE_PIXELS = 64
+
             # Each piece of a picture in the table PaintedArt writes: its place in the picture (two
             # halves), its size (two halves), the draw mode naming its texture page, and where in the
             # page it starts (v << 8 | u).
@@ -60,23 +72,104 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # +by_number+ for a screen drawn by number.
+            def reserve(memory, by_number: false)
               memory.reserve(AREA, 16)
               [PAGE_Y, PAGED, FLIP_OWED, PASS_PAGE_Y, SHOWN_PAGE_Y, PASS_SHOWN_PAGE_Y].each { |name| memory.reserve(name, 4) }
+              [PAGE_X, NUMBERS_TABLE, NUMBERS_COPY_PENDING].each { |name| memory.reserve(name, 4) } if by_number
             end
 
             # +faces+ is whether the game fills the faces of a place, which leave the chip's drawing area
             # and texture window set for the next face (Faces#emit_chip_put_back_routine): then a fill and a
-            # blit give the chip its own back first.
-            def emit(asm, memory, faces: false)
+            # blit give the chip its own back first. +by_number+ for a screen drawn by number.
+            def emit(asm, memory, faces: false, by_number: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm, at)
               emit_area(asm, at)
               emit_fill(asm, at, faces)
               emit_blit(asm, at, faces)
-              emit_pages(asm, at)
+              emit_pages(asm, at, by_number)
+              emit_numbers_shown(asm, at) if by_number
               emit_upload(asm)
               emit_patches(asm, at)
+            end
+
+            # rt_paint_numbers_shown: a0 = the top line of the page drawn by number to show. The colours walked
+            # if they changed (Colors' rt_colors_shown), everything sent drawn, and the page copied in its colours
+            # into the page shown from PAGE_X that is not up, which the blank shows (rt_paint_flip).
+            #
+            # THE COPY is the page read as a texture of a byte a pixel through the table in NUMBERS_TABLE, in
+            # pieces NUMBERS_PIECE_PIXELS pixels wide, each a texture page of its own, as two triangles (GP0 25h,
+            # raw: each texel's colour from the table as it is, neither blended nor dithered). A piece reads
+            # twice its width in bytes, two a halfword, so each pixel is one halfword of the page: the chip's
+            # rule for which texel a pixel shows (PS1::PolygonFill) puts pixel x of a piece at byte 2x or 2x + 1,
+            # and the number is in both (PaintedNumbers). Its texels are cached by the chip, from before the
+            # page was drawn into, so the cache is emptied first.
+            NUMBERS_KEPT = %i[s0 s1 s2 s3 s4].freeze
+
+            def emit_numbers_shown(asm, at)
+              h = Console::PS1Hardware
+              piece = NUMBERS_PIECE_PIXELS
+              bottom = h::SCREEN_HEIGHT
+              asm.label("rt_paint_numbers_shown")
+              asm.addiu(:sp, :sp, -4 * (NUMBERS_KEPT.length + 1))
+              asm.sw(:ra, 0, :sp)
+              NUMBERS_KEPT.each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
+              # s0: the piece's texture page, in a word's top half: the page's half of video RAM, 8 bits a texel.
+              asm.srl(:s0, :a0, 8)
+              asm.sll(:s0, :s0, 4)
+              asm.ori(:s0, :s0, TextureMemory::DEPTH_BITS.fetch(8))
+              asm.jal("rt_colors_shown") { asm.sll(:s0, :s0, 16) }
+              asm.jal("rt_draw_list_finish")
+              # s1: the page shown that is not up, its top line in a word's top half; s2: the piece's column.
+              asm.lw(:s1, at.call(SHOWN_PAGE_Y), :gp)
+              asm.xori(:s1, :s1, SECOND_PAGE_TOP_LINE)
+              asm.sw(:s1, at.call(PASS_PAGE_Y), :gp)
+              asm.sll(:s1, :s1, 16)
+              asm.lw(:s2, at.call(PAGE_X), :gp)
+              asm.lw(:s4, at.call(NUMBERS_TABLE), :gp)
+              asm.sll(:s4, :s4, 16)
+              asm.li(:s3, h::SCREEN_WIDTH / piece)
+              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
+              asm.label("rt_paint_numbers_piece")
+              # The top left, top right and bottom left corners, then the bottom right.
+              asm.or(:t4, :s1, :s2)
+              asm.addiu(:t5, :t4, piece)
+              asm.lui(:t7, bottom)
+              asm.addu(:t7, :t4, :t7)
+              asm.addiu(:t8, :t7, piece)
+              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              stored = ->(register) { asm.sw(register, h::GP0 & 0xFFFF, :t1) }
+              stored.call(:t4)
+              stored.call(:s4) # the table, u 0, v 0
+              stored.call(:t5)
+              asm.ori(:t6, :s0, piece * 2)
+              stored.call(:t6) # the texture page, u at the piece's width in bytes, v 0
+              stored.call(:t7)
+              asm.li(:t6, bottom << 8)
+              stored.call(:t6)
+              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              stored.call(:t5)
+              asm.ori(:t6, :s4, piece * 2)
+              stored.call(:t6)
+              stored.call(:t7)
+              asm.ori(:t6, :s0, bottom << 8)
+              stored.call(:t6)
+              stored.call(:t8)
+              asm.li(:t6, (bottom << 8) | (piece * 2))
+              stored.call(:t6)
+              # The next piece: a column of the page shown on, a texture page of the page drawn on.
+              asm.addiu(:s2, :s2, piece)
+              asm.lui(:t0, 1)
+              asm.addu(:s0, :s0, :t0)
+              asm.addiu(:s3, :s3, -1)
+              asm.bgtz(:s3, "rt_paint_numbers_piece")
+              asm.jal("rt_draw_list_finish")
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.lw(:ra, 0, :sp)
+              NUMBERS_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * (NUMBERS_KEPT.length + 1)) }
             end
 
             # What a patch keeps of the last save into it (Lowering::Paint#patch_state): how far into the
@@ -383,7 +476,11 @@ module VBlank
             #
             # rt_paint_flip: at the frame boundary, once the blank has begun, a tear-free screen shows the
             # page just drawn and draws into the other. Only after a pass's wait (FLIP_OWED).
-            def emit_pages(asm, at)
+            #
+            # A SCREEN DRAWN BY NUMBER (+by_number+) never shows the pages it is drawn in: rt_paint_screen changes
+            # which page is drawn into and shows nothing, and rt_paint_flip trades the pages drawn into as it
+            # does, then shows the page from PAGE_X its pass's copy went into (NUMBERS_COPY_PENDING).
+            def emit_pages(asm, at, by_number)
               h = Console::PS1Hardware
               asm.label("rt_paint_screen")
               asm.lw(:t0, at.call(PAGED), :gp)
@@ -406,9 +503,14 @@ module VBlank
               asm.jal("rt_draw_list_finish")
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
+              asm.jr(:ra) if by_number
               # Show the page whose top line is in t0.
               asm.label("rt_paint_show_t0")
               asm.sll(:t1, :t0, 10)
+              if by_number
+                asm.lw(:t2, at.call(PAGE_X), :gp)
+                asm.or(:t1, :t1, :t2)
+              end
               asm.lui(:t2, h::GP1_DISPLAY_START >> 16)
               asm.or(:t1, :t1, :t2)
               asm.lui(:t2, h::IO >> 16)
@@ -420,12 +522,20 @@ module VBlank
               asm.label("rt_paint_flip")
               asm.lw(:t0, at.call(FLIP_OWED), :gp)
               asm.sw(:zero, at.call(FLIP_OWED), :gp)
-              asm.beq(:t0, :zero, "rt_paint_screen_same")
+              asm.beq(:t0, :zero, by_number ? "rt_paint_flip_numbers" : "rt_paint_screen_same")
               asm.lw(:t0, at.call(PAGED), :gp)
-              asm.beq(:t0, :zero, "rt_paint_screen_same")
+              asm.beq(:t0, :zero, by_number ? "rt_paint_flip_numbers" : "rt_paint_screen_same")
               asm.lw(:t0, at.call(PAGE_Y), :gp)
               asm.xori(:t1, :t0, SECOND_PAGE_TOP_LINE)
-              asm.b("rt_paint_show_t0") { asm.sw(:t1, at.call(PAGE_Y), :gp) }
+              return asm.b("rt_paint_show_t0") { asm.sw(:t1, at.call(PAGE_Y), :gp) } unless by_number
+
+              asm.sw(:t1, at.call(PAGE_Y), :gp)
+              asm.label("rt_paint_flip_numbers")
+              asm.lw(:t1, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.beq(:t1, :zero, "rt_paint_screen_same")
+              asm.sw(:zero, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.lw(:t0, at.call(PASS_PAGE_Y), :gp)
+              asm.b("rt_paint_show_t0")
             end
 
             # rt_paint_upload: every texture and colour table copied into video RAM, at power-on, from the

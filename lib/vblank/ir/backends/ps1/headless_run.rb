@@ -243,7 +243,7 @@ module VBlank
           def picture_of_pass(_camera, drawn)
             state = @core.gpu_state
             told = read32(runtime_place(Runtime::Paint::SHOWN_PAGE_Y))
-            return picture_now(nil) unless state.fetch(:display_x).zero? && state.fetch(:display_y) == told
+            return picture_now(nil) unless state.fetch(:display_x) == page_x && state.fetch(:display_y) == told
 
             shown_top = read32(runtime_place(Runtime::Paint::PASS_SHOWN_PAGE_Y))
             picture_of_colors(shown_top == drawn.top_line ? drawn.colors : read_page_colors(shown_top))
@@ -311,8 +311,15 @@ module VBlank
           end
 
           # The screen's page whose top line is +top+, read from video RAM: the picture's size from the
-          # chip's display mode, at the left edge, the top bit of each pixel dropped as the chip shows it.
-          def read_page_colors(top) = @core.colors_at(0, top, @core.width, @core.height)
+          # chip's display mode, from the column the pages shown start at (#page_x), the top bit of each pixel
+          # dropped as the chip shows it.
+          def read_page_colors(top) = @core.colors_at(page_x, top, @core.width, @core.height)
+
+          # The column the pages shown start at: the left edge, or for a painted screen drawn by number the
+          # column its own pages shown start at (Runtime::Paint::PAGE_X).
+          def page_x
+            @places.runtime.key?(Runtime::Paint::PAGE_X) ? read32(runtime_place(Runtime::Paint::PAGE_X)) : 0
+          end
 
           # The picture's check, worked out once for a picture shown frame after frame.
           def picture_check_of(shown)

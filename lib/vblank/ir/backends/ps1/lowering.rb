@@ -154,8 +154,9 @@ module VBlank
           # The parts a game can need that the build does not make yet and that are no kind of step of
           # their own, so NOT_LOWERED_YET cannot name them (#refuse_unmade_parts!): a backdrop of a colour
           # (the build shows black where nothing is drawn), the second pad (the build reads the first), and
-          # a game that paints and also shows a screen drawn from tiles; and a part of what NOT_LOWERED_YET
-          # names, a fade on a painted screen (Picture#refuse_painted_color_changes!).
+          # a game that paints and also shows a screen drawn from tiles; and parts of what NOT_LOWERED_YET
+          # names, a fade of part of the screen (Picture#refuse_fades_of_part!) and a fade of a painted screen
+          # that cannot be drawn by number (Paint#reserve_painted_numbers!).
           BACKDROP_COLOUR = "a backdrop colour"
           SECOND_PAD = "the second pad"
           TILED_SCREEN = "sprites and tiled backgrounds"
@@ -254,6 +255,7 @@ module VBlank
             keep_corner_notes
             keep_loop_running
             keep_backdrop
+            reserve_painted_numbers!
             routines = @called.map do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))

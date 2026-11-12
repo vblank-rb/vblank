@@ -10,7 +10,9 @@ module VBlank
           # Nodes::BackgroundColors), and a fade or a tint. Everything such a screen shows is read through a
           # colour table in video RAM, its backgrounds (PS1::PlaneColors) and its sprites alike, and the
           # backdrop is one colour; so each of these is the tables written again, as a Genesis or a Super
-          # Nintendo writes its colour memory.
+          # Nintendo writes its colour memory. A painted screen that fades or tints is drawn by number
+          # (PS1::PaintedNumbers) and read through one such table as it is shown, which is walked the same way,
+          # and has no backdrop of its own.
           #
           # The game's own colours, every table's entries as the game holds them now, are kept in RAM ("colors
           # base", a halfword an entry as the chip reads it, see-through 0000h; the backdrop first, then each
@@ -73,12 +75,14 @@ module VBlank
               memory.reserve(WALK, WALK_BYTES)
             end
 
-            def emit(asm, memory)
+            # +backdrop+ for a screen drawn from tiles, whose backdrop is the first colour; a painted screen drawn
+            # by number (PS1::PaintedNumbers) has none.
+            def emit(asm, memory, backdrop: true)
               at = ->(offset) { Runtime.at(memory, WALK) + offset }
               emit_tint_to(asm, at)
               emit_hold(asm, at)
               emit_walked(asm, at)
-              emit_shown(asm, memory, at)
+              emit_shown(asm, memory, at, backdrop)
             end
 
             # rt_tint_to: the fade or tint in force from now on. Asked for the same as the one in force, it does
@@ -203,7 +207,7 @@ module VBlank
             # see-through left see-through and every other drawn (Console::PS1Hardware::TEXEL_DRAWN); the
             # backdrop's fill set from the first; and each table copied into video RAM, once the chip has drawn
             # everything sent before, as Paint's rt_paint_upload copies the pictures at power-on.
-            def emit_shown(asm, memory, at)
+            def emit_shown(asm, memory, at, backdrop)
               h = Console::PS1Hardware
               asm.label("rt_colors_shown")
               asm.lw(:t0, at.call(DIRTY), :gp)
@@ -228,7 +232,7 @@ module VBlank
               asm.addiu(:s0, :s0, 2)
               asm.addiu(:s2, :s2, -1)
               asm.bgtz(:s2, "rt_colors_shown_entry") { asm.addiu(:s1, :s1, 2) }
-              emit_backdrop_fill(asm, memory)
+              emit_backdrop_fill(asm, memory) if backdrop
               emit_tables_copied(asm)
               asm.lw(:ra, 0, :sp)
               SHOWN_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }

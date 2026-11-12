@@ -25,6 +25,7 @@ require_relative "ps1/runtime"
 require_relative "ps1/spu_tables" # the sound chip's numbers and loops a computer's build made as the PlayStation plays
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
+require_relative "ps1/painted_numbers" # a painted screen drawn in colour numbers, for a game that fades it
 require_relative "ps1/plane_colors" # the colour table each background is drawn through
 require_relative "ps1/lowering/paint"
 require_relative "ps1/lowering/picture"
@@ -50,7 +51,8 @@ module VBlank
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
       # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
-      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), a
+      # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), faded and
+      # tinted by number (PaintedNumbers), a
       # screen drawn from tiles, its backgrounds and its sprites drawn whole by the graphics chip every
       # pass (Runtime::Tiles), and
       # the places drawn on it in 3D, each face cut by the processor and filled by the graphics chip
@@ -110,21 +112,22 @@ module VBlank
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = sound && Lowering::Sound.samples?(program)
-          colors = Lowering::Picture.changes_colors?(program)
+          by_number = Lowering::Paint.by_number?(program)
+          colors = by_number || Lowering::Picture.changes_colors?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
                                   songs: songs, follows_level: follows_level, effects: effects,
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, tiles: Lowering::Picture.tiled?(program),
-                                  colors: colors)
+                                  colors: colors, by_number: by_number)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
-                                             collides: lowering.collides?)
+                                             collides: lowering.collides?, by_number: by_number)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),

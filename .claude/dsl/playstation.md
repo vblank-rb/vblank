@@ -49,7 +49,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
 - `keep_showing` — works: the same as on the Advance.
-- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. How the chip fades a painted screen, or part of the screen (`inside:`, `outside:`, `under:`), is decided when that is made: until then the build refuses it and says so.
+- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. A painted screen that fades is drawn with a number for each colour, 128 colours at most. At the end of each pass, the graphics chip copies it onto the screen through a list of those colours. When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
 - `fade_out` — works: the same as on the Advance.
@@ -71,7 +71,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds 256 places on a PlayStation, the first see-through.
-- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen this is not made yet: the build refuses it and says so.
+- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen, a list changes the sprites that draw with it. The build does not make sprites on a painted screen yet: it refuses them and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `colors_name_of` — works: the same as on the Advance.

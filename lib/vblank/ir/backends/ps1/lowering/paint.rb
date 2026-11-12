@@ -80,6 +80,30 @@ module VBlank
               end
             end
 
+            # Whether +program+'s painted screen is drawn by number (PS1::PaintedNumbers): it is painted, and it
+            # fades or tints it.
+            def self.by_number?(program)
+              !Picture.tiled?(program) && program.walk.any? { |node| %i[fade tint].include?(node.kind) }
+            end
+
+            # A PAINTED SCREEN DRAWN BY NUMBER: its numbers' colour table, and two pages to show it from, right of
+            # the pages it is drawn in (Runtime::Paint::PAGE_X), each kept from power-on where the runtime reads it.
+            # A place's faces are drawn in colours the graphics chip works out as it draws, which have no number.
+            def reserve_painted_numbers!
+              return unless Paint.by_number?(@program)
+
+              if @program.walk.any? { |node| node.kind == :fill_face }
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen that shows a place")
+              end
+              @painted_numbers = PaintedNumbers.new
+              @numbers_table = texture_memory.reserve_table(capacity: PaintedNumbers::TABLE_COLORS, entries: [])
+              @starts << [runtime_place(Runtime::Paint::PAGE_X), texture_memory.reserve_columns(Console::PS1Hardware::SCREEN_WIDTH)]
+              @starts << [runtime_place(Runtime::Paint::NUMBERS_TABLE), @numbers_table.field]
+            end
+
+            # +color+ as the painted screen holds it: the colour, or on a screen drawn by number its number.
+            def painted_color(color) = @painted_numbers ? @painted_numbers.halfword_for(color) : color
+
             # The PS1::TextureMemory every texture the game draws is kept in.
             def texture_memory = (@texture_memory ||= TextureMemory.new)
 
@@ -90,6 +114,7 @@ module VBlank
             # of pictures a number picks from, what is copied into video RAM at power-on (every texture and
             # colour table), and their halfwords. Made last, once every texture has been asked for.
             def paint_sections
+              fill_numbers_table if @painted_numbers
               texture_memory.allocate!
               tables = R3000.new("paint tables", holds: TABLES_HOLDING)
               painted_art.pictures.each do |picture|
@@ -116,6 +141,15 @@ module VBlank
 
             private
 
+            # The numbers' colour table, once every colour the game draws has its number.
+            def fill_numbers_table
+              if @painted_numbers.too_many?
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen of more than " \
+                                      "#{PaintedNumbers::MOST_COLORS} colours")
+              end
+              @numbers_table.entries.replace(@painted_numbers.table_entries)
+            end
+
             def build_texel_section(label, words)
               asm = R3000.new(label, holds: TABLES_HOLDING)
               asm.label(label)
@@ -131,9 +165,11 @@ module VBlank
 
             def build_value_node(operand) = operand.is_a?(Integer) ? Build.int(operand) : operand
 
-            # The rectangle command in +color+, its 15 bits in the top of each of the command's bytes.
+            # The rectangle command in +color+ (#painted_color), its 15 bits in the top of each of the command's
+            # bytes.
             def rectangle_command(color)
-              Build.int(Console::PS1Hardware::GP0_RECTANGLE | Console::PS1Hardware.command_color(Graphics::Color.resolve(color)))
+              shown = painted_color(Graphics::Color.resolve(color))
+              Build.int(Console::PS1Hardware::GP0_RECTANGLE | Console::PS1Hardware.command_color(shown))
             end
 
             # Reference#exec_screen: a painted screen of one page or two. Any other kind of screen is
@@ -214,7 +250,7 @@ module VBlank
                 image = @cache.image(picture_named(name))
                 drawn = {}
                 (image.width * image.height).times do |at|
-                  drawn[[at % image.width, at / image.width]] = image.color_at(at) if image.drawn_at?(at)
+                  drawn[[at % image.width, at / image.width]] = painted_color(image.color_at(at)) if image.drawn_at?(at)
                 end
                 drawn
               end)
@@ -225,7 +261,7 @@ module VBlank
               resolved = Graphics::Color.resolve(color)
               LabelAddress.new(painted_art.register_picture([:text, text, font, resolved]) do
                 drawn = {}
-                fonts.get(font).each_pixel(text) { |x, y| drawn[[x, y]] = resolved }
+                fonts.get(font).each_pixel(text) { |x, y| drawn[[x, y]] = painted_color(resolved) }
                 drawn
               end)
             end

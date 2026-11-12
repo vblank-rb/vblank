@@ -42,12 +42,13 @@ module VBlank
           # (+follows_level+), how many sound +effects+ it has, whether it holds its tune (+holds_music+), and
           # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
           # and Recordings' for one that plays recordings (+samples+); and Tiles' for one whose screen is
-          # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+).
+          # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
+          # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false,
-                      tiles: false, colors: false)
+                      tiles: false, colors: false, by_number: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
-            Paint.reserve(memory)
+            Paint.reserve(memory, by_number: by_number)
             Tiles.reserve(memory) if tiles
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
@@ -65,21 +66,22 @@ module VBlank
           # which reads the game's table "recording_plays". +tiled+ is, for a game whose screen is drawn
           # from tiles, what Tiles draws it with (Tiles::Screen), and nil for any other, and +colors+ whether
           # its colours change as it runs, so carries Colors, which reads the game's tables of colours;
-          # +collides+ whether it asks whether two sprites' pixels touch, so carries Collide.
+          # +collides+ whether it asks whether two sprites' pixels touch, so carries Collide; +by_number+ whether its
+          # painted screen is drawn by number (PS1::PaintedNumbers), so is copied onto the screen as each pass ends.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, tiled: nil, colors: false, collides: false)
+                       samples: false, tiled: nil, colors: false, collides: false, by_number: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             DrawList.reserve_late(memory)
             Boot.emit(asm, memory, main: main)
             DrawList.emit(asm, memory, faces: faces)
             Int32.emit(asm)
-            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?)
+            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, by_number: by_number)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
-            Paint.emit(asm, memory, faces: faces)
+            Paint.emit(asm, memory, faces: faces, by_number: by_number)
             Tiles.emit(asm, memory, screen: tiled, faces: faces, colors: colors) if tiled
-            Colors.emit(asm, memory) if colors
+            Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors
             Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
