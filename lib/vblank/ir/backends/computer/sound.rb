@@ -217,7 +217,7 @@ module VBlank
           # (rg_mix_fill_length), and how far back each play and each note's row reads at its end,
           # which is the length less the sample it holds from, whether that sample is in the file or
           # the game's (rg_mix_fill_backs). A looping play that holds from no sample reads it all again;
-          # a note's row reads nothing again.
+          # a note's row reads nothing again. A hold in the file with every bit set is no sample.
           def start_file_length_fills(sample, rows)
             settings = sample.settings_from_file
             length = [*start_file_number_rules(settings.length), sample.bytes.bytesize]
@@ -257,12 +257,18 @@ module VBlank
           end
 
           # HOW FAR BACK A HELD NOTE READS, from the sample it holds from in the file: the
-          # recording's length less that sample (Assets::Sample#loop_length).
+          # recording's length less that sample (Assets::Sample#loop_length). A hold with every
+          # bit set is none (IR::StartFile.no_hold?): then a looping play reads it all again, and a
+          # note's row reads nothing again, so each list is handed 1 or 0 for which it is.
           def start_file_hold_fills(sample, rows)
             head = [*start_file_number_rules(sample.settings_from_file.holds_from), sample.bytes.bytesize]
             plays = @start_file_sound_numbers.each_index.select { |entry| @start_file_sound_numbers[entry] == StartFileHold.new(recording: sample.name) }
-            in_rows = rows.map { |row| [1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT] }
-            start_file_sound_fill("rg_mix_fill_holds", "start_file_holds", head, plays.map { |entry| [entry] }, in_rows)
+            in_rows = rows.map { |row| 1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT }
+            { start_file_sound_numbers_name => [plays, 1], @names.own("note_sounds") => [in_rows, 0] }.filter_map do |array, (entries, whole)|
+              next if entries.empty?
+
+              eval_call("rg_mix_fill_holds", array, drawing_array("start_file_holds", "int32_t", [*head, whole, entries.size, *entries]))
+            end
           end
 
           # THE SHAPE FROM THE FILE: the recording's own, and each row of a note that set none and

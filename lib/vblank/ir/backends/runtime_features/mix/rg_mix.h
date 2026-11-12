@@ -79,8 +79,10 @@ void rg_mix_stop(int32_t recording);
  * halves, the note it sounds against the note the recording was made at. A rate below 1 is 1.
  *
  * rg_mix_fill_holds: how far back a held note reads at the recording's end, from the
- * sample it holds from. +rules+: that sample's four numbers, the recording's length, how many
- * entries, and each entry of +into+. A sample outside the recording is its first or its last.
+ * sample it holds from. +rules+: that sample's four numbers, the recording's length, 1 where
+ * holding from none reads it all again (a play that loops) or 0 where it reads nothing again (a
+ * note), how many entries, and each entry of +into+. A sample outside the recording is its first
+ * or its last, and one with every bit set is none (IR::StartFile.no_hold?).
  *
  * rg_mix_fill_shapes: an envelope, from four bytes of the file (attack, decay, sustain,
  * release). +rules+: where they are, how they are kept (0, those four bytes), the most a level
@@ -99,7 +101,8 @@ void rg_mix_fill_shapes(int32_t *into, const int32_t *rules);
  * rg_mix_fill_backs: how far back a play or a note reads at the recording's end, which is the
  * length less the sample it holds from. +rules+: the length's four numbers and the room; 1 where
  * the sample it holds from is in the file, those four numbers (or four 0s), and the sample the game
- * gave (-1 for none; a sample past the end is the last); 1 where holding from none reads it all again
+ * gave (-1 for none; a sample past the end is the last; one in the file with every bit set is
+ * none); 1 where holding from none reads it all again
  * (a play that loops) or 0 where it reads nothing again (a note); how many entries; each entry. */
 void rg_mix_fill_length(int32_t *into, const int32_t *rules);
 void rg_mix_fill_backs(int32_t *into, const int32_t *rules);

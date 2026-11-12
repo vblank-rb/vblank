@@ -408,7 +408,10 @@ module M4AAnswers
   end
 
   # A recording's samples and its voice's settings, as the routine writes them: the samples, and
-  # [rate, hold, length] then the envelope's four bytes.
+  # [rate, hold, length] then the envelope's four bytes. The hold of a voice that does not loop
+  # has every bit set, which a hold read from the pack takes as none.
+  NO_HOLD = 0xFFFF_FFFF
+
   def self.recording_bytes(samples) = samples.pack("c*")
 
   def self.voice_settings_bytes(rate, hold, length, shape) = [rate, hold, length].pack("V3") + shape.pack("C4")

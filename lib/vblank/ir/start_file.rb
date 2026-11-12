@@ -214,6 +214,11 @@ module VBlank
       # build made room for is left out, so a recording that reads back to an earlier sample does
       # so from its own end. One below 1 is 1 and one past the room is all of it, and a hold the
       # game wrote past the end is the last sample.
+      #
+      # A HOLD WITH EVERY BIT SET IS NONE (.no_hold?): 255 in a byte, 65535 in two, 4294967295 in
+      # four, and -1 in a slot that goes below zero. That is how a pack says a recording does not
+      # loop, which a sample number cannot: the recording sounds as one written without
+      # `holds_from:`. The all-in-one build reads it the same way (Builder::SampledAudio#sample).
       RecordingSettings = Data.define(:rate, :holds_from, :envelope, :length) do
         def initialize(rate: nil, holds_from: nil, envelope: nil, length: nil) = super
       end
@@ -221,6 +226,13 @@ module VBlank
       def self.rate_held(rate) = [rate, 1].max
       def self.hold_held(holds_from, length) = holds_from.clamp(0, length - 1)
       def self.length_held(length, room) = length.clamp(1, room)
+
+      # Whether +holds_from+, a number of +width+ (:byte, :half or :word) read from the pack, has
+      # every bit set, which is no hold.
+      def self.no_hold?(holds_from, width)
+        every_bit = (1 << (8 * Build::ELEMENT_BYTES.fetch(width))) - 1
+        holds_from & every_bit == every_bit
+      end
 
       # WHAT A RECORDING HOLDS FOR A SETTING IT READS FROM THE FILE, until the file is read:
       # numbers a build can lay a recording out with and must work nothing out from. The envelope
@@ -629,9 +641,16 @@ module VBlank
           node.holds_from = hold_held(node.holds_from, node.bytes.bytesize) if node.holds_from
         end
         node.rate = rate_held(number_in(bytes, settings.rate)) if settings.rate
-        node.holds_from = hold_held(number_in(bytes, settings.holds_from), node.bytes.bytesize) if settings.holds_from
+        node.holds_from = hold_in(bytes, settings.holds_from, node.bytes.bytesize) if settings.holds_from
         node.envelope = envelope_in(bytes, settings.envelope) if settings.envelope
         node.settings_from_file = nil
+      end
+
+      # The sample a recording of +length+ samples holds from, read from +where+ (a Number) in
+      # +bytes+: nil for a number with every bit set (.no_hold?), else held as .hold_held says.
+      def self.hold_in(bytes, where, length)
+        holds_from = number_in(bytes, where)
+        no_hold?(holds_from, where.width) ? nil : hold_held(holds_from, length)
       end
 
       # A table's entries, read from the place it names.
@@ -804,7 +823,7 @@ module VBlank
                                              colors: colors, places: picture.places, colors_name: picture.colors_name))
         name
       end
-      private_class_method :fill_node, :fill_recording, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
+      private_class_method :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
                            :paint_pose_piece
     end

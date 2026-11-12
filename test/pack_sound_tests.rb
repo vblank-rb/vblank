@@ -148,11 +148,16 @@ module PackSoundTests
   # game reads its length.
   LENGTH_AT = 0x1C9
 
+  # One byte of the copy's filler, 255: every bit set, which a hold read from the pack takes to
+  # mean the recording does not loop (IR::StartFile.no_hold?).
+  NO_HOLD_AT = 0x1E4
+
   SETTINGS_SLOTS = [VBlank::Original::Slot.samples(:bang, at: SOUND_AT, count: SOUND_COUNT),
                     VBlank::Original::Slot.numbers(:tuning, at: SETTINGS_AT, count: 1, width: :half, signed: false),
                     VBlank::Original::Slot.numbers(:holds, at: HOLDS_AT, count: 1, width: :byte, signed: false),
                     VBlank::Original::Slot.numbers(:shapes, at: ENVELOPE_AT, count: 4, width: :byte, signed: false),
-                    VBlank::Original::Slot.numbers(:lengths, at: LENGTH_AT, count: 1, width: :byte, signed: false)].freeze
+                    VBlank::Original::Slot.numbers(:lengths, at: LENGTH_AT, count: 1, width: :byte, signed: false),
+                    VBlank::Original::Slot.numbers(:no_holds, at: NO_HOLD_AT, count: 1, width: :byte, signed: false)].freeze
   Ractor.make_shareable(SETTINGS_SLOTS)
 
   private def settings_pack_file
@@ -165,10 +170,12 @@ module PackSoundTests
   # effect's note with a shape of its part's (down).
   # +mix_rate+ is the rate the game names for its mix, or nil for none. +from_pack+ naming
   # :length reads each recording's length from the pack, and :written_length gives the same number.
+  # :no_hold reads a hold of every bit set from the pack, which is none, and :written_no_hold
+  # gives no hold at all.
   private def settings_at_start_game(folder, from_pack:, options: VBlank::Cartridge::Options.new, mix_rate: nil)
     from = options.pack_at_start ? original_nowhere(folder) : original(folder)
     held_rate = COPY.byteslice(SETTINGS_AT, 2).unpack1("v")
-    held_from = COPY.getbyte(HOLDS_AT)
+    held_from = COPY.getbyte(HOLDS_AT) unless from_pack.include?(:written_no_hold)
     held_shape = VBlank::Audio::Envelope.new(**%i[attack decay sustain release].zip(COPY.byteslice(ENVELOPE_AT, 4).bytes).to_h)
     score = VBlank::Audio::Score
     long = score.new(tempo: 150, length: 60, plays_once: true,
@@ -186,22 +193,27 @@ module PackSoundTests
         slots.numbers :holds, at: HOLDS_AT, count: 1, width: :byte, signed: false
         slots.numbers :shapes, at: ENVELOPE_AT, count: 4, width: :byte, signed: false
         slots.numbers :lengths, at: LENGTH_AT, count: 1, width: :byte, signed: false
+        slots.numbers :no_holds, at: NO_HOLD_AT, count: 1, width: :byte, signed: false
       end
       length = if from_pack.include?(:length) then pack[:lengths].number(0)
                elsif from_pack.include?(:written_length) then COPY.getbyte(LENGTH_AT)
                end
+      holds_from = if from_pack.include?(:holds_from) then pack[:holds].number(0)
+                   elsif from_pack.include?(:no_hold) then pack[:no_holds].number(0)
+                   else held_from
+                   end
       instrument :tone, length: length, pcm: pack[:bang], note: :C4,
                         rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
-                        holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from,
+                        holds_from: holds_from,
                         envelope: from_pack.include?(:envelope) ? pack[:shapes].envelope(0) : held_shape
       # A note the game plays itself is over inside a frame, before a shape has climbed, so the
       # one the A button plays has none.
       flat = instrument :flat, pcm: pack[:bang], note: :C4, length: length,
                                rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
-                               holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from
+                               holds_from: holds_from
       round = sample :round, pcm: pack[:bang], note: :C4, length: length,
                              rate: from_pack.include?(:rate) ? pack[:tuning].number(0) : held_rate,
-                             holds_from: from_pack.include?(:holds_from) ? pack[:holds].number(0) : held_from,
+                             holds_from: holds_from,
                              envelope: from_pack.include?(:envelope) ? pack[:shapes].envelope(0) : held_shape
       music = songs :music, [long]
       effects = sound_effects :sfx, [blip]
@@ -242,6 +254,51 @@ module PackSoundTests
       refute_equal whole.mixed_sound, wanted.mixed_sound, "24 of the 32 samples sound otherwise than all of them"
       assert_equal wanted.audio, heard.audio
       assert_equal wanted.mixed_sound, heard.mixed_sound
+    end
+  end
+
+  # A RECORDING THAT DOES NOT LOOP, SAID BY THE PACK: a hold of every bit set (255 in a byte) is
+  # none, so the recording sounds as one written without `holds_from:`, all-in-one and with the
+  # pack left out: a note plays once, and a play that goes round reads all of it again.
+  def test_a_hold_of_every_bit_set_in_the_pack_sounds_as_no_hold_given
+    Dir.mktmpdir do |folder|
+      return assert_console_refuses(settings_at_start_game(folder, from_pack: %i[no_hold])) unless console_mixes_recordings?
+
+      presses = ->(frame) { { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }.fetch(frame, []) }
+      wanted = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: %i[written_no_hold]), frames: 80)
+      held = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: []), frames: 80)
+      whole = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: %i[no_hold]), frames: 80)
+      left_out = settings_at_start_game(folder, from_pack: %i[no_hold], options: PACK_AT_START)
+      heard = game_player.hand_file(settings_pack_file).input_each_frame(&presses).run(left_out, frames: 80)
+
+      refute_equal held.mixed_sound, wanted.mixed_sound, "a recording held from sample 8 sounds otherwise than one with no hold"
+      assert_equal [wanted.audio, wanted.mixed_sound], [whole.audio, whole.mixed_sound], "built all-in-one"
+      assert_equal [wanted.audio, wanted.mixed_sound], [heard.audio, heard.mixed_sound], "with the pack left out"
+    end
+  end
+
+  # ...and with its length read from the pack too, which works out how far back each play reads
+  # from the length and the hold together.
+  def test_a_hold_of_every_bit_set_with_a_length_from_the_pack_sounds_as_no_hold_given
+    Dir.mktmpdir do |folder|
+      return assert_console_refuses(settings_at_start_game(folder, from_pack: %i[no_hold length])) unless console_mixes_recordings?
+
+      presses = ->(frame) { { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }.fetch(frame, []) }
+      wanted = game_player.input_each_frame(&presses).run(settings_at_start_game(folder, from_pack: %i[written_no_hold written_length]),
+                                                          frames: 80)
+      left_out = settings_at_start_game(folder, from_pack: %i[no_hold length], options: PACK_AT_START)
+      heard = game_player.hand_file(settings_pack_file).input_each_frame(&presses).run(left_out, frames: 80)
+
+      assert_equal [wanted.audio, wanted.mixed_sound], [heard.audio, heard.mixed_sound]
+    end
+  end
+
+  def test_a_hold_of_every_bit_set_read_as_the_game_starts_is_no_hold
+    Dir.mktmpdir do |folder|
+      left_out = settings_at_start_game(folder, from_pack: %i[no_hold], options: PACK_AT_START)
+      filled = VBlank::IR::StartFile.filled(left_out, settings_pack_file).walk.find { |node| node.kind == :sample && node.name == :tone }
+
+      assert_nil filled.holds_from
     end
   end
 

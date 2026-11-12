@@ -43,7 +43,7 @@ module VBlank
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
         settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
         rate = pack_setting_value(rate, "sample :#{name}'s rate:", IR::StartFile::RECORDING_STAND_IN_RATE)
-        holds_from = pack_setting_value(holds_from, "sample :#{name}'s holds_from:", IR::StartFile::RECORDING_STAND_IN_HOLD)
+        holds_from = pack_hold_value(holds_from, "sample :#{name}'s holds_from:")
         length = pack_setting_value(length, "sample :#{name}'s length:", nil)
         envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
         # The Super Nintendo's sound chip's own settings: its build writes them to the chip, and
@@ -83,6 +83,16 @@ module VBlank
       end
 
       private
+
+      # +holds_from+ as a sample number, read here where it is a number of the pack
+      # (#pack_setting_value). A number of the pack with every bit set is no hold
+      # (IR::StartFile.no_hold?): how a pack says a recording does not loop.
+      def pack_hold_value(holds_from, subject)
+        held = pack_setting_value(holds_from, subject, IR::StartFile::RECORDING_STAND_IN_HOLD)
+        return held unless holds_from.is_a?(DSL::PackNumber) && !pack_left_out?
+
+        IR::StartFile.no_hold?(held, holds_from.slot.layout.width) ? nil : held
+      end
 
       # How many samples +length+ keeps of a recording of +room+ samples. With the pack left out it
       # is a stand-in, all of them, which the runtime cuts as the game starts (IR::StartFile::RecordingSettings).

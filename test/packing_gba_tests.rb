@@ -122,7 +122,58 @@ module PackingGBATests
       assert_equal M4AAnswers.voice_settings_bytes(M4AAnswers::WAVE_RATE, M4AAnswers::WAVE_LOOP, wave.length, [255, 0, 255, 165]),
                    slots.fetch(:wave_voice)
       one_shot = M4AAnswers::ONE_SHOT_SAMPLES.length
-      assert_equal M4AAnswers.voice_settings_bytes(13_379, one_shot, one_shot, [255, 40, 200, 10]), slots.fetch(:one_shot_voice)
+      assert_equal M4AAnswers.voice_settings_bytes(13_379, M4AAnswers::NO_HOLD, one_shot, [255, 40, 200, 10]), slots.fetch(:one_shot_voice)
+    end
+  end
+
+  # A game playing the made-up song's voice that does not loop as a long note of a song, its
+  # samples and settings unpacked by the routine, the hold read from the pack when +from_pack+, or
+  # left out.
+  private def one_shot_voice_game(folder, from_pack:)
+    score = VBlank::Audio::Score
+    long = score.new(tempo: 150, length: 40, plays_once: true,
+                     parts: [score::Part.new(plays: :voice, notes: [score::Note.new(at: 0, key: :C4, length: 30)])])
+    group = M4AAnswers::GROUP_AT
+    samples = M4AAnswers::ONE_SHOT_SAMPLES.length
+    from = copy_of(folder, M4AAnswers::COPY)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.samples :wave, count: samples
+        slots.numbers :settings, count: 4, width: :word, signed: false
+        slots.fill_from_copy do |copy, into|
+          copy.unpack_m4a_recording at: group + (12 * 7), into: into[:wave]
+          copy.unpack_m4a_voice at: group + (12 * 7), into: into[:settings], mix_rate: 13_379
+        end
+      end
+      instrument :voice, pcm: pack[:wave], rate: pack[:settings].number(0), note: :C4,
+                         holds_from: (pack[:settings].number(1) if from_pack)
+      music = songs :music, [long]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The voice's recording is shorter than the note, so held it would go round; one that does not
+  # loop plays once and is silent after, as the same instrument written without `holds_from:`. A
+  # console with no instruments (the Color) refuses the game.
+  def test_a_music_player_2000_voice_that_does_not_loop_plays_once
+    Dir.mktmpdir do |folder|
+      unless VBlank::Console.for(game_console).answers.answer(:instrument).works?
+        return assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(one_shot_voice_game(folder, from_pack: true), frames: 1) }
+      end
+
+      wanted = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(one_shot_voice_game(folder, from_pack: false), frames: 30)
+      heard = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(one_shot_voice_game(folder, from_pack: true), frames: 30)
+
+      assert wanted.mixed_sound.flatten.any? { |level| level != 0 }, "the voice sounds"
+      assert_equal wanted.mixed_sound, heard.mixed_sound
     end
   end
 end

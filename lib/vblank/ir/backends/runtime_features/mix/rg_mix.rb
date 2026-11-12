@@ -466,11 +466,25 @@ def rg_mix_fill_steps(into, rules)
   end
 end
 
+# rg_mix.c's start_file_no_hold: the number's bits, signed or not, all set.
+def rg_start_file_no_hold?(rules, where)
+  every_bit = (1 << (rules[where + 1] * 8)) - 1
+  rg_start_file_setting(rules, where) & every_bit == every_bit
+end
+
+# rg_mix.c's start_file_back.
+def rg_start_file_back(holds_from, none, length, whole)
+  if none
+    whole == 1 ? length : 0
+  else
+    length - holds_from.clamp(0, length - 1)
+  end
+end
+
 def rg_mix_fill_holds(into, rules)
   rest = RG_FILE_NUMBER_NUMBERS
-  length = rules[rest]
-  holds_from = rg_start_file_setting(rules, 0).clamp(0, length - 1)
-  rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = length - holds_from }
+  back = rg_start_file_back(rg_start_file_setting(rules, 0), rg_start_file_no_hold?(rules, 0), rules[rest], rules[rest + 1])
+  rules[rest + 2].times { |i| into[rules[rest + 3 + i]] = back }
 end
 
 # rg_mix.c's start_file_length.
@@ -488,11 +502,8 @@ def rg_mix_fill_backs(into, rules)
   rest = hold + 1 + RG_FILE_NUMBER_NUMBERS + 1
   from_file = rules[hold] != 0
   holds_from = from_file ? rg_start_file_setting(rules, hold + 1) : rules[hold + 1 + RG_FILE_NUMBER_NUMBERS]
-  back = if !from_file && holds_from.negative?
-           rules[rest] == 1 ? length : 0
-         else
-           length - holds_from.clamp(0, length - 1)
-         end
+  none = from_file ? rg_start_file_no_hold?(rules, hold + 1) : holds_from.negative?
+  back = rg_start_file_back(holds_from, none, length, rules[rest])
   rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = back }
 end
 

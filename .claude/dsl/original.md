@@ -177,7 +177,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
     the song's length in frames and the frame it comes round to (65535 for a song that ends), two numbers
     of two bytes; `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
-    `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to, its length and its
+    `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
+    that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
     fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes. A
     recorded part's instrument numbers are the voices' numbers in the song's voice group, or the keys of
@@ -405,7 +406,10 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
   all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
   where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
-  still, and a hold outside the recording is its first sample or its last. **`length: pack[:lengths].number(3)`**
+  still, and a hold outside the recording is its first sample or its last. **A hold with every bit set is none**
+  (255 in a byte, 65535 in two, 4294967295 in four, -1 where the slot goes below zero; `IR::StartFile.no_hold?`):
+  the recording does not loop, and sounds as one written without `holds_from:`, built all-in-one too, so one slot
+  of holds can say which recordings loop and which play once. **`length: pack[:lengths].number(3)`**
   is how many of the slot's samples the recording plays: the slot holds the most a recording can be, and a
   recording that reads back to an earlier sample does so from its own end, not through the rest of the slot.
   The build holds the whole slot's room and the runtime writes the length at power-on (`rg_mix_fill_length`,

@@ -1149,6 +1149,10 @@ module PackGames
         built(settings_at_start_game(folder, from_pack: %i[rate holds_from envelope], options: options, mix_rate: 13_379),
               settings_pack_file)
       end,
+      # A hold of every bit set from the pack, which is none: the recording plays once.
+      game(:instrument_no_hold_from_the_pack, passes: 80, presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
+        built(settings_at_start_game(folder, from_pack: %i[no_hold envelope], options: options), settings_pack_file)
+      end,
       # A recording's length from the pack too, shorter than its slot, read back from its own end.
       game(:instrument_length_from_the_pack, passes: 80, presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[holds_from envelope length], options: options), settings_pack_file)

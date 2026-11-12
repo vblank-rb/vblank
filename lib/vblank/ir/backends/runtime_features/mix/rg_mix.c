@@ -578,13 +578,26 @@ void rg_mix_fill_steps(int32_t *into, const int32_t *rules) {
   }
 }
 
-void rg_mix_fill_holds(int32_t *into, const int32_t *rules) {
-  int64_t holds_from = start_file_setting(rules);
-  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
-  int32_t length = rest[0], count = rest[1];
+/* Whether the hold at +where+ has every bit set, which is no hold (IR::StartFile.no_hold?). */
+static int start_file_no_hold(const int32_t *where) {
+  uint32_t every_bit = where[1] >= 4 ? UINT32_MAX : (((uint32_t)1 << (where[1] * 8)) - 1);
+  return rg_start_file_number(where[0], where[1], where[2]) == every_bit;
+}
+
+/* How far back a play or a note reads at the end of a recording of +length+ samples that holds
+ * from +holds_from+, or from none where +none+: all of it again where +whole+, nothing otherwise. */
+static int32_t start_file_back(int64_t holds_from, int none, int32_t length, int32_t whole) {
+  if (none) return whole ? length : 0;
   if (holds_from < 0) holds_from = 0;
   if (holds_from > length - 1) holds_from = length - 1;
-  for (int32_t i = 0; i < count; i++) into[rest[2 + i]] = length - (int32_t)holds_from;
+  return length - (int32_t)holds_from;
+}
+
+void rg_mix_fill_holds(int32_t *into, const int32_t *rules) {
+  const int32_t *rest = rules + RG_FILE_NUMBER_NUMBERS;
+  int32_t length = rest[0], whole = rest[1], count = rest[2];
+  int32_t back = start_file_back(start_file_setting(rules), start_file_no_hold(rules), length, whole);
+  for (int32_t i = 0; i < count; i++) into[rest[3 + i]] = back;
 }
 
 /* A recording's length from the file, of the +room+ its samples have: 1 at least, all of them at most. */
@@ -605,14 +618,8 @@ void rg_mix_fill_backs(int32_t *into, const int32_t *rules) {
   const int32_t *hold = rules + RG_FILE_NUMBER_NUMBERS + 1;
   const int32_t *rest = hold + 1 + RG_FILE_NUMBER_NUMBERS + 1;
   int64_t holds_from = hold[0] ? start_file_setting(hold + 1) : hold[1 + RG_FILE_NUMBER_NUMBERS];
-  int32_t back;
-  if (!hold[0] && holds_from < 0) {
-    back = rest[0] ? length : 0;
-  } else {
-    if (holds_from < 0) holds_from = 0;
-    if (holds_from > length - 1) holds_from = length - 1;
-    back = length - (int32_t)holds_from;
-  }
+  int none = hold[0] ? start_file_no_hold(hold + 1) : holds_from < 0;
+  int32_t back = start_file_back(holds_from, none, length, rest[0]);
   for (int32_t i = 0; i < rest[1]; i++) into[rest[2 + i]] = back;
 }
 

@@ -13,7 +13,7 @@ module VBlank
       #   copy.unpack_m4a_track at: SONG, into: pack[:drums], track: 6, kind: 4    # ...on one voice only
       #   copy.unpack_m4a_length at: SONG, into: pack[:title_length]               # length, loop frame
       #   copy.unpack_m4a_recording at: VOICE, into: pack[:piano]                  # a recording's samples
-      #   copy.unpack_m4a_voice at: VOICE, into: pack[:piano_settings]             # its rate, hold, length, envelope
+      #   copy.unpack_m4a_voice at: VOICE, into: pack[:piano_settings]             # its rate, hold (or none), length, envelope
       #
       # SONG is where the song's header is in the copy, and VOICE where a voice's twelve bytes are (the
       # song's voice group, then 12 bytes a voice, or a voice of a drum kit or key split; a routine
@@ -855,8 +855,9 @@ module VBlank
         # A recording's settings, four numbers of four bytes, low byte first, for a slot of numbers
         # `width: :word`: its rate (its pitch over 1024, or `mix_rate:` for a voice played at a fixed
         # rate, where a port gives the rate its game mixes at), the sample a held note goes back to
-        # (where it loops; one that does not loop, its length, so a port leaves `holds_from:` out for
-        # it), how many samples it has, and the voice's attack, decay, sustain and release, a byte each
+        # (where it loops; one that does not loop, NO_HOLD, every bit set, which `holds_from:` takes
+        # as no hold, so the voice plays once), how many samples it has, and the voice's attack,
+        # decay, sustain and release, a byte each
         # (`as_numbers(at: 12, count: 4, width: :byte, signed: false).envelope(0)`).
         module Voice
           extend Format
@@ -865,6 +866,8 @@ module VBlank
 
           # Where each byte of a number of four bytes is, low byte first.
           WORD_SHIFTS = [0, 8, 16, 24].freeze
+          # The hold of a voice that does not loop: every bit set (IR::StartFile.no_hold?).
+          NO_HOLD = -1
 
           def self.routine(block)
             wave = block.variable(:m4a_wave)
@@ -876,7 +879,7 @@ module VBlank
               rate.store!(M4A.word_at(block, wave + 4) >> 10)
               rate.store!(block.setting(:mix_rate)) if (block.byte(block.from) & FIXED_RATE) != 0 && block.setting(:mix_rate) > 0
               size.store!(M4A.word_at(block, wave + 12))
-              hold.store!(size)
+              hold.store!(NO_HOLD)
               hold.store!(M4A.word_at(block, wave + 8)) if (block.byte(wave + 3) & 0xC0) != 0
               block.expect_size(16)
               [rate, hold, size].each do |number|
