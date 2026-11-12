@@ -93,13 +93,15 @@ module VBlank
             # +places+ is each plane's place in video RAM (TextureMemory::Plane), by its number, and +depths+ how many
             # bits a texel each is kept at; +faces+ whether the game also fills the faces of a place, which leave the
             # chip's texture window set; +colors+ whether its colours change as it runs (Runtime::Colors).
-            def emit(asm, memory, places:, depths:, faces: false, colors: false)
+            #
+            # +opaque+ is the planes whose every background draws every pixel (Lowering::Picture#opaque_planes).
+            def emit(asm, memory, places:, depths:, opaque: [], faces: false, colors: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm)
               emit_plane_routines(asm, at)
               emit_cell(asm)
               emit_sprites(asm, at)
-              emit_draw(asm, at, places, depths, faces, colors)
+              emit_draw(asm, at, places, depths, opaque, faces, colors)
               emit_plane_drawing(asm, at)
               emit_plane_tables(asm, places, depths)
             end
@@ -300,7 +302,11 @@ module VBlank
             # backdrop is a fill of the page; each plane that is up, the back one first, is a textured
             # rectangle the size of the screen from its page of video RAM; then each sprite the pass
             # placed, as the painted screen draws a picture.
-            def emit_draw(asm, at, places, depths, faces, colors)
+            #
+            # A PLANE THAT DRAWS EVERY PIXEL hides the backdrop and every plane behind it, so while one is up the
+            # drawing starts at it: the front-most of them up is found first, and nothing behind it is sent to the
+            # chip, which would fill the whole screen for each only to have it covered.
+            def emit_draw(asm, at, places, depths, opaque, faces, colors)
               h = Console::PS1Hardware
               page = at.call(Paint::PAGE_Y)
               asm.label("rt_tiles_draw")
@@ -313,6 +319,10 @@ module VBlank
               asm.jal("rt_face_chip_put_back") if faces
               # The texels copied into a plane since the last picture are read afresh, not from the chip's cache.
               DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
+              opaque.sort.each do |plane|
+                asm.lw(:t0, at.call(PLANES) + (plane * PLANE_BYTES) + PLANE_UP, :gp)
+                asm.bne(:t0, :zero, "rt_tiles_draw_from_#{plane}")
+              end
               asm.lw(:a0, at.call(BACKDROP), :gp)
               DrawList.emit_command(asm, 3)
               asm.lw(:t0, page, :gp)
@@ -328,6 +338,7 @@ module VBlank
                 skip = "rt_tiles_draw_not_#{plane}"
                 asm.lw(:t0, state + PLANE_UP, :gp)
                 asm.beq(:t0, :zero, skip)
+                asm.label("rt_tiles_draw_from_#{plane}") if opaque.include?(plane)
                 asm.addiu(:a0, :gp, state)
                 asm.li(:a1, plane_draw_mode(places.fetch(plane), depths.fetch(plane)))
                 asm.jal("rt_plane_draw")

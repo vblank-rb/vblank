@@ -216,7 +216,33 @@ module VBlank
                 colors.entries.each_with_index { |entry, at| add_color_patch(entry.source, [table, at + 1], entry.colors) if entry.source }
                 @plane_tables[bg] = table
               end
+              @opaque_planes = (0...count).select do |plane|
+                showing = @layers.select { |_, number| number == plane }.keys
+                !showing.empty? && showing.all? { |bg| opaque_background?(bg) }
+              end
               follow_backdrop_list
+            end
+
+            # The planes every background that goes up on draws every pixel of, by number (Runtime.sections's
+            # +opaque_planes+): one of those up hides the backdrop and every plane behind it.
+            def opaque_planes = @opaque_planes
+
+            # WHETHER +bg+ DRAWS EVERY PIXEL wherever it is scrolled: every one of its tiles draws all of its pixels,
+            # every cell of each map's grid (TileMap.grid, which comes round) names a tile, and nothing the game
+            # does empties a cell (`set_tile` of no tile). A background whose tiles are read from the player's copy
+            # (+from_file+) is not known to.
+            def opaque_background?(bg)
+              return false if bg.from_file
+              return false unless bg.tiles.each_index.all? { |tile| @plane_colors[bg].tile_entries(tile).none?(&:nil?) }
+              return false if @program.walk.any? { |node| node.kind == :set_tile && node.name == bg.name && !node.picked? && node.tile.nil? }
+
+              bg.every_map.all? do |map|
+                columns, rows = TileMap.grid(map)
+                (0...rows).all? do |row|
+                  cells = Array(map[row])
+                  (0...columns).all? { |column| (tile = cells[column]) && tile >= 0 && tile < bg.tiles.length }
+                end
+              end
             end
 
             # How deep each plane is (4, 8 or 15 bits a texel), by its number (Runtime.sections's +plane_depths+).

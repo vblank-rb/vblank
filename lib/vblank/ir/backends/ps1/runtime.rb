@@ -64,11 +64,12 @@ module VBlank
           # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
           # which reads the game's table "recording_plays". +planes+ is, for a game whose screen is drawn
           # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other, and
-          # +plane_depths+ how many bits a texel each plane is kept at, and +colors+ whether its colours change as
+          # +plane_depths+ how many bits a texel each plane is kept at, +opaque_planes+ the planes that draw every
+          # pixel, and +colors+ whether its colours change as
           # it runs, so carries Colors, which reads the game's tables of colours; +collides+
           # whether it asks whether two sprites' pixels touch, so carries Collide.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, planes: nil, plane_depths: nil, colors: false, collides: false)
+                       samples: false, planes: nil, plane_depths: nil, opaque_planes: [], colors: false, collides: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             DrawList.reserve_late(memory)
@@ -79,7 +80,7 @@ module VBlank
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
-            Tiles.emit(asm, memory, places: planes, depths: plane_depths, faces: faces, colors: colors) if planes
+            Tiles.emit(asm, memory, places: planes, depths: plane_depths, opaque: opaque_planes, faces: faces, colors: colors) if planes
             Colors.emit(asm, memory) if colors
             Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces

@@ -119,6 +119,7 @@ module VBlank
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              planes: lowering.plane_places, plane_depths: lowering.plane_depths,
+                                             opaque_planes: lowering.opaque_planes,
                                              colors: Lowering::Picture.changes_colors?(program),
                                              collides: lowering.collides?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
