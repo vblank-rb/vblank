@@ -194,6 +194,88 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [4, 3, 3], counts
   end
 
+  # Rotated on passes 1, 3, 4 and 6: [2, 3, 1], the same, [3, 1, 2], [1, 2, 3], all set to 1, the
+  # same, holding 1, 1, 2, 3, 1, 1.
+  ROTATIONS = {
+    RotatingWithVarPart => [:var_rotating_tick, %i[var_rotating_0 var_rotating_1 var_rotating_2 var_rotating_held]],
+    RotatingHashPart => [:rotating_hash_tick, %i[rotating_hash_part_states_0 rotating_hash_part_states_1
+                                                 rotating_hash_part_states_2 rotating_hash_part_held]],
+    RotatingArrayPart => [:rotating_array_tick, %i[rotating_array_part_states_0 rotating_array_part_states_1
+                                                   rotating_array_part_states_2 rotating_array_part_held]],
+    RotatingVarStatesPart => [:var_states_rotating_tick, %i[var_states_rotating_0 var_states_rotating_1
+                                                            var_states_rotating_2 rotating_var_states_part_held]]
+  }.freeze
+
+  def test_states_rotated_through_a_held_named_value_play_as_vars
+    rotated = ROTATIONS.to_h do |part, (routine, names)|
+      states = (1..6).map do |frames|
+        player = played(part, routine, frames: frames)
+        names.map { |name| player[name] }
+      end
+      [part, states]
+    end
+
+    assert_equal [[2, 3, 1, 1], [2, 3, 1, 1], [3, 1, 2, 2], [1, 2, 3, 3], [1, 1, 1, 1], [1, 1, 1, 1]],
+                 rotated[RotatingWithVarPart]
+    rotated.each { |part, states| assert_equal rotated[RotatingWithVarPart], states, part.name }
+  end
+
+  def test_states_rotated_through_a_held_value_nobody_names_play_as_vars
+    states = (1..6).map do |frames|
+      player = played(RotatingUnnamedHeldPart, :unnamed_held_rotating_tick, frames: frames)
+      (0..2).map { |light| player[:"rotating_unnamed_held_part_states_#{light}"] }
+    end
+
+    assert_equal [[2, 3, 1], [2, 3, 1], [3, 1, 2], [1, 2, 3], [1, 1, 1], [1, 1, 1]], states
+  end
+
+  def test_a_named_value_given_another_variable_while_setting_up_copies_its_number
+    player = played(CopiedLevelPart, :copied_level_tick)
+
+    assert_equal [8, 5], [player[:copied_level_part_level], player[:copied_level_source]]
+  end
+
+  def test_an_unnamed_value_sharing_a_variable_given_another_is_refused_naming_game_variables
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(HandedHeldPart, :handed_held_tick) }
+
+    assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
+  end
+
+  def test_named_values_swapped_in_one_line_change_places_on_every_pass
+    totals = (1..3).map { |frames| played(SwappingPart, :swapping_tick, frames: frames)[:swapping_part_total] }
+
+    assert_equal [12, 21, 12], totals
+  end
+
+  def test_named_values_given_names_of_the_games_own_are_read_by_those_names
+    player = played(OwnNamedLightsPart, :own_named_lights_tick, frames: 1)
+
+    assert_equal [2, 1, 1], [player[:lit_state_0], player[:lit_state_1], player[:lit_held]]
+  end
+
+  # Only the second of one part swaps.
+  def test_a_second_object_of_a_part_with_names_of_its_own_takes_the_next_free_names
+    builder = Builder.new
+    OwnNamedLightsPart.new(builder, :first_lights_tick)
+    OwnNamedLightsPart.new(builder, :second_lights_tick)
+    builder.game_loop { builder.call(:second_lights_tick) }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 1)
+
+    assert_equal [1, 2, 0, 1], %i[lit_state_0 lit_state_0_2 lit_held lit_held_2].map { |name| player[name] }
+  end
+
+  def test_a_name_of_the_games_own_that_another_variable_has_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      builder = Builder.new
+      builder.var(:lit_held, 0)
+      OwnNamedLightsPart.new(builder)
+    end
+
+    assert_match(/variable name :lit_held, and another variable of the game has that name/, error.message)
+  end
+
   def test_a_named_array_of_numbers_at_an_index_the_game_works_out_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByNumberPart, :counts_by_number_tick) }
 

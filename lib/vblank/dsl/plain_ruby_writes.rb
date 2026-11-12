@@ -54,7 +54,7 @@ module VBlank
           return current if value.equal?(current)
 
           if moves && Steps.variable?(value) && !current.own_to_its_name
-            refuse_move_in_game_code!(label, current, value)
+            refuse_move_in_game_code!(label, current, value, owner)
             return yield(value)
           end
           return store_and_keep(current, value) if number_kept?(value)
@@ -140,9 +140,14 @@ module VBlank
 
         # #promote for a place any method can reach. A game variable there is the place's own, and
         # the write changes it. +owner+ and +label+ name a game's own instance variable, as #write's do.
+        # The variable a promotion makes is the place's own too, so a later line giving the place
+        # another game variable (`@held = @states[0]`) copies the number into it.
         def promote_place(value, test, *outer, may_stay_nil: false, owner: nil, label: nil)
           value = InstanceVariables.promotion_target(owner, value, label, test) if owner
-          Steps.variable?(value) ? value : promote(value, test, *outer, may_stay_nil: may_stay_nil)
+          return value if Steps.variable?(value)
+
+          promoted = promote(value, test, *outer, may_stay_nil: may_stay_nil)
+          Steps.variable?(promoted) ? keep_as_own(promoted) : promoted
         end
 
         # #promote for a slot of a Hash or an Array. A slot that holds nothing yet has no number to
@@ -280,14 +285,22 @@ module VBlank
 
         # `@a = @b` in code the game runs, where @a was only handed its variable. Copying into it
         # would change a variable that belongs to something else, and moving it would leave a line
-        # that looks like a copy recording nothing, so the author chooses which.
-        def refuse_move_in_game_code!(label, current, value)
+        # that looks like a copy recording nothing. A named instance variable always has a variable
+        # of its own, so in a game's own code naming it is the fix. +owner+ is the object it belongs
+        # to, nil in VBlank's own files, which keep their variables with `var`.
+        def refuse_move_in_game_code!(label, current, value, owner = nil)
           return unless Builder.in_use&.recording_game_code?
 
-          Steps.refuse_game_code!("`#{label}` was handed the game variable :#{current.name}, and this line gives it " \
-                                  ":#{value.name}. The game would see no change. To fix this, give `#{label}` a " \
-                                  "variable of its own with `#{label} = var :#{label.to_s.delete('@')}, 0`, and the " \
-                                  "line then copies the number.")
+          bare = label.to_s.delete("@")
+          fix = if owner
+                  where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
+                  "add `game_variables :#{bare}` to #{where}"
+                else
+                  "give `#{label}` a variable of its own with `#{label} = var :#{bare}, 0`"
+                end
+          Steps.refuse_game_code!("`#{label}` holds the game variable :#{current.name}, which belongs to something " \
+                                  "else, and this line gives it :#{value.name}. The game would see no change. To fix " \
+                                  "this, #{fix}. Then the line copies the number.")
         end
 
         # A name in code the game runs, holding a variable it was handed, is about to be given

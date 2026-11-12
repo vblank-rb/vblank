@@ -68,7 +68,20 @@ instance variables.
 - Setting-up code that works with a named one works with the game variable, so `@busy.times` while
   setting up is refused as any game number is: keep a number only the build uses unnamed.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as
-  `tilt_busy`, and a second Tilt's as `tilt_busy_2`.
+  `tilt_busy` (the class's name in small letters, `_` before each capital that follows a small
+  letter or a digit, then `_` and the instance variable's: `RedFieldCAVELights` gives
+  `red_field_cavelights_held`), and a second Tilt's as `tilt_busy_2`.
+- **`game_variables busy: :tilt_wait` gives the variable a name of the game's own**, read as
+  `tilt_wait` (a second Tilt's as `tilt_wait_2`, and a second one's Hash slot as
+  `cave_light_state_0_2`). Names with and without one mix on one line: `game_variables :seed,
+  states: :cave_light_state`. A subclass can give its parent's instance variable another name.
+  Refused: two instance variables of one class given one name, one given two names in one class,
+  and a name another variable of the game has already.
+- **A named value given another game value copies its number**: `@held = @states[0]`, `@best =
+  @score`, `@phase = start_phase` and `@level = other.level` set the named value's own variable,
+  in game code and while setting up, and never make it share the other's. So a rotation through a
+  held value (`@held = @states[0]; @states[0] = @states[1]; @states[1] = @held`) and a swap (`@a,
+  @b = @b, @a`) work as in Ruby.
 - A subclass has its parent's names and can name more; a module the class includes can name its own.
   `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
   (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
@@ -78,7 +91,9 @@ instance variables.
 - **A named Hash or Array of numbers is a game variable for each key**: `game_variables
   :tilt_counters`, `@tilt_counters = SIDES.to_h { |side| [side, 0] }` in `initialize`, then
   `@tilt_counters[side] += 1` and `if @tilt_counters[side] > 2` in game code, inside `SIDES.each do
-  |side|`. A profile reads `tilt_tilt_counters_left` for a `Tilt`. The key must be known while
+  |side|`. A profile reads `tilt_tilt_counters_left` for a `Tilt`: the variable's name, `_`, then
+  the key, so `game_variables states: :cave_light_state` with keys 0 to 3 (a Hash's or an Array's)
+  reads `cave_light_state_0` to `cave_light_state_3`. The key must be known while
   building; a key the game works out (`@counts[which]`, `which` a game number) is refused: keep
   those numbers in a game's own list (`lists.md`).
 - **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
@@ -172,6 +187,8 @@ Each is a friendly error naming the line.
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
+| an instance variable nobody named that holds another part's game variable, given another game variable in game code | `game_variables :held` in the class's body: then the line copies the number |
+| two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |

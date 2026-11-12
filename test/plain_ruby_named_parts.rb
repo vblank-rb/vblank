@@ -343,6 +343,145 @@ class TiltCountersWithVarPart
   end
 end
 
+# STATES ROTATED THROUGH A HELD VALUE, as a row of lights passes each light's state to the next. A
+# copy of one named value into another copies the number. Each pass but the second and the fifth
+# rotates the states left, and the held value keeps the one that went round. The twin keeps
+# everything in `var`.
+module StateRotating
+  def shift_left
+    @held = @states[0]
+    @states[0] = @states[1]
+    @states[1] = @states[2]
+    @states[2] = @held
+  end
+
+  # The fifth pass sets every state to a number worked out into the held value instead.
+  def tick
+    @passes += 1
+    if @passes == 5
+      @held = (@passes >> 2) & 1
+      (0..2).each { |light| @states[light] = @held }
+    elsif @passes != 2
+      shift_left
+    end
+  end
+end
+
+class RotatingHashPart
+  include StateRotating
+  game_variables :states, :held
+
+  def initialize(builder)
+    @states = { 0 => 1, 1 => 2, 2 => 3 }
+    @held = 0
+    @passes = builder.var(:rotating_hash_passes, 0)
+    builder.func(:rotating_hash_tick) { tick }
+  end
+end
+
+class RotatingArrayPart
+  include StateRotating
+  game_variables :states, :held
+
+  def initialize(builder)
+    @states = [1, 2, 3]
+    @held = 0
+    @passes = builder.var(:rotating_array_passes, 0)
+    builder.func(:rotating_array_tick) { tick }
+  end
+end
+
+# Only the held value named; the states each a `var`, as a part written before names were.
+class RotatingVarStatesPart
+  include StateRotating
+  game_variables :held
+
+  def initialize(builder)
+    @states = (0..2).to_h { |light| [light, builder.var(:"var_states_rotating_#{light}", light + 1)] }
+    @held = 0
+    @passes = builder.var(:var_states_rotating_passes, 0)
+    builder.func(:var_states_rotating_tick) { tick }
+  end
+end
+
+# Only the states named. The held value is the part's own all the same: the fifth pass's line gives
+# it a number under a test the game makes, which gives it a variable of its own there.
+class RotatingUnnamedHeldPart
+  include StateRotating
+  game_variables :states
+
+  def initialize(builder)
+    @states = [1, 2, 3]
+    @held = 0
+    @passes = builder.var(:unnamed_held_rotating_passes, 0)
+    builder.func(:unnamed_held_rotating_tick) { tick }
+  end
+end
+
+class RotatingWithVarPart
+  include StateRotating
+
+  def initialize(builder)
+    @states = (0..2).to_h { |light| [light, builder.var(:"var_rotating_#{light}", light + 1)] }
+    @held = builder.var(:var_rotating_held, 0)
+    @passes = builder.var(:var_rotating_passes, 0)
+    builder.func(:var_rotating_tick) { tick }
+  end
+end
+
+# Two named values swapped in one line, and a named value given a sum of two others: on every pass
+# `@left` and `@right` change places, then `@total` is left + 10 * right.
+class SwappingPart
+  game_variables :left, :right, :total
+
+  def initialize(builder)
+    @left = 1
+    @right = 2
+    @total = 0
+    builder.func(:swapping_tick) do
+      @left, @right = @right, @left
+      @total = @left + (@right * 10)
+    end
+  end
+end
+
+# A named value given another part's variable while setting up keeps a copy of its number: counting
+# it up on every pass leaves the other part's variable at 5.
+class CopiedLevelPart
+  game_variables :level
+
+  def initialize(builder)
+    source = builder.var(:copied_level_source, 5)
+    @level = source
+    builder.func(:copied_level_tick) { @level += 1 }
+  end
+end
+
+# Nothing named: the held value shares the first state's variable from setting up, so giving it the
+# second state in game code is refused.
+class HandedHeldPart
+  def initialize(builder)
+    @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_#{light}", light)] }
+    @held = @states[0]
+    builder.func(:handed_held_tick) { @held = @states[1] }
+  end
+end
+
+# A named Hash and a named value given names of the game's own.
+class OwnNamedLightsPart
+  game_variables states: :lit_state, held: :lit_held
+
+  def initialize(builder, routine = :own_named_lights_tick)
+    @states = { 0 => 1, 1 => 2 }
+    @held = 0
+    builder.func(routine) do
+      @held = @states[0]
+      @states[0] = @states[1]
+      @states[1] = @held
+    end
+  end
+end
+
 # A named Array of numbers, at an index the game works out: refused at the line.
 class CountsByNumberPart
   game_variables :counts

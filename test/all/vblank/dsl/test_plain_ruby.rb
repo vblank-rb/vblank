@@ -2687,6 +2687,29 @@ class TestPlainRuby < Minitest::Test
     assert_equal 4, player[:seen]
   end
 
+  # Given a name of the game's own, and copied from another of its named values on every pass.
+  def test_the_games_own_named_instance_variable_is_read_by_the_name_it_was_given
+    player = played(frames: 3) do
+      game_variables :score, best: :best_score
+      @score = 0
+      @best = 0
+      game_loop do
+        @score += 2
+        @best = @score
+      end
+    end
+
+    assert_equal [6, 6], [player[:score], player[:best_score]]
+  end
+
+  def test_two_named_instance_variables_given_one_variable_name_are_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played { game_variables score: :points, best: :points }
+    end
+
+    assert_match(/`@score` and `@best` the same variable name/, error.message)
+  end
+
   def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       played do

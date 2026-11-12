@@ -33,16 +33,110 @@ module VBlank
 
         module_function
 
+        # The constant a class keeps the variable names it chose in, as `{ :@states => :lit_state }`.
+        CHOSEN_NAMES_CONSTANT = :VBLANK_GAME_VARIABLE_NAMES
+
         # `game_variables :busy, :seed`, written in a class's body, a module's, or the game block
-        # (+owner+ is whichever ran it). The rewrite turns the call into this one.
+        # (+owner+ is whichever ran it). The rewrite turns the call into this one. A Hash among
+        # +names+ (`game_variables states: :lit_state`) names an instance variable and gives its
+        # game variable a name of the game's own, which a profile and a test read it by.
         def name_game_variables(owner, names)
-          labels = names.map { |name| instance_variable_label(name) }
+          labels = []
+          chosen = {}
+          names.each do |name|
+            next labels << instance_variable_label(name) unless name.is_a?(Hash)
+
+            name.each do |instance_variable, variable_name|
+              label = instance_variable_label(instance_variable)
+              labels << label
+              chosen[label] = chosen_variable_name!(label, variable_name)
+            end
+          end
           case owner
-          when Builder then owner.instance_variable_uses.name_on_builder(labels)
-          when Module then name_in_module(owner, labels)
+          when Builder then owner.instance_variable_uses.name_on_builder(labels, chosen)
+          when Module
+            name_in_module(owner, labels)
+            store_chosen_names(owner, chosen) unless chosen.empty?
           else refuse_named_outside_class!(owner)
           end
           nil
+        end
+
+        # The name +label+'s game variable is given, `:lit_state` from `states: :lit_state`, refused
+        # unless it is a word a variable can be named.
+        def chosen_variable_name!(label, variable_name)
+          word = variable_name.to_s if variable_name.is_a?(Symbol) || variable_name.is_a?(String)
+          return word.to_sym if word&.match?(/\A[a-z_][a-z0-9_]*\z/)
+
+          raise Refused, "`game_variables` gives `#{label}` the variable name #{variable_name.inspect}. A variable " \
+                         "name is a word of small letters, digits and `_`. To fix this, give a name like " \
+                         "`#{label.to_s.delete_prefix('@')}: :lit_state`." \
+                         "#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # The names a class chose, kept as its names are (#name_in_module).
+        def store_chosen_names(owner, chosen)
+          named = owner.const_defined?(CHOSEN_NAMES_CONSTANT, false) ? owner.const_get(CHOSEN_NAMES_CONSTANT, false) : {}
+          merged = merge_chosen_names(named, chosen)
+          return if merged == named
+
+          owner.class_eval { remove_const(CHOSEN_NAMES_CONSTANT) } if owner.const_defined?(CHOSEN_NAMES_CONSTANT, false)
+          owner.const_set(CHOSEN_NAMES_CONSTANT, Ractor.make_shareable(merged))
+        end
+
+        # +named+ with +chosen+ added. An instance variable keeps one name, and two of them never
+        # share one: each would find the other's variable taken.
+        def merge_chosen_names(named, chosen)
+          merged = named.merge(chosen) do |label, before, now|
+            refuse_two_names!(label, before, now) unless before == now
+            now
+          end
+          refuse_shared_names!(merged)
+          merged
+        end
+
+        def refuse_two_names!(label, before, now)
+          raise Refused, "`game_variables` gives `#{label}` the variable name :#{now}, and an earlier line gave it " \
+                         ":#{before}. To fix this, give it one name.#{Messages::AuthorSource.at_author_line}"
+        end
+
+        def refuse_shared_names!(chosen)
+          chosen.group_by { |_, name| name }.each do |name, pairs|
+            next if pairs.length < 2
+
+            raise Refused, "`game_variables` gives #{pairs.map { |label, _| "`#{label}`" }.join(' and ')} the same " \
+                           "variable name, :#{name}. To fix this, give each one a name of its own." \
+                           "#{Messages::AuthorSource.at_author_line}"
+          end
+        end
+
+        # The names +holder+ and the classes and modules it is made from chose. Where two chose for
+        # one instance variable, the nearest wins: a subclass can name its parent's again.
+        def chosen_names_of(holder)
+          holder.ancestors.reverse.each_with_object({}) do |each_module, chosen|
+            chosen.merge!(each_module.const_get(CHOSEN_NAMES_CONSTANT, false)) if each_module.const_defined?(CHOSEN_NAMES_CONSTANT, false)
+          end
+        end
+
+        # The variable name for +owner+'s +label+: +name+, or a free one after it (`tilt_busy_2`)
+        # for a second object of one class. A name the game chose is refused where something else
+        # has the variable already, a `var` line or another class's choice, since a test reading it
+        # would read the wrong one.
+        def free_name_for(owner, label, name)
+          builder = Builder.in_use
+          uses = builder.instance_variable_uses
+          free = builder.free_variable_name(name)
+          if free != name && uses.chosen_name(owner, label) && !uses.made_for?(name, owner, label)
+            refuse_chosen_name_taken!(label, name)
+          end
+          uses.note_made_for(name, owner, label)
+          free
+        end
+
+        def refuse_chosen_name_taken!(label, name)
+          raise Refused, "`game_variables` gives `#{label}` the variable name :#{name}, and another variable of the " \
+                         "game has that name. To fix this, give `#{label}` a name that no other variable has." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # `:busy` as `:@busy`.
@@ -166,9 +260,13 @@ module VBlank
         # gives it +value+: a named one's game variable, made here if it held nil; anything else as
         # it is, the write noted (Uses#note_change). +starting+ is a line of `initialize`, which
         # gives the object its start, even where game code makes the object: no change is noted.
+        #
+        # A named one is never handed another's variable, while setting up either: given a game
+        # variable or a working-out while it holds nothing, it gets a variable of its own, which
+        # the write then sets to that number (`@held = @states[0]`, `@phase = start_phase`).
         def write_target(owner, current, value, label, starting: false)
           uses = uses_while_recording(owner)
-          return current unless uses
+          return own_variable_while_setting_up(owner, current, value, label) unless uses
 
           unless uses.named?(owner, label)
             uses.note_change(owner, label, current, value, operator: false) unless starting
@@ -176,6 +274,14 @@ module VBlank
           end
           return game_variable_of(owner, current, label) unless current.nil?
           return current unless Writes.number_kept?(value) && !value.nil?
+
+          variable_starting_like(owner, label, value)
+        end
+
+        def own_variable_while_setting_up(owner, current, value, label)
+          builder = Builder.in_use
+          return current unless current.nil? && (value.is_a?(Value) || value.is_a?(Condition))
+          return current unless builder && !owner.is_a?(Module) && builder.instance_variable_uses.named?(owner, label)
 
           variable_starting_like(owner, label, value)
         end
@@ -264,18 +370,18 @@ module VBlank
 
           base = variable_name(owner, label)
           if held.is_a?(Hash)
-            KeyedHash[held.map { |key, value| [key, element_variable(base, key, value)] }].freeze
+            KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }].freeze
           else
-            KeyedArray.new(held.each_with_index.map { |value, index| element_variable(base, index, value) }).freeze
+            KeyedArray.new(held.each_with_index.map { |value, index| element_variable(owner, label, base, index, value) }).freeze
           end
         end
 
-        def element_variable(base, key, start)
+        def element_variable(owner, label, base, key, start)
           return start if Steps.variable?(start)
 
           builder = Builder.in_use
           suffix = key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key.to_s : "key"
-          variable = builder.var(builder.free_variable_name(:"#{base}_#{suffix}"), start)
+          variable = builder.var(free_name_for(owner, label, :"#{base}_#{suffix}"), start)
           variable.note_made_with_no_var_line
           Writes.keep_as_own(variable)
         end
@@ -365,13 +471,18 @@ module VBlank
 
             current = holder[field]
             made = first_variable(holder, nil, current, :"@#{field}")
+            # Made from a game variable or a working-out: a variable of its own, holding that number.
+            if made.nil? && Builder.in_use && (current.is_a?(Value) || current.is_a?(Condition))
+              made = variable_starting_like(holder, :"@#{field}", current)
+              Writes.store_in_variable(made, current)
+            end
             holder[field] = made if made
           end
         end
 
         def make_variable(owner, label, start)
           builder = Builder.in_use
-          variable = builder.var(builder.free_variable_name(variable_name(owner, label)), start)
+          variable = builder.var(free_name_for(owner, label, variable_name(owner, label)), start)
           variable.note_made_with_no_var_line
           Writes.keep_as_own(variable)
         end
@@ -388,8 +499,12 @@ module VBlank
 
         # The name a profile and a test read the variable by: `tilt_busy` for `@busy` of a Tilt, so
         # it cannot meet a name the game gives a variable of its own, and `score` for the game
-        # block's `@score`. An object of a class with no name is a `part`'s.
+        # block's `@score`. An object of a class with no name is a `part`'s. A name the class chose
+        # (`game_variables busy: :tilt_wait`) is taken as it is.
         def variable_name(owner, label)
+          chosen = Builder.in_use.instance_variable_uses.chosen_name(owner, label)
+          return chosen if chosen
+
           bare = label.to_s.delete_prefix("@")
           return bare.to_sym if owner.is_a?(Builder)
 
@@ -439,16 +554,35 @@ module VBlank
 
           def initialize
             @named_on_builder = Set.new
+            @chosen_on_builder = {}
             @names_by_class = {}
+            @chosen_by_class = {}
+            @makers_by_name = {}
             @uses = {}.compare_by_identity
           end
 
-          def name_on_builder(labels) = @named_on_builder.merge(labels)
+          def name_on_builder(labels, chosen = {})
+            @named_on_builder.merge(labels)
+            @chosen_on_builder = InstanceVariables.merge_chosen_names(@chosen_on_builder, chosen)
+          end
+
+          # Was variable name +name+ first made for +label+ of an object of +owner+'s class (or the
+          # game block)? A second object of one class takes the next free name after it.
+          def made_for?(name, owner, label) = @makers_by_name[name] == maker(owner, label)
+
+          def note_made_for(name, owner, label) = @makers_by_name[name] ||= maker(owner, label)
 
           def named?(owner, label)
             return @named_on_builder.include?(label) if owner.is_a?(Builder)
 
             (@names_by_class[owner.class] ||= InstanceVariables.names_in_module(owner.class)).include?(label)
+          end
+
+          # The variable name +owner+'s class (or the game block) chose for +label+, or nil.
+          def chosen_name(owner, label)
+            return @chosen_on_builder[label] if owner.is_a?(Builder)
+
+            (@chosen_by_class[owner.class] ||= InstanceVariables.chosen_names_of(owner.class))[label]
           end
 
           def note_read(owner, label, current)
@@ -483,6 +617,18 @@ module VBlank
           # itself, as a part's `plan unless @planned` is, and nothing the game runs can read it:
           # a test on it is Ruby's, decided while building.
           def plain_number?(value) = TRACKED.any? { |kind| value.is_a?(kind) }
+
+          # Who a variable name is made for: the game block, or the class or module that chose the
+          # name (so the objects of two subclasses share its run of names), else the object's class.
+          def maker(owner, label)
+            return [Builder, label] if owner.is_a?(Builder)
+
+            chooser = owner.class.ancestors.find do |each_module|
+              each_module.const_defined?(CHOSEN_NAMES_CONSTANT, false) &&
+                each_module.const_get(CHOSEN_NAMES_CONSTANT, false).key?(label)
+            end
+            [chooser || owner.class, label]
+          end
 
           def use_of(owner, label) = (@uses[owner] ||= {})[label] ||= Use.new(false, nil, nil, nil)
 
