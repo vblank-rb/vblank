@@ -39,6 +39,11 @@ require "pack_place_games"
 # handed is the first build's. `passes:` is how long to play it, and `presses:` the buttons held
 # on each frame that has any (`{ 1 => [:a], 20 => [:b] }`).
 #
+# A GAME THAT NAMES FRAMES OF ITS ORIGINAL (`pack[:frames].frame(at, layout:)`) gives back
+# `built_by(builder)`, which keeps its data pack: the parity check then plays the pack's unpacking
+# from the copy and hands the build with its pack left out the file that writes, as a shell does,
+# so the layout (a reader the game wrote among them) runs as game code on the copy's bytes.
+#
 # A VERB NOT MADE FOR A PACK LEFT OUT YET is registered too, marked `refused:` with a phrase of
 # its refusal and which runs refuse it. Once the verb is made the game builds, the test fails
 # saying so, and taking the mark off makes the test hold the two builds alike.
@@ -68,8 +73,12 @@ module PackGames
   # One registered game. +kit+ is the class its block runs on an instance of.
   Game = Data.define(:name, :kit, :passes, :presses, :refused, :differs, :makes)
 
-  # One build of a game: its program, and the pack file the build made (nil with the pack left out).
-  Built = Data.define(:program, :pack_file)
+  # One build of a game: its program, the pack file the build made (nil with the pack left out),
+  # and its data pack (DSL::DataPack), whose unpacking the parity check plays, where the game's
+  # line gives it back (Kit#built_by). A game that names frames of its original must.
+  Built = Data.define(:program, :pack_file, :data_pack) do
+    def initialize(program:, pack_file:, data_pack: nil) = super
+  end
 
   # What a kit is: the helpers of one made-up original, and the games that read it.
   class Kit
@@ -86,6 +95,11 @@ module PackGames
     def build(game, folder, options) = instance_exec(folder, options, &game.makes)
 
     private def built(program, pack_file = nil) = Built.new(program: program, pack_file: pack_file)
+
+    # The build +builder+ made, its program made, with its data pack.
+    private def built_by(builder)
+      Built.new(program: builder.program, pack_file: builder.made_data_pack_file, data_pack: builder.declared_data_pack)
+    end
   end
 
   # THE MADE-UP ADVANCE ORIGINAL'S PICTURES (MadeUpOriginal): its sprite picture of four tiles and
@@ -934,7 +948,7 @@ module PackGames
     include PackPoseGames
 
     private def pose(folder, options, size: REACH, **shape, &more)
-      built(*pose_game_and_file(original(folder), size: size, options: options, **shape, &more))
+      built_by(pose_game_builder(original(folder), size: size, options: options, **shape, &more))
     end
 
     GAMES = [
@@ -958,7 +972,7 @@ module PackGames
       # A pose's size is worked out from its frame's pieces, which a build that leaves its pack
       # out does not hold.
       game(:pose_given_no_size, passes: 3, refused: refused_by_builder("size:", names_fix: false)) do |folder, options|
-        built(*pose_game_and_file(original(folder), options: options))
+        built_by(pose_game_builder(original(folder), options: options))
       end
     ].freeze
   end
@@ -969,7 +983,7 @@ module PackGames
     include PackPoseOfWordsGames
 
     private def pose_of_words(folder, options, layout: FRAME, high_byte_first: true)
-      built(*pose_from_pack_and_file(original(folder, high_byte_first: high_byte_first), layout: layout, size: REACH, options: options))
+      built_by(pose_from_pack_builder(original(folder, high_byte_first: high_byte_first), layout: layout, size: REACH, options: options))
     end
 
     GAMES = [
@@ -988,7 +1002,7 @@ module PackGames
 
     GAMES = [
       game(:pose_of_every_advance_shape_and_size, passes: 3) do |folder, options|
-        built(*pose_of_shapes_and_file(original(folder), options: options))
+        built_by(pose_of_shapes_builder(original(folder), options: options))
       end
     ].freeze
   end
@@ -1000,7 +1014,7 @@ module PackGames
 
     GAMES = [
       game(:poses_of_one_frame_read_by_the_game_for_two_blocks, passes: 3) do |folder, options|
-        built(*poses_read_by_the_game_and_file(original(folder), options: options))
+        built_by(poses_read_by_the_game_builder(original(folder), options: options))
       end
     ].freeze
   end
@@ -1016,11 +1030,10 @@ module PackGames
     # the size of its two pieces, and whatever the block, run on the builder, declares.
     private def poses_in_bank_colors(folder, options, &more)
       test = self
-      program, file = game_and_file_of(folder, options: options) do |pack|
+      built_by(game_builder_of(folder, options: options) do |pack|
         test.declare_poses_for(self, pack, size: SIZE)
         instance_exec(pack, &more)
-      end
-      built(program, file)
+      end)
     end
 
     GAMES = [
@@ -1075,14 +1088,13 @@ module PackGames
       end,
       # Only the pieces of the bank given are painted, the file saying which those are.
       game(:pose_of_one_banks_pieces, passes: 3) do |folder, options|
-        program, file = game_and_file_of(folder, options: options) do |pack|
+        built_by(game_builder_of(folder, options: options) do |pack|
           frame = pack[:frames].frame(IN_TWO_BANKS, layout: FRAME)
           image :near, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:palette], bank: 1, size: SIZE
           image :far, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:palette], bank: 3, size: SIZE
           sprite :near, at: [40, 40]
           sprite :far, at: [40, 40]
-        end
-        built(program, file)
+        end)
       end
     ].freeze
   end
@@ -1343,14 +1355,13 @@ module PackGames
     GAMES = [
       # Two frames that name one bank are drawn from one list all-in-one, so one sprite shows both.
       game(:one_sprite_showing_two_frames_of_one_bank, passes: 12) do |folder, options|
-        program, file = game_and_file_of(folder, options: options) do |pack|
+        built_by(game_builder_of(folder, options: options) do |pack|
           image :left, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 2, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
                        colors: pack[:palette], size: SIZE
           image :right, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1 + 10, layout: PIECE_FRAME, count: 1), origin: ORIGIN,
                         colors: pack[:palette], size: SIZE
           sprite :both, at: [40, 40], frames: %i[left right], rate: 4
-        end
-        built(program, file)
+        end)
       end
     ].freeze
   end

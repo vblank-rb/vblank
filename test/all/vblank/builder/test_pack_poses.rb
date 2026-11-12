@@ -61,8 +61,14 @@ module PackPoseGames
   # +pose_options+ are more of the pose's own (`size:`), +pose_colors+ makes its `colors:` of the
   # pack where it is not the game's own list, and +turned+ shows the pose turned (:mirror or
   # :upside_down). +more+ is handed the sprite and the builder declares what it says before the loop.
-  private def pose_game_and_file(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, frames_count: FRAME_BYTES.length,
-                                 options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, **pose_options, &more)
+  private def pose_game_and_file(...)
+    b = pose_game_builder(...)
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The same game's builder, its program made, for a test of its pack's unpacking.
+  private def pose_game_builder(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, frames_count: FRAME_BYTES.length,
+                                options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, **pose_options, &more)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -80,7 +86,7 @@ module PackPoseGames
       game_loop { wait_vblank }
     end
     b.finalize_program
-    [b.program, b.made_data_pack_file]
+    b
   end
 
   private def pose_game(...) = pose_game_and_file(...).first

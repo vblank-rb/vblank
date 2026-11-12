@@ -79,7 +79,13 @@ module PackPoseBankColorGames
   private def game_of(...) = game_and_file_of(...).first
 
   # The same game, and the pack file its build made (nil for a build that leaves its pack out).
-  private def game_and_file_of(folder, options: VBlank::Cartridge::Options.new, &declares)
+  private def game_and_file_of(...)
+    b = game_builder_of(...)
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The same game's builder, its program made, for a test of its pack's unpacking.
+  private def game_builder_of(folder, options: VBlank::Cartridge::Options.new, &declares)
     from = original(folder)
     b = Builder.new(options: options)
     b.instance_eval do
@@ -94,7 +100,7 @@ module PackPoseBankColorGames
       game_loop { wait_vblank }
     end
     b.finalize_program
-    [b.program, b.made_data_pack_file]
+    b
   end
 
   # The poses :first (the frame of bank 1) and :second (the frame of bank 2), declared in +game+.

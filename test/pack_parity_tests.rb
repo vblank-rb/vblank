@@ -6,7 +6,9 @@ require "pack_games"
 # EVERY REGISTERED PACK GAME (PackGames, test/pack_games.rb) BUILT BOTH WAYS AND HELD TO ONE
 # ANSWER: built with its pack left out and handed the pack file its all-in-one build made, it shows
 # and sounds what the all-in-one build does on every pass, or the build refuses in plain words
-# that name the fix. There is a test for each game, all one body (#assert_registered_game_parity).
+# that name the fix. A game that names frames of its original is handed instead the file its
+# pack's unpacking writes from the copy, held byte for byte to the all-in-one one (#pack_file_handed).
+# There is a test for each game, all one body (#assert_registered_game_parity).
 #
 # Only a build for a computer leaves its pack out, and nothing hands a cartridge a file. So this is
 # played by each run whose player reads a file as it starts: the interpreter
@@ -59,8 +61,9 @@ module PackParityTests
       wanted = played_unless_console_refuses(whole.program, nil, game)
       next assert_console_refuses_left_out(game, left_out.program, whole.pack_file) unless wanted
 
+      file = pack_file_handed(game, whole, left_out)
       handed = nil
-      refusal = refusal_of(game) { handed = played(left_out.program, whole.pack_file, game) }
+      refusal = refusal_of(game) { handed = played(left_out.program, file, game) }
       next assert_registered_refusal(game, refusal) if refusal
 
       assert_registered_as_built(game)
@@ -69,6 +72,50 @@ module PackParityTests
       assert_alike_or_registered_difference(game, VBlank::Testing::PackParity.difference(wanted, handed))
       assert_written_without_the_packs_numbers(game, left_out.program, whole.pack_file)
     end
+  end
+
+  # THE PACK FILE THE BUILD WITH ITS PACK LEFT OUT IS HANDED. Where the game names frames of its
+  # original's, that is the file its pack's unpacking writes from the copy, played on this run's
+  # player, as a shell makes it on the player's machine: the unpacking reads each frame through its
+  # layout as game code (Original::FrameRewrite), a reader the game wrote among it, while the
+  # all-in-one build read the same frames with numbers. The two files must be the same, byte for
+  # byte. Elsewhere it is the all-in-one build's file: an unpacking of slots copied as they are
+  # reads no layout, and playing one for every game would cost the run a build of each.
+  private def pack_file_handed(game, whole, left_out)
+    return whole.pack_file unless names_frames?(whole.pack_file)
+
+    refute_nil left_out.data_pack, "#{game.name} names frames of its original, and its line in test/pack_games.rb gives back " \
+                                   "its program alone. Give back built_by(builder), so that its pack's unpacking is played."
+    unpacked = unpacked_pack_file(game, left_out.data_pack)
+    assert_nil first_byte_apart(whole.pack_file, unpacked),
+               "#{game.name}: the pack file its unpacking writes from the copy is not the all-in-one build's. " \
+               "#{first_byte_apart(whole.pack_file, unpacked)}"
+    unpacked
+  end
+
+  # How long an unpacking may play: the largest registered copy's tiles take a few dozen frames.
+  UNPACKING_FRAMES = 400
+
+  private def unpacked_pack_file(game, data_pack)
+    copy = data_pack.original.copy
+    unpacking = data_pack.unpacking(release: data_pack.original.releases.with_sha1(copy.sha1))
+    played = game_player.hand_file(File.binread(copy.path)).run(unpacking.program, frames: UNPACKING_FRAMES)
+    assert unpacking.finished_in?(played), "#{game.name}: its pack's unpacking did not finish in #{UNPACKING_FRAMES} frames"
+    assert_nil unpacking.fault_in(played), "#{game.name}: its pack's unpacking went wrong"
+    unpacking.pack_file_in(played, sha1: copy.sha1, build_version: data_pack.build_version)
+  end
+
+  private def names_frames?(pack_file) = !pack_file.nil? && !VBlank::Original::Pack.from_bytes(pack_file).frame_records.empty?
+
+  # Where +one+ and +other+ first differ, in words, or nil where they are the same bytes.
+  private def first_byte_apart(one, other)
+    return if one == other
+
+    at = (0...[one.bytesize, other.bytesize].min).find { |place| one.getbyte(place) != other.getbyte(place) }
+    return "The all-in-one file is #{one.bytesize} bytes and the unpacked one #{other.bytesize}." unless at
+
+    format("They differ first at byte %<at>d: 0x%<one>02X all-in-one and 0x%<other>02X unpacked.",
+           at: at, one: one.getbyte(at), other: other.getbyte(at))
   end
 
   private def played(program, file, game)

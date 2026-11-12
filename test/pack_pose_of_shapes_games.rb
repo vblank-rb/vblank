@@ -94,7 +94,13 @@ module PackPoseOfShapesGames
 
   # A game showing a pose as a sprite whose top left is at (80, 60), and the pack file its build made (nil for a
   # game with no pack, or a build that leaves its pack out). +pose+ declares the picture :pose.
-  private def game_showing_shapes_and_file(options: VBlank::Cartridge::Options.new, &pose)
+  private def game_showing_shapes_and_file(...)
+    b = game_showing_shapes_builder(...)
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The same game's builder, its program made, for a test of its pack's unpacking.
+  private def game_showing_shapes_builder(options: VBlank::Cartridge::Options.new, &pose)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -104,11 +110,16 @@ module PackPoseOfShapesGames
       game_loop { wait_vblank }
     end
     b.finalize_program
+    b
+  end
+
+  private def pose_of_shapes_and_file(...)
+    b = pose_of_shapes_builder(...)
     [b.program, b.made_data_pack_file]
   end
 
-  private def pose_of_shapes_and_file(from, options: VBlank::Cartridge::Options.new)
-    game_showing_shapes_and_file(options: options) do
+  private def pose_of_shapes_builder(from, options: VBlank::Cartridge::Options.new)
+    game_showing_shapes_builder(options: options) do
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :sprites, at: TILES_AT, count: TILE_COUNT
         slots.numbers :frames, at: FRAMES_AT, count: FRAME_LENGTH, width: :byte, signed: false
