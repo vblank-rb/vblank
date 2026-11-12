@@ -173,6 +173,7 @@ module VBlank
             return emit([0x66, 0x50 + REGISTERS_32.index(register)].pack("C*")) if REGISTERS_32.include?(register)
 
             return emit([0x0F, 0xA0].pack("C*")) if register == :fs # the 386's own, two bytes
+            return emit([0x0F, 0xA8].pack("C*")) if register == :gs
 
             emit([{ es: 0x06, cs: 0x0E, ss: 0x16, ds: 0x1E }.fetch(register)].pack("C"))
           end
@@ -182,6 +183,7 @@ module VBlank
             return emit([0x66, 0x58 + REGISTERS_32.index(register)].pack("C*")) if REGISTERS_32.include?(register)
 
             return emit([0x0F, 0xA1].pack("C*")) if register == :fs
+            return emit([0x0F, 0xA9].pack("C*")) if register == :gs
 
             emit([{ es: 0x07, ss: 0x17, ds: 0x1F }.fetch(register)].pack("C"))
           end

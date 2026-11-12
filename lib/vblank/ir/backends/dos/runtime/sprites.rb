@@ -98,7 +98,8 @@ module VBlank
             end
 
             # rt_sprite_place: one more sprite in the table. Whose in DX and which picture in DI, the
-            # picture's place in SI and its height in BX, x in EAX and y in ECX. Changes BP.
+            # picture's place in SI, x in EAX and y in ECX. Its height is read from the picture, since a
+            # sprite's pictures can be of different sizes. Changes BX and BP.
             def emit_place(asm, memory)
               placed = X86.mem(nil, memory[PLACED], size: 16)
               entry = ->(part, size) { X86.mem(:bp, part, size: size) }
@@ -110,6 +111,11 @@ module VBlank
               asm.mov(entry.call(NAME, 16), :dx)
               asm.mov(entry.call(PICTURE, 16), :di)
               asm.mov(entry.call(ART, 16), :si)
+              asm.push(:ds)
+              asm.mov_segment(:bx, :art)
+              asm.mov(:ds, :bx)
+              asm.mov(:bx, X86.mem(:si, 2, size: 16))
+              asm.pop(:ds)
               asm.mov(entry.call(HEIGHT, 16), :bx)
               asm.mov(entry.call(X, 32), :eax)
               asm.mov(entry.call(Y, 32), :ecx)

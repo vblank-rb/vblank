@@ -174,7 +174,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false, overlaps: false)
+                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false, overlaps: false, scenery: nil)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -183,7 +183,7 @@ module VBlank
             emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves, second, walks, frame_begins)
+            emit_frame(asm, memory, saves, second, walks, frame_begins, scenery: !scenery.nil?)
             Fades.emit(asm, memory, palette) if walks
             emit_picture_shown(asm, memory, sprites: sprites, view: view) if second
             emit_keyboard(asm, memory)
@@ -192,6 +192,7 @@ module VBlank
             emit_fraction_divide(asm) if fractions
             Lists.emit(asm, memory, sorts: sorts) if lists
             Overlap.emit(asm, memory) if overlaps
+            Scenery.emit(asm, memory, **scenery) if scenery
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
             emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns
@@ -309,7 +310,8 @@ module VBlank
 
           # The end of a pass, stopping, and the wait for a retrace they share.
           # +frame_begins+ is the game's routine run at each frame boundary (its timers, TimerSteps), or nil.
-          def emit_frame(asm, memory, saves, second, walks, frame_begins = nil)
+          # +scenery+ is whether the game shows a screen of tiles, whose view is built as each pass ends where it is owed.
+          def emit_frame(asm, memory, saves, second, walks, frame_begins = nil, scenery: false)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -332,6 +334,7 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
+            asm.call("rt_scenery_frame_ended") if scenery
             if frame_begins
               # What keeps time by the frame moves on, unless a reader has taken the last pass it compares,
               # after which the interpreter moves nothing on.
@@ -340,6 +343,7 @@ module VBlank
               asm.call(frame_begins)
               asm.label("rt_wait_timers_moved")
             end
+            asm.call("rt_scenery_paint_owed") if scenery
             asm.call("rt_picture_shown") if second # before a reader is told the pass has ended
             asm.mov(at.call(Frame::WAITING), 1)
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
@@ -402,6 +406,7 @@ module VBlank
             # Stopping: the game is marked as halted, and the last picture is shown by the retrace after it.
             asm.label("rt_halt")
             asm.call("rt_save_flush") if saves
+            asm.call("rt_scenery_paint_owed") if scenery
             asm.call("rt_picture_shown") if second
             asm.mov(at.call(Frame::STATE), Frame::HALTED)
             asm.call("rt_walk_work") if walks
@@ -417,6 +422,7 @@ module VBlank
             # Going wrong: what went wrong is already in FAULT, and the game goes no further.
             asm.label("rt_fault")
             asm.call("rt_save_flush") if saves
+            asm.call("rt_scenery_paint_owed") if scenery
             asm.call("rt_picture_shown") if second
             asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")

@@ -257,7 +257,7 @@ module VBlank
                                                var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
                                                func call scene case_var every after shake_screen
                                                timer table chance rand roll seed randomize list pool
-                                               save_data players_connected drawing_for_local_player]
+                                               save_data players_connected drawing_for_local_player tiles background]
       })
 
       # The parts of a verb that works which the build does not make yet, each in the words its refusal

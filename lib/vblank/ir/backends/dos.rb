@@ -24,6 +24,7 @@ require_relative "dos/runtime/clock"
 require_relative "dos/runtime/sprites"
 require_relative "dos/runtime/lists"
 require_relative "dos/runtime/overlap"
+require_relative "dos/runtime/scenery"
 require_relative "dos/runtime/turning"
 require_relative "dos/runtime/view"
 require_relative "dos/runtime/regions"
@@ -31,6 +32,7 @@ require_relative "dos/runtime/fades"
 require_relative "dos/lowering/sprites"
 require_relative "dos/lowering/lists"
 require_relative "dos/lowering/clock"
+require_relative "dos/lowering/scenery"
 require_relative "dos/lowering"
 require_relative "dos/headless_run"
 require_relative "dos/checked_run"
@@ -136,6 +138,7 @@ module VBlank
                                   walks: walks, view: view, turned: Lowering::Sprites.turned_in?(program),
                                   overlaps: Lowering.overlaps_in?(program))
           Lowering::Sprites.reserve(memory, program)
+          Lowering::Scenery.reserve(memory, program)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           asm = X86.new
           asm.jmp("start")
@@ -146,7 +149,7 @@ module VBlank
                                     walks: walks, view: view, columns: Lowering.draws_columns?(program),
                                     fractions: Lowering.divides_fractions?(program), frame_begins: lowering.frame_begins,
                                     lists: Lowering::Lists.used_in?(program), sorts: Lowering::Lists.sorted_in?(program),
-                                    overlaps: Lowering.overlaps_in?(program))
+                                    overlaps: Lowering.overlaps_in?(program), scenery: lowering.scenery_plan)
           refuse_too_much_code!(asm.here)
           art_segment = (asm.here + 15) / 16
           art = lowering.art.ljust((lowering.art.bytesize + 15) / 16 * 16, "\0")

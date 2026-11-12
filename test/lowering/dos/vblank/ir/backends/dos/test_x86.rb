@@ -58,6 +58,8 @@ class TestX86 < Minitest::Test
     [-> { pop(:ds) }, "1f"],
     [-> { push(:fs) }, "0f a0"],
     [-> { pop(:fs) }, "0f a1"],
+    [-> { push(:gs) }, "0f a8"],
+    [-> { pop(:gs) }, "0f a9"],
     [-> { mov(:fs, :ax) }, "8e e0"],
     [-> { mov(:di, :fs) }, "8c e7"],
     [-> { in_from_dx(:al) }, "ec"],

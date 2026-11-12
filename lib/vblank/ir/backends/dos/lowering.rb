@@ -28,6 +28,7 @@ module VBlank
           include Clock
           include Sprites
           include Lists
+          include Scenery
 
           # A program refused because it reaches something the build does not make yet, with the +part+ of
           # the build that is missing, for a test run to count skips by.
@@ -41,7 +42,7 @@ module VBlank
             program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
             save_load_list save_store_list
-          ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Lists::STATEMENT_KINDS +
+          ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Lists::STATEMENT_KINDS + Scenery::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           VALUE_KINDS = (%i[int var_ref binop neg clamped absolute bit_not shift_right mul_fix div_fix chance data_byte table_get
@@ -202,19 +203,10 @@ module VBlank
                                  part: VARIANT_PART)
           end
 
-          # A screen drawn from tiles is not made yet. A tear-free screen (`tear_free: true`) is the painted
-          # screen as it always is here: one picture in memory, sent to the card in the retrace
+          # A screen drawn from tiles is made as far as Scenery says. A tear-free screen (`tear_free: true`) is the
+          # painted screen as it always is here: one picture in memory, sent to the card in the retrace
           # (Console::Description, painted_pages).
-          def refuse_unmade_screens!
-            @program.walk.each do |node|
-              next unless node.kind == :screen
-              next if node.mode == :bitmap
-
-              raise NotMadeYet.new("This game shows a screen of tiles. The #{CONSOLE.title} build " \
-                                   "does not make that yet. To fix this, use `screen :bitmap` for now.",
-                                   part: Console::DOSAnswers::NOT_MADE_YET_PART)
-            end
-          end
+          def refuse_unmade_screens! = refuse_unmade_scenery!
 
           # A text whose colour is picked as the game runs (`picked:`) is two pictures and a choice, which is not
           # made yet.
@@ -240,6 +232,7 @@ module VBlank
                             .map { |node| Graphics::Color.resolve(node.color) }.uniq - [0]
             colors |= drawn_pictures.flat_map { |name| picture_colors(name) } - [0]
             colors |= recolored_sprite_colors - [0]
+            colors |= scenery_colors - [0]
             if colors.size >= TRANSPARENT_ENTRY
               raise LoweringError, "This game paints with #{colors.size} colours besides black. DOS shows " \
                                    "#{TRANSPARENT_ENTRY - 1} at once, and every list a sprite is drawn with adds its colours. " \
@@ -334,6 +327,7 @@ module VBlank
             make_pose_tables
             make_sprite_tables
             make_tables
+            make_scenery_art
           end
 
           # For each `blit` of several pictures, a table of their places (a word each) that the number picks from.
@@ -382,7 +376,14 @@ module VBlank
 
           # --- statements ---
 
+          # An owed view of a screen of tiles is built first where the interpreter builds it (Scenery).
           def emit_statement(node)
+            emit_owed_scenery_paint(node)
+            emit_picture_drawn_over(node)
+            with_pass_end_placing(node) { emit_statement_of_kind(node) }
+          end
+
+          def emit_statement_of_kind(node)
             case node.kind
             when :program then node.children.each { |child| emit_statement(child) }
             when :set then emit_set(node)
@@ -400,7 +401,10 @@ module VBlank
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt
             when :wait_vblank then emit_wait_vblank
-            when :screen then nil # mode 13h is set at power-on, and a screen of one page is all there is
+            # Mode 13h is set at power-on, and a screen of one page is all there is; a screen of tiles shows its backdrop.
+            when :screen then emit_tiled_screen(node) if scenery_used?
+            when :background then emit_background(node)
+            when :scroll_background then emit_scroll_background(node)
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :camera then emit_camera(node)

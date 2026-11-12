@@ -14,11 +14,11 @@ module VBlank
           # table. A sprite switched off, or one whose pose picks no picture, is not placed, which is what
           # "not drawn" means (Reference#objects_on_screen).
           #
-          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), in its own
-          # colours or another list's, upright or turned and resized (Runtime::Turning). The plain sprite of a
-          # painted screen is no sprite of this kind at all: the game paints it into the picture itself,
-          # keeping and putting back the patch under it (Lowering#emit_save_region). Sprites a list puts in
-          # order, and any sprite of a screen drawn from tiles, are each refused by name.
+          # WHAT IS MADE SO FAR is a sprite shown over a painted picture (`over_picture: true`), or over a screen
+          # of tiles in front of all its scenery (Runtime::Scenery), in its own colours or another list's,
+          # upright or turned and resized (Runtime::Turning). The plain sprite of a painted screen is no sprite
+          # of this kind at all: the game paints it into the picture itself, keeping and putting back the patch
+          # under it (Lowering#emit_save_region). Sprites a list puts in order are refused by name.
           #
           # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, `recolor`). The card has one palette
           # for the whole screen and a sprite's pixels are entries of it, so there is no list of a sprite's
@@ -31,7 +31,7 @@ module VBlank
             STATEMENT_KINDS = %i[present_objects color_list_holds].freeze
 
             # The part of the build a game with such a sprite waits for, for a test run to count skips by.
-            PART = "sprites of a screen drawn from tiles, or put in order by a list"
+            PART = "sprites put in order by a list"
 
             # Where a list of colours the game changes keeps which set it holds: nought for the colours it
             # was declared with, and one more than the set's number for each other.
@@ -72,7 +72,7 @@ module VBlank
 
             # What about +sprite+ the build does not make yet, in words, or nil.
             def unmade_in_sprite(sprite)
-              return "that is not over a painted picture" unless sprite.over_picture
+              return "that is not over a painted picture" unless sprite.over_picture || tiled_screen?
 
               nil
             end
@@ -202,6 +202,9 @@ module VBlank
             # sprite on the screen put in it. (`hide_sprites`, which makes a placing place none, is refused on
             # a painted screen before any build, so nothing here answers it.)
             def emit_present_objects(node)
+              # In a game that scrolls the interpreter builds the view again as the sprites are placed (Reference
+              # @repaints); Runtime::Scenery leaves a build that would make the picture it shows.
+              @asm.call("rt_scenery_request") if scenery_used? && scenery_rebuilt_each_pass?
               return if sprite_objects.empty? # a pass ends by placing the sprites in a game with none too
 
               @asm.mov(runtime_at(Runtime::Sprites::PLACED), 0)
@@ -240,7 +243,6 @@ module VBlank
               @asm.pop(:di)
               @asm.pop(:si)
               @asm.mov(:dx, sprite_names.name_number(sprite.declared))
-              @asm.mov(:bx, picture_image(sprite.poses.first).height) # a sprite's pictures are all one size
               @asm.call("rt_sprite_place")
               emit_sprite_turned(sprite) if Sprites.turns?(sprite)
               @asm.label(skip)

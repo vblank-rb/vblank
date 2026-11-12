@@ -209,7 +209,7 @@ module VBlank
           end
 
           # The game halted: its last picture is shown by the retrace that marks it, and the moment is the end
-          # of the run.
+          # of the run. A halt places the sprites as the pass it ends would have, so they are read again.
           def finish_after_halt
             frames = 0
             until shown_pass == Runtime::Frame::END_SHOWN || frames > LONGEST_PASS_FRAMES
@@ -217,6 +217,7 @@ module VBlank
               frames += 1
             end
             @stopped = true
+            @sprites = read_sprites
             record_moment(:end, read_variables, read_lists, picture_now(nil), read_sounds)
           end
 
