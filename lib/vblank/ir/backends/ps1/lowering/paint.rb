@@ -16,7 +16,7 @@ module VBlank
           module Paint
             STATEMENT_KINDS = %i[
               screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
-              draw_digit
+              draw_digit save_region restore_region
             ].freeze
 
             def emit_paint_statement(node)
@@ -32,7 +32,49 @@ module VBlank
               when :blit_pose then emit_blit_pose(node)
               when :draw_text then emit_draw_text(node)
               when :draw_digit then emit_draw_digit(node)
+              when :save_region then emit_save_region(node)
+              when :restore_region then emit_restore_region(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
+
+            # Reference#exec_save_region: the screen under a sprite, saved into its patch (Runtime::Paint's
+            # rt_paint_save).
+            def emit_save_region(node)
+              patch = patch_for(node.buffer)
+              runtime_call("rt_paint_save", [build_value_node(node.x), build_value_node(node.y), Build.int(patch.state),
+                                             Build.int(patch.corner), Build.int(patch.width), Build.int(patch.height)])
+            end
+
+            # Reference#exec_restore_region: the patch put back.
+            def emit_restore_region(node)
+              patch = patch_for(node.buffer)
+              runtime_call("rt_paint_restore", [build_value_node(node.x), build_value_node(node.y), Build.int(patch.state),
+                                                Build.int(patch.corner)])
+            end
+
+            # A PATCH: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
+            # (y << 16 | x), and its size.
+            Patch = Data.define(:state, :corner, :width, :height)
+
+            # The patch the backing buffer +name+ declares, given its places the first time it is asked for:
+            # its state in RAM, and its rectangle in video RAM, in a block of columns kept for patches
+            # (TextureMemory#reserve_columns), under the one before it while the block has room down and is
+            # wide enough, and in a new block as wide as it otherwise.
+            def patch_for(name)
+              @patches ||= {}
+              @patches[name] ||= begin
+                node = @program.walk.find { |found| found.kind == :backing_buffer && found.name == name } or
+                  raise LoweringError, "the patch #{name.inspect} is used and never declared"
+                block_x, block_width, line = @patch_block
+                unless @patch_block && node.width <= block_width && line + node.height <= Console::PS1Hardware::VRAM_HEIGHT
+                  block_width = node.width
+                  block_x = texture_memory.reserve_columns(block_width)
+                  line = 0
+                end
+                @patch_block = [block_x, block_width, line + node.height]
+                state = @memory.reserve("the patch under #{name.inspect}", Runtime::Paint::PATCH_STATE_BYTES)
+                Patch.new(state: state, corner: (line << 16) | block_x, width: node.width, height: node.height)
               end
             end
 

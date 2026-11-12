@@ -76,6 +76,94 @@ module VBlank
               emit_blit(asm, at, faces)
               emit_pages(asm, at)
               emit_upload(asm)
+              emit_patches(asm, at)
+            end
+
+            # What a patch keeps of the last save into it (Lowering::Paint#patch_state): how far into the
+            # rectangle saved the part on the screen starts across and down, and how wide and tall it is, a
+            # word each; a height of nought for nothing saved.
+            PATCH_SKIP_X = 0
+            PATCH_SKIP_Y = 4
+            PATCH_WIDTH = 8
+            PATCH_HEIGHT = 12
+            PATCH_STATE_BYTES = 16
+
+            # THE PATCH UNDER A SPRITE on a painted screen: the screen under it saved before it is drawn, and
+            # put back before it moves (Reference#exec_save_region, #exec_restore_region). The patch is kept in
+            # video RAM beside the pictures, and both are one copy inside video RAM (GP0 80h), which the chip
+            # makes without the processor touching a pixel.
+            #
+            # rt_paint_save: a0, a1 = where, a2 = the patch's state, a3 = its corner in video RAM (y << 16 | x),
+            # t4, t5 = its width and height. Only the part on the screen is saved, and the state says which.
+            # rt_paint_restore: a0, a1 = where, a2, a3 = the state and the corner. The part saved goes back at
+            # the same place in the rectangle, kept to the area drawing is held to; a patch nothing was saved
+            # into puts nothing back.
+            def emit_patches(asm, at)
+              h = Console::PS1Hardware
+              port = h::GP0 & 0xFFFF
+              asm.label("rt_paint_save")
+              asm.li(:t0, h::SCREEN_WIDTH)
+              emit_clip(asm, tag: "rt_paint_save_x", pos: :a0, size: :t4, low: :zero, high: :t0, start: :t6, length: :t7, skip: :t8,
+                             empty: "rt_paint_save_none")
+              asm.li(:t0, h::SCREEN_HEIGHT)
+              emit_clip(asm, tag: "rt_paint_save_y", pos: :a1, size: :t5, low: :zero, high: :t0, start: :t9, length: :v0, skip: :v1,
+                             empty: "rt_paint_save_none")
+              asm.sw(:t8, PATCH_SKIP_X, :a2)
+              asm.sw(:v1, PATCH_SKIP_Y, :a2)
+              asm.sw(:t7, PATCH_WIDTH, :a2)
+              asm.sw(:v0, PATCH_HEIGHT, :a2)
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
+              asm.lw(:t0, at.call(PAGE_Y), :gp)
+              asm.addu(:t0, :t0, :t9)
+              asm.sll(:t0, :t0, 16)
+              asm.or(:t0, :t0, :t6)
+              asm.sw(:t0, port, :t1)
+              asm.sll(:t0, :v1, 16)
+              asm.addu(:t0, :t0, :t8)
+              asm.addu(:t0, :t0, :a3)
+              asm.sw(:t0, port, :t1)
+              asm.sll(:t0, :v0, 16)
+              asm.or(:t0, :t0, :t7)
+              asm.sw(:t0, port, :t1)
+              asm.lw(:ra, 0, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
+              asm.label("rt_paint_save_none")
+              asm.jr(:ra) { asm.sw(:zero, PATCH_HEIGHT, :a2) }
+
+              asm.label("rt_paint_restore")
+              asm.lw(:t0, PATCH_HEIGHT, :a2)
+              asm.beq(:t0, :zero, "rt_paint_restore_none")
+              asm.lw(:t1, PATCH_SKIP_X, :a2)
+              asm.lw(:t2, PATCH_SKIP_Y, :a2)
+              asm.addu(:a0, :a0, :t1)
+              asm.addu(:a1, :a1, :t2)
+              asm.sll(:v0, :t2, 16)
+              asm.addu(:v0, :v0, :t1)
+              asm.addu(:v0, :v0, :a3) # where in the patch the part saved starts
+              asm.move(:a3, :t0)
+              asm.lw(:a2, PATCH_WIDTH, :a2)
+              emit_clip_to_area(asm, at, tag: "rt_paint_restore", empty: "rt_paint_restore_none")
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              asm.jal("rt_gp0_word") { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
+              asm.sll(:t0, :t9, 16)
+              asm.addu(:t0, :t0, :t4)
+              asm.addu(:t0, :t0, :v0)
+              asm.sw(:t0, port, :t1)
+              asm.lw(:t0, at.call(PAGE_Y), :gp)
+              asm.addu(:t0, :t0, :t7)
+              asm.sll(:t0, :t0, 16)
+              asm.or(:t0, :t0, :t5)
+              asm.sw(:t0, port, :t1)
+              asm.sll(:t0, :t8, 16)
+              asm.or(:t0, :t0, :t6)
+              asm.sw(:t0, port, :t1)
+              asm.lw(:ra, 0, :sp)
+              asm.addiu(:sp, :sp, 4)
+              asm.label("rt_paint_restore_none")
+              asm.jr(:ra)
             end
 
             # rt_paint_start: the area the whole screen.
