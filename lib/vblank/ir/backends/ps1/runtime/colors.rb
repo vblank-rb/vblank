@@ -22,10 +22,12 @@ module VBlank
           #   toward white   c + ((31 - c) × steps ÷ 256)
           #   toward a tint  (c × (256 - steps) + tint × steps) ÷ 256
           #
-          # A change only marks the colours owed (DIRTY). They are worked out once, as the pass's picture is
+          # A change only marks the colours dirty (DIRTY). They are worked out once, as the pass's picture is
           # drawn (rt_colors_shown, the first thing rt_tiles_draw does), and copied before anything of it is,
           # so they show on the picture of the pass that changed them, as the interpreter's do, and a pass
           # that changes them several times works them out once. A pass that changes nothing costs one test.
+          # That is PaletteWalk's rule, worked out as the pass ends and sent before its picture shows: the
+          # PlayStation draws a pass's whole picture as the pass ends, so that is the moment it is sent.
           #
           #   rt_tint_to(toward, steps, color)  a0 = PaletteWalk's toward, a1 the steps in 256ths, a2 the colour
           #   rt_colors_hold(source, which)     a0 = a source's table, a1 = the set the game names
@@ -38,8 +40,10 @@ module VBlank
           # m colours, a halfword each. A number naming no set is the declared colours (Reference#colors_held_by),
           # and a set a source holds already costs nothing, so a game naming its set every pass pays nothing.
           module Colors
-            WALK = "rt colors walk" # The fade or tint in force: toward what, its steps, its colour; and whether
-            MODE = 0 #                the colours are owed, a word each
+            # The fade or tint in force, a word each: toward what, its steps and its colour; then whether the
+            # colours shown must be worked out again.
+            WALK = "rt colors walk"
+            MODE = 0
             STEPS = 4
             COLOR = 8
             DIRTY = 12
@@ -119,7 +123,7 @@ module VBlank
               asm.addu(:t6, :t6, :t7) # the set's colours
               asm.la(:t8, BASE)
               asm.label("rt_colors_hold_entry")
-              asm.beq(:t4, :zero, "rt_colors_hold_owed")
+              asm.beq(:t4, :zero, "rt_colors_hold_dirty")
               asm.lw(:t9, 0, :t5)
               asm.addu(:t9, :t9, :t8)
               asm.lhu(:t0, 0, :t6)
@@ -127,7 +131,7 @@ module VBlank
               asm.addiu(:t5, :t5, 4)
               asm.addiu(:t6, :t6, 2)
               asm.b("rt_colors_hold_entry") { asm.addiu(:t4, :t4, -1) }
-              asm.label("rt_colors_hold_owed")
+              asm.label("rt_colors_hold_dirty")
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(DIRTY), :gp)
               asm.label("rt_colors_hold_done")
@@ -195,7 +199,7 @@ module VBlank
 
             SHOWN_KEPT = %i[s0 s1 s2].freeze
 
-            # rt_colors_shown: if the colours are owed, every entry of "colors base" walked into "colors shown",
+            # rt_colors_shown: if the colours are dirty, every entry of "colors base" walked into "colors shown",
             # see-through left see-through and every other drawn (Console::PS1Hardware::TEXEL_DRAWN); the
             # backdrop's fill set from the first; and each table copied into video RAM, once the chip has drawn
             # everything sent before, as Paint's rt_paint_upload copies the pictures at power-on.
@@ -203,9 +207,9 @@ module VBlank
               h = Console::PS1Hardware
               asm.label("rt_colors_shown")
               asm.lw(:t0, at.call(DIRTY), :gp)
-              asm.bne(:t0, :zero, "rt_colors_shown_owed")
+              asm.bne(:t0, :zero, "rt_colors_shown_dirty")
               asm.jr(:ra)
-              asm.label("rt_colors_shown_owed")
+              asm.label("rt_colors_shown_dirty")
               asm.sw(:zero, at.call(DIRTY), :gp)
               asm.addiu(:sp, :sp, -4 * (SHOWN_KEPT.length + 1))
               asm.sw(:ra, 0, :sp)

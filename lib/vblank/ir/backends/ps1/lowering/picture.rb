@@ -146,6 +146,10 @@ module VBlank
             def refuse_unmade_sprites!
               @objects.each_value do |obj|
                 refuse_unmade!(TILED_SCREEN, "puts a sprite in another layer") if obj.layers && !obj.layers.empty?
+                if obj.follows_each&.any? && !obj.recolors.empty?
+                  refuse_unmade!(TILED_SCREEN, "has a sprite that follows the lists its poses are drawn from and is also drawn " \
+                                               "with other lists (`draw_with`)")
+                end
                 unless constant_number?(obj.angle, 0) && constant_number?(obj.scale, Build::SCALE_ONE)
                   refuse_unmade!(TILED_SCREEN, "turns or resizes a sprite")
                 end
@@ -184,8 +188,16 @@ module VBlank
               @plane_places = texture_memory.reserve_planes(Array.new(count) { |plane| plane_size(plane) }) or
                 refuse_unmade!(TILED_SCREEN, "has backgrounds whose maps together are bigger than the video memory kept for them")
               make_plane_tables(count)
+              @opaque_planes = (0...count).select do |plane|
+                showing = backgrounds_on(plane)
+                !showing.empty? && showing.all? { |bg| opaque_background?(bg) }
+              end
+              follow_backdrop_list
               make_tile_sheet
             end
+
+            # The backgrounds that go up on plane +plane+.
+            def backgrounds_on(plane) = @layers.select { |_, number| number == plane }.keys
 
             # HOW DEEP EACH PLANE IS, and each background's colour table (PS1::PlaneColors). A plane is kept at
             # 4 bits a texel where every background that goes up on it has 15 entries or fewer besides the
@@ -200,28 +212,36 @@ module VBlank
                                                         list_named: ->(name) { color_list_named(name) })
               end
               @plane_depths = Array.new(count) do |plane|
-                most = @layers.select { |_, number| number == plane }.keys.map { |bg| @plane_colors[bg].entries.length }.max.to_i
+                most = backgrounds_on(plane).map { |bg| @plane_colors[bg].entries.length }.max.to_i
                 TextureMemory::TABLE_COLORS.find { |depth, capacity| most < capacity }&.first || 15
               end
               @plane_tables = {}.compare_by_identity
+              unchanging = {}
               @layers.each do |bg, plane|
                 depth = @plane_depths.fetch(plane)
                 colors = @plane_colors[bg]
                 if depth == 15
                   refuse_unmade!(TILED_SCREEN, "draws a background of more than 255 colours with other colours") if colors.changes?
+                  refuse_unmade!(FADES, "fades or tints a background of more than 255 colours") if fades?
                   next
                 end
                 entries = [0, *colors.entries.map { |entry| TextureMemory.texel_for_color(entry.colors.first) }]
-                table = texture_memory.reserve_table(capacity: TextureMemory::TABLE_COLORS.fetch(depth), entries: entries)
-                colors.entries.each_with_index { |entry, at| add_color_patch(entry.source, [table, at + 1], entry.colors) if entry.source }
-                @plane_tables[bg] = table
+                capacity = TextureMemory::TABLE_COLORS.fetch(depth)
+                @plane_tables[bg] = if colors.changes?
+                                      table = texture_memory.reserve_table(capacity: capacity, entries: entries)
+                                      colors.entries.each_with_index do |entry, at|
+                                        add_color_patch(entry.source, [table, at + 1], entry.colors) if entry.source
+                                      end
+                                      table
+                                    else
+                                      # Backgrounds whose colours never change and are the same read one table.
+                                      unchanging[[capacity, entries]] ||= texture_memory.reserve_table(capacity: capacity, entries: entries)
+                                    end
               end
-              @opaque_planes = (0...count).select do |plane|
-                showing = @layers.select { |_, number| number == plane }.keys
-                !showing.empty? && showing.all? { |bg| opaque_background?(bg) }
-              end
-              follow_backdrop_list
             end
+
+            # Whether the game fades or tints its screen.
+            def fades? = @program.walk.any? { |node| %i[fade tint].include?(node.kind) }
 
             # The planes every background that goes up on draws every pixel of, by number (Runtime.sections's
             # +opaque_planes+): one of those up hides the backdrop and every plane behind it.
@@ -260,7 +280,7 @@ module VBlank
 
             # How big plane +plane+ is, [width, height] in pixels: the biggest grid of the maps that go up on it.
             def plane_size(plane)
-              grids = @layers.select { |_, number| number == plane }.keys.flat_map { |bg| bg.every_map.map { |map| TileMap.grid(map) } }
+              grids = backgrounds_on(plane).flat_map { |bg| bg.every_map.map { |map| TileMap.grid(map) } }
               [grids.map(&:first).max || PLANE_CELLS, grids.map(&:last).max || PLANE_CELLS].map { |cells| cells * TILE_SIDE }
             end
 
@@ -505,7 +525,7 @@ module VBlank
             def add_color_patch(source, where, colors) = color_source(source).entries << [where, colors]
 
             # The source a list of colours the game changes is, by the list's name.
-            def list_source(name) = PlaneColors::Source.new(key: [:list, name], sets: 1 + color_list_named(name).recolors.length)
+            def list_source(name) = PlaneColors::Source.of_list(color_list_named(name))
 
             # A BACKDROP THAT FOLLOWS A LIST (Nodes::ColorList#backdrop_place) is the colour at its place in the set
             # the list holds now (Reference#exec_color_list_holds), so it is one more entry the list changes.
@@ -524,12 +544,15 @@ module VBlank
 
             # Reference#exec_background_colors: the background's tiles show the colours of the step the game
             # names, by the background's own source (PlaneColors). One that is drawn with no other lists has none.
+            #
+            # The interpreter keeps the number by the background's NAME (Reference#exec_background_colors), so a
+            # scene's background of that name that goes up later shows it too: every declaration of the name is
+            # told, each through its own source.
             def emit_background_colors(node)
-              for_background(node) do |bg|
-                next if bg.recolors.empty? || bg.follows_several?
+              @layers.each_key do |bg|
+                next if bg.name != node.name || bg.recolors.empty? || bg.follows_several?
 
-                source = PlaneColors::Source.new(key: [:background, bg.object_id], sets: 1 + bg.recolors.length)
-                runtime_call("rt_colors_hold", [LabelAddress.new(color_source(source).label), node.which])
+                runtime_call("rt_colors_hold", [LabelAddress.new(color_source(PlaneColors::Source.of_background(bg)).label), node.which])
               end
             end
 
@@ -553,6 +576,10 @@ module VBlank
             def color_sections
               return [] unless @changes_colors
 
+              # A picture kept at 15 bits, past what the lists of colours hold, has no list for a fade to walk.
+              if fades? && texture_memory.textures.any? { |texture| texture.depth == 15 }
+                refuse_unmade!(FADES, "fades or tints pictures whose colours do not fit the lists of colours the PlayStation keeps")
+              end
               tables = texture_memory.tables
               starts = {}.compare_by_identity
               at = 4 # past the backdrop's word

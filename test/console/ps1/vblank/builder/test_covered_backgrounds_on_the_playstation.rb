@@ -5,7 +5,8 @@ require "test_helper"
 # Three backgrounds at once, the middle one drawing every pixel, on every run that plays games as the
 # PlayStation. Its build leaves out what such a background hides (Runtime::Tiles' rt_tiles_draw): the
 # backdrop and the background behind. The picture must be the interpreter's all the same, as the middle
-# one scrolls and the one in front shows it through its gaps.
+# one scrolls and the one in front shows it through its gaps. Not in test/all/: the Color shows one
+# background at a time, and these games show two and three.
 class TestCoveredBackgroundsOnThePlayStation < Minitest::Test
   def test_a_background_that_draws_every_pixel_hides_the_ones_behind
     screen = game_player.run(covered_program, frames: 4).screen

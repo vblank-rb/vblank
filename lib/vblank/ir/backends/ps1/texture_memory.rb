@@ -370,8 +370,8 @@ module VBlank
           end
 
           def kept_tables_full_message
-            "This game changes the colours of more backgrounds and lists of colours than the PlayStation has room " \
-              "for. It has room for #{TABLE_LINES.length}. To fix this, use fewer backgrounds or fewer lists of colours."
+            "This game has more backgrounds and changing lists of colours than the PlayStation keeps colour tables " \
+              "for. It keeps #{TABLE_LINES.length} of them together. To fix this, use fewer backgrounds or fewer lists of colours."
           end
 
           def full_message

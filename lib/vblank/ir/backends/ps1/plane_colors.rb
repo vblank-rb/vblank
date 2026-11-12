@@ -22,7 +22,13 @@ module VBlank
         class PlaneColors
           # What changes an entry, and how many sets it can name: the background's own lists
           # ([:background, its object_id]) or a list of colours ([:list, its name]).
-          Source = Data.define(:key, :sets)
+          Source = Data.define(:key, :sets) do
+            # The source the declared list of colours +list+ is.
+            def self.of_list(list) = new(key: [:list, list.name], sets: 1 + list.recolors.length)
+
+            # The source +bg+'s own lists are (`draw_with`).
+            def self.of_background(bg) = new(key: [:background, bg.object_id], sets: 1 + bg.recolors.length)
+          end
 
           # One place in the table: its source (nil for a colour shown for good), and its colour in each of
           # the source's sets, the first the one it starts with.
@@ -64,9 +70,9 @@ module VBlank
           def source_of(image)
             if @bg.follows_several?
               list = @bg.list_followed_by(image.list_drawn_from) or return nil
-              Source.new(key: [:list, list], sets: 1 + @list_named.call(list).recolors.length)
+              Source.of_list(@list_named.call(list))
             elsif !@bg.recolors.empty?
-              Source.new(key: [:background, @bg.object_id], sets: 1 + @bg.recolors.length)
+              Source.of_background(@bg)
             end
           end
 

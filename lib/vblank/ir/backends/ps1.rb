@@ -106,13 +106,14 @@ module VBlank
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = sound && Lowering::Sound.samples?(program)
+          colors = Lowering::Picture.changes_colors?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
                                   songs: songs, follows_level: follows_level, effects: effects,
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, tiles: Lowering::Picture.tiled?(program),
-                                  colors: Lowering::Picture.changes_colors?(program))
+                                  colors: colors)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
@@ -120,7 +121,7 @@ module VBlank
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              planes: lowering.plane_places, plane_depths: lowering.plane_depths,
                                              opaque_planes: lowering.opaque_planes,
-                                             colors: Lowering::Picture.changes_colors?(program),
+                                             colors: colors,
                                              collides: lowering.collides?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link

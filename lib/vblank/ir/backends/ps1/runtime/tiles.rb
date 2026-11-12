@@ -314,7 +314,7 @@ module VBlank
               asm.sw(:ra, 0, :sp)
               asm.sw(:s0, 4, :sp)
               asm.sw(:s1, 8, :sp)
-              # The colours the pass changed, in their tables before anything is drawn through them.
+              # Must come first: the colours the pass changed are in their tables before anything reads them.
               asm.jal("rt_colors_shown") if colors
               asm.jal("rt_face_chip_put_back") if faces
               # The texels copied into a plane since the last picture are read afresh, not from the chip's cache.
