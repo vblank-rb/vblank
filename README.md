@@ -8,18 +8,19 @@
 
 You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. The language is about 2D games today: tiles, sprites, layers and a painted screen.
 
-VBlank began as a way to learn, and it has grown into a multi-console engine for real games. The proof of that is porting real games to it, and those ports decide much of what gets built next.
+It is made for somebody who knows Ruby and has never touched an old console. You name colours, not palettes; you say `sprite` and `blit`, not OAM and DMA. A verb is plain to call, and takes settings that make it cheaper when a game on a small machine needs them.
 
-The toolchain is shaped around fast, readable feedback while building a game, for a person or an agent. The language has grown large, with many options on its verbs.
+The toolchain is shaped around fast, readable feedback while building a game, for a person or an agent: a mistake is explained before anything is built, a game plays in a window without a compiler, and a test plays it on every target at once.
 
 ## Where a game runs
 
 | Target | Status |
 |---|---|
 | Game Boy Advance | Fairly robust. Every feature works here, and it is what the examples are written for. |
-| Super Nintendo | Underway. Most of the examples build for it, with sprites, backgrounds and sound. Some music features and a second player are still to come. |
-| Sega Genesis | Early. Painted screens, tiled screens with backgrounds (a scene's own included) and sprites, the buttons, lists and timers, fades and tints, collision, the camera on a painted screen, and sprites and backgrounds drawn in other colours work; sound, saves, the status bar, backgrounds bent row by row, tiles painted from a list and screens that change between painted and tiled do not yet. Played in Genesis Plus GX to check it. |
-| Game Boy Color | Underway. Much of the language works, and several of the examples build for it. |
+| Super Nintendo | Most of the language works: sprites, backgrounds, music, recordings, saves and two players. A few colour features are still to come, and what it cannot do (turn a sprite, say) is refused by name. |
+| Sega Genesis | Most of the language works: painted and tiled screens, sprites, music and recordings on its own sound chips, and saves. Played in Genesis Plus GX to check it. |
+| Game Boy Color | Underway. Much of the language works within its four colours a tile, and several of the examples build for it. Recorded sound is refused. |
+| PlayStation | Underway. Painted and tiled screens, sprites and rooms in 3D drawn by its graphics chip; one pad for now. Played in Beetle PSX to check it. |
 | A program for a computer | Works, built from the game as C. The Mac build is played and tested; Windows and Linux builds are made but not yet run on those systems. |
 | A web page | Works, built from the game as JavaScript. One file that opens from a disk or any web server. |
 | A window, in Ruby | Works, with some features still to come. `vblank run` plays the game on Ruby and SDL3, with no compiler. |
@@ -70,7 +71,7 @@ vblank run walk.rb --tape steps.tape --write-mgba-script steps.lua
 
 **Mistakes explain themselves.** The worst part of working on an old console is that a mistake rarely says what went wrong — you get a black screen, or garbled pictures, or a crash far from its cause. VBlank checks the game before it builds and says what happened and how to fix it: *drew something but never chose a screen*, *a game loop that never waits for the screen*, *a comparison used as a Ruby `if`*. A serious problem stops the build; a smaller one prints a warning. Fixes are suggested, never made silently.
 
-**One description of the game, many targets.** The language does not write machine code as it goes. Each verb records what the game does, and the whole game is checked before anything is made. A backend then turns that description into its target: an Advance, Color or Super Nintendo cartridge, C, JavaScript, or Ruby. A Ruby interpreter runs the same description too, and it is the answer every target is tested against. A new console is a new backend, not a new language.
+**One description of the game, many targets.** The language does not write machine code as it goes. Each verb records what the game does, and the whole game is checked before anything is made. A backend then turns that description into its target: an Advance, Color, Super Nintendo or Genesis cartridge, a PlayStation program, C, JavaScript, or Ruby. A Ruby interpreter runs the same description too, and it is the answer every target is tested against. A new console is a new backend, not a new language.
 
 **Add verbs without touching the compiler.** A game can register a module of its own verbs, written in the same verbs it already uses, and from then on they read like the built-in ones. Because such a verb is made only of other verbs, it works on every target the day it is written. Screen shake and fades ship this way: see [`lib/vblank/effects/packs/`](lib/vblank/effects/packs/).
 
@@ -100,13 +101,14 @@ In the game's Rakefile, `require "vblank/testing/rake_tasks"` and `VBlank::Testi
 Every file in [`examples/`](examples/) is a complete game or demo that teaches one idea, and its header comment explains the hardware it touches. Build any of them with `ruby examples/<name>.rb`. Good places to start:
 
 - [`pong.rb`](examples/pong.rb) — paddles, a ball, collision, scoring, music and a title menu.
-- [`pacman.rb`](examples/pacman.rb) — a tiled maze, sprites, a chasing ghost and a live score; it builds for all three consoles.
+- [`pacman.rb`](examples/pacman.rb) — a tiled maze, sprites, a chasing ghost and a live score; it builds for the Advance, the Color, the Super Nintendo and the PlayStation.
 - [`breakout.rb`](examples/breakout.rb) — a wall of bricks, lives and scenes on a screen that never tears.
 - [`shmup.rb`](examples/shmup.rb) — a game split across files, with a play, game-over and restart flow.
 - [`raycaster.rb`](examples/raycaster.rb) — a first-person maze, drawn the Wolfenstein way.
 - [`cube3d.rb`](examples/cube3d.rb) — a textured crate in 3D, flown round with the buttons.
 - [`two_rooms.rb`](examples/two_rooms.rb) — two rooms in 3D, the far one drawn only through the doorway.
 - [`lit_corridor.rb`](examples/lit_corridor.rb) — a corridor in 3D lit by a lamp that flickers, each face lit from its corners.
+- [`wanderers.rb`](examples/wanderers.rb) — several players at once on a computer, one on a console, from one file.
 
 ## Using it in a game
 
@@ -133,15 +135,17 @@ Keep it as one block. Two separate `gem ... github:` lines look the same but are
 
 ## Status
 
-Pre-1.0. Full games work end to end on the Game Boy Advance, and every other build is checked against the same answers, frame by frame or pass by pass. The Super Nintendo and the Game Boy Color are catching up.
+Pre-1.0. Full games work end to end on the Game Boy Advance, and every other build is checked against the same answers, frame by frame or pass by pass. The Super Nintendo and the Genesis are close behind; the Color and the PlayStation are catching up.
 
 ## Where it is headed
 
-**More consoles, closer to what each can do.** The near work is bringing the Super Nintendo and the Color up to the Advance. A new console is a new backend, and the same game goes with it.
+**Every console as capable as the Advance.** A game written once should build for each console it names, refused only where the hardware truly cannot.
 
-**Real games as the proving ground.** Ports live in their own repositories, and they find most of the gaps still to close: a Wolfenstein 3D port, [ruby-wolf3d](https://github.com/jamescook/ruby-wolf3d), and a port of The Legend of Zelda: The Minish Cap, which is underway and not public yet.
+**More players.** Several players on one machine, and over the network, from the same game file.
 
-**Ports that an agent can drive.** So far each port has been a long session held to a few rules: follow the original game, match how it behaves, work in small pieces. Those rules are close to a method, because the original can say what is right and the first real difference names the next piece of work. The plan is a separate tool that runs that loop, with an agent doing the porting and a person supervising. It is not built yet.
+**A screen of the target's own size.** A program or a web page is not bound to a console's screen, and a game should be able to use the room it is given.
+
+Ports of larger retail games, kept in their own repositories (a Wolfenstein 3D port is public as [ruby-wolf3d](https://github.com/jamescook/ruby-wolf3d)), test the engine at scale. A new game never needs what they need: reading data from an original is an option a game names, not part of the path.
 
 ## The name
 
