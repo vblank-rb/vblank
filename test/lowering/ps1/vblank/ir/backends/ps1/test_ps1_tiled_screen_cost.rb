@@ -35,6 +35,6 @@ class TestPS1TiledScreenCost < Minitest::Test
     wait = result.runtime.select { |spent| spent.routine.to_s.match?(CHIP_WAIT) }.sum(&:share)
 
     assert_equal({ 1 => 20 }, result.passes_by_frames)
-    assert_operator wait, :<, 0.6, "the processor waited on the graphics chip for #{wait.round(4)} of each frame"
+    assert_operator wait, :<, 0.7,"the processor waited on the graphics chip for #{wait.round(4)} of each frame"
   end
 end

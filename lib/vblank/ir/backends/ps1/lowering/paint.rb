@@ -57,6 +57,10 @@ module VBlank
             # (y << 16 | x), and its size.
             Patch = Data.define(:state, :corner, :width, :height)
 
+            # A block of columns of video RAM kept for patches: its first column, how wide it is, and the first
+            # line still free in it.
+            PatchBlock = Data.define(:x, :width, :free_line)
+
             # The patch the backing buffer +name+ declares, given its places the first time it is asked for:
             # its state in RAM, and its rectangle in video RAM, in a block of columns kept for patches
             # (TextureMemory#reserve_columns), under the one before it while the block has room down and is
@@ -66,15 +70,13 @@ module VBlank
               @patches[name] ||= begin
                 node = @program.walk.find { |found| found.kind == :backing_buffer && found.name == name } or
                   raise LoweringError, "the patch #{name.inspect} is used and never declared"
-                block_x, block_width, line = @patch_block
-                unless @patch_block && node.width <= block_width && line + node.height <= Console::PS1Hardware::VRAM_HEIGHT
-                  block_width = node.width
-                  block_x = texture_memory.reserve_columns(block_width)
-                  line = 0
+                block = @patch_block
+                unless block && node.width <= block.width && block.free_line + node.height <= Console::PS1Hardware::VRAM_HEIGHT
+                  block = PatchBlock.new(x: texture_memory.reserve_columns(node.width), width: node.width, free_line: 0)
                 end
-                @patch_block = [block_x, block_width, line + node.height]
+                @patch_block = block.with(free_line: block.free_line + node.height)
                 state = @memory.reserve("the patch under #{name.inspect}", Runtime::Paint::PATCH_STATE_BYTES)
-                Patch.new(state: state, corner: (line << 16) | block_x, width: node.width, height: node.height)
+                Patch.new(state: state, corner: (block.free_line << 16) | block.x, width: node.width, height: node.height)
               end
             end
 

@@ -204,10 +204,7 @@ module VBlank
           # ALIGNED (+align:+ true), it is placed where its page's u and v are multiples of its width and
           # height, which must be powers of two: then the chip's texture window (GP0 E2h) can repeat it
           # across a shape larger than itself, as a face of a place repeats its picture like wallpaper.
-          #
-          # +colors_kept+ keeps it at 15 bits, its colours themselves and no table: a tile copied into a plane
-          # (Runtime::Tiles) is copied halfword for halfword, so it must be held as the plane holds its pixels.
-          def add_texture(width:, height:, colors:, align: false, colors_kept: false)
+          def add_texture(width:, height:, colors:, align: false)
             unless width.between?(1, PAGE_TEXELS) && height.between?(1, PAGE_TEXELS) && colors.length == width * height
               raise ArgumentError, "a texture is 1 to #{PAGE_TEXELS} texels each way, a colour for each; not #{width} × #{height} " \
                                    "with #{colors.length}"
@@ -217,7 +214,7 @@ module VBlank
             end
 
             Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) },
-                        aligned: align, depth: (15 if colors_kept)).tap { |texture| @textures << texture }
+                        aligned: align).tap { |texture| @textures << texture }
           end
 
           # Every texture given its depth, its colour table and its place, and every table its place. Called
@@ -252,7 +249,7 @@ module VBlank
           # colours fit in theirs. When the rows for tables are full, a texture that needs a new one keeps
           # its colours themselves, at 15 bits: more room, but no table.
           def share_tables
-            textures.reject(&:depth).sort_by { |texture| -texture.colors.length }.each do |texture|
+            textures.sort_by { |texture| -texture.colors.length }.each do |texture|
               colors = texture.colors
               capacity = TABLE_COLORS.values.find { |most| colors.length <= most }
               texture.table = capacity && find_or_add_table(colors, capacity)

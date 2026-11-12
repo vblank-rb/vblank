@@ -13,6 +13,13 @@ module VBlank
           module Collision
             VALUE_KINDS = %i[pixels_overlap].freeze
 
+            def value_of_collision_kind(node)
+              case node.kind
+              when :pixels_overlap then value_of_pixels_overlap(node)
+              else raise LoweringError, "no writer here for #{node.kind.inspect}"
+              end
+            end
+
             # Reference#pixels_overlap?: 1 when they touch, 0 when they do not.
             def value_of_pixels_overlap(node)
               runtime_call("rt_pixels_overlap", [LabelAddress.new(mask_list_label(node.a_poses)), node.a_pose, node.a_x, node.a_y,

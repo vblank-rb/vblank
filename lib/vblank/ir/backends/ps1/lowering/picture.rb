@@ -43,7 +43,7 @@ module VBlank
             TILE_SIDE = 8
             PLANE_CELLS = Runtime::Tiles::PAGE_SIDE / TILE_SIDE
             # Tiles kept one above another in a column of the sheet: video RAM's whole height of them.
-            TILES_A_COLUMN = Console::PS1Hardware::VRAM_HEIGHT / TILE_SIDE
+            TILES_PER_COLUMN = Console::PS1Hardware::VRAM_HEIGHT / TILE_SIDE
 
             # What a cell of a map's table holds for no tile, and what a table of tiles a number picks from
             # holds for a number that stands for none.
@@ -171,7 +171,7 @@ module VBlank
 
             # THE SHEET OF TILES: every tile any background can show, as its pixels are drawn (a see-through
             # one nil, Reference#tile_colors), kept once however many backgrounds and cells show it, in
-            # columns of TILES_A_COLUMN tiles from the first column past the planes. A tile is only ever
+            # columns of TILES_PER_COLUMN tiles from the first column past the planes. A tile is only ever
             # copied, so where it sits needs no texture page; it is held at 15 bits, as a plane is.
             def make_tile_sheet
               @backgrounds.each do |bg|
@@ -180,7 +180,7 @@ module VBlank
               slots = @tile_slots.values.uniq.length
               blank = Array.new(TILE_SIDE * TILE_SIDE)
               @blank_slot = slot_for_colors(blank)
-              columns = ((slots + 1 + TILES_A_COLUMN - 1) / TILES_A_COLUMN) * TILE_SIDE
+              columns = ((slots + 1 + TILES_PER_COLUMN - 1) / TILES_PER_COLUMN) * TILE_SIDE
               @sheet_column = texture_memory.reserve_columns(columns)
             end
 
@@ -200,8 +200,8 @@ module VBlank
 
             # Where the tile in sheet slot +slot+ is in video RAM, y << 16 | x.
             def tile_place(slot)
-              x = @sheet_column + ((slot / TILES_A_COLUMN) * TILE_SIDE)
-              y = (slot % TILES_A_COLUMN) * TILE_SIDE
+              x = @sheet_column + ((slot / TILES_PER_COLUMN) * TILE_SIDE)
+              y = (slot % TILES_PER_COLUMN) * TILE_SIDE
               (y << 16) | x
             end
 
@@ -244,7 +244,7 @@ module VBlank
               @put_up_this_pass = (0...@plane_places.length).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
             end
 
-            def emit_corners_forgotten
+            def emit_clear_corner_notes
               @put_up_this_pass&.each_value { |note| emit_store_number(note, 0) }
             end
 
@@ -412,9 +412,10 @@ module VBlank
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
             # place in the run, so each entry in turn places the sprite it names. Each sprite's placing is written
             # once, as a routine of its own ending in a return, and an entry picks it from a table of their
-            # addresses kept beside the code: a few instructions an entry, whatever the run's length. An entry
-            # read past the list's end stops the game, as the interpreter's read does; one naming no sprite of the
-            # run places none.
+            # addresses kept beside the code: a few instructions an entry, whatever the run's length. As many
+            # entries are read as the run has sprites, which is the length the builder keeps the list at, and an
+            # entry read past the list's end stops the game, as the interpreter's read does. An entry naming no
+            # sprite of the run, which the builder never writes and the interpreter stops on, places none here.
             def emit_ordered_run(run)
               table = fresh_label("ordered_placings")
               past = fresh_label("past_ordered_placings")
@@ -557,7 +558,7 @@ module VBlank
 
             # The sheet's tiles copied into video RAM at power-on, a column of tiles a copy.
             def upload_tile_sheet
-              @sheet_colors.keys.each_slice(TILES_A_COLUMN).with_index do |column, number|
+              @sheet_colors.keys.each_slice(TILES_PER_COLUMN).with_index do |column, number|
                 halfwords = column.flat_map { |colors| colors.map { |color| TextureMemory.texel_for_color(color) } }
                 texture_memory.add_upload(x: @sheet_column + (number * TILE_SIDE), y: 0, width: TILE_SIDE,
                                           height: column.length * TILE_SIDE, halfwords: halfwords)

@@ -13,7 +13,7 @@ module VBlank
             MASK_WIDTH = 0
             MASK_HEIGHT = 4
             MASK_PIXELS = 8
-            KEPT = %i[s0 s1 s2 s3 s4 s5].freeze
+            SAVED_REGISTERS = %i[s0 s1 s2 s3 s4 s5].freeze
 
             module_function
 
@@ -23,8 +23,8 @@ module VBlank
             # pictures touches nothing.
             def emit(asm)
               asm.label("rt_pixels_overlap")
-              asm.addiu(:sp, :sp, -4 * KEPT.length)
-              KEPT.each_with_index { |register, i| asm.sw(register, i * 4, :sp) }
+              asm.addiu(:sp, :sp, -4 * SAVED_REGISTERS.length)
+              SAVED_REGISTERS.each_with_index { |register, i| asm.sw(register, i * 4, :sp) }
               emit_mask(asm, list: :a0, which: :a1, pixels: :s0, width: :s1, height: :s4)
               emit_mask(asm, list: :t4, which: :t5, pixels: :s2, width: :s3, height: :s5)
               # x0, x1 in t0, t1; y0, y1 in t2, t3: the later starts and the earlier ends.
@@ -71,8 +71,8 @@ module VBlank
               asm.label("rt_pixels_overlap_hit")
               asm.li(:v0, 1)
               asm.label("rt_pixels_overlap_end")
-              KEPT.each_with_index { |register, i| asm.lw(register, i * 4, :sp) }
-              asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * KEPT.length) }
+              SAVED_REGISTERS.each_with_index { |register, i| asm.lw(register, i * 4, :sp) }
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * SAVED_REGISTERS.length) }
             end
 
             # +pixels+, +width+ and +height+ of the mask numbered +which+ in +list+; on to the end with v0 = 0

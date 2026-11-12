@@ -170,20 +170,17 @@ class TestPS1TextureMemory < Minitest::Test
   end
 
   # A screen drawn from tiles keeps its planes, each one or more whole texture pages, the biggest placed
-  # first, then its sheet of tiles; every texture goes past both, and a tile kept at 15 bits takes no
-  # colour table.
+  # first, then its sheet of tiles; every texture goes past both.
   def test_planes_and_the_tile_sheet_come_before_every_texture
     memory = TextureMemory.new
     planes = memory.reserve_planes([[256, 256], [512, 256], [256, 256]])
     sheet = memory.reserve_columns(8)
-    tile = memory.add_texture(width: 8, height: 8, colors: [nil, 31] * 32, colors_kept: true)
     picture = memory.add_texture(width: 8, height: 8, colors: [nil, 31] * 32)
     memory.allocate!
 
     assert_equal [[320, 256, 256, 256], [320, 0, 512, 256], [576, 256, 256, 256]], planes.map { |plane| [plane.x, plane.y, plane.width, plane.height] }
     assert_equal 832, sheet
-    assert_equal [15, nil], [tile.depth, tile.table]
-    assert_operator [tile.x, picture.x].min, :>=, 840
+    assert_operator picture.x, :>=, 840
   end
 
   def test_planes_that_do_not_fit_beside_the_screen_are_answered_with_nothing

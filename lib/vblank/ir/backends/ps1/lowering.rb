@@ -100,8 +100,8 @@ module VBlank
 
           VALUE_KINDS = %i[
             int var_ref binop neg bit_not absolute clamped shift_right held pressed list_get list_len
-            table_get timer_ticks chance data_byte players_connected local_player mul_fix div_fix pixels_overlap
-          ].freeze
+            table_get timer_ticks chance data_byte players_connected local_player mul_fix div_fix
+          ].freeze + Collision::VALUE_KINDS
 
           def value_of_kind(node)
             case node.kind
@@ -125,7 +125,7 @@ module VBlank
             when :local_player then value_of_local_player(node)
             when :mul_fix then value_of_mul_fix(node)
             when :div_fix then value_of_div_fix(node)
-            when :pixels_overlap then value_of_pixels_overlap(node)
+            when *Collision::VALUE_KINDS then value_of_collision_kind(node)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end
@@ -626,7 +626,7 @@ module VBlank
           # both as the runtime counted them.
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
-            emit_corners_forgotten
+            emit_clear_corner_notes
             emit_load_word(:t0, runtime_place(Runtime::Frame::FRAMES_TAKEN))
             emit_load_variable(Frames::COUNT)
             @asm.addu(:v0, :v0, :t0)
