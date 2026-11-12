@@ -922,12 +922,25 @@ RG_NOTES_REST_LAST = 8
 RG_NOTES_FLAGS = 9
 RG_NOTES_SHAPES = 10
 RG_NOTES_INSTRUMENTS = 11
-RG_NOTES_HEADER_NUMBERS = 12
+RG_NOTES_RECORDED = 12
+RG_NOTES_HEADER_NUMBERS = 13
 RG_NOTE_KEYS = 128
 RG_NOTE_VOLUMES = 16
-RG_NOTE_RECORD_BYTES = 8
+RG_NOTE_RECORD_BYTES = 12
 RG_NOTE_NUMBERS = 6
 RG_NOTE_ENDS_PART = 0xFFFF
+RG_NOTE_NO_LOUDNESS = 0xFFFF
+RG_NOTE_FULL_LOUDNESS = 512
+
+# rg_music.c's start_file_event_volume.
+def rg_start_file_event_volume(volume, loudness, recorded)
+  if recorded != 0 && loudness != RG_NOTE_NO_LOUDNESS
+    return RG_NOTE_VOLUMES - 1 if loudness >= RG_NOTE_FULL_LOUDNESS
+
+    return loudness.zero? ? 0 : RG_NOTE_VOLUMES + 1 + loudness
+  end
+  volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES
+end
 
 # An event of a part (rg_music.c's start_file_event).
 RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume)
@@ -951,7 +964,7 @@ def rg_start_file_write_note(music, into, event, rules)
   rest = event.key.negative?
   music[into] = event.frame
   music[into + 1] = rest ? 0 : rules[pitches + event.key]
-  music[into + 2] = rules[heard + event.volume]
+  music[into + 2] = event.volume <= RG_NOTE_VOLUMES ? rules[heard + event.volume] : event.volume - RG_NOTE_VOLUMES - 1
   music[into + 3] = rest ? rules[RG_NOTES_REST_LAST] : rules[lasts + (event.instrument * RG_NOTE_KEYS) + event.key]
   music[into + 4] = rest ? 0 : rules[RG_NOTES_FLAGS]
   music[into + 5] = rest ? 0 : rules[RG_NOTES_SHAPES]
@@ -968,16 +981,17 @@ def rg_music_fill_notes(music, rules, tick_frames)
   # The records before the one that ends the part, in the order of their ticks; those on one tick
   # stay in the file's order.
   held_bytes = @rg_start_file.byteslice(rules[RG_NOTES_RECORDS_AT], rules[RG_NOTES_RECORDS] * RG_NOTE_RECORD_BYTES)
-  records = held_bytes.unpack("vvCCCC" * rules[RG_NOTES_RECORDS]).each_slice(6).take_while { |record| record[0] != RG_NOTE_ENDS_PART }
+  records = held_bytes.unpack("vvCCCCvCC" * rules[RG_NOTES_RECORDS]).each_slice(9).take_while { |record| record[0] != RG_NOTE_ENDS_PART }
   records = records.each_with_index.sort_by { |record, place| [record[0], place] }.map(&:first)
 
   events = []
   rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES)
-  records.each_with_index do |(tick, length, key, instrument, volume), n|
+  records.each_with_index do |(tick, length, key, instrument, volume, _, loudness), n|
     named = instrument < instruments
     rg_start_file_keep_event(events, RgStartFileEvent.new(frame_of.call(tick), key < RG_NOTE_KEYS ? key : -1, named ? instrument + 1 : 0,
                                                           named ? rules[same_recording + instrument] : -1,
-                                                          volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES), total_frames)
+                                                          rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED])),
+                             total_frames)
     ends = tick + length
     next unless length.positive? && !(n + 1 < records.length && records[n + 1][0] <= ends)
 

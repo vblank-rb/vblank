@@ -34,11 +34,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     at power-on from the start file, so every verb a recording plays in (`play`, songs, sound effects)
     works in a shell. A recording given as `pcm:` bytes beside it stays as it was. Worked example:
     `test/pack_sound_tests.rb`.
-  - `slots.notes :title_0, count: 200` — **notes of music, eight bytes each in a record of VBlank's own**
-    (`Original::PackNote`): the tick it starts on and how many it lasts (two bytes each, low byte first,
-    0 for until the next note), a MIDI key (255 a rest), which of the part's instruments (255 the part's
-    own), and a loudness 0 to 15 (255 the part's own), then a byte of 0. A note starting on tick 65535
-    ends the part, so the slot holds the most notes a part can have. A retail game keeps its music in its
+  - `slots.notes :title_0, count: 200` — **notes of music, twelve bytes each in a record of VBlank's own**
+    (`Original::PackNote`, whose `LAYOUT` and `bytes_of` a port's tests can use): the tick it starts on and
+    how many it lasts (two bytes each, low byte first, 0 for until the next note), a MIDI key (255 a rest),
+    which of the part's instruments (255 the part's own), and a volume 0 to 15 (255 the part's own), then a
+    byte of 255, then **a loudness in 512ths** (two bytes, 65535 for none), then a byte of 255 and a byte of
+    0. On a part that plays a recording a loudness is played in place of the volume, as `volume: 15 *
+    loudness / 512r` (`sound.md`), which is the scale a cartridge's own sound engine mixes at; elsewhere it
+    means nothing. One past 512 is refused all-in-one and is all of the recording from the player's file.
+    A note starting on tick 65535 ends the part, so the slot holds the most notes a part can have. A retail game keeps its music in its
     own sound driver's commands, so the unpacking routine runs those forward and writes the notes they
     play. A Score's part takes the slot as its notes: `Score::Part.new(plays: :horn, notes:
     pack[:title_0].notes(instruments: %i[horn bass]))` (`sound.md`). **The song's length and the tick it

@@ -241,7 +241,11 @@ module VBlank
       # The file is the player's, so nothing in it stops the game, where the build that holds the
       # same records refuses them: a key past 127 is a rest, and an instrument the part does not
       # name or a volume past 15 is the part's own.
-      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who) do
+      #
+      # +recorded+ is whether the part plays a recording, which alone takes a record's loudness in
+      # 512ths; a part on a voice of the console's takes its volume, and a loudness in the file means
+      # nothing there.
+      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded) do
         # The frame each tick falls on (an Audio::Score::Timing).
         def timing = Audio::Score::Timing.new(self)
 
@@ -299,9 +303,21 @@ module VBlank
         records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * Original::PackNote::BYTES))
         records.map do |note|
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (note.key if note.key <= MOST_KEY), volume: (note.volume if note.volume <= MOST_VOLUME),
+                                 key: (note.key if note.key <= MOST_KEY), volume: volume_of(note, where.recorded),
                                  instrument: where.instruments[note.instrument])
         end
+      end
+
+      # The volume of +note+ (an Original::PackNote) on a part that plays a recording or not: its
+      # loudness as a volume with a fraction where it gives one on a recorded part, held to the
+      # recording's size, else its volume, and nil (the part's own) for a volume past 15.
+      def self.volume_of(note, recorded)
+        loudness = note.loudness
+        if recorded && loudness != Original::PackNote::NO_LOUDNESS
+          return Rational(MOST_VOLUME * [loudness, Original::PackNote::FULL_LOUDNESS].min, Original::PackNote::FULL_LOUDNESS)
+        end
+
+        note.volume if note.volume <= MOST_VOLUME
       end
 
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one

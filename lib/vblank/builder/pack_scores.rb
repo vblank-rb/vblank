@@ -48,7 +48,7 @@ module VBlank
         return score unless score.parts.any? { |part| pack_notes?(part.notes) } || pack_timing?(score)
         return score_reading_notes_at_start(score, verb) if pack_left_out?
 
-        score.with(parts: score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part.notes, verb)) : part },
+        score.with(parts: score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part },
                    length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
                    loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
       end
@@ -138,7 +138,7 @@ module VBlank
         instruments = recorded ? handle.instruments.map { |named| named.is_a?(Symbol) ? named : named.name } : []
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
                                          part: score.parts[number], tempo: score.tempo, ticks_per_beat: score.ticks_per_beat,
-                                         who: "Part #{number} of a Score")
+                                         who: "Part #{number} of a Score", recorded: recorded)
         refuse_keys_part_cannot_play!(notes, slot)
         notes
       end
@@ -152,17 +152,32 @@ module VBlank
                              "to play every key from 0 to #{IR::StartFile::MOST_KEY}. It cannot: #{e.message}"
       end
 
-      # The Score::Note list a slot of notes holds.
-      def notes_read_from_pack(handle, verb)
-        handle = handle.notes if handle.is_a?(DSL::PackSlot)
+      # The Score::Note list the slot of notes +part+ (a Score::Part) names holds.
+      def notes_read_from_pack(part, verb)
+        handle = part.notes.is_a?(DSL::PackSlot) ? part.notes.notes : part.notes
         subject = "#{verb} reading notes from slot :#{handle.slot.layout.name}"
         refuse_slot_from_elsewhere!(handle.slot, subject)
+        recorded = recorded_part?(part)
         handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
                                  key: (note.key unless note.key == Original::PackNote::REST),
-                                 volume: (note.volume unless note.volume == Original::PackNote::PART_OWN),
+                                 volume: pack_note_volume(note, recorded, subject),
                                  instrument: pack_note_instrument(note, handle.instruments, subject))
         end
+      end
+
+      def recorded_part?(part) = Audio::Score::Checks.recording?(Audio::Music.resolve_plays(part.plays))
+
+      # A note's volume: its loudness in 512ths as a volume with a fraction on a part that plays a
+      # recording (Original::PackNote), else its volume, nil for the part's own.
+      def pack_note_volume(note, recorded, subject)
+        loudness = note.loudness
+        return (note.volume unless note.volume == Original::PackNote::PART_OWN) if !recorded || loudness == Original::PackNote::NO_LOUDNESS
+        return Rational(IR::StartFile::MOST_VOLUME * loudness, Original::PackNote::FULL_LOUDNESS) if loudness <= Original::PackNote::FULL_LOUDNESS
+
+        raise ArgumentError, "#{subject}: the note at tick #{note.at} has the loudness #{loudness}. A loudness is 512ths of the " \
+                             "recording's size, 0 to #{Original::PackNote::FULL_LOUDNESS}, or #{Original::PackNote::NO_LOUDNESS} " \
+                             "to take the note's volume."
       end
 
       def pack_note_instrument(note, instruments, subject)

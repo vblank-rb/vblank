@@ -637,7 +637,9 @@ module VBlank
 
           # WHAT A RECORD COMES TO ON THIS PART, as the numbers of a note (#encoded_note): what a
           # rest's fourth number is; the fifth and sixth of a note that sounds, which are the
-          # part's; how many instruments the part names; then the third number for each volume
+          # part's; how many instruments the part names; 1 for a part that plays a recording, whose
+          # third number for a record's loudness is the loudness itself (Tunes.mix_loudness of
+          # 15 * loudness / 512 is the loudness); then the third number for each volume
           # from 0 to 15 and for the part's own; for each instrument, the first that names the
           # same recording, which is how two notes are known to play the same one; the second
           # number for each key; and the fourth for each key, on the part's own instrument and
@@ -652,7 +654,7 @@ module VBlank
                     else
                       [events.map { |event| note_ticks(kind, event[1]) }]
                     end
-            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, *heard,
+            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *heard,
              *where.instruments.map { |name| where.instruments.index(name) },
              *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten]
           end

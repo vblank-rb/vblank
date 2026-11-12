@@ -52,11 +52,13 @@ void rg_music_hold(int32_t held);
 void rg_music_follow_level(const int32_t *level);
 
 /*
- * A PART'S NOTES IN THE FILE (IR::StartFile::Notes): records of eight bytes that a port's
+ * A PART'S NOTES IN THE FILE (IR::StartFile::Notes): records of twelve bytes that a port's
  * unpacking writes (Original::PackNote), low byte first: the tick a note starts on and how many
  * ticks it lasts (two bytes each, 0 for until the next), its key (0 to 127, anything else a rest),
  * which of the part's instruments it plays and its volume (0 to 15), each the part's own where
- * it names none the part has, and a byte of nothing. A record starting on tick 65535 ends the
+ * it names none the part has, a byte of nothing, its loudness in 512ths on a part that plays a
+ * recording (two bytes, 65535 for none, past 512 all of it), and two bytes of nothing. A record
+ * starting on tick 65535 ends the
  * part. The game holds room for the notes in rg_game_music, each on frame -1, which
  * the player never reaches, and this writes the notes the records make over the first of them.
  *

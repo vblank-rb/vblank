@@ -1189,7 +1189,10 @@ module PackGames
           slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
         end
         # A part takes the slot's handle itself too, where its notes name no instrument.
-        notes_of = ->(name, whole_slot: false) { whole_slot ? pack[name] : pack[name].notes(instruments: instruments.fetch(name, [])) }
+        # A word for the notes written by hand (`recorded:`) means nothing to the pack's.
+        notes_of = lambda do |name, whole_slot: false, **|
+          whole_slot ? pack[name] : pack[name].notes(instruments: instruments.fetch(name, []))
+        end
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
         timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
         made = instance_exec(notes_of, settings, timing, &scores)
@@ -1226,6 +1229,13 @@ module PackGames
         scores_game(folder, options, { tune: NAMED_TUNE, blip: BLIP }, instruments: { tune: %i[bell bass], blip: %i[horn] }) do |notes_of, settings|
           test.declare_recorded_scores(self, notes_of, settings)
         end
+      end,
+      # A recorded part's loudness in 512ths, none of it past the recording's size, which a build
+      # holding the records refuses.
+      game(:recorded_loudness_of_pack_notes, passes: 150, presses: { 1 => [:a] }) do |folder, options|
+        test = self
+        loud = LOUD_TUNE.map { |note| note[5] == 900 ? [*note.first(5), 400] : note }
+        scores_game(folder, options, { loud: loud }) { |notes_of| test.declare_loud_scores(self, notes_of) }
       end,
       # A song whose length and loop are numbers of the pack, as a sound driver's song keeps them.
       game(:song_of_pack_notes_and_pack_length, passes: 200, presses: { 1 => [:a] }) do |folder, options|

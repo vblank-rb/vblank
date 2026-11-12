@@ -26,19 +26,24 @@ module PackScoresAtStartTests
   OWN = PackNote::PART_OWN
 
   # A part's notes as the records a pack holds: [at, length, key, instrument, volume] each, a
-  # length of 0 for until the next note, a key of REST for a rest. Then a note that ends the part,
-  # and filler after it that no part may play.
+  # length of 0 for until the next note, a key of REST for a rest, and a loudness in 512ths after
+  # the volume where a note gives one. Then a note that ends the part, and filler after it that no
+  # part may play.
   private def records(notes)
     ending = [PackNote::END_OF_PART, 0, 0, 0, 0]
-    filler = [[5, 7, 64, OWN, 15]] * (MOST - notes.length - 1)
-    [*notes, ending, *filler].flat_map { |note| [*note, 0] }.pack("v v C C C C" * MOST)
+    filler = [[5, 7, 64, OWN, 15, 300]] * (MOST - notes.length - 1)
+    [*notes, ending, *filler].flat_map do |at, length, key, instrument, volume, loudness|
+      [at, length, key, instrument, volume, OWN, loudness || PackNote::NO_LOUDNESS, OWN, 0]
+    end.pack(PackNote::LAYOUT.delete(" ") * MOST)
   end
 
   # The notes a Score written by hand holds for the same records, as the game plays them: a key no
   # voice has is a rest, and an instrument the part does not name or a volume past 15 is the
-  # part's own. +instruments+ are the part's.
-  private def written(notes, instruments = [])
-    notes.map do |at, length, key, instrument, volume|
+  # part's own. A loudness on a part that plays a recording is its volume, all of the recording at
+  # most; elsewhere it means nothing. +instruments+ are the part's.
+  private def written(notes, instruments = [], recorded: false)
+    notes.map do |at, length, key, instrument, volume, loudness|
+      volume = Rational(15 * [loudness, 512].min, 512) if recorded && loudness
       Note.new(at: at, length: (length unless length.zero?), key: (key if key <= 127), instrument: instruments[instrument],
                volume: (volume if volume <= 15))
     end
@@ -86,9 +91,9 @@ module PackScoresAtStartTests
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
         slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
       end
-      notes_of = lambda do |name|
+      notes_of = lambda do |name, recorded: false|
         named = instruments.fetch(name, [])
-        pack ? pack[name].notes(instruments: named) : test.written_notes(parts.fetch(name), named)
+        pack ? pack[name].notes(instruments: named) : test.written_notes(parts.fetch(name), named, recorded)
       end
       # An instrument's settings from the pack too, or the same numbers written by hand.
       settings = if pack
@@ -112,7 +117,7 @@ module PackScoresAtStartTests
   end
 
   # Called back from the game's block, so it is public.
-  def written_notes(notes, instruments) = written(notes, instruments)
+  def written_notes(notes, instruments, recorded) = written(notes, instruments, recorded: recorded)
 
   # The game with its pack left out, handed its pack, is heard as the game written by hand is: the
   # same sound log and the same mixed samples, on each of +buttons+ pressed once.
@@ -132,7 +137,8 @@ module PackScoresAtStartTests
     end
   end
 
-  MELODY = [[0, 12, 72, OWN, OWN], [12, 0, 76, OWN, 9], [24, 12, PackNote::REST, OWN, OWN], [36, 24, 79, OWN, 15],
+  # The note at tick 36 gives a loudness, which a square part does not take.
+  MELODY = [[0, 12, 72, OWN, OWN], [12, 0, 76, OWN, 9], [24, 12, PackNote::REST, OWN, OWN], [36, 24, 79, OWN, 15, 100],
             [72, 12, 67, OWN, OWN]].freeze
   BASS = [[0, 48, 48, OWN, OWN], [48, 48, 43, OWN, 6]].freeze
 
@@ -277,7 +283,11 @@ module PackScoresAtStartTests
               pack[:tune][record + 4] = copy.byte(at + 1)
               pack[:tune][record + 5] = OWN
               pack[:tune][record + 6] = OWN
-              pack[:tune][record + 7] = 0
+              pack[:tune][record + 7] = OWN
+              pack[:tune][record + 8] = 0xFF
+              pack[:tune][record + 9] = 0xFF
+              pack[:tune][record + 10] = OWN
+              pack[:tune][record + 11] = 0
               record += PackNote::BYTES
               tick += frames
               at += 3
@@ -368,6 +378,32 @@ module PackScoresAtStartTests
     end
 
     assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, &scores)
+  end
+
+  # A RECORDED PART'S LOUDNESS IN 512THS, as a cartridge's sound engine mixes it: a quiet note, two
+  # notes as loud as each other held across the loop, one given a volume and the same loudness as
+  # that volume, one past all of the recording, and one of none.
+  LOUD_TUNE = [[0, 12, 60, OWN, OWN, 37], [12, 12, 64, OWN, OWN, 241], [24, 12, 67, OWN, 15], [36, 0, 72, OWN, OWN, 512],
+               [48, 0, 72, OWN, OWN, 512], [56, 0, 65, OWN, 3, 900], [64, 4, 62, OWN, OWN, 0]].freeze
+
+  def test_a_recorded_parts_loudness_in_512ths_plays_as_the_volume_with_a_fraction
+    test = self
+    scores = ->(notes_of, _settings, _timing) { test.declare_loud_scores(self, notes_of) }
+    unless VBlank::Console.described(game_console).mixes_recordings
+      return Dir.mktmpdir do |folder|
+        left_out = scored_game({ loud: LOUD_TUNE }, folder: folder, &scores)
+        assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.hand_file(pack_file({ loud: LOUD_TUNE })).run(left_out, frames: 1) }
+      end
+    end
+
+    assert_plays_as_written({ loud: LOUD_TUNE }, frames: 150, &scores)
+  end
+
+  # Called back from the game's block, so it is public.
+  def declare_loud_scores(game, notes_of)
+    game.instrument :horn, pcm: PCM, rate: 8000, note: :C4
+    { songs: [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:loud, recorded: true), volume: 13)], tempo: 150, length: 72,
+                        loop_from: 40)] }
   end
 
   # Called back from the game's block, so it is public: the instruments and the Scores, declared on +game+.

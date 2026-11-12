@@ -1150,17 +1150,22 @@ enum {
   RG_NOTES_FLAGS = 9,
   RG_NOTES_SHAPES = 10,
   RG_NOTES_INSTRUMENTS = 11,
-  RG_NOTES_HEADER_NUMBERS = 12,
+  RG_NOTES_RECORDED = 12, /* 1 for a part that plays a recording, which takes a record's loudness */
+  RG_NOTES_HEADER_NUMBERS = 13,
   RG_NOTE_KEYS = 128,
   RG_NOTE_VOLUMES = 16, /* and one more, the part's own */
-  RG_NOTE_RECORD_BYTES = 8,
+  RG_NOTE_RECORD_BYTES = 12,
+  RG_NOTE_NO_LOUDNESS = 0xFFFF,
+  RG_NOTE_FULL_LOUDNESS = 512,
   RG_NOTE_NUMBERS = 6,
   RG_NOTE_ENDS_PART = 0xFFFF
 };
 
 /* An event of a part: the frame it is on, its key (-1 for a rest), which list of the part's
  * instruments it plays (0 for the part's own), the first instrument that names the same recording
- * (-1 for the part's own), and its volume (RG_NOTE_VOLUMES for the part's own). */
+ * (-1 for the part's own), and its volume (RG_NOTE_VOLUMES for the part's own; a loudness of L
+ * 512ths, past those, RG_NOTE_VOLUMES + 1 + L, so two events are as loud exactly when the numbers are
+ * the same: see start_file_event_volume). */
 typedef struct {
   int32_t frame, key, instrument, recording, volume;
 } start_file_event;
@@ -1189,10 +1194,22 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
   int32_t rest = event->key < 0;
   into[0] = event->frame;
   into[1] = rest ? 0 : pitches[event->key];
-  into[2] = heard[event->volume];
+  into[2] = event->volume <= RG_NOTE_VOLUMES ? heard[event->volume] : event->volume - RG_NOTE_VOLUMES - 1;
   into[3] = rest ? rules[RG_NOTES_REST_LAST] : lasts[(event->instrument * RG_NOTE_KEYS) + event->key];
   into[4] = rest ? 0 : rules[RG_NOTES_FLAGS];
   into[5] = rest ? 0 : rules[RG_NOTES_SHAPES];
+}
+
+/* The volume of an event (start_file_event) from a record's +volume+ and +loudness+: a loudness on a
+ * part that plays a recording, held to the recording's size, else the volume, the part's own past
+ * 15. A loudness of none or all of the recording is the volume 0 or 15, which it is, so it compares
+ * equal to that volume as the interpreter's numbers do. */
+static int32_t start_file_event_volume(int32_t volume, int32_t loudness, int32_t recorded) {
+  if (recorded && loudness != RG_NOTE_NO_LOUDNESS) {
+    if (loudness >= RG_NOTE_FULL_LOUDNESS) return RG_NOTE_VOLUMES - 1;
+    return loudness == 0 ? 0 : RG_NOTE_VOLUMES + 1 + loudness;
+  }
+  return volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES;
 }
 
 void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
@@ -1226,7 +1243,7 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
     int32_t named = record[5] < instruments;
     start_file_event event = {tick < ticks ? tick_frames[tick] : total_frames, record[4] < RG_NOTE_KEYS ? record[4] : -1,
                               named ? record[5] + 1 : 0, named ? same_recording[record[5]] : -1,
-                              record[6] < RG_NOTE_VOLUMES ? record[6] : RG_NOTE_VOLUMES};
+                              start_file_event_volume(record[6], record[8] | (record[9] << 8), rules[RG_NOTES_RECORDED])};
     made = start_file_keep_event(events, made, event, total_frames);
     int32_t ends = tick + length;
     if (length > 0 && !(n + 1 < records && start_file_record_tick(records_at, order[n + 1]) <= ends)) {
