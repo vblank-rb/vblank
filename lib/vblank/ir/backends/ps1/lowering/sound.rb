@@ -35,7 +35,11 @@ module VBlank
             end
 
             # Whether +program+ plays recordings of its own, and so carries their count (Runtime::Recordings).
-            def self.samples?(program) = program.walk.any? { |node| node.kind == :play_sample }
+            def self.samples?(program) = program.walk.any? { |node| node.kind == :play_sample } || recorded_parts?(program)
+
+            # Whether a song of +program+ has a part that plays a recording, whose notes are played in
+            # Runtime::Recordings' places.
+            def self.recorded_parts?(program) = songs?(program) && PS1::Music.new(program).recorded_parts?
 
             # What the plays are to the author, for a program too full for them.
             PLAYS = R3000::Holding.new(what: "the game's recordings", fix: "play fewer different recordings")
@@ -62,11 +66,6 @@ module VBlank
 
             # Whether +program+ holds its music, so its player looks (Runtime::Music::TUNE_HELD).
             def self.holds_music?(program) = program.walk.any? { |node| node.kind == :hold_music }
-
-            # WHAT A SONG DOES THAT THE PLAYSTATION'S PLAYER DOES NOT DO YET, in words, or nil.
-            def self.unmade_song_part(program)
-              "parts that play recordings" if PS1::Music.new(program).recorded_parts?
-            end
 
             # Every entry of the sound log the program can write, by the number it writes.
             def sound_entries = @sound_entries.dup
@@ -111,22 +110,52 @@ module VBlank
             # recording starts in sound memory, the voice's pitch and volume, and the count the interpreter's
             # mix keeps for it — and the runtime handed its number.
             def emit_play_sample(node)
-              declared = @samples.fetch(node.name) { raise LoweringError, "the sample #{node.name.inspect} is not declared" }
-              info = Assets::Sample.of(declared)
-              refuse_shaped_recording!(node.name, info)
-              clock = CONSOLE.sample_clock(declared.rate)
+              info = Assets::Sample.of(declared_sample(node.name))
               frequency = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(node.pitch || info.note || :C4)
               back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
-              step = IR::Mixing.step(info, frequency, clock.rate)
-              refuse_unreadable_play!(node.name, step, back)
               loudness = VBlank::Audio::Sound::MIX_LEVELS.fetch(node.volume, VBlank::Audio::Sound::MIX_LEVELS[:full])
+              row = play_row(node.name, frequency, back, loudness, info.envelope, sound_entry_number([:sample, node.name]))
+              runtime_call("rt_recordings_play", [Build.int(row)])
+            end
+
+            public
+
+            # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note, SongTable asks it):
+            # recording +name+ read at +frequency+, from its start, back to where it holds from at its end (or
+            # once through, for one that does not hold), at its written +volume+ as a mix's loudness, shaped by
+            # +envelope+ (the note's or its part's), or by the recording's own when it has none. Nothing is
+            # logged as it comes round. A Super Nintendo envelope's own bytes (+chip_envelope+) are the Super
+            # Nintendo's: here the note is shaped by the nearest envelope, which +envelope+ already is. Its
+            # number in "recording_plays".
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil)
+              _ = [walks, chip_envelope]
+              info = Assets::Sample.of(declared_sample(name))
+              play_row(name, frequency, info.loop_length, IR::Tunes.mix_loudness(volume), envelope || info.envelope,
+                       Runtime::Recordings::NOT_LOGGED)
+            end
+
+            def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the sample #{name.inspect} is not declared" }
+
+            private
+
+            # The row of a play of +name+ at +frequency+, going +back+ at its end, at +loudness+ out of the mix's
+            # full, shaped by +envelope+ (nil or plain for none), logging +logged+ as it comes round: where its
+            # recording is in sound memory, the voice's pitch and loudness at full, and the count the
+            # interpreter's mix keeps. Its number in "recording_plays", the same one for a play alike.
+            def play_row(name, frequency, back, loudness, envelope, logged)
+              declared = declared_sample(name)
+              info = Assets::Sample.of(declared)
+              clock = CONSOLE.sample_clock(declared.rate)
+              step = IR::Mixing.step(info, frequency, clock.rate)
+              refuse_unreadable_play!(name, step, back)
               advance = step * clock.samples_a_frame
-              row = [@sound_memory.start_of(SoundMemory.recording(node.name, back)), recording_pitch(step),
-                     (loudness * SPUWrites::LOUDEST) / VBlank::Audio::Sound::MIX_LEVELS[:full], info.length, back,
+              shape = envelope unless envelope.nil? || envelope.plain?
+              row = [@sound_memory.start_of(SoundMemory.recording(name, back)), recording_pitch(step),
+                     (loudness * SPUWrites::LOUDEST) / IR::Tunes::MIX_FULL, info.length, back,
                      advance >> VBlank::Audio::Sound::STEP_SHIFT, advance & ((1 << VBlank::Audio::Sound::STEP_SHIFT) - 1),
-                     sound_entry_number([:sample, node.name]), @samples.keys.index(node.name)]
+                     logged, @samples.keys.index(name), shape ? shape.packed : 0]
               @plays << row unless @plays.include?(row)
-              runtime_call("rt_recordings_play", [Build.int(@plays.index(row))])
+              @plays.index(row)
             end
 
             # Reference#exec_stop_sample (Reference::Mixer#stop): the recording's places freed, or every place.
@@ -139,15 +168,6 @@ module VBlank
             # 65536ths: the chip reads 4096ths of a sample for each of its 44100 a second, which is the rate
             # the mix runs at (Console::Description#recording_voice_hz), so a sixteenth of the step.
             def recording_pitch(step) = (step / 16.0).round.clamp(1, SPUWrites::PITCH_TOP)
-
-            # A recording with a shape (`envelope:`), which the build does not make yet.
-            def refuse_shaped_recording!(name, info)
-              return if info.envelope.nil? || info.envelope.plain?
-
-              raise NotMadeYet.new("The sample #{name.inspect} has a shape (`envelope:`). The #{CONSOLE.title} build does not " \
-                                   "make that yet. To fix this, build the game for the Game Boy Advance alone for now " \
-                                   "(`consoles: %i[gba]`).", part: "sound: recordings with a shape")
-            end
 
             # A play the chip cannot read with the interpreter's count: one read more than four times as fast
             # as the chip plays (its pitch register reads at most 3FFFh, Beetle PSX spu.c), and one so fast
@@ -164,19 +184,9 @@ module VBlank
                                    "holds. To fix this, hold it from an earlier point, or play it at a lower note."
             end
 
-            # A song doing what the player does not do yet, refused by name.
-            def refuse_unmade_song_parts!
-              return unless Sound.songs?(@program)
-
-              part = Sound.unmade_song_part(@program) or return
-              raise NotMadeYet.new("This game's songs have #{part}. The #{CONSOLE.title} build does not make that yet. To fix " \
-                                   "this, build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).",
-                                   part: "sound: #{part}")
-            end
-
             # The section of the game's songs (PS1::Music), each note's sound-log entries numbered among the rest.
             def music_section
-              words = @music.words(sound_voicing) { |entry| sound_entry_number(entry) }
+              words = @music.words(sound_voicing, recordings: self) { |entry| sound_entry_number(entry) }
               @music.section(words)
             end
 

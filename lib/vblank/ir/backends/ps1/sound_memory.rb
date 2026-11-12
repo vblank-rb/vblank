@@ -55,8 +55,18 @@ module VBlank
           def initialize(program)
             @loops = {}
             @next_free = Console::PS1Hardware::SPU_FIRST_FREE
+            @kept_as = {} # a recording's name and read-back -> the loop that holds its samples
             made(program).each { |name, samples| keep(name, ADPCM.encode(samples, loop: true)) }
-            recordings(program).each { |(name, back), (samples, loop_from)| keep([:recording, name, back], ADPCM.encode(samples, loop: back.positive?, loop_from: loop_from)) }
+            # RECORDINGS ALIKE ARE KEPT ONCE. What sound memory keeps of a recording is its samples and where
+            # it reads back to; the rate it was made at, the note it plays and its shape are the voice's pitch
+            # and loudness, set for each play (Runtime::Recordings' row). So recordings declared under several
+            # names with the same samples, as one instrument's recording shaped several ways is, read one
+            # copy, each still under its own name.
+            recordings(program).each do |(name, back), (samples, loop_from)|
+              kept = [:recording, samples, back]
+              keep(kept, ADPCM.encode(samples, loop: back.positive?, loop_from: loop_from)) unless @loops.key?(kept)
+              @kept_as[self.class.recording(name, back)] = kept
+            end
           end
 
           # The name of recording +name+ played going +back+ samples at its end (nought for once through).
@@ -91,7 +101,9 @@ module VBlank
           def bytes = @loops.values.map(&:bytes).join
 
           # Where in sound memory the loop +name+ starts, in 8-byte steps.
-          def start_of(name) = @loops.fetch(name) { raise LoweringError, "no sound #{name.inspect} is in sound memory" }.start
+          def start_of(name)
+            @loops.fetch(@kept_as.fetch(name, name)) { raise LoweringError, "no sound #{name.inspect} is in sound memory" }.start
+          end
 
           def empty? = @loops.empty?
 
@@ -148,12 +160,20 @@ module VBlank
           # samples sound memory keeps and where their loop starts (SoundMemory.recording_samples).
           def recordings(program)
             declared = program.walk.select { |node| node.kind == :sample }.to_h { |node| [node.name, node] }
-            program.walk.select { |node| node.kind == :play_sample }.filter_map do |node|
+            plays = program.walk.select { |node| node.kind == :play_sample }.filter_map do |node|
               sample = declared[node.name] or next
               info = Assets::Sample.of(sample)
               back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
               [[node.name, back], nil]
-            end.uniq.to_h do |(name, back), _|
+            end
+            # A song's recorded note reads back to where its recording holds from (SongTable, recorded_note_row).
+            notes = IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :recorded }.flat_map do |part|
+              part.events.select { |event| event[1].positive? }.filter_map do |event|
+                sample = declared[event[2] || part.instrument] or next
+                [[sample.name, Assets::Sample.of(sample).loop_length], nil]
+              end
+            end
+            (plays + notes).uniq.to_h do |(name, back), _|
               data = declared.fetch(name).bytes.unpack("c*").map { |sample| sample << 8 }
               [[name, back], self.class.recording_samples(data, back)]
             end

@@ -211,10 +211,9 @@ module VBlank
         fade_music_out: works,
         songs: works,
         sound_effects: works("see `song`."),
-        sample: works("the sound chip plays recordings itself, each on a voice of its own with its own loudness. " \
-                      "The build does not make a recording with a shape (`envelope:`) yet: it refuses one and says so."),
-        instrument: works("a song's or a sound effect's part that plays a recording is not made yet: the build refuses " \
-                          "it and says so.")
+        sample: works("the sound chip plays recordings itself, each on a voice of its own with its own loudness and " \
+                      "shape, 16 at once."),
+        instrument: works("see `sample`.")
       })
 
       # The verbs whose refused part is the build's limit and not the console's: a fade of part of the screen

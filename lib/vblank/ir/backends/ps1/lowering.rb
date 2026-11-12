@@ -231,7 +231,6 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_parts!
-            refuse_unmade_song_parts!
             variables_most_read_first.each do |name|
               @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
             end

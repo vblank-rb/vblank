@@ -153,6 +153,36 @@ class TestPS1Sound < Minitest::Test
     assert_in_delta 13_000 / 30.0, pitch_of(run), 12
   end
 
+  def test_a_recording_with_a_shape_climbs_and_its_voice_follows
+    run = checked(frames: 12) do
+      enable_sound
+      sample(:clip, pcm: CLIP * 200, rate: 13_000, envelope: { attack: 0.1, decay: 0.1, sustain: 0.5, release: 0.1 }).play
+      game_loop { nil }
+    end
+
+    level = run.level_of(:clip)
+    assert_operator level, :>, 0
+    assert_operator level, :<=, VBlank::Audio::Envelope::FULL
+  end
+
+  def test_a_songs_recorded_part_takes_a_place_and_gives_it_back
+    run = checked(frames: 40) do
+      enable_sound
+      instrument :clip, pcm: CLIP * 100, rate: 13_000
+      song(:tune) do
+        tempo 450
+        voice(:lead, plays: :clip) do
+          note :C4, :quarter
+          rest :quarter
+        end
+      end
+      play_song :tune
+      game_loop { nil }
+    end
+
+    assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 2
+  end
+
   def test_a_held_recording_reads_back_from_a_block_as_it_does_from_its_hold
     data = Array.new(100) { |i| i * 7 }
     samples, loop_from = PS1::SoundMemory.recording_samples(data, 37)

@@ -64,24 +64,31 @@ module VBlank
           # THE RECORDINGS SOUNDING at the moment the run ended, or the one a watching block is asked at
           # (Reference#active_samples): the program's own count (Runtime::Recordings), place by place, as the
           # interpreter's mixer keeps them voice by voice.
-          def active_samples = @sounding || []
+          def active_samples = (@sounding || []).map(&:name)
 
-          # A recording sounds at full from its first sample to its last: one with a shape is not made yet
-          # (Reference#level_of).
-          def level_of(name) = active_samples.include?(name) ? Audio::Envelope::FULL : nil
+          # How loud recording +name+ sounds by its shape, out of Audio::Envelope::FULL: its first place's
+          # level, as the program keeps it (Reference#level_of); nil when it is not sounding.
+          def level_of(name) = (@sounding || []).find { |held| held.name == name }&.level
 
-          # Whose each recording sounding is as the run ended (Reference#sound_owners): the game's own, the
-          # only ones made yet.
-          def sound_owners = recordings_at(:end).map { :game }
+          # Whose each recording sounding is as the run ended (Reference#sound_owners): :game for the game's
+          # own, [:song, part] for a song's recorded part, [effect, part] for a sound effect's.
+          def sound_owners
+            effects = @places.sound_voicing&.effects || []
+            (@held_at_end || []).map do |held|
+              owner = held.owner
+              if owner.zero? then :game
+              elsif owner < Runtime::Recordings::EFFECT_OWNER then [:song, owner - 1]
+              else [effects.fetch((owner >> 8) - 1), (owner & 0xFF) - 1]
+              end
+            end
+          end
 
           # The plays that found every place busy, and the most of them songs held at one of those moments
           # (Reference#sound_drops), as the program counted them.
           def sound_drops
             places = Console::PLAYSTATION.recordings_at_once
-            return Diagnostics::SoundDrops::Reading.new(dropped: 0, music_held: 0, voices: places) unless playing_recordings?
-
-            Diagnostics::SoundDrops::Reading.new(dropped: read32(runtime_place(Runtime::Recordings::DROPS)),
-                                                 music_held: read32(runtime_place(Runtime::Recordings::DROPS_MUSIC)), voices: places)
+            dropped, music_held = @drops || [0, 0]
+            Diagnostics::SoundDrops::Reading.new(dropped: dropped, music_held: music_held, voices: places)
           end
 
           # The rest of what the interpreter answers, each refused by name.
@@ -117,17 +124,25 @@ module VBlank
           def recordings_at(frame)
             return [] unless playing_recordings?
 
-            places = Runtime::Recordings::PLACES
-            numbers = if frame == :end
-                        Array.new(places) do |place|
-                          read32(runtime_place(Runtime::Recordings::PLACES_STATE) + (place * Runtime::Recordings::PLACE_BYTES))
-                        end
-                      else
-                        kept = runtime_place(Runtime::Recordings::KEPT_BY_PASS) + ((frame % Runtime::Frame::STEPS_KEPT) * places)
-                        Array.new(places) { |place| byte(kept + place) }
-                      end
-            numbers.reject(&:zero?).map { |number| @places.recording_names.fetch(number - 1) }
+            r = Runtime::Recordings
+            held = if frame == :end
+                     Array.new(r::PLACES) do |place|
+                       at = runtime_place(r::PLACES_STATE) + (place * r::PLACE_BYTES)
+                       [read32(at + r::HELD), read32(at + r::LEVEL), read32(at + r::OWNER)]
+                     end
+                   else
+                     kept = (frame % Runtime::Frame::STEPS_KEPT) * r::PLACES
+                     Array.new(r::PLACES) do |place|
+                       [byte(runtime_place(r::KEPT_BY_PASS) + kept + place), byte(runtime_place(r::LEVELS_BY_PASS) + kept + place), nil]
+                     end
+                   end
+            held.reject { |number, *| number.zero? }.map do |number, level, owner|
+              HeldRecording.new(name: @places.recording_names.fetch(number - 1), level: level, owner: owner)
+            end
           end
+
+          # A place's recording as a run reads it: its name, its level, and whose it is (nil where not read).
+          HeldRecording = Data.define(:name, :level, :owner)
 
           def power_on = set_buttons(@held)
 
@@ -248,6 +263,10 @@ module VBlank
             @sounds = frame == :end || !sound? ? sounds : logged_by_pass(frame)
             read_sound_entries(@sounds) if sound?
             @sounding = recordings_at(frame)
+            if playing_recordings? # read while the console is still there, for #sound_drops and #sound_owners
+              @drops = [read32(runtime_place(Runtime::Recordings::DROPS)), read32(runtime_place(Runtime::Recordings::DROPS_MUSIC))]
+              @held_at_end = recordings_at(:end) if frame == :end
+            end
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
                                    sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars),
                                    sounding: active_samples.map { |name| [name, level_of(name)] })

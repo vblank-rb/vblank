@@ -496,8 +496,9 @@ module VBlank
                                   # Two ports for pads (the build reads the first alone for now).
                                   controllers: 2,
                                   # A background is a picture the graphics chip draws, so it can be held to
-                                  # a box (the chip's drawing area) that nothing else uses.
-                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                                  # a box (the chip's drawing area) that nothing else uses. A recorded note
+                                  # can glide: its voice's pitch is a register written while it plays.
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true,
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,

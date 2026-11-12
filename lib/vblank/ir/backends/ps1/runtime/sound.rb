@@ -364,6 +364,7 @@ module VBlank
               asm.label("rt_sound_frame_tick")
               asm.jal("rt_recordings_frame") if samples
               asm.jal("rt_music_frame") if songs
+              asm.jal("rt_recordings_shapes") if samples # every shape a frame on, after the tune (Reference#advance_frame)
               asm.jal("rt_sound_fades")
               asm.lw(:t0, at.call(TICKS_LEFT), :gp)
               asm.addiu(:t0, :t0, -1)

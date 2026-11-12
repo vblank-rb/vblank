@@ -173,6 +173,9 @@ module VBlank
               emit_group(asm)
             end
 
+            # Whether the game plays recordings, so a recorded part's notes go to Runtime::Recordings' places.
+            def recorded?(memory) = memory.reserved?(Recordings::PLACES_STATE)
+
             def wobbles?(memory) = memory.reserved?(WOBBLES)
             def steps_shapes?(memory) = memory.reserved?(SHAPES)
             def swells?(memory) = memory.reserved?(SWELLS)
@@ -746,6 +749,7 @@ module VBlank
               # tune held free, no note held, and the tune's own stop logged (Music.stop_entry).
               asm.label("rt_music_quiet")
               enter(asm, %i[s0])
+              asm.jal("rt_recordings_release_music") if recorded?(memory)
               if level_at
                 PARTS.times do |part|
                   asm.sw(:zero, at.call(HELD) + (part * 4), :gp)
@@ -818,6 +822,14 @@ module VBlank
               asm.lw(:t3, at.call(FRAME), :gp)
               asm.bne(:t7, :t3, "rt_music_part_next")
               asm.sw(:t6, at.call(NOTE), :gp)
+              if recorded?(memory) # a part that plays a recording: its note in Recordings' places
+                emit_field(asm, at, :t0, ENTRY, m::CHANNEL)
+                asm.sltiu(:t1, :t0, m::RECORDED_CHANNEL)
+                asm.bne(:t1, :zero, "rt_music_part_console")
+                asm.jal("rt_music_recorded_note")
+                asm.b("rt_music_part_passed")
+                asm.label("rt_music_part_console")
+              end
               if sharing
                 # A voice a sound effect holds with a higher rank: the part carries on in time, silent here
                 # (Reference::Player#play_song_frame).
@@ -867,6 +879,71 @@ module VBlank
               asm.addu(:t0, :t0, :t1)
               asm.addiu(:v0, :t0, m::RECORD_BYTES)
               asm.jr(:ra) { asm.sw(:v0, at.call(ENTRY), :gp) }
+
+              emit_recorded_note(asm, at, level_at) if recorded?(memory)
+            end
+
+            # rt_music_recorded_note: the note at NOTE of a song's part that plays a recording: a note takes a
+            # place for the part (rt_recordings_note), and logs itself if it found one; a rest gives the part's
+            # place back and logs itself whether the part had one or not (Reference::Player#play_song_frame).
+            # The part's own number among the song's recorded parts, one up, is whose the place is.
+            def emit_recorded_note(asm, at, level_at)
+              m = PS1::Music
+              asm.label("rt_music_recorded_note")
+              enter(asm, %i[s0])
+              emit_field(asm, at, :s0, ENTRY, m::CHANNEL)
+              asm.addiu(:s0, :s0, -(m::RECORDED_CHANNEL - 1))
+              emit_field(asm, at, :t2, NOTE, m::NOTE_RECORDING)
+              asm.bne(:t2, :zero, "rt_music_recorded_note_plays")
+              asm.move(:a0, :s0)
+              asm.jal("rt_recordings_note_release")
+              asm.b("rt_music_recorded_note_log")
+              asm.label("rt_music_recorded_note_plays")
+              asm.andi(:a0, :t2, ~m::GLIDES & 0xFFFF)
+              asm.addiu(:a0, :a0, -1)
+              asm.move(:a1, :s0)
+              emit_field(asm, at, :a2, SONG, m::RANK)
+              asm.addiu(:a2, :a2, 1) # above the game's own sounds, at nought
+              emit_note_or_glide(asm, "rt_music_recorded_note")
+              asm.beq(:v0, :zero, "rt_music_recorded_note_done") # no place: not heard
+              asm.label("rt_music_recorded_note_log")
+              emit_group_at(asm, at, NOTE, m::NOTE_HEAD)
+              emit_recorded_note_level(asm, at) if level_at
+              asm.label("rt_music_recorded_note_done")
+              leave(asm, %i[s0])
+            end
+
+            # A recorded note that sounds, its row's word in t2 (SongTable::GLIDES set for one that glides): a
+            # note that glides carries the part's sounding note on at its pitch (rt_recordings_glide), and any
+            # other takes a place (rt_recordings_note). a0 to a2 are the row, the owner and the rank; v0 whether
+            # it was heard. +label+ names the routine it is in.
+            def emit_note_or_glide(asm, label)
+              asm.andi(:t3, :t2, PS1::Music::GLIDES)
+              asm.beq(:t3, :zero, "#{label}_strikes")
+              asm.jal("rt_recordings_glide")
+              asm.b("#{label}_struck")
+              asm.label("#{label}_strikes")
+              asm.jal("rt_recordings_note")
+              asm.label("#{label}_struck")
+            end
+
+            # The recorded note at NOTE under the music volume (Reference::Player#record_note_volume): the part's
+            # level record held for a new level to reach (nought for a rest), the part in HELD_ORDER, its
+            # loudness at the level logged, and a note that sounds given that loudness.
+            def emit_recorded_note_level(asm, at)
+              m = PS1::Music
+              emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
+              asm.beq(:t3, :zero, "rt_music_recorded_level_held")
+              emit_field(asm, at, :t3, NOTE, m::NOTE_WOBBLE)
+              asm.label("rt_music_recorded_level_held")
+              asm.lw(:t2, at.call(PART), :gp)
+              asm.sll(:t2, :t2, 2)
+              asm.addu(:t2, :t2, :gp)
+              asm.sw(:t3, at.call(HELD), :t2)
+              emit_part_listed(asm, at, "rt_music_recorded_level_listed")
+              emit_field(asm, at, :a0, NOTE, m::NOTE_WOBBLE)
+              emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
+              asm.jal("rt_music_recorded_loudness")
             end
 
             # THE MUSIC VOLUME (Genesis::Runtime::Music#emit_level says each, in the same order).
@@ -930,6 +1007,27 @@ module VBlank
               asm.label("rt_music_note_loud")
               leave(asm)
 
+              if recorded?(memory)
+                # rt_music_recorded_loudness(a0 = a recorded note's level record, t3 not nought when it took a
+                # place): the group logging its loudness at the level, and the place it took (TAKEN) given that
+                # loudness (SongTable#recorded_level_record: the logs, then the voices' volumes).
+                asm.label("rt_music_recorded_loudness")
+                enter(asm, %i[s0 s1])
+                asm.lw(:t1, at.call(LEVEL_SET), :gp)
+                asm.xori(:t1, :t1, full)
+                asm.sll(:t1, :t1, 1)
+                asm.addu(:t1, :t1, :a0)
+                emit_table_place(asm, :s0, :t1)
+                asm.move(:s1, :t3)
+                asm.lhu(:a0, 0, :s0)
+                asm.jal("rt_sound_group")
+                asm.beq(:s1, :zero, "rt_music_recorded_loudness_done")
+                asm.lhu(:a0, PS1::Music::LEVEL_VOLUMES, :s0)
+                asm.jal("rt_recordings_loud")
+                asm.label("rt_music_recorded_loudness_done")
+                leave(asm, %i[s0 s1])
+              end
+
               asm.label("rt_music_relevel")
               enter(asm, %i[s0])
               asm.li(:t1, level_at)
@@ -952,6 +1050,23 @@ module VBlank
               asm.lw(:s0, at.call(HELD), :t0)
               asm.beq(:s0, :zero, "rt_music_relevel_next")
               asm.jal("rt_music_entry")
+              if recorded?(memory)
+                # A recorded part's note is held only while its place still sounds it: struck at the new level
+                # there, its loudness logged and its voice given it.
+                asm.lhu(:t0, PS1::Music::CHANNEL, :v0)
+                asm.sltiu(:t1, :t0, PS1::Music::RECORDED_CHANNEL)
+                asm.bne(:t1, :zero, "rt_music_relevel_console")
+                asm.addiu(:a0, :t0, -(PS1::Music::RECORDED_CHANNEL - 1))
+                asm.jal("rt_recordings_sounding")
+                asm.beq(:v0, :zero, "rt_music_relevel_next")
+                asm.addiu(:v0, :v0, -1)
+                asm.sw(:v0, at.call(Recordings::TAKEN), :gp)
+                asm.move(:a0, :s0)
+                asm.li(:t3, 1)
+                asm.jal("rt_music_recorded_loudness")
+                asm.b("rt_music_relevel_next")
+                asm.label("rt_music_relevel_console")
+              end
               asm.move(:a0, :s0)
               asm.jal("rt_music_loudness")
               asm.label("rt_music_relevel_next")
@@ -1307,6 +1422,14 @@ module VBlank
               asm.lw(:t5, SFX_CURSORS, :t0)
               asm.addiu(:t5, :t5, 1)
               asm.sw(:t5, SFX_CURSORS, :t0)
+              if recorded?(memory) # a part that plays a recording: its note in Recordings' places
+                emit_field(asm, at, :t0, SFX_ENTRY, m::CHANNEL)
+                asm.sltiu(:t1, :t0, m::RECORDED_CHANNEL)
+                asm.bne(:t1, :zero, "rt_sfx_frame_console")
+                asm.jal("rt_sfx_recorded_note")
+                asm.b("rt_sfx_frame_next")
+                asm.label("rt_sfx_frame_console")
+              end
               emit_field(asm, at, :a0, RECORD, m::EFFECT_RANK)
               emit_claim_call(asm, at, SFX_ENTRY, SFX_NOTE)
               asm.beq(:v0, :zero, "rt_sfx_frame_next")
@@ -1394,7 +1517,78 @@ module VBlank
               emit_count_up(asm, at, RELEASE_WALK, 4)
               asm.b("rt_sfx_finish_next")
               asm.label("rt_sfx_finish_done")
+              asm.jal("rt_sfx_release_recorded") if recorded?(memory)
               leave(asm)
+              emit_sfx_recorded_parts(asm, at) if recorded?(memory)
+            end
+
+            # rt_sfx_recorded_note: the note at SFX_NOTE of the selected effect's part that plays a recording, in a
+            # place the effect owns (Recordings::EFFECT_OWNER): a note takes a place at the effect's rank and logs
+            # itself if it found one; a note that sounds nothing gives the part's place back, and logs itself
+            # only if the part had it (Reference::Player#play_effect_frame).
+            #
+            # rt_sfx_release_recorded: each of the selected effect's parts that plays a recording gives back the
+            # place it still sounds a note in, logging its end through its release group if it had one
+            # (Reference::Player#finish_effect).
+            #
+            # rt_sfx_owner (a0 = a channel): v0 = the owner number of the selected effect's part on it: the
+            # effect's number, one up, in the high byte, and the part's place among its recorded parts, one up.
+            def emit_sfx_recorded_parts(asm, at)
+              m = PS1::Music
+              asm.label("rt_sfx_recorded_note")
+              enter(asm, %i[s0])
+              emit_field(asm, at, :a0, SFX_ENTRY, m::CHANNEL)
+              asm.jal("rt_sfx_owner")
+              asm.move(:s0, :v0)
+              emit_field(asm, at, :t2, SFX_NOTE, m::NOTE_RECORDING)
+              asm.bne(:t2, :zero, "rt_sfx_recorded_note_plays")
+              asm.move(:a0, :s0)
+              asm.jal("rt_recordings_note_release")
+              asm.b("rt_sfx_recorded_note_heard")
+              asm.label("rt_sfx_recorded_note_plays")
+              asm.andi(:a0, :t2, ~m::GLIDES & 0xFFFF)
+              asm.addiu(:a0, :a0, -1)
+              asm.move(:a1, :s0)
+              emit_field(asm, at, :a2, RECORD, m::EFFECT_RANK)
+              asm.addiu(:a2, :a2, 1) # above the game's own sounds, at nought
+              emit_note_or_glide(asm, "rt_sfx_recorded_note")
+              asm.label("rt_sfx_recorded_note_heard")
+              asm.beq(:v0, :zero, "rt_sfx_recorded_note_done")
+              emit_group_at(asm, at, SFX_NOTE, m::NOTE_HEAD)
+              asm.label("rt_sfx_recorded_note_done")
+              leave(asm, %i[s0])
+
+              asm.label("rt_sfx_release_recorded")
+              enter(asm)
+              emit_field(asm, at, :t0, RECORD, m::EFFECT_PART_COUNT)
+              asm.sw(:t0, at.call(SFX_PARTS), :gp)
+              asm.sw(:zero, at.call(SFX_PART), :gp)
+              asm.label("rt_sfx_release_recorded_part")
+              asm.lw(:t0, at.call(SFX_PART), :gp)
+              asm.lw(:t1, at.call(SFX_PARTS), :gp)
+              asm.sltu(:t2, :t0, :t1)
+              asm.beq(:t2, :zero, "rt_sfx_release_recorded_done")
+              asm.jal("rt_sfx_entry")
+              asm.lhu(:a0, m::CHANNEL, :v0)
+              asm.sltiu(:t1, :a0, m::RECORDED_CHANNEL)
+              asm.bne(:t1, :zero, "rt_sfx_release_recorded_next") # a voice of the console's own, let go above
+              asm.jal("rt_sfx_owner")
+              asm.move(:a0, :v0)
+              asm.jal("rt_recordings_note_release")
+              asm.beq(:v0, :zero, "rt_sfx_release_recorded_next")
+              emit_group_at(asm, at, SFX_ENTRY, m::EFFECT_RELEASE)
+              asm.label("rt_sfx_release_recorded_next")
+              emit_count_up(asm, at, SFX_PART)
+              asm.b("rt_sfx_release_recorded_part")
+              asm.label("rt_sfx_release_recorded_done")
+              leave(asm)
+
+              asm.label("rt_sfx_owner")
+              asm.addiu(:t0, :a0, -(m::RECORDED_CHANNEL - 1))
+              asm.lw(:v0, at.call(EFFECT), :gp)
+              asm.addiu(:v0, :v0, 1)
+              asm.sll(:v0, :v0, 8)
+              asm.jr(:ra) { asm.or(:v0, :v0, :t0) }
             end
 
             # rt_sfx_claim: may a note of rank CLAIM_RANK sound on CLAIM_CHANNEL? Yes (v0 = 1) when nobody
