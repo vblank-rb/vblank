@@ -1134,7 +1134,6 @@ module VBlank
             # t3 the bound.
             def emit_cell_side_search(asm, at)
               least = FacePieces::LEAST_CELL_SHIFT
-              most = FacePieces::MOST_CELL_SHIFT
               asm.lw(:a2, at + REACH_OFFSET_BYTES, FACE_BASE)
               asm.lw(:a3, at + REACH_OFFSET_BYTES + 4, FACE_BASE)
               asm.lw(:t7, at + SPANS_OFFSET_BYTES, FACE_BASE)
