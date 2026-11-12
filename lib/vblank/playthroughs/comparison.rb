@@ -184,16 +184,19 @@ module VBlank
       # +by_passes+ is how each cartridge counts its passes, for two lined up by the game's own
       # passes and not by frames, and +pass_count_wraps_at+ where that count comes back round to
       # nought (see Passes), and +reads_buttons_every_frame+ true for a game that reads its buttons on
-      # every frame and not once a pass. +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
+      # every frame and not once a pass. +passes_compared_at+ is `:start` to compare each pass on the
+      # first frame that shows it (nil is the same), or `:end` for its readings on the last frame that
+      # shows it and its picture on the frame after (Passes, AT THE END OF EACH PASS). +skipping_still_frames_of+ is `:first`, `:second` or `:both`, the
       # cartridges whose frames that show the picture of the frame before are skipped (see
       # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, saves: nil, lead_ins: nil, reports_in: nil, layers: nil,
                      ignoring_sprites: nil, forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil,
-                     skipping_still_frames_of: nil, reads_buttons_every_frame: false, **how_alike)
+                     skipping_still_frames_of: nil, reads_buttons_every_frame: false, passes_compared_at: nil, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
         @sprite_boxes = SpriteBoxes.from(ignoring_sprites)
-        passes = Passes.from(by_passes, pass_count_wraps_at, every_frame: reads_buttons_every_frame)
+        passes = Passes.from(by_passes, pass_count_wraps_at, every_frame: reads_buttons_every_frame,
+                                                             compared_at: passes_compared_at)
         still_frames = StillFrames.from(skipping_still_frames_of)
         refuse_two_step_counts!(passes, still_frames)
         @step_count = passes || still_frames
@@ -400,10 +403,11 @@ module VBlank
         lined_up = @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part)
         lined_up&.skip_passes_under_way! if @lead_ins.any?
         sprite_boxes = @sprite_boxes&.start_watch(consoles, cartridges, @likeness.screen_size)
+        readings_before = @readings.start_watch(consoles) if lined_up&.at_end?
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
                                                              torn: TornFrames.for(@torn_side, @likeness),
                                                              carrying_on: @carrying_on, reporter: reporter, lined_up: lined_up,
-                                                             sprite_boxes: sprite_boxes)
+                                                             sprite_boxes: sprite_boxes, readings_before: readings_before)
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -566,7 +570,7 @@ module VBlank
       def self.settings
         [*how_alike_settings, :ignoring_frames, :layers, :ignoring_sprites, :forgiving_torn_frames_of, :readings, :comparing,
          :carrying_on, :same, :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
-         :skipping_still_frames_of]
+         :passes_compared_at, :skipping_still_frames_of]
       end
 
       # Passes and still frames are two counts of steps (see LinedUp), and a comparison lines the
@@ -824,11 +828,14 @@ module VBlank
         # noted — or is nil, and then no screen is copied out, which is only worth doing for
         # a report. +lined_up+ is the two lined up step by step (LinedUp), or nil to compare
         # them frame by frame. +sprite_boxes+ is the sprites' boxes to leave out (SpriteBoxes::Watch),
-        # read after every frame either cartridge plays, or nil.
+        # read after every frame either cartridge plays, or nil. +readings_before+ is the readings
+        # watched the same way (Readings::Watch), for two compared at the end of each pass, whose
+        # readings are those of the frame before; nil for readings read on the frame compared.
         def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:, lined_up: nil,
-                       sprite_boxes: nil)
+                       sprite_boxes: nil, readings_before: nil)
           @lined_up = lined_up
           @sprite_boxes = sprite_boxes
+          @readings_before = readings_before
           @steps = 0
           @decided_frame = 0
           @first = first
@@ -852,10 +859,10 @@ module VBlank
           keys = Playthrough.key_mask(buttons)
           frames.times do
             @first.step(1, keys: keys)
-            @sprite_boxes&.read_after_frame!(0)
+            read_watches_after_frame!(0)
             unless @lined_up
               @second.step(1, keys: keys)
-              @sprite_boxes&.read_after_frame!(1)
+              read_watches_after_frame!(1)
             end
             @frames += 1
             seen = @lined_up ? observe_step(keys) : observe
@@ -906,18 +913,25 @@ module VBlank
           part = @looked_at.part_on(@frames, @first, @second, @sprite_boxes&.rectangles || [])
           return unseen if ignored_frame?
 
-          seen = @compared.seen_on(@first, @second, part)
+          seen = @compared.seen_on(@first, @second, part, readings: @readings_before&.values_before)
           unseen.with(seen: seen, kept: (kept_from(seen, part) if beginning?(seen)))
         end
 
-        # The frame just played on the first cartridge, looked at if it is the frame the first
-        # took a step on, with the second played on to the same step and held +keys+ as it goes.
-        # Nil for a frame that took no step. A step the second goes past without showing is not
-        # looked at.
+        # The frame just played on the first cartridge, looked at if it is the frame on which the
+        # first took a step (or, compared at the end of each step, went past one), with the second
+        # played on to the same place and held +keys+ as it goes. Nil for a frame where neither
+        # happened. A step the second goes past without showing is not looked at.
         private def observe_step(keys)
-          step = @lined_up.read_step_begun_on_first!(keys) or return nil
+          step = @lined_up.read_step_compared_on_first!(keys) or return nil
 
-          observe(step: step, passed_over: !@lined_up.play_second_to_step!(step) { @sprite_boxes&.read_after_frame!(1) })
+          observe(step: step, passed_over: !@lined_up.play_second_to_step!(step) { read_watches_after_frame!(1) })
+        end
+
+        # What is watched after every frame the cartridge on +side+ plays: the sprites' boxes and the
+        # readings of the frame before, where either is.
+        private def read_watches_after_frame!(side)
+          @sprite_boxes&.read_after_frame!(side)
+          @readings_before&.read_after_frame!(side)
         end
 
         # Whether something may begin to differ on this frame. With the strict rule for torn

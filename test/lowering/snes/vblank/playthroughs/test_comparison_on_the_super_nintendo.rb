@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "slow_pass_games"
 
 # TWO SUPER NINTENDO CARTRIDGES COMPARED on their own screen, 256 by 224 pixels, not the Advance's:
 # a part of the screen past the Advance's 240 columns can be left out, and a difference is placed on
@@ -9,6 +10,7 @@ require "stringio"
 # that walks two pixels a frame while RIGHT is down, from column +from+.
 class TestComparisonOnTheSuperNintendo < Minitest::Test
   include VBlank::Testing::PlaysAlike
+  include SlowPassGames
 
   private def walker(from)
     VBlank.build("WALKER", console: :snes, out: StringIO.new, err: StringIO.new) do
@@ -67,6 +69,13 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
 
     assert_match "Super Nintendo", error.message
     assert_match "`ignoring_sprites: [[8, 8], [16, 16]]`", error.message
+  end
+
+  # Lined up by passes, a pass that finishes on its second frame is compared at its end
+  # (SlowPassGames).
+  def test_a_slow_pass_is_compared_at_its_end
+    assert_slow_pass_compared_at_its_end(:snes)
+    assert_difference_found_at_pass_end(:snes)
   end
 
   def test_a_difference_is_placed_on_the_console_s_screen

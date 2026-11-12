@@ -3,6 +3,7 @@
 require "test_helper"
 require "stringio"
 require "comparison_games"
+require "slow_pass_games"
 
 # TWO CARTRIDGES LINED UP BY THE GAME'S OWN PASSES (`by_passes:`), not by frames. A pass is one
 # run of the game's loop, and on either cartridge one may take a frame or several: an original
@@ -15,6 +16,7 @@ require "comparison_games"
 # marker every pass, so every pass has a picture of its own.
 class TestComparisonByPasses < Minitest::Test
   include ComparisonGames
+  include SlowPassGames
   include VBlank::Testing::PlaysAlike
 
   # +late+ makes every fifth pass take two frames; +speck_on+ draws one white pixel on that pass
@@ -218,6 +220,55 @@ class TestComparisonByPasses < Minitest::Test
              VBlank.playthrough("late lead") { wait frames: slow_begins }]
 
     assert_plays_alike quick, late, watch, by_passes: :passes, lead_ins: leads, readings: { into: into_first }
+  end
+
+  # A PASS THAT FINISHES ON ITS SECOND FRAME (SlowPassGames): read on its first frame its work is
+  # half done, so the two are compared at each pass's end, the readings on its last frame and the
+  # picture on the frame after it.
+  def test_a_slow_pass_is_compared_at_its_end
+    assert_slow_pass_compared_at_its_end(:gba)
+  end
+
+  def test_a_difference_is_found_on_its_pass_at_the_pass_end
+    assert_difference_found_at_pass_end(:gba)
+  end
+
+  # The picture of the frame after each pass's end, without its sprites or of the sprites alone.
+  def test_pass_ends_compare_the_layers_asked_for
+    quick = stepping_box(console: :gba)
+    slow = stepping_box(console: :gba, slow: true)
+
+    %i[backgrounds sprites].each do |layers|
+      assert_plays_alike quick, slow, watch_steps, by_passes: :passes, passes_compared_at: :end, layers: layers
+    end
+  end
+
+  # Compared at the end of each pass, the second has to go past the pass the first went past.
+  def test_a_second_cartridge_that_never_goes_past_a_pass_says_so
+    error = assert_raises(VBlank::Playthroughs::Comparison::PassNotReached) do
+      watch.compare(passing, passing(stops_at: 10), by_passes: :passes, passes_compared_at: :end)
+    end
+
+    assert_match "went past pass 10", error.message
+  end
+
+  # The call shape of a port held to its original: a count kept in a byte, buttons read every
+  # frame, lead-ins that end part way through a slow pass, and the sprites left out.
+  def test_pass_ends_go_with_a_port_s_other_settings
+    quick = stepping_box(console: :gba)
+    slow = stepping_box(console: :gba, slow: true)
+    leads = [VBlank.playthrough("slow lead") { wait frames: 9 }, VBlank.playthrough("quick lead") { wait frames: 7 }]
+    settings = { by_passes: [->(game) { game.var(:passes) % 8 }, :passes], pass_count_wraps_at: 8,
+                 reads_buttons_every_frame: true, lead_ins: leads, ignoring_sprites: true, readings: { x: :x } }
+
+    assert_raises(Minitest::Assertion) { assert_plays_alike slow, quick, watch_steps, **settings }
+    assert_plays_alike slow, quick, watch_steps, **settings, passes_compared_at: :end
+  end
+
+  def test_pass_ends_with_no_count_and_an_unknown_place_are_refused
+    assert_match "`by_passes:`", assert_raises(ArgumentError) { watch.compare(nil, nil, passes_compared_at: :end) }.message
+    assert_match "`passes_compared_at:`",
+                 assert_raises(ArgumentError) { watch.compare(nil, nil, by_passes: :passes, passes_compared_at: :middle) }.message
   end
 
   def test_a_wrap_with_no_count_and_a_count_that_is_no_way_are_refused

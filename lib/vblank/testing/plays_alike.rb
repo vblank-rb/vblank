@@ -34,7 +34,9 @@ module VBlank
     # and not by frames, for an original that takes two frames over a pass now and then: each
     # cartridge's count of passes (`true` for the game loop's own on a cartridge built here, a
     # variable's name, a block, or one for each, as `readings:` takes them), with
-    # `pass_count_wraps_at: 256` for a count kept in a byte. `skipping_still_frames_of: :second`
+    # `pass_count_wraps_at: 256` for a count kept in a byte, and `passes_compared_at: :end` for one
+    # whose slow pass counts itself before its work is done (the readings on the last frame that
+    # shows each pass, the picture on the frame after). `skipping_still_frames_of: :second`
     # (or `:first`, or `:both`) skips that cartridge's frames whose picture is the one before's, a
     # room loading, so the two are in step again after a load that is longer on one.
     #

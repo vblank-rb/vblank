@@ -88,10 +88,42 @@ module VBlank
 
         # Every reading on both of two running cartridges: each name with its pair of
         # values, the first cartridge's and the second's.
-        def values_on(first, second)
-          ours = values_from(first, 0)
-          theirs = values_from(second, 1)
-          ours.to_h { |name, value| [name, [value, theirs.fetch(name)]] }
+        def values_on(first, second) = Readings.paired(values_from(first, 0), values_from(second, 1))
+
+        # Every reading of each cartridge, the first's and the second's, as `values_on` pairs them.
+        def self.paired(ours, theirs) = ours.to_h { |name, value| [name, [value, theirs.fetch(name)]] }
+
+        # The readings of +consoles+, the two running cartridges, read from now on after every frame
+        # each plays, so those of the frame before can be had (Watch).
+        def start_watch(consoles) = Watch.new(self, consoles)
+
+        # THE READINGS OF TWO RUNNING CARTRIDGES ON THE FRAME BEFORE, for two lined up at the end of
+        # each pass (Passes, AT THE END OF EACH PASS): each pass's readings are compared on the last
+        # frame that showed it, and that cartridge has played one frame more by the time the pass is
+        # seen to have ended. Each is read as it stands when the watch begins, so the first frame
+        # played has a frame before it, the lead-in's last.
+        class Watch
+          def initialize(readings, consoles)
+            @readings = readings
+            @consoles = consoles
+            @before = [nil, nil]
+            @now = [0, 1].map { |side| read(side) }
+          end
+
+          # The readings of the cartridge on +side+ (0 for the first, 1 for the second) read again,
+          # after a frame it played.
+          def read_after_frame!(side)
+            @before[side] = @now[side]
+            @now[side] = read(side)
+          end
+
+          # Every reading on both cartridges on the frame before each one's last, each name with its
+          # pair of values.
+          def values_before = Readings.paired(*@before)
+
+          private
+
+          def read(side) = @readings.values_from(@consoles[side], side)
         end
 
         # Every reading on one running cartridge, each name with its value. +side+ marks

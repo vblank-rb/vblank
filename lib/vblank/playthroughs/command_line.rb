@@ -376,7 +376,7 @@ module VBlank
         said.to_h do |setting, written|
           [setting, case setting
                     when :ignoring_rectangles, :looking_at then written.map { |one| parse_rectangle(one, setting) }
-                    when :layers, :forgiving_torn_frames_of, :skipping_still_frames_of then written.to_sym
+                    when :layers, :forgiving_torn_frames_of, :skipping_still_frames_of, :passes_compared_at then written.to_sym
                     when :ignoring_frames then written.map { |one| parse_frame_stretch(one) }
                     when :ignoring_sprites then written && options[:sprite_sizes] ? parse_sprite_sizes(options[:sprite_sizes]) : written
                     when :readings then written.to_h { |one| parse_reading(one) }

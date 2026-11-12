@@ -132,7 +132,7 @@ class TestCommandLineCompare < Minitest::Test
   end
 
   # --by-passes lines the two up by a count of passes: a variable, or `passes` for the game loop's
-  # own. The drift then says its pass. A cartridge file keeps no count of the game loop's, and
+  # own; --passes-compared-at end compares each pass at its end. The drift then says its pass. A cartridge file keeps no count of the game loop's, and
   # a count written wrongly is refused; both end with 2.
   def test_by_passes_lines_the_two_up_by_a_count
     with_cartridges do |dir|
@@ -141,8 +141,15 @@ class TestCommandLineCompare < Minitest::Test
       drifted, drifted_status = cli("compare", "walker.rb", "red.rb", "--script", "walk.rb", "--by-passes", "passes", dir: dir)
       file, file_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--by-passes", "passes", dir: dir)
       wrong, wrong_status = cli("compare", "walker.rb", "red.rb", "--script", "walk.rb", "--by-passes", "a,b,c", dir: dir)
+      at_end, at_end_status = cli("compare", "walker.rb", "red.rb", "--script", "walk.rb", "--by-passes", "passes",
+                                  "--passes-compared-at", "end", dir: dir)
+      ends_agreed, ends_agreed_status = cli("compare", "walker.rb", "walker.rb", "--script", "walk.rb", "--by-passes",
+                                            "passes", "--passes-compared-at", "end", dir: dir)
 
       assert_equal AGREED, agreed_status.exitstatus, agreed
+      assert_equal AGREED, ends_agreed_status.exitstatus, ends_agreed
+      assert_equal DRIFTED, at_end_status.exitstatus, at_end
+      assert_match(/on pass \d+: frame \d+ on the first, frame \d+ on the second/, at_end)
       assert_equal DRIFTED, drifted_status.exitstatus, drifted
       assert_match(/on pass \d+: frame \d+ on the first, frame \d+ on the second/, drifted)
       assert_equal NOT_COMPARED, file_status.exitstatus, file
