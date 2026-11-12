@@ -102,6 +102,7 @@ again in another language is held to), `runtime_sounds.rb` (the sound such a run
 to, sample for sample against the native one's), `midpoint_circle.rb` (the answer key for a light's
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
+`sprite_box_fields.rb` (a sea with a moving hollow box sprite and a cell of rock, built for any console, for each console's test of a comparison's `ignoring_sprites:`),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),
 `shell_screen_tests.rb` (the made-up port with a shell's first screen of its own, `shell_screen`, and the same screen drawn by a plain game, which is the answer key each runtime's test holds it to),

@@ -175,6 +175,9 @@ module VBlank
       # two, one for each cartridge, for a port that draws on other layers than its original:
       # each a list of the layers to keep in the reader's own names (`%i[bg0 bg1]`), the reader's
       # `{ only: }` or `{ without: }`, one of those two words, or nil for all of it.
+      # +ignoring_sprites+ true leaves out of both pictures the box of every sprite either console's
+      # own table shows, on each frame and the frame before (see SpriteBoxes); for a Super Nintendo
+      # cartridge it is the two sizes its sprites come in instead.
       # +forgiving_torn_frames_of+ is the cartridge whose torn frames are forgiven where the
       # other already shows what they settle on (see TornFrames), `:first` or `:second`, or nil.
       #
@@ -186,9 +189,10 @@ module VBlank
       # StillFrames). Nil for a comparison frame by frame.
       def initialize(first, second, moments, ignoring_frames: [], readings: {}, comparing: nil, carrying_on: false,
                      same: :tape, frames_apart: nil, save: nil, saves: nil, lead_ins: nil, reports_in: nil, layers: nil,
-                     forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil, skipping_still_frames_of: nil,
-                     reads_buttons_every_frame: false, **how_alike)
+                     ignoring_sprites: nil, forgiving_torn_frames_of: nil, by_passes: nil, pass_count_wraps_at: nil,
+                     skipping_still_frames_of: nil, reads_buttons_every_frame: false, **how_alike)
         refuse_unknown_settings!(how_alike.keys)
+        @sprite_boxes = SpriteBoxes.from(ignoring_sprites)
         passes = Passes.from(by_passes, pass_count_wraps_at, every_frame: reads_buttons_every_frame)
         still_frames = StillFrames.from(skipping_still_frames_of)
         refuse_two_step_counts!(passes, still_frames)
@@ -210,6 +214,7 @@ module VBlank
         @shown_layers = shown_layers_for_each(layers)
         @torn_side = forgiving_torn_frames_of
         TornFrames.refuse_unknown_side!(@torn_side)
+        refuse_torn_frames_beside_sprite_boxes!
         @same = same
         @frames_apart = frames_apart
         @reports_in = Report.place_for(reports_in)
@@ -298,6 +303,7 @@ module VBlank
           sized_for_screens_of(pair)
           @readings.refuse_unreadable_on!(pair)
           @step_count&.refuse_unreadable_on!(pair)
+          @sprite_boxes&.refuse_unreadable_on!(pair)
           pair.zip(%w[first second], @lead_ins).each_with_index.map do |(cartridge, which, lead_in), side|
             Start.new(which: which, cartridge: cartridge, save: save_fitted_to(cartridge, which, @saves[side]), lead_in: lead_in,
                       count_passes: @step_count&.game_loop_count?(side) || false)
@@ -393,9 +399,11 @@ module VBlank
         reporter = ->(drift, pictures, part) { drift_with_report(drift, pictures, part, tape) } if @reports_in
         lined_up = @step_count&.lined_up_on(*consoles, @likeness.looked_at.fixed_part)
         lined_up&.skip_passes_under_way! if @lead_ins.any?
+        sprite_boxes = @sprite_boxes&.start_watch(consoles, cartridges, @likeness.screen_size)
         pair = SideBySide.new(*consoles, @compared, ignored, looked_at: @likeness.looked_at.on_tape(tape),
                                                              torn: TornFrames.for(@torn_side, @likeness),
-                                                             carrying_on: @carrying_on, reporter: reporter, lined_up: lined_up)
+                                                             carrying_on: @carrying_on, reporter: reporter, lined_up: lined_up,
+                                                             sprite_boxes: sprite_boxes)
         # A pair that has stopped plays no more frames, and is still told a moment that
         # names the very frame it stopped on: that one it reached. +due+ is the frame the
         # tape is on after each step, so a step is past where the pair stopped when it is
@@ -515,7 +523,8 @@ module VBlank
       # way that cartridge was started.
       private def drift_with_report(drift, pictures, part, tape)
         report = DriftReport.new(drift, screen_pair(pictures, part), tapes: starts.map { |start| start.tape_said(tape) },
-                                                               **what_any_report_has(@compared.sentences + @ignored.sentences(tape)))
+                                                               **what_any_report_has(@compared.sentences + @ignored.sentences(tape) +
+                                                                                     (@sprite_boxes&.sentences || [])))
         drift.with(report: report.write_in(@reports_in))
       end
 
@@ -555,8 +564,8 @@ module VBlank
 
       # Every setting a comparison has: the ones that set how alike, and the ones of its own.
       def self.settings
-        [*how_alike_settings, :ignoring_frames, :layers, :forgiving_torn_frames_of, :readings, :comparing, :carrying_on, :same,
-         :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
+        [*how_alike_settings, :ignoring_frames, :layers, :ignoring_sprites, :forgiving_torn_frames_of, :readings, :comparing,
+         :carrying_on, :same, :frames_apart, :save, :saves, :lead_ins, :reports_in, :by_passes, :pass_count_wraps_at, :reads_buttons_every_frame,
          :skipping_still_frames_of]
       end
 
@@ -619,6 +628,7 @@ module VBlank
         said << "a part of the screen for a stretch of frames or from a block" if @likeness.looked_at.changes_with_frame?
         said << "`forgiving_torn_frames_of:`" if @torn_side
         said << "`layers:`" if @layers
+        said << "`ignoring_sprites:`" if @sprite_boxes
         return if said.empty?
 
         raise ArgumentError, "The comparison is on the same script. It was given #{said.join('; ')}. On the same script, " \
@@ -716,6 +726,17 @@ module VBlank
                              "Give a range of moments, like `ignoring_frames: [:title..:in_the_world]`."
       end
 
+      # The strict rule for torn frames holds a frame against the frame after it in the part looked
+      # at on the first, which leaves out that frame's sprites and not the next one's: a sprite that
+      # moves would read as a change of picture. Until the rule takes each frame's own boxes, the two
+      # settings are not given together.
+      private def refuse_torn_frames_beside_sprite_boxes!
+        return unless @torn_side && @sprite_boxes
+
+        raise ArgumentError, "The comparison was given `forgiving_torn_frames_of:` and `ignoring_sprites:`. A comparison " \
+                             "cannot use the two together yet. Remove one of them."
+      end
+
       private def refuse_non_boolean_carrying_on!(given)
         return if [true, false].include?(given)
 
@@ -802,9 +823,12 @@ module VBlank
         # it began and the part looked at there, and hands the drift back with its report
         # noted — or is nil, and then no screen is copied out, which is only worth doing for
         # a report. +lined_up+ is the two lined up step by step (LinedUp), or nil to compare
-        # them frame by frame.
-        def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:, lined_up: nil)
+        # them frame by frame. +sprite_boxes+ is the sprites' boxes to leave out (SpriteBoxes::Watch),
+        # read after every frame either cartridge plays, or nil.
+        def initialize(first, second, compared, ignored, looked_at:, torn:, carrying_on:, reporter:, lined_up: nil,
+                       sprite_boxes: nil)
           @lined_up = lined_up
+          @sprite_boxes = sprite_boxes
           @steps = 0
           @decided_frame = 0
           @first = first
@@ -828,7 +852,11 @@ module VBlank
           keys = Playthrough.key_mask(buttons)
           frames.times do
             @first.step(1, keys: keys)
-            @second.step(1, keys: keys) unless @lined_up
+            @sprite_boxes&.read_after_frame!(0)
+            unless @lined_up
+              @second.step(1, keys: keys)
+              @sprite_boxes&.read_after_frame!(1)
+            end
             @frames += 1
             seen = @lined_up ? observe_step(keys) : observe
             next unless seen
@@ -875,7 +903,7 @@ module VBlank
                                    pass: (step if @lined_up&.passes?), second_frame: (@lined_up.second_frames if step))
           return unseen if passed_over
 
-          part = @looked_at.part_on(@frames, @first, @second)
+          part = @looked_at.part_on(@frames, @first, @second, @sprite_boxes&.rectangles || [])
           return unseen if ignored_frame?
 
           seen = @compared.seen_on(@first, @second, part)
@@ -889,7 +917,7 @@ module VBlank
         private def observe_step(keys)
           step = @lined_up.read_step_begun_on_first!(keys) or return nil
 
-          observe(step: step, passed_over: !@lined_up.play_second_to_step!(step))
+          observe(step: step, passed_over: !@lined_up.play_second_to_step!(step) { @sprite_boxes&.read_after_frame!(1) })
         end
 
         # Whether something may begin to differ on this frame. With the strict rule for torn

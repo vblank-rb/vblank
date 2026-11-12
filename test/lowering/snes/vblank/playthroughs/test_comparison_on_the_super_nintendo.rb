@@ -54,6 +54,21 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
     assert_match "`layers:`", error.message
   end
 
+  # The boxes are read from the console's own table, at the two sizes the game set (VBlank's own
+  # build sets OBSEL's first two, 8 by 8 and 16 by 16): two boxes eight pixels apart on one field
+  # are alike with both boxes left out.
+  def test_every_sprite_s_box_is_left_out_at_the_sizes_given
+    assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: [[8, 8], [16, 16]]
+  end
+
+  # bsnes here does not hand over the register the sizes are set in, so they are asked for.
+  def test_leaving_the_sprites_out_without_their_sizes_is_refused
+    error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: true }
+
+    assert_match "Super Nintendo", error.message
+    assert_match "`ignoring_sprites: [[8, 8], [16, 16]]`", error.message
+  end
+
   def test_a_difference_is_placed_on_the_console_s_screen
     failure = assert_raises(Minitest::Assertion) { assert_plays_alike walker(20), walker(28), walk }
 

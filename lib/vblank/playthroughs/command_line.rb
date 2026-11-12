@@ -368,12 +368,17 @@ module VBlank
       # that was not given is left out, so that what it is with nothing given stays the
       # library's to decide.
       def comparison_settings
-        said = Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact
+        if options[:sprite_sizes] && !options[:ignoring_sprites]
+          raise Refused, "--sprite-sizes was given without --ignoring-sprites. Add --ignoring-sprites, or remove --sprite-sizes."
+        end
+
+        said =Comparison.settings.to_h { |setting| [setting, options[setting]] }.compact
         said.to_h do |setting, written|
           [setting, case setting
                     when :ignoring_rectangles, :looking_at then written.map { |one| parse_rectangle(one, setting) }
                     when :layers, :forgiving_torn_frames_of, :skipping_still_frames_of then written.to_sym
                     when :ignoring_frames then written.map { |one| parse_frame_stretch(one) }
+                    when :ignoring_sprites then written && options[:sprite_sizes] ? parse_sprite_sizes(options[:sprite_sizes]) : written
                     when :readings then written.to_h { |one| parse_reading(one) }
                     when :by_passes then parse_pass_count(written)
                     when :comparing then written.map(&:to_sym)
@@ -391,6 +396,16 @@ module VBlank
 
         flag = "--#{setting.to_s.tr('_', '-')}"
         raise Refused, "#{flag} #{written} is not a rectangle. Write it as X,Y,WIDTH,HEIGHT, for example #{flag} 0,128,240,32."
+      end
+
+      # --sprite-sizes as it is written on a command line: the two sizes of a Super Nintendo
+      # cartridge's sprites, small then large, as WIDTHxHEIGHT with a comma between them.
+      def parse_sprite_sizes(written)
+        sizes = written.split(",").map { |size| size.match(/\A(\d+)x(\d+)\z/)&.captures&.map(&:to_i) }
+        return sizes if sizes.size == 2 && sizes.all?
+
+        raise Refused, "--sprite-sizes #{written} is not two sprite sizes. Write the two sizes, small then large, " \
+                       "for example --sprite-sizes 8x8,16x16."
       end
 
       # A stretch as it is written on a command line: two ends with two dots between them,

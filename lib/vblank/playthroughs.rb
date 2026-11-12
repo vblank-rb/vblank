@@ -19,6 +19,7 @@ require_relative "playthroughs/comparison"                    # Two cartridges p
 require_relative "playthroughs/comparison_likeness"           # How alike two pictures have to be
 require_relative "playthroughs/comparison_looked_at"          # Which screen pixels a comparison looks at, frame by frame
 require_relative "playthroughs/comparison_ignored_frames"     # Stretches of play a comparison skips
+require_relative "playthroughs/comparison_sprite_boxes"       # Every sprite's box, left out of the screen compared
 require_relative "playthroughs/comparison_torn_frames"        # The strict rule for a frame shown torn
 require_relative "playthroughs/comparison_video_differences"  # Which video memories differ where two runs part
 require_relative "playthroughs/comparison_readings"           # Numbers read from both runs and compared by name

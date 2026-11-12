@@ -626,6 +626,12 @@ module VBlank
         --pixels-apart N         Look at every Nth pixel across and down only.
         --layers WHICH           backgrounds: the picture without its sprites.
                                  sprites: the sprites alone.
+        --ignoring-sprites       Leave out the box of every sprite either
+                                 cartridge shows, on each frame and the frame
+                                 before.
+        --sprite-sizes SIZES     With --ignoring-sprites, for a Super Nintendo
+                                 cartridge: its two sprite sizes, small then
+                                 large, like 8x8,16x16.
         --forgiving-torn-frames-of WHICH
                                  first or second: forgive that cartridge a frame
                                  unlike the frames either side of it, where the
@@ -655,6 +661,8 @@ module VBlank
     option :looking_at, type: :array, banner: "X,Y,WIDTH,HEIGHT"
     option :pixels_apart, type: :numeric, banner: "N"
     option :layers, banner: "WHICH", enum: %w[backgrounds sprites]
+    option :ignoring_sprites, type: :boolean
+    option :sprite_sizes, banner: "SIZES"
     option :forgiving_torn_frames_of, banner: "WHICH", enum: %w[first second]
     option :ignoring_frames, type: :array, banner: "RANGE"
     option :readings, type: :array, banner: "NAME[=VARIABLE[,VARIABLE]]"

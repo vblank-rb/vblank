@@ -87,7 +87,8 @@ class TestCommandLineCompare < Minitest::Test
 
   # The same settings, said so that they do not reach the drift, leave it: half the pixels
   # may differ where nearly all do; the top half of the screen is left out where the whole
-  # ground turned; the frames left out end before the turn.
+  # ground turned; the frames left out end before the turn; the sprites' boxes are left out
+  # where the ground turned outside them.
   def test_a_setting_that_does_not_reach_the_drift_leaves_it
     with_cartridges do |dir|
       [
@@ -95,6 +96,7 @@ class TestCommandLineCompare < Minitest::Test
         %w[--ignoring-rectangles 0,0,240,80],
         %w[--ignoring-frames 1..5],
         %w[--ignoring-frames ..walked],
+        %w[--ignoring-sprites],
       ].each do |short|
         out, status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", *short, dir: dir)
 
@@ -288,6 +290,9 @@ class TestCommandLineCompare < Minitest::Test
         %w[--comparing sound] => /--comparing.*picture, readings/,
         %w[--frames-apart 3] => /--frames-apart/,
         %w[--frames-in-a-row many] => /--frames-in-a-row/,
+        %w[--ignoring-sprites --sprite-sizes 8x8] => /not two sprite sizes/,
+        %w[--sprite-sizes 8x8,16x16] => /without --ignoring-sprites/,
+        %w[--ignoring-sprites --same script] => /--ignoring-sprites/,
         %w[--lead-ins nobody -] => /no playthrough named "nobody"/,
         ["--lead-ins", "five frames"] => /--lead-ins needs two names/,
         %w[--saves walked.sav] => /--saves needs two save files/,

@@ -111,11 +111,12 @@ module VBlank
         def on_tape(tape) = OnTape.new(self, choices.to_h { |choice| [choice, choice.frame_ranges_on(tape)] })
 
         # The part looked at on +frame+, with +first+ and +second+ the two running cartridges.
-        # +ranges+ is each choice's stretches as frames (#on_tape).
-        def part_on(frame, first, second, ranges)
+        # +ranges+ is each choice's stretches as frames (#on_tape). +left_out+ is more rectangles to
+        # leave out on this frame, on the screen already: the sprites' boxes (SpriteBoxes).
+        def part_on(frame, first, second, ranges, left_out = [])
           within = @within&.rectangles_on(frame, first, second, ranges[@within], screen_size)
           outside = @outside.rectangles_on(frame, first, second, ranges[@outside], screen_size) || []
-          part_of(within, outside)
+          part_of(within, left_out.empty? ? outside : outside + left_out)
         end
 
         # WHAT WAS LOOKED AT, AS SENTENCES, for a report a person reads: nothing when it was
@@ -128,7 +129,7 @@ module VBlank
 
         # THE PART ON EACH FRAME OF ONE TAPE. See LookedAt#on_tape.
         OnTape = Data.define(:looked_at, :ranges) do
-          def part_on(frame, first, second) = looked_at.part_on(frame, first, second, ranges)
+          def part_on(frame, first, second, left_out = []) = looked_at.part_on(frame, first, second, ranges, left_out)
         end
 
         private

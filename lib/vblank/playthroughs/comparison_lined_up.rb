@@ -82,7 +82,8 @@ module VBlank
         # Play the second cartridge on, held the buttons the first was (see THE BUTTONS), until
         # its count shows +step+ or a later one, and answer whether it shows that very step,
         # which is then compared. It plays at least one frame the first time, since nothing is
-        # shown before a frame is played.
+        # shown before a frame is played. The block, if given, is called after each frame the
+        # second plays.
         def play_second_to_step!(step)
           buttons = @buttons_since_step
           @buttons_since_step = []
@@ -95,6 +96,7 @@ module VBlank
             before = @second.current_step
             @second.step_and_read!(buttons.size > 1 ? buttons.shift : buttons.first)
             @second_frames += 1
+            yield if block_given?
             still = @second.current_step == before ? still + 1 : 0
             @second.refuse_stood_still!(step) if still >= MOST_FRAMES_STILL
           end
