@@ -265,7 +265,7 @@ module VBlank
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen],
         "fades, lights and screen effects" => %i[fade tint fade_in fade_out flash_screen pixelate pixelate_in
                                                  pixelate_out spotlight iris_in iris_out],
-        "sprites and tiled backgrounds" => %i[status_bar canvas tile_pictures sprite_tiles layers layer draw_in_order
+        "sprites and tiled backgrounds" => %i[status_bar canvas tile_pictures sprite_tiles layers layer
                                               picture_groups colors recolor color_walk],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })

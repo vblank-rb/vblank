@@ -113,9 +113,6 @@ module VBlank
                   refuse_unmade!(TILED_SCREEN, "turns or resizes a sprite")
                 end
               end
-              if @program.walk.any? { |node| node.kind == :present_objects && !Array(node.orders).empty? }
-                refuse_unmade!(TILED_SCREEN, "puts its sprites in an order of its own (`draw_in_order`)")
-              end
               return if @objects.empty? || @backgrounds.empty?
 
               IR::Stacking.screenfuls(@program).each do |screenful|
@@ -385,8 +382,56 @@ module VBlank
               emit_store_number(hidden, 0)
               @asm.b(done)
               @asm.label(placing)
-              node.names.each { |name| emit_sprite_placing(object_named(name)) }
+              present_items(node).each do |item|
+                next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
+
+                emit_sprite_placing(object_named(item))
+              end
               @asm.label(done)
+            end
+
+            # The frame's sprites back to front, each a name, or, for a run the game orders (`draw_in_order`),
+            # the run, at the place of its first sprite (Reference#names_in_draw_order).
+            def present_items(node)
+              Array(node.orders).reduce(node.names.dup) do |names, run|
+                first = names.index(run.objects.first)
+                names[0...first] + [run] + names[(first + run.objects.length)..]
+              end
+            end
+
+            # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
+            # place in the run, so each entry in turn places the sprite it names. Each sprite's placing is written
+            # once, as a routine of its own ending in a return, and an entry picks it from a table of their
+            # addresses kept beside the code: a few instructions an entry, whatever the run's length. An entry
+            # read past the list's end stops the game, as the interpreter's read does; one naming no sprite of the
+            # run places none.
+            def emit_ordered_run(run)
+              table = fresh_label("ordered_placings")
+              past = fresh_label("past_ordered_placings")
+              placings = run.objects.map { fresh_label("ordered_placing") }
+              @asm.b(past)
+              @asm.label(table)
+              @asm.data_words(placings)
+              run.objects.each_with_index do |name, place|
+                @asm.label(placings[place])
+                emit_push(:ra)
+                emit_sprite_placing(object_named(name))
+                emit_pop(:ra)
+                @asm.jr(:ra)
+              end
+              @asm.label(past)
+              run.objects.each_index do |k|
+                none = fresh_label("order_names_none")
+                emit_value(Build.list_get(run.order, Build.int(k)))
+                @asm.sltiu(:t0, :v0, run.objects.length)
+                @asm.beq(:t0, :zero, none)
+                @asm.sll(:v0, :v0, 2)
+                @asm.la(:t1, table)
+                @asm.addu(:t1, :t1, :v0)
+                @asm.lw(:t1, 0, :t1)
+                @asm.jalr(:t1)
+                @asm.label(none)
+              end
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
