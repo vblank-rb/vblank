@@ -113,6 +113,42 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
+  # A SCREEN IN SEVEN BANKS OF COLOURS whose tiles each draw only some of their bank's places, as a
+  # Color game's title is (SEVEN_BANKS_SCREEN). It shows the decoded cells, and the Color holds it
+  # in its eight lists of colours as the original does: a list for each bank, whichever of the
+  # bank's places a tile draws. The decoded cells written in the game are played by the interpreter
+  # alone: a Color build gives a picture of the game's own the colours it draws, not its bank.
+  def test_a_map_of_cells_in_seven_banks_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), color_screen: SEVEN_BANKS_SCREEN)
+      by_hand = color_cells_drawn_by_hand(color_screen: SEVEN_BANKS_SCREEN)
+
+      assert_equal map_pixels(Reference.new.run(by_hand, frames: 3).screen, SEVEN_BANKS_SCREEN),
+                   map_pixels(game_player.run(program, frames: 3).screen, SEVEN_BANKS_SCREEN)
+    end
+  end
+
+  # ...and the game walks all eight banks of it up from black by their names, as the Color game
+  # fades its title in. The interpreter plays both games on one screen, so the walk is held to
+  # the decoded cells there, and the run's own build of the game is held to the interpreter on
+  # every pass (on the Color, its picture a pass sooner than the Advance's).
+  def test_a_map_of_cells_in_seven_banks_is_walked_by_its_banks_names
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), walked: true,
+                                                                                      color_screen: SEVEN_BANKS_SCREEN)
+      by_hand = color_cells_drawn_by_hand(walked: true, color_screen: SEVEN_BANKS_SCREEN)
+
+      [2, 4, COLOR_WALK_STEPS + 2].each do |frames|
+        assert_equal map_pixels(Reference.new.run(by_hand, frames: frames).screen, SEVEN_BANKS_SCREEN),
+                     map_pixels(Reference.new.run(program, frames: frames).screen, SEVEN_BANKS_SCREEN),
+                     "the screen after #{frames} frames"
+      end
+      refute_equal map_pixels(Reference.new.run(program, frames: 2).screen, SEVEN_BANKS_SCREEN),
+                   map_pixels(game_player.run(program, frames: COLOR_WALK_STEPS + 2).screen, SEVEN_BANKS_SCREEN),
+                   "the walk moves the screen"
+    end
+  end
+
   # A game of the Color original whose data pack names a slot of map cells and whose block, run on
   # the builder with the pack, declares the rest. +routine+ is the unpacking's, given the pack.
   private def color_map_cells_refusal(folder, routine: ->(_pack) {}, &declares)

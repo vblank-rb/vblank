@@ -111,16 +111,44 @@ module PackBackgroundGames
   COLOR_PALETTE = BANKS.flatten.freeze
   COLOR_WALK_STEPS = 5
 
+  # A Color original's screen: its video (each tile's places, bank 0's then bank 1's), its cells
+  # (each a tile in its bank of video memory and an attribute byte, at most 16), its colours (banks
+  # of four) and how many cells a row of its map holds.
+  ColorScreen = Data.define(:video, :cells, :palette, :across)
+  COLOR_SCREEN = ColorScreen.new(video: COLOR_VIDEO, cells: COLOR_CELLS, palette: COLOR_PALETTE, across: COLOR_ACROSS)
+
+  # A SCREEN IN +banks+ BANKS OF COLOURS, as a Color game's title is, whose tiles each draw only
+  # some of their bank's places: 1 and 2, 2 and 3, or 1 and 3, the rest see-through. Each bank is
+  # drawn by two of them, one a row, and a few cells are turned. Its 32 colours are all different.
+  SUBSET_VIDEO = [
+    Array.new(64, 0),
+    (0...64).map { |at| (at + (at / 8)) % 3 },                            # places 1 and 2
+    (0...64).map { |at| ((3 * ((at + (2 * (at / 8))) % 3)) + 2) % 5 },   # places 2, 0 and 3 by turns
+    (0...64).map { |at| (at / 8).even? ? 1 : 3 * (at % 2) }               # places 1 and 3
+  ].freeze
+  def self.screen_in_banks(banks)
+    ColorScreen.new(
+      video: SUBSET_VIDEO,
+      cells: [*Array.new(banks) { |bank| [1 + (bank % 3), bank | (bank.odd? ? 0x20 : 0)] },
+              *Array.new(banks) { |bank| [1 + ((bank + 1) % 3), bank | (bank == 2 ? 0x40 : 0)] }],
+      palette: Array.new(32) { |at| ((at * 997) + 0x0421) & 0x7FFF },
+      across: banks
+    )
+  end
+  SEVEN_BANKS_SCREEN = screen_in_banks(7)
+  # ...and in all eight, the most the Color holds: it fits only with one list for each bank.
+  EIGHT_BANKS_SCREEN = screen_in_banks(8)
+
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
 
-  # The made-up Color original: COLOR_CELLS's two maps, the colours at COLORS_AT and the video at
+  # The made-up Color original of +screen+: its two maps, the colours at COLORS_AT and the video at
   # TILES_AT, bank 0's tiles then bank 1's.
-  private def color_original(folder)
-    copy = "\0".b * (TILES_AT + (COLOR_VIDEO.length * 16))
-    copy[COLOR_TILE_MAP_AT, COLOR_CELLS.length] = COLOR_CELLS.map(&:first).pack("C*")
-    copy[COLOR_ATTRIBUTES_AT, COLOR_CELLS.length] = COLOR_CELLS.map(&:last).pack("C*")
-    copy[COLORS_AT, COLOR_PALETTE.length * 2] = COLOR_PALETTE.pack("v*")
-    copy[TILES_AT, COLOR_VIDEO.length * 16] = COLOR_VIDEO.map(&MadeUpOriginalLayouts::TWO_PLANES).join
+  private def color_original(folder, screen = COLOR_SCREEN)
+    copy = "\0".b * (TILES_AT + (screen.video.length * 16))
+    copy[COLOR_TILE_MAP_AT, screen.cells.length] = screen.cells.map(&:first).pack("C*")
+    copy[COLOR_ATTRIBUTES_AT, screen.cells.length] = screen.cells.map(&:last).pack("C*")
+    copy[COLORS_AT, screen.palette.length * 2] = screen.palette.pack("v*")
+    copy[TILES_AT, screen.video.length * 16] = screen.video.map(&MadeUpOriginalLayouts::TWO_PLANES).join
     path = File.join(folder, "made_up_color.bin")
     File.binwrite(path, copy)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gbc,
@@ -132,16 +160,18 @@ module PackBackgroundGames
   # into map cells of VBlank's own (Original::MapCell), as a port does, and the background reads
   # them. With +walked+, every bank of colours is walked up from black by its name, as a Color game
   # fades its screen in by walking all eight of its background palettes. Hands back the program and
-  # the pack file the build made (nil for a build that leaves its pack out).
-  private def color_cells_game_and_file(from, walked: false, set_cells: nil, options: VBlank::Cartridge::Options.new)
-    cells = COLOR_CELLS.length
+  # the pack file the build made (nil for a build that leaves its pack out). +color_screen+ is the
+  # original's (a ColorScreen), the one +from+ was made of.
+  private def color_cells_game_and_file(from, walked: false, set_cells: nil, options: VBlank::Cartridge::Options.new,
+                                        color_screen: COLOR_SCREEN)
+    cells = color_screen.cells.length
     told = set_cells ? { set_cells: set_cells } : {}
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
-        slots.tiles :video, at: TILES_AT, count: COLOR_VIDEO.length
-        slots.colors :palette, at: COLORS_AT, count: COLOR_PALETTE.length
+        slots.tiles :video, at: TILES_AT, count: color_screen.video.length
+        slots.colors :palette, at: COLORS_AT, count: color_screen.palette.length
         slots.map_cells :map, count: cells
         slots.fill_from_copy do |copy, filled|
           repeat(cells) do |at|
@@ -151,23 +181,32 @@ module PackBackgroundGames
           end
         end
       end
-      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: COLOR_ACROSS, **told
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: color_screen.across,
+                                 **told
       PackBackgroundGames.emit_color_game_loop(self, world, walked)
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]
   end
 
+  # The pixels of +color_screen+'s map, and a cell's width past it, row by row. The interpreter
+  # plays a game that names no console on the Advance's screen, wider than the Color's, so only
+  # the map's part of two screens is compared.
+  private def map_pixels(screen, color_screen)
+    rows = color_screen.cells.length / color_screen.across
+    Array.new(rows * 8) { |y| Array.new((color_screen.across + 1) * 8) { |x| screen.pixel(x, y) } }
+  end
+
   # THE ANSWER KEY: the same screen with each cell decoded here, from the Color's hardware, and
   # written in the game as a picture of 8x8 in its bank's colours, turned as the cell says.
-  private def color_cells_drawn_by_hand(walked: false)
+  private def color_cells_drawn_by_hand(walked: false, color_screen: COLOR_SCREEN)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
-      COLOR_PALETTE.each_slice(COLOR_BANK_SIZE).with_index { |bank, at| colors :"palette_#{at}", bank }
+      color_screen.palette.each_slice(COLOR_BANK_SIZE).with_index { |bank, at| colors :"palette_#{at}", bank }
       pictures = {}
-      drawn = COLOR_CELLS.map do |tile, attributes|
-        places = COLOR_VIDEO.fetch(tile + (attributes[3] * COLOR_BANK_TILES))
+      drawn = color_screen.cells.map do |tile, attributes|
+        places = color_screen.video.fetch(tile + (attributes[3] * COLOR_BANK_TILES))
         next nil if places.all?(&:zero?)
 
         rows = places.each_slice(8).to_a
@@ -178,9 +217,9 @@ module PackBackgroundGames
         pictures[name] = name
       end
       tiles :by_hand, pictures
-      world = background :world, tiles: :by_hand, map: drawn.each_slice(COLOR_ACROSS).to_a
+      world = background :world, tiles: :by_hand, map: drawn.each_slice(color_screen.across).to_a
       # A background of the game's own is walked only by the banks its tiles are drawn from.
-      used = COLOR_CELLS.map { |_, attributes| attributes & 7 }.uniq
+      used = color_screen.cells.map { |_, attributes| attributes & 7 }.uniq
       PackBackgroundGames.emit_color_game_loop(self, world, walked, banks: used)
     end
     b.finalize_program

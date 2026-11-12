@@ -209,6 +209,8 @@ module VBlank
         end
         side = Original::Slot::TILE_SIDE
         picture = :"background :#{name} blank tile #{bank}"
+        # It draws no place, so it needs none of its bank's colours: a console that keeps a list of
+        # colours a tile gives it the backdrop's alone, not a list for a bank the map may not use.
         image picture, width: side, height: side, places: Array.new(side * side, 0), colors: list
         picture
       end
@@ -405,9 +407,21 @@ module VBlank
           image picture, width: side, height: side, transparent: true,
                          data: rows.flatten.map { |place| place.zero? ? :transparent : list.fetch(place) }
         else
-          image picture, width: side, height: side, places: rows.flatten, colors: list
+          define_pack_bank_tile(picture, rows.flatten, list)
         end
         picture
+      end
+
+      # A TILE DRAWN FROM A BANK KEEPS THE ORIGINAL'S PLACES (Nodes::Bitmap#places_from_pack), as a
+      # picture whose places are a slot's own does. A console that keeps one list of colours for
+      # each tile, the Color, then draws every tile of a bank from one list holding the bank's
+      # colours where the bank holds them, as the original does: however many of the bank's places
+      # a tile draws, a screen the original drew in seven banks takes seven of its eight lists.
+      # Every other console draws it as any picture drawn by place from a list.
+      def define_pack_bank_tile(picture, places, list)
+        side = Original::Slot::TILE_SIDE
+        define_placed_image(picture, places: places, width: side, height: side, colors: declared_colors_for_image!(picture, list),
+                                     colors_name: list, places_from_pack: true)
       end
 
       # Each bank of +colors+ (a whole slot of colours), +size+ colours to a bank, as a list named
