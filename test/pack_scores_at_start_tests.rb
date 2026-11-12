@@ -339,6 +339,138 @@ module PackScoresAtStartTests
     end
   end
 
+  # A DRIVER WHOSE NOTES PICK THEIR VOICES, each voice a recording of its own with its own rate, hold
+  # point and envelope, as a cartridge's voice group keeps them, and each note its own loudness. A
+  # port gives each voice an instrument of its own, every setting of it from the pack, and a note's
+  # record names the voice it plays: no envelope or recording needs to be in the note itself. The
+  # made-up driver's commands are OWN_NOTE with a key, frames and a velocity (0 to 127, a loudness
+  # of four times that), OWN_REST, OWN_VOICE with a voice's number, and OWN_FINE.
+  OWN_VOICE = 3
+  VOICED_TUNE = [[:voice, 1], [60, 10, 127], [:rest, 4], [:voice, 0], [64, 12, 30], [67, 8, 90], [:voice, 1], [72, 20, 64]].freeze
+  VOICES_AT = 0x200 # each voice: its rate (two bytes), the sample it holds from, its envelope's four bytes, a byte of nothing
+  VOICE_SAMPLES_AT = 0x300
+  VOICE_SAMPLES = 64
+  VOICES = [[7929, 16, [255, 200, 120, 90]], [11_025, 40, [40, 230, 200, 160]]].freeze
+
+  private def voiced_copy
+    copy = "\0".b * 4096
+    stream = VOICED_TUNE.flat_map do |command, *rest|
+      case command
+      when :voice then [OWN_VOICE, *rest]
+      when :rest then [OWN_REST, *rest]
+      else [OWN_NOTE, command, *rest]
+      end
+    end
+    copy[OWN_STREAM_AT, stream.length + 1] = [*stream, OWN_FINE].pack("C*")
+    VOICES.each_with_index do |(rate, holds, shape), voice|
+      copy[VOICES_AT + (voice * 8), 8] = [rate, holds, *shape, 0].pack("v C C C C C C")
+      copy[VOICE_SAMPLES_AT + (voice * VOICE_SAMPLES), VOICE_SAMPLES] = PCM.rotate(voice * 11).map { |level| level * (voice + 1) / 2 }.pack("c*")
+    end
+    copy
+  end
+
+  private def voiced_original(folder)
+    path = File.join(folder, "voiced.bin")
+    File.binwrite(path, voiced_copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(voiced_copy), "size" => 4096 } })
+  end
+
+  # The game reading the voiced driver's song, all-in-one or (+options+) with its pack left out.
+  private def voiced_driver_game(from, options)
+    b = VBlank::Builder.new(options: options)
+    made = nil
+    b.instance_eval do
+      screen :bitmap
+      enable_sound mix_rate: 13_379
+      made = data_pack(from: from, version: "1") do |slots|
+        slots.notes :tune, count: MOST
+        slots.numbers :tune_length, count: 1, width: :half, signed: false
+        VOICES.each_index do |voice|
+          slots.samples :"pcm_#{voice}", at: VOICE_SAMPLES_AT + (voice * VOICE_SAMPLES), count: VOICE_SAMPLES
+          slots.numbers :"rate_#{voice}", at: VOICES_AT + (voice * 8), count: 1, width: :half, signed: false
+          slots.numbers :"voice_#{voice}", at: VOICES_AT + (voice * 8) + 2, count: 5, width: :byte, signed: false
+        end
+        slots.fill_from_copy do |copy, pack|
+          at = OWN_STREAM_AT
+          tick = 0
+          record = 0
+          voice = 0
+          command = copy.byte(at)
+          while command != OWN_FINE
+            if command == OWN_NOTE
+              frames = copy.byte(at + 2)
+              loudness = copy.byte(at + 3) * 4
+              pack[:tune][record] = tick
+              pack[:tune][record + 1] = tick / 256
+              pack[:tune][record + 2] = frames
+              pack[:tune][record + 3] = 0
+              pack[:tune][record + 4] = copy.byte(at + 1)
+              pack[:tune][record + 5] = voice
+              pack[:tune][record + 6] = OWN
+              pack[:tune][record + 7] = OWN
+              pack[:tune][record + 8] = loudness
+              pack[:tune][record + 9] = loudness / 256
+              pack[:tune][record + 10] = OWN
+              pack[:tune][record + 11] = 0
+              record += PackNote::BYTES
+              tick += frames
+              at += 4
+            elsif command == OWN_VOICE
+              voice = copy.byte(at + 1)
+              at += 2
+            else
+              tick += copy.byte(at + 1)
+              at += 2
+            end
+            command = copy.byte(at)
+          end
+          pack[:tune][record] = 0xFF
+          pack[:tune][record + 1] = 0xFF
+          pack[:tune_length][0] = tick
+        end
+      end
+      VOICES.each_index do |voice|
+        settings = made[:"voice_#{voice}"]
+        instrument :"voice_#{voice}", pcm: made[:"pcm_#{voice}"], note: :C4, rate: made[:"rate_#{voice}"].number(0),
+                                      holds_from: settings.number(0), envelope: settings.as_numbers(at: 1, count: 4, width: :byte, signed: false).envelope(0)
+      end
+      music = songs :music, [Score.new(parts: [Part.new(plays: :voice_0, notes: made[:tune].notes(instruments: %i[voice_0 voice_1]))],
+                                       length: made[:tune_length].number(0), longest: 600, plays_once: true, **A_TICK_A_FRAME)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    [b.program, made]
+  end
+
+  def test_a_drivers_voices_each_with_its_own_recording_and_envelope_play_alike_all_in_one_and_from_the_pack
+    Dir.mktmpdir do |folder|
+      from = voiced_original(folder)
+      whole, = voiced_driver_game(from, VBlank::Cartridge::Options.new)
+      unless VBlank::Console.described(game_console).mixes_recordings
+        next assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(whole, frames: 1) }
+      end
+
+      left_out, made = voiced_driver_game(from, PACK_AT_START)
+      unpacking = made.unpacking(release: made.original.releases.with_sha1(Digest::SHA1.hexdigest(voiced_copy)))
+      unpacked = game_player.hand_file(voiced_copy).run(unpacking.program, frames: 60)
+      assert unpacking.finished_in?(unpacked), "the unpacking runs the driver's song to its end"
+      file = unpacking.pack_file_in(unpacked, sha1: Digest::SHA1.hexdigest(voiced_copy), build_version: "1")
+
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(whole, frames: 80)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 80)
+
+      assert wanted.mixed_sound.flatten.any? { |level| level != 0 }, "the all-in-one build plays the driver's song"
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
+    end
+  end
+
   # What a build holding the same records refuses does not stop a game reading its player's file:
   # a key no voice has is a rest, and a volume past 15 is the part's own.
   ODD = [[0, 12, 72, OWN, OWN], [12, 12, 200, OWN, 9], [24, 12, 76, OWN, 99], [36, 12, 128, OWN, OWN], [48, 12, 79, OWN, OWN]].freeze
