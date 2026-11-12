@@ -50,8 +50,10 @@ module VBlank
         def repeat(count, stop_when: nil, &) = @internals.builder.repeat(count, stop_when: stop_when, &)
 
         # The copy's byte at +at+, with the check before it: a place outside the copy records a fault
-        # and reads a byte of the copy instead, as any table read does.
+        # and reads a byte of the copy instead, as any table read does. A place worked out from
+        # another read of the copy is held first (BlockKitInternals#emit_held_place).
         def byte(at)
+          at = @internals.emit_held_place(at)
           copy = @internals.copy
           @internals.emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= copy.length
           copy[at]
@@ -134,6 +136,32 @@ module VBlank
           @done = builder.var(Unpacking::BYTES_DONE, 0)
           @slot_bytes_done = slot_bytes_done
           @variables = {}
+          @held_place_count = 0
+        end
+
+        # +at+, or, where it is worked out from a read of the copy, a variable of its own set to it
+        # here, where the read is written.
+        #
+        # A read is an expression, written out wherever its answer is used, and its check uses its
+        # place twice and the read once more. So a read placed by another read's answer held that
+        # read whole three times over, and a word read four times, and a routine whose reads place
+        # reads (a frame's place read from a table of places, then its bytes) printed text that grew
+        # with the square of its reads or worse: megabytes for a few hundred frames, taking seconds
+        # to print and to start. Held, the place is a variable, which every printer writes as its
+        # name, and the text grows with the routine, not with how deep its reads go.
+        #
+        # Only such a place is held. A place the routine keeps in a variable or works out from its
+        # own numbers is read where the answer is used, as any expression is: a loop's test that
+        # reads the copy at a place the loop moves on reads the new place each time round. A held
+        # place is set where the read is written, once, so a loop's test whose read is placed by
+        # another read (`while copy.byte(copy.byte(at)) != 0`) reads the place it had as the loop
+        # began; set the place in a variable in the loop's body for one that moves.
+        def emit_held_place(at)
+          return at unless reads_copy?(at)
+
+          held = @builder.var(made_name(:"place_#{@held_place_count += 1}"), 0)
+          held.store!(at)
+          held
         end
 
         # How many bytes have been written so far, a variable of the routine's.
@@ -218,6 +246,26 @@ module VBlank
         # Whether a write of +size+ bytes from +to+ fits between the slot's first byte and its end:
         # a test the routine makes, new each time it is asked for.
         def fits_in_slot(to, size) = to >= routine_variable(:slot_first) && size <= routine_variable(:ends) - to
+
+        # Whether +operand+ (a number, a game value or a value node) reads the copy anywhere in it.
+        # A node met twice is looked at once, since a value's parts are shared.
+        def reads_copy?(operand)
+          node = operand.is_a?(DSL::Value) ? operand.node : operand
+          return false unless node.is_a?(IR::Node)
+
+          seen = {}.compare_by_identity
+          waiting = [node]
+          until waiting.empty?
+            looked_at = waiting.pop
+            next if seen.key?(looked_at)
+
+            seen[looked_at] = true
+            return true if looked_at.is_a?(IR::Nodes::TableGet) && looked_at.name.to_sym == Unpacking::COPY
+
+            waiting.concat(looked_at.operand_nodes)
+          end
+          false
+        end
 
         # The fault for a write that does not fit: the first byte past the slot's end, in the slot.
         def emit_outside_slot_fault

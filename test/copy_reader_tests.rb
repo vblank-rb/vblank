@@ -140,6 +140,67 @@ module CopyReaderTests
     end
   end
 
+  # READS PLACED BY THE ANSWERS OF READS: a byte, a half high byte first and a word, each at the
+  # place the read before it gave, round after round. Each such place is kept where its read is
+  # written (BlockKitInternals#emit_held_place), and what is read is what Ruby reads from the copy.
+  CHAINED_ROUNDS = 6
+
+  private def chained_copy = (0...512).map { |at| ((at * 37) + 11) & 0xFF }.pack("C*")
+
+  private def chained_answers(copy)
+    at = copy.getbyte(5)
+    Array.new(CHAINED_ROUNDS) do
+      at = copy.byteslice(at, 4).unpack1("V") & 0xFF
+      at = copy.byteslice(at, 2).unpack1("n") & 0xFF
+      at = copy.getbyte(at)
+    end
+  end
+
+  def test_reads_placed_by_the_answers_of_reads_read_what_the_copy_holds
+    Dir.mktmpdir do |folder|
+      rounds = CHAINED_ROUNDS
+      unpacking = VBlank::Builder.new.data_pack(from: copy_of(folder, chained_copy), version: "1") do |slots|
+        slots.numbers :read, count: rounds, width: :byte, signed: false
+        slots.fill_from_copy do |copy, pack|
+          at = copy.byte(5)
+          rounds.times do |round|
+            at = copy.word(at) & 0xFF
+            at = copy.half(at, big_endian: true) & 0xFF
+            at = copy.byte(at)
+            pack[:read][round] = at
+          end
+        end
+      end.unpacking
+      played = unpacking.run_on(game_player, frames: 4)
+
+      assert_nil unpacking.fault_in(played)
+      assert_equal({ read: chained_answers(chained_copy).pack("C*") }, unpacking.slot_bytes_in(played))
+    end
+  end
+
+  # A LOOP WHOSE TEST READS THE COPY at a place the loop moves on reads the new place each time
+  # round: a place the routine keeps in a variable is read where the answer is used, not held.
+  def test_a_loop_whose_test_reads_the_copy_reads_each_new_place
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, [9, 8, 7, 6, 0, 5].pack("C*"))
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :until_nought, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(at) != 0
+            pack[:until_nought][0] = at
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+
+      assert_equal({ until_nought: [4].pack("C*") }, unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4)))
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100

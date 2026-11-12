@@ -57,8 +57,10 @@ module VBlank
       # outside the copy is a fault the build stops on.
       def byte(at) = @kit.byte(at)
 
-      # The two bytes from +at+, low byte first unless +big_endian+.
+      # The two bytes from +at+, low byte first unless +big_endian+. A place worked out from another
+      # read is held once for all its bytes (BlockKitInternals#emit_held_place).
       def half(at, big_endian: false)
+        at = @internals.emit_held_place(at)
         low = byte(at)
         high = byte(sum_of(at, 1))
         big_endian ? (low << 8) | high : low | (high << 8)
@@ -66,6 +68,7 @@ module VBlank
 
       # The four bytes from +at+, low byte first unless +big_endian+.
       def word(at, big_endian: false)
+        at = @internals.emit_held_place(at)
         first = half(at, big_endian: big_endian)
         second = half(sum_of(at, 2), big_endian: big_endian)
         big_endian ? (first << 16) | second : first | (second << 16)

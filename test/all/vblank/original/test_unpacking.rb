@@ -84,6 +84,46 @@ class TestUnpacking < Minitest::Test
     end
   end
 
+  # A READ PLACED BY ANOTHER READ'S ANSWER IS WRITTEN ONCE: a routine of reads, each at the place
+  # the read before it gave, prints in text that grows by the same amount for each read added, on
+  # every computer build. Written out where it was used, each read's place held the whole of the
+  # reads before it, three times over with its check (a word's four times), so the text grew with
+  # the square of the count, or fourfold with each word. Each round is a word read and a byte read.
+  CHAINED_ROUND_COUNTS = [8, 16, 32].freeze
+
+  # The bytes of the game as Ruby, as JavaScript and as C.
+  PrintedSizes = Data.define(:ruby, :js, :c)
+
+  private def chained_reads(folder, rounds)
+    unpacking_of(folder) do |copy, pack|
+      at = copy.byte(0x10)
+      rounds.times do
+        at = copy.word(at) & 0xFF
+        at = copy.byte(at)
+      end
+      pack[:walls][0] = at
+    end
+  end
+
+  private def printed_sizes(program)
+    PrintedSizes.new(ruby: VBlank::IR::Backends::Ruby.new.live_source(program).bytesize,
+                     js: VBlank::IR::Backends::JS.new.lower(program).bytesize,
+                     c: VBlank::IR::Backends::Native.new.lower(program).bytesize)
+  end
+
+  def test_reads_each_placed_by_the_read_before_print_in_text_that_grows_with_their_count
+    Dir.mktmpdir do |folder|
+      fewest, more, most = CHAINED_ROUND_COUNTS.map { |rounds| printed_sizes(chained_reads(folder, rounds).program).to_h }
+      PrintedSizes.members.each do |language|
+        first_added = more.fetch(language) - fewest.fetch(language)
+        twice_as_many_added = most.fetch(language) - more.fetch(language)
+
+        assert_operator twice_as_many_added, :<=, first_added * 2.5,
+                        "#{language}: 8 rounds more added #{first_added} bytes, and 16 more #{twice_as_many_added}"
+      end
+    end
+  end
+
   # The watchdog ends with the run: a routine that waits and ends gets to its end, and nothing is
   # raised in the test after it.
   def test_a_routine_that_waits_for_frames_gets_to_its_end
