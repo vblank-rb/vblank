@@ -323,7 +323,8 @@ def rg_background_put_up(background)
   rg_mark_from_corner(background)
   @rg_scenery_kept = false
   return rg_request_repaint if @rg_turns[rg_keeper_of(background)].turned || rg_bar?(background) ||
-                               rg_held_above_row?(background) || rg_bar_showing || rg_held_to_box?(background)
+                               rg_held_above_row?(background) || rg_bar_showing || rg_held_to_box?(background) ||
+                               rg_placed_fade_in_picture?
 
   rg_background_stamp(background)
   rg_stamp_in_stack_order(background)
@@ -423,11 +424,39 @@ end
 # Whether a background is held above a row of the screen.
 def rg_held_above_row?(background) = rg_background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR
 
-# Reference#paint_status_bar: from its top row to the bottom of the screen, its map from its own
-# corner, never scrolled; past the end of its map the backdrop stays.
-def rg_paint_status_bar(bar)
+# Reference#paint_status_bar_rows: from its top row to the bottom of the screen, its map from its own
+# corner, never scrolled; past the end of its map the backdrop stays. A row in a block that starts
+# above the bar reads the bar's map above its first row, where its grid comes round.
+def rg_paint_status_bar_rows(bar)
   top = rg_bar_top_shown(bar)
-  (top...RG_SCREEN_HEIGHT).each { |py| rg_paint_map_row(bar, py - top, 0, nil, py) }
+  grid_h = @rg_game_maps[rg_map_now(bar) + RG_MAP_GRID_ROWS] * rg_background_field(bar, RG_BG_TILE_H)
+  (top...RG_SCREEN_HEIGHT).each do |py|
+    my = rg_row_drawn_from(py) - top
+    next if my.negative? && grid_h.zero?
+
+    my %= grid_h if my.negative?
+    rg_paint_map_row(bar, my, 0, nil, py)
+  end
+end
+
+# Reference#paint_status_bar: the status bar as drawn, or in blocks while the picture is shown in them and
+# the game puts its bar there too (RG_BG_IN_BLOCKS), in the one grid from the screen's top.
+def rg_paint_status_bar(bar)
+  block = rg_hook_block_size
+  return rg_paint_status_bar_rows(bar) if block == 1 || rg_background_field(bar, RG_BG_IN_BLOCKS).zero?
+
+  @rg_sheet.fill(RG_NOTHING_ON_SHEET)
+  @rg_onto_sheet = true
+  @rg_rows_tall = block
+  rg_paint_status_bar_rows(bar)
+  @rg_onto_sheet = false
+  @rg_rows_tall = 1
+  (rg_bar_top_shown(bar)...RG_SCREEN_HEIGHT).each do |py|
+    RG_SCREEN_WIDTH.times do |px|
+      color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px - (px % block)]
+      rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
+    end
+  end
 end
 
 # Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. A cell is
@@ -478,6 +507,26 @@ end
 def rg_background_draw_with(background, which)
   @rg_colors_told[rg_keeper_of(background)] = which.negative? ? 0 : which + 1
   rg_request_repaint
+end
+
+# rg_tiled.c's rg_background_follow: the tiles a background draws from one of several lists it
+# follows are copied from set number +set+ of its tiles over the ones the picture is drawn from.
+def rg_background_follow(rules, set)
+  background = rules[1]
+  tile_size = rg_background_field(background, RG_BG_TILE_W) * rg_background_field(background, RG_BG_TILE_H)
+  start = rg_background_field(background, RG_BG_TILES_START)
+  set_size = rg_background_field(background, RG_BG_TILES) * tile_size
+  changed = false
+  rules[2].times do |i|
+    to = start + (rules[3 + i] * tile_size)
+    wanted = @rg_game_tile_pixels[to + (set * set_size), tile_size]
+    next if @rg_game_tile_pixels[to, tile_size] == wanted
+
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    @rg_game_tile_pixels[to, tile_size] = wanted
+    changed = true
+  end
+  rg_request_repaint if changed
 end
 
 # Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
@@ -946,6 +995,7 @@ def rg_tiled_scene_take_down(brings_scenery)
   @rg_scenery_kept = false
   rg_clear_to(@rg_backdrop)
   rg_stamp_in_stack_order(-1)
+  rg_request_repaint if rg_placed_fade_in_picture? # a placed fade stays across the change
   true
 end
 

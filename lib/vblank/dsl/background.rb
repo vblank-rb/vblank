@@ -67,6 +67,7 @@ module VBlank
         @streams = streams # its maps are brought into view a strip at a time (see IR::TileMap.streams?)
         @map_names = map_names || [name]
         @lists_allowed_undrawn = [] # see #allow_undrawn_lists
+        @pack_cells = nil # see #allow_set_cells
       end
 
       # LISTS `draw_with` TAKES THOUGH NO TILE MAY BE DRAWN FROM THEM. Which lists a background's
@@ -79,6 +80,30 @@ module VBlank
       # Called by Builder::PackBackgrounds as it declares the background, with every bank of its slot.
       def allow_undrawn_lists(names)
         @lists_allowed_undrawn = names
+        self
+      end
+
+      # ONE LIST GIVEN ALONE (`draw_with :dusk`, `draw_with walk, showing: step`) DRAWS EVERY LIST
+      # OF THE LAYER. A layer drawn from several lists is, as a rule, told which list each is drawn
+      # with, by name. A background from the data pack whose pack is read as the game starts has
+      # a list for every bank of its slot, since which banks its map uses is in the file. A game
+      # whose screen uses one bank gives one list and names none, which is right where the build
+      # holds the map and sees the one bank; here the same line draws every bank with that list,
+      # so the bank the map uses shows it, and the two builds show one picture.
+      #
+      # Called by Builder::PackBackgrounds as it declares such a background.
+      def allow_one_list_for_every_bank
+        @one_list_for_every_bank = true
+        self
+      end
+
+      # THE CELLS `set_cell` MAY WRITE, each as the original's own cell number (a PackCells), or nil
+      # for none.
+      #
+      # Called by Builder::PackBackgrounds as it declares the background, with the cells its
+      # `set_cells:` named.
+      def allow_set_cells(cells)
+        @pack_cells = cells
         self
       end
 
@@ -162,6 +187,55 @@ module VBlank
         which.open_no_side
         set_tile_between(col, row, number, upper, now, first: first + lower.length)
         which.close_side(nil)
+      end
+
+      # A TILE PICKED FROM A LIST OF KEYS BY A NUMBER THE GAME WORKS OUT: +keys+ are the tileset's
+      # keys the numbers from +from+ up stand for, nil for a number that stands for none, which
+      # leaves the cell alone, as does a number before +from+ or past the last key. It is one step
+      # of the program however many keys there are (IR::Nodes::SetTile#picked_by): a console's
+      # build keeps the keys' cells as a table and indexes it, where it can.
+      #
+      # The walls do not follow such a cell, so a background whose walls follow its tiles
+      # (#walls_follow_tiles?) is not written this way.
+      #
+      # Called by PackCells, for a cell written as the original's own cell number.
+      def set_tile_picked(col, row, number, keys, from: 0)
+        refuse_on_bitmap_screen!("set_cell", instead: "Draw over the spot with `blit`")
+        refuse_set_tile_on_streamed_map!
+        tiles = keys.map { |key| key && @tile_index.fetch(key) }
+        node = record(Build.set_tile_picked(@name, Value.node_for(col), Value.node_for(row), Value.node_for(number), tiles,
+                                            from: from, held: (true if @held)))
+        @builder.note_held_tile_change(node) if @held
+        self
+      end
+
+      # Whether a cell given another tile takes that tile's wall (#record_wall_change).
+      def walls_follow_tiles? = !@solid_tiles.nil? && !solid_lookup.nil?
+
+      # WRITE ONE CELL AS THE ORIGINAL'S OWN CELL NUMBER, on a background drawn from the data pack.
+      #
+      #   face = background :face, tiles: pack[:video], map: pack[:face_map], colors: pack[:palette],
+      #                            across: 40, set_cells: 0xE500..0xE553
+      #   face.set_cell 12, 20, 0xE500 + letters[at]    # a letter of the font, as the original writes it
+      #
+      # The original puts words on a screen by storing a cell number in the map: which tile,
+      # turned how, from which bank of colours, in its console's layout. +word+ is that number,
+      # written in the game or worked out as it plays, and it is one of the cells the background
+      # was told (`set_cells:`), whose pictures the build made. +col+ and +row+ count the
+      # original's cells, as `across:` does.
+      #
+      # It is a changed cell as #set_tile's is: it lasts until the map is put up again, and a
+      # place outside the map is left alone. A number written in the game that the background was
+      # not told is refused here. One worked out as the game plays that it was not told leaves the
+      # cell alone, since no picture was made for it (PackCells#write).
+      def set_cell(col, row, word)
+        if @pack_cells.nil?
+          raise ArgumentError,
+                "background :#{@name} was not told any cells that set_cell can write. To fix this, draw it from the " \
+                "data pack and name the cells in `set_cells:`, or use set_tile with a key of its tileset."
+        end
+        @pack_cells.write(self, col, row, word)
+        self
       end
 
       # THE WALLS FOLLOW THE CELL. A mover is stopped by the walls the tileset's `solid:` tiles
@@ -316,6 +390,33 @@ module VBlank
         # and set what the list holds there.
         @colors_writes.each { |node| node.which = Build.var_ref(shown) }
         @builder.defer_recolor_write(@name, shown, live_colors_var, nil)
+        self
+      end
+
+      # DRAWN WITH SEVERAL LISTS OF COLOURS THE GAME CHANGES, FOR GOOD: `draw_with({ sign: :sign,
+      # words: :words })`, each of +lists+ told `recolor`. A tile then shows what its own list holds
+      # now, each list counted by its own number, as a sprite drawn with that list does.
+      #
+      # WHY IT IS NOT #follow_changing_list! TWICE. A layer that follows one list keeps the sets
+      # that list can hold as its own other colours, and reads the list's number for which to show:
+      # one number, one row of sets. Two lists have two numbers, and a row for every pair of them
+      # is one list's sets times the other's, for every list added. A console's own games keep
+      # no such rows: fading a screen, they write each palette's colours as that palette changes.
+      # So this layer keeps no other colours and no number at all. It names the list each of its
+      # own lists follows (IR::Nodes::Background#follows_each), and the write that tells a list
+      # what to hold is what changes the tiles drawn from it, on the frame it changes the sprites.
+      #
+      # Called once the whole program is declared (Builder::ColorLists), in place of
+      # #follow_changing_list!, for a layer told `draw_with` more than one changing list.
+      def follow_changing_lists!(lists)
+        followed = lists.to_h { |list| [refuse_tiles_not_drawn_in!(list), list] }
+        raise ArgumentError, following_beside_other_colors_message(lists) unless told_only_to_follow?(followed)
+
+        @colors_node.recolors = []
+        @colors_node.follows_each = Array.new(drawn_lists.length) { |at| followed[at] }
+        # The layer has no colours of its own to write: the lists' writes are its writes.
+        @colors_writes.each { |node| node.parent&.children&.delete(node) }
+        @builder.forget_recolor_write(@name)
         self
       end
 
@@ -585,9 +686,22 @@ module VBlank
       #
       # Nothing about the picture moves when only the pivot changes: at its drawn size,
       # upright, a background lands in exactly the same place whatever it turns around.
-      def turns_around(x, y)
+      #
+      # WHICH POINT OF THE MAP IS THERE is the screen's own point unless the game names one:
+      # the map hangs from the screen's corner, so the point of it under (120, 72) is its own
+      # (120, 72). `map_point:` names another, in the map's pixels from its top left:
+      #
+      #   background(:sword, tiles: :sword, map: grid).turns_around(120, 72, map_point: [128, 128])
+      #
+      # puts the middle of a map 256 pixels a side at (120, 72), and it stays there at every
+      # size and angle. That is how a console's own games place such a layer: by the map's
+      # middle, set down at a point of the screen. This one does move the picture, since it
+      # says where the map lies: upright at its drawn size the map is moved so the two points meet.
+      def turns_around(x, y, map_point: nil)
         affine_vars # this background is one that turns — the same claim `rotate`/`scale` make
-        @builder.set_background_pivot(@name, require_integer_pixel!(x, "x"), require_integer_pixel!(y, "y"))
+        refuse_bad_map_point!(map_point)
+        @builder.set_background_pivot(@name, require_integer_pixel!(x, "x"), require_integer_pixel!(y, "y"),
+                                      map_point: map_point)
         self
       end
 
@@ -706,16 +820,34 @@ module VBlank
       # and no colours of its own to go back to. Its other lists, where its tiles are drawn from
       # several, stay as drawn. Returns which of #drawn_lists follows the list.
       def refuse_following_beside_other_colors!(list)
-        followed = followed_list_index(list)
-        unless followed
-          raise ArgumentError,
-                "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
-                "So the background shows the colors :#{list} holds, from power-on. Its tiles must be drawn in " \
-                "the colors of :#{list}, and they are not. To fix this, give its tiles `image ..., colors: :#{list}`."
-        end
-        return followed if !@told_own && recolors.names == [Array.new(drawn_lists.length) { |at| list if at == followed }]
+        followed = refuse_tiles_not_drawn_in!(list)
+        return followed if told_only_to_follow?({ followed => list })
 
-        raise ArgumentError, following_beside_other_colors_message(list)
+        raise ArgumentError, following_beside_other_colors_message([list])
+      end
+
+      # Whether all the layer was ever told is to draw each of +followed+ (a place in #drawn_lists
+      # to the changing list there) with that list. A list that does not change, told to draw with
+      # itself beside them (`draw_with({ text: :text, logo: :logo })`, only :text recoloured), is
+      # as drawn, so a game can name every list of a screen it fades without knowing which change.
+      def told_only_to_follow?(followed)
+        return false if @told_own || !recolors.names.one?
+
+        recolors.names.first.each_with_index.all? do |name, at|
+          followed.key?(at) ? name == followed[at] : name.nil? || name == drawn_lists[at].first
+        end
+      end
+
+      # Which of #drawn_lists follows the changing list +list+, refusing a layer none of whose
+      # tiles is drawn in the list's own colours.
+      def refuse_tiles_not_drawn_in!(list)
+        followed = followed_list_index(list)
+        return followed if followed
+
+        raise ArgumentError,
+              "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
+              "So the background shows the colors :#{list} holds, from power-on. Its tiles must be drawn in " \
+              "the colors of :#{list}, and they are not. To fix this, give its tiles `image ..., colors: :#{list}`."
       end
 
       # Which of #drawn_lists follows the changing list +list+: the only one, in its colours, or,
@@ -727,7 +859,10 @@ module VBlank
         drawn_lists.index { |name, colors| name == list && colors == declared }
       end
 
-      def following_beside_other_colors_message(list)
+      def following_beside_other_colors_message(lists)
+        return following_several_beside_other_colors_message(lists) unless lists.one?
+
+        list = lists.first
         start = "#{error_subject} draws with :#{list}, and :#{list} was told to hold other colors with `recolor`. " \
                 "So the tiles drawn from :#{list} are drawn with :#{list} for good."
         if drawn_lists.one?
@@ -738,6 +873,15 @@ module VBlank
         "#{start} Its tiles from other lists keep the colors they were drawn in. They cannot draw with other lists, " \
           "and the background cannot draw with :own. To fix this, tell the background only " \
           "`draw_with({ #{list}: :#{list} })`, and say what :#{list} holds with `recolor :#{list}, ...`."
+      end
+
+      def following_several_beside_other_colors_message(lists)
+        named = lists.map { |list| ":#{list}" }.join(", ")
+        "#{error_subject} draws with #{named}, and they were told to hold other colors with `recolor`. So the " \
+          "tiles drawn from each of them are drawn with that list for good. Its tiles from other lists keep the " \
+          "colors they were drawn in. They cannot draw with other lists, and the background cannot draw with :own. " \
+          "To fix this, tell the background only `draw_with({ #{lists.map { |list| "#{list}: :#{list}" }.join(', ')} })`, " \
+          "and say what each list holds with `recolor`."
       end
 
       # The lists this layer's tiles were drawn from, each once, in the order first met: the
@@ -773,6 +917,7 @@ module VBlank
         names = recolors.requested_lists!(which, showing)
         @told_own = true if names.nil?
         return nil if names.nil?
+        return names.map { |name| Array.new(drawn_lists.length, name) } if @one_list_for_every_bank
 
         unless drawn_lists.length == 1
           raise ArgumentError,
@@ -920,6 +1065,16 @@ module VBlank
               "#{@name}.turns_around takes numbers you write, not a value the game works out. " \
               "You gave #{axis} = #{value.inspect}. The point a picture turns around is settled " \
               "when you write the program. To fix this, write #{axis} as a whole number of pixels."
+      end
+
+      # `map_point:` is two whole numbers written in the program, as the pivot is.
+      def refuse_bad_map_point!(map_point)
+        return if map_point.nil? || (map_point.is_a?(Array) && map_point.length == 2 && map_point.all?(Integer))
+
+        raise ArgumentError,
+              "#{@name}.turns_around was given map_point: #{map_point.inspect}. map_point: is the point of the " \
+              "background's map that sits at the pivot. To fix this, give two whole numbers of pixels from the " \
+              "map's top left, like `map_point: [128, 128]`."
       end
 
       # A number written on the declaration line is what the background STARTS at, so it is

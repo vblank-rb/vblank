@@ -53,12 +53,12 @@ module VBlank
       # rule that spans two would otherwise be a lookup in each, kept in step by hand —
       # the exact failure `pool` exists to spare a game writing its own data.
       #
-      # Every field but +node+, +scene_gates+, +bends_rows+ and +pivot+ holds the NAME of a hidden
-      # variable the build allocated, and is nil until the program does the thing that
-      # needs it. So a background that is never scrolled has no +scroll_x+, and asking
+      # Every field but +node+, +scene_gates+, +bends_rows+, +pivot+ and +pivot_map_point+ holds
+      # the NAME of a hidden variable the build allocated, and is nil until the program does the
+      # thing that needs it. So a background that is never scrolled has no +scroll_x+, and asking
       # #scrolls? is the same question as asking whether the game ever scrolled it.
       DeclaredBackground = Struct.new(:node, :scroll_x, :scroll_y, :shown_map, :live_map,
-                                      :angle, :scale, :scene_gates, :bends_rows, :pivot,
+                                      :angle, :scale, :scene_gates, :bends_rows, :pivot, :pivot_map_point,
                                       :shown_colors, :live_colors, :box, :held,
                                       keyword_init: true) do
         def scrolls? = !scroll_x.nil?
@@ -309,16 +309,18 @@ module VBlank
       #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
       # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
       #   the next frame
+      # @param set_cells [Array<Integer, Range>, Range, nil] for a background from the data pack, the
+      #   original's cell numbers `set_cell` may write later (Builder::PackBackgrounds)
       # @return [Background] a handle: scroll_by / scroll_to / show_map
       def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, held: false, colors: nil, across: nil,
-                     cell: nil)
+                     cell: nil, set_cells: nil)
         if tiles.is_a?(DSL::PackSlot)
           # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
           return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
-                                               walls: walls, above_row: above_row, held: held)
+                                               set_cells: set_cells, walls: walls, above_row: above_row, held: held)
         end
 
-        refuse_pack_background_settings!(name, colors, across, cell)
+        refuse_pack_background_settings!(name, colors, across, cell, set_cells)
         refuse_bad_above_row!(name, above_row)
         refuse_bad_held!(name, held)
         declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row, held: held)
@@ -361,9 +363,9 @@ module VBlank
 
       private
 
-      # colors:, across: and cell: describe a background whose tiles come from the data pack.
-      def refuse_pack_background_settings!(name, colors, across, cell)
-        given = { colors: colors, across: across, cell: cell }.compact.keys
+      # colors:, across:, cell: and set_cells: describe a background whose tiles come from the data pack.
+      def refuse_pack_background_settings!(name, colors, across, cell, set_cells)
+        given = { colors: colors, across: across, cell: cell, set_cells: set_cells }.compact.keys
         return if given.empty?
 
         raise ArgumentError, "background :#{name} was given #{given.map { |key| "#{key}:" }.join(', ')}, which only a " \

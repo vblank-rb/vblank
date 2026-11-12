@@ -460,6 +460,10 @@ static uint32_t start_file_number(int32_t at, int32_t width, int32_t high_byte_f
   return number;
 }
 
+/* What a runtime feature that reads the file itself asks (rg_runtime.h). */
+const uint8_t *rg_start_file_bytes(void) { return start_file; }
+uint32_t rg_start_file_number(int32_t at, int32_t width, int32_t high_byte_first) { return start_file_number(at, width, high_byte_first); }
+
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first) {
   for (int32_t i = 0; i < count; i++) {
     switch (kept) {
@@ -508,10 +512,75 @@ static uint16_t start_file_color(int32_t colors_at, const int32_t *format, int32
                     (start_file_channel(kept, format[RG_COLOR_BLUE_AT], bits) << 10));
 }
 
+void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format) {
+  for (int32_t place = 0; place < count; place++) colors[first + place] = start_file_color(at, format, place);
+}
+
+void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places) {
+  for (int32_t i = 0; i < count; i++) {
+    int32_t place = start_file[at + i];
+    numbers[first + i] = place < places ? place : 0;
+  }
+}
+
+/* +color+ with each of its three channels moved +steps+ toward those of +far+, and no further
+ * (Graphics::Color.walked_toward). */
+static int32_t start_file_walked_color(int32_t color, int32_t far, int32_t steps) {
+  int32_t walked = 0;
+  for (int32_t shift = 0; shift <= 10; shift += 5) {
+    int32_t own = (color >> shift) & 31, limit = (far >> shift) & 31;
+    int32_t moved = own < limit ? own + steps : own - steps;
+    if (own < limit ? moved > limit : moved < limit) moved = limit;
+    walked |= moved << shift;
+  }
+  return walked;
+}
+
+void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made) {
+  for (int32_t entry = 0; entry < count; entry++)
+    colors[first + entry] = start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2]);
+}
+
+/* Is +held+, the sixteen bits a pixel or a colour is kept in, a marker (IR::StartFile, "MARKERS")?
+ * The sixteenth bit alone and all sixteen each mark a pixel that is not drawn. */
+static int start_file_marked(uint16_t held) { return held > RG_MARKED_COLOR && held != 0xFFFFu; }
+
+int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color) {
+  return start_file_marked((uint16_t)color) ? colors[(color & 0xFFFF) - RG_MARKED_COLOR - 1] : color;
+}
+
+void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count) {
+  if (kind == RG_FILL_TILE) {
+    uint16_t *pixels = rg_screen_tile_pixels_to_fill(total);
+    for (int32_t at = start; at < start + count; at++)
+      if (start_file_marked(pixels[at])) pixels[at] = (uint16_t)colors[pixels[at] - RG_MARKED_COLOR - 1];
+  } else {
+    int16_t *pixels = rg_screen_image_pixels_to_fill(total);
+    for (int32_t at = start; at < start + count; at++) {
+      uint16_t held = (uint16_t)pixels[at];
+      if (start_file_marked(held)) pixels[at] = (int16_t)colors[held - RG_MARKED_COLOR - 1];
+    }
+  }
+}
+
+void rg_start_file_fill_marked_numbers(const int32_t *colors, void *table, int32_t kept, int32_t start, int32_t count) {
+  for (int32_t at = start; at < start + count; at++) {
+    if (kept == RG_TABLE_UINT16) {
+      uint16_t *numbers = table;
+      if (start_file_marked(numbers[at])) numbers[at] = (uint16_t)colors[numbers[at] - RG_MARKED_COLOR - 1];
+    } else {
+      int32_t *numbers = table;
+      if (numbers[at] > 0 && numbers[at] <= 0xFFFF && start_file_marked((uint16_t)numbers[at]))
+        numbers[at] = colors[numbers[at] - RG_MARKED_COLOR - 1];
+    }
+  }
+}
+
 void rg_start_file_fill_picture(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4];
   int32_t turn = rules[5], across = rules[6], places_at = rules[7], colors_at = rules[8];
   int32_t colors_count = rules[9], swapped_count = rules[10], places_by_byte = rules[11], see_through = rules[12];
+  int32_t row_bytes = rules[13];
   const int32_t *tile_format = rules + RG_FILL_RULES_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_places = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -524,7 +593,7 @@ void rg_start_file_fill_picture(const int32_t *rules) {
       int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
       int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
       int32_t place = places_at < 0     ? held_places[(from_row * width) + from_column]
-                      : places_by_byte ? start_file[places_at + (from_row * width) + from_column]
+                      : places_by_byte ? start_file[places_at + (from_row * row_bytes) + from_column]
                                        : start_file_place(places_at, tile_format, across, from_row, from_column);
       uint16_t color = 0xFFFFu;
       if (place != see_through) {
@@ -537,6 +606,221 @@ void rg_start_file_fill_picture(const int32_t *rules) {
       }
       if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
       else image_pixels[start + (row * width) + column] = (int16_t)color;
+    }
+  }
+}
+
+/* How many pixels a tile has, and how many a side. */
+enum { RG_FILL_TILE_SIDE = 8, RG_FILL_TILE_PIXELS = 64 };
+
+/* A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+ * lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and
+ * rg_console.h says it again beside the numbers (RG_FRAME_, RG_PIECE_). The pack's unpacking wrote
+ * the record from the original's frame, so nothing here knows how an original keeps one.
+ *
+ * One piece of a pose's frame, its record from +at+ in the file, painted into +places+ (a picture
+ * +width+ by +height+) behind what is there already. The rest are rg_start_file_fill_pose's. */
+static void start_file_paint_piece(int32_t *places, int32_t width, int32_t height, int32_t at, const int32_t *tile_format,
+                                   int32_t origin_x, int32_t origin_y, int32_t tiles_at, int32_t tile_count) {
+  int32_t left = origin_x + (int16_t)start_file_number(at + RG_PIECE_X_AT, 2, 0);
+  int32_t top = origin_y + (int16_t)start_file_number(at + RG_PIECE_Y_AT, 2, 0);
+  int32_t first_tile = (int32_t)start_file_number(at + RG_PIECE_TILE_AT, 2, 0);
+  int32_t column_step = (int32_t)start_file_number(at + RG_PIECE_COLUMN_STEP_AT, 2, 0);
+  int32_t row_step = (int32_t)start_file_number(at + RG_PIECE_ROW_STEP_AT, 2, 0);
+  int32_t columns = start_file[at + RG_PIECE_COLUMNS_AT], rows = start_file[at + RG_PIECE_ROWS_AT];
+  int32_t mirrored = start_file[at + RG_PIECE_TURNS_AT] & RG_PIECE_MIRRORED;
+  int32_t upside_down = start_file[at + RG_PIECE_TURNS_AT] & RG_PIECE_UPSIDE_DOWN;
+  int32_t across = columns * RG_FILL_TILE_SIDE, tall = rows * RG_FILL_TILE_SIDE;
+  for (int32_t y = 0; y < tall; y++) {
+    int32_t down = top + y;
+    if (down < 0 || down >= height) continue;
+    for (int32_t x = 0; x < across; x++) {
+      int32_t along = left + x;
+      if (along < 0 || along >= width || places[(down * width) + along] != 0) continue;
+      int32_t from_x = mirrored ? across - 1 - x : x, from_y = upside_down ? tall - 1 - y : y;
+      int32_t column = from_x / RG_FILL_TILE_SIDE, row = from_y / RG_FILL_TILE_SIDE;
+      int32_t tile = first_tile + (column * column_step) + (row * row_step);
+      if (tile >= tile_count) continue;
+      places[(down * width) + along] = start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
+                                                        from_y % RG_FILL_TILE_SIDE, from_x % RG_FILL_TILE_SIDE);
+    }
+  }
+}
+
+/* How many pieces the frame whose entry is at +entry_at+ holds, and, in +first+, where the first of
+ * them is in the file. The frame's entry says where its record starts, counted from +records_at+;
+ * 0 is a frame with no record. The file is the player's: a record is read while it is inside the
+ * file. */
+static int32_t start_file_frame_pieces(int32_t entry_at, int32_t records_at, int32_t *first) {
+  uint32_t offset = entry_at + RG_FRAME_ENTRY_BYTES <= start_file_size ? start_file_number(entry_at, 4, 0) : 0;
+  int32_t count = 0, room = start_file_size - records_at - RG_FRAME_HEADER_BYTES;
+  *first = 0;
+  if (offset != 0 && room >= 0 && offset <= (uint32_t)room) {
+    *first = records_at + (int32_t)offset + RG_FRAME_HEADER_BYTES;
+    count = (int32_t)start_file_number(*first - RG_FRAME_HEADER_BYTES, 2, 0);
+    if (count > (start_file_size - *first) / RG_FRAME_PIECE_BYTES) count = (start_file_size - *first) / RG_FRAME_PIECE_BYTES;
+  }
+  return count;
+}
+
+void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules) {
+  int32_t entry_at = rules[0], records_at = rules[1], colors_at = rules[2], list_colors = rules[3], lists = rules[4];
+  int32_t first_place = rules[5], first_piece = 0;
+  const int32_t *format = rules + RG_CHOSEN_COLORS_HEADER_NUMBERS;
+  int32_t list = start_file_frame_pieces(entry_at, records_at, &first_piece) > 0
+                     ? (int32_t)start_file_number(first_piece + RG_PIECE_BANK_AT, 2, 0)
+                     : 0;
+  for (int32_t entry = 0; entry < count; entry++)
+    colors[first + entry] = list < lists ? start_file_color(colors_at + (list * list_colors * 2), format, first_place + entry) : 0;
+}
+
+int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
+  int32_t first_piece = 0;
+  return start_file_frame_pieces(entry_at, records_at, &first_piece) > 0
+             ? (int32_t)start_file_number(first_piece + RG_PIECE_BANK_AT, 2, 0)
+             : 0;
+}
+
+void rg_start_file_fill_pose(const int32_t *rules) {
+  int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
+  int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], entry_at = rules[9], records_at = rules[10];
+  int32_t origin_x = rules[11], origin_y = rules[12], tiles_at = rules[13], tile_count = rules[14], only_bank = rules[15];
+  const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
+  const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
+  const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
+  const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
+  int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first);
+  int32_t *places = calloc((size_t)(width * height), sizeof *places);
+  if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
+  for (int32_t piece = 0; piece < count; piece++) {
+    int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
+    if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
+    start_file_paint_piece(places, width, height, at, tile_format, origin_x, origin_y, tiles_at, tile_count);
+  }
+  uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
+  int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
+  for (int32_t row = 0; row < height; row++) {
+    for (int32_t column = 0; column < width; column++) {
+      int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+      int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+      int32_t place = places[(from_row * width) + from_column];
+      uint16_t color = 0xFFFFu;
+      if (place != 0) {
+        color = 0;
+        if (place < swapped_count) {
+          color = (uint16_t)swapped[place];
+        } else if (place < colors_count) {
+          color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+        }
+      }
+      if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
+      else image_pixels[start + (row * width) + column] = (int16_t)color;
+    }
+  }
+  free(places);
+}
+
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks) {
+  int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
+  int32_t bank_at = rules[10], bank_bits = rules[11], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
+  int32_t columns = across * side, count = followed[2];
+  for (int32_t cell = 0; cell < cells; cell++) {
+    uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    if (bank >= bank_count || bank > 30 || !((banks >> bank) & 1)) continue;
+    for (int32_t down = 0; down < side; down++)
+      for (int32_t along = 0; along < side; along++)
+        followed[3 + count++] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+  }
+  followed[2] = count;
+}
+
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving) {
+  int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
+  int32_t tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10], bank_bits = rules[11];
+  int32_t row_tiles = rules[12], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
+  int32_t start = moving[0], count = moving[1], entry = 1 + (bank_count * 8), columns = across * side;
+  for (int32_t cell = 0; cell < cells; cell++) {
+    uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
+    int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    if (bank >= bank_count) continue;
+    for (int32_t down = 0; down < side; down++) {
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
+        int32_t number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+        for (int32_t which = 0; which < count; which++) {
+          const int32_t *each = moving + 2 + (which * entry);
+          if (each[0] != tile) continue;
+          const int32_t *shown = each + 1 + ((((bank * 4) + mirrored + (2 * upside_down))) * 2);
+          painted[start + (2 * (held + number))] = shown[0];
+          painted[start + (2 * (held + number)) + 1] = shown[1];
+          break;
+        }
+      }
+    }
+  }
+}
+
+void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules) {
+  const int32_t *turns = rules + RG_TILE_FORMAT_NUMBERS;
+  for (int32_t tile = 0; tile < tiles; tile++) {
+    int32_t at = turns[2 * tile], turn = turns[(2 * tile) + 1];
+    for (int32_t row = 0; row < RG_FILL_TILE_SIDE; row++) {
+      for (int32_t column = 0; column < RG_FILL_TILE_SIDE; column += 2) {
+        int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? RG_FILL_TILE_SIDE - 1 - row : row;
+        int32_t near = (turn & RG_TURN_MIRRORED) ? RG_FILL_TILE_SIDE - 1 - column : column;
+        int32_t far = (turn & RG_TURN_MIRRORED) ? RG_FILL_TILE_SIDE - 2 - column : column + 1;
+        int32_t left = start_file_place(at, rules, 1, from_row, near) & 0xF, right = start_file_place(at, rules, 1, from_row, far) & 0xF;
+        table[(tile * 32) + (row * 4) + (column / 2)] = (uint8_t)(left | (right << 4));
+      }
+    }
+  }
+}
+
+void rg_start_file_fill_background(const int32_t *rules) {
+  int32_t total = rules[0], start = rules[1], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
+  int32_t map_high_byte_first = rules[6], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];
+  int32_t bank_at = rules[10], bank_bits = rules[11], row_tiles = rules[12], tiles_at = rules[13], tile_count = rules[14];
+  int32_t colors_at = rules[15], bank_count = rules[16], bank_size = rules[17], sets = rules[18], held = rules[19];
+  int32_t cell_bytes = rules[20];
+  const int32_t *tile_format = rules + RG_FILL_BACKGROUND_HEADER_NUMBERS;
+  const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
+  const int32_t *lists = color_format + RG_COLOR_FORMAT_NUMBERS;
+  int32_t columns = across * side;
+  int32_t set_tiles = held + (columns * (cells / across) * side);
+  uint16_t *pixels = rg_screen_tile_pixels_to_fill(total);
+  for (int32_t cell = 0; cell < cells; cell++) {
+    uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
+    int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    for (int32_t down = 0; down < side; down++) {
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
+        int32_t number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+        int32_t places[RG_FILL_TILE_PIXELS];
+        for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
+          int32_t row = at / RG_FILL_TILE_SIDE, column = at % RG_FILL_TILE_SIDE;
+          places[at] = tile < tile_count ? start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1,
+                                                            upside_down ? RG_FILL_TILE_SIDE - 1 - row : row,
+                                                            mirrored ? RG_FILL_TILE_SIDE - 1 - column : column)
+                                         : 0;
+        }
+        for (int32_t set = 0; set < sets; set++) {
+          const int32_t *list = lists + ((((set * bank_count) + bank) * (1 + bank_size)));
+          uint16_t *drawn = pixels + start + (((set * set_tiles) + held + number) * RG_FILL_TILE_PIXELS);
+          for (int32_t at = 0; at < RG_FILL_TILE_PIXELS; at++) {
+            uint16_t color = 0;
+            if (places[at] == 0) color = 0xFFFFu;
+            else if (bank >= bank_count) color = 0;
+            else if (list[0] < 0) color = (uint16_t)list[1 + places[at]];
+            else if (list[0] < bank_count) color = start_file_color(colors_at + (list[0] * bank_size * 2), color_format, places[at]);
+            drawn[at] = color;
+          }
+        }
+      }
     }
   }
 }

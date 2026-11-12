@@ -118,6 +118,68 @@ class TestPS1PaintedScreen < Minitest::Test
     assert_match(/fewer colours/, error.message)
   end
 
+  # A GAME THAT FADES ITS PAINTED SCREEN draws it by number and shows a copy in its colours
+  # (PS1::PaintedNumbers). A game that stops shows the page it showed, copied again in the colours of the
+  # fade it stopped under: on a tear-free screen that is the page before the stopping pass's, which the
+  # stopping pass never trades for its own.
+  def test_a_tear_free_screen_stopping_under_a_new_fade_shows_the_page_before_faded
+    run = PS1::CheckedRun.new.run(program_of do
+      screen :bitmap, tear_free: true
+      n = var :n, 0
+      game_loop do
+        n += 1
+        clear_screen :blue
+        draw_rect_at 0, 0, n * 10, 10, :red
+        if n == 4
+          fade :black, 50
+          draw_rect_at 0, 20, 10, 10, :white
+          halt
+        end
+      end
+    end, frames: 8)
+
+    shown = (0..40).step(10).map { |x| run.screen.pixel(x, 0) }
+    assert_equal [true, true, true, false, false], shown.map { |color| color != run.screen.pixel(0, 200) },
+                 "the third pass's page, three blocks of red, under the fade"
+    refute_equal RED, run.screen.pixel(0, 0), "faded"
+  end
+
+  # A picture and words drawn while a fade is in force are drawn in their own colours' numbers: only the
+  # table the page is shown through is walked, never the tables the pictures are read through.
+  def test_pictures_and_words_drawn_under_a_fade_show_their_colours_faded
+    run = PS1::CheckedRun.new.run(program_of do
+      image :eye, "K" => :black, "W" => :white, "R" => :red, "." => :transparent do
+        "WKR.\nRWK."
+      end
+      n = var :n, 0
+      game_loop do
+        n += 1
+        fade :black, n * 20
+        clear_screen :blue
+        blit :eye, 10 + n, 10
+        draw_text "HI", 40, 40, :yellow
+      end
+    end, frames: 5)
+
+    refute_equal BLUE, run.screen.pixel(0, 0), "the fade is in force"
+  end
+
+  # The numbers a painted screen is drawn in are MOST_COLORS, so a game that fades a screen it draws in more
+  # colours is refused in plain words, as not made yet.
+  def test_a_faded_screen_of_more_colours_than_there_are_numbers_is_refused
+    error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
+      PS1.new.build(program_of do
+        image :many, data: Array.new(16 * 16) { |i| (i * 97) | 1 }, width: 16, height: 16
+        game_loop do
+          blit :many, 0, 0
+          fade :black, 50
+        end
+      end)
+    end
+
+    assert_match(/more than 128 colours/, error.message)
+  end
+
   private
 
   # A 192 × 256 picture of +count+ colours, the see-through one and black among them, each pixel's colour

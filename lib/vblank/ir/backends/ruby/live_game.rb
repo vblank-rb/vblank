@@ -38,6 +38,13 @@ module VBlank
             self
           end
 
+          # The keys and gamepad buttons the game adds to the window's layout (Live::SDL's
+          # +game_controls+).
+          def controls = @game.rg_live_controls
+
+          # The most players the build seats, 0 for a game that names none (Live::Seats.several_players?).
+          def seats = @game.rg_live_seats
+
           # The samples a second its sound is made at.
           def sound_rate = @game.class::RG_SOUND_RATE
 

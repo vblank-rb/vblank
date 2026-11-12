@@ -66,8 +66,10 @@ end.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*").freeze
   SHA1_EU = Digest::SHA1.hexdigest(COPY_EU)
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
-  # a Ractor and these are a module's.
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  # a Ractor and these are a module's. Must go through InRactors.share_constants, not
+  # Ractor.make_shareable alone: tests in several Ractors write COPY to a file at once, and a plain
+  # frozen COPY loses its bytes to that (InRactors.shareable says how).
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def original(folder)
     path = File.join(folder, "made_up.gba")

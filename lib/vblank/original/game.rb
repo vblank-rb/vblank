@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "did_you_mean"
 require "digest"
 require "yaml"
 
@@ -40,22 +41,63 @@ module VBlank
     # Whether a shell is being built here now (Original.without_copies).
     def self.copies_hidden? = Ractor.current[:vblank_copies_hidden] == true
 
-    # WHAT AN ORIGINAL FROM A COMPUTER NAMES AS ITS PLATFORM. Every other platform is a console's
-    # name (Console::KITS), whose layouts its data is kept in (Slot).
+    # WHAT AN ORIGINAL FROM A COMPUTER NAMES AS ITS PLATFORM. An original names any platform: a
+    # console's name (Console::KITS), this, or one VBlank does not list (:arcade, :nes).
     COMPUTER = :pc
 
     # The platform an original is for when its game names none.
     DEFAULT_PLATFORM = :gba
 
-    # The platform +platform+ names, as a Symbol: a console's name, or COMPUTER. Any other is refused.
-    def self.platform_named(platform)
-      named = platform.to_s.to_sym
-      return named if named == COMPUTER || Console::KITS.key?(named)
+    # THE NAME OF VBLANK'S OWN LAYOUT (Console::VBLANK_FORMATS), the layout a slot of an original is
+    # in where its platform keeps its data in no layout VBlank reads.
+    VBLANK_LAYOUT = :vblank
 
-      known = [*Console::KITS.keys, COMPUTER].map(&:inspect)
-      raise ArgumentError, "The original names platform: #{platform.inspect}. An original is from #{known[..-2].join(', ')} " \
-                           "or #{known.last}. Name the console it is for, or :#{COMPUTER} for a computer game."
+    # What a platform's name is made of: lowercase letters, digits and underscores, a letter first.
+    PLATFORM_NAME = /\A[a-z][a-z0-9_]*\z/
+
+    # How many letters a platform's name may differ from a known one's (added, dropped or changed)
+    # and still be taken for a typo of it.
+    MOST_TYPO_EDITS = 2
+
+    # The platform +platform+ names, as a Symbol. Any name is a platform; a value that is no name is
+    # refused.
+    #
+    # A NAME CLOSE TO A KNOWN ONE IS REFUSED, unless +new_platform+ says it is meant: one a letter or
+    # two from a console's name or COMPUTER, or the same but for case or punctuation (:gbcc, "GBA",
+    # :p_c). A typo is not a new platform: its slots would be read in VBlank's own layout, and a slot
+    # the original keeps in its console's layout would then show a wrong picture with no error.
+    def self.platform_named(platform, new_platform: false)
+      named = platform.to_s if platform.is_a?(Symbol) || platform.is_a?(String)
+      refuse_platform_close_to_known!(named) if named && !new_platform
+      return named.to_sym if named&.match?(PLATFORM_NAME)
+
+      raise ArgumentError, "The original names platform: #{platform.inspect}. A platform is a name. To fix this, give a " \
+                           "name of lowercase letters, digits and underscores, like :gba, :ps1, :#{COMPUTER} for a " \
+                           "computer game, or :arcade."
     end
+
+    # The platforms VBlank knows by name: each console's, and COMPUTER.
+    def self.known_platforms = [*Console::KITS.keys, COMPUTER]
+
+    def self.refuse_platform_close_to_known!(named)
+      known_names = known_platforms.map(&:to_s)
+      return if known_names.include?(named)
+
+      bare = named.downcase.delete("^a-z0-9")
+      nearest = known_names.min_by { |known| DidYouMean::Levenshtein.distance(named, known) }
+      meant = known_names.find { |known| bare == known } ||
+              (nearest if DidYouMean::Levenshtein.distance(named, nearest) <= MOST_TYPO_EDITS)
+      return unless meant
+
+      raise ArgumentError, "platform: :#{named} is not a platform VBlank knows. Did you mean :#{meant}? To fix this, " \
+                           "write platform: :#{meant}. If :#{named} is a new platform, add new_platform: true to this line."
+    end
+    private_class_method :refuse_platform_close_to_known!
+
+    # The layout a slot of an original for +platform+ is read in when it names none: the console's
+    # own where VBlank reads it (Console::Kit#original_formats), and VBLANK_LAYOUT for every other
+    # platform.
+    def self.layout_for(platform) = Console.original_formats_of(platform) ? platform : VBLANK_LAYOUT
 
     # ONE FILE OF A COPY THAT IS A FOLDER: where it is on this machine, and the file of the release
     # it was accepted as (ReleaseFile).
@@ -68,7 +110,8 @@ module VBlank
     # release's (Release.files_sha1).
     Copy = Data.define(:path, :release, :sha1, :platform, :files) do
       def initialize(path:, release:, sha1:, platform: DEFAULT_PLATFORM, files: nil)
-        super(path:, release:, sha1:, platform: Original.platform_named(platform), files:)
+        # The Game that accepts a copy has refused a typo already; a copy only keeps the name.
+        super(path:, release:, sha1:, platform: Original.platform_named(platform, new_platform: true), files:)
       end
 
       # The one release a copy is, as every original names its releases (Game#release_names).
@@ -120,8 +163,11 @@ module VBlank
     #   not_set_help:   words of the game's own added to the message when nothing is set: what the
     #                   copy must hold, say
     #   env:            where the setting is looked up (ENV unless set; a test hands its own)
-    #   platform:       the console the original is for (:gba unless set; :gbc, :snes, :genesis), whose
-    #                   layouts a data pack's slots are read in, or :pc for a computer game (Slot)
+    #   platform:       what the original is for (:gba unless set; :gbc, :snes, :genesis, :ps1, :pc for
+    #                   a computer game, or any other name, :arcade). A data pack's slots are read in
+    #                   that console's layout where VBlank reads it, and in VBlank's own otherwise (Slot)
+    #   new_platform:   true for a new platform whose name is close to a known one (:ps2), which is
+    #                   otherwise refused as a typo (Original.platform_named)
     #
     # and one of two ways to accept the copy:
     #
@@ -153,15 +199,15 @@ module VBlank
 
       attr_reader :title, :setting, :settings_file, :key
 
-      # The platform the original is for: a console's name (:gba, :gbc, :snes, :genesis), whose
-      # layouts its data is kept in, or COMPUTER. The Advance unless the game names another.
+      # The platform the original is for: a console's name (:gba, :gbc, :snes, :genesis, :ps1),
+      # COMPUTER, or any other name. The Advance unless the game names another.
       attr_reader :platform
 
       def initialize(title:, setting:, settings_file:, key: "rom", releases: nil, probe: nil, not_set_help: nil, paths: {},
-                     env: ENV, platform: DEFAULT_PLATFORM)
+                     env: ENV, platform: DEFAULT_PLATFORM, new_platform: false)
         raise ArgumentError, "#{title}: name releases: or probe:, one of the two" unless releases.nil? ^ probe.nil?
 
-        @platform = Original.platform_named(platform)
+        @platform = Original.platform_named(platform, new_platform: new_platform)
         @title = title
         @setting = setting
         @settings_file = File.expand_path(settings_file)

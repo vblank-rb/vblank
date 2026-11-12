@@ -182,6 +182,7 @@ def rg_mix_play(recording, step, loudness, back, loops)
   rg_mix_start_voice(at, recording, step, back, loudness, @rg_game_recordings, rg_recording_numbers(recording) + 2)
   @rg_mix_voices[at].loops = loops
   @rg_mix_voices[at].ticket = (@rg_mix_tickets += 1)
+  rg_spu_recording_struck(at, true)
   rg_mix_record_peak
 end
 
@@ -230,6 +231,7 @@ def rg_mix_start_music_note(effect, lane, rank, sound, loudness)
   voice.effect = effect
   voice.lane = lane
   voice.rank = rank
+  rg_spu_recording_struck(at, false)
   1
 end
 
@@ -262,10 +264,20 @@ def rg_mix_rescale_music(lane, loudness)
 end
 
 def rg_mix_stop(recording)
-  @rg_mix_voices.first(rg_mix_voice_count).each do |voice|
-    voice.sounding = false if voice.sounding && voice.owner == RG_MIX_GAME && (recording < 0 || voice.recording == recording)
+  @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
+    next unless voice.sounding && voice.owner == RG_MIX_GAME && (recording < 0 || voice.recording == recording)
+
+    voice.sounding = false
+    rg_spu_recording_stopped_by_game(i)
   end
   rg_sound_log("stop_sample")
+end
+
+# Each voice told to the sound chip that plays recordings on voices of its own (rg_mix.c says when).
+def rg_mix_recordings_told
+  @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
+    rg_spu_tell_recording(i, voice.sounding, voice.recording, voice.back, voice.step, voice.loudness, voice.level)
+  end
 end
 
 # One voice's frame added into +totals+. False when its recording ran out partway and it stopped.
@@ -424,4 +436,83 @@ def rg_mix_visit_sound_state
   samples = rg_mixes != 0 ? rg_slice_samples : 0
   newest = rg_state_numbers("mix.slice", (@rg_mix_slice || Array.new(samples, 0)).first(samples))
   @rg_mix_slice = newest if samples.positive?
+end
+
+# --- a recording's settings in the file (rg_mix.h says what each of these is handed) ---
+
+RG_FILE_NUMBER_NUMBERS = 4
+RG_FILE_NUMBER_READS = Ractor.make_shareable({ 1 => %w[C C], 2 => %w[v n], 4 => %w[V N] })
+
+# The number of a recording's setting, from the four numbers of +rules+ at +where+ (rg_mix.c's
+# start_file_setting).
+def rg_start_file_setting(rules, where)
+  width = rules[where + 1]
+  number = @rg_start_file.byteslice(rules[where], width).unpack1(RG_FILE_NUMBER_READS.fetch(width)[rules[where + 2]])
+  top = 1 << ((width * 8) - 1)
+  rules[where + 3] == 1 && number >= top ? number - (top * 2) : number
+end
+
+# rg_mix.c's number_of_halves.
+def rg_number_of_halves(high, low) = [high, low].pack("l>l>").unpack1("G")
+
+def rg_mix_fill_steps(into, rules)
+  rate = [rg_start_file_setting(rules, 0), 1].max
+  rest = RG_FILE_NUMBER_NUMBERS
+  mix_rate = rg_number_of_halves(rules[rest], rules[rest + 1])
+  rules[rest + 2].times do |i|
+    entry = rest + 3 + (i * 3)
+    step = ((rate.to_f / mix_rate) * rg_number_of_halves(rules[entry + 1], rules[entry + 2])) * 65_536
+    into[rules[entry]] = step < 1 ? 1 : [(step + 0.5).floor, 2_147_483_647].min
+  end
+end
+
+# rg_mix.c's start_file_no_hold: the number's bits, signed or not, all set.
+def rg_start_file_no_hold?(rules, where)
+  every_bit = (1 << (rules[where + 1] * 8)) - 1
+  rg_start_file_setting(rules, where) & every_bit == every_bit
+end
+
+# rg_mix.c's start_file_back.
+def rg_start_file_back(holds_from, none, length, whole)
+  if none
+    whole == 1 ? length : 0
+  else
+    length - holds_from.clamp(0, length - 1)
+  end
+end
+
+def rg_mix_fill_holds(into, rules)
+  rest = RG_FILE_NUMBER_NUMBERS
+  back = rg_start_file_back(rg_start_file_setting(rules, 0), rg_start_file_no_hold?(rules, 0), rules[rest], rules[rest + 1])
+  rules[rest + 2].times { |i| into[rules[rest + 3 + i]] = back }
+end
+
+# rg_mix.c's start_file_length.
+def rg_start_file_length(rules) = rg_start_file_setting(rules, 0).clamp(1, rules[RG_FILE_NUMBER_NUMBERS])
+
+def rg_mix_fill_length(into, rules)
+  rest = RG_FILE_NUMBER_NUMBERS + 1
+  length = rg_start_file_length(rules)
+  rules[rest].times { |i| into[rules[rest + 1 + i]] = length }
+end
+
+def rg_mix_fill_backs(into, rules)
+  length = rg_start_file_length(rules)
+  hold = RG_FILE_NUMBER_NUMBERS + 1
+  rest = hold + 1 + RG_FILE_NUMBER_NUMBERS + 1
+  from_file = rules[hold] != 0
+  holds_from = from_file ? rg_start_file_setting(rules, hold + 1) : rules[hold + 1 + RG_FILE_NUMBER_NUMBERS]
+  none = from_file ? rg_start_file_no_hold?(rules, hold + 1) : holds_from.negative?
+  back = rg_start_file_back(holds_from, none, length, rules[rest])
+  rules[rest + 1].times { |i| into[rules[rest + 2 + i]] = back }
+end
+
+def rg_mix_fill_shapes(into, rules)
+  at = rules[0]
+  full = rules[2]
+  attack, decay, sustain, release = @rg_start_file.byteslice(at, 4).bytes
+  shaped = !(attack == full && sustain == full && release.zero?)
+  rules[3].times do |i|
+    into[rules[4 + i], 5] = shaped ? [1, attack, decay, sustain, release] : [0, 0, 0, 0, 0]
+  end
 end

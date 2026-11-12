@@ -99,6 +99,21 @@ class TestRefusedVerbs < Minitest::Test
     end
   end
 
+  # A Super Nintendo's mosaic reaches its backgrounds and never its sprites: a game says so with
+  # `sprites: false` and builds, and one that leaves the sprites in hears what to write.
+  def test_a_super_nintendo_pixelates_only_a_game_that_leaves_its_sprites_as_drawn
+    kit = VBlank::Console.for(:snes)
+    [tiled_game { pixelate 4 }, tiled_game { pixelate_out; pixelate_in }].each do |game|
+      said = said_building(kit, game)
+
+      assert_match(/sprites in blocks too/, said)
+      assert_match(/must write `sprites: false`/, said)
+    end
+    [tiled_game { pixelate 4, sprites: false }, tiled_game { pixelate_out sprites: false; pixelate_in }].each do |game|
+      VBlank.build("BLOCKS", console: :snes, out: StringIO.new, err: StringIO.new, &game)
+    end
+  end
+
   # An answer that only points at another verb's is refused in that verb's words.
   def test_an_answer_that_points_at_another_is_said_in_that_ones_words
     answers = VBlank::Console::ColorAnswers

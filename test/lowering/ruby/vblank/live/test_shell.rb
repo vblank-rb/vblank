@@ -46,20 +46,26 @@ class TestShell < Minitest::Test
   end
 
   # The shell played once: the menu with +buttons+ held, LOAD ROM picking +picked+ (a path, or nil
-  # for nothing), and the game, once it plays, for GAME_PASSES passes. What happened, by name.
-  Played = Data.define(:game_pictures, :refusals, :times_asked)
+  # for nothing), and the game, once it plays, for GAME_PASSES passes. What happened, by name:
+  # +refusals+ are what the player was told, +kept_pack_refusals+ what whoever made the build was
+  # told of a kept pack not read, and +menu_pictures+ every picture before the game's.
+  Played = Data.define(:game_pictures, :refusals, :times_asked, :kept_pack_refusals, :menu_pictures)
 
   private def play_shell(shell, folder, picked:, buttons: CHOOSE_LOAD_ROM, menu_frames: 400)
     refusals = []
+    kept_pack_refusals = []
     asked = 0
     game_device = Headless.new(frames: GAME_PASSES)
-    shell.play(Headless.new(frames: menu_frames, buttons: buttons), folder_path: File.join(folder, "kept"),
-                                                                    choose_copy: lambda {
-                                                                      asked += 1
-                                                                      picked
-                                                                    }, refused: ->(words) { refusals << words },
-                                                                    play_game: ->(game) { Session.new(game: game).play(game_device) })
-    Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked)
+    menu_device = Headless.new(frames: menu_frames, buttons: buttons)
+    shell.play(menu_device, folder_path: File.join(folder, "kept"),
+                            choose_copy: lambda {
+                              asked += 1
+                              picked
+                            }, refused: ->(words) { refusals << words },
+                            kept_pack_refused: ->(words) { kept_pack_refusals << words },
+                            play_game: ->(game) { Session.new(game: game).play(game_device) })
+    Played.new(game_pictures: game_device.pictures.map(&:pixels), refusals: refusals, times_asked: asked,
+               kept_pack_refusals: kept_pack_refusals, menu_pictures: menu_device.pictures)
   end
 
   private def kept_pack(folder) = File.binread(File.join(folder, "kept", PACK_FILE))
@@ -124,17 +130,57 @@ class TestShell < Minitest::Test
     end
   end
 
-  # A pack names the build of the game it was made for, so a new build refuses the pack an older
-  # one kept, asks for the copy again, and keeps the new build's pack.
+  # A PACK AN OLDER BUILD KEPT IS ROUTINE: a port grows a part at a time, and each part changes
+  # its pack. A new build does not read it, tells the player nothing went wrong (no refusal), says
+  # on its menu that the data must be read again from the copy of the original, by the original's
+  # own title, asks for the copy as on a first start, and writes its pack over the old one.
   def test_a_new_build_of_the_port_asks_for_the_copy_again
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
       played = play_shell(shell(folder, version: "2"), folder, picked: copy_at(folder))
 
       assert_equal 1, played.times_asked
-      assert_match "not the data pack this build reads", played.refusals.first
+      assert_empty played.refusals, "a pack kept by an older build was told to the player as a refusal"
+      assert_match "not the data pack this build reads", played.kept_pack_refusals.first
+      assert_match "your copy of Made Up", played.kept_pack_refusals.first
+      assert_equal [GRAY], colors_on(played.menu_pictures.first, READ_AGAIN_ROWS), "the menu does not say the data must be read again"
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
+  end
+
+  # A kept pack of another size (the port gained a slot) is the same: the menu, and no refusal.
+  def test_a_kept_pack_of_another_size_starts_at_the_menu_and_is_replaced
+    Dir.mktmpdir do |folder|
+      FileUtils.mkdir_p(File.join(folder, "kept"))
+      File.binwrite(File.join(folder, "kept", PACK_FILE), all_in_one_pack.byteslice(0, 100))
+      played = play_shell(shell(folder), folder, picked: copy_at(folder))
+
+      assert_empty played.refusals
+      assert_equal [GRAY], colors_on(played.menu_pictures.first, READ_AGAIN_ROWS)
+      assert_equal all_in_one_pictures, played.game_pictures
+      assert_equal all_in_one_pack, kept_pack(folder)
+    end
+  end
+
+  # A first start, with no pack kept, says nothing of reading the data again.
+  def test_a_first_start_does_not_say_the_data_must_be_read_again
+    Dir.mktmpdir do |folder|
+      played = play_shell(shell(folder), folder, picked: copy_at(folder))
+
+      assert_empty colors_on(played.menu_pictures.first, READ_AGAIN_ROWS)
+    end
+  end
+
+  # What the menu says of a pack to read again is the original's title, not this program's, and
+  # fits the screen a row of words at a time.
+  def test_the_menu_names_the_original_the_player_owns
+    sentence = VBlank::Original::Shell.read_again_sentence("The Made Up Original")
+    rows = VBlank::Original::Shell.read_again_rows(sentence.upcase, 120) { |words| words.length * 6 }
+
+    assert_match "Load your copy of The Made Up Original.", sentence
+    assert_equal sentence.upcase, rows.join(" ")
+    assert_operator rows.map(&:length).max, :<=, 20
+    assert_operator rows.size, :>, 1
   end
 
   def test_a_copy_of_the_right_size_that_is_no_release_is_refused
@@ -156,6 +202,7 @@ class TestShell < Minitest::Test
     end
   end
 
+  # The menu comes back with SETTINGS still under the cursor, so LOAD ROM is one line up from it.
   def test_settings_on_the_menu_opens_the_settings_then_shows_the_menu_again
     Dir.mktmpdir do |folder|
       buttons = { 2 => [:down], 4 => [:a] }
@@ -164,12 +211,113 @@ class TestShell < Minitest::Test
                                                                        choose_copy: -> { copy_at(folder) }, refused: ->(_) {},
                                                                        open_settings: lambda {
                                                                          opened += 1
-                                                                         buttons.replace(CHOOSE_LOAD_ROM)
+                                                                         buttons.replace({ 2 => [:up], 4 => [:a] })
                                                                        },
                                                                        play_game: ->(_) {})
 
       assert_equal 1, opened
       assert File.exist?(File.join(folder, "kept", PACK_FILE))
+    end
+  end
+
+  # THE MENU'S TWO LINES, as rows of the picture (Original::Shell.menu_program puts LOAD ROM at the
+  # screen's middle and SETTINGS twelve rows under it), and the colours a line is drawn in: gray,
+  # white under the cursor, and yellow once it is chosen.
+  LOAD_ROM_ROWS = (80...88)
+  SETTINGS_ROWS = (92...100)
+  # The rows under the menu's lines, where it says the game's data must be read again.
+  READ_AGAIN_ROWS = (104...160)
+  GRAY, WHITE, YELLOW = %i[gray white yellow].map { |name| Color.resolve(name) }
+
+  # The colours of the words on +rows+ of +picture+ (a Headless::Picture), black left out.
+  private def colors_on(picture, rows)
+    rows.flat_map { |row| picture.pixels[row * picture.width, picture.width] }.uniq - [Color.resolve(:black)]
+  end
+
+  # The line chosen shows as chosen before anything else happens: the picture up as the file is
+  # asked for has LOAD ROM in yellow, and it was up for several frames by then.
+  def test_the_chosen_line_shows_as_chosen_before_the_file_is_asked_for
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: 400, buttons: CHOOSE_LOAD_ROM)
+      shown_as_asked = nil
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), refused: ->(_) {}, play_game: ->(_) {},
+                                 choose_copy: lambda {
+                                   shown_as_asked ||= device.pictures.dup
+                                   copy_at(folder)
+                                 })
+      chosen = shown_as_asked.select { |picture| colors_on(picture, LOAD_ROM_ROWS) == [YELLOW] }
+
+      assert_equal [YELLOW], colors_on(shown_as_asked.last, LOAD_ROM_ROWS), "LOAD ROM is not shown as chosen"
+      assert_equal [GRAY], colors_on(shown_as_asked.last, SETTINGS_ROWS)
+      assert_operator chosen.size, :>=, 6, "the chosen line was up for #{chosen.size} frames"
+      assert_equal [WHITE], colors_on(shown_as_asked.first, LOAD_ROM_ROWS), "the menu opens with LOAD ROM under the cursor"
+    end
+  end
+
+  # One device from the menu to the unpacking's last picture: the menu, the chooser and the
+  # progress bar are all the one window's, and the game is handed to play on after them.
+  def test_the_menu_and_the_unpacking_show_on_the_one_device
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: 400, buttons: CHOOSE_LOAD_ROM)
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), choose_copy: -> { copy_at(folder) }, refused: ->(_) {},
+                                 play_game: ->(_) {})
+      bar = device.pictures.last
+      middle = (bar.height / 2 * bar.width) + (bar.width / 2)
+
+      assert_equal [WHITE], colors_on(device.pictures.first, LOAD_ROM_ROWS)
+      assert_equal WHITE, bar.pixels[middle], "the unpacking's bar is not on the device the menu was on"
+    end
+  end
+
+  # A chooser closed with nothing picked leaves the menu up as it was: the same line under the
+  # cursor, no longer shown as chosen, and A asks for the file again.
+  def test_a_chooser_cancelled_shows_the_menu_again_on_the_same_line
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: 60, buttons: CHOOSE_LOAD_ROM)
+      asked_after = []
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), refused: ->(_) {}, play_game: ->(_) {},
+                                 choose_copy: lambda {
+                                   asked_after << device.pictures.size
+                                   nil
+                                 })
+      back = device.pictures[asked_after.first]
+
+      assert_operator asked_after.size, :>=, 2, "the menu did not come back to ask again"
+      assert_equal [WHITE], colors_on(back, LOAD_ROM_ROWS), "the menu came back with LOAD ROM not under the cursor"
+      assert_equal [GRAY], colors_on(back, SETTINGS_ROWS)
+    end
+  end
+
+  # SETTINGS closed again leaves the cursor on SETTINGS: with nothing moved, A opens them again.
+  def test_the_menu_comes_back_from_settings_with_settings_under_the_cursor
+    Dir.mktmpdir do |folder|
+      buttons = { 2 => [:down], 4 => [:a] }
+      device = Headless.new(frames: 60, buttons: buttons)
+      opened_after = []
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), choose_copy: -> {}, refused: ->(_) {}, play_game: ->(_) {},
+                                 open_settings: lambda {
+                                   opened_after << device.pictures.size
+                                   buttons.replace({ 3 => [:a] })
+                                 })
+      back = device.pictures[opened_after.first]
+
+      assert_equal [WHITE], colors_on(back, SETTINGS_ROWS), "the menu came back with SETTINGS not under the cursor"
+      assert_equal [GRAY], colors_on(back, LOAD_ROM_ROWS)
+      assert_operator opened_after.size, :>=, 2, "A on the line the cursor came back to did not open the settings again"
+    end
+  end
+
+  # A file refused hands its words over and shows the menu again, LOAD ROM under the cursor.
+  def test_a_file_refused_shows_the_menu_again
+    Dir.mktmpdir do |folder|
+      device = Headless.new(frames: 60, buttons: CHOOSE_LOAD_ROM)
+      refused_after = []
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), choose_copy: -> { wrong_copy_at(folder) },
+                                 refused: ->(_) { refused_after << device.pictures.size }, play_game: ->(_) {})
+      back = device.pictures[refused_after.first]
+
+      assert_operator refused_after.size, :>=, 2, "the menu did not come back after the file was refused"
+      assert_equal [WHITE], colors_on(back, LOAD_ROM_ROWS)
     end
   end
 

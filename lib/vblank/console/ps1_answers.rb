@@ -69,8 +69,12 @@ module VBlank
         draw_place: works("the processor turns and projects every corner, as the other consoles do. The graphics chip " \
                           "fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or " \
                           "one picture pixel away from where the other consoles put them. In perspective, the " \
-                          "processor cuts a face into squares of 32 pixels (8 for `perspective: :every_pixel`), " \
-                          "and the picture is exact at the corners of each square. The graphics chip lights a " \
+                          "processor cuts a face into rectangles, and the picture is exact at the corners of each " \
+                          "rectangle. The rectangles are small where the face is near and at a slant. They are " \
+                          "narrow in the direction where the distance changes. Thus the picture is approximately " \
+                          "four pixels or less from its exact place (two pixels for `perspective: :every_pixel`), " \
+                          "and the picture of a near wall stays on the wall as the view turns. A face that is far " \
+                          "away or seen straight on is cut into few rectangles or none. The graphics chip lights a " \
                           "face, as the console's own games did: it makes each picture pixel darker by the light, " \
                           "which changes smoothly across the face. If the shading makes each colour darker evenly, " \
                           "a pixel is one level or less from the shading's colour. If the shading changes colours " \
@@ -82,16 +86,20 @@ module VBlank
         keep_showing: works,
 
         # --- fades, tints and screen effects ---
-        fade: works("`fade` and `tint` change the colours the console shows. How the graphics chip fades part of " \
-                    "the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the " \
-                    "build refuses it and says so."),
+        fade: works("`fade` and `tint` change the colours the console shows. On a screen drawn from tiles every " \
+                    "list of colours the graphics chip reads is worked out again, once, on a pass that changes them. " \
+                    "A painted screen that fades is drawn with a number for each colour, 128 colours at most. At the " \
+                    "end of each pass, the graphics chip copies it onto the screen through a list of those colours. " \
+                    "When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, " \
+                    "`outside:`, `under:`) is decided when that is made: until then the build refuses it and says so."),
         tint: works,
         fade_in: works,
         fade_out: works,
         flash_screen: works,
         fade_level: works,
         shake_screen: works,
-        pixelate: works("each block is the colour of one of its pixels, drawn by the graphics chip."),
+        pixelate: works("the build does not make `pixelate` yet. Until it does, the build refuses a game that " \
+                        "pixelates, and names `pixelate`."),
         pixelate_in: works("see `pixelate`."),
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,
@@ -112,15 +120,24 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds 256 places on a PlayStation, the first see-through."),
-        recolor: works,
+        recolor: works("on a screen drawn from tiles, the list's colours are written into the lists of colours the " \
+                       "graphics chip reads, so everything drawn with it changes on the same pass. On a painted " \
+                       "screen, a list changes the sprites that draw with it. The build makes sprites over a painted " \
+                       "screen (`over_picture: true`) drawn with another list. It does not make a list that " \
+                       "changes as the game runs there yet: it refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,
         sprite: works("a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is " \
                       "no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a " \
-                      "textured shape."),
+                      "textured shape. A sprite whose poses are drawn from different lists of colors shows each " \
+                      "pose in the colors of its own list. On a painted screen, a sprite with `over_picture: true` is " \
+                      "drawn over a copy of the picture as it goes to the screen, so the picture stays as the game " \
+                      "painted it. The build does not make a sprite painted into the picture yet: it refuses it and " \
+                      "says so."),
         draw_in_order: works,
         hide_sprites: works,
         picture_groups: works,
@@ -130,8 +147,14 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works,
         background: works("a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. " \
+                          "Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 " \
+                          "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
+                          "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \
                           "`show_only_inside` holds it to the chip's drawing area, and a background that turns or " \
-                          "resizes is drawn as a textured shape."),
+                          "resizes is drawn as a textured shape. On a painted screen, a background is painted into the " \
+                          "picture where it is put up. The build does not make one there that moves or changes yet. A " \
+                          "game can show a painted screen and one drawn from tiles at different times; the build does " \
+                          "not make a fade or a tint in such a game yet. It refuses each of these and says so."),
         status_bar: works,
         canvas: works,
         tile_pictures: works,
@@ -168,6 +191,7 @@ module VBlank
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the program holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the program holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: refused("it lists the ARM a routine was made into, and a PlayStation has no ARM processor to list it for."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a PlayStation does not have."),
 
@@ -183,18 +207,22 @@ module VBlank
         players_connected: works("1 while the build reads the first pad alone."),
         rumble: works("nothing is felt. The build reads a digital pad, which has no motor, so the game plays the " \
                       "same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
         enable_sound: works,
-        define_sound: works("the sound chip plays a square as a short recording of one wave, on a voice of its own."),
+        define_sound: works("the sound chip plays a square as a short recording of one wave, on a voice of its own. " \
+                            "A fade moves the voice's loudness a step at a time, at the same pace as on the Advance."),
         beep: works("see `define_sound`."),
-        noise: works("the sound chip has a noise voice."),
-        wave: works("the waveform is played as a short recording of one wave."),
+        noise: works("the sound chip plays the Advance's noise as a recording, at the pitch the game names. " \
+                     "A metallic noise is a recording of the Advance's rattle."),
+        wave: works("the waveform is played as a short recording of seven waves. Its loudness is one of the same " \
+                    "five steps as on the Advance."),
         stop_wave: works,
-        song: works,
+        song: works("#{Answers::PAN_LEAD} #{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_WHERE_PANNED}"),
         play_song: works,
         stop_music: works,
         hold_music: works,
@@ -204,7 +232,8 @@ module VBlank
         fade_music_out: works,
         songs: works,
         sound_effects: works("see `song`."),
-        sample: works("the sound chip plays recordings itself, 24 voices of them, each with its own loudness."),
+        sample: works("the sound chip plays recordings itself, each on a voice of its own with its own loudness and " \
+                      "shape, 16 at once."),
         instrument: works("see `sample`.")
       })
 
@@ -254,14 +283,9 @@ module VBlank
       # (Lowering#refuse_unmade_parts!). A verb is here when a game that uses it reaches a step of the
       # part; test_ps1_kind_coverage.rb holds the parts to the lowering's.
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
-        "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen sprite],
-        "fades, lights and screen effects" => %i[fade tint fade_in fade_out flash_screen pixelate pixelate_in
-                                                 pixelate_out spotlight iris_in iris_out],
-        "sprites and tiled backgrounds" => %i[sprite tiles background status_bar canvas tile_pictures sprite_tiles
-                                              layers layer draw_in_order hide_sprites picture_groups colors recolor
-                                              color_walk],
-        "sound" => %i[enable_sound define_sound beep noise wave stop_wave song play_song stop_music hold_music
-                      release_music music_volume fade_music_in fade_music_out songs sound_effects sample instrument],
+        "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen],
+        "fades, lights and screen effects" => %i[pixelate pixelate_in pixelate_out spotlight iris_in iris_out],
+        "sprites and tiled backgrounds" => %i[canvas tile_pictures sprite_tiles picture_groups],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 

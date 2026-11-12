@@ -10,9 +10,10 @@ require VBlank.root.join("examples/lit_corridor").to_s
 # the interpreter, every pixel with none let off. The Advance's twin is
 # test/console/gba/examples/test_lit_corridor_example.rb.
 class TestLitCorridorExampleOnThePlayStation < Minitest::Test
-  # The left wall at the middle row: near the viewer, far from the lamp, then under it.
+  # The left wall: at the middle row near the viewer, far from the lamp; then under it, on a line of
+  # mortar running down the wall, mortar in the interpreter's exact picture and in the chip's.
   NEAR_WALL = [10, 120].freeze
-  UNDER_LAMP = [130, 120].freeze
+  UNDER_LAMP = [133, 130].freeze
 
   # The stone's mortar, as the picture has it: the colour the lamp shows at full light.
   MORTAR = VBlank::Testing.shown(8 | (8 << 5) | (9 << 10))

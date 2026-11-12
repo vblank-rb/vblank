@@ -29,6 +29,8 @@ module VBlank
           def detect(program)
             places = Backends::Blocks.places(program)
             return [] unless places.size == 1
+            # A game that leaves every sprite as drawn has none in blocks.
+            return [] if Backends::Blocks.sprite_choices(program) == [true]
 
             picture = IR::Stacking.picture(program)
             sharp = places.first ? IR::Stacking.at_or_above(picture, places.first).map(&:name) : []

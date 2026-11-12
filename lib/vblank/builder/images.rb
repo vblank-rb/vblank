@@ -104,7 +104,7 @@ module VBlank
         if block
           define_ascii_image(name, opts, colors_name: colors_name, &block)
         elsif opts[:pieces]
-          define_pieced_image(name, pieces: opts[:pieces], colors: opts[:colors], colors_name: colors_name)
+          define_pieced_image(name, pieces: opts[:pieces], colors: opts[:colors], colors_name: colors_name, size: opts[:size])
         elsif opts.key?(:shading)
           define_shaded_image(name, places: opts[:places], width: opts[:width], height: opts[:height],
                                     shading: opts[:shading], colors: opts[:colors])
@@ -270,7 +270,9 @@ module VBlank
       #
       # A retail game repaints a sprite by writing other colours over its palette, and the colours
       # it writes are its own data. A list from the pack is the list those colours written here
-      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list).
+      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list). A
+      # build that reads its pack as the game starts does not hold those colours, and the list
+      # then holds a marker for each (DataPacks#pack_colors_read_at_start).
       def colors(name, list)
         refuse_bad_color_list_name!(name)
         list = pack_color_list(name, list) if list.is_a?(DSL::PackSlot)
@@ -280,8 +282,31 @@ module VBlank
                 "Got #{list.inspect}."
         end
 
-        @color_lists[name] = list.map { |c| c == :transparent ? 0x0000 : Graphics::Color.resolve(c) }
+        @color_lists[name] = list.map { |c| c == :transparent ? 0x0000 : list_color(c) }
         name
+      end
+
+      # THE NAME OF THE LIST A PICTURE IS DRAWN FROM, for a picture whose list the game did not
+      # write down itself: a pose that takes its colours from the bank its frame names (PackPoses),
+      # which is in the player's copy.
+      #
+      #   part = sprite :part_12, at: [80, 40]
+      #   part.draw_with colors_name_of(:part_12)      # so it follows `recolor` of that list
+      #
+      # A build that reads its pack as the game starts does not know which list that is, and
+      # hands back a name standing for it (PackPoses#pose_list_stand_in): a sprite told to
+      # draw_with it follows whichever list the player's file picks.
+      #
+      # @param picture [Symbol] a picture declared with `image` and given a list by name
+      # @return [Symbol] the list's name, as `colors` declared it
+      def colors_name_of(picture)
+        image = @pictures.fetch(picture) do
+          raise ArgumentError, "colors_name_of :#{picture} names no picture. Declare it first with `image :#{picture}, ...`."
+        end
+        image.colors_name or
+          raise ArgumentError, "colors_name_of needs a picture drawn from a list that has a name, and image :#{picture} " \
+                               "was given its colors themselves. To fix this, declare the list with `colors` and give " \
+                               "the picture its name, like `image :#{picture}, ..., colors: :hero`."
       end
 
       # The colours of the `colors` lists +names+, for a sprite showing +poses+ to be drawn
@@ -306,6 +331,49 @@ module VBlank
         end
       end
 
+      # A SPRITE TOLD TO FOLLOW THE LISTS ITS POSES ARE DRAWN FROM (HardwareSprite#draw_with given a
+      # hash): +lists+ names each list to follow, drawn with itself. The object +node+ then names
+      # them (IR::Nodes::Object#follows_each), and a pose drawn from one shows what that list holds.
+      #
+      # Each list is followed, never swapped for another: a sprite's other colours are picked by
+      # one number for the whole sprite, and poses of several lists would need a number each.
+      #
+      # A sprite whose poses are all of one list has nothing to tell apart, and this hands back the
+      # name of that list for an ordinary `draw_with` of it. nil otherwise.
+      def follow_pose_lists(node, lists, poses:, showing:, subject:)
+        unless showing.nil?
+          raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. A sprite " \
+                               "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
+                               "this, leave out showing:."
+        end
+        refuse_swapping_unplaced_pixels!(poses, subject)
+        if poses.any? { |pose| @poses_in_frame_bank_colors&.include?(pose) }
+          return follow_lists_chosen_at_start(node, lists, poses: poses, subject: subject)
+        end
+
+        drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
+        named = drawn.compact.map { |name| ":#{name}" }
+        lists.each do |own, with|
+          unless own.is_a?(Symbol) && drawn.include?(own)
+            raise ArgumentError, "#{subject} was told to draw_with #{own.inspect} => #{with.inspect}, and none of its " \
+                                 "pictures is drawn from a list named #{own.inspect}. Its pictures are drawn from " \
+                                 "#{named.empty? ? 'no list that has a name' : named.join(' and ')}. To fix this, name " \
+                                 "one of those lists."
+          end
+          next if with == own || drawn.one?
+
+          raise ArgumentError, "#{subject} shows pictures drawn from #{drawn.length} lists of colors, and it was told " \
+                               "to draw the list :#{own} with #{with.inspect}. Such a sprite can follow each of its " \
+                               "lists. It cannot draw one of them with another list. To fix this, write `#{own}: " \
+                               ":#{own}`, and change the colors with `recolor :#{own}, ...`."
+        end
+        return lists.values.first if drawn.one?
+
+        node.follows_each = ((node.follows_each || []) + lists.keys).uniq
+        (@pose_list_followers ||= []) << node
+        nil
+      end
+
       # The lists a background's tiles were drawn from, each once, in the order first met — what
       # its other colours are matched against, list by list. Every tile has to have been given
       # one, for the same reason a sprite's pictures do (see #shared_pose_colors!). Each is the
@@ -314,6 +382,7 @@ module VBlank
       # list of the layer that holds them, where one does (IR::Nodes::Background#recolored_list_of);
       # where two named apart hold them, nothing names which, and the game is told.
       def lists_drawn_from(poses, subject:)
+        refuse_swapping_unplaced_pixels!(poses, subject)
         unless poses.all? { |pose| colors_drawn_from(pose) }
           raise ArgumentError,
                 "#{subject} was told to draw_with other colors, but some of its tiles have no `colors:` list. " \
@@ -389,13 +458,20 @@ module VBlank
       #
       # +through+ names the list the sprite really draws with, where +name+ is a set that
       # list is told to hold (see ColorLists#recolor) rather than a list the sprite named.
+      #
+      # WHERE THE OTHER LIST IS READ FROM THE DATA PACK AS THE GAME STARTS, its colours at those
+      # places are markers (IR::StartFile), and two markers differ whatever colours the file
+      # holds there. The build cannot tell, and nothing in the player's file may stop the game,
+      # so the swap is made by the first place, as the all-in-one build makes it wherever it
+      # takes the game: the file holds one colour at those places, as the original's own did.
       def refuse_ambiguous_color_places!(own:, swapped:, name:, poses:, subject:, through: nil)
         guessed = poses.reject { |pose| @painted_colors.key?(pose) || @pictures.fetch(pose).places }
         return if guessed.empty?
 
         drawn = guessed.flat_map { |pose| @pictures.fetch(pose).colors_drawn }
         color, places = (1...own.length).group_by { |place| own[place] }.find do |value, at|
-          at.length > 1 && drawn.include?(value) && swapped.values_at(*at).uniq.length > 1
+          others = swapped.values_at(*at)
+          at.length > 1 && drawn.include?(value) && others.uniq.length > 1 && others.none? { |other| IR::StartFile.marker?(other) }
         end
         return unless color
 
@@ -419,6 +495,7 @@ module VBlank
       # by place. Pictures with no list were given their places by the framework, so no
       # other list can line up with them.
       def shared_pose_colors!(poses, subject)
+        refuse_swapping_unplaced_pixels!(poses, subject)
         lists = poses.map { |pose| colors_drawn_from(pose) }.uniq
         return lists.first if lists.length == 1 && lists.first
 
@@ -426,7 +503,9 @@ module VBlank
           raise ArgumentError,
                 "#{subject} was told to draw_with other colors, but the pictures it shows were given " \
                 "different `colors:` lists. Another list of colors swaps the sprite's own colors by their " \
-                "places, so give every picture it shows the same `colors:` list."
+                "places, so give every picture it shows the same `colors:` list. Or tell a sprite to follow " \
+                "each of its lists, like `draw_with({ hero: :hero, cape: :cape })`. Then change the colors of a " \
+                "list with `recolor`."
         end
         raise ArgumentError,
               "#{subject} was told to draw_with other colors, but its pictures have no `colors:` list. " \
@@ -456,6 +535,7 @@ module VBlank
                 "colors cannot be named :#{name}. `draw_with :#{name}` means a sprite's own colors. " \
                 "Pick a different name."
         end
+        refuse_color_list_named_as_bank!(name)
         return unless @color_lists.key?(name)
 
         raise ArgumentError, "colors :#{name} is declared twice. Give each list of colors its own name."
@@ -508,7 +588,7 @@ module VBlank
           node = Build.bitmap(name, width: turned.width, height: turned.height,
                                     pixels: turned.pixels, transparent: turned.transparent,
                                     colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
-                                    pieces: turned.pieces)
+                                    pieces: turned.pieces, piece_groups: turned.piece_groups)
           read_turned_picture_from_start_file(node, source, way)
           record_picture(node)
           box_x, box_y, box_w, box_h = @image_bounds[source] || [0, 0, turned.width, turned.height]
@@ -603,7 +683,8 @@ module VBlank
       # The picture still keeps colors for everything that draws it; the places ride along
       # beside them, and only the two things that read a pixel as a NUMBER — the console's
       # sprite and tile storage, and swapping in another list of colors — look at them.
-      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false)
+      def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false,
+                              piece_groups: nil)
         positive_dims!(name, width, height)
         table = color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
@@ -613,7 +694,7 @@ module VBlank
         record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
                                             places: places.pack("C*"), colors_name: colors_name, pieces: pieces,
-                                            places_from_pack: places_from_pack))
+                                            places_from_pack: places_from_pack, piece_groups: piece_groups))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
@@ -635,6 +716,11 @@ module VBlank
         unless shading_node
           raise ArgumentError, "image :#{name} was given places in shading: #{shading.inspect}, and there is no such " \
                                "shading. To fix this, declare it with `shading :#{shading}, colors: [...], levels: [...]` first."
+        end
+        if shading_node.from_file
+          raise ArgumentError, "image :#{name} was given places in shading :#{shading}, and this build reads that " \
+                               "shading's colors from the data pack as the game starts. The build must know the colors " \
+                               "to make the picture. To fix this, give the picture colors:, or build the game all-in-one."
         end
         expected = width * height
         unless places.is_a?(Array) && places.length == expected
@@ -659,17 +745,24 @@ module VBlank
       # kept: a list of pieces, each [dx, dy, places] — where its top left sits in the picture, and
       # its 64 pixels row by row as places in the `colors:` list, nought see-through. Pieces may
       # overlap; where they do, the one earlier in the list is in front, as a console draws its
-      # sprites. The picture is as wide and tall as its pieces reach, to a whole piece. A console that draws sprites
+      # sprites. The picture is as wide and tall as its pieces reach, to a whole piece, or as
+      # +size+ says ([width, height], whole pieces each way) where the game gives one, so
+      # pictures of different pieces can be one size. A console that draws sprites
       # from pieces draws it from these ones, rather than cutting the picture on an 8-pixel grid,
       # which can put more pieces on one line than it shows.
-      def define_pieced_image(name, pieces:, colors:, colors_name: nil)
+      #
+      # +piece_groups+ is for pieces cut from bigger ones (PackPoses): how many of them each bigger
+      # piece became, in their order (IR::Assets::Image#piece_groups).
+      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil)
         refuse_bad_pieces!(name, pieces, colors)
+        refuse_bad_pieced_size!(name, size)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
         # picture into pieces itself takes one of whole pieces.
         side = ->(own) { Integer.sqrt(own.length) }
         reach = ->(far) { (far + PIECE_SIZE - 1) / PIECE_SIZE * PIECE_SIZE }
         width = reach.call(pieces.map { |dx, _, own| dx + side.call(own) }.max)
         height = reach.call(pieces.map { |_, dy, own| dy + side.call(own) }.max)
+        width, height = refuse_pieces_past_size!(name, [width, height], size) if size
         places = Array.new(width * height, 0)
         pieces.each do |dx, dy, own|
           across = side.call(own)
@@ -680,12 +773,33 @@ module VBlank
         end
         kept = pieces.map { |dx, dy, own| [dx, dy, own.pack("C*")] }
         define_placed_image(name, places: places, width: width, height: height, colors: colors,
-                                  colors_name: colors_name, pieces: kept)
+                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups)
       end
 
       PIECE_SIZE = IR::Assets::PIECE_SIZE
       BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
       PICTURE_REACH = 255 # A pose table holds where a piece sits as a byte each way
+      MOST_PIECED_SIDE = 256 # Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
+
+      # The size a picture of pieces was given (`size: [width, height]`), or nil where it was given none.
+      def refuse_bad_pieced_size!(name, size)
+        return nil if size.nil?
+
+        whole = ->(side) { side.is_a?(Integer) && side.between?(PIECE_SIZE, MOST_PIECED_SIDE) && (side % PIECE_SIZE).zero? }
+        return size if size.is_a?(Array) && size.length == 2 && size.all?(&whole)
+
+        raise ArgumentError, "image :#{name} was given size: #{size.inspect}. It takes size: [width, height], each a " \
+                             "whole number of pieces: #{PIECE_SIZE}, #{PIECE_SIZE * 2}, #{PIECE_SIZE * 3} and so on, " \
+                             "up to #{MOST_PIECED_SIDE}."
+      end
+
+      # +size+ where the pieces, which reach +reach+ ([width, height]), fit inside it.
+      def refuse_pieces_past_size!(name, reach, size)
+        return size if reach[0] <= size[0] && reach[1] <= size[1]
+
+        raise ArgumentError, "image :#{name} was given size: #{size.inspect}, and its pieces reach #{reach[0]} pixels " \
+                             "across and #{reach[1]} down. To fix this, give a larger size:."
+      end
 
       def refuse_bad_pieces!(name, pieces, colors)
         unless pieces.is_a?(Array) && !pieces.empty?
@@ -835,6 +949,18 @@ module VBlank
         return nil if colors.nil?
 
         table = color_table(name, colors)
+        # A list read from the data pack as the game starts holds a marker for each colour
+        # (IR::StartFile), so no pixel can be held to it here. The picture's pixels are the
+        # game's own colours, and it is drawn in them.
+        #
+        # NOR IS IT CHECKED AS THE GAME STARTS, against the colours the file then holds. Nothing in
+        # the player's file may stop the game, so a check there could only fall back, and the one
+        # fallback is to draw the picture in its own colours, which is what is done anyway: the
+        # list is used only to swap the pixels onto another, and that is refused while building
+        # (#refuse_swapping_unplaced_pixels!). The all-in-one build of the same game, which the
+        # author builds and plays, still holds every pixel to the list.
+        return table.map { |value| value || 0x0000 } if table.any? { |color| IR::StartFile.marker?(color) }
+
         drawn = pixels.unpack("v*").uniq
         drawn.each do |value|
           next if transparent && value == transparent
@@ -855,10 +981,28 @@ module VBlank
         table.map { |value| value || 0x0000 }
       end
 
+      # A PICTURE GIVEN AS COLOURS, IN A LIST READ AS THE GAME STARTS, DRAWN WITH ANOTHER LIST. Such
+      # a picture is drawn as it is: its pixels are the game's own colours. Drawn with another
+      # list it is swapped by finding each pixel's colour in its own list, and the build does not
+      # hold that list's colours (it holds markers, IR::StartFile), so it cannot say which place
+      # a pixel is. +poses+ are the pictures +subject+ shows, told other colours.
+      def refuse_swapping_unplaced_pixels!(poses, subject)
+        picture = poses.find do |pose|
+          image = @pictures[pose]
+          image && !@painted_colors.key?(pose) && image.places.nil? && image.colors&.any? { |color| IR::StartFile.marker?(color) }
+        end
+        return unless picture
+
+        raise ArgumentError, "#{subject} was told to draw_with other colors. image :#{picture} gives its pixels as " \
+                             "colors, and its colors: list is read from the data pack as the game starts. So the build " \
+                             "cannot find the place of each pixel in the list. To fix this, give the pixels as places: " \
+                             "`image :#{picture}, ..., colors: ..., places: [...]`. Or build the game all-in-one."
+      end
+
       # A picture's own list, resolved to colors. The see-through entry is kept as nil so
       # nothing mistakes it for the black a real pixel can be drawn in.
       def color_table(name, colors)
-        return colors.map { |c| c == :transparent ? nil : Graphics::Color.resolve(c) } if colors.length <= PICTURE_COLORS
+        return colors.map { |c| c == :transparent ? nil : list_color(c) } if colors.length <= PICTURE_COLORS
 
         raise ArgumentError,
               "image :#{name} was given #{colors.length} colors. A picture drawn from its own list of " \

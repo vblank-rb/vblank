@@ -511,6 +511,7 @@ def rg_play_note(part, note)
       rg_sound_log("part_wave #{@rg_playing} #{part.number} #{pitch}")
       rg_wave_put_in(part.tone) if rg_effects_play_wave != 0
       rg_wave_start(ticks, rg_wave_quarters_at(sounded))
+      rg_voice_struck(RG_WAVE_VOICE)
     end
   when RG_PART_NOISE
     rg_sound_log("loudness #{part.voice} #{sounded}") if @rg_level_variable
@@ -520,6 +521,7 @@ def rg_play_note(part, note)
     else
       rg_sound_log("part_noise #{@rg_playing} #{part.number} #{pitch}")
       rg_noise_start(ticks, part.tone, sounded, fade)
+      rg_voice_struck(RG_NOISE_VOICE)
       rg_swell_start(part.voice, note, part.tone, sounded, fade) if @rg_level_variable
     end
   else
@@ -531,6 +533,7 @@ def rg_play_note(part, note)
       rg_hold_note(RgHeldNote.new(part.voice, 0, written, ticks, rg_note_eighths(part, note), fade))
     end
     rg_square_start(part.voice, ticks, rg_note_eighths(part, note), sounded, fade, rg_note_slide(note))
+    rg_voice_struck(part.voice) if pitch != 0
     rg_swell_start(part.voice, note, rg_note_eighths(part, note), sounded, fade) if @rg_level_variable && rg_note_slide(note) == 0
   end
 end
@@ -635,6 +638,7 @@ def rg_play_effect_note(effect, part, note)
       rg_sound_log("part_wave #{number} #{part.number} #{pitch}")
       rg_wave_put_in(part.tone)
       rg_wave_start(ticks, rg_wave_quarters_at(volume))
+      rg_voice_struck(RG_WAVE_VOICE)
     end
   when RG_PART_NOISE
     if pitch == 0
@@ -643,9 +647,11 @@ def rg_play_effect_note(effect, part, note)
     else
       rg_sound_log("part_noise #{number} #{part.number} #{pitch}")
       rg_noise_start(ticks, part.tone, volume, fade)
+      rg_voice_struck(RG_NOISE_VOICE)
     end
   else
     rg_square_start(part.voice, ticks, rg_note_eighths(part, note), pitch == 0 ? 0 : volume, fade, rg_note_slide(note))
+    rg_voice_struck(part.voice) if pitch != 0
   end
 end
 
@@ -901,4 +907,176 @@ def rg_visit_effects
     @rg_effect_frame[e] = n[4]
     @rg_effect_cursors[e] = n[5, RG_PARTS_MOST]
   end
+end
+
+# --- a part's notes in the file (rg_music.h, rg_music_fill_notes; rg_music.c says each step) ---
+
+RG_NOTES_AT = 0
+RG_NOTES_TICKS = 1
+RG_NOTES_FIRST_ROOM = 2
+RG_NOTES_RECORDS_AT = 4
+RG_NOTES_RECORDS = 5
+RG_NOTES_SONG_AT = 6
+RG_NOTES_COMES_ROUND = 7
+RG_NOTES_REST_LAST = 8
+RG_NOTES_FLAGS = 9
+RG_NOTES_SHAPES = 10
+RG_NOTES_INSTRUMENTS = 11
+RG_NOTES_RECORDED = 12
+RG_NOTES_SIDE_FLAGS = 13
+RG_NOTES_CLOCKS = 16
+RG_NOTES_HEADER_NUMBERS = 17
+RG_NOTE_SIDES = 3
+RG_NOTE_KEYS = 128
+RG_NOTE_VOLUMES = 16
+RG_NOTE_RECORD_BYTES = 12
+RG_NOTE_NUMBERS = 6
+RG_NOTE_ENDS_PART = 0xFFFF
+RG_NOTE_NO_LOUDNESS = 0xFFFF
+RG_NOTE_FULL_LOUDNESS = 512
+
+# rg_music.c's start_file_event_volume.
+def rg_start_file_event_volume(volume, loudness, recorded)
+  if recorded != 0 && loudness != RG_NOTE_NO_LOUDNESS
+    return RG_NOTE_VOLUMES - 1 if loudness >= RG_NOTE_FULL_LOUDNESS
+
+    return loudness.zero? ? 0 : RG_NOTE_VOLUMES + 1 + loudness
+  end
+  volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES
+end
+
+# rg_music.c's start_file_event_side and start_file_event_clock.
+def rg_start_file_event_side(pan, recorded) = recorded.zero? && pan < RG_NOTE_SIDES ? pan : RG_NOTE_SIDES
+
+def rg_start_file_event_clock(clock, key, clocks) = key >= 0 && clock < clocks ? clock : -1
+
+# An event of a part (rg_music.c's start_file_event).
+RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume, :side, :clock)
+
+# rg_music.c's start_file_keep_event: +event+ after those in +events+.
+def rg_start_file_keep_event(events, event, total_frames)
+  return if event.frame >= total_frames
+
+  if !events.empty? && events.last.frame == event.frame
+    events[-1] = event
+  else
+    events << event
+  end
+end
+
+# rg_music.c's start_file_write_note: +event+ as a note's six numbers, from +into+ on in +music+.
+def rg_start_file_write_note(music, into, event, rules)
+  heard = RG_NOTES_HEADER_NUMBERS
+  pitches = heard + RG_NOTE_VOLUMES + 1 + rules[RG_NOTES_INSTRUMENTS]
+  lasts = pitches + RG_NOTE_KEYS
+  clock_pitches = lasts + ((rules[RG_NOTES_RECORDED].zero? ? 1 : rules[RG_NOTES_INSTRUMENTS] + 1) * RG_NOTE_KEYS)
+  clock_lasts = clock_pitches + rules[RG_NOTES_CLOCKS]
+  rest = event.key.negative?
+  clocked = event.clock >= 0
+  music[into] = event.frame
+  music[into + 1] = if rest then 0
+                    elsif clocked then rules[clock_pitches + event.clock]
+                    else rules[pitches + event.key]
+                    end
+  music[into + 2] = event.volume <= RG_NOTE_VOLUMES ? rules[heard + event.volume] : event.volume - RG_NOTE_VOLUMES - 1
+  music[into + 3] = if rest then rules[RG_NOTES_REST_LAST]
+                    elsif clocked then rules[clock_lasts + event.clock]
+                    else rules[lasts + (event.instrument * RG_NOTE_KEYS) + event.key]
+                    end
+  music[into + 4] = if rest then 0
+                    elsif event.side < RG_NOTE_SIDES then rules[RG_NOTES_SIDE_FLAGS + event.side]
+                    else rules[RG_NOTES_FLAGS]
+                    end
+  music[into + 5] = rest ? 0 : rules[RG_NOTES_SHAPES]
+end
+
+def rg_music_fill_notes(music, rules, tick_frames)
+  ticks = rules[RG_NOTES_TICKS]
+  total_frames = music[rules[RG_NOTES_SONG_AT]]
+  loop_frame = music[rules[RG_NOTES_SONG_AT] + 1]
+  instruments = rules[RG_NOTES_INSTRUMENTS]
+  same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
+  frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : total_frames }
+
+  # The records before the one that ends the part, in the order of their ticks; those on one tick
+  # stay in the file's order.
+  held_bytes = @rg_start_file.byteslice(rules[RG_NOTES_RECORDS_AT], rules[RG_NOTES_RECORDS] * RG_NOTE_RECORD_BYTES)
+  records = held_bytes.unpack("vvCCCCvCC" * rules[RG_NOTES_RECORDS]).each_slice(9).take_while { |record| record[0] != RG_NOTE_ENDS_PART }
+  records = records.each_with_index.sort_by { |record, place| [record[0], place] }.map(&:first)
+
+  events = []
+  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1)
+  records.each_with_index do |(tick, length, key, instrument, volume, pan, loudness, clock_byte), n|
+    named = instrument < instruments
+    played = key < RG_NOTE_KEYS ? key : -1
+    clock = rg_start_file_event_clock(clock_byte, played, rules[RG_NOTES_CLOCKS])
+    rg_start_file_keep_event(events, RgStartFileEvent.new(frame_of.call(tick), clock >= 0 ? 0 : played, named ? instrument + 1 : 0,
+                                                          named ? rules[same_recording + instrument] : -1,
+                                                          rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED]),
+                                                          rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock),
+                             total_frames)
+    ends = tick + length
+    next unless length.positive? && !(n + 1 < records.length && records[n + 1][0] <= ends)
+
+    rest = rest_of_part.dup
+    rest.frame = frame_of.call(ends)
+    rg_start_file_keep_event(events, rest, total_frames)
+  end
+
+  comes_round = rules[RG_NOTES_COMES_ROUND] != 0
+  split = 0
+  silence = false
+  strike = false
+  if comes_round
+    split = events.index { |event| event.frame >= loop_frame } || events.length
+    unless split < events.length && events[split].frame == loop_frame
+      held = split.positive? ? events[split - 1] : nil
+      ending = events.last
+      if held && held.key >= 0
+        strike = !(ending.key == held.key && ending.recording == held.recording && ending.volume == held.volume &&
+                   ending.side == held.side && ending.clock == held.clock)
+      else
+        silence = !ending.nil? && ending.key >= 0
+      end
+    end
+  end
+
+  at_loop = (strike ? events[split - 1] : rest_of_part).dup
+  at_loop.frame = loop_frame
+  first = events.first(split) + (silence ? [at_loop] : []) + events.drop(split)
+  again = comes_round ? (silence || strike ? [at_loop] : []) + events.drop(split) : []
+  again_at = rules[RG_NOTES_AT] + (rules[RG_NOTES_FIRST_ROOM] * RG_NOTE_NUMBERS)
+  first.each_with_index { |event, n| rg_start_file_write_note(music, rules[RG_NOTES_AT] + (n * RG_NOTE_NUMBERS), event, rules) }
+  again.each_with_index { |event, n| rg_start_file_write_note(music, again_at + (n * RG_NOTE_NUMBERS), event, rules) }
+end
+
+# --- a song's length in the file (rg_music.h, rg_music_fill_song_length; rg_music.c says each step) ---
+
+RG_LENGTH_SONG_AT = 0
+RG_LENGTH_TICKS = 1
+RG_LENGTH_LONGEST = 2
+RG_LENGTH_LENGTH = 3
+RG_LENGTH_LOOP = 8
+RG_LENGTH_NUMBER_READS = Ractor.make_shareable({ 1 => %w[C C], 2 => %w[v n], 4 => %w[V N] })
+
+# rg_music.c's start_file_tick: the tick the four numbers of +rules+ from +where+ on name.
+def rg_start_file_tick(rules, where)
+  width = rules[where + 1]
+  number = @rg_start_file.byteslice(rules[where], width).unpack1(RG_LENGTH_NUMBER_READS.fetch(width)[rules[where + 2]])
+  top = 1 << ((width * 8) - 1)
+  tick = rules[where + 3] == 1 && number >= top ? number - (top * 2) : number
+  tick.clamp(0, 0x7FFFFFFF)
+end
+
+def rg_music_fill_song_length(music, rules, tick_frames)
+  song = rules[RG_LENGTH_SONG_AT]
+  ticks = rules[RG_LENGTH_TICKS]
+  longest = rules[RG_LENGTH_LONGEST]
+  frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : longest }
+  total = music[song]
+  loop_frame = music[song + 1]
+  total = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LENGTH + 1)).clamp(1, longest) if rules[RG_LENGTH_LENGTH] != 0
+  loop_frame = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LOOP + 1)) if rules[RG_LENGTH_LOOP] != 0
+  music[song] = total
+  music[song + 1] = loop_frame < total ? loop_frame : 0
 end

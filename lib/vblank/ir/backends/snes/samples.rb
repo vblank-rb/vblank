@@ -151,6 +151,44 @@ module VBlank
             [brr_blocks(intro, ending: 0) + brr_blocks(loop, ending: LOOP), intro.size / BLOCK_SAMPLES * BLOCK_BYTES]
           end
 
+          # A RECORDING THE GAME GAVE IN BRR (an Audio::SNESRecording), played reading back +back+
+          # samples at its end, as the bytes the sound unit keeps and how far into them its loop point
+          # is: the game's bytes and loop point, unchanged, where the play goes round as the recording
+          # does. The interpreter reads round the decoded loop (Audio::SNESRecording#decoded), which is
+          # some whole number of times round the chip's when the loop takes turns. A play asked to go
+          # round a recording that ends is the same bytes with the last block's loop bit set, round
+          # from the start. A play asked to end one that goes round plays what the interpreter plays
+          # once: the blocks up to the loop point, then the loop's blocks as many times as the decoded
+          # recording goes round it, each time decoded from where the time before ended, as on the
+          # chip, and only the last block ending the recording.
+          def brr_as_given(recording, back)
+            bytes = recording.bytes.bytes
+            return [bytes, recording.loop_at] if recording.loops? && back.positive? && (back % recording.loop_samples).zero?
+
+            last = bytes.size - BLOCK_BYTES
+            if back.zero?
+              [played_once(recording, bytes), 0]
+            elsif back == recording.sample_count
+              bytes[last] |= LOOP
+              [bytes, 0]
+            else
+              raise ArgumentError, "a BRR recording plays round its own loop of #{recording.loop_samples} samples, not #{back}"
+            end
+          end
+
+          # +bytes+ (the recording's) played once through as many times round its loop as its decoded
+          # samples hold, each block's end and loop bits cleared but the last's end bit.
+          def played_once(recording, bytes)
+            return bytes.tap { |given| given[-BLOCK_BYTES] &= ~(LOOP ^ END_ONLY) } unless recording.loops?
+
+            times = (recording.decoded.pcm.bytesize - (recording.loop_at / BLOCK_BYTES * BLOCK_SAMPLES)) / recording.loop_samples
+            blocks = bytes.each_slice(BLOCK_BYTES).to_a
+            blocks = blocks.first(recording.loop_at / BLOCK_BYTES) + (blocks.drop(recording.loop_at / BLOCK_BYTES) * times)
+            blocks = blocks.map { |block| [block.first & ~LOOP, *block.drop(1)] }
+            blocks.last[0] |= END_ONLY
+            blocks.flatten
+          end
+
           # +samples+ (bytes, padded with silence to whole blocks) as BRR blocks, each at the least range
           # that keeps it, the last ending with +ending+.
           def brr_blocks(samples, ending:)
@@ -167,15 +205,36 @@ module VBlank
           # The table and the recordings after it, as bytes for +at+ in the sound unit's memory: a
           # row for each recording (its start and its loop point) and then the recordings themselves,
           # the game's +waves+ (each 32 steps) and then its own +recordings+ (#recording's pairs) last.
-          def image(at, waves = [], recordings = [])
+          def image(at, waves = [], recordings = []) = image_with_scenes(at, waves, recordings, []).bytes
+
+          # #image's bytes, where the scene area starts, and each scene's own recordings as the bytes
+          # that go there.
+          SceneImage = Data.define(:bytes, :scene_area, :scene_bytes)
+
+          # THE SAME, WITH THE LAST OF +recordings+ KEPT BY SCENES, each scene's in the chip only while
+          # it is up: +scene_counts+ is how many each scene keeps, in the order they come. The table
+          # has a row for every recording, and the bytes after it are the rest's alone; every scene's
+          # rows point into the one stretch after those, the scene area, where a scene's own go in as
+          # it takes over (Runtime::Sound, "Each scene's recordings"). A SceneImage.
+          def image_with_scenes(at, waves, recordings, scene_counts)
             all = self.recordings.map { |bytes| [bytes, 0] } + waves.map { |steps| [wave(steps), 0] } + recordings
-            start = at + (all.size * ROW)
-            rows = all.map do |bytes, loop_at|
+            own = all.pop(scene_counts.sum)
+            rows, area = table_rows(at + ((all.size + own.size) * ROW), all)
+            groups = scene_counts.map { |count| own.shift(count) }
+            groups.each { |group| rows.concat(table_rows(area, group).first) }
+            SceneImage.new(bytes: (rows + all.map(&:first)).flatten, scene_area: area,
+                           scene_bytes: groups.map { |group| group.flat_map(&:first) })
+          end
+
+          # A row of the table for each of +recordings+ (pairs of bytes and loop point), laid one after
+          # another from +start+, and where the last ends.
+          def table_rows(start, recordings)
+            rows = recordings.map do |bytes, loop_at|
               row = [start & 0xFF, start >> 8, (start + loop_at) & 0xFF, (start + loop_at) >> 8]
               start += bytes.size
               row
             end
-            (rows + all.map(&:first)).flatten
+            [rows, start]
           end
         end
       end

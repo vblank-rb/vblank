@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "stringio"
+require "slow_pass_games"
 
 # TWO GENESIS CARTRIDGES COMPARED on their own screen, 320 by 224 pixels, not the Advance's: a part
 # of the screen past the Advance's 240 columns can be left out, and a difference is placed on the
@@ -9,6 +10,7 @@ require "stringio"
 # walks two pixels a frame while RIGHT is down, from column +from+.
 class TestComparisonOnTheGenesis < Minitest::Test
   include VBlank::Testing::PlaysAlike
+  include SlowPassGames
 
   private def walker(from)
     VBlank.build("WALKER", console: :genesis, out: StringIO.new, err: StringIO.new) do
@@ -43,6 +45,23 @@ class TestComparisonOnTheGenesis < Minitest::Test
 
     assert_match "pixels differ", failure.message
     assert_match(/box from \(2\d, 60\)/, failure.message)
+  end
+
+  # Lined up by passes, a pass that finishes on its second frame is compared at its end
+  # (SlowPassGames).
+  def test_a_slow_pass_is_compared_at_its_end
+    assert_slow_pass_compared_at_its_end(:genesis)
+    assert_difference_found_at_pass_end(:genesis)
+  end
+
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:genesis)
+    assert_second_behind_catches_up(:genesis)
+  end
+
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:genesis)
   end
 
   def test_a_drift_names_the_genesis_s_sprite_table

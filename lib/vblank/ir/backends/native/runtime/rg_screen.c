@@ -757,6 +757,11 @@ static void fade_unless_left_as_drawn(int32_t fade_place) { paint_fade = rg_hook
 
 static void fade_nothing(void) { paint_fade = NULL; }
 
+/* Reference#placed_fade_in_picture?: a placed fade in force changes the backdrop, which is behind
+ * everything, unless it is one of no amount. Scenery stamped as drawn is then not the picture, and
+ * what stamps it asks for the view to be rebuilt. */
+static FEATURE_ONLY int32_t placed_fade_in_picture(void) { return rg_hook_paint_fade_for(RG_NO_LAYER) != NULL; }
+
 /* Back to front: the backdrop, then each level's scenery and sprites (rg_hook_paint_level, scenery
  * first), with what a feature paints first and last (rg_hook_repaint_began, rg_hook_repaint_ending). */
 static void repaint_view(void) {

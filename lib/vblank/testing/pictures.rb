@@ -136,13 +136,22 @@ module VBlank
       # the ones after it, +tries+ in all, are read until one agrees with the interpreter played as
       # many passes as the console counted by then. Two passes in a row each a frame long, and
       # then a longer one, still leave one of three frames inside a pass.
+      #
+      # ON THE ADVANCE'S TEAR-FREE SCREEN the passes are the ones counted a frame earlier
+      # (#differing_from_passes_shown), so every frame has an answer, the one a pass ends on too.
       def assert_backends_agree_by_passes(program, frame:, keys: [], name: "DIFF", tries: 3)
         return assert_backends_agree(program, frames: frame, keys: keys, name: name) if Testing.checked?
 
-        differing = (frame...(frame + tries)).map do |read|
-          oracle, console, = backend_pictures(program, frames: read, console_frames: read, keys: keys, name: name)
-          mismatched_pixels(oracle, console).length
-        end
+        reads = frame...(frame + tries)
+        differing = if page_shown_frame_after_pass?(program)
+                      differing_from_passes_shown(program, reads, keys, name)
+                    else
+                      reads.map do |read|
+                        oracle, console, = backend_pictures(program, frames: read, console_frames: read, keys: keys,
+                                                                     name: name)
+                        mismatched_pixels(oracle, console).length
+                      end
+                    end
         assert_includes differing, 0, "none of frames #{frame} to #{frame + tries - 1} agreed, holding #{keys.inspect}"
       end
 
@@ -197,6 +206,33 @@ module VBlank
       end
 
       private
+
+      # Is this program's picture a page the Advance shows from the frame AFTER the pass that drew
+      # it ended? True of its tear-free screen, which is the one measured.
+      #
+      # The game finishes a pass part-way down a frame, and that is when the pass is counted. The
+      # page it drew is swapped in as the next frame starts. So the picture read at the end of a
+      # frame is the pass counted by the end of the frame before: on the one frame a pass ends on,
+      # the count is a pass ahead of the picture. A game that keeps up ends a pass on every
+      # frame, so it is a pass ahead on every one of them.
+      def page_shown_frame_after_pass?(program)
+        screens = program.walk.select { |node| node.kind == :screen }
+        !line_up(program).shows_pass_before_last && screens.any? &&
+          screens.all? { |screen| screen.mode == :bitmap && screen.buffered }
+      end
+
+      # For each of the console's frames +reads+ (one after another), how many pixels of its
+      # picture differ from the interpreter's after the passes the console had counted a frame
+      # earlier: the pass whose page that frame shows (#page_shown_frame_after_pass?).
+      def differing_from_passes_shown(program, reads, keys, name)
+        _, counted = console_picture(program, [reads.first - 1, 1].max, name, keys)
+        reads.map do |read|
+          console, passes = console_picture(program, read, name, keys)
+          oracle = IR::Backends::Reference.new.hold(*keys).run(program, frames: counted).screen.shown
+          counted = passes
+          mismatched_pixels(oracle, console).length
+        end
+      end
 
       # The failure for +bad+ differences (PictureMismatch says it), on the screen of +picture+, the
       # interpreter's.

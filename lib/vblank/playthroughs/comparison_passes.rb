@@ -32,8 +32,25 @@ module VBlank
       # reads them every frame does read it, and with `reads_buttons_every_frame: true` the second
       # is given every frame's buttons in turn (see LinedUp, THE BUTTONS).
       #
-      # AFTER A LEAD-IN (`lead_ins:`), the pass each cartridge is part way through is not compared,
-      # since its first frame is behind it: comparing starts at the next pass.
+      # AT THE END OF EACH PASS, asked for with `passes_compared_at: :end`. A slow pass's count can go
+      # up before the pass's work is done: an original counts the pass at the top of its loop, then
+      # runs over the frame. On the first frame that shows the pass, that cartridge is half way
+      # through it, and a port that finished the pass in one frame is reported as different. At the
+      # end, each pass is compared once the cartridge has gone on to a later one: its readings as they
+      # were on the last frame that showed the pass, and its picture on the frame after that one,
+      # since a frame is drawn from the numbers of the frame before. The first cartridge's frame of a
+      # drift there is the frame of the picture. The last pass the tape shows has no end on it and is
+      # not compared: a tape that is to compare it plays a frame past it. The buttons are given as at
+      # the start (see LinedUp, THE BUTTONS).
+      #
+      # AFTER A LEAD-IN (`lead_ins:`), comparing starts on the FIRST cartridge's pass as its lead-in
+      # left it, and the second is played on to that pass, from its own lead-in's end or from
+      # power-on. One that runs late on frames the other does not is passes behind after a lead-in of
+      # the same frames, and no pass of either is left out between them. The pass the first is part
+      # way through is not compared, since its first frame is behind it: comparing starts at the next
+      # pass. At the end of each pass it is compared, since its end is still ahead. A second whose
+      # lead-in left it past that pass is refused (SecondAheadAfterLeadIns): lead it in for fewer
+      # frames, or not at all (see LinedUp#start_after_lead_ins!).
       #
       # A count that comes back round is told from one the game sets back (a new game) only by
       # `pass_count_wraps_at:`: with it, any fall is a lap; without it, a fall is an error.
@@ -61,28 +78,37 @@ module VBlank
         SIDES = %w[first second].freeze
         private_constant :SIDES
 
-        # The count of +by_passes+, or nil for a comparison frame by frame. +every_frame+ is
-        # `reads_buttons_every_frame:` (see LinedUp, THE BUTTONS).
-        def self.from(by_passes, wraps_at, every_frame: false)
-          if by_passes.nil?
-            return nil if wraps_at.nil? && !every_frame
+        # Where in each pass the two can be compared (`passes_compared_at:`): on the first frame
+        # that shows it, or at its end (see AT THE END OF EACH PASS above).
+        PLACES_IN_PASS = %i[start end].freeze
+        private_constant :PLACES_IN_PASS
 
-            given = wraps_at.nil? ? "`reads_buttons_every_frame:`" : "`pass_count_wraps_at:`"
+        # The count of +by_passes+, or nil for a comparison frame by frame. +every_frame+ is
+        # `reads_buttons_every_frame:` (see LinedUp, THE BUTTONS), and +compared_at+ is
+        # `passes_compared_at:`, nil for the first frame of each pass.
+        def self.from(by_passes, wraps_at, every_frame: false, compared_at: nil)
+          if by_passes.nil?
+            given = { "`pass_count_wraps_at:`" => wraps_at, "`reads_buttons_every_frame:`" => every_frame,
+                      "`passes_compared_at:`" => compared_at }.select { |_name, value| value }.keys.first
+            return nil unless given
+
             raise ArgumentError, "#{given} was given, and `by_passes:` was not. It is a setting of a comparison lined up " \
                                  "by the game's passes. Give `by_passes:` too, or remove #{given}."
           end
 
-          new(by_passes, wraps_at, every_frame)
+          new(by_passes, wraps_at, every_frame, compared_at || :start)
         end
 
-        def initialize(way, wraps_at, every_frame)
+        def initialize(way, wraps_at, every_frame, compared_at)
           refuse_malformed_way!(way)
           refuse_unusable_wrap!(wraps_at)
+          refuse_unknown_compared_at!(compared_at)
           ways = way.is_a?(Array) ? way : [way, way]
           @game_loop_sides = ways.each_index.select { |side| ways[side] == true }
           @reading = Readings.new(COUNT => ways.map { |one| one == true ? GameLoopCount.new : one })
           @wraps_at = wraps_at
           @every_frame = every_frame == true
+          @at_end = compared_at == :end
         end
 
         # Whether the cartridge on +side+ (0 or 1) is read by the game loop's own count, which
@@ -107,7 +133,8 @@ module VBlank
         # nothing to say about it.)
         def lined_up_on(first, second, _part)
           LinedUp.new(Count.new(@reading, 0, @wraps_at, first), Count.new(@reading, 1, @wraps_at, second), passes: true,
-                                                                                                  every_frame: @every_frame)
+                                                                                                  every_frame: @every_frame,
+                                                                                                  at_end: @at_end)
         end
 
         # The setting's name, for an error about settings it cannot be used with.
@@ -147,15 +174,38 @@ module VBlank
             @current = raw + @laps
           end
 
+          # The count as the cartridge last showed it, before it was counted on past any wrap: the
+          # number a person reading the game's own counter sees.
+          def count_as_read = @last
+
+          # This count, read once, put in the same lap as +pass+, the other cartridge's count read at
+          # the same point, and answered. Each count is counted on from its own first reading, so
+          # two counts that wrap can read 250 and 3 when the second is 9 passes ahead. Of the passes
+          # this one can be, a whole number of laps apart, it is the one nearer to +pass+: ahead of
+          # it by less than half a lap, or behind it by less than half. A count exactly half a lap
+          # away is taken as ahead, which is refused, and not as behind, which would compare passes
+          # half a lap apart. A count that never wraps is answered as read.
+          def count_in_lap_of!(pass)
+            return @current unless @wraps_at
+
+            ahead = (@current - pass) % @wraps_at
+            ahead -= @wraps_at if ahead * 2 > @wraps_at
+            @laps += pass + ahead - @current
+            @current = pass + ahead
+          end
+
           # Play the cartridge one frame, holding +keys+, and read the pass it shows after it.
           def step_and_read!(keys)
             @game.step(1, keys: keys)
             read_after_frame!
           end
 
-          def refuse_stood_still!(wanted)
+          # +past+ marks that the first went past +wanted+ (each pass compared at its end), and the
+          # second had to go past it too.
+          def refuse_stood_still!(wanted, past: false)
+            first_did = past ? "went past pass #{wanted}" : "showed pass #{wanted}"
             raise PassNotReached, "The second cartridge's count of passes stopped at #{@current}, and the first cartridge " \
-                                  "showed pass #{wanted}. The count did not move in #{LinedUp::MOST_FRAMES_STILL} frames, " \
+                                  "#{first_did}. The count did not move in #{LinedUp::MOST_FRAMES_STILL} frames, " \
                                   "so the comparison stopped. The second game ended there, or its count does not move on " \
                                   "that stretch. Make the tape end sooner, or count something that goes on moving there."
           end
@@ -194,6 +244,14 @@ module VBlank
 
         def way_to_count?(way) = way == true || way.is_a?(Symbol) || way.respond_to?(:call)
 
+        def refuse_unknown_compared_at!(compared_at)
+          return if PLACES_IN_PASS.include?(compared_at)
+
+          raise ArgumentError, "`passes_compared_at:` was #{compared_at.inspect}. It must be `:start` or `:end`. `:start` " \
+                               "compares each pass on the first frame that shows it. `:end` compares the readings on the " \
+                               "last frame that shows it, and the picture on the frame after that."
+        end
+
         def refuse_unusable_wrap!(wraps_at)
           return if wraps_at.nil? || (wraps_at.is_a?(Integer) && wraps_at > 1)
 
@@ -211,6 +269,11 @@ module VBlank
       # of frames short of it, or it showed none of the first's passes at all. The message says
       # which pass and where the count was.
       class PassNotReached < StandardError; end
+
+      # THE SECOND CARTRIDGE'S LEAD-IN LEFT IT PAST THE FIRST'S PASS, where the comparison starts:
+      # its passes before that one could not be compared with the first's. The message names both
+      # passes and how to lead the second in less far.
+      class SecondAheadAfterLeadIns < StandardError; end
     end
   end
 end

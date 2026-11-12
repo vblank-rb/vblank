@@ -63,6 +63,9 @@
  * pressing the buttons of a gamepad SDL makes up for it (a "virtual joystick"), which is then
  * read exactly as a real one plugged in beside it is. One way in means a real controller needs
  * nothing of its own, and a test that presses keys goes down the same path a player's fingers do.
+ * The keyboard's gamepad is player 1's. In a game for several players each real gamepad is the
+ * player it took when it was plugged in, and the keyboard's right hand is player 2 (rg_seats.h
+ * explains which keys, and why).
  *
  * The keys start as mGBA's, so a player who has used it already knows them: the arrows for
  * the pad, X for A, Z for B, A and S for the shoulders, Return for Start and Backspace for
@@ -125,6 +128,10 @@
  */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -137,6 +144,7 @@
 #include "rg_runtime.h"
 #include "rg_save.h"
 #include "rg_screen.h"
+#include "rg_seats.h"
 #include "rg_settings_root.h"
 #include "rg_shell.h"
 #include "rg_sound.h"
@@ -289,6 +297,9 @@ static SDL_Joystick *keyboard_pad;   /* the gamepad SDL makes up for the keyboar
 static SDL_JoystickID keyboard_pad_id;
 static uint32_t keys_down;           /* the keys down now, a bit per button */
 static uint32_t keys_tapped;         /* ...and those that went down since the buttons were last read */
+static uint32_t second_keys_down;    /* player 2's keys down now, a bit per button (rg_seats.h) */
+static uint32_t second_keys_tapped;  /* ...and those that went down since the buttons were last read */
+static rg_seats seats;               /* the player each real gamepad is */
 
 /* --trace: say on the error stream what the window made of the buttons. A fault that only shows
  * with a real keyboard or controller cannot be seen by a test, so this is how a person shows it:
@@ -304,12 +315,23 @@ static int scripted;
 static long frames_to_play;
 static long frames_played;
 static uint32_t scripted_keys;
-/* A PART OF A SHELL (--part RESULT; rg_shell.c): played like any game, and where a game would halt it
- * writes where every variable and list stands into the RESULT file, and ends. --part-fast is an
+/* A script's lines are read from here: a shell's menu is played from a file of its own
+ * (--shell-menu-keys), everything else from standard input (NULL). */
+static FILE *script_lines;
+/* A PART OF A SHELL (--part RESULT; rg_shell.c): played with no window, its pictures sent down its
+ * standard output to the shell that started it (play_part), and where a game would halt it writes
+ * where every variable and list stands into the RESULT file, and ends. --part-fast is an
  * unpacking, played on a thread of its own (play_part_on_thread). */
 static const char *part_result_path;
 static FILE *part_result;
 static int part_fast;
+/* A SHELL'S PARTS SHOWN IN THIS WINDOW (rg_shell.h's rg_shell_window, at the foot of this file):
+ * true from the window opening until the game has its data pack, the part playing now, and the
+ * picture a part last sent, which is what the window shows until the game draws its own. */
+static bool showing_shell;
+static SDL_Process *part_shown;
+static SDL_Texture *part_texture;
+static int part_texture_width, part_texture_height;
 static int printing_script_end; /* the variables being printed are the script's last word */
 static const char *window_picture_file; /* --window-picture: where the window is saved as the script ends */
 
@@ -413,9 +435,14 @@ static void write_settings_file(void);
 static _Noreturn void finish_script(void);
 
 static _Noreturn void quit(int status) {
-  /* An unpacking keeps no save, and plays on a thread of its own (play_part_on_thread) that may still
-   * be running: its memory is not read from here. */
-  if (!part_fast) write_save_file();
+  /* A shell's part still playing ends with the window that was showing it, and waited for, so it
+   * writes nothing after what it left beside the pack is removed. */
+  if (part_shown) {
+    SDL_KillProcess(part_shown, true);
+    SDL_WaitProcess(part_shown, true, NULL);
+  }
+  if (showing_shell) rg_shell_remove_working_files();
+  write_save_file();
   write_settings_file();
   rg_menu_stop();
   if (timing_frames) report_frame_times();
@@ -426,6 +453,26 @@ static _Noreturn void quit(int status) {
 static _Noreturn void refuse_to_start(const char *what) {
   fprintf(stderr, "%s cannot start: %s (%s)\n", rg_game_title, what, SDL_GetError());
   quit(1);
+}
+
+/* A BOX OF THE SYSTEM'S OWN, for the few things said as the program ends, or as it starts with no
+ * menu to say them in. SDL runs a loop of its own until the box is answered, so nothing else of
+ * the program moves while it is up.
+ *
+ * THE PROGRAM'S EVENTS ARE READ FIRST. A shell once put such a box up as it started, before it
+ * had read one event, and on a Mac the box's button did nothing: the program never came back and
+ * had to be force-quit. A program that has read no event has not finished starting as the system
+ * sees it. So the events waiting are read before the box goes up, and the box is given no window:
+ * by itself it needs nothing of a window that may not be on the screen yet. Nobody has yet seen
+ * one of these answered on a Mac after this; a shell says nothing in one (tell_in_shell_window).
+ *
+ * A run with nobody at it shows none: a script's, or one on SDL's stand-in for a display, where a
+ * box with no window would be a real one on the screen of whoever runs the tests. */
+static void show_system_box(SDL_MessageBoxFlags kind, const char *message) {
+  const char *driver = SDL_GetCurrentVideoDriver();
+  if (scripted || (driver && strcmp(driver, "dummy") == 0)) return;
+  SDL_PumpEvents();
+  SDL_ShowSimpleMessageBox(kind, rg_game_title, message, NULL);
 }
 
 /* The folder a game's save goes in is named for the game, and a folder's name can hold less than
@@ -479,7 +526,7 @@ static void read_save_file(void) {
            "starts a new one.",
            save_path, (int)rg_save_size());
   fprintf(stderr, "%s cannot start: %s\n", rg_game_title, message);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, message, window);
+  show_system_box(SDL_MESSAGEBOX_ERROR, message);
   quit(1);
 }
 
@@ -727,6 +774,7 @@ static char *settings_file_in(const char *folder) {
  * --settings-file named, which is then the only one there is. */
 static void load_settings(const char *asked, int usual_files_asked) {
   rg_window_use_key_names(scancode_name, scancode_named);
+  rg_window_use_game_controls(rg_game_controls);
   rg_window_use_defaults();
   char said[2048] = "";
 
@@ -950,6 +998,10 @@ static void draw_words(const rg_menu_part *words) {
 
 static bool game_held(void) { return rg_window_paused() || rg_window_menu_is_open(); }
 
+/* Whether the menu can be opened: the game has one, or a shell's first screen is up, whose SETTINGS
+ * line opens it whatever the game has. */
+static bool window_has_menu(void) { return rg_game_has_menu || showing_shell; }
+
 /* The words the window puts in its corner when asked: the frame rate, and how long the game's own
  * work took a frame. What was last drawn is kept, so a still picture is drawn again when the words
  * change and not before (see something_is_drawn_over_the_picture). */
@@ -996,7 +1048,9 @@ static void draw_menu_and_status(void) {
 static void draw_window(void) {
   SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
   SDL_RenderClear(renderer);
-  SDL_RenderTexture(renderer, texture, NULL, NULL);
+  /* While a shell's parts are shown the picture is the last one a part sent, if any has yet. */
+  if (!showing_shell) SDL_RenderTexture(renderer, texture, NULL, NULL);
+  else if (part_texture) SDL_RenderTexture(renderer, part_texture, NULL, NULL);
   draw_menu_and_status();
   rg_menu_draw();
 }
@@ -1087,13 +1141,25 @@ static void present_still(void) {
   window_owed_a_drawing = true; /* it may say PAUSED, which must go when the game goes on */
 }
 
-/* The window as the last picture drew it, menu and all, saved as a BMP: a test's way to see it. */
-static void save_window_picture(void) {
+/* The window as the last picture drew it, menu and all, saved as a BMP at +path+: a test's way to see it. */
+static void save_window_picture_at(const char *path) {
   draw_window();
   SDL_Surface *seen = SDL_RenderReadPixels(renderer, NULL);
-  if (!seen || !SDL_SaveBMP(seen, window_picture_file))
-    fprintf(stderr, "%s cannot save the window to %s (%s)\n", rg_game_title, window_picture_file, SDL_GetError());
+  if (!seen || !SDL_SaveBMP(seen, path)) fprintf(stderr, "%s cannot save the window to %s (%s)\n", rg_game_title, path, SDL_GetError());
   SDL_DestroySurface(seen);
+}
+
+static void save_window_picture(void) { save_window_picture_at(window_picture_file); }
+
+/* Where the environment names a file (VBLANK_WINDOW_LOG), a line is added to it for the window
+ * this program has just opened. A program this one starts is handed the same environment, so a
+ * test counts in it every window a shell and its parts opened between them: one. */
+static void note_window_opened(void) {
+  const char *log = SDL_getenv("VBLANK_WINDOW_LOG");
+  FILE *lines = log && *log ? fopen(log, "ab") : NULL;
+  if (!lines) return;
+  fprintf(lines, "window %u opened by %s\n", (unsigned)SDL_GetWindowID(window), rg_game_title);
+  fclose(lines);
 }
 
 /* THE SOUND IS KEPT IN STEP WITH THE GAME by playing it a shade faster or slower. A frame of the
@@ -1157,15 +1223,18 @@ static void open_speaker(void) {
   if (speaker) SDL_ResumeAudioStreamDevice(speaker);
 }
 
-/* A gamepad arrived — a real one plugged in, or the keyboard's own — and is read from now on. */
+/* A gamepad arrived — a real one plugged in, or the keyboard's own — and is read from now on. A real
+ * one is the lowest player no gamepad has (rg_seats.h); the keyboard's is player 1's. */
 static void open_pad(SDL_JoystickID id) {
   for (int i = 0; i < MOST_PADS; i++) {
     if (pads[i]) continue;
     pads[i] = SDL_OpenGamepad(id);
+    if (pads[i] && id != keyboard_pad_id) rg_seats_join(&seats, id);
     return;
   }
 }
 
+/* ...and one pulled out leaves its player free for the next. */
 static void close_pad(SDL_JoystickID id) {
   for (int i = 0; i < MOST_PADS; i++) {
     if (!pads[i] || SDL_GetGamepadID(pads[i]) != id) continue;
@@ -1173,6 +1242,7 @@ static void close_pad(SDL_JoystickID id) {
     pads[i] = NULL;
     pad_buttons_down[i] = 0;
   }
+  rg_seats_leave(&seats, id);
 }
 
 /* The player chose to quit (Escape, or Quit in the menu): a script's run ends as its last line
@@ -1213,7 +1283,7 @@ static int menu_key_of(SDL_Scancode code) {
 
 /* The menu's own hotkey, and the key above Tab while no console button has it. */
 static bool opens_menu(int code, int hotkey) {
-  return rg_game_has_menu && (hotkey == RG_HOTKEY_MENU || (code == MENU_KEY_ABOVE_TAB && rg_window_key_button(code) < 0));
+  return window_has_menu() && (hotkey == RG_HOTKEY_MENU || (code == MENU_KEY_ABOVE_TAB && rg_window_key_button(code) < 0));
 }
 
 /* A key went down or came up. A key held makes the keyboard send it again and again, which is
@@ -1231,6 +1301,10 @@ static void key_changed(const SDL_KeyboardEvent *key) {
     if (key->down && rg_window_menu_is_open() && moves >= 0 && moves != RG_MENU_ENTER) press_menu((rg_menu_key)moves);
     return;
   }
+  /* One of player 2's keys coming up lets go of player 2's button whoever has the key now, so a key
+   * given to player 1 or a hotkey while it was held does not leave player 2's button held. */
+  int second_up = rg_seats_second_player_button(code);
+  if (!key->down && second_up >= 0) second_keys_down &= ~(1u << (uint32_t)second_up);
   if (key->down && rg_window_capture_key(code)) return;
   if (key->down && rg_menu_wants_keyboard()) return;
   if (key->down && code == RG_KEY_ESCAPE) quit_play();
@@ -1255,6 +1329,13 @@ static void key_changed(const SDL_KeyboardEvent *key) {
     return;
   }
   int button = rg_window_key_button(code);
+  /* In a game for several players, a key no button of player 1's and no hotkey has may be one of
+   * player 2's (rg_seats.h). */
+  int second = rg_seats_several_players(rg_game_seats[0]) ? rg_seats_second_player_button(code) : -1;
+  if (button < 0 && second >= 0 && key->down) {
+    second_keys_down |= 1u << (uint32_t)second;
+    second_keys_tapped |= 1u << (uint32_t)second;
+  }
   if (button < 0) return;
   uint32_t bit = 1u << (uint32_t)button;
   if (key->down) {
@@ -1305,7 +1386,7 @@ static void pad_button_changed(const SDL_GamepadButtonEvent *event) {
     return;
   }
   pad_buttons_down[slot] |= bit;
-  if (rg_window_capture_pad(button) || !rg_game_has_menu) return;
+  if (rg_window_capture_pad(button) || !window_has_menu()) return;
 
   uint32_t down = pad_buttons_down[slot];
   bool together = (bit & PAD_OPENERS_TOGETHER) && (down & PAD_OPENERS_TOGETHER) == PAD_OPENERS_TOGETHER &&
@@ -1439,33 +1520,66 @@ static void trace_frame(uint32_t held) {
 }
 
 /* The keyboard presses its gamepad's buttons, and then every gamepad is read: a button down on
- * any of them is down. A key that went down and came up again between two frames still counts
+ * any of one player's is down for that player. A key that went down and came up again between two frames still counts
  * for the frame that follows, so a quick tap is never lost. A real gamepad is read by the buttons
  * a player has chosen for it; the keyboard's has the console's layout, whatever was chosen.
  *
- * Every one of them is the FIRST player's: the window seats one player, however many gamepads are
- * plugged in, so a game for more plays here with the others never connected. Giving each gamepad a
- * player of its own is more than a number per pad (which pad is whose when one is pulled out and
- * plugged in again, the keyboard's own pad among them, and a menu that says so), and is not done
- * yet; the runtime reads up to RG_MOST_PLAYERS, so it is only this function that changes. */
-static void read_buttons(void) {
+ * In a game for several players each gamepad is the player it took when it was plugged in
+ * (rg_seats.h), the keyboard's own gamepad is player 1's, and the keyboard's right hand presses
+ * player 2's buttons directly; in any other game every one of them is player 1's. The menu is
+ * everybody's: any gamepad opens and works it.
+ *
+ * Fills +masks+ (RG_MOST_PLAYERS of them) with each player's buttons held, a bit each, and returns
+ * how many players to hand the runtime: read_buttons hands them to the game, and a shell's part
+ * shown in this window is sent all of them as one player's. */
+static int32_t players_held(uint32_t *masks) {
   uint32_t keyboard = keys_down | keys_tapped;
   keys_tapped = 0;
   for (uint32_t i = 0; i < BUTTONS; i++) SDL_SetJoystickVirtualButton(keyboard_pad, keyboard_pad_buttons[i], (keyboard >> i) & 1u);
   SDL_UpdateGamepads();
 
-  uint32_t held = 0;
+  bool several = rg_seats_several_players(rg_game_seats[0]);
+  memset(masks, 0, RG_MOST_PLAYERS * sizeof *masks);
+  masks[1] = second_keys_down | second_keys_tapped;
+  second_keys_tapped = 0;
   for (int pad = 0; pad < MOST_PADS; pad++) {
     if (!pads[pad]) continue;
-    bool keyboards = SDL_GetGamepadID(pads[pad]) == keyboard_pad_id;
+    SDL_JoystickID id = SDL_GetGamepadID(pads[pad]);
+    bool keyboards = id == keyboard_pad_id;
+    int player = keyboards || !several ? 1 : rg_seats_player(&seats, id);
+    if (player < 1 || player > RG_MOST_PLAYERS) continue;
+    uint32_t *held = &masks[player - 1];
     for (uint32_t i = 0; i < BUTTONS; i++) {
-      SDL_GamepadButton button = keyboards ? keyboard_pad_buttons[i] : (SDL_GamepadButton)rg_window_pad_button((int)i);
-      if (!keyboards && (pad_buttons_kept >> (uint32_t)button) & 1u) continue; /* pressed for the menu */
-      if (SDL_GetGamepadButton(pads[pad], button)) held |= 1u << i;
+      if (keyboards) {
+        if (SDL_GetGamepadButton(pads[pad], keyboard_pad_buttons[i])) *held |= 1u << i;
+        continue;
+      }
+      for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
+        int chosen = rg_window_pad_button((int)i, slot);
+        if (chosen == RG_NO_PAD) continue;
+        if ((pad_buttons_kept >> (uint32_t)chosen) & 1u) continue; /* pressed for the menu */
+        if (SDL_GetGamepadButton(pads[pad], (SDL_GamepadButton)chosen)) *held |= 1u << i;
+      }
     }
   }
-  rg_players_read(1, &held);
-  if (tracing) trace_frame(held);
+  return rg_seats_players_holding(masks, RG_MOST_PLAYERS);
+}
+
+/* Every player's buttons held as one, for a shell's part: its menu is one player's, worked from
+ * any gamepad or key. */
+static uint32_t buttons_held(void) {
+  uint32_t masks[RG_MOST_PLAYERS];
+  int32_t count = players_held(masks);
+  uint32_t held = 0;
+  for (int32_t player = 0; player < count; player++) held |= masks[player];
+  return held;
+}
+
+static void read_buttons(void) {
+  uint32_t masks[RG_MOST_PLAYERS];
+  int32_t count = players_held(masks);
+  rg_players_read(count, masks);
+  if (tracing) trace_frame(masks[0]);
 }
 
 /* A key as a script names it: SDL's name for it, with an underscore for each space (Right_Shift). */
@@ -1506,13 +1620,11 @@ static bool write_part_result(void) {
   return written;
 }
 
-static _Noreturn void finish_part(void) {
-  if (!write_part_result()) refuse_to_start("its answer cannot be written");
-  quit(0);
-}
-
-/* A scripted run's last word: every variable, as --headless prints them at its end. */
+/* A scripted run's last word: every variable, as --headless prints them at its end. A script that
+ * runs out, or quits, while a shell's first screen is up ends the program with no word: the game
+ * never started, so there are no variables of its to print. */
 static _Noreturn void finish_script(void) {
+  if (showing_shell) quit(0);
   if (window_picture_file) save_window_picture();
   puts("end");
   printing_script_end = 1;
@@ -1587,7 +1699,7 @@ static _Noreturn void refuse_script_button_without_key(int button) {
  * a script that has run out holds nothing down. */
 static bool press_scripted_keys(void) {
   char line[512];
-  bool had_a_line = fgets(line, sizeof line, stdin) != NULL;
+  bool had_a_line = fgets(line, sizeof line, script_lines ? script_lines : stdin) != NULL;
   if (!had_a_line) line[0] = '\0';
   char *word = strtok(line, " \t\r\n");
   unsigned long mask = 0;
@@ -1734,7 +1846,6 @@ static void sdl_wait_vblank(void) {
 
 /* The game stopped on purpose: its last picture stays up until the window is closed. */
 static void sdl_halt(void) {
-  if (part_result_path) finish_part();
   if (scripted) finish_script();
   for (;;) {
     present();
@@ -1750,7 +1861,7 @@ static void sdl_fault(const char *format, va_list args) {
   char message[512];
   vsnprintf(message, sizeof message, format, args);
   fprintf(stderr, "%s\n", message);
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, message, window);
+  show_system_box(SDL_MESSAGEBOX_ERROR, message);
   quit(1);
 }
 
@@ -1781,25 +1892,92 @@ static void sdl_dump_list(const rg_list *list) {
 
 static const rg_driver sdl = {sdl_wait_vblank, sdl_halt, sdl_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
 
+/* A PART OF A SHELL PLAYS WITH NO WINDOW (--part RESULT). The shell that started it owns the one
+ * window (show_shell_part, below), and the two talk down the part's standard streams:
+ *
+ *   from the part   each picture it draws: its width and height, two bytes each, then its pixels,
+ *                   two bytes each, a row at a time (send_part_picture)
+ *   to the part     after each picture of a menu, a line holding the buttons held for the frame
+ *                   that starts, as one number with a bit a button, as --headless reads them
+ *
+ * The part ending is its last word: its answer is in RESULT by then (write_part_result), or the
+ * words of its fault are beside it (write_part_fault). A shell that goes away closes both streams,
+ * and the part ends at the next picture it cannot send or line it cannot read, leaving no answer. */
+
+/* Standard output takes the pictures as bytes. Windows would otherwise write a line's end its own way
+ * inside them. */
+static void send_part_pictures_as_bytes(void) {
+#ifdef _WIN32
+  _setmode(_fileno(stdout), _O_BINARY);
+#endif
+}
+
+static void send_part_picture(const uint16_t *picture) {
+  const uint16_t size[2] = {RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT};
+  size_t pixels = (size_t)RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT;
+  bool sent = fwrite(size, sizeof size, 1, stdout) == 1 && fwrite(picture, sizeof *picture, pixels, stdout) == pixels &&
+              fflush(stdout) == 0;
+  if (!sent) exit(0); /* the shell has gone */
+}
+
+/* The words a part stopped with, left beside its answer for the shell to tell the player in its
+ * window (rg_shell.c's tell_part_fault), and on the error stream. */
+static void write_part_fault(const char *words) {
+  fprintf(stderr, "%s\n", words);
+  char *path = NULL;
+  if (SDL_asprintf(&path, "%s.fault", part_result_path) >= 0) SDL_SaveFile(path, words, strlen(words) + 1);
+  SDL_free(path);
+}
+
+/* A menu's frame boundary: the picture goes to the shell, and the buttons for the next frame come back. */
+static void part_wait_vblank(void) {
+  rg_frame_begins();
+  frames_played++;
+  send_part_picture(rg_screen_shown());
+  char line[64];
+  if (!fgets(line, sizeof line, stdin)) exit(0); /* the shell has gone */
+  uint32_t held = (uint32_t)strtoul(line, NULL, 10);
+  rg_players_read(1, &held);
+}
+
+static void part_fault(const char *format, va_list args) {
+  char words[512];
+  vsnprintf(words, sizeof words, format, args);
+  write_part_fault(words);
+  exit(1);
+}
+
+/* The part came to its end. The picture of the frame it halted in is not sent: the shell would
+ * answer it with buttons nobody is left to read. */
+static void part_halt(void) {
+  if (!write_part_result()) {
+    write_part_fault("The answer of a part of this game cannot be written.");
+    exit(1);
+  }
+  exit(0);
+}
+
+static const rg_driver part_driver = {part_wait_vblank, part_halt, part_fault, sdl_dump_variable, sdl_sound_logged, sdl_dump_list};
+
 /* AN UNPACKING PLAYS ON A THREAD OF ITS OWN (--part-fast). An unpacking is a game whose routine may
  * work for a long time between two waits for a frame (a port rendering its music before it writes a
- * byte). Played on the window's thread, the window can read its events and draw only at those
- * waits, so it freezes for as long as the routine works. So the game plays on another thread, as
- * fast as that thread goes, and the window's thread keeps its own loop a frame at a time.
+ * byte). Played on the thread that sends the pictures, a picture could be sent only at those waits,
+ * and the shell's window would show a bar that stands still for as long as the routine works. So
+ * the game plays on another thread, as fast as that thread goes, and the first thread sends the
+ * newest picture a frame at a time.
  *
  * WHAT CROSSES BETWEEN THE TWO is the picture and one number. The unpacking draws its own progress
  * bar, as game code, so at a wait for a frame its thread copies the picture it has drawn into
- * part_picture under a lock, at most once a frame's time, and the window's thread copies it out and
- * shows it. part_state says how the unpacking ended. Everything else of the game (its variables,
- * its lists, the screen it draws on) is the unpacking thread's alone while it plays, and everything
- * of SDL's that touches the window is the window's thread's alone.
+ * part_picture under a lock, at most once a frame's time, and the sending thread copies it out and
+ * sends it. part_state says how the unpacking ended. Everything else of the game (its variables,
+ * its lists, the screen it draws on) is the unpacking thread's alone while it plays.
  *
- * SDL's threads, locks and atomic numbers are used, which the window already links on every desktop
+ * SDL's threads, locks and atomic numbers are used, which the program already links on every desktop
  * it is built for, so there is no code here for one system's threads.
  *
- * A WINDOW CLOSED PART WAY ends the program from the window's thread, and the unpacking thread ends
- * with it. Its answer is written beside the file and moved into place (write_part_result), so no
- * half an answer is left, and the shell that started the part finds none and makes no pack. */
+ * A SHELL THAT GOES AWAY PART WAY (its window was closed) ends this program from the sending
+ * thread, and the unpacking thread ends with it. Its answer is written beside the file and moved
+ * into place (write_part_result), so no half an answer is left. */
 enum { PART_PLAYING, PART_DONE, PART_FAULTED };
 static SDL_AtomicInt part_state;
 static SDL_Mutex *part_picture_lock;
@@ -1823,7 +2001,7 @@ static void copy_part_picture(bool always) {
   SDL_UnlockMutex(part_picture_lock);
 }
 
-/* The unpacking thread has nothing left to do, and waits for the window's thread to end the program. */
+/* The unpacking thread has nothing left to do, and waits for the sending thread to end the program. */
 static _Noreturn void part_thread_rests(int state) {
   SDL_SetAtomicInt(&part_state, state);
   for (;;) SDL_Delay(1000);
@@ -1861,11 +2039,11 @@ static int play_part(void *unused) {
   return 0;
 }
 
-/* Starts the unpacking on its thread and keeps the window going until it ends: each frame the
- * newest picture is shown and the window's events are read (closing it ends the program). How the
- * unpacking ended is read before its picture is, so its last picture is shown before the program ends. */
+/* Starts the unpacking on its thread and sends its pictures until it ends: the newest one each
+ * frame's time. How the unpacking ended is read before its picture is, so its last picture, the
+ * whole bar, is sent before the program ends. */
 static _Noreturn void play_part_on_thread(void) {
-  static uint16_t shown[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+  static uint16_t sent[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
   part_picture_lock = SDL_CreateMutex();
   rg_active_driver = &part_thread_driver;
   SDL_PropertiesID properties = SDL_CreateProperties();
@@ -1874,23 +2052,252 @@ static _Noreturn void play_part_on_thread(void) {
   SDL_SetNumberProperty(properties, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, PART_THREAD_STACK_BYTES);
   SDL_Thread *thread = part_picture_lock ? SDL_CreateThreadWithProperties(properties) : NULL;
   SDL_DestroyProperties(properties);
-  if (!thread) refuse_to_start("the unpacking cannot be started");
+  if (!thread) {
+    write_part_fault("The unpacking cannot be started.");
+    exit(1);
+  }
   SDL_DetachThread(thread);
   for (;;) {
     int state = SDL_GetAtomicInt(&part_state);
     SDL_LockMutex(part_picture_lock);
-    memcpy(shown, part_picture, sizeof shown);
+    memcpy(sent, part_picture, sizeof sent);
     SDL_UnlockMutex(part_picture_lock);
-    present_picture(shown, false);
-    if (state == PART_DONE) quit(0);
+    send_part_picture(sent);
+    if (state == PART_DONE) exit(0);
     if (state == PART_FAULTED) {
-      fprintf(stderr, "%s\n", part_fault_words);
-      SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, rg_game_title, part_fault_words, window);
-      quit(1);
+      write_part_fault(part_fault_words);
+      exit(1);
     }
+    SDL_DelayNS(FRAME_NS);
+  }
+}
+
+/* A part played to its end, from this program's own start (--part RESULT): never returns. */
+static _Noreturn void play_part_for_shell(void) {
+  send_part_pictures_as_bytes();
+  if (part_fast) play_part_on_thread();
+  rg_active_driver = &part_driver;
+  rg_play_frames();
+  part_halt(); /* a game with no game loop ends */
+  exit(0);
+}
+
+/* --- a shell's parts, shown in this window (rg_shell.h's rg_shell_window) --- */
+
+/* What a part has sent and the window has not yet drawn, read as it comes. */
+typedef struct {
+  SDL_IOStream *from;
+  uint8_t *bytes;
+  size_t held, room;
+  bool ended; /* the part closed its end, or sent what is no picture */
+} part_output;
+
+/* Room for two pictures of four times the game's own pixels: a part of a game shown in bigger
+ * pixels draws the whole screen. */
+#define PART_OUTPUT_ROOM (2 * (2 * sizeof(uint16_t) + 4 * sizeof(uint16_t) * RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT))
+
+/* Reads what the part has sent so far. Never waits: SDL hands back at once when there is nothing yet. */
+static void read_part_output(part_output *output) {
+  while (!output->ended && output->held < output->room) {
+    size_t got = SDL_ReadIO(output->from, output->bytes + output->held, output->room - output->held);
+    if (got == 0) {
+      if (SDL_GetIOStatus(output->from) != SDL_IO_STATUS_NOT_READY) output->ended = true;
+      return;
+    }
+    output->held += got;
+  }
+}
+
+/* The oldest whole picture the part has sent, put in the part's texture and taken off the front:
+ * whether there was one. */
+static bool take_part_picture(part_output *output) {
+  uint16_t size[2];
+  if (output->held < sizeof size) return false;
+  memcpy(size, output->bytes, sizeof size);
+  size_t whole = sizeof size + sizeof(uint16_t) * size[0] * size[1];
+  if (size[0] == 0 || size[1] == 0 || whole > output->room) {
+    output->ended = true;
+    return false;
+  }
+  if (output->held < whole) return false;
+  if (!part_texture || part_texture_width != size[0] || part_texture_height != size[1]) {
+    if (part_texture) SDL_DestroyTexture(part_texture);
+    part_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, size[0], size[1]);
+    if (part_texture) SDL_SetTextureScaleMode(part_texture, SDL_SCALEMODE_NEAREST);
+    part_texture_width = size[0];
+    part_texture_height = size[1];
+  }
+  if (part_texture) SDL_UpdateTexture(part_texture, NULL, output->bytes + sizeof size, size[0] * (int)sizeof(uint16_t));
+  memmove(output->bytes, output->bytes + whole, output->held - whole);
+  output->held -= whole;
+  return true;
+}
+
+/* Waits for the part's next picture, reading the window's events now and then meanwhile: whether
+ * one came, or the part ended. */
+static bool wait_for_part_picture(part_output *output) {
+  for (int waits = 1; !take_part_picture(output); waits++) {
+    if (output->ended) return false;
+    size_t held = output->held;
+    read_part_output(output);
+    if (output->held != held || output->ended) continue;
+    SDL_Delay(1);
+    if (waits % 16 == 0) read_and_apply_events();
+  }
+  return true;
+}
+
+/* The picture a part last sent, with the menu over it, shown. */
+static void present_part_picture(void) {
+  for (int i = 0; i < draws_per_picture; i++) {
+    draw_window();
+    SDL_RenderPresent(renderer);
+  }
+  window_owed_a_drawing = true;
+  if (timing_frames) remember_picture_shown();
+}
+
+/* The buttons held, sent to the part as the line it reads for its next frame. A part that has
+ * ended takes none, and its end is found when its next picture is waited for. */
+static void send_part_buttons(SDL_IOStream *to, uint32_t held) {
+  char line[16];
+  size_t length = (size_t)snprintf(line, sizeof line, "%u\n", (unsigned)held);
+  size_t sent = 0;
+  while (sent < length) {
+    size_t wrote = SDL_WriteIO(to, line + sent, length - sent);
+    if (wrote == 0 && SDL_GetIOStatus(to) != SDL_IO_STATUS_NOT_READY) return;
+    sent += wrote;
+  }
+  SDL_FlushIO(to);
+}
+
+/* A menu, a frame at a time: its picture shown, then the window's events, the frame's wait and a
+ * pause (the window's menu open over it holds it here), and the buttons sent for its next frame. */
+static void show_menu_part(part_output *output, SDL_IOStream *buttons) {
+  uint32_t held_before = buttons_held();
+  while (wait_for_part_picture(output)) {
+    present_part_picture();
+    write_files_due();
+    read_events();
+    wait_for_next_frame();
+    if (scripted) press_scripted_keys();
+    read_and_apply_events();
+    hold_while_paused();
+    uint32_t held = buttons_held();
+    /* A button pressed answers what the shell told the player, as its OK does, and does what it
+     * does on the menu as well: a player with no mouse is never left under the box. */
+    if (held & ~held_before) rg_window_clear_told();
+    held_before = held;
+    send_part_buttons(buttons, held);
+  }
+}
+
+/* An unpacking, which plays as fast as it can and takes no buttons: the newest picture it has sent
+ * is shown each frame, so the window keeps answering however long it works between two. */
+static void show_unpacking_part(part_output *output) {
+  for (;;) {
+    read_part_output(output);
+    while (take_part_picture(output)) {}
+    present_part_picture();
+    if (output->ended) return;
+    write_files_due();
     read_and_apply_events();
     wait_for_next_frame();
   }
+}
+
+/* rg_shell_window's show_part. The script a test plays the menu from is read for as long as this
+ * part plays, in place of the game's own, and the keys it left down are let go at the end. */
+static int show_shell_part(SDL_Process *part, int fast, const char *keys) {
+  part_output output = {SDL_GetProcessOutput(part), malloc(PART_OUTPUT_ROOM), 0, PART_OUTPUT_ROOM, false};
+  if (!output.from || !output.bytes) output.ended = true;
+  int game_is_scripted = scripted;
+  script_lines = keys ? fopen(keys, "rb") : NULL;
+  scripted = script_lines != NULL;
+  part_shown = part;
+  if (fast) show_unpacking_part(&output);
+  else show_menu_part(&output, SDL_GetProcessInput(part));
+  int status = 1;
+  bool ended_well = SDL_WaitProcess(part, true, &status) && status == 0;
+  part_shown = NULL;
+  free(output.bytes);
+  for (uint32_t i = 0; i < BUTTONS; i++)
+    if ((scripted_keys >> i) & 1u) push_key((SDL_Scancode)first_key_of((int)i), false);
+  scripted_keys = 0;
+  read_events();
+  if (script_lines) fclose(script_lines);
+  script_lines = NULL;
+  scripted = game_is_scripted;
+  return ended_well;
+}
+
+typedef struct {
+  bool done;
+  char *path;
+} picked_file;
+
+static void file_picked(void *user, const char *const *files, int filter) {
+  (void)filter;
+  picked_file *picked = user;
+  if (files && files[0]) picked->path = SDL_strdup(files[0]);
+  picked->done = true;
+}
+
+/* rg_shell_window's pick_copy. THE DIALOG IS THE WINDOW'S OWN: given the window, a Mac opens it as
+ * a sheet on the window, where one given none is a panel by itself that can open behind another
+ * program's windows. SDL answers from the events it reads on this thread, so they are read here
+ * until it has, and the window is drawn meanwhile: it stays as it was, the chosen line showing.
+ *
+ * The keyboard is let go afterwards. The key that chose the line can come up while the dialog has
+ * the keyboard, and the window would then go on holding it down. */
+static char *pick_shell_copy(int folder) {
+  picked_file picked = {false, NULL};
+  if (folder) SDL_ShowOpenFolderDialog(file_picked, &picked, window, NULL, false);
+  else SDL_ShowOpenFileDialog(file_picked, &picked, window, NULL, 0, NULL, false);
+  while (!picked.done) {
+    read_and_apply_events();
+    present_still();
+    SDL_Delay(10);
+  }
+  SDL_ResetKeyboard();
+  read_events();
+  keys_down = keys_tapped = 0;
+  second_keys_down = second_keys_tapped = 0;
+  return picked.path;
+}
+
+/* rg_shell_window's tell: a box the window draws over its picture (rg_window_tell), which nothing
+ * waits for.
+ *
+ * NOT A BOX OF THE SYSTEM'S. SDL runs a loop of its own until one of those is answered, and one a
+ * shell put up as it started, before the program had read an event, could not be answered on a
+ * Mac: the program never came back (show_system_box). A box drawn here is answered through the
+ * events the window already reads, and a player who never answers it still has the menu under it. */
+static void tell_in_shell_window(const char *words) {
+  rg_window_tell(words);
+  window_owed_a_drawing = true;
+}
+
+static void open_shell_settings(void) {
+  if (!rg_window_menu_is_open()) rg_window_menu_toggle();
+}
+
+static const rg_shell_window window_for_shell = {show_shell_part, pick_shell_copy, tell_in_shell_window, open_shell_settings,
+                                                 save_window_picture_at};
+
+/* A shell's first screen is done and the game has its data pack: the window is the game's from
+ * here. What the window's menu was asked for meanwhile is not the game's to do, and the menu shuts
+ * if the game has none. The last picture a part drew stays up until the game shows its first. */
+static void end_shell_showing(void) {
+  showing_shell = false;
+  rg_window_clear_told();
+  if (part_texture) SDL_DestroyTexture(part_texture);
+  part_texture = NULL;
+  if (rg_window_menu_is_open() && !rg_game_has_menu) rg_window_menu_toggle();
+  rg_state_request request;
+  rg_window_take_state_request(&request);
+  window_owed_a_drawing = true;
+  restart_clocks();
 }
 
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
@@ -2007,6 +2414,7 @@ static void print_usage(const char *program) {
     if (*c == '/' || *c == '\\') name = c + 1; /* the program's own name, not the folders it is in */
   }
   rg_window_use_key_names(scancode_name, scancode_named);
+  rg_window_use_game_controls(rg_game_controls);
   rg_window_use_defaults();
 
   printf("Usage: %s [options]\n\n", name);
@@ -2038,6 +2446,12 @@ static void print_usage(const char *program) {
     printf("To open the menu with a gamepad, press Back and Start together, or the guide\n"
            "button. In the menu, the D-pad moves, A chooses and B closes the menu.\n");
   printf("The settings file changes the keys and the gamepad buttons.\n\n");
+  if (rg_seats_several_players(rg_game_seats[0]))
+    printf("More players:\n"
+           "  Each gamepad is one player. The first gamepad is player 1, the second is\n"
+           "  player 2, and so on. A gamepad keeps its player until you disconnect it.\n"
+           "  Player 2 can also use these keys: I, J, K and L move, O is A, U is B,\n"
+           "  7 is L, 9 is R, 8 is Select and 0 is Start.\n\n");
   printf("Files:\n"
          "  The save and the settings are kept in a folder named for the game, among\n"
          "  the files this computer keeps for each program. The settings are a text\n"
@@ -2060,8 +2474,7 @@ int main(int argc, char **argv) {
       return 0;
     }
   }
-  rg_shell_asked shell_asked = {NULL, NULL, NULL, NULL};
-  int menu_open_asked = 0; /* --open-menu: the window's menu open as the game starts (a shell's SETTINGS) */
+  rg_shell_asked shell_asked = {NULL, NULL, NULL, NULL, NULL, NULL, NULL};
   const char *save_file_asked_for = NULL;
   const char *settings_file_asked_for = NULL;
   int usual_settings_asked_for = 0;
@@ -2078,7 +2491,9 @@ int main(int argc, char **argv) {
     if (strcmp(argv[i], "--shell-copy") == 0 && i + 1 < argc) shell_asked.copy = argv[i + 1];
     if (strcmp(argv[i], "--shell-menu-keys") == 0 && i + 1 < argc) shell_asked.menu_keys = argv[i + 1];
     if (strcmp(argv[i], "--shell-settings-keys") == 0 && i + 1 < argc) shell_asked.settings_keys = argv[i + 1];
-    if (strcmp(argv[i], "--open-menu") == 0) menu_open_asked = 1;
+    if (strcmp(argv[i], "--shell-picks") == 0 && i + 1 < argc) shell_asked.picks = argv[i + 1];
+    if (strcmp(argv[i], "--shell-pick-pictures") == 0 && i + 1 < argc) shell_asked.pick_pictures = argv[i + 1];
+    if (strcmp(argv[i], "--shell-told") == 0 && i + 1 < argc) shell_asked.told = argv[i + 1];
 #if RG_CONSOLE_PLAYS_BIOS_START_UP
     if (strcmp(argv[i], "--start-up") == 0) start_up_asked = 1;
 #endif
@@ -2093,19 +2508,11 @@ int main(int argc, char **argv) {
       refuse_to_start("the data pack cannot be read");
   }
 
+  /* A part of a shell has no window: the shell that started it shows what it draws. */
+  if (part_result_path) play_part_for_shell();
+
   if (!SDL_Init(SDL_INIT_VIDEO)) refuse_to_start("the display cannot be reached");
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) refuse_to_start("the buttons cannot be read");
-  /* A shell has no data pack until the player's copy has been unpacked: the pack is made first, by
-   * its parts (rg_shell.c), and then the game starts as any game handed its pack does. */
-  if (rg_shell_facts && !part_result_path) {
-    char *pack = rg_shell_pack_path(&shell_asked);
-    if (!pack) {
-      SDL_Quit();
-      return 0;
-    }
-    if (!rg_start_file_read(pack)) refuse_to_start("the data pack cannot be read");
-    SDL_free(pack);
-  }
   load_settings(settings_file_asked_for, usual_settings_asked_for);
   /* High pixel density asks for the screen's real pixels on a Retina display. Without it the
    * whole number the picture is scaled by is worked out in the display's larger "points", and the
@@ -2115,6 +2522,7 @@ int main(int argc, char **argv) {
   if (rg_window_fullscreen()) flags |= SDL_WINDOW_FULLSCREEN;
   window = SDL_CreateWindow(rg_game_title, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale(), flags);
   if (!window) refuse_to_start("the window cannot be opened");
+  note_window_opened();
   SDL_SetWindowMinimumSize(window, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
   rg_window_consume_changes(); /* the window opened as the settings ask: nothing is left to do to it */
   renderer = SDL_CreateRenderer(window, NULL);
@@ -2127,7 +2535,6 @@ int main(int argc, char **argv) {
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
   rg_window_menu_reset(RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
-  if (menu_open_asked && rg_game_has_menu) rg_window_menu_toggle();
   /* If the windows of keys and variables cannot start the window says so, and the menu and the
    * hotkeys still work. */
   if (!rg_menu_start(window, renderer)) {
@@ -2137,12 +2544,23 @@ int main(int argc, char **argv) {
     if (rg_window_problems()[0] && !scripted) {
       char message[1200];
       snprintf(message, sizeof message, "The window cannot use some of the settings file. It uses the rest.\n\n%s", rg_window_problems());
-      SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, rg_game_title, message, window);
+      show_system_box(SDL_MESSAGEBOX_WARNING, message);
     }
   }
   attach_keyboard_pad();
   open_speaker();
   choose_pacing();
+  /* A shell has no data pack until the player's copy has been unpacked: the pack is made first, by
+   * its parts (rg_shell.c), each shown in this window, and then the game starts in it as any game
+   * handed its pack does. The window is opened before any of that and is never closed between. */
+  if (rg_shell_facts) {
+    showing_shell = true;
+    char *pack = rg_shell_pack_path(&shell_asked, &window_for_shell);
+    if (!pack) quit(0);
+    end_shell_showing();
+    if (!rg_start_file_read(pack)) refuse_to_start("the data pack cannot be read");
+    SDL_free(pack);
+  }
   choose_save_file(save_file_asked_for);
   read_save_file();
   choose_state_folder(save_file_asked_for);
@@ -2152,7 +2570,6 @@ int main(int argc, char **argv) {
   play_console_start_up();
 #endif
   read_computer_clock();
-  if (part_fast) play_part_on_thread();
   rg_active_driver = &sdl;
   rg_play_frames();
   /* A game with no game loop ends; its last picture stays up like a halt's. */

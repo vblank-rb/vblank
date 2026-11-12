@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include MeasuredOnCopies
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Paint and the rest, and the
@@ -226,11 +227,13 @@ module VBlank
           # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
           # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
-          # pixels among it (Art::TileMemo).
+          # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
+          # into the sound unit (Runtime::Sound, "Each scene's recordings").
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         cache: BuildCache.for(SNES, program))
+                         scene_recordings: false, cache: BuildCache.for(SNES, program))
             @program = program
+            @scene_recordings = scene_recordings
             @cache = cache
             @tile_memo = cache.facts.tile_memo
             @one_sprite_tile_set = one_sprite_tile_set
@@ -270,10 +273,10 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
-            Backends.refuse_start_file_on_cartridge!(@program, @plan.console, LoweringError)
-            refuse_unlowered_kinds!
-            refuse_what_snes_lacks!
-            @plan.refuse_routines_that_call_themselves!
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet, makes_followed_lists: false)
+            # The see-through amounts a Super Nintendo cannot mix: an even half is made, and
+            # Picture#refuse_see_through_amounts! refuses another, explaining why.
+            refuse_see_through_amounts!
             refuse_what_chip_cannot_run!
             refuse_unmade_picture!
             refuse_unsupported_save_memory!
@@ -297,6 +300,7 @@ module VBlank
             keep_background_color_choices
             keep_sprite_color_choices
             keep_scene_tiles_up
+            keep_scene_recordings_up
             keep_loop_running
             keep_column_numbers
             keep_order_tables
@@ -305,56 +309,35 @@ module VBlank
               next [chip_routine_section(name)] if on_chip?(name)
 
               @lowering_scene = @scenes.key?(name) ? name : nil
-              routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              with_call_numbers_recorded_for(name) do
+                routines_fitting(self.class.routine_label(name), @funcs.fetch(name).children, routine: routine_said(name))
+              end
             end
             timers = timer_sections
             @lowering_scene = nil
+            bend_routine = bend_sections
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             placings = sprite_placing_sections
             columns = column_sections
-            [data_section, *table_sections, *routines, *timers, *main, *placings, *columns, *chip_sections]
+            [data_section, *table_sections, *routines, *timers, *bend_routine, *main, *placings, *columns, *chip_sections]
           end
 
           # Whether the game has a division only a runtime routine can do (Runtime::Int32), once
           # #sections has lowered it.
           def divides? = @divides || false
 
+          # Whether the game multiplies or divides numbers with a fraction (Runtime::Int32's rt_mul_fix
+          # and rt_div_fix), once #sections has lowered it.
+          def fractions? = @fractions || false
+
           # Whether the game moves a whole list to or from save memory, so its runtime carries the
           # routines that do it as a block (Runtime::Saving#emit_list_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
 
-          # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away
-          # (LoweringState#on_copies).
-          def bytes_of(list)
-            LOWERING_STATE.on_copies(self) do
-              @asm = W65816.new("measuring", holds: ROUTINES)
-              @routine = "measuring"
-              @labels = 0
-              list.each { |node| statement(node) }
-              @asm.here
-            end
-          end
-
           private
 
-          # --- refusals ---
-
-          # What a run can reach and this lowering cannot make, refused by name before anything is
-          # made: a step that only means something on the Advance, and one the Super Nintendo build
-          # does not make yet. A step in a routine nothing calls never runs, and is not refused.
-          def refuse_unlowered_kinds!
-            @plan.refuse_hardware_only_kinds!
-            @plan.refuse_kinds_not_made_yet!(NOT_LOWERED_YET, NotMadeYet)
-          end
-
-          # What a Super Nintendo cannot do at all, as a game's build refuses it
-          # (LoweringPlan#refuse_what_console_lacks!), then the see-through amounts it cannot mix:
-          # an even half is made, and Picture#refuse_see_through_amounts! says in its own words why
-          # another is not.
-          def refuse_what_snes_lacks!
-            @plan.refuse_what_console_lacks!
-            refuse_see_through_amounts!
-          end
+          # The assembler a run of statements is measured in (MeasuredOnCopies#bytes_of).
+          def measuring_assembler = W65816.new("measuring", holds: ROUTINES)
 
           # --- the data ---
 
@@ -482,7 +465,34 @@ module VBlank
             label = "the game's number #{name}"
             @locals[name] = @memory.near_bytes_left >= NEAR_BYTES_LAST + 4 ? @memory.reserve(label, 4) : @memory.reserve_far(label, 4)
             @starts << [@locals[name], start] unless start.zero?
+            record_call_number(name, what)
             name
+          end
+
+          # The numbers each call of a routine keeps of its own (ControlFlow#call_numbers), put back
+          # around the block's code, for every routine the frame boundary can call while a call of it is
+          # waiting there (LoweringPlan#routines_reentered_at_frame_boundary): each pushed a half at a
+          # time before, and pulled back after, so the call that waits goes on from its own loop's turn,
+          # as the interpreter's does, whatever the boundary's call left there. A game whose boundary
+          # calls no such routine has no code here.
+          def with_call_numbers_kept
+            return yield if call_numbers.empty?
+
+            call_numbers.each do |name|
+              at = place_of(name)
+              @asm.lda(at_place(at))
+              @asm.pha
+              @asm.lda(at_place(at + 2))
+              @asm.pha
+            end
+            yield
+            call_numbers.reverse_each do |name|
+              at = place_of(name)
+              @asm.pla
+              @asm.sta(at_place(at + 2))
+              @asm.pla
+              @asm.sta(at_place(at))
+            end
           end
 
           def place_of(name)
@@ -730,16 +740,9 @@ module VBlank
           def emit_increment(name) = emit_sum(name, :+, Build.int(1))
           def loop_statements(node) = children_of(node).first
           def game_loops = @plan.game_loops
+          def loop_form = @plan.loop_form
 
           def console_loop(node) = @plan.console_loop(node)
-
-          # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in
-          # one (IR::Frames::ConsoleLoop#placed)?
-          def placed_at_pass_end?(node)
-            @placed_at_pass_end ||= @plan.game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
-                                         .to_h { |write| [write.object_id, true] }
-            @placed_at_pass_end.key?(node.object_id)
-          end
 
           def emit_call(node)
             raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @funcs.key?(node.target)
@@ -811,6 +814,7 @@ module VBlank
           def emit_scene_number(number)
             store_number(place_of(@scene), number)
             emit_scene_arrival(@scenes.key(number))
+            emit_scene_recordings(@scenes.key(number))
           end
 
           # A pass that halts ends as every pass does, with its sprites and scroll placed
@@ -834,7 +838,7 @@ module VBlank
           # The rows of each background bent row by row come first (Reference#work_out_bends): the
           # wait's blank sends the scroll this pass placed, and a row's bend goes out with it.
           def emit_wait_vblank(_node)
-            emit_bends
+            @plan.bends_in_own_routine? ? call_routine(BENDS) : emit_bends
             call_routine("rt_wait_vblank")
             emit_corners_forgotten
             count = place_of(Frames::COUNT)
@@ -868,8 +872,25 @@ module VBlank
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
+            return emit_slots_zeroed(node) if slots_zeroed_by_copying_engine?(node)
+
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
           end
+
+          # A LIST FULL OF NOUGHT in work RAM has its slots cleared by the copying engine, a byte in
+          # one slow cycle, rather than by the runtime's fill, which finds and writes each slot in
+          # turn. A save record's table and buffers are declared so, and are made at power-on before
+          # the game's first pass. A list in a Super FX's RAM is out of the work RAM port's reach.
+          def slots_zeroed_by_copying_engine?(node)
+            place, capacity, width, = list_placed(node)
+            node.full_of.zero? && place >= Runtime::Picture::WORK_RAM && (capacity * width).between?(1, 0xFFFF)
+          end
+
+          def emit_slots_zeroed(node)
+            place, capacity, width, = list_placed(node)
+            Runtime::Picture.emit_fill_work_ram(@asm, place + Runtime::Lists::HEADER, capacity * width, "rt_zero")
+          end
+
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
@@ -1728,13 +1749,15 @@ module VBlank
             each_timer = @timers.flat_map { |name, _| timer_section(name) }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              (1..@timers.size).each do |place_in_order|
-                @timers.each_key do |name|
-                  skip = fresh("not_this_one")
-                  jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
-                  jump_unless(Build.var_ref(timer_number(name, :running)), skip)
-                  call_routine(timer_label(name))
-                  @asm.label(skip)
+              with_call_numbers_kept do
+                (1..@timers.size).each do |place_in_order|
+                  @timers.each_key do |name|
+                    skip = fresh("not_this_one")
+                    jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
+                    jump_unless(Build.var_ref(timer_number(name, :running)), skip)
+                    call_routine(timer_label(name))
+                    @asm.label(skip)
+                  end
                 end
               end
             end
@@ -1742,6 +1765,18 @@ module VBlank
           end
 
           def timer_label(name) = "timer #{name} frame"
+
+          # The routine every wait calls to work out the bends' rows, in a game whose bends are one
+          # (LoweringPlan#bends_in_own_routine?).
+          BENDS = "bends frame"
+
+          # That routine, with the numbers of a call its steps can come inside put back around them
+          # (#with_call_numbers_kept), which are known only once every routine of the game is made.
+          def bend_sections
+            return [] unless @plan.bends_in_own_routine?
+
+            [routine_section(BENDS, [], routine: "the bends") { with_call_numbers_kept { emit_bends } }]
+          end
 
           # One timer, a frame on: its sixtieths, the whole ticks they come to, and its handler run
           # once for each. How many that is is settled before the first of them runs, so a handler
@@ -2092,8 +2127,14 @@ module VBlank
             @asm.branch_long(:bpl, within)
           end
 
-          def value_of_mul_fix(node) = runtime_call("rt_mul_fix", [node.lhs, node.rhs, fraction_bits(node)])
-          def value_of_div_fix(node) = runtime_call("rt_div_fix", [node.lhs, node.rhs, fraction_bits(node)])
+          def value_of_mul_fix(node) = emit_fraction_call("rt_mul_fix", node)
+          def value_of_div_fix(node) = emit_fraction_call("rt_div_fix", node)
+
+          def emit_fraction_call(routine, node)
+            @fractions = true
+            runtime_call(routine, [node.lhs, node.rhs, fraction_bits(node)])
+          end
+
           def value_of_shift_right(node)
             value(node.operand)
             emit_shift_right_of_r0(node.bits)

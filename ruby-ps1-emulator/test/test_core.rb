@@ -64,6 +64,30 @@ class TestCore < Minitest::Test
     end
   end
 
+  # A halfword to the sound chip's register at +distance+ from 1F800000h (SH t1, distance(t0)).
+  private def sound_register(distance, value) = number(value) + [0xA509_0000 | distance]
+
+  # Voice 5's pitch set, and a halfword written into sound memory at 1000h through the chip's queue.
+  private def sound_writes
+    words = ports + sound_register(0x1C54, 0x1234) + sound_register(0x1DA6, 0x1000 / 8) + sound_register(0x1DA8, 0xBEEF)
+    words + forever(LOAD_AT + (words.size * 4))
+  end
+
+  def test_the_sound_chips_registers_are_read_as_the_program_wrote_them
+    played(sound_writes, 2) { |core| assert_equal 0x1234, core.spu_registers.fetch(0x54) }
+  end
+
+  def test_sound_memory_holds_what_the_program_wrote_into_it
+    played(sound_writes, 2) { |core| assert_equal [0xBEEF].pack("v"), core.sound_ram[0x1000, 2] }
+  end
+
+  def test_the_sound_made_is_handed_over_once
+    played(red_screen, 3) do |core|
+      assert_equal core.sound_frames * 2, core.take_audio.size
+      assert_empty core.take_audio
+    end
+  end
+
   def test_a_bios_file_that_is_not_there_is_refused
     Dir.mktmpdir do |dir|
       error = assert_raises(ArgumentError) { RubyPS1Emulator::Core.new(write(dir, red_screen), bios: File.join(dir, "none.bin")) }

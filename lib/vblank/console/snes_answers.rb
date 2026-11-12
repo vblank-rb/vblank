@@ -84,10 +84,18 @@ module VBlank
         flash_screen: works,
         fade_level: works,
         shake_screen: works,
-        pixelate: refused("a Super Nintendo's mosaic shows the backgrounds in blocks but not the " \
-                          "sprites. Use `fade_out` and `fade_in` to go from one screen to the next."),
-        pixelate_in: refused("see `pixelate`."),
-        pixelate_out: refused("see `pixelate`."),
+        pixelate: works("the mosaic of a Super Nintendo puts the backgrounds in blocks, but it cannot put " \
+                        "the sprites in blocks. If a game pixelates, it must write `sprites: false` " \
+                        "(`pixelate 8, sprites: false`). Then the sprites stay as drawn. Without it, the " \
+                        "build refuses the game. A status bar stays as drawn, unless the game writes " \
+                        "`status_bar: true`. Each block shows the colour of its first pixel. The blocks " \
+                        "start at the top left of the screen. On a screen split by a status bar or by a " \
+                        "background held above a row (`above_row:`), the blocks go on through the split " \
+                        "and do not start again. If a block starts above a status bar in blocks, its rows " \
+                        "in the bar show the bar's layer above the bar's top row. That part of the layer " \
+                        "is empty unless the bar's map fills the whole layer, so the backdrop shows."),
+        pixelate_in: works("see `pixelate`."),
+        pixelate_out: works("see `pixelate`."),
         pixelate_size: works,
         spotlight: refused("a light darkens everything outside a circle by degrees, and a Super Nintendo's " \
                            "colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen."),
@@ -110,14 +118,18 @@ module VBlank
                       "memory with a copy of their pictures for each list they wear with `draw_with`, the " \
                       "build keeps one set of pictures for all those lists."),
         recolor: works("a list told to hold other colours keeps a palette to itself, so a game can change " \
-                       "eight lists of backgrounds on each screen and eight of sprites."),
+                       "eight lists of backgrounds on each screen and eight of sprites. A background that draws " \
+                       "with more than one list the game changes is not made yet: the build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,
         sprite: works("a sprite is made of the console's pieces, 128 pieces at once and 34 pieces of 8×8 on " \
-                      "any one row of the screen. A square of 16×16 in a picture is one piece, so a screen of " \
+                      "any one row of the screen. A sprite whose poses are drawn from different lists of colors " \
+                      "shows each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+                      "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of " \
                       "big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 " \
                       "pieces too, wherever they sit. Past 128 pieces, a sprite is not drawn and no error " \
                       "shows as the game runs. The build warns when the sprites one screen declares pass " \
@@ -135,11 +147,15 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of sixteen colours each."),
-        background: works("two backgrounds at a time, and a status bar beside them. Three backgrounds with no " \
-                          "status bar among them are refused: this build does not make that yet. The backgrounds " \
-                          "are scrolled and changed as on the Advance. `above_row:` " \
+        background: works("two backgrounds at a time, and a status bar or a background held above a row beside " \
+                          "them. Three backgrounds with neither among them are refused: this build does not make " \
+                          "that yet. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
-                          "screen is drawn. A game with it cannot have a status bar yet. `show_only_inside` is " \
+                          "screen is drawn. A game with it cannot have a status bar yet. Beside two other " \
+                          "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
+                          "see-through. It must be in front of the other backgrounds, its tiles must have no " \
+                          "see-through pixel, and each cell of its map that can show must have a tile. If not, or " \
+                          "if a layer is see-through, the build refuses the game. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \
@@ -152,7 +168,8 @@ module VBlank
                           "`held: true` changes nothing: a Super Nintendo writes its video memory only between " \
                           "frames, so the cells a pass changes with `set_tile` already show together."),
         status_bar: works("beside one background, the bar is one of the two background layers. Beside two " \
-                          "backgrounds, the bar is on the third layer, which has tiles of four colours. Then each " \
+                          "backgrounds, or beside a sprite behind a background, the bar is on the third layer. " \
+                          "That layer has tiles of four colours. Then each " \
                           "tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists " \
                           "of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. " \
                           "On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles " \
@@ -210,6 +227,7 @@ module VBlank
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: refused("it lists the ARM a routine was made into, and a Super Nintendo has no ARM " \
                            "processor to list it for."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have."),
@@ -229,6 +247,7 @@ module VBlank
                                  "cartridge can wait for a button on it instead, like `pressed(:start, player: 2)`."),
         rumble: works("nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays " \
                       "the same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
@@ -245,7 +264,8 @@ module VBlank
         wave: works("a Super Nintendo has no wave voice: its sound chip plays recordings, so it plays each " \
                     "waveform as a recording. A note above 4000 Hz plays at 4000 Hz."),
         stop_wave: works,
-        song: works("see `define_sound` for the square and wave voices."),
+        song: works("see `define_sound` for the square and wave voices. " \
+                    "#{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_WHERE_PANNED}"),
         play_song: works,
         stop_music: works,
         hold_music: works,
@@ -259,7 +279,11 @@ module VBlank
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \
                       "beep, a wave, noise or a song's own part. If every one of those plays a recording, the next " \
-                      "recording is not heard. It still ends or loops as on the Advance."),
+                      "recording is not heard. It still ends or loops as on the Advance. A recording whose " \
+                      "`envelope:` is the sound chip's own bytes (a `VBlank::Audio::SNESEnvelope`) has them " \
+                      "written to its voice unchanged, and the sound chip shapes each note itself. A recording " \
+                      "given in the sound chip's own format (`brr:`) is played byte for byte as given, from the " \
+                      "loop point given (`brr_loop:`)."),
         instrument: works("see `sample`.")
       })
 

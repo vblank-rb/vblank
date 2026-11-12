@@ -36,6 +36,10 @@ void rg_background_show_map(int32_t background, int32_t which);
  * colors it can be told (RG_BG_COLOR_STEPS of them). A number naming none of them is the colors
  * it was drawn in. */
 void rg_background_draw_with(int32_t background, int32_t which);
+/* The tiles a background draws from one of several lists it follows show set number +set+ of its
+ * tiles from now on. +rules+ is how many tile pixels the game has, the background, how many of its
+ * tiles are drawn from the list, and each of those tiles. */
+void rg_background_follow(const int32_t *rules, int32_t set);
 /* +pivot_x+, +pivot_y+: the point on screen it turns around, which the statement names. */
 void rg_background_turn(int32_t background, int32_t angle, int32_t size, int32_t pivot_x, int32_t pivot_y);
 
@@ -126,8 +130,22 @@ enum {
 };
 extern const int32_t rg_game_backgrounds[];
 #define RG_NOT_PAINTED (-1)
+/* A game whose background read from the start file has tiles taking turns through pictures marks
+ * the cells naming them as it starts (rg_start_file_fill_moving_cells), and says so before this
+ * header (RG_PAINTED_TILES_WRITABLE). */
+#ifdef RG_PAINTED_TILES_WRITABLE
+extern int32_t rg_game_painted_tiles[];
+#else
 extern const int32_t rg_game_painted_tiles[];
+#endif
+/* A game that paints tiles in colours read from the start file writes those colours into this table
+ * as it starts (rg_start_file_fill_marked_numbers), and says so before this header
+ * (RG_RUN_COLORS_WRITABLE). */
+#ifdef RG_RUN_COLORS_WRITABLE
+extern uint16_t rg_game_run_colors[];
+#else
 extern const uint16_t rg_game_run_colors[];
+#endif
 
 /* Each map is RG_MAP_FIELDS numbers in rg_game_maps: where its cells start in rg_game_map_cells,
  * how many columns and rows it has, and the grid it comes round at (nought each way for a

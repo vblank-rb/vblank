@@ -212,6 +212,9 @@ module VBlank
             @shade = program.walk.select { |node| node.kind == :shade_outside }.last
             # ...and whether it takes turns with the scenes it is off in, set as each frame ends.
             @switches_shade = @shade && IR::LightScenes.switches?(program)
+            # ...and whether a scene it is on in has a fade placed in the stack to take off
+            # (Reference#lift_placed_fade_for_light).
+            @light_lifts_placed_fade = @switches_shade && program.walk.any? { |node| IR::LightScenes.placed_fade?(node) }
             # What each timer does when it ticks: its handler, wherever that is written, since it
             # is the timer's from power-on (Nodes::OnTimer.of). And the number the runtime knows
             # each timer by.
@@ -232,6 +235,13 @@ module VBlank
             @lists = by_name(@reachable.reverse, :list_new)
             @scenes = scene_numbers
             @start_file_fills = [] # what the routine reading the start file writes into the pictures' pixels (StartFileFills)
+            @start_file_background_fills = [] # ...and into the tiles of each background whose map is read from it
+            @start_file_marked_pixels = [] # ...and the pixels written as markers, put in their colours then
+            @start_file_marked_numbers = [] # ...and the numbers of a table of colours written as markers
+            @start_file_followed_tiles = [] # ...and which tiles of such a background are drawn from each list it follows
+            @start_file_moving_cells = [] # ...and which of its cells show a tile taking turns through pictures
+            @start_file_shading_fills = [] # ...and the colours and levels of each lit fill's shading read from it
+            @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
             prepare_sound
           end
@@ -272,6 +282,12 @@ module VBlank
           # here. A global is a field of one number, "game." and its name; a list is "list." and the
           # game's name for it. Then each patch of picture the game keeps under a sprite, "patch." and
           # its name, which the runtime keeps but only the build knows the size of.
+          #
+          # Last, the tiles of each background that follows several lists the game changes are copied
+          # again from what each list holds (Picture#followed_tile_copies_again): the image holds the
+          # number each list holds and not the tiles copied for it, and a picture owed as the state
+          # was written is built from the tiles before the game runs another statement. Writing a
+          # state, the tiles are as they should be already and nothing is copied.
           def visit_state(items)
             fields = items.flat_map do |item|
               case item
@@ -282,10 +298,11 @@ module VBlank
               else []
               end
             end
-            fields + @patches.map do |name, buffer|
+            patches = @patches.map do |name, buffer|
               eval_call("rg_patch_visit_state", Statements::Text.new("patch.#{name}"), Statements::Int.new(@patch_numbers.fetch(name)),
                         Statements::Int.new(buffer.width), Statements::Int.new(buffer.height))
             end
+            fields + patches + followed_tile_copies_again
           end
 
           def top_level_items
@@ -299,7 +316,7 @@ module VBlank
             art = picture_data
             start_file_routines = build_start_file_routines
             [Statements::Comment.new("Written by VBlank's native backend. Do not edit; build the game again."),
-             *recording_samples_define,
+             *written_sound_array_defines, *marked_table_defines,
              Statements::Include.new("rg_int32.h"), Statements::Include.new("rg_runtime.h"), Statements::Include.new("rg_list.h"),
              Statements::Include.new("rg_screen.h"), Statements::Include.new("rg_sound.h"),
              Statements::Include.new("rg_save.h"), Statements::Include.new("rg_state.h"), *RuntimeFeatures.c_headers(runtime_features).map { |header| Statements::Include.new(header) },
@@ -308,7 +325,7 @@ module VBlank
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [Statements::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *tables, *art, *@drawing_arrays, title_array, *sound_tables,
+             *tables, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| Statements::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
@@ -322,6 +339,21 @@ module VBlank
           def title_array
             bytes = @title.to_s.each_char.map { |char| char.ord.between?(32, 126) ? char.ord : "?".ord }
             Statements::ConstArray.new(name: @names.own("title"), type: "char", values: bytes + [0], exported: true)
+          end
+
+          # The keys and gamepad buttons the game adds to VBlank's layout, as the window, the Ruby
+          # window and the web page read them (IR::ComputerControls.runtime_numbers): [0] for a game that adds
+          # none.
+          def controls_array
+            Statements::ConstArray.new(name: @names.own("controls"), type: "int32_t",
+                                       values: ComputerControls.runtime_numbers(@program.computer_controls), exported: true)
+          end
+
+          # The most players the build seats (`players:`), 0 for a game that names none, as the
+          # window, the Ruby window and the web page read it: only a game for two or more gives
+          # player 2 keys and each gamepad a player of its own (rg_seats.h, Live::Seats).
+          def seats_array
+            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.most_players || 0], exported: true)
           end
 
           # A program that waits for frames shows nothing until its first frame is set up
@@ -368,14 +400,14 @@ module VBlank
           def constant_arrays
             tables_read.map do |table|
               name = @names.of(:table, table.name)
-              next Statements::StartFileArray.new(name: name, type: table_type(table), count: table.entry_count) if table.from_file
+              next Statements::StartFileArray.new(name: name, type: table_type(table), count: table.entry_count) if table.read_from_file?
 
               Statements::ConstArray.new(name: name, type: table_type(table), values: table_entries(table))
             end + @data.values.select { |data| arrays_read.include?(data.name) }.map do |data|
               refuse_picture_from_start_file!(data.name, "a piece of data read a byte at a time")
               bytes = data.kind == :data ? data.bytes : data.pixels
               Statements::ConstArray.new(name: @names.of(:data, data.name), type: "uint8_t", values: bytes.bytes)
-            end
+            end + start_file_color_arrays + start_file_sound_number_arrays
           end
 
           # The names of the tables and the data a run reads, by an entry or by copying a run of them.
@@ -706,6 +738,7 @@ module VBlank
             bends_first = @program.described_console.sprites_placed_before_wait
             [*(bends_first ? bends : []),
              *(@switches_shade ? [eval_call("rg_shade_switch", variable(IR::LightScenes::ON))] : []),
+             *(@light_lifts_placed_fade ? [eval_call("rg_lift_placed_fade_for_light", variable(IR::LightScenes::ON))] : []),
              eval_call("rg_wait_vblank"),
              assign(Frames::COUNT, call("rg_add", count, Statements::Int.new(1))),
              assign(Frames::SEEN, count),

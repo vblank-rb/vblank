@@ -317,11 +317,79 @@ def rg_start_file_color(colors_at, rules, format, place)
     (rg_start_file_channel(kept, rules[format + RG_COLOR_BLUE_AT], bits) << 10)
 end
 
+# Colours that are no part of a picture, into the game's own array of them (rg_runtime.h,
+# rg_start_file_fill_colors).
+def rg_start_file_fill_colors(colors, first, count, at, format)
+  count.times { |place| colors[first + place] = rg_start_file_color(at, format, 0, place) }
+end
+
+# The levels of a shading read from the file (rg_runtime.h, rg_start_file_fill_places).
+def rg_start_file_fill_places(numbers, first, count, at, places)
+  @rg_start_file.byteslice(at, count).bytes.each_with_index do |place, i|
+    numbers[first + i] = place < places ? place : 0
+  end
+end
+
+# rg_runtime.c's start_file_walked_color.
+def rg_start_file_walked_color(color, far, steps)
+  walked = 0
+  [0, 5, 10].each do |shift|
+    own = (color >> shift) & 31
+    limit = (far >> shift) & 31
+    moved = own < limit ? [own + steps, limit].min : [own - steps, limit].max
+    walked |= moved << shift
+  end
+  walked
+end
+
+# Colours made from entries before them (rg_runtime.h, rg_start_file_walk_colors).
+def rg_start_file_walk_colors(colors, first, count, made)
+  count.times do |entry|
+    colors[first + entry] = rg_start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2])
+  end
+end
+
+# rg_runtime.c's start_file_marked, of the sixteen bits +held+.
+def rg_start_file_marked(held) = held > RG_MARKED_COLOR && held != 0xFFFF
+
+# +color+, or the entry of +colors+ it names where it is a marker (rg_runtime.h).
+def rg_start_file_marked_color(colors, color)
+  held = color & 0xFFFF
+  rg_start_file_marked(held) ? colors[held - RG_MARKED_COLOR - 1] : color
+end
+
+# The pixels written as markers, put in their colours (rg_runtime.h,
+# rg_start_file_fill_marked_pixels). A marker kept in sixteen signed bits is below zero, so its
+# sixteen bits are read. The game's pixels are frozen, so an unfrozen copy takes their place, as a
+# picture's fill does.
+def rg_start_file_fill_marked_pixels(colors, kind, _total, start, count)
+  if kind == RG_FILL_TILE
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    pixels = @rg_game_tile_pixels
+  else
+    @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
+    pixels = @rg_game_image_pixels
+  end
+  (start...(start + count)).each do |at|
+    held = pixels[at] & 0xFFFF
+    pixels[at] = colors[held - RG_MARKED_COLOR - 1] if rg_start_file_marked(held)
+  end
+end
+
+# The numbers of a table of colours written as markers, put in their colours (rg_runtime.h,
+# rg_start_file_fill_marked_numbers). The game writes such a table unfrozen.
+def rg_start_file_fill_marked_numbers(colors, table, _kept, start, count)
+  (start...(start + count)).each do |at|
+    held = table[at]
+    table[at] = colors[held - RG_MARKED_COLOR - 1] if held.positive? && held <= 0xFFFF && rg_start_file_marked(held)
+  end
+end
+
 # One picture's pixels (rg_runtime.h, rg_start_file_fill_picture). The game's pixels are frozen, so
 # the first picture filled puts an unfrozen copy in their place; the picture reads them from there
 # on. The +total+ in the rules is how many there are, which the C needs.
 def rg_start_file_fill_picture(rules)
-  kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count, places_by_byte, see_through = rules
+  kind, _total, start, width, height, turn, across, places_at, colors_at, colors_count, swapped_count, places_by_byte, see_through, row_bytes = rules
   tile_format = RG_FILL_RULES_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_places = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -341,7 +409,7 @@ def rg_start_file_fill_picture(rules)
       place = if places_at.negative?
                 rules[held_places + (from_row * width) + from_column]
               elsif places_by_byte == 1
-                @rg_start_file.getbyte(places_at + (from_row * width) + from_column)
+                @rg_start_file.getbyte(places_at + (from_row * row_bytes) + from_column)
               else
                 rg_start_file_place(places_at, rules, tile_format, across, from_row, from_column)
               end
@@ -357,6 +425,264 @@ def rg_start_file_fill_picture(rules)
                 rg_start_file_color(colors_at, rules, color_format, place)
               end
       pixels[start + (row * width) + column] = color
+    end
+  end
+end
+
+# The number the two bytes from +at+ in the file hold, low byte first, 0 or more.
+def rg_start_file_half(at) = @rg_start_file.getbyte(at) | (@rg_start_file.getbyte(at + 1) << 8)
+
+# A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+# lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and its
+# numbers (RG_FRAME_, RG_PIECE_) are written ahead of this file from there. Every number is low
+# byte first: a frame is the pieces it holds and the pieces the original names, two bytes each,
+# then RG_FRAME_PIECE_BYTES a piece.
+#
+# One piece of a pose's frame, its record from +at+ in the file, painted into +places+, behind what
+# is there already (rg_runtime.c's start_file_paint_piece). +tile_format+ is where that layout
+# starts in +rules+.
+def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+  left = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
+  top = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
+  first_tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
+  column_step = rg_start_file_half(at + RG_PIECE_COLUMN_STEP_AT)
+  row_step = rg_start_file_half(at + RG_PIECE_ROW_STEP_AT)
+  columns = @rg_start_file.getbyte(at + RG_PIECE_COLUMNS_AT)
+  rows = @rg_start_file.getbyte(at + RG_PIECE_ROWS_AT)
+  turns = @rg_start_file.getbyte(at + RG_PIECE_TURNS_AT)
+  mirrored = turns.anybits?(RG_PIECE_MIRRORED)
+  upside_down = turns.anybits?(RG_PIECE_UPSIDE_DOWN)
+  across = columns * 8
+  tall = rows * 8
+  tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
+  tall.times do |y|
+    down = top + y
+    next if down.negative? || down >= height
+
+    across.times do |x|
+      along = left + x
+      next if along.negative? || along >= width || places[(down * width) + along] != 0
+
+      from_x = mirrored ? across - 1 - x : x
+      from_y = upside_down ? tall - 1 - y : y
+      column = from_x / 8
+      row = from_y / 8
+      tile = first_tile + (column * column_step) + (row * row_step)
+      next if tile >= tile_count
+
+      places[(down * width) + along] = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
+    end
+  end
+end
+
+# How many pieces the frame whose entry is at +entry_at+ holds, and where the first of them is in
+# the file: [count, first] (rg_runtime.c's start_file_frame_pieces). The frame's entry says where
+# its record starts, counted from +records_at+; 0 is a frame with no record. The file is the
+# player's: a record is read while it is inside the file.
+def rg_start_file_frame_pieces(entry_at, records_at)
+  size = @rg_start_file.bytesize
+  offset = entry_at + RG_FRAME_ENTRY_BYTES <= size ? rg_start_file_half(entry_at) | (rg_start_file_half(entry_at + 2) << 16) : 0
+  return [0, 0] unless offset != 0 && records_at + offset + RG_FRAME_HEADER_BYTES <= size
+
+  first = records_at + offset + RG_FRAME_HEADER_BYTES
+  [[rg_start_file_half(first - RG_FRAME_HEADER_BYTES), (size - first) / RG_FRAME_PIECE_BYTES].min, first]
+end
+
+# Colours of a list the file chooses (rg_runtime.h, rg_start_file_choose_colors).
+def rg_start_file_choose_colors(colors, first, count, rules)
+  entry_at, records_at, colors_at, list_colors, lists, first_place = rules
+  pieces, first_piece = rg_start_file_frame_pieces(entry_at, records_at)
+  list = pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
+  count.times do |entry|
+    colors[first + entry] = if list < lists
+                              rg_start_file_color(colors_at + (list * list_colors * 2), rules, RG_CHOSEN_COLORS_HEADER_NUMBERS, first_place + entry)
+                            else
+                              0
+                            end
+  end
+end
+
+# The bank a frame's front piece names (rg_runtime.h, rg_start_file_frame_bank).
+def rg_start_file_frame_bank(entry_at, records_at)
+  pieces, first_piece = rg_start_file_frame_pieces(entry_at, records_at)
+  pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
+end
+
+# The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
+# game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
+def rg_start_file_fill_pose(rules)
+  kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, entry_at, records_at, origin_x, origin_y,
+    tiles_at, tile_count, only_bank = rules
+  tile_format = RG_FILL_POSE_HEADER_NUMBERS
+  color_format = tile_format + RG_TILE_FORMAT_NUMBERS
+  held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
+  swapped = held_colors + (colors_at.negative? ? colors_count : 0)
+  count, first = rg_start_file_frame_pieces(entry_at, records_at)
+  places = Array.new(width * height, 0)
+  count.times do |piece|
+    at = first + (piece * RG_FRAME_PIECE_BYTES)
+    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+
+    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+  end
+  if kind == RG_FILL_TILE
+    @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+    pixels = @rg_game_tile_pixels
+  else
+    @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
+    pixels = @rg_game_image_pixels
+  end
+  height.times do |row|
+    width.times do |column|
+      from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+      from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+      place = places[(from_row * width) + from_column]
+      color = if place.zero?
+                kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
+              elsif place < swapped_count
+                rules[swapped + place]
+              elsif place >= colors_count
+                0
+              elsif colors_at.negative?
+                rules[held_colors + place]
+              else
+                rg_start_file_color(colors_at, rules, color_format, place)
+              end
+      pixels[start + (row * width) + column] = color
+    end
+  end
+end
+
+# How String#unpack reads the cells of a map in the file: a byte each (a map of tile numbers), two
+# bytes (a console's own cell), or four (VBlank's own record, Original::MapCell, low byte first).
+def rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  case cell_bytes
+  when 1 then "C*"
+  when 4 then map_high_byte_first == 1 ? "N*" : "V*"
+  else map_high_byte_first == 1 ? "n*" : "v*"
+  end
+end
+
+# Which tiles of a background whose map is in the file are drawn from one list it follows
+# (rg_runtime.h, rg_start_file_fill_followed_tiles). The game writes +followed+ unfrozen.
+def rg_start_file_fill_followed_tiles(followed, rules, banks)
+  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  bank_at, bank_bits = rules[10, 2]
+  bank_count = rules[16]
+  held, cell_bytes = rules[19, 2]
+  columns = across * side
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  count = followed[2]
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    next if bank >= bank_count || bank > 30 || banks[bank].zero?
+
+    side.times do |down|
+      side.times do |along|
+        followed[3 + count] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        count += 1
+      end
+    end
+  end
+  followed[2] = count
+end
+
+# The cells of such a background naming a tile that takes turns through pictures (rg_runtime.h,
+# rg_start_file_fill_moving_cells).
+def rg_start_file_fill_moving_cells(painted, rules, moving)
+  map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[2, 11]
+  bank_count = rules[16]
+  held, cell_bytes = rules[19, 2]
+  start, count = moving[0, 2]
+  entry = 1 + (bank_count * 8)
+  columns = across * side
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    first_tile = word & ((1 << tile_bits) - 1)
+    mirrored = word[mirror_bit]
+    upside_down = word[flip_bit]
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    next if bank >= bank_count
+
+    side.times do |down|
+      side.times do |along|
+        tile = first_tile + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) + (mirrored == 1 ? side - 1 - along : along)
+        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        which = (0...count).find { |each| moving[2 + (each * entry)] == tile } or next
+        shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
+        painted[start + (2 * (held + number))] = moving[shown]
+        painted[start + (2 * (held + number)) + 1] = moving[shown + 1]
+      end
+    end
+  end
+end
+
+# Tiles of the file as a run of painted tiles keeps them (rg_runtime.h, rg_start_file_fill_painted_tiles).
+def rg_start_file_fill_painted_tiles(table, tiles, rules)
+  bytes = Array.new(tiles) do |tile|
+    at = rules[RG_TILE_FORMAT_NUMBERS + (2 * tile)]
+    turn = rules[RG_TILE_FORMAT_NUMBERS + (2 * tile) + 1]
+    Array.new(32) do |byte|
+      row = byte / 4
+      column = (byte % 4) * 2
+      from_row = turn.anybits?(RG_TURN_UPSIDE_DOWN) ? 7 - row : row
+      near, far = turn.anybits?(RG_TURN_MIRRORED) ? [7 - column, 6 - column] : [column, column + 1]
+      (rg_start_file_place(at, rules, 0, 1, from_row, near) & 0xF) | ((rg_start_file_place(at, rules, 0, 1, from_row, far) & 0xF) << 4)
+    end
+  end.flatten
+  table.is_a?(RgBytes) ? table.replace(bytes.pack("C*")) : table.replace(bytes)
+end
+
+# The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
+# The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
+def rg_start_file_fill_background(rules)
+  _total, start, map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles,
+    tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held, cell_bytes = rules
+  tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
+  color_format = tile_format + RG_TILE_FORMAT_NUMBERS
+  lists = color_format + RG_COLOR_FORMAT_NUMBERS
+  columns = across * side
+  set_tiles = held + (columns * (cells / across) * side)
+  tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  pixels = @rg_game_tile_pixels
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  words = @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as)
+  words.each_with_index do |word, cell|
+    first_tile = word & ((1 << tile_bits) - 1)
+    mirrored = word[mirror_bit] == 1
+    upside_down = word[flip_bit] == 1
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    side.times do |down|
+      side.times do |along|
+        tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along)
+        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        places = Array.new(64) do |at|
+          next 0 unless tile < tile_count
+
+          row = at / 8
+          column = at % 8
+          rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1,
+                              upside_down ? 7 - row : row, mirrored ? 7 - column : column)
+        end
+        sets.times do |set|
+          list = lists + (((set * bank_count) + bank) * (1 + bank_size))
+          drawn = start + (((set * set_tiles) + held + number) * 64)
+          places.each_with_index do |place, at|
+            pixels[drawn + at] = if place.zero?
+                                   RG_SEE_THROUGH
+                                 elsif bank >= bank_count
+                                   0
+                                 elsif rules[list].negative?
+                                   rules[list + 1 + place]
+                                 elsif rules[list] < bank_count
+                                   rg_start_file_color(colors_at + (rules[list] * bank_size * 2), rules, color_format, place)
+                                 else
+                                   0
+                                 end
+          end
+        end
+      end
     end
   end
 end

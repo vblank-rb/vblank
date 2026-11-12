@@ -21,9 +21,12 @@ class TestControlFlow < Minitest::Test
 
     attr_reader :written
 
-    def initialize
+    # +program+ is everything the walk is over: what names a loop's variable is read from it.
+    def initialize(program)
       @written = []
+      @known_below = []
       @labels = Hash.new(0)
+      @loop_form = VBlank::IR::Backends::LoopForm.new(program)
     end
 
     def fresh_label(what) = "#{what}#{@labels[what] += 1}"
@@ -41,6 +44,7 @@ class TestControlFlow < Minitest::Test
     def loop_statements(node) = node.children
     def console_loop(_node) = PlainLoop.new(before: [], pass_end: [])
     def game_loops = []
+    def loop_form = @loop_form
     def emit_scene(scene) = @written << [:scene, scene]
 
     # A condition known never to hold asks for no jump, as each lowering's does.
@@ -53,7 +57,11 @@ class TestControlFlow < Minitest::Test
       return emit_control_flow_statement(node) if VBlank::IR::Backends::ControlFlow::STATEMENT_KINDS.include?(node.kind)
 
       @written << [:statement, node.kind, node.var]
+      @known_below << index_below(:i)
     end
+
+    # What the walk knew the variable :i to be below, at each statement written down.
+    attr_reader :known_below
 
     private
 
@@ -70,7 +78,7 @@ class TestControlFlow < Minitest::Test
   end
 
   private def written_for(node)
-    RecordingChip.new.tap { |chip| chip.statement(node) }.written
+    RecordingChip.new(node).tap { |chip| chip.statement(node) }.written
   end
 
   def test_a_test_jumps_past_its_body_and_past_its_other_side
@@ -95,38 +103,110 @@ class TestControlFlow < Minitest::Test
     assert_equal [[:statement, :set, :a]], written_for(if_(int(1), set(:a, 1)))
   end
 
-  # Reference#exec_repeat: the count worked out once, the index compared before each turn and handed
-  # to the game's variable only for a turn that runs, and one more after the body.
+  # Reference#exec_repeat: the count worked out once, and no turn made of a count of nought or less.
+  # Only the loop writes its variable here, so it counts in it: one more after the body, a jump back
+  # while turns are left, and the variable taken back to the last turn's number when they run out.
   def test_a_count_the_game_works_out_is_worked_out_once_and_kept
     written = written_for(repeat(var_ref(:n), :i, set(:a, 1)))
 
-    assert_equal [[:value, :n], [:store, :own_count], [:zero, :own_index], [:label, "repeat1"],
-                  [:jump_unless, %i[own_index < own_count], "end_repeat1"], %i[copy own_index i],
-                  [:statement, :set, :a], %i[one_more own_index], [:jump, "repeat1"], [:label, "end_repeat1"]], written
+    assert_equal [[:value, :n], [:store, :own_count], [:jump_unless, [:own_count, :>, 0], "no_turns1"], %i[zero i],
+                  [:label, "repeat1"], [:statement, :set, :a], %i[one_more i], [:jump_if, %i[i < own_count], "repeat1"],
+                  [:statement, :sub, :i], [:label, "end_repeat1"], [:label, "no_turns1"]], written
   end
 
-  # ...and a count written in the game is compared as the number it is, with no variable of its own:
-  # two of the four consoles worked it out into one before this walk was shared.
+  # A lowering may keep the count in a register from where it is set to nought to where every way
+  # out of the loop comes (#with_counter_held), so a loop that makes no turns must not come there.
+  def test_a_loop_with_no_turns_goes_past_where_its_count_is_held
+    chip = Class.new(RecordingChip) do
+      def with_counter_held(_node, counter)
+        @written << [:held, counter]
+        yield
+        @written << [:put_back, counter]
+      end
+    end.new(node = repeat(var_ref(:n), :i, set(:a, 1), stop_when: binop(:==, var_ref(:done), 1)))
+    chip.statement(node)
+    places = chip.written.each_with_index.to_h { |entry, at| [entry, at] }
+
+    assert_operator places.fetch(%i[held i]), :<, places.fetch(%i[zero i])
+    assert_operator places.fetch([:label, "end_repeat1"]), :<, places.fetch(%i[put_back i])
+    assert_operator places.fetch(%i[put_back i]), :<, places.fetch([:label, "no_turns1"])
+    assert_includes chip.written, [:jump_if, [:done, :==, 1], "end_repeat1"]
+  end
+
+  # ...and a count written in the game is compared as the number it is, with no variable of its own
+  # and no test before the first turn: two of the four consoles worked it out into one before this
+  # walk was shared.
   def test_a_count_written_in_the_game_is_compared_as_the_number_it_is
     written = written_for(repeat(40, :i, set(:a, 1)))
 
-    assert_includes written, [:jump_unless, [:own_index, :<, 40], "end_repeat1"]
+    assert_includes written, [:jump_if, [:i, :<, 40], "repeat1"]
     refute_includes written, %i[store own_count]
+    refute_includes written.map(&:first), :jump_unless
+  end
+
+  def test_a_count_written_as_nought_or_less_makes_no_loop
+    assert_empty written_for(repeat(0, :i, set(:a, 1)))
+    assert_empty written_for(repeat(-3, :i, set(:a, 1)))
+  end
+
+  # The interpreter keeps the count to itself and hands it over at the top of each turn, so a body
+  # that writes the loop's variable makes as many turns as one that does not.
+  def test_a_loop_whose_variable_something_else_writes_keeps_a_count_of_its_own
+    written = written_for(repeat(40, :i, set(:i, 7)))
+
+    assert_equal [%i[zero own_index], [:label, "repeat1"], %i[copy own_index i], [:statement, :set, :i], %i[one_more own_index],
+                  [:jump_if, [:own_index, :<, 40], "repeat1"], [:label, "end_repeat1"]], written
+  end
+
+  def test_two_loops_sharing_one_variable_each_keep_a_count_of_their_own
+    written = written_for(repeat(3, :i, repeat(4, :i, set(:a, 1))))
+
+    assert_equal [%i[copy own_index i]] * 2, written.select { |what, _| what == :copy }
   end
 
   def test_a_loop_with_no_variable_of_the_games_copies_its_index_nowhere
-    refute_includes written_for(repeat(40, nil, set(:a, 1))).map(&:first), :copy
+    written = written_for(repeat(40, nil, set(:a, 1)))
+
+    refute_includes written.map(&:first), :copy
+    assert_includes written, [:jump_if, [:own_index, :<, 40], "repeat1"]
   end
 
-  # `stop_when` is asked after the index is handed over and before the body, so a loop already
-  # finished on its first turn runs the body no times.
+  # `stop_when` is asked once the index is in the game's variable and before the body, so a loop
+  # already finished on its first turn runs the body no times.
   def test_a_loop_asks_whether_to_stop_before_its_body
     written = written_for(repeat(40, :i, set(:a, 1), stop_when: binop(:==, var_ref(:done), 1)))
     kinds = written.map(&:first)
 
-    assert_operator kinds.index(:copy), :<, kinds.index(:jump_if)
+    assert_operator kinds.index(:zero), :<, kinds.index(:jump_if)
     assert_operator kinds.index(:jump_if), :<, kinds.index(:statement)
     assert_includes written, [:jump_if, [:done, :==, 1], "end_repeat1"]
+  end
+
+  def test_a_loop_keeping_its_own_count_hands_it_over_before_asking_whether_to_stop
+    written = written_for(repeat(40, :i, set(:i, 7), stop_when: binop(:==, var_ref(:done), 1)))
+    kinds = written.map(&:first)
+
+    assert_operator kinds.index(:copy), :<, kinds.index(:jump_if)
+  end
+
+  # A lowering reading a list at the loop's variable can leave out its check of the index where
+  # the variable is known, while building, to stay inside the list.
+  def test_a_loops_variable_is_known_to_be_below_a_count_written_in_the_game_while_its_body_is_written
+    program = program(repeat(40, :i, set(:a, 1)), set(:b, 2))
+    chip = RecordingChip.new(program)
+    program.children.each { |node| chip.statement(node) }
+
+    # The body's statement, the loop's own taking back of its variable, and the statement after.
+    assert_equal [40, nil, nil], chip.known_below
+  end
+
+  def test_nothing_is_known_of_a_variable_whose_count_the_game_works_out_or_that_something_else_writes
+    [repeat(var_ref(:n), :i, set(:a, 1)), repeat(40, :i, set(:i, 7))].each do |node|
+      chip = RecordingChip.new(node)
+      chip.statement(node)
+
+      assert_empty chip.known_below.compact
+    end
   end
 
   def test_a_loop_inside_a_loop_has_labels_of_its_own
@@ -163,5 +243,21 @@ class TestControlFlow < Minitest::Test
         assert_equal backends::ControlFlow, lowering.instance_method(writer).owner, "#{console.name}##{writer}"
       end
     end
+  end
+
+  # A lowering that writes a step of the walk its own way is named for it in ControlFlow::OWN_WAYS,
+  # with why; and nothing is named there that a lowering does not write.
+  def test_every_step_a_lowering_writes_its_own_way_is_listed_with_its_reason
+    backends = VBlank::IR::Backends
+    walk = backends::ControlFlow
+    steps = walk.instance_methods(false) + walk.private_instance_methods(false)
+    [backends::GBC, backends::SNES, backends::Genesis, backends::PS1].each do |console|
+      name = console.name.split("::").last
+      own = steps.reject { |step| console::Lowering.instance_method(step).owner == walk }
+      listed = walk::OWN_WAYS.select { |_step, consoles| consoles.key?(name) }.keys
+
+      assert_equal listed.sort, own.sort, "#{name}'s own ways of the walk, against ControlFlow::OWN_WAYS"
+    end
+    walk::OWN_WAYS.each_value { |consoles| consoles.each_value { |why| refute_empty why } }
   end
 end

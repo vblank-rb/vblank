@@ -59,7 +59,7 @@ module VBlank
         when :raw then Question.new(:entry, "This line hands the Advance's processor raw instructions (`entry`)", nil)
         when :shade_outside then Question.new(:spotlight, "This game has a light (`spotlight`)", nil)
         when :sample, :play_sample then recording_question(node, console)
-        when :pixelate then Question.new(:pixelate, "This line shows the screen in blocks (`pixelate`)", nil)
+        when :pixelate then pixelate_question(node, console)
         when :clock then Question.new(:clock, "This line reads the clock (`clock`)", nil)
         when :draw_place then Question.new(:draw_place, "This line draws a place as a viewer sees it (`draw_place`)", nil)
         # ...and the fill under it, which a program built by hand can hold without a place
@@ -131,6 +131,17 @@ module VBlank
           Question.new(:sample, "This recording has a shape (`envelope:`)", console.mixes_recordings)
         else
           Question.new(:sample, "This game plays a recording", nil)
+        end
+      end
+
+      # The screen in blocks, and the part of it a console whose blocks reach only its backgrounds
+      # cannot do (Console::Description#sprites_in_blocks): the sprites in blocks too. A line that
+      # leaves them as drawn (`sprites: false`) asks only what the verb's own answer decides.
+      def pixelate_question(node, console)
+        if node.keeps_sprites || console.sprites_in_blocks != false
+          Question.new(:pixelate, "This line shows the screen in blocks (`pixelate`)", nil)
+        else
+          Question.new(:pixelate, "This line shows the sprites in blocks too (`pixelate` with no `sprites: false`)", false)
         end
       end
 

@@ -33,6 +33,14 @@ than the frames asked for; below that it can be caught half-drawn, so it keeps `
 one-pass tolerance and the `OverBudget` refusal. The comparison is still every pixel exact; this
 only picks the moment.
 
+**A game that moves or changes by itself, whose pass takes several frames, is read with
+`assert_backends_agree_by_passes(program, frame: 20, keys: [...])`**, never with `console_frames:`
+alone. On the tear-free screen the page a pass drew is shown from the frame after the pass ended, so
+on the frame a pass ends on the count is a pass ahead of the picture, and `assert_backends_agree`
+compares that frame with the wrong pass. Which frame that is moves whenever the lowering gets faster
+or slower. `assert_backends_agree_by_passes` plays the interpreter the passes counted a frame
+earlier, which is right on every frame. A picture that stands still can be read either way.
+
 A failure prints the count, the first few coordinates with colour names, and a 40x20 map of
 where they differ. Use `backend_pictures` directly to pin a known, filed disagreement without
 failing the build.

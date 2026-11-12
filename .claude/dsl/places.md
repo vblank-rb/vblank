@@ -26,8 +26,8 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   picture's width and height must each be 1, 2, 4, 8, 16, 32, 64, 128 or 256 pixels (a friendly error
   otherwise). A point's numbers go from -8191 to 8191, with fractions, and so do the viewer's: half of
   what a fraction holds, so no point is ever too far from the viewer to measure. A corner falls from
-  -8191 to 8191 picture pixels. The place is written into the cartridge as it is declared and does not
-  change shape as the game runs. **Each face shows its picture through a slot**, one for each picture
+  -8191 to 8191 picture pixels. The place is written into the cartridge as it is declared (or read
+  from the data pack, below) and does not change shape as the game runs. **Each face shows its picture through a slot**, one for each picture
   the place lists, named after it; a place declared in a scene or a `part` the game starts over shows
   each slot its own picture again. Friendly errors: neither a block nor data (the next entry), no faces, a face of other than three or
   four points, a point the place does not have, a picture that is not declared, `on_picture:` that does
@@ -55,6 +55,28 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   and five with `:every_8_pixels` (held by a cost test too). The faces out of view cost little (see "How
   it is drawn"). A game of that size still does best drawing only the faces it can see (`faces:` and
   `window:` below).
+- **A place from the data pack**, as a port reads a level from the player's copy (`original.md`):
+  `place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0),
+  pictures: %i[rock moss lava], shading: :fade`. `points:` and `faces:` are slots of numbers
+  `width: :word, signed: true` that the game's unpacking routine writes in VBlank's own layout: a
+  point is three numbers, x, y and z; a face is 17 numbers, its picture's number among `pictures:`,
+  then for each of four corners its point's number, where it falls on the picture across and down,
+  and its light. Every number but a point's or a picture's is a fraction with sixteen bits, 65536
+  for one (Descent's own `fix`). A face of three corners gives its third twice. **The game gives the
+  most there can be, the pack what is there**: each slot's count is the original's limit, and
+  `faces_used:` is one number of the pack, how many faces are drawn (left out, every face of the
+  slot). `pictures:` must list the pictures in the order the faces number them; each may be a
+  picture of the pack (`image :rock, ..., places: pack[:walls].pixels(...)`). Built all-in-one the
+  build reads the slots; with the pack left out it holds none of their numbers and each runtime
+  reads them as the game starts. Both draw the same pixels, which are what the same place written in
+  Ruby draws. **Nothing in the pack stops the game**: a point or picture number past the place's is
+  held to the last one, a count to 0 and the most, and a light to 0..1; nothing is checked as the
+  game is built beyond the slots' shapes, so a point past -8191..8191 draws bent. On a cartridge
+  (always all-in-one) it draws as any place does. Friendly errors: one of `points:` and `faces:`
+  from the pack and the other not, `faces_used:` for a place not from the pack, a slot not of signed
+  words or not a whole number of records, no `pictures:`, and `draw_place` or `screen_spot` with
+  `at:` or `facing:` (the build must know the points to move a place). Worked example:
+  `test/pack_place_games.rb`.
 - **Walls whose picture changes**: a door sliding through its frames, a wall of lava, a forcefield.
   Inside the place, `pictures :door0, :door1, :door2` lists pictures the place can show, numbered in a
   row after those listed before (a face's `picture:` lists its picture too, where it first names it);
@@ -98,6 +120,12 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
     arrows straight in; they are taken as given, not squared up).
   - `eye.spot`, `eye.right_arrow`, `eye.up_arrow`, `eye.ahead_arrow` — read them back, three fractions
     each; `eye.facing` gives all three arrows as `facing:` takes them.
+  - **Where it starts, from the data pack**: `viewer :eye, at: pack[:start].as_numbers(at: 0, count: 3,
+    width: :word, signed: true), facing: pack[:start].as_numbers(at: 12, count: 9, width: :word,
+    signed: true)`. Each is a slot or view of numbers `width: :word, signed: true`, fractions with
+    sixteen bits: three for `at:`, nine for `facing:` (right, up, ahead). Either may be written in
+    the game instead. The viewer is set from them where it is declared; the arrows are taken as
+    given. A slot of another count or kind is a friendly error.
 
   Worked example: `examples/cube3d.rb`, a crate flown round with the buttons.
 
@@ -188,6 +216,15 @@ a corridor whose lamp flickers.
   `colors:` of the colour it becomes at that level. A game's own shading tables come over as they are
   (32 levels, say). A colour not in `colors:` is drawn as it is. Friendly errors: a level whose length
   is not the number of colours, a place out of range, no levels, a second shading of the same name.
+- **A shading from the data pack**: `shading :fade, colors: pack[:palette], levels: pack[:fades]`.
+  `colors:` is a slot of colours or a bank of one; `levels:` a slot of numbers `width: :byte, signed:
+  false`, each level's places one after another, darkest first, so its count is the levels times the
+  colours (Descent's first 32 fade tables of 256 are `count: 32 * 256`). Built all-in-one it is the
+  shading the game would write, checked the same way. With the pack left out the build holds zeros of
+  their number and every runtime reads them as the game starts; a place past the colours is place 0.
+  Friendly errors: one of the two from the pack and the other not, levels that are not bytes or not
+  a whole number of levels, and, with the pack left out, a picture given as numbers into it
+  (`image ..., shading:`), whose colours the build does not hold.
 - **Two places of one colour that darken apart**: a shading finds a pixel's darkening by its colour,
   so where `colors:` holds one colour at two places with different levels (a game's palette nearly
   always repeats some), a picture of colours darkens all of it by the first place's levels.

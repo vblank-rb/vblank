@@ -24,8 +24,10 @@ module SongPanGames
 end
 
 # A SONG'S PARTS THAT PLAY FROM ONE SPEAKER — the left, the right, or both, which is what every
-# part does when it says nothing. A part says its side (`v.pan :left`), and a note can say its own
-# (`pan: :right`), so a part can move from side to side as the song goes.
+# part does when it says nothing, or a shade between. A part says its side (`v.pan :left`,
+# `v.pan -0.7`), and a note can say its own (`pan: :right`), so a part can move from side to side as
+# the song goes. Where a recorded part sits is heard on the Super Nintendo
+# (test/lowering/snes/vblank/ir/backends/snes/test_snes_recorded_pan.rb).
 #
 # The log names the side each note plays from at the end of its [:voice] entry, after its fade,
 # slide and wobble, and says nothing for both sides. What the Advance's cartridge plays from each
@@ -89,18 +91,48 @@ class TestSongPan < Minitest::Test
     assert_equal %i[left right], sides_logged(b.program, frames: 30).map(&:last)
   end
 
-  # --- what a side cannot be said of ---
+  # A SHADE BETWEEN THE SPEAKERS, on a voice that only switches between them, plays from the nearest
+  # of the three: one side alone where that side is at least twice the other, both otherwise.
+  def test_a_shade_plays_a_square_part_from_the_nearest_side
+    played = sides_logged(song_game do
+      voice :lead do |v|
+        v.pan(-0.7)
+        v.note :C5, :quarter
+        v.note :D5, :quarter, pan: 0.3
+        v.note :E5, :quarter, pan: 0.5
+        v.note :F5, :quarter, pan: -0.49
+      end
+    end, frames: 100)
 
-  def test_a_recorded_part_cannot_pan
-    error = assert_raises(ArgumentError) { song_game { voice(:keys, plays: :piano) { |v| v.pan :left } } }
-
-    assert_match(/:keys/, error.message)
-    assert_match(/recording/, error.message)
+    assert_equal [:left, nil, :right, nil], played.first(4).map(&:last)
   end
+
+  def test_a_shade_of_nought_or_a_whole_side_is_the_same_as_its_name
+    pan = VBlank::Audio::Pan
+    assert_equal [pan::LEFT, pan::CENTER, pan::RIGHT], [-1, 0, 1.0].map { |shade| pan.said(shade, where: "A part") }
+  end
+
+  # A console game's tune heard with a voice at 38 on the left and 12 on the right, and one at 8 and
+  # 30, is a shade a game can give: each far side's share, in 64ths, times its near side's loudness
+  # comes to the far side's volume.
+  def test_a_shade_reaches_the_left_and_right_volumes_of_a_console_game
+    shares = [-0.6875, 0.734375].map { |shade| VBlank::Audio::Pan.said(shade, where: "A part") }
+
+    assert_equal [[64, 20], [17, 64]], shares.map { |pan| [pan.left, pan.right] }
+    assert_equal [12, 8], [(38 * 20 / 64.0).round, (30 * 17 / 64.0).round]
+  end
+
+  # --- what a side cannot be said of ---
 
   def test_a_side_that_is_not_one_says_what_it_can_be
     error = assert_raises(ArgumentError) { song_game { voice(:lead) { |v| v.note :C5, :quarter, pan: :up } } }
 
     assert_match(/:left, :right/, error.message)
+  end
+
+  def test_a_shade_past_a_speaker_says_how_far_it_can_go
+    error = assert_raises(ArgumentError) { song_game { voice(:lead) { |v| v.pan 1.5 } } }
+
+    assert_match(/-1\.0/, error.message)
   end
 end

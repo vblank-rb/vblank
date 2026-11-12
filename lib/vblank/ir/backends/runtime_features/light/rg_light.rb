@@ -20,6 +20,9 @@ def rg_light_setup
   @rg_dim_rows = Array.new(RG_SCREEN_HEIGHT) { [0, 0, false] }
   @rg_dim_filter = RgShownFilter.new(nil, false, @rg_dim_rows, false)
   @rg_dim_table_steps = -1
+  # Whether the light shows nothing outside it, and the colour its table then holds (-1 for none yet).
+  @rg_shade_shuts_out = false
+  @rg_dim_table_backdrop = -1
 end
 
 def rg_shade_line = @rg_shade_row
@@ -37,6 +40,21 @@ end
 # FadeSteps.sixteenths: the amount out of 100, in the display's sixteenths.
 def rg_shade_darkness(amount)
   @rg_shade_steps = rg_whole_sixteenths(amount)
+end
+
+# A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
+# the same amount, which is then only on (more than no sixteenths) or off, and the rest of each row
+# shows the colour of nothing drawn in place of the picture darkened.
+def rg_shade_shut_out(amount)
+  @rg_shade_steps = rg_whole_sixteenths(amount)
+  @rg_shade_shuts_out = true
+end
+
+# The colour such a light shows outside it: the backdrop, through the fade or tint in force, as the
+# console's display keeps that colour in the table a walked fade walks.
+def rg_light_shown_backdrop
+  fade = rg_hook_fade_filter
+  fade ? fade.table[@rg_backdrop] : @rg_backdrop
 end
 
 # Framebuffer#lit?, row by row: is (x, y) inside its row's span? A span that comes round the edge
@@ -73,11 +91,16 @@ end
 
 # rg_hook_dim_filter (Framebuffer#shade_outside, #lit?): nothing while no light darkens any of the
 # picture, else the filter, its table made again when the steps are not the ones it was made for.
+# For a light that shows nothing outside it, every colour reads as the colour of nothing drawn.
 def rg_light_dim_filter
   return nil if @rg_shade_steps == 0 || @rg_shade_off
 
   filter = @rg_dim_filter
-  if @rg_dim_table_steps != @rg_shade_steps
+  if @rg_shade_shuts_out
+    shows = rg_light_shown_backdrop
+    filter.table = Hash.new(shows) if @rg_dim_table_backdrop != shows
+    @rg_dim_table_backdrop = shows
+  elsif @rg_dim_table_steps != @rg_shade_steps
     steps = @rg_shade_steps
     filter.table = Hash.new { |table, color| table[color] = rg_darkened_by_display(color, steps) }
     @rg_dim_table_steps = steps

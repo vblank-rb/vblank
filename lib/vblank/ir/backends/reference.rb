@@ -249,6 +249,8 @@ module VBlank
           @names_at_or_above = {}  # layer -> the names of everything in it and in front of it
           @block = 1               # how many pixels a block of the picture is each way (see #exec_pixelate)
           @block_kept = []         # ...and the names of what is left as drawn all the same (see #place_blocks)
+          @sprites_kept_from_blocks = false # ...and whether every sprite is too (see #place_blocks)
+          @bar_in_blocks = false   # ...and whether a status bar is in them with the rest (see #paint_status_bar)
           @lists = {}              # name -> ListValue (a bounded, run-time-sized collection)
           @layer_stack = []        # the layers the program declared, backmost first
           @see_through = nil       # ...and which of them you can see through, and by how much
@@ -386,8 +388,11 @@ module VBlank
         private :size_screen_for, :framebuffer_like_screen
 
         # The picture, painted up to date first if a repaint is owed (see #request_repaint).
+        # A light that shows nothing outside it shows the backdrop there as it stands when the
+        # picture is read (Framebuffer#backdrop=), as the console's display does.
         def screen
           paint_owed_repaint
+          @screen.backdrop = @backdrop
           @screen
         end
 
@@ -664,6 +669,9 @@ module VBlank
               # and by name so scroll_background can re-window that one.
               @bg_nodes << n
               @bg_by_name[n.name] = n
+              # One that follows several lists the game changes looks different whenever one of
+              # them is told what to hold, so it is rebuilt from the map as a recoloured one is.
+              @repaints = true if n.follows_several?
             when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
@@ -1149,7 +1157,8 @@ module VBlank
 
         # WHERE THE LIGHT IS ON EACH ROW, worked out in the gap before a frame, the moment the
         # console works its table out: every row's span from the program's own expressions,
-        # and how far the rest of the row is darkened, in the display's sixteenths.
+        # and how far the rest of the row is darkened, in the display's sixteenths. A light that
+        # shows nothing outside it is on while that is more than none.
         def work_out_shade
           return unless @shade
 
@@ -1158,7 +1167,7 @@ module VBlank
             @shade.children.each { |child| exec(child) } # what the light works out once a row, before its edges
             [eval_value(@shade.left), eval_value(@shade.right)]
           end
-          @screen.shade_outside(spans, FadeSteps.sixteenths(eval_value(@shade.amount)))
+          @screen.shade_outside(spans, FadeSteps.sixteenths(eval_value(@shade.amount)), shuts_out: @shade.shuts_out)
         end
 
         def exec_camera(node)
@@ -1288,6 +1297,7 @@ module VBlank
           # from the light worked out at this gap, a frame later (see IR::LightScenes and
           # GBA::Raster#emit_light_leaving). A game whose light never takes turns has no switch.
           @screen.light_off = @vars.fetch(IR::LightScenes::ON, 1).zero?
+          lift_placed_fade_for_light
 
           # The pass that put a background up ends here, and its picture shows the background
           # from the corner (see #put_up_background). A repaint it still owes is painted as
@@ -1673,8 +1683,10 @@ module VBlank
           # only scenery turns had nothing else to show it.
           # ...and so is a status bar, which is painted from its own top rather than the screen's,
           # and anything put up while one shows, which a stamp would paint over the bar's rows.
+          # ...and so is anything put up while a fade placed in the stack is in the picture: a stamp
+          # paints a background as drawn, and the fade reaches it or not by where it is in the stack.
           return request_repaint if @bg_affine.key?(node.name) || node.bar? || node.above_row || bar_showing ||
-                                    @bg_box.key?(node.name)
+                                    @bg_box.key?(node.name) || placed_fade_in_picture?
 
           stamp_background(node)
           in_stack_order(over).each { |bg| stamp_background(bg) }
@@ -1684,6 +1696,11 @@ module VBlank
         # IR::SceneHandover). A painted screen has no layers to switch off, so the picture
         # goes back to the backdrop and the scenery every screen shows, and the next scene's
         # own is stamped from there.
+        #
+        # A FADE PLACED IN THE STACK IS THE GAME'S, NOT THE SCENE'S, and stays until the game lifts
+        # it: the display's blend is left as it was when a scene takes over. The backdrop and the
+        # stamps here are as drawn, so while such a fade is in the picture the picture is owed
+        # again, built with the fade on what it reaches (#repaint_view).
         # True when it took any down.
         def take_down_scenery
           kept = @bg_shown.reject { |bg| @handover.on_arrival?(bg) }
@@ -1693,6 +1710,7 @@ module VBlank
           @scene_fb = nil
           @screen.clear(@backdrop)
           in_stack_order(kept).each { |bg| stamp_background(bg) }
+          request_repaint if placed_fade_in_picture?
           true
         end
 
@@ -1723,20 +1741,34 @@ module VBlank
         # A HELD CHANGE (Nodes::SetTile#held) waits instead, with its cell worked out now, until
         # the frame boundary's show_held_tiles. With the queue full, everything waiting goes in
         # first, there and then.
+        #
+        # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by) is worked out here, a held
+        # one too, and a number that stands for no tile changes nothing.
         def exec_set_tile(node)
-          return unless tile_of_declaration_up?(node)
+          tile = node.tile
+          if node.picked?
+            tile = tile_picked(node)
+            return if tile.nil?
+          end
+          return unless tile_of_declaration_up?(node, tile)
 
           col = eval_value(node.col)
           row = eval_value(node.row)
-          return change_cell(node, col, row) unless node.held
+          return change_cell(node, col, row, tile) unless node.held
 
           show_held_tiles if @held_tiles.length >= Nodes::ShowHeldTiles::MOST_CELLS
-          @held_tiles << [node, col, row]
+          @held_tiles << [node, col, row, tile]
+        end
+
+        # The tile the number +node+ is picked by stands for now, or nil for none.
+        def tile_picked(node)
+          at = eval_value(node.picked_by) - node.picks_from
+          node.picks[at] if at >= 0
         end
 
         # A tile only another scene's declaration of the name has, from a line written for that
         # scene, changes nothing here.
-        def tile_of_declaration_up?(node) = node.tile.nil? || node.tile < background_up(node.name).tiles.length
+        def tile_of_declaration_up?(node, tile) = tile.nil? || tile < background_up(node.name).tiles.length
 
         # EVERY HELD CHANGE, in the order the game made them.
         def exec_show_held_tiles(_node) = show_held_tiles
@@ -1744,15 +1776,15 @@ module VBlank
         def show_held_tiles
           waiting = @held_tiles
           @held_tiles = []
-          waiting.each { |node, col, row| change_cell(node, col, row) if tile_of_declaration_up?(node) }
+          waiting.each { |node, col, row, tile| change_cell(node, col, row, tile) if tile_of_declaration_up?(node, tile) }
         end
 
-        def change_cell(node, col, row)
+        def change_cell(node, col, row, tile)
           map = mutable_map(node.name)
           return unless row >= 0 && row < map.length && col >= 0 && col < map[row].length
-          return if map[row][col] == node.tile
+          return if map[row][col] == tile
 
-          map[row][col] = node.tile
+          map[row][col] = tile
           # The picture this backend shows is painted, not composed by a display reading
           # the map as it goes — so a changed cell has to be painted again for anything
           # to see it. Repainting the lot is the same over-approximation a scroll makes,
@@ -2071,12 +2103,25 @@ module VBlank
         # top-left corner and never scrolls; its see-through pixels, and the rows past the end of
         # its map, leave the backdrop, since the backgrounds under it are not painted there (see
         # #scenery_rows).
-        def paint_status_bar(bar)
+        #
+        # +tall+ is how many rows a block is, for a bar being put into blocks. The blocks are the one
+        # grid from the screen's top, so a block can start above the bar and end inside it. Its rows
+        # from the bar down show the bar's layer, where its display has the bar switched on, but read
+        # at the block's first row with the bar's scroll, which is the row above the bar's map that
+        # many rows (bsnes, sfc/ppu/background.cpp, PPU::Background::fetchNameTable: the line less
+        # the mosaic's count, plus the scroll register as it is on the current line). The layer's
+        # grid comes round there, as a scrolled background's does (IR::TileMap), so it is the
+        # grid's last rows, where the bar's map has no cells and the backdrop stays.
+        def paint_status_bar_rows(bar, tall = 1)
           map = map_of(bar)
           swapped = background_swap(bar)
           top = bar_top_shown(bar)
+          grid_h = IR::TileMap.grid(map)[1].to_i * bar.tile_h
           (top...@screen.height).each do |py|
-            my = py - top
+            my = py - (py % tall) - top
+            next if my.negative? && grid_h.zero?
+
+            my %= grid_h if my.negative?
             row = map[my / bar.tile_h]
             next unless row
 
@@ -2105,6 +2150,9 @@ module VBlank
           @bg_by_name.fetch(node.name) { raise ProgramError, "affine transform of undeclared background #{node.name.inspect}" }
           @bg_affine[node.name] = Turn.new(angle: eval_value(node.angle) % 360, size: eval_value(node.scale),
                                            pivot_x: node.around_x, pivot_y: node.around_y)
+          # A map whose named point sits at the pivot is moved that far from the screen's corner,
+          # which is a scroll: the one a turned layer has, since the game cannot scroll it.
+          @bg_scroll[node.name] = node.map_shift unless node.map_shift == [0, 0]
           request_repaint
         end
 
@@ -2314,6 +2362,8 @@ module VBlank
         # for the ones they were drawn in, which is also what a number naming no step means, so
         # a counter that has run off the end looks right.
         def background_swap(bg)
+          return followed_background_swap(bg) if bg.follows_several?
+
           lists = bg.recolors
           return nil if lists.empty?
 
@@ -2324,6 +2374,15 @@ module VBlank
           # name with lists of their own, and the number the game tells the name picks out of
           # whichever is painted.
           @bg_swaps[[bg.name, bg.scene, which]] ||= bg.list_swaps(which)
+        end
+
+        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each): each
+        # of its own lists to what the list it follows holds now, each list by its own number.
+        # Kept by those numbers, so a screen walking its lists makes each picture's swap once.
+        def followed_background_swap(bg)
+          numbers = bg.lists_followed.map { |list| @held_colors.fetch(list, Build::NO_RECOLOR) }
+          @bg_swaps[[bg.name, bg.scene, numbers]] ||=
+            bg.followed_list_swaps(bg.lists_followed.to_h { |list| [list, colors_held_by(list)] })
         end
 
         # Draw this background's tiles from the list of colours numbered +which+ from now on
@@ -2580,10 +2639,32 @@ module VBlank
           raise ProgramError, Blocks.several_places_message(places) if places.size > 1
 
           @block_kept = places.first ? names_at_or_above(places.first) : []
+          @sprites_kept_from_blocks = Blocks.keeps_sprites?(program, ProgramError)
+          @bar_in_blocks = Blocks.bar_in_blocks!(program, ProgramError)
+        end
+
+        # Paint the status bar +bar+: as drawn, or in blocks while the picture is shown in them and
+        # the program puts its bar there too (`status_bar: true`). Its blocks are the grid every
+        # background's are, from the screen's top left (#paint_status_bar_rows).
+        def paint_status_bar(bar)
+          return paint_status_bar_rows(bar) unless @bar_in_blocks && in_blocks?(bar.name)
+
+          sheet = framebuffer_like_screen(fill: nil)
+          drawing_into(sheet) { paint_status_bar_rows(bar, @block) }
+          width = @screen.width
+          (bar_top_shown(bar)...@screen.height).each do |py|
+            row = Array.new(width) { |px| sheet.stored_pixel(px - (px % @block), py) }
+            @screen.paint_row(0, py, row, from: 0, count: width)
+          end
         end
 
         # Is the thing called +name+ shown in blocks right now?
         def in_blocks?(name) = @block > 1 && !@block_kept.include?(name)
+
+        # ...and the sprite called +name+, which a program can leave as drawn whatever the
+        # size (`pixelate size, sprites: false`), as a display whose blocks reach only its
+        # backgrounds shows them.
+        def sprite_in_blocks?(name) = !@sprites_kept_from_blocks && in_blocks?(name)
 
         # Is the screen that is up one the program paints? To the display that is a single
         # background, whatever was painted on it, so it goes into blocks whole, as it is
@@ -2653,6 +2734,14 @@ module VBlank
         # block's top left corner — so a background that scrolls slides under a grid that
         # stays where it is. A corner that is see-through leaves the whole block
         # see-through, and what is behind shows there.
+        #
+        # A SCREEN SPLIT IN TWO KEEPS THE ONE GRID. Where a status bar starts, or a background
+        # held above a row stops, the display switches layers between two lines and its count
+        # of a block's lines goes on: Super Nintendo games split a screen that way, and their
+        # blocks run through the split (bsnes, sfc/ppu/mosaic.cpp, PPU::Mosaic::scanline,
+        # counts down the whole screen from its first line). A row past the split in a block
+        # that starts above it shows the layers shown on that row, each read at the block's
+        # first row with its own scroll, which is what the painters do.
         #
         # DOWN AND ACROSS ARE DONE APART, because a display draws a row at a time. Down:
         # every row of a block is drawn from the picture row its top row shows (the
@@ -2791,6 +2880,27 @@ module VBlank
           @screen.fade_steps.positive?
         end
 
+        # A LIGHT THAT TAKES TURNS LIFTS A FADE PLACED IN THE STACK, on the pass of a scene the
+        # light is on in. The two take turns scene by scene (IR::LightScenes): a light that darkens
+        # asks the display for the mixing the fade holds, and any light's shape takes the place of
+        # the shape that keeps a sprite out of such a fade. So a scene the light is on in has the
+        # fade taken off, where every other scene leaves a fade as the game set it, and the scene
+        # the fade is written in sets it again when it is given the screen back.
+        #
+        # Asked as each pass ends, of the switch the scene that ran set, as the console's lit scene
+        # tells the display to mix nothing on every pass it runs (GBA::Drawing#emit_scene_blend).
+        # A game whose light never takes turns has no switch, and nothing is lifted.
+        def lift_placed_fade_for_light
+          return unless @fade_placed && @vars.fetch(IR::LightScenes::ON, 0) != 0
+
+          @fade_placed = nil
+          request_repaint
+        end
+
+        # Is a fade placed in the stack changing the picture as it is built? One of no amount is
+        # in force and changes nothing.
+        def placed_fade_in_picture? = !@fade_placed.nil? && @fade_placed[2].positive?
+
         # The names the fade in force leaves alone — its layer and everything in front.
         def names_above_placed_fade = names_at_or_above(@fade_placed[0])
 
@@ -2803,7 +2913,7 @@ module VBlank
 
         # Draw one snapshotted object from the layer captured this frame.
         def paint_snapshot_object(obj)
-          return paint_object_in_blocks(obj) if in_blocks?(obj[:name])
+          return paint_object_in_blocks(obj) if sprite_in_blocks?(obj[:name])
 
           recolor = recolor_of_picture(obj[:image], obj[:color_list])
           if obj[:transform]
@@ -3043,11 +3153,19 @@ module VBlank
         # THE COLOURS AN OBJECT IS DRAWN IN THIS FRAME, when it is told to draw with another
         # list: each place of the picture's own list shows the colour at the same place of
         # that list. nil draws the picture as it is stored.
-        def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj))
+        def object_recolor(obj, image) = recolor_of_picture(image, object_color_list(obj, image))
 
-        # The list of colours an object is told to draw with now, or nil for none. This is chosen
-        # where the sprites are placed, since a game can change the number later in the pass.
-        def object_color_list(obj)
+        # The list of colours an object showing the picture +image+ is told to draw with now, or nil
+        # for none. This is chosen where the sprites are placed, since a game can change the number
+        # later in the pass.
+        #
+        # An object whose poses are drawn from several lists has no number: a pose drawn from a list
+        # it follows (Object#follows_each) is drawn with what that list holds now, and any other
+        # pose as it is stored, which is in its own list's colours.
+        def object_color_list(obj, image)
+          followed = obj.follows_each && image && obj.list_followed_by_pose(@bitmaps.fetch(image).colors_name)
+          return colors_held_by(followed) if followed
+
           lists = obj.recolors
           return nil if lists.empty?
 
@@ -3078,9 +3196,11 @@ module VBlank
         # A list of colours holds the set numbered +which+ from now on. Nothing is painted
         # here: everything drawn with the list reads it as it is next drawn. The backdrop is the
         # exception, being no drawing: one that follows the list (ColorList#backdrop_place) is
-        # given the colour at its place now.
+        # given the colour at its place now. A background that follows the list beside others
+        # (Background#follows_each) is scenery, built again only when asked, so it is asked.
         def exec_color_list_holds(node)
           @held_colors[node.name] = eval_value(node.which)
+          request_repaint if @bg_nodes.any? { |bg| bg.lists_followed.include?(node.name) }
           place = @color_lists.fetch(node.name).backdrop_place
           show_backdrop(colors_held_by(node.name).fetch(place) & 0x7FFF) if place
         end
@@ -3164,7 +3284,7 @@ module VBlank
             obj = on[:object]
             image = on[:picture]
             snap = { name: obj.name, image: image, x: on[:x], y: on[:y],
-                     level: object_level(obj), color_list: object_color_list(obj), left_out: on[:left_out] }
+                     level: object_level(obj), color_list: object_color_list(obj, image), left_out: on[:left_out] }
             snap[:transform] = object_transform(obj) if object_transformed?(obj)
             snap
           end

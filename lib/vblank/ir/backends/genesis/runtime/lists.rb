@@ -32,20 +32,17 @@ module VBlank
             # byte, an unsigned byte, a signed half, an unsigned half, a whole word.
             KEPT = { signed_byte: 0, byte: 1, signed_half: 2, half: 3, word: 4 }.freeze
 
-            # A slot's size in bytes, by the end of the name of the routines that read and write
-            # slots of that size directly (#emit_fixed_front_access), and the size a MOVE names.
-            SLOT_SUFFIXES = { 1 => "byte", 2 => "half", 4 => "long" }.freeze
+            # A slot's size in bytes, as the size a MOVE names.
             SLOT_SIZES = { 1 => :b, 2 => :w, 4 => :l }.freeze
 
             module_function
 
-            def emit(asm, memory, direct_slot_sizes: [])
+            def emit(asm, memory)
               emit_start(asm)
               emit_empty(asm)
               emit_push(asm)
               emit_drop(asm)
               emit_get_and_set(asm)
-              emit_fixed_front_access(asm, direct_slot_sizes)
               emit_fill(asm)
               emit_copy(asm)
               emit_slot_access(asm)
@@ -149,49 +146,6 @@ module VBlank
               asm.rts
             end
 
-            # rt_list_get_byte (and _half, _long): rt_list_get for a list whose first item is always in
-            # its first slot, with slots of that size. Every list is one, unless the game takes items
-            # from its front (Lowering#list_routine), and then the item an index names is in the slot
-            # of that number, so the routine checks the index and reads the slot itself: no ring to
-            # go round, no size to look up, and no further routine to call. rt_list_set_byte (and the
-            # rest) write the same way. These are the reads and writes a game makes most — every
-            # field of every pool's thing, each frame — so a read is one call where it was three,
-            # and a third of the instructions. Only the sizes in +slot_sizes+ are made: those the
-            # game's lists have.
-            def emit_fixed_front_access(asm, slot_sizes)
-              SLOT_SUFFIXES.slice(*slot_sizes).each do |bytes, suffix|
-                asm.label("rt_list_get_#{suffix}")
-                emit_index_check(asm)
-                emit_index_scaling(asm, bytes)
-                asm.move(SLOT_SIZES.fetch(bytes), asm.idx(0, HEADER, 1), asm.d(0))
-                asm.ext(:w, asm.d(0)) if bytes == 1
-                asm.ext(:l, asm.d(0)) if bytes < 4
-                asm.rts
-
-                asm.label("rt_list_set_#{suffix}")
-                emit_index_check(asm)
-                emit_index_scaling(asm, bytes)
-                asm.move(SLOT_SIZES.fetch(bytes), asm.d(2), asm.idx(0, HEADER, 1))
-                asm.rts
-              end
-            end
-
-            # A0 = the list in D0; an index in D1 outside the list stops the game, as
-            # rt_list_slot_of_index has it.
-            def emit_index_check(asm)
-              asm.movea(:l, asm.d(0), asm.a(0))
-              asm.moveq(0, asm.d(3))
-              asm.move(:w, asm.disp(0, LENGTH), asm.d(3))
-              asm.cmp(:l, asm.d(3), asm.d(1))
-              asm.branch(:cc, "rt_list_index_fault")
-            end
-
-            # The index in D1 made the slot's distance in bytes.
-            def emit_index_scaling(asm, bytes)
-              asm.add(:l, asm.d(1), asm.d(1)) if bytes >= 2
-              asm.add(:l, asm.d(1), asm.d(1)) if bytes == 4
-            end
-
             # rt_list_fill(list, from, count, value): count items from +from+ set to the value. A count
             # of nought or less sets none; an index outside the list, first or last, stops the game
             # before anything is written.
@@ -242,6 +196,8 @@ module VBlank
               asm.label("rt_list_copy_start")
               asm.clr(:w, asm.disp(0, FRONT))
               asm.move(:w, asm.d(5), asm.disp(0, LENGTH))
+              emit_copy_of_whole_run(asm)
+              asm.label("rt_list_copy_an_item_at_a_time")
               asm.movea(:l, asm.d(4), asm.a(3)) # where to start in the table
               asm.movea(:l, asm.d(2), asm.a(4)) # how the table keeps its entries
               asm.move(:l, asm.d(5), asm.d(7)) # how many to copy
@@ -264,6 +220,42 @@ module VBlank
 
               # rt_list_copy_entry: D5 = entry D2 of the table at A2, widened by how it is kept (D3).
               emit_copy_entry(asm)
+            end
+
+            # THE RUN COPIED WITH ONE INSTRUCTION AN ENTRY, which is what a console's own game does with
+            # a run of a table: the list starts at its first slot once it is copied into, so the
+            # entries go from the table to the slots in order, through two address registers that
+            # each move on as they are read and written, and DBRA counts them. That is for a table
+            # kept in entries the size of the list's slots, which is every pair a game can write (a
+            # build refuses a table and a list of different sizes, and a table's number that does
+            # not fit its size): an entry is moved as it lies, a byte, a half or a long word. Any
+            # other pair goes on to the loop below, an entry at a time through the slot routines.
+            #
+            # A0 is the list, A2 the table, D2 how the table keeps an entry (KEPT, two to a size),
+            # D4 the entry to start at and D5 how many, which the loop below needs kept as they are.
+            def emit_copy_of_whole_run(asm)
+              asm.tst(:l, asm.d(5))
+              asm.branch(:le, "rt_list_copy_done")
+              asm.move(:l, asm.d(2), asm.d(3))
+              asm.lsr(:l, 1, asm.d(3)) # the table's entries as a shift: 0, 1 or 2
+              asm.cmp(:w, asm.disp(0, SHIFT), asm.d(3)) # against the list's slots
+              asm.branch(:ne, "rt_list_copy_an_item_at_a_time")
+              asm.move(:l, asm.d(4), asm.d(7))
+              asm.lsl(:l, asm.d(3), asm.d(7))
+              asm.add(:l, asm.d(7), asm.a(2)) # the first entry
+              asm.lea(asm.disp(0, HEADER), asm.a(1)) # the first slot
+              asm.move(:l, asm.d(5), asm.d(7))
+              asm.subq(:l, 1, asm.d(7)) # DBRA counts down to -1
+              asm.tst(:w, asm.d(3))
+              asm.branch(:eq, "rt_list_copy_run_b")
+              asm.subq(:w, 1, asm.d(3))
+              asm.branch(:eq, "rt_list_copy_run_w")
+              %i[l w b].each do |size|
+                asm.label("rt_list_copy_run_#{size}")
+                asm.move(size, asm.post(2), asm.post(1))
+                asm.dbra(asm.d(7), "rt_list_copy_run_#{size}")
+                asm.rts
+              end
             end
 
             def emit_copy_entry(asm)
@@ -376,6 +368,12 @@ module VBlank
               asm.moveq(Frame::LIST_EMPTY, asm.d(0))
               asm.jmp(asm.abs_l("rt_fault"))
 
+              # The same for a read or a write made where the game makes it
+              # (Lowering#emit_slot_address), which has the list in A0 and the index in D0 or D1.
+              asm.label("rt_list_index_fault_of_d0")
+              asm.move(:l, asm.d(0), asm.d(1))
+              asm.label("rt_list_index_fault_of_d1")
+              asm.move(:l, asm.a(0), asm.d(0))
               asm.label("rt_list_index_fault")
               asm.move(:l, asm.d(0), at.call(Frame::FAULT_LIST))
               asm.move(:l, asm.d(1), at.call(Frame::FAULT_FIRST))

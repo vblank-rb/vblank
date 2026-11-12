@@ -56,7 +56,9 @@ module VBlank
           # copied from a list it recolours (Lowering::Picture#backdrop_copied?).
           # +camera+ for a painted screen whose game moves the window over its picture (Paint), and
           # +sprites_over_picture+ for one that shows sprites over it. +scene_tiles+ for a tiled game whose
-          # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles).
+          # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles), and
+          # +scene_colors+ for one whose scenes each write their own palettes (Tint#emit_scene_colors).
+          # +runs+ for a tiled game that paints tiles from a list, whose blank writes them (Lowering::TileRuns).
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
@@ -67,20 +69,19 @@ module VBlank
           # its plays of recordings and the recordings themselves (Lowering::Sound#recordings_sections), for a
           # game that plays them, which then carries their count and the sound processor's program
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
-          # +direct_slot_sizes+ are the slot sizes, in bytes, whose lists the game reads and writes
-          # directly (Lists#emit_fixed_front_access).
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false, sprites_over_picture: false, scene_tiles: false, direct_slot_sizes: [])
+                         backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory, sound: sound)
-            Lists.emit(asm, memory, direct_slot_sizes: direct_slot_sizes)
+            Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
-                                      sprites: sprites_over_picture, scene_tiles: scene_tiles)
+                                      sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
+                                      samples: !plays.nil?, runs: runs)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
@@ -112,10 +113,12 @@ module VBlank
           end
 
           # The screen's interrupt switched on, once, as setting up ends: the chip told to raise it, and
-          # the processor to take it. The screen itself stays off until the first pass is shown.
+          # the processor to take it. The screen itself stays off until the first pass is shown. The
+          # chip is let copy from work RAM by itself from here on too, since the first pass's sprite
+          # table goes in that way while the screen is still off (Tiles#emit_sprite_rows_copied_by_chip).
           def emit_interrupt_on(asm)
             h = Console::GenesisHardware
-            asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_OFF | h::MODE2_VBLANK_INTERRUPT),
+            asm.move(:w, asm.imm(h::VDP_REGISTER | (h::REG_MODE2 << 8) | h::MODE2_SCREEN_OFF | h::MODE2_VBLANK_INTERRUPT | h::MODE2_DMA),
                      asm.abs_l(h::VDP_CONTROL))
             asm.move_to_sr(asm.imm(Frame::INTERRUPTS_ON))
           end

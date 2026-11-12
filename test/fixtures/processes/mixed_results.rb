@@ -7,13 +7,12 @@ require "test_helper"
 # it.
 #
 # Each test leaves a file named for the process that ran it in the folder PROCESSES_FIXTURE_PIDS
-# names, holding the seed that process was given, so the test of the runner can see the work was
-# spread and every process had the run's one seed. With PROCESSES_FIXTURE_DIE set, one test takes
-# its own process down.
+# names, so the test of the runner can count the tests played. With PROCESSES_FIXTURE_DIE set,
+# one test takes its own process down.
 module ProcessesFixture
   def note_process
     folder = ENV.fetch("PROCESSES_FIXTURE_PIDS", nil)
-    File.write(File.join(folder, "#{Process.pid}-#{name}"), Minitest.seed.to_s) if folder
+    File.write(File.join(folder, "#{Process.pid}-#{name}"), "") if folder
   end
 end
 

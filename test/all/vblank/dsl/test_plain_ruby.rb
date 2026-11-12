@@ -979,6 +979,27 @@ class TestPlainRuby < Minitest::Test
     assert_equal 1, player[:still]
   end
 
+  # Read as a number, nil is 0, whatever number the name held before.
+  def test_nil_read_as_a_number_is_0_after_the_name_held_a_number
+    player = played(frames: 3) do
+      target = nil
+      numbered = var(:numbered, 3)
+      answers = list(:answers, capacity: 8, full_of: -1)
+      pass = 0
+      game_loop do
+        target = numbered
+        target = nil
+        answers[pass] = target
+        started = nil
+        answers[pass + 4] = started
+        started = numbered
+        pass += 1
+      end
+    end
+
+    assert_equal [0, 0, 0, 0, 0, 0], player.list(:answers).values_at(0, 1, 2, 4, 5, 6)
+  end
+
   def test_or_on_a_name_that_may_hold_nil_picks_the_number_or_the_other_side
     player = played(frames: 2) do
       target = nil
@@ -1681,6 +1702,54 @@ class TestPlainRuby < Minitest::Test
 
     assert_equal 4, player[:passes]
     assert_equal 0, player[:none]
+  end
+
+  # `count < 5 && marks[count] != 9`: the right side reads a list at a place the loop moves on,
+  # so it is worked out under the left, and its answer is asked afresh on every round, as Ruby's.
+  # The first stops at the 9, the second at its bound, the third at the 9 though it starts on 9.
+  def test_a_while_joined_with_and_asks_both_sides_each_round
+    player = played(frames: 2) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      to_nine = var(:to_nine, 0)
+      to_bound = var(:to_bound, 0)
+      past_one = var(:past_one, 0)
+      game_loop do
+        marks[0] = 1
+        marks[1] = 2
+        marks[2] = 9
+        count = 0
+        count += 1 while count < 5 && marks[count] != 9
+        to_nine.store!(count)
+        count = 0
+        count += 1 until count >= 5 || marks[count] == 7
+        to_bound.store!(count)
+        count = 2
+        begin
+          count += 1
+        end while count < 5 && marks[count] != 0
+        past_one.store!(count)
+      end
+    end
+
+    assert_equal [2, 5, 3], [player[:to_nine], player[:to_bound], player[:past_one]]
+  end
+
+  # ...and one that waits for a frame in its body goes on from the wait, a round a frame.
+  def test_a_while_joined_with_and_goes_on_after_a_wait_in_its_body
+    player = played(frames: 8) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      marks[3] = 9
+      rounds = var(:rounds, 0)
+      count = 0
+      while count < 5 && marks[count] != 9
+        count += 1
+        rounds.increase!(1)
+        wait_vblank
+      end
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 3, player[:rounds]
   end
 
   def test_a_wait_inside_a_while_lets_frames_pass_while_it_goes_round
@@ -2513,6 +2582,79 @@ class TestPlainRuby < Minitest::Test
     assert_equal 8, player[:shown]
   end
 
+  # Ruby asks the left side of `==`, and a plain 3 asked about a game number answers for itself.
+  # The test is the game's whichever side the plain number is on.
+  def test_a_plain_number_on_the_left_of_an_equality_is_a_test_the_game_makes
+    player = played(frames: 5) do
+      hp = 0
+      same = 0
+      different = 0
+      state = :title
+      titles = 0
+      game_loop do
+        same += 1 if 3 == hp
+        different += 1 if 3 != hp
+        titles += 1 if :title == state
+        state = :playing
+        hp += 1
+      end
+    end
+
+    assert_equal 1, player[:same], "hp is 3 on one pass"
+    assert_equal player[:hp] - 1, player[:different]
+    assert_equal 1, player[:titles]
+  end
+
+  # `until row == rows` with row a plain 0 when the loop is reached: the loop is the game's.
+  def test_a_loop_until_a_plain_counter_equals_a_game_number_goes_round
+    player = played(frames: 1) do
+      rows = var :rows, 4
+      row = 0
+      until row == rows
+        row += 1
+      end
+      rounds = var :rounds, 0
+      rounds.store!(row)
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 4, player[:rounds]
+  end
+
+  def test_two_names_started_on_one_line_in_game_code_start_afresh_on_every_pass
+    player = played(frames: 3) do
+      most = 0
+      game_loop do
+        count, other = 0, 1
+        repeat(3) { count += other }
+        most = count if count > most
+      end
+    end
+
+    assert_equal 3, player[:most]
+  end
+
+  # `column = 0` at the top of each round of a loop the game makes, counted by a loop of Ruby's
+  # inside it: the counter is plain Ruby, written out twice, on every round.
+  def test_a_ruby_loop_counted_from_zero_inside_a_loop_of_the_games_is_written_out
+    player = played(frames: 1) do
+      rows = var :rows, 3
+      cells = var :cells, 0
+      row = var :row, 0
+      while row < rows
+        column = 0
+        while column < 2
+          cells += 1
+          column += 1
+        end
+        row += 1
+      end
+      game_loop { wait_vblank }
+    end
+
+    assert_equal 6, player[:cells]
+  end
+
   # `@shown` holds whichever number it was last given, as a Ruby name would.
   def test_an_instance_variable_moved_to_another_number_in_game_code_takes_that_number
     game = proc do
@@ -2528,5 +2670,58 @@ class TestPlainRuby < Minitest::Test
 
     assert_equal 3, played(frames: 1, &game)[:shown]
     assert_equal 2, played(frames: 2, &game)[:shown]
+  end
+
+  # The game's own instance variables are named in its block, as a part's are in its class.
+  def test_the_games_own_named_instance_variable_counts_as_the_game_plays
+    player = played(frames: 4) do
+      game_variables :score
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
+      end
+    end
+
+    assert_equal 4, player[:seen]
+  end
+
+  # Given a name of the game's own, and copied from another of its named values on every pass.
+  def test_the_games_own_named_instance_variable_is_read_by_the_name_it_was_given
+    player = played(frames: 3) do
+      game_variables :score, best: :best_score
+      @score = 0
+      @best = 0
+      game_loop do
+        @score += 2
+        @best = @score
+      end
+    end
+
+    assert_equal [6, 6], [player[:score], player[:best_score]]
+  end
+
+  def test_two_named_instance_variables_given_one_variable_name_are_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played { game_variables score: :points, best: :points }
+    end
+
+    assert_match(/`@score` and `@best` the same variable name/, error.message)
+  end
+
+  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        @score = 0
+        seen = var :seen, 0
+        game_loop do
+          @score += 1
+          seen.store!(@score)
+        end
+      end
+    end
+
+    assert_match(/game_variables :score` to the game block/, error.message)
   end
 end

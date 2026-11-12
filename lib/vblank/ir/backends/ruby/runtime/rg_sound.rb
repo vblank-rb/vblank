@@ -51,11 +51,18 @@ RG_MIX_STEP = 128
 class RgFading
   attr_accessor :volume, :hold_samples, :left, :up
 
+  # Where the voices read sound memory a step is counted a frame at a time (rg_spu.rb), in 256ths of
+  # a 64th of a second from nought (rg_sound.c's volume_from says why).
   def initialize(volume, fade)
     @volume = volume
-    @hold_samples = (fade & RG_FADE_STEP_BITS) * RG_SOUND_RATE / 64
-    @left = @hold_samples
     @up = fade.anybits?(RG_FADE_UP)
+    if RG_VOICES_READ_SOUND_MEMORY
+      @hold_samples = (fade & RG_FADE_STEP_BITS) * 256
+      @left = 0
+    else
+      @hold_samples = (fade & RG_FADE_STEP_BITS) * RG_SOUND_RATE / 64
+      @left = @hold_samples
+    end
   end
 
   # One sample has gone by.
@@ -170,6 +177,7 @@ def rg_sound_setup
   @rg_sample_carry = 0 # the part of a sample left over from the last frame, in console cycles
   @rg_slide_clock = 0  # samples since the slide clock last ticked (rg_sound.c's slide_clock)
   @rg_loaded_waveform = -1 # the waveform a song's part put in the wave voice, or -1 when none did
+  rg_spu_setup
 end
 
 def rg_square_clock_hz = @rg_game_sound_rules[0]
@@ -187,6 +195,7 @@ end
 
 def rg_square_start(voice, wave_ticks, eighths_high, volume, fade, slide)
   @rg_squares[voice - 1].start(wave_ticks, eighths_high, volume, fade, slide)
+  rg_spu_slide_started(voice)
 end
 
 # Which of the eight parts of a wave are high, for each tone, in the chip's own order.
@@ -232,6 +241,7 @@ def rg_wave_load(which)
   rg_fault("there is no waveform number #{which}") if which < 0 || which >= @rg_game_waveforms[0]
   @rg_wave.steps = @rg_game_waveforms[1 + (which * RG_WAVE_STEPS), RG_WAVE_STEPS]
   @rg_loaded_waveform = which
+  rg_spu_waveform_put_in(which)
   @rg_wave.switched_on = true
   @rg_wave.wave_ticks = 0
   rg_wave_set_loudness(@rg_wave.quarters)
@@ -327,6 +337,8 @@ end
 # voice is not asked for a sample, which would answer nought and change nothing. A sounding one is
 # asked for every sample, heard or not (every voice moves on), and may fall silent on the way.
 def rg_sound_render_frame
+  return rg_spu_render_frame if RG_VOICES_READ_SOUND_MEMORY # rg_spu.rb
+
   @rg_sample_carry += RG_SOUND_RATE * RG_CONSOLE_TICKS_A_FRAME
   count = @rg_sample_carry / RG_CONSOLE_TICKS_A_SECOND
   @rg_sample_carry %= RG_CONSOLE_TICKS_A_SECOND
@@ -403,6 +415,7 @@ def rg_sound_beep(which)
   @rg_sides[RG_BEEP_VOICE] = 0
   rg_square_start(RG_BEEP_VOICE, @rg_game_beeps[beep], @rg_game_beeps[beep + 1], @rg_game_beeps[beep + 2],
                   @rg_game_beeps[beep + 3], 0)
+  rg_game_voice_struck(RG_BEEP_VOICE)
 end
 
 def rg_sound_wave(which)
@@ -413,6 +426,7 @@ def rg_sound_wave(which)
   @rg_sides[RG_WAVE_VOICE] = 0
   rg_wave_load(@rg_game_waves[said])
   rg_wave_start(@rg_game_waves[said + 1], @rg_game_waves[said + 2])
+  rg_game_voice_struck(RG_WAVE_VOICE)
   @rg_loaded_waveform = -1
 end
 
@@ -429,6 +443,7 @@ def rg_sound_noise(which)
   rg_sound_log("noise #{which}")
   @rg_sides[RG_NOISE_VOICE] = 0
   rg_noise_start(@rg_game_hits[hit], @rg_game_hits[hit + 1], @rg_game_hits[hit + 2], @rg_game_hits[hit + 3])
+  rg_game_voice_struck(RG_NOISE_VOICE)
 end
 
 # --- the state image (rg_sound.c says what each field holds) ---
@@ -469,6 +484,7 @@ def rg_sound_visit_state
   rg_visit_square_fields
   rg_visit_wave_fields
   rg_visit_noise_fields
+  rg_spu_visit_state
   rg_hook_visit_sound_state
 end
 

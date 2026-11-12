@@ -203,22 +203,29 @@ module VBlank
           # scene taking over and a change of screen all put the declared colours back in this
           # group, and each then reads this to put the set in force back (see
           # PaletteTint#emit_recolored_obj_banks).
+          #
+          # A BACKGROUND DRAWN WITH SEVERAL LISTS THE GAME CHANGES follows this write too: the same
+          # set goes into the group of background colours its tiles drawn from this list read (see
+          # ScreenLayout::FollowedColors), so the tiles change on the frame the sprites do.
           def emit_color_list_holds(node)
             @palette_tint.emit_backdrop_held(node) # the backdrop, where it follows this list
             list = @layout.screen.color_lists[node.name]
-            return if list.nil? # no sprite on a tiled screen draws with it
+            followed = @layout.screen.followed_colors[node.name]
+            sets = list || followed
+            return if sets.nil? # no sprite on a tiled screen draws with it, and no background follows it
 
             @lowering.value(node.which)
             # One unsigned compare catches both ends: a negative number reads as a very large
             # one, so anything outside 0...count fails the same test.
-            emit_number(TMP, list.count)
+            emit_number(TMP, sets.count)
             emit(ASM.cmp_reg(ACC, TMP))
             emit(ASM.mov_reg_cond(:hs, ACC, TMP))
             emit(ASM.lsl_imm(TMP, ACC, COLOR_SET_SHIFT))
-            emit_load_data_address(ACC, list.blob)
+            emit_load_data_address(ACC, sets.blob)
             emit(ASM.add_reg(ACC, ACC, TMP))
-            store_var(ACC, list.source_var)
-            @palette_tint.emit_changed_list_colors(list)
+            store_var(ACC, sets.source_var)
+            @palette_tint.emit_changed_list_colors(list) if list
+            @palette_tint.emit_followed_list_colors(followed) if followed
           end
 
           # A set is sixteen colours of two bytes each, so the set numbered N starts 32 * N

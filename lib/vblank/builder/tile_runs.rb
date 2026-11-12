@@ -221,6 +221,8 @@ module VBlank
           raise ArgumentError, "#{what} :#{name} needs `colors:`: a list of 2 to #{Images::PICTURE_COLORS} colors, " \
                                "the first meaning see-through. Each four bits of the list's bytes picks one."
         end
+        # A colour read from the data pack as the game starts is the marker it is (IR::StartFile),
+        # which a build for a computer puts the file's colour in place of as it starts.
         list.map do |color|
           next color if color.is_a?(Integer) # a `colors` list, already resolved
 

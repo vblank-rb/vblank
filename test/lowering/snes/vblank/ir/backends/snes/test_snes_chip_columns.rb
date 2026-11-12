@@ -98,17 +98,140 @@ class TestSNESChipColumns < Minitest::Test
     assert_operator run[:step], :>=, 5, "five passes or more were checked"
   end
 
+  # A VIEW WITH BLACK ABOVE AND BELOW IT has the screen switched off there (Runtime::Letterbox),
+  # and what is checked is that nobody can tell: a view 64 high whose top moves every pass, so the
+  # lines kept on change with it, cleared to blue on some passes, where no line may go off, and
+  # left uncleared on others, where the last pass's walls stay on the screen.
+  def test_a_view_with_black_above_and_below_looks_as_on_the_interpreter
+    game = VBlank.game("CHIP BARS", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
+      top = var :top, 0
+      func :walls, on_chip: true do
+        repeat(60) { |col| draw_column_at :wall, slice: col + step, x: col * 2, top: top, height: 64 }
+      end
+      game_loop do
+        step += 1
+        top = 20 + ((step * 13) % 120)
+        if step % 8 == 5
+          clear_screen :blue
+        elsif step % 8 != 2
+          clear_screen :black
+        end
+        call :walls
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 40)
+
+    assert_operator run[:step], :>=, 20, "twenty passes or more were checked"
+  end
+
+  # Black above and below a view is only black while nothing colours it or moves it: a fade toward
+  # white makes those lines grey, and a camera moved down brings the view into them. On the passes
+  # with either, every line stays on.
+  def test_a_faded_or_moved_view_with_black_above_and_below_looks_as_on_the_interpreter
+    game = VBlank.game("CHIP FADED BARS", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
+      func :walls, on_chip: true do
+        repeat(40) { |col| draw_column_at :wall, slice: col + step, x: col * 3, top: 80, height: 64 }
+      end
+      game_loop do
+        step += 1
+        clear_screen :black
+        call :walls
+        fade :white, ((step / 4) % 3) * 30
+        camera 0, ((step / 6) % 2) * 20
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 40)
+
+    assert_operator run[:step], :>=, 20, "twenty passes or more were checked"
+  end
+
+  # A view too big for one stretch of lines with the screen off, whose passes end at a different
+  # line each time: the copy is cut wherever the lines run out, before the blank's interrupt and
+  # after it, and no tile of it may be written once the screen is back on.
+  def test_a_big_view_cut_at_any_line_looks_as_on_the_interpreter
+    game = VBlank.game("CHIP CUTS", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      step = var :step, 0
+      spent = var :_spent, 0
+      game_loop do
+        step += 1
+        clear_screen :black
+        repeat(28) do |col|
+          if (step + col) % 2 == 1
+            draw_rect_at col * 8, 0, 8, 96 + (col % 8), :white
+          else
+            draw_rect_at col * 8, 0, 8, 96 + (col % 8), :green
+          end
+        end
+        repeat((step * 29) % 240) { spent += step }
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 70)
+
+    assert_operator run[:step], :>=, 30, "thirty passes or more were checked"
+  end
+
+  # A view that stays where it is while what it shows changes: its copy starts as soon as the
+  # screen goes off below it, on every pass, and every tile of it has to arrive.
+  def test_a_view_that_stays_where_it_is_looks_as_on_the_interpreter
+    run = game_player.run(square_of_walls(columns: 120, tall: 120, moves: true), frames: 16)
+
+    assert_operator run[:step], :>=, 8, "eight passes or more were checked"
+  end
+
+  # A view that stays where it is: every frame the console draws is a whole pass's picture, the
+  # one before or the one after, with the copy made where the screen is off. The one pass that is
+  # seen arriving is the pass the lines are first switched off on, which is copied from the blank
+  # on, with less room than the passes after it have.
+  def test_a_view_with_black_above_and_below_is_not_seen_arriving
+    run = SNES::HeadlessRun.new(watch_picture: true).run(square_of_walls(columns: 120, tall: 120, moves: true), frames: 12)
+
+    assert_empty run.black_frames
+    assert_operator run.torn_frames.size, :<=, 1, "no pass but the one that switches the lines off is seen arriving"
+  end
+
+  # The console's own routine for a column is carried only by a game that draws one outside the
+  # chip's routines.
+  def test_a_game_whose_columns_are_all_the_chips_carries_no_column_routine_of_the_consoles
+    built = lambda do |on_chip|
+      rom = VBlank.build("CHIP ONLY", console: :snes, variant: :superfx, out: StringIO.new, err: StringIO.new) do
+        screen :bitmap
+        image :wall, width: 64, height: 64, data: WALL
+        func :walls, on_chip: on_chip do
+          repeat(8) { |col| draw_column_at :wall, slice: col, x: col, top: 80, height: 64 }
+        end
+        game_loop do
+          clear_screen :black
+          call :walls
+        end
+      end
+      rom.built.code.keys
+    end
+
+    refute_includes built.call(true), "rt_paint_column"
+    assert_includes built.call(false), "rt_paint_column"
+  end
+
   # +columns+ columns of the striped wall, each +tall+ high, drawn from a routine on the chip.
-  private def square_of_walls(columns:, tall:)
+  # +moves+ for a wall whose stripes move across every pass.
+  private def square_of_walls(columns:, tall:, moves: false)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :snes, variant: :superfx))
     b.instance_eval do
       screen :bitmap
       image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
       func :walls, on_chip: true do
-        repeat(columns) { |col| draw_column_at :wall, slice: col, x: col, top: 112 - (tall / 2), height: tall }
+        repeat(columns) { |col| draw_column_at :wall, slice: col + step, x: col, top: 112 - (tall / 2), height: tall }
       end
       game_loop do
         clear_screen :black
+        step += 1 if moves
         call :walls
       end
     end
@@ -116,23 +239,29 @@ class TestSNESChipColumns < Minitest::Test
     b.program
   end
 
-  # The most frames one of two passes past the first took.
+  # The passes a cost is measured over, past the first few, which set the screen up.
+  MEASURED_PASSES = (6...18)
+
+  # The frames a pass took, over MEASURED_PASSES: their mean, not rounded, and the most.
   private def frames_a_pass(program)
-    run = SNES::HeadlessRun.new.run(program, frames: 60)
-    (2...4).map { |pass| run.frames_took(pass) }.max
+    run = SNES::HeadlessRun.new.run(program, frames: MEASURED_PASSES.end + 2)
+    took = MEASURED_PASSES.map { |pass| run.frames_took(pass) }
+    [took.sum.fdiv(took.size), took.max]
   end
 
   # The walls of a first-person view take no more frames a pass on the chip than these, 120 columns
-  # 120 high and 40 columns 40 high. Most of the 120's is sending the painted tiles to video RAM,
-  # a blank at a time; the console's processor drawing the same walls takes many times as long.
-  MOST_FRAMES = { [120, 120] => 8, [40, 40] => 2 }.freeze
+  # 120 high and 40 columns 40 high, every pass of them. The 120's are sent to video RAM in the
+  # lines above and below the view, where the screen is off (Runtime::Letterbox); the rest of its
+  # time is the chip's painting. The console's processor drawing the same walls takes many times as long.
+  MOST_FRAMES = { [120, 120] => 4, [40, 40] => 1 }.freeze
 
   MOST_FRAMES.each do |(columns, tall), most|
     define_method(:"test_#{columns}_columns_#{tall}_high_take_#{most}_frames_a_pass_on_the_chip") do
-      on_the_chip = frames_a_pass(square_of_walls(columns: columns, tall: tall))
-      warn "#{columns}x#{tall}: #{on_the_chip} frames a pass on the chip" if ENV["VBLANK_CHIP_FRAMES"]
+      mean, slowest = frames_a_pass(square_of_walls(columns: columns, tall: tall, moves: true))
+      warn "#{columns}x#{tall}: #{mean} frames a pass on the chip, #{slowest} the slowest" if ENV["VBLANK_CHIP_FRAMES"]
 
-      assert_operator on_the_chip, :<=, most, "#{columns} columns #{tall} high took #{most} frames a pass or fewer"
+      assert_operator mean, :<=, most, "#{columns} columns #{tall} high took #{most} frames a pass or fewer"
+      assert_operator slowest, :<=, most, "no pass of #{columns} columns #{tall} high took more than #{most} frames"
     end
   end
 end

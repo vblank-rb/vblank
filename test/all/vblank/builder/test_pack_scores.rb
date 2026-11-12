@@ -19,22 +19,21 @@ class TestPackScores < Minitest::Test
   # Each part's slot holds this many notes, and a shorter part ends at an END_OF_PART note.
   MOST = 8
   MELODY_AT = 0x10
-  BASS_AT = MELODY_AT + (MOST * 8)
+  BASS_AT = MELODY_AT + (MOST * VBlank::Original::PackNote::BYTES)
 
   # A part's notes as Original::PackNote records, ended with an END_OF_PART note and zeros after it.
   private def records(notes)
-    own = VBlank::Original::PackNote::PART_OWN
+    record = VBlank::Original::PackNote
     written = notes.map do |at, length, key, volume|
-      [at, length || 0, key || VBlank::Original::PackNote::REST, own, volume || own, 0]
+      [at, length || 0, key || record::REST, record::PART_OWN, volume || record::PART_OWN]
     end
-    filler = [[VBlank::Original::PackNote::END_OF_PART, 0, 0, 0, 0, 0]] * (MOST - notes.length)
-    (written + filler).flatten.pack("v v C C C C" * MOST)
+    record.bytes_of(written, count: MOST)
   end
 
   private def original(folder)
-    copy = "\0".b * (BASS_AT + (MOST * 8))
-    copy[MELODY_AT, MOST * 8] = records(MELODY)
-    copy[BASS_AT, MOST * 8] = records(BASS)
+    copy = "\0".b * (BASS_AT + (MOST * VBlank::Original::PackNote::BYTES))
+    copy[MELODY_AT, MOST * VBlank::Original::PackNote::BYTES] = records(MELODY)
+    copy[BASS_AT, MOST * VBlank::Original::PackNote::BYTES] = records(BASS)
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -114,13 +113,16 @@ class TestPackScores < Minitest::Test
     end
   end
 
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
+  # A build that reads its pack as the game starts plays the song too (test/pack_scores_at_start_tests.rb),
+  # given the one thing it cannot work out without the notes.
+  def test_a_build_reading_its_pack_as_it_starts_needs_the_scores_length
     Dir.mktmpdir do |folder|
       b = Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
       pack = b.data_pack(from: original(folder), version: "1") { |slots| slots.notes :melody, at: MELODY_AT, count: MOST }
       error = assert_raises(ArgumentError) { b.songs :music, [Score.new(parts: [Part.new(notes: pack[:melody])])] }
 
-      assert_includes error.message, "not made that way yet"
+      assert_includes error.message, "length"
+      b.songs :music, [Score.new(parts: [Part.new(notes: pack[:melody])], length: 96)]
     end
   end
 end

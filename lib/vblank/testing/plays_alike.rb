@@ -34,7 +34,16 @@ module VBlank
     # and not by frames, for an original that takes two frames over a pass now and then: each
     # cartridge's count of passes (`true` for the game loop's own on a cartridge built here, a
     # variable's name, a block, or one for each, as `readings:` takes them), with
-    # `pass_count_wraps_at: 256` for a count kept in a byte. `skipping_still_frames_of: :second`
+    # `pass_count_wraps_at: 256` for a count kept in a byte, and `passes_compared_at: :end` for one
+    # whose slow pass counts itself before its work is done (the readings on the last frame that
+    # shows each pass, the picture on the frame after; to compare the tape's last pass, play a frame
+    # past it). After `lead_ins:` the two are compared from the FIRST cartridge's pass as its lead-in
+    # left it, the second played on to it, so every pass of the first from there is compared. As it
+    # plays on, a second led in by the first's lead-in cut short (or from power-on) is held what the
+    # first's lead-in held on each of those frames, so a press after the cut still reaches it. A second
+    # its lead-in left past that pass (a port a few passes ahead of its original after the same
+    # lead-in) is refused naming both passes: lead it in for fewer frames, or not at all.
+    # `skipping_still_frames_of: :second`
     # (or `:first`, or `:both`) skips that cartridge's frames whose picture is the one before's, a
     # room loading, so the two are in step again after a load that is longer on one.
     #

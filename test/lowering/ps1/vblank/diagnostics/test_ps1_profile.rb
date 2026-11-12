@@ -10,20 +10,20 @@ class TestPS1Profile < Minitest::Test
   # A routine of the game's that does most of the work there is, inside a frame.
   BUSY = VBlank.game("BUSY", consoles: %i[ps1]) do
     total = 0
-    func(:hard_work) { repeat(2000) { total += 3 } }
+    func(:hard_work) { repeat(3000) { total += 3 } }
     game_loop { call :hard_work }
   end
 
   # A routine too long for one frame: each pass takes two.
   SLOW = VBlank.game("SLOW", consoles: %i[ps1]) do
     total = 0
-    func(:too_much) { repeat(38_400) { total += 3 } }
+    func(:too_much) { repeat(43_000) { total += 3 } }
     game_loop { call :too_much }
   end
 
   # Work that runs a few lines past the blank after it began: each pass then waits for the next blank,
-  # and takes two frames. The count was found by playing it, at fifteen cycles a turn of the loop.
-  JUST_LATE_STEPS = 37_330
+  # and takes two frames. The count was found by playing it, at fourteen cycles a turn of the loop.
+  JUST_LATE_STEPS = 40_500
   JUST_LATE = VBlank.game("JUST LATE", consoles: %i[ps1]) do
     total = 0
     func(:a_little_too_much) { repeat(JUST_LATE_STEPS) { total += 3 } }
@@ -41,7 +41,7 @@ class TestPS1Profile < Minitest::Test
   # past the blank's own lines. Its count was found by playing it too.
   PAST_TWO_FRAMES = VBlank.game("PAST TWO", consoles: %i[ps1]) do
     total = 0
-    func(:too_much) { repeat(76_800) { total += 3 } }
+    func(:too_much) { repeat(86_000) { total += 3 } }
     game_loop { call :too_much }
   end
 

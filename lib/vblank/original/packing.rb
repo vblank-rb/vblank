@@ -11,6 +11,7 @@
 VBlank.require_game_file "packing/format"      # What a format declares: its name and settings
 VBlank.require_game_file "packing/block_kit"   # What a format's routine is written with
 VBlank.require_game_file "packing/gba"        # The Game Boy Advance BIOS's LZ77 and RLE
+VBlank.require_game_file "packing/m4a"        # The Advance's common sound driver, MusicPlayer2000
 VBlank.require_game_file "packing/genesis"    # The Sega Genesis's Nemesis tiles and Enigma plane maps
 
 module VBlank
@@ -18,7 +19,7 @@ module VBlank
     module Packing
       # The formats each platform's games keep their data in, by the platform's name. A platform
       # not here (a computer's, :pc) has none built in.
-      BY_PLATFORM = Ractor.make_shareable({ gba: GBA::FORMATS, genesis: Genesis::FORMATS })
+      BY_PLATFORM = Ractor.make_shareable({ gba: [*GBA::FORMATS, *M4A::FORMATS].freeze, genesis: Genesis::FORMATS })
 
       # The formats a copy of an original for +platform+ offers, before any the port names.
       def self.formats_for(platform) = BY_PLATFORM.fetch(platform, [])

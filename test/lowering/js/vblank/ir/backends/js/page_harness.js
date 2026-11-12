@@ -20,6 +20,7 @@
  *   pad press N / pad release N   its button N going down or coming up, by the standard
  *                       layout's numbering (0 the bottom face button, 12 to 15 the d-pad)
  *   pad stick X Y       its left stick pushed to X, Y, each from -1 to 1
+ *   pad N ...           any of those for the controller at index N (0 to 3), where "pad" alone is 0
  *   blur / focus        the window losing the keyboard to another, and getting it back
  *   hide / show         the page's tab hidden behind another, and shown again
  *   click ID            the page's element of that id clicked
@@ -380,13 +381,14 @@ class AudioWorkletNode {
   connect() { this.connected = true; }
 }
 
-/* The one controller there can be, in the browser's own shape for one. */
+/* The four controllers there can be, in the browser's own shape for one, each at the index the
+ * browser gives it: "pad" alone is the first. */
 const pads = [null, null, null, null];
-const controller = {
-  id: "Stand-in Controller (STANDARD GAMEPAD)", index: 0, mapping: "standard", connected: true,
+const controllers = [0, 1, 2, 3].map((index) => ({
+  id: "Stand-in Controller (STANDARD GAMEPAD)", index, mapping: "standard", connected: true,
   buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
   axes: [0, 0, 0, 0],
-};
+}));
 
 /* The browser's own names, put on node's global scope — node has a navigator, a performance clock
  * and a localStorage of its own, which these take the place of — so a classic script and a
@@ -432,12 +434,15 @@ function key(type, code, modifier) {
   tell(page, type, { code, metaKey: modifier === "meta", ctrlKey: modifier === "ctrl", altKey: modifier === "alt" });
 }
 
-function pad(action, a, b) {
+function pad(...words) {
+  const index = /^\d$/.test(words[0]) ? Number(words.shift()) : 0;
+  const [action, a, b] = words;
+  const controller = controllers[index];
   if (action === "connect") {
-    pads[0] = controller;
+    pads[index] = controller;
     tell(page, "gamepadconnected", { gamepad: controller });
   } else if (action === "disconnect") {
-    pads[0] = null;
+    pads[index] = null;
     tell(page, "gamepaddisconnected", { gamepad: controller });
   } else if (action === "press" || action === "release") {
     controller.buttons[Number(a)] = { pressed: action === "press", value: action === "press" ? 1 : 0 };

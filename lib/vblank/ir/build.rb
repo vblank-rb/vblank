@@ -169,13 +169,15 @@ module VBlank
       # only meaningful for a bitmap mode; the flag rides on the node so a backend
       # (and the cost estimator) can tell the two apart. Absent when off, so an
       # ordinary screen node is unchanged.
-      def screen(mode, buffered: false, colors: nil, late: nil, late_pace: nil, backdrop: nil, pixel_size: nil)
+      def screen(mode, buffered: false, colors: nil, late: nil, late_pace: nil, backdrop: nil, pixel_size: nil,
+                 backdrop_from_file: nil)
         attrs = { mode: mode }
         attrs[:buffered] = true if buffered
         attrs[:colors] = colors if colors
         attrs[:late] = late if late
         attrs[:late_pace] = late_pace if late_pace
         attrs[:backdrop] = backdrop if backdrop
+        attrs[:backdrop_from_file] = backdrop_from_file if backdrop_from_file
         attrs[:pixel_size] = pixel_size if pixel_size
         Nodes.build(:screen, **attrs)
       end
@@ -330,8 +332,11 @@ module VBlank
       # the lowest it can, as the music's source played it (see Audio::Score).
       #
       # +keeps_voices:+ means a sound effect holds each voice it has taken until it ends.
+      #
+      # +length_from_file:+ is where the song's length is in the file the program is handed as it
+      # starts (a StartFile::SongLength); +total_frames+ is then the most it can last.
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
-               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false)
+               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -339,6 +344,7 @@ module VBlank
         said[:low_notes_intended] = true if low_notes_intended
         said[:plays_once] = true if plays_once
         said[:keeps_voices] = true if keeps_voices
+        said[:length_from_file] = length_from_file if length_from_file
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 
@@ -395,9 +401,19 @@ module VBlank
       # the end, or nil for a recording that simply runs out.
       # +from_file+ is where its first sample is in the file the program is handed as it starts
       # (StartFile), for a recording read from there: +bytes+ is then zeros of its length. Nil otherwise.
-      def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil)
-        Nodes.build(:sample, name: name, bytes: bytes, rate: rate, note: note,
-                             envelope: envelope, holds_from: holds_from, from_file: from_file)
+      # +chip_envelope+ is the shape as a console's sound chip keeps it (an Audio::SNESEnvelope), with
+      # +envelope+ then the nearest ordinary one. Nil otherwise.
+      # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in that
+      # file (a StartFile::RecordingSettings), for those it reads from there. Nil otherwise.
+      # +chip_recording+ is the recording as a console's sound chip keeps it (an Audio::SNESRecording),
+      # with +bytes+ and +holds_from+ then what the chip decodes from it. Nil otherwise.
+      def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil, chip_envelope: nil,
+                 settings_from_file: nil, chip_recording: nil)
+        attrs = { name: name, bytes: bytes, rate: rate, note: note, envelope: envelope, holds_from: holds_from,
+                  from_file: from_file, chip_envelope: chip_envelope }
+        attrs[:settings_from_file] = settings_from_file if settings_from_file
+        attrs[:chip_recording] = chip_recording if chip_recording
+        Nodes.build(:sample, **attrs)
       end
 
       # Play the named sample from the start. +loop+ true replays it seamlessly on a
@@ -609,11 +625,12 @@ module VBlank
       # +colors_name+ names the list of colours +colors+ is, where the game declared it with `colors`
       # (see Assets::Image#colors_name).
       # +pieces+ is a picture made of 8x8 pieces, front-most first (Assets::Image#pieces), or nil.
+      # +piece_groups+ is how many of them each bigger piece was cut into (Assets::Image#piece_groups), or nil.
       def bitmap(name, width:, height:, pixels:, transparent: nil, colors: nil, places: nil, colors_name: nil, pieces: nil,
-                 shading: nil, shading_places: nil, places_from_pack: false)
+                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil)
         Nodes.build(:bitmap, name: name, width: width, height: height,
                           pixels: pixels, transparent: transparent, colors: colors, places: places, colors_name: colors_name,
-                          pieces: pieces, shading: shading, shading_places: shading_places,
+                          pieces: pieces, piece_groups: piece_groups, shading: shading, shading_places: shading_places,
                           places_from_pack: places_from_pack)
       end
 
@@ -803,10 +820,14 @@ module VBlank
       # The builder gives the middle of the screen the game is built for when the game gives
       # none (Console::Description#middle), which is where a picture that swings or grows
       # about nothing in particular belongs.
-      def affine_background(name, angle:, scale:, around:)
+      # +map_point+ is the point of the background's own map that sits there, in the map's
+      # pixels, as [x, y]: the same two numbers as +around+ where the game names none, which
+      # is a map hung from the screen's corner.
+      def affine_background(name, angle:, scale:, around:, map_point: nil)
         x, y = around
+        map_x, map_y = map_point || around
         Nodes.build(:affine_background, name: name, angle: to_value_node(angle), scale: to_value_node(scale),
-                                        around_x: x, around_y: y)
+                                        around_x: x, around_y: y, map_x: map_x, map_y: map_y)
       end
 
       # Show the named background scrolled to the offset (+x+, +y+) in pixels — the
@@ -847,10 +868,11 @@ module VBlank
       # worked out from it: the columns from +left+ up to but not including +right+ are left
       # as drawn. A backend that composes the picture itself darkens per pixel as it reads
       # it; one with display hardware that can be told, row by row, where the darkening
-      # stops can hand the spans over and pay nothing per pixel.
-      def shade_outside(row:, left:, right:, amount:)
+      # stops can hand the spans over and pay nothing per pixel. With +shuts_out+ the rest of
+      # each row is not drawn at all while the amount is more than nothing (Nodes::ShadeOutside).
+      def shade_outside(row:, left:, right:, amount:, shuts_out: false)
         Nodes.build(:shade_outside, row: row, left: to_value_node(left), right: to_value_node(right),
-                                    amount: to_value_node(amount))
+                                    amount: to_value_node(amount), shuts_out: shuts_out)
       end
 
       # Work the light out again now, for the picture being drawn.
@@ -926,8 +948,18 @@ module VBlank
       # and everything in front of it are left as drawn. Unlike a fade's, it is ONE PLACE
       # FOR THE WHOLE PROGRAM: every pixelate statement in a program names the same layer,
       # or none does, and a program with two is one no backend runs (see Backends::Blocks).
-      def pixelate(size:, under: nil)
-        Nodes.build(:pixelate, size: to_value_node(size), **under_field(under))
+      #
+      # +keeps_sprites+ leaves every sprite as drawn and puts only the backgrounds in blocks,
+      # which is all some displays can do. It is one choice for the whole program too, for
+      # the same reason. Given only when set, so a program that never names it is the tree
+      # it always was.
+      #
+      # +bar_in_blocks+ puts a status bar in blocks with the backgrounds, in their grid. One choice
+      # for the whole program as well, and given only when set.
+      def pixelate(size:, under: nil, keeps_sprites: false, bar_in_blocks: false)
+        Nodes.build(:pixelate, size: to_value_node(size), **under_field(under),
+                               **(keeps_sprites ? { keeps_sprites: true } : {}),
+                               **(bar_in_blocks ? { bar_in_blocks: true } : {}))
       end
 
       # An operand given only when there is one, so a whole-percentage fade is the node it
@@ -971,6 +1003,14 @@ module VBlank
       def set_tile(name, col, row, tile, now: nil, held: nil)
         Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), tile: tile, now: now,
                                held: held)
+      end
+
+      # The same with the tile picked as the program runs: +tiles+ are the background's tiles that
+      # the numbers from +from+ up stand for, nil for a number that stands for none, and
+      # +picked_by+ is the number (see Nodes::SetTile).
+      def set_tile_picked(name, col, row, picked_by, tiles, from: 0, now: nil, held: nil)
+        Nodes.build(:set_tile, name: name, col: to_value_node(col), row: to_value_node(row), now: now, held: held,
+                               picked_by: to_value_node(picked_by), picks_from: from, picks: tiles)
       end
 
       # Show every held cell change at once (see Nodes::ShowHeldTiles).
@@ -1155,8 +1195,11 @@ module VBlank
       # coordinate. +index+ is itself a value operand. An out-of-range index is made
       # safe by the read: a power-of-two table wraps it (a free mask), any other size
       # clamps it, so a read never reaches outside the table.
-      def table_get(name, index)
-        Nodes.build(:table_get, name: name, index: to_value_node(index))
+      # +in_range+: the caller's own sums keep +index+ inside the table (see Nodes::TableGet).
+      def table_get(name, index, in_range: false)
+        return Nodes.build(:table_get, name: name, index: to_value_node(index)) unless in_range
+
+        Nodes.build(:table_get, name: name, index: to_value_node(index), in_range: true)
       end
 
       # --- expression values (the AST an assignment or condition is built from) ---

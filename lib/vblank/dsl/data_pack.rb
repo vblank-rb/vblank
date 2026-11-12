@@ -19,17 +19,19 @@ module VBlank
     # #fill_from_copy (see Builder::DataPacks for how and where it runs).
     #
     # Each slot is kept in the layout of the console the original is for (+platform+, the
-    # original's Original::Game#platform), unless it names another with +layout+. An original from a
-    # computer has no console's layout: its numbers are low byte first unless a slot names its
-    # +byte_order+, and a slot of colours or tiles names the layout its routine writes:
+    # original's Original::Game#platform), unless it names another with +layout+. An original of a
+    # platform whose layout VBlank does not read (a PlayStation's, a computer's, any other) is in
+    # VBlank's own layout (Console::VBLANK_FORMATS), which its routine writes; a computer game's
+    # numbers may name their +byte_order+ instead:
     #
     #   slots.tiles :walls, at: 0x4000, count: 64, colors: 4    # a Super Nintendo's tiles of four colours
     #   slots.numbers :sizes, count: 9, width: :half, signed: false   # a computer game's, low byte first
     #   slots.numbers :sizes, count: 9, width: :half, signed: false, byte_order: :high_first
-    #   slots.colors :palette, count: 16, layout: :gba          # a computer game's, as its routine writes them
+    #   slots.colors :palette, count: 16                        # a computer game's, as its routine writes them
+    #   slots.colors :palette, count: 16, layout: :gba          # the same, a console's layout as a shortcut
     class PackSlots
       def initialize(platform:)
-        @platform = platform
+        @layout = Original.layout_for(platform)
         @list = []
         @routine = nil
       end
@@ -44,12 +46,14 @@ module VBlank
       # into). A shell's bar then moves by the work done rather than the bytes written
       # (Original::Slot#cost).
       def colors(name, count:, at: nil, layout: nil, cost: 1)
-        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @platform, cost: cost))
+        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @layout, cost: cost))
       end
 
       # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
+      # `colors: 256` is a tile kept a byte a pixel, 64 bytes, in any layout: the pictures of a
+      # background that turns and resizes.
       def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1)
-        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @platform, cost: cost))
+        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @layout, cost: cost))
       end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
@@ -57,7 +61,7 @@ module VBlank
       # console's layout.
       def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1)
         add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
-                                         layout: layout || (@platform unless byte_order), byte_order: byte_order, cost: cost))
+                                         layout: layout || (@layout unless byte_order), byte_order: byte_order, cost: cost))
       end
 
       # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
@@ -71,6 +75,11 @@ module VBlank
       # +count+ notes of music, each an Original::PackNote, which the unpacking routine writes from
       # the original's songs, for a Score's part (`notes: pack[:theme].notes(instruments: %i[horn])`).
       def notes(name, count:, at: nil, cost: 1) = add(Original::Slot.notes(name, at: at, count: count, cost: cost))
+
+      # +count+ cells of a background's map, each an Original::MapCell, which the unpacking routine
+      # writes from the original's maps (`pack[:title_map].write_cell(at, tile:, bank:, ...)`), for a
+      # background's `map:`.
+      def map_cells(name, count:, at: nil, cost: 1) = add(Original::Slot.map_cells(name, at: at, count: count, cost: cost))
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
@@ -117,16 +126,18 @@ module VBlank
       # +rom_sha1+ is the SHA-1 of the copy the build made the pack from (nil for a build that
       # leaves the pack out, which reads no copy), +build_version+ the build it names, +slots+ the
       # Original::Slot list. +make_unpacking+ makes the Original::Unpacking that fills such a pack,
-      # handed the copy's size, the first time something asks for it: a pack whose every slot is
-      # copied as it is never needs its program built as the game is. +original+ is what `from:`
+      # handed the release, when something asks for it, and keeps what it made: a pack whose every
+      # slot is copied as it is never needs its program built as the game is. +original+ is what `from:`
       # named (an Original::Game, or an Original::Copy), which a shell reads the releases of.
-      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil)
+      # +platform+ is the console the original is for, whose layout a view of a slot is read in
+      # where it names none (PackSlot#as_tiles).
+      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil, platform: Original::DEFAULT_PLATFORM)
         @rom_sha1 = rom_sha1
         @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
-        @unpackings = {}
         @original = original
+        @platform = platform
       end
 
       # The SHA-1 of the copy the pack was made from, the build version it names, and the original
@@ -142,7 +153,11 @@ module VBlank
       # +release+ (an Original::Release), which it is handed as it starts; an all-in-one build's
       # holds the copy it read, and needs no release. Each release has a program of its own, since
       # the slots' places or the routine can differ by release.
-      def unpacking(release: nil) = @unpackings[release] ||= @make_unpacking.call(release)
+      #
+      # The program writes a record of each frame of a sprite the game has named by the time it is
+      # asked for (Original::FrameRewrite), so ask once the game is declared: asked again after
+      # the game names another frame, it is made again.
+      def unpacking(release: nil) = @make_unpacking.call(release)
 
       # The handle of the slot named +name+.
       def [](name)
@@ -150,22 +165,25 @@ module VBlank
           raise ArgumentError, "The data pack has no slot #{name.inspect}. It has #{@slots.keys.map(&:inspect).join(', ')}. " \
                                "Name the slot in the data_pack block first."
         end
-        PackSlot.new(layout: slot, tile_index: nil)
+        PackSlot.new(layout: slot, tile_index: nil, platform: @platform)
       end
     end
 
     # ONE FRAME OF A SPRITE IN A SLOT OF BYTES: the slot's handle (+slot+), the byte the frame
     # starts at, how many pieces it has where its layout does not say (+count+), and how it is kept
-    # (+piece_layout+, an Original::FrameLayout). An image reads it (Builder::PackPoses).
-    PackFrame = Data.define(:slot, :at, :count, :piece_layout)
+    # (+piece_layout+, an Original::FrameLayout), and the values the pose gives that layout's
+    # reader (+pose+, by name). An image reads it (Builder::PackPoses).
+    PackFrame = Data.define(:slot, :at, :count, :piece_layout, :pose)
 
     # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names (PackSlot#notes).
     PackNotes = Data.define(:slot, :instruments)
 
     # ONE NUMBER OF A SLOT OF NUMBERS (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
-    # (PackSlot#envelope), each read as the game is built.
+    # (PackSlot#envelope), each read as the game is built; and ONE ENVELOPE AS A SUPER NINTENDO'S
+    # SOUND CHIP KEEPS IT (PackSlot#snes_envelope).
     PackNumber = Data.define(:slot, :index)
     PackEnvelope = Data.define(:slot, :index)
+    PackSNESEnvelope = Data.define(:slot, :index)
 
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
@@ -189,11 +207,59 @@ module VBlank
     # A handle on pixels is +pixel_count+ pixels of a slot of pixels from pixel +first_pixel+, or
     # the whole slot where neither is given: the places of one picture among several kept in one
     # slot, as `pack[:walls].pixels(64 * 64 * 3, 64 * 64)` is the fourth picture of 64x64.
-    PackSlot = Data.define(:layout, :tile_index, :across, :down, :first_color, :color_count, :first_pixel, :pixel_count) do
+    #
+    # A VIEW is a handle on some of a slot's bytes read in a shape of their own (#as_tiles and its
+    # siblings): its +layout+ is the view's (Original::Slot#viewed), so every verb takes it as it
+    # takes a slot of that shape. +platform+ is the console the original is for, whose layout a
+    # view is read in where it names none.
+    PackSlot = Data.define(:layout, :tile_index, :across, :down, :first_color, :color_count, :first_pixel, :pixel_count,
+                           :platform) do
       def initialize(layout:, tile_index: nil, across: 1, down: 1, first_color: nil, color_count: nil, first_pixel: 0,
-                     pixel_count: nil) = super
+                     pixel_count: nil, platform: Original::DEFAULT_PLATFORM) = super
 
       def shape = layout.shape
+
+      # THE VIEWS: `count` items of another shape, read from byte `at` of this slot on (0 first).
+      # A console keeps its tiles of both kinds and its maps in one block of video memory, and a
+      # port that keeps the block as one slot reads each part of it so:
+      #
+      #   video = pack[:video]                                   # slots.tiles :video, count: 2048
+      #   pictures = video.as_tiles(at: 0x8000, count: 256, colors: 256)
+      #   cells    = video.as_numbers(at: 0xC000, count: 1024, width: :byte, signed: false)
+      #
+      # Each takes what the `slots.` line of its shape takes, and hands back a handle every verb
+      # takes as it takes a slot of that shape, which narrows as one does (`.tile(4)`,
+      # `.numbers(first, count)`). `count:` left out reads to the end of the slot. A view that
+      # ends after the slot ends is refused.
+
+      # A view as tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
+      def as_tiles(at:, count: nil, colors: nil, layout: nil)
+        console = layout || Original.layout_for(platform)
+        view("as_tiles", at, count) { |name, held| Original::Slot.tiles(name, count: held, colors: colors, layout: console) }
+      end
+
+      # A view as numbers, each +width+ wide and +signed+ or not.
+      def as_numbers(at:, width:, signed:, count: nil, layout: nil, byte_order: nil)
+        console = layout || (Original.layout_for(platform) unless byte_order)
+        view("as_numbers", at, count) do |name, held|
+          Original::Slot.numbers(name, count: held, width: width, signed: signed, layout: console, byte_order: byte_order)
+        end
+      end
+
+      # A view as colours, two bytes each.
+      def as_colors(at:, count: nil, layout: nil)
+        console = layout || Original.layout_for(platform)
+        view("as_colors", at, count) { |name, held| Original::Slot.colors(name, count: held, layout: console) }
+      end
+
+      # A view as pixels, one byte each.
+      def as_pixels(at:, count: nil) = view("as_pixels", at, count) { |name, held| Original::Slot.pixels(name, count: held) }
+
+      # A view as samples of recorded sound, one byte each.
+      def as_samples(at:, count: nil) = view("as_samples", at, count) { |name, held| Original::Slot.samples(name, count: held) }
+
+      # Whether the handle is on a whole slot or a whole view: no tiles, bank or run picked from it.
+      def whole? = tile_index.nil? && first_color.nil? && pixel_count.nil?
 
       # How many the handle reads: the slot's count, or the tiles of a handle on tiles, or the
       # colours of a bank, or the pixels of a handle on pixels.
@@ -212,6 +278,14 @@ module VBlank
       # recording's `pcm:`. It shares the first and the count of a handle on pixels, since a
       # sample is a byte as a pixel is.
       def samples(first, count) = bytes_run(:samples, first, count)
+
+      # A handle on +count+ numbers from number +first+ (0 first) of a slot of numbers, for a
+      # background's `map:` kept among other things in a bigger slot, as a console keeps a
+      # map in a block of its video memory. It shares the first and the count of a handle on pixels.
+      def numbers(first, count) = bytes_run(:numbers, first, count)
+
+      # Whether the handle is on a run of a slot of numbers, and not on the whole slot.
+      def run_of_numbers? = shape == :numbers && !pixel_count.nil?
 
       # Whether the handle is on a bank of colours.
       def bank? = !first_color.nil?
@@ -248,6 +322,7 @@ module VBlank
       # A handle on number +index+ (0 first) of a slot of numbers, for a setting read as the game is
       # built: an instrument's `rate:` or `holds_from:`.
       def number(index)
+        refuse_run_counted_from_slot_start!("number")
         unless shape == :numbers && index.is_a?(Integer) && index.between?(0, layout.count - 1)
           raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `number` picks one number of a slot " \
                                "of numbers, 0 to #{layout.count - 1}. Got #{index.inspect}."
@@ -259,6 +334,7 @@ module VBlank
       # A handle on envelope +index+ (0 first) of a slot of bytes, four bytes each in the order an
       # Audio::Envelope keeps them (attack, decay, sustain, release), for an instrument's `envelope:`.
       def envelope(index)
+        refuse_run_counted_from_slot_start!("envelope")
         unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
                (index + 1) * 4 <= layout.count
           raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `envelope` picks four bytes of a " \
@@ -269,17 +345,40 @@ module VBlank
         DSL::PackEnvelope.new(slot: self, index: index)
       end
 
+      # A handle on envelope +index+ (0 first) of a slot of bytes, three bytes each as a Super
+      # Nintendo's sound chip keeps them (ADSR1, ADSR2, GAIN: an Audio::SNESEnvelope), for an
+      # instrument's `envelope:`.
+      def snes_envelope(index)
+        refuse_run_counted_from_slot_start!("snes_envelope")
+        unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
+               (index + 1) * 3 <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `snes_envelope` picks three bytes " \
+                               "of a slot of numbers one byte wide, envelope 0 from byte 0. There is no envelope " \
+                               "#{index.inspect} in it."
+        end
+
+        DSL::PackSNESEnvelope.new(slot: self, index: index)
+      end
+
       # A handle on the frame of a sprite from byte +at+ (0 first) of a slot of bytes, kept as
       # +layout+ (an Original::FrameLayout) says, for an image's `frame:`. +count+ is how many pieces
-      # it has, for a layout whose frames do not say.
-      def frame(at, layout:, count: nil)
+      # it has, for a layout whose frames do not say. +with+ is the values the pose gives the
+      # layout's own reader by name (`with: { block: 5 }`), checked here against those it reads.
+      def frame(at, layout:, count: nil, with: {})
         # +layout+ here is the frame's; the slot's own is self.layout.
+        refuse_run_counted_from_slot_start!("frame")
+        refuse_frame_of_view!
         unless shape == :numbers && self.layout.width == :byte
           raise ArgumentError, "Slot :#{self.layout.name} holds #{shape}. `frame` reads a frame from a slot of numbers one " \
                                "byte wide. To fix this, call it on a slot like `slots.numbers :frames, width: :byte, ...`."
         end
 
-        DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout)
+        unless layout.is_a?(Original::FrameLayout)
+          raise ArgumentError, "`frame` was given layout: #{layout.inspect}. To fix this, give it a " \
+                               "VBlank::Original::FrameLayout, which says how the original keeps a frame."
+        end
+
+        DSL::PackFrame.new(slot: self, at: at, count: count, piece_layout: layout, pose: layout.pose_values_for(with))
       end
 
       # A handle on tile +index+ (0 first) of a slot of tiles, for an image's `places:`.
@@ -303,8 +402,40 @@ module VBlank
 
       private
 
-      # A handle on +count+ of the +kind+ (:pixels or :samples) of a slot of that kind, from number
-      # +first+: the one check both share.
+      # The view the block makes (Original::Slot#viewed), for +verb+. A handle on tiles, a bank or
+      # a run of a slot counts from its own first item, and a view counts bytes from the slot's
+      # first, so a view is made from the whole slot.
+      def view(verb, at, count, &)
+        unless whole?
+          raise ArgumentError, "`#{verb}` was called on some of slot :#{layout.name}. at: counts bytes from the start " \
+                               "of the slot. To fix this, call it on the slot itself: `pack[:#{layout.name}].#{verb}(...)`."
+        end
+
+        with(layout: layout.viewed(verb, at: at, count: count, &))
+      end
+
+      # `number`, `envelope` and `frame` count from the slot's first number, which a run does not
+      # start at: a handle that read from there would read other numbers than the run's.
+      def refuse_run_counted_from_slot_start!(verb)
+        return unless run_of_numbers?
+
+        raise ArgumentError, "`#{verb}` was called on some of the numbers of slot :#{layout.name}, made with " \
+                             "`numbers(first, count)`. `#{verb}` counts from the first number of the slot. To fix " \
+                             "this, call it on the slot itself: `pack[:#{layout.name}].#{verb}(...)`."
+      end
+
+      # A frame is written again by the pack's unpacking, which finds it by the slot the pack
+      # names (Original::FrameRewrite), so it is read from such a slot.
+      def refuse_frame_of_view!
+        return unless layout.view?
+
+        raise ArgumentError, "`frame` was called on a view of slot :#{layout.declared.name}. A frame is read from a " \
+                             "slot that the data pack names. To fix this, name the bytes of the frames as a slot of " \
+                             "numbers one byte wide in `data_pack`."
+      end
+
+      # A handle on +count+ of the +kind+ (:pixels, :samples or :numbers) of a slot of that kind,
+      # from number +first+: the one check they share.
       def bytes_run(kind, first, count)
         unless shape == kind && pixel_count.nil?
           raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `#{kind}` picks #{kind} of a slot of #{kind}. " \

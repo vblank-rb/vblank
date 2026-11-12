@@ -68,6 +68,9 @@ module VBlank
           # `first, second = build.var(:a, 0), build.var(:b, 0)`
           attr_accessor :unpacked_from_var
 
+          # `count, other = 0, 1`: a name whose first line is one side of that, given a number written out.
+          attr_accessor :unpacked_from_value
+
           def auto_variable?
             return false if parameter? || !starts_variable?
 
@@ -89,7 +92,7 @@ module VBlank
           # will do. In game code a worked-out start stays a working-out, which Ruby's arithmetic
           # carries down the lines and which costs no memory.
           def starts_variable?
-            return true if LocalNames.starts_from_value?(first_write.node)
+            return true if unpacked_from_value || LocalNames.starts_from_value?(first_write.node)
 
             WHOLE_WRITES.any? { |kind| first_write.node.is_a?(kind) } && !first_write.in_game_code
           end
@@ -167,6 +170,12 @@ module VBlank
           number?(write) || (write.is_a?(Prism::LocalVariableWriteNode) && made_of_constants?(write.value))
         end
 
+        # The same asked of a value alone, one right side of `count, other = 0, 1`.
+        def self.value_written_out?(value)
+          [Prism::IntegerNode, Prism::FloatNode, Prism::TrueNode, Prism::FalseNode, Prism::SymbolNode].include?(value.class) ||
+            made_of_constants?(value)
+        end
+
         def self.made_of_constants?(node)
           case node
           when Prism::ConstantReadNode, Prism::ConstantPathNode, Prism::IntegerNode, Prism::FloatNode then true
@@ -191,6 +200,10 @@ module VBlank
           @scopes_placed = {}.compare_by_identity
           @names_moved_in_game_code = {}
           @next_block_placed = false
+          # The `while` and `until` loops each write stands in, the nearest last. A block in a loop
+          # runs in it; a method or a lambda runs where it is called, so it starts with none.
+          @loops_around = {}.compare_by_identity
+          @open_loops = []
           read_names(block_node, [], false)
         end
 
@@ -225,11 +238,17 @@ module VBlank
         # itself (`at += 16`). Left plain, the game's loop would ask about the number it held when
         # the loop was recorded, and never end. A name written and then read further down the same
         # round only carries a working-out down the lines, as in any game code, and stays plain.
+        #
+        # The same holds for a test inside a loop: `if differing == 0 then start = at else at += 17 end`
+        # in a `while` whose test reads `at`. The loop around it may be Ruby's the first time round,
+        # its test asking about plain numbers, and the game's from the second, once this test has
+        # changed them. So the name is given its variable at whichever test the game makes first.
         def names_to_promote(node, sides)
           writes = sides.compact.flat_map { |side| plain_writes_in(side) }
           kept = writes.select do |write|
             local = @locals_by_node[write]
-            local.read_from?(node.location.end_offset) || (loop?(node) && read_next_round?(local, node, write))
+            local.read_from?(node.location.end_offset) ||
+              loops_asked_again_around(node, write).any? { |each_loop| read_next_round?(local, each_loop, write) }
           end
           kept.each { |write| @promoted_writes[write] = true }
           kept.map(&:name).uniq
@@ -254,6 +273,15 @@ module VBlank
         end
 
         def loop?(node) = LOOPS.any? { |kind| node.is_a?(kind) }
+
+        # The loops that ask +node+ again each time round and hold +write+: +node+ itself if it is
+        # one, and each loop around it.
+        def loops_asked_again_around(node, write)
+          around = @loops_around.fetch(write, []).select do |each_loop|
+            each_loop.location.start_offset <= node.location.start_offset && each_loop.location.end_offset >= node.location.end_offset
+          end
+          loop?(node) ? around | [node] : around
+        end
 
         # Is +local+ read in +loop+ at or before +write+, so the next round reads what it wrote?
         def read_next_round?(local, loop, write)
@@ -403,10 +431,13 @@ module VBlank
 
         def read_names(node, scopes, in_game_code)
           case node
-          when Prism::BlockNode, Prism::LambdaNode then read_block(node, scopes, in_game_code)
-          when Prism::DefNode then read_block(node, [], false)
+          when Prism::BlockNode then read_block(node, scopes, in_game_code)
+          when Prism::LambdaNode then inside_loops([]) { read_block(node, scopes, in_game_code) }
+          when Prism::DefNode then inside_loops([]) { read_block(node, [], false) }
           when Prism::CallNode then read_call(node, scopes, in_game_code)
-          when Prism::IfNode, Prism::UnlessNode, Prism::WhileNode, Prism::UntilNode
+          when Prism::WhileNode, Prism::UntilNode
+            inside_loops(@open_loops + [node]) { read_children(node, scopes, in_game_code || @iterating_in_game_code) }
+          when Prism::IfNode, Prism::UnlessNode
             read_children(node, scopes, in_game_code || @iterating_in_game_code)
           when Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode,
                Prism::LocalVariableOrWriteNode, Prism::LocalVariableAndWriteNode,
@@ -433,6 +464,14 @@ module VBlank
           end
         end
 
+        def inside_loops(loops)
+          outer = @open_loops
+          @open_loops = loops
+          yield
+        ensure
+          @open_loops = outer
+        end
+
         def name_given?(write) = write.is_a?(Prism::InstanceVariableWriteNode) && NAMES.any? { |kind| write.value.is_a?(kind) }
 
         def note_unpacked_variables(node)
@@ -440,7 +479,10 @@ module VBlank
 
           node.lefts.zip(node.value.elements).each do |target, value|
             local = @locals_by_node[target]
-            local.unpacked_from_var = true if local && value && LocalNames.makes_variable?(value)
+            next unless local && value
+
+            local.unpacked_from_var = true if LocalNames.makes_variable?(value)
+            local.unpacked_from_value = true if local.first_write_of?(target) && LocalNames.value_written_out?(value)
           end
         end
 
@@ -527,6 +569,7 @@ module VBlank
           local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes))
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
           @locals_by_node[node] = local
+          @loops_around[node] = @open_loops unless @open_loops.empty?
         end
       end
     end

@@ -82,6 +82,40 @@ module VBlank
       JOY_BAUD = 0x1F80_104E
       SPU_MAIN_VOLUME = 0x1F80_1D80
       SPU_CONTROL = 0x1F80_1DAA
+
+      # --- the sound chip (SPU), its registers 16 bits each from SPU (psx-spx, "Sound Processing Unit") ---
+      SPU = 0x1F80_1C00
+      # A voice's registers, 10h apart, from SPU + voice * 10h:
+      SPU_VOICE_BYTES = 0x10
+      SPU_VOLUME_LEFT = 0x0 # Bit 15 clear: a fixed volume, half the loudness in bits 0-14
+      SPU_VOLUME_RIGHT = 0x2
+      SPU_PITCH = 0x4 # How fast it reads its sound: 1000h is 44100 samples a second
+      SPU_START = 0x6 # Where its sound starts in sound memory, counted in 8-byte steps
+      SPU_ADSR_LOW = 0x8 # Its envelope: attack, decay and sustain level
+      SPU_ADSR_HIGH = 0xA # ...sustain and release
+      SPU_REPEAT = 0xE # Where its loop goes back to, in 8-byte steps; written, it holds until the next key on
+      # The chip's own, as distances from SPU:
+      SPU_KEY_ON = 0x188 # Voices 0-15 started, a bit each (voices 16-23 at 18Ah)
+      SPU_KEY_OFF = 0x18C # Voices 0-15 let go, a bit each (16-23 at 18Eh)
+      SPU_TRANSFER_ADDRESS = 0x1A6 # Where in sound memory the next written halfword goes, in 8-byte steps
+      SPU_TRANSFER_FIFO = 0x1A8 # Halfwords for sound memory, 32 at a time
+      SPU_CONTROL_AT = 0x1AA
+      SPU_RAM_CONTROL = 0x1AC # 0004h before sound memory is reached, as psx-spx says
+      SPU_STATUS = 0x1AE
+      # SPU_CONTROL's bits: the chip on, its sound let out, and how sound memory is reached.
+      SPU_ON = 0x8000
+      SPU_UNMUTED = 0x4000
+      SPU_MANUAL_WRITE = 0x0010
+      SPU_TRANSFER_MODE = 0x0030
+      SPU_RAM_CONTROL_NORMAL = 0x0004
+      # SPU_STATUS's bit: the chip still busy with a transfer.
+      SPU_TRANSFER_BUSY = 0x0400
+      # The loudest the main volume, a fixed volume of the same shape as a voice's.
+      SPU_MAIN_LOUDEST = 0x3FFF
+      # The first byte of sound memory a program's sounds may use: the first 1000h hold what the chip
+      # writes as it plays, the CD's sound and voices 1 and 3 (psx-spx, "SPU Memory layout").
+      SPU_FIRST_FREE = 0x1000
+      SPU_RAM_BYTES = 0x8_0000
       # The second of the three timers: its count, 16 bits that turn round, and how it counts. Told to
       # count the ends of lines (TIMER1_COUNTS_LINES, the clock source bits set to the horizontal
       # retrace) and never to stop or start again, it counts how many lines the screen has drawn, so two
@@ -113,6 +147,9 @@ module VBlank
       DPCR_GPU_ON = 1 << 11
       # CHCR: from RAM, a block each time the device asks (sync mode 1), and start (bit 24).
       DMA2_FROM_RAM_BY_BLOCKS = 0x0100_0201
+      # CHCR: from RAM, following a linked list of nodes (sync mode 2), and start. Each node is a header
+      # word, how many words follow in its top byte and where the next node is below, then those words.
+      DMA2_FROM_RAM_BY_LIST = 0x0100_0401
       DMA_BUSY = 1 << 24
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
@@ -127,6 +164,10 @@ module VBlank
       # for a command", also asks that the chip be idle, and Beetle PSX does not set it until the chip's
       # time has moved on, which a loop that only reads the port never lets it do.)
       GPUSTAT_READY_FOR_COMMAND = 1 << 28
+      # GPUSTAT bits 26 and 28 both set: the chip idle, ready for a command, and its queue empty, so
+      # everything it was sent is drawn. A wait for this is fine once nothing more is being sent (Beetle
+      # PSX measured: it came at the end of each pass's list of drawing commands).
+      GPUSTAT_DRAWN = (1 << 26) | GPUSTAT_READY_FOR_COMMAND
 
       # GP0 commands.
       GP0_CLEAR_CACHE = 0x01 << 24 # The texture cache emptied, so texels copied in since are read afresh
@@ -142,6 +183,9 @@ module VBlank
       # A copy from the processor into video RAM: then y << 16 | x, then height << 16 | width, then the
       # pixels two to a word, the left one in the low half.
       GP0_COPY_TO_VRAM = 0xA0 << 24
+      # A copy from one place in video RAM to another: then where from (y << 16 | x), where to, then
+      # height << 16 | width.
+      GP0_COPY_IN_VRAM = 0x80 << 24
       # The draw mode's texture page: its left edge in 64s of pixels (bits 0-3) and its top in 256s
       # (bit 4); bits 7-8 its depth, 0 for 4-bit and 1 for 8-bit numbers into a colour table (CLUT), and
       # TEXTURE_15_BIT for colours of 15 bits, one a pixel (Backends::PS1::TextureMemory);

@@ -155,6 +155,16 @@ module VBlank
         ordered + (declared - ordered)
       end
 
+      # A frame's sprites as +present+ (a `present_objects`) draws them, back to front: each a name, or, for
+      # a run the game orders as it runs (`draw_in_order`), the run, at the place of its first sprite
+      # (Reference#names_in_draw_order). Every cartridge lowering places its sprites in this order.
+      def items_in_draw_order(present)
+        Array(present.orders).reduce(present.names.dup) do |names, run|
+          first = names.index(run.objects.first)
+          names[0...first] + [run] + names[(first + run.objects.length)..]
+        end
+      end
+
       # --- how deep each thing sits ---
       #
       # A picture is built up in LEVELS, counted from the back. Everything on one level
@@ -311,14 +321,16 @@ module VBlank
       # a picture cannot fall into by accident, and it is where "it named no layer, so
       # leave it where it was" stops having an answer: once the levels are no longer
       # simply scenery-then-objects, a thing with no layer has no place among them.
-      def scenery_over_objects?(depths, scenery:, objects:)
-        return false if scenery.empty? || objects.empty?
+      def scenery_over_objects?(depths, scenery:, objects:) = !object_behind_scenery(depths, scenery: scenery, objects: objects).nil?
 
+      # The first of +objects+ the stack can put behind one of +scenery+, at its own level or in
+      # any other layer it can be put in, or nil for none.
+      def object_behind_scenery(depths, scenery:, objects:)
         # A status bar takes no depth (see #depths), so it puts nothing in front of anything.
         frontmost = scenery.reject(&:bar?).map { |node| depths.of_scenery(node) }.max
-        return false if frontmost.nil?
+        return if frontmost.nil?
 
-        objects.any? { |node| levels_of(depths, node).min < frontmost }
+        objects.find { |node| levels_of(depths, node).min < frontmost }
       end
     end
   end

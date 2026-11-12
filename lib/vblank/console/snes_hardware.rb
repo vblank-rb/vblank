@@ -53,7 +53,7 @@ module VBlank
       OAMADDH = 0x2103
       OAMDATA = 0x2104
       BGMODE = 0x2105 # Which of the eight background arrangements, and tile sizes
-      MOSAIC = 0x2106
+      MOSAIC = 0x2106 # Bits 4-7 a block's size less one; bits 0-3 which of BG1-BG4 are in blocks
       BG1SC = 0x2107 # Where each background's map is in video RAM, and how many screens it is
       BG2SC = 0x2108
       BG3SC = 0x2109

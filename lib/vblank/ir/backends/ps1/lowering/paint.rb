@@ -16,7 +16,7 @@ module VBlank
           module Paint
             STATEMENT_KINDS = %i[
               screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
-              draw_digit
+              draw_digit save_region restore_region
             ].freeze
 
             def emit_paint_statement(node)
@@ -32,9 +32,88 @@ module VBlank
               when :blit_pose then emit_blit_pose(node)
               when :draw_text then emit_draw_text(node)
               when :draw_digit then emit_draw_digit(node)
+              when :save_region then emit_save_region(node)
+              when :restore_region then emit_restore_region(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
+
+            # Reference#exec_save_region: the screen under a sprite, saved into its patch (Runtime::Paint's
+            # rt_paint_save).
+            def emit_save_region(node)
+              patch = patch_for(node.buffer)
+              runtime_call("rt_paint_save", [build_value_node(node.x), build_value_node(node.y), Build.int(patch.state),
+                                             Build.int(patch.corner), Build.int(patch.width), Build.int(patch.height)])
+            end
+
+            # Reference#exec_restore_region: the patch put back.
+            def emit_restore_region(node)
+              patch = patch_for(node.buffer)
+              runtime_call("rt_paint_restore", [build_value_node(node.x), build_value_node(node.y), Build.int(patch.state),
+                                                Build.int(patch.corner)])
+            end
+
+            # A PATCH: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
+            # (y << 16 | x), and its size.
+            Patch = Data.define(:state, :corner, :width, :height)
+
+            # A block of columns of video RAM kept for patches: its first column, how wide it is, and the first
+            # line still free in it.
+            PatchBlock = Data.define(:x, :width, :free_line)
+
+            # The patch the backing buffer +name+ declares, given its places the first time it is asked for:
+            # its state in RAM, and its rectangle in video RAM, in a block of columns kept for patches
+            # (TextureMemory#reserve_columns), under the one before it while the block has room down and is
+            # wide enough, and in a new block as wide as it otherwise.
+            def patch_for(name)
+              @patches ||= {}
+              @patches[name] ||= begin
+                node = @program.walk.find { |found| found.kind == :backing_buffer && found.name == name } or
+                  raise LoweringError, "the patch #{name.inspect} is used and never declared"
+                block = @patch_block
+                unless block && node.width <= block.width && block.free_line + node.height <= Console::PS1Hardware::VRAM_HEIGHT
+                  block = PatchBlock.new(x: texture_memory.reserve_columns(node.width), width: node.width, free_line: 0)
+                end
+                @patch_block = block.with(free_line: block.free_line + node.height)
+                state = @memory.reserve("the patch under #{name.inspect}", Runtime::Paint::PATCH_STATE_BYTES)
+                Patch.new(state: state, corner: (block.free_line << 16) | block.x, width: node.width, height: node.height)
+              end
+            end
+
+            # Whether +program+'s painted screen is drawn by number (PS1::PaintedNumbers): it is painted, and it
+            # fades or tints it.
+            def self.by_number?(program)
+              !Picture.tiled?(program) && program.walk.any? { |node| %i[fade tint].include?(node.kind) }
+            end
+
+            # A PAINTED SCREEN DRAWN BY NUMBER: its numbers' colour table, and two pages to show it from, right of
+            # the pages it is drawn in (Runtime::Paint::PAGE_X), each kept from power-on where the runtime reads it.
+            # A place's faces are drawn in colours the graphics chip works out as it draws, which have no number.
+            # A painted screen with sprites over it is shown from two pages of its own too (Runtime::Paint's
+            # rt_paint_sprites_shown), with no table.
+            def reserve_painted_numbers!
+              reserve_shown_pages! if Picture.over_picture?(@program)
+              return unless Paint.by_number?(@program)
+
+              if @program.walk.any? { |node| node.kind == :fill_face }
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen that shows a place")
+              end
+              if Picture.over_picture?(@program)
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen with sprites over it (`over_picture: true`)")
+              end
+              @painted_numbers = PaintedNumbers.new
+              @numbers_table = texture_memory.reserve_table(capacity: PaintedNumbers::TABLE_COLORS, entries: [])
+              reserve_shown_pages!
+              @starts << [runtime_place(Runtime::Paint::NUMBERS_TABLE), @numbers_table.field]
+            end
+
+            # The two pages a painted screen is shown from, right of the pages it is drawn in (Runtime::Paint::PAGE_X).
+            def reserve_shown_pages!
+              @starts << [runtime_place(Runtime::Paint::PAGE_X), texture_memory.reserve_columns(Console::PS1Hardware::SCREEN_WIDTH)]
+            end
+
+            # +color+ as the painted screen holds it: the colour, or on a screen drawn by number its number.
+            def painted_color(color) = @painted_numbers ? @painted_numbers.halfword_for(color) : color
 
             # The PS1::TextureMemory every texture the game draws is kept in.
             def texture_memory = (@texture_memory ||= TextureMemory.new)
@@ -46,6 +125,7 @@ module VBlank
             # of pictures a number picks from, what is copied into video RAM at power-on (every texture and
             # colour table), and their halfwords. Made last, once every texture has been asked for.
             def paint_sections
+              fill_numbers_table if @painted_numbers
               texture_memory.allocate!
               tables = R3000.new("paint tables", holds: TABLES_HOLDING)
               painted_art.pictures.each do |picture|
@@ -72,6 +152,15 @@ module VBlank
 
             private
 
+            # The numbers' colour table, once every colour the game draws has its number.
+            def fill_numbers_table
+              if @painted_numbers.too_many?
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen of more than " \
+                                      "#{PaintedNumbers::MOST_COLORS} colours")
+              end
+              @numbers_table.entries.replace(@painted_numbers.table_entries)
+            end
+
             def build_texel_section(label, words)
               asm = R3000.new(label, holds: TABLES_HOLDING)
               asm.label(label)
@@ -87,18 +176,21 @@ module VBlank
 
             def build_value_node(operand) = operand.is_a?(Integer) ? Build.int(operand) : operand
 
-            # The rectangle command in +color+, its 15 bits in the top of each of the command's bytes.
+            # The rectangle command in +color+ (#painted_color), its 15 bits in the top of each of the command's
+            # bytes.
             def rectangle_command(color)
-              Build.int(Console::PS1Hardware::GP0_RECTANGLE | Console::PS1Hardware.command_color(Graphics::Color.resolve(color)))
+              shown = painted_color(Graphics::Color.resolve(color))
+              Build.int(Console::PS1Hardware::GP0_RECTANGLE | Console::PS1Hardware.command_color(shown))
             end
 
-            # Reference#exec_screen: a painted screen of one page or two. Any other kind of screen is
-            # refused before anything is made (#refuse_unmade_parts!) in a game that paints, and shows
-            # nothing in one that does not.
+            # Reference#exec_screen: a painted screen of one page or two. In a game that shows a screen drawn
+            # from tiles too, either kind, which wipes the picture where the kind changes
+            # (Picture#emit_screen_kind); in one drawn from tiles alone, nothing.
             def emit_screen(node)
+              tear_free = node.buffered && CONSOLE.painted_pages == 2
+              return emit_screen_kind(node.mode == :tiled, pages: tear_free ? 2 : 1) if @crosses
               return unless node.mode == :bitmap
 
-              tear_free = node.buffered && CONSOLE.painted_pages == 2
               runtime_call("rt_paint_screen", [Build.int(tear_free ? 1 : 0)])
             end
 
@@ -170,7 +262,7 @@ module VBlank
                 image = @cache.image(picture_named(name))
                 drawn = {}
                 (image.width * image.height).times do |at|
-                  drawn[[at % image.width, at / image.width]] = image.color_at(at) if image.drawn_at?(at)
+                  drawn[[at % image.width, at / image.width]] = painted_color(image.color_at(at)) if image.drawn_at?(at)
                 end
                 drawn
               end)
@@ -181,7 +273,7 @@ module VBlank
               resolved = Graphics::Color.resolve(color)
               LabelAddress.new(painted_art.register_picture([:text, text, font, resolved]) do
                 drawn = {}
-                fonts.get(font).each_pixel(text) { |x, y| drawn[[x, y]] = resolved }
+                fonts.get(font).each_pixel(text) { |x, y| drawn[[x, y]] = painted_color(resolved) }
                 drawn
               end)
             end

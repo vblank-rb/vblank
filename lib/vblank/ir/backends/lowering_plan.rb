@@ -28,7 +28,8 @@ module VBlank
       #
       # Answered twice, the two copies drifted apart: one counted the routines a bend's steps call
       # and the other did not, one worked out a table read at a fixed index and the other read it
-      # as the game ran. Kept here, a fix lands on every console at once.
+      # as the game ran, and each refused a game's faults in its own order. Kept here, a fix lands on
+      # every console at once.
       class LoweringPlan
         # How a table keeps its entries, by the width the game declared and whether they are
         # signed: bytes an entry, and the range that holds. Any other table keeps whole words.
@@ -116,10 +117,10 @@ module VBlank
           end.uniq.each_with_index.to_h
           # A bend's steps run at every frame boundary, wherever it is declared, so a routine they
           # call is reached as a timer's handler's is.
-          bend_roots = program.walk.select { |node| node.kind == :scroll_rows }
-          @called = Reach.routines(program, also: @tick_handlers.values + bend_roots)
+          @bend_roots = program.walk.select { |node| node.kind == :scroll_rows }
+          @called = Reach.routines(program, also: @tick_handlers.values + @bend_roots)
           @reachable = Reach.statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@tick_handlers.values,
-                                             *bend_roots)
+                                             *@bend_roots)
           @declared_lists = @reachable.reverse.select { |node| node.kind == :list_new }.to_h { |node| [node.name, node] }
           @tables = program.walk.select { |node| node.kind == :table }.to_h { |node| [node.name, node] }
           @handover = SceneHandover.of(program)
@@ -189,6 +190,50 @@ module VBlank
           end
         end
 
+        # Which shape each `repeat` of the program can take (LoopForm).
+        def loop_form = @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) })
+
+        # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
+        # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
+        # own wait, or inside a routine it called that waits. A routine they call that can be waiting
+        # there runs again from its start while the call that waits is part way through, and the
+        # interpreter keeps each call's own numbers (a loop's count, the scene a `case` read) to itself
+        # (Reference#exec_repeat, #exec_case). A cartridge keeps them at fixed places, which the second
+        # call writes over: so it keeps them apart from the game's variables and puts them back after the
+        # boundary's routines have run.
+        def routines_reentered_at_frame_boundary
+          @routines_reentered_at_frame_boundary ||=
+            Reach.routines_called_from(@program, @tick_handlers.values + @bend_roots).select { |name| waits?(name) }
+        end
+
+        # WHETHER A LOWERING THAT WORKS THE BENDS OUT AT EACH WAIT MAKES THEM ONE ROUTINE, which every wait
+        # calls, rather than code in place at each wait: when a bend's steps call a routine that can be
+        # waiting at that boundary (#routines_reentered_at_frame_boundary). The numbers such a call puts
+        # back around the steps are known only once every routine is made, after the waits made in place.
+        # Any other game keeps its bends in place.
+        def bends_in_own_routine?
+          return @bends_in_own_routine unless @bends_in_own_routine.nil?
+
+          called = Reach.routines_called_from(@program, @bend_roots)
+          @bends_in_own_routine = called.intersect?(routines_reentered_at_frame_boundary)
+        end
+
+        # The statements a frame boundary can come inside: a wait, and a game loop, whose every pass ends in
+        # one. The interpreter ends a frame only in #exec_wait_vblank.
+        FRAME_ENDING_KINDS = %i[wait_vblank loop].freeze
+
+        # Whether the routine +name+ can reach a frame boundary of the game's own: a wait, or a game loop,
+        # in it or in a routine it calls. A routine is taken as not waiting while its own calls are asked
+        # about, so one that calls itself (refused elsewhere, #refuse_routines_that_call_themselves!) ends.
+        def waits?(name)
+          (@waits ||= {}).fetch(name) do
+            @waits[name] = false
+            statements = Reach.statements_under(@funcs.fetch(name))
+            @waits[name] = statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
+                           Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+          end
+        end
+
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
 
@@ -197,6 +242,45 @@ module VBlank
         # before its wait; on another, as written.
         def console_loop(node)
           (@console_loops ||= {})[node.object_id] ||= Frames.console_order_of(node, @console)
+        end
+
+        # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in one
+        # (IR::Frames::ConsoleLoop#placed)? A background put up in that pass stays at its corner through it.
+        def placed_at_pass_end?(node)
+          @placed_at_pass_end ||= game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
+                                            .to_set(&:object_id)
+          @placed_at_pass_end.include?(node.object_id)
+        end
+
+        # Does a write of one of +kinds+ (a scroll, a status bar's top) go at the end of a pass? Then a lowering
+        # notes each background put up in a pass, so that write leaves it at its corner for the pass's frame
+        # (Reference#put_up_background).
+        def places_at_pass_end?(*kinds) = @program.walk.any? { |node| kinds.include?(node.kind) && placed_at_pass_end?(node) }
+
+        # THE REFUSALS EVERY CARTRIDGE LOWERING MAKES, IN ONE ORDER, before it makes anything; a
+        # console's own refusals come after these. Written in each lowering they drifted, and one game
+        # with two faults was refused for a different one by each console. The order:
+        #
+        # 1. a file handed to the game as it starts, which no cartridge is (refuse_start_file_on_cartridge!);
+        # 2. a step only the Advance has (#refuse_hardware_only_kinds!);
+        # 3. what this lowering does not make yet (#refuse_kinds_not_made_yet!, and a background that
+        #    follows several lists of colours where +makes_followed_lists+ is false): a refusal a test
+        #    run skips on, so it comes before the faults below, which fail (a console's own parts not
+        #    made yet are refused after all of these, by its lowering);
+        # 4. what the console cannot do at all (#refuse_what_console_lacks!), the words the game's own
+        #    build has already refused it in, since the build's checks run before any lowering;
+        # 5. a routine that calls itself (#refuse_routines_that_call_themselves!), which the game can
+        #    change and still be for this console.
+        #
+        # +not_lowered_yet+ is the lowering's table of kinds by part, and +not_made_yet+ its error for
+        # one (an error that includes Backends::NotMadeYet).
+        def refuse_unbuildable!(not_lowered_yet:, not_made_yet:, makes_followed_lists: true)
+          Backends.refuse_start_file_on_cartridge!(@program, @console, @error)
+          refuse_hardware_only_kinds!
+          refuse_kinds_not_made_yet!(not_lowered_yet, not_made_yet)
+          refuse_unmade_followed_lists!(not_made_yet) unless makes_followed_lists
+          refuse_what_console_lacks!
+          refuse_routines_that_call_themselves!
         end
 
         # A step a run can reach that only means something on the Advance, refused by name. A step in
@@ -226,8 +310,25 @@ module VBlank
           )
         end
 
-        # What the console cannot do at all, and the layers one screen cannot have, refused in the
-        # words a game's build refuses them in (Console::Answers#refusals, Checks::LayerRefusals). A
+        # A BACKGROUND THAT FOLLOWS SEVERAL LISTS OF COLOURS THE GAME CHANGES (Nodes::Background
+        # #follows_each) keeps no sets and no write of its own: each list's write changes the tiles
+        # drawn from it. How that is done is each console's own (a Genesis draws those tiles from
+        # the list's own palette), so a lowering that does not make it yet refuses it here, with
+        # +not_made_yet+, before it draws the background in its declared colours for good.
+        def refuse_unmade_followed_lists!(not_made_yet)
+          background = @program.walk.find { |node| node.kind == :background && node.follows_several? } or return
+
+          raise not_made_yet.new(
+            "The background #{background.name.inspect} draws with #{background.lists_followed.length} lists of colors that " \
+            "the game changes with `recolor`. The #{@console.title} build does not make that yet. To fix this, tell the " \
+            "background to draw with one of those lists only.", part: "a background that follows several lists of colours"
+          )
+        end
+
+        # What the console cannot do at all, the layers one screen cannot have, and a sprite of
+        # several lists of colours its build does not make, refused in the
+        # words a game's build refuses them in (Console::Answers#refusals, Checks::LayerRefusals,
+        # Checks::PosesWithDifferentColors). A
         # program handed straight to a lowering, as a test's is, never passes the build's checks;
         # and one that names no console, or another, is asked about as this one's. It reads every
         # step of the program, and a build's tries share one plan (BuildCache), so a program found
@@ -237,7 +338,8 @@ module VBlank
 
           refused = Console.for(@console.name).answers.refusals(@program.walk.to_a, @console).first
           asked = @program.console == @console.name ? @program : @program.copy.tap { |copy| copy.console = @console.name }
-          refusal = refused&.words || Guardrails::Checks::LayerRefusals.message(asked)
+          refusal = refused&.words || Guardrails::Checks::LayerRefusals.message(asked) ||
+                    Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(asked)
           raise @error, refusal if refusal
 
           @console_lacks_nothing = true

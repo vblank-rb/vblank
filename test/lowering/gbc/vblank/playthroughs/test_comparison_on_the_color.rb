@@ -3,6 +3,7 @@
 require "test_helper"
 require "stringio"
 require "tmpdir"
+require "slow_pass_games"
 
 # TWO GAME BOY COLOR CARTRIDGES COMPARED on their own screen, 160 by 144 pixels: a part of the screen
 # is left out by the Color's own corners, and one off it is refused naming the Color's size. The
@@ -10,6 +11,7 @@ require "tmpdir"
 # while RIGHT is down, from column +from+.
 class TestComparisonOnTheColor < Minitest::Test
   include VBlank::Testing::PlaysAlike
+  include SlowPassGames
 
   private def walker(from)
     VBlank.build("WALKER", console: :gbc, out: StringIO.new, err: StringIO.new) do
@@ -49,6 +51,23 @@ class TestComparisonOnTheColor < Minitest::Test
 
     assert_includes drift.video_differences.map(&:memory), :sprite_table
     refute_includes drift.video_differences.map(&:memory), :colors
+  end
+
+  # Lined up by passes, a pass that finishes on its second frame is compared at its end
+  # (SlowPassGames).
+  def test_a_slow_pass_is_compared_at_its_end
+    assert_slow_pass_compared_at_its_end(:gbc)
+    assert_difference_found_at_pass_end(:gbc)
+  end
+
+  # After lead-ins the comparison starts on the first cartridge's pass (SlowPassGames).
+  def test_lead_ins_start_the_comparison_on_the_first_s_pass
+    assert_second_ahead_refused(:gbc)
+    assert_second_behind_catches_up(:gbc)
+  end
+
+  def test_a_press_while_the_second_catches_up_reaches_it
+    assert_catch_up_press_reaches_second(:gbc)
   end
 
   def test_a_rectangle_off_the_color_s_screen_is_refused_naming_its_size

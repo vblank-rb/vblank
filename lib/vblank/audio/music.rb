@@ -209,15 +209,25 @@ module VBlank
       # +slide+ is how each note of the song's first square part slides its pitch by itself (a
       # PitchSlide), unless the note sets its own; nil slides nothing. +vibrato+ is how each note
       # of a square or wave part wobbles its pitch (a Vibrato), unless the note sets its own. +pan+
-      # is the speaker each note plays from (a Pan), unless the note sets its own; nil is both.
+      # is where each note sits between the speakers (a Pan), unless the note sets its own; nil is
+      # both.
       # +duties+ is a square part's shapes when it gave a list of them to step through (a Duty, whose
       # first is +duty+), and nil when it gave one.
       #
       # AN EVENT CAN SET ITS OWN in a sixth place, after the envelope, its own slide in a seventh,
       # its own wobble in an eighth, its own side in a ninth and its own shape in a tenth: [frame,
       # frequency, instrument, volume, envelope, fade, slide, vibrato, pan, duty].
+      #
+      # +chip_envelope+ is the part's +envelope+ as one console's sound chip keeps it (an
+      # Audio::SNESEnvelope), for a part that was given those bytes: +envelope+ is then the
+      # nearest shape, which every backend plays but the one whose chip takes the bytes
+      # themselves (IR::Tunes.said_chip_envelope). A note's own is in its event's last place.
+      #
+      # +from_file+ is where the part's notes are in the file the program is handed as it starts
+      # (an IR::StartFile::Notes), for a part that reads them from there: +events+ is then empty
+      # until the file is read. Nil for every other part.
       Part = Data.define(:events, :duty, :volume, :instrument, :wave, :noise, :decay, :metallic,
-                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties)
+                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope, :from_file)
 
       class Part
         # WHAT A PART CARRIES WHEN IT SETS NOTHING — every optional field's answer, in one place,
@@ -226,13 +236,14 @@ module VBlank
         # here: a part with no notes in it is a part nobody wrote.
         DEFAULTS = { duty: :half, volume: 12, instrument: nil, wave: nil,
                      noise: false, decay: :fast, metallic: false, name: nil, envelope: nil,
-                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil }.freeze
+                     fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil, chip_envelope: nil,
+                     from_file: nil }.freeze
 
         # WHAT A PART'S VOICE CANNOT DO IS REFUSED HERE, where both ways a song reaches the IR meet:
         # a fade on a voice that cannot count one (NoteFade.refuse_without_counting!), a slide off
         # the square voices (PitchSlide.refuse_off_square!), a wobble on a voice with no pitch to
-        # move (Vibrato.refuse_without_pitch!), a side on a recording (Pan.refuse_recorded!), a shape
-        # off the square voices (Duty.refuse_off_square!), and a note that both slides and wobbles.
+        # move (Vibrato.refuse_without_pitch!), a shape off the square voices
+        # (Duty.refuse_off_square!), and a note that both slides and wobbles.
         # +who+ names
         # the part, as the start of a sentence — a Score gives its own, which is its place.
         #
@@ -256,6 +267,9 @@ module VBlank
         NOISE_CLOCK_SLOT = 10
         # ...and true on a recorded note that carries on the one sounding (Score::Note#glides).
         GLIDE_SLOT = 11
+        # ...and a recorded note's own envelope as a sound chip keeps it (an Audio::SNESEnvelope),
+        # beside the nearest shape in the envelope's place.
+        CHIP_ENVELOPE_SLOT = 12
 
         # Does this part, or a note of it, set a slide?
         def slides? = Music.slides_said?(slide, events)
@@ -270,7 +284,6 @@ module VBlank
             PitchSlide.refuse_off_square!(who, wave: wave, noise: noise)
           end
           Vibrato.refuse_without_pitch!(who, noise: noise) if (noise || instrument) && wobbles?
-          Pan.refuse_recorded!(who) if instrument && (pan || events.any? { |event| event[PAN_SLOT] })
           square = Music.plays_square?(wave: wave, instrument: instrument, noise: noise)
           Duty.refuse_off_square!(who, by_part: true) if !square && duties
           Duty.refuse_off_square!(who, by_part: false) if !square && events.any? { |event| event[DUTY_SLOT] }
@@ -376,8 +389,9 @@ module VBlank
           @pitch_offset = steps
         end
 
-        # WHICH SPEAKER EACH NOTE PLAYS FROM — :left, :right, or :center for both, which is what a
-        # part that sets nothing does. The square parts, the wave part and the drums can.
+        # WHERE EACH NOTE SITS BETWEEN THE SPEAKERS — :left, :right, or :center for both, which is
+        # what a part that sets nothing does, or a shade from -1.0 (the left alone) to 1.0 (the right
+        # alone). Any part can; what each voice does with a shade is told at Audio::Pan.
         def pan(side)
           @pan = Pan.said(side, where: "The part #{part_label.inspect}")
         end

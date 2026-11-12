@@ -54,10 +54,14 @@ test file and the folder that keeps its last output and, on macOS, a sample of t
 
 A Ractor cannot start the child processes a native test needs, so
 `lib/vblank/testing/processes.rb` starts `TEST_PROCESSES` processes (as many as the GBA run has
-workers unless told) and hands them one test at a time, so one slow file never decides how long
-a run takes. Each sends its results back and the run prints one report — the same totals,
-failures and skips by reason a single process would. A process that dies under a test costs that
-test, reported as an error saying how it died, and a new one takes its place. Not threads: a
+workers unless told) and hands them one test class at a time, the next to whichever process
+asks first. So what a class sets up once for its tests (a long recording in `@@runs ||= ...`) is
+made once in the run, and a slow class holds up one process only. Once no class is waiting, a
+process that asks takes the back half of the class with the most tests left in another, so a big
+class at the end of a run is still spread over processes that would sit idle. Each sends its results back and the run prints one report —
+the same totals, failures and skips by reason a single process would. A process that dies under
+a test costs that test, reported as an error saying how it died, and a new one takes its place
+and the rest of that class. Not threads: a
 native test is nearly all Ruby work, and threads take turns at that. The native run never checks
 for shared state; the GBA run plays the same file and does.
 

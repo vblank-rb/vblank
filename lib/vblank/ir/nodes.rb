@@ -90,10 +90,39 @@ module VBlank
         # counts them, and its colours are what the list holds: a target whose backgrounds and
         # sprites read one table of colours can draw it from the list's own place in that table.
         # Absent on every other background.
+        #
+        # +follows_each+, on a background drawn with SEVERAL lists the game changes, names for each
+        # of +palettes+, at the same place, the ColorList its tiles show the colours of, nil where
+        # they stay as drawn. Such a background has no +recolors+ and no number of its own: a tile
+        # drawn from a followed list shows what that list holds now, each list counted by its own
+        # number, and changes when the list is told what to hold (ColorListHolds), as a sprite
+        # drawn with it does. Sets of every pair of lists would multiply with each list added, so
+        # none are kept. Absent on every other background.
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, boxed: :name, follows: :name
+                 above_row: :int, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+
+        # Whether it follows several lists the game changes (see +follows_each+).
+        def follows_several? = !follows_each.nil? && !follows_each.empty?
+
+        # The lists it follows where it follows several, each once.
+        def lists_followed = follows_several? ? follows_each.compact : []
+
+        # The list a tile drawn from +drawn+ (its name and colours) follows, where the background
+        # follows several, or nil for a tile that stays as drawn.
+        def list_followed_by(drawn)
+          return nil unless follows_several?
+
+          at = drawn_lists.index(recolored_list_of(drawn))
+          at && follows_each[at]
+        end
+
+        # +from_file+ is where in the file the program is handed as it starts (StartFile) this
+        # background's map, tiles and colours are (a StartFile::Background), or absent for one the
+        # program holds. Its +tiles+ are then a tile for each bank of colours, its +map+ names the
+        # first in every cell, and each of its +palettes+ holds a marker for each colour of a bank
+        # (StartFile, "MARKERS"): the size and the lists' names are true, and nothing else of them is.
 
         # Each of +palettes+ as a tile drawn from it gives which list it was drawn from
         # (Bitmap#list_drawn_from): its name and its colours.
@@ -114,8 +143,18 @@ module VBlank
 
         # Each list a tile can be drawn from to the list it is drawn with at step +step+ of
         # +recolors+, a tile given the colours themselves included (#recolored_list_of).
-        def list_swaps(step)
-          swaps = drawn_lists.zip(recolors.fetch(step)).to_h
+        def list_swaps(step) = swaps_drawing_with(recolors.fetch(step))
+
+        # The same for a background that follows several lists (+follows_each+): each list a tile
+        # can be drawn from to what the list it follows holds now, +held+ giving that by the
+        # followed list's name, and to its own colours where it follows none.
+        def followed_list_swaps(held)
+          swaps_drawing_with(follows_each.each_with_index.map { |list, at| list ? held.fetch(list) : palettes.fetch(at) })
+        end
+
+        # Each list a tile can be drawn from to the one of +lists+ at its place in #drawn_lists.
+        def swaps_drawing_with(lists)
+          swaps = drawn_lists.zip(lists).to_h
           drawn_lists.each { |_, colors| swaps[[nil, colors]] ||= swaps[recolored_list_of([nil, colors])] }
           swaps
         end
@@ -356,12 +395,22 @@ module VBlank
       # place the same point of the picture keeps landing on. The middle of the screen
       # unless the program sets another. They are settled while the program is written
       # rather than worked out as it runs, so they are plain numbers on the statement.
+      #
+      # +map_x+/+map_y+ are the point of the background's own map, in its pixels from its top
+      # left, that sits at that point of the screen at every size and angle. They are the same
+      # two numbers as +around_x+/+around_y+ unless the program names a point of the map: the
+      # map then hangs from the screen's corner, and upright at its drawn size it lies as a
+      # background that does not turn lies.
       class AffineBackground
         include Node
         kind :affine_background
         category :draw
         operands name: :name, angle: :value, scale: :value,
-                 around_x: :int, around_y: :int
+                 around_x: :int, around_y: :int, map_x: :int, map_y: :int
+
+        # How far the map is moved from the screen's corner, in pixels each way: nothing, unless
+        # the program named the point of the map at the pivot.
+        def map_shift = [map_x - around_x, map_y - around_y]
       end
 
       # One cell of a declared background becomes a different tile, while the game runs —
@@ -372,11 +421,29 @@ module VBlank
       # what the program means: a console showing every pass whole shows the cell the same.
       # +held+ keeps the change for the next ShowHeldTiles instead, for a background declared
       # `held: true`: its cell shows on the frame every other change of the pass shows on.
+      #
+      # A TILE PICKED AS THE PROGRAM RUNS is +picked_by+, a number it works out, and +picks+, the
+      # tiles that number can stand for: entry 0 is the tile for the number +picks_from+, entry 1
+      # for the one after, and so on, each one of the background's own tiles as +tile+ is. A
+      # number before the first entry or past the last, or one whose entry is nil, stands for no
+      # tile, and the cell is left alone. Such a node has no +tile+. This is how a game writes
+      # text from numbers it reads: which tiles there are is settled while the program is
+      # written, so a backend can keep the list as a table and index it.
+      #
+      # Must be a number a backend can read more than once: a backend with no table of its own
+      # tests +picked_by+ against each entry (PickedTile.tests), so the builder hands it a variable.
       class SetTile
         include Node
         kind :set_tile
         category :draw
-        operands name: :name, col: :value, row: :value, tile: :int, now: :flag, held: :flag
+        operands name: :name, col: :value, row: :value, tile: :int, now: :flag, held: :flag,
+                 picked_by: :maybe_value, picks_from: :int, picks: :list
+
+        # Whether the tile is picked as the program runs (+picked_by+), not written in it (+tile+).
+        def picked? = !picked_by.nil?
+
+        # Every tile this step can put in its cell. A tile of nil is the empty cell.
+        def tiles_named = picked? ? picks.compact.uniq : [tile]
       end
 
       class BackingBuffer
@@ -435,15 +502,20 @@ module VBlank
         declaration!
         category :data
         operands name: :name, width: :int, height: :int, pixels: :text, transparent: :int,
-                 colors: :list, places: :text, colors_name: :name, pieces: :list,
+                 colors: :list, places: :text, colors_name: :name, pieces: :list, piece_groups: :list,
                  shading: :name, shading_places: :text, from_file: :file_picture, places_from_pack: :flag
+
+        # +piece_groups+ is, for a picture of pieces made from bigger pieces, how many of +pieces+
+        # each bigger piece was cut into, in their order (Assets::Image#piece_groups). Absent on
+        # every other picture.
 
         # +places_from_pack+ is true for a picture whose places are a data pack slot's tiles, kept as the
         # original keeps them (Assets::Image#places_from_pack).
         #
         # +from_file+ is where in the file the program is handed as it starts (StartFile) this
-        # picture's colours and places are, for a picture read from there; it holds zeros until
-        # then. Absent on every other picture.
+        # picture's colours and places are (a StartFile::Picture), or the frame of the original's
+        # that is its pieces (a StartFile::Pose), for a picture read from there; it holds zeros
+        # until then. Absent on every other picture.
 
         # The list of colours it was drawn from, as a background's recolouring keeps them apart
         # (Assets::Image#list_drawn_from).
@@ -818,7 +890,11 @@ module VBlank
         kind :shading
         declaration!
         category :data
-        operands name: :name, colors: :list, levels: :list
+        operands name: :name, colors: :list, levels: :list, from_file: :file_shading
+
+        # +from_file+ is where its colours and levels are in the file the program is handed as it
+        # starts (StartFile::Shading), for a shading read from there; its +colors+ and +levels+ are
+        # then zeros of their number. Absent on every other shading.
 
         # The level a light (0 to FillFace::LIGHTEST) times the levels has reached: its whole part.
         def self.level_of(shade) = shade >> 16
@@ -1193,12 +1269,31 @@ module VBlank
         # +follows+ names a ColorList it is drawn with for good, from power-on, its pictures drawn
         # in that list's own colours: its own colours are then the list's, and a target whose sprites
         # and backgrounds share one table of colours needs no place in it for them. Absent otherwise.
+        #
+        # +follows_each+, on a thing whose poses are drawn from several lists, names the ColorLists
+        # among them that it follows for good, from power-on: a pose drawn from one of those is shown
+        # in what that list holds now, and a pose drawn from any other list in the colours it was
+        # drawn in. Such a thing has no +recolors+: which colours it shows is settled by the pose
+        # showing and what each list holds, with no number of its own. Absent otherwise.
+        #
+        # +follows_unchanging+ names the lists such a thing was told to follow that the program never
+        # changes. A pose drawn from one shows the colours it was drawn in, as any pose not followed
+        # does, so it changes nothing that is shown. A target whose palettes keep a list's colours in
+        # the list's order cuts the pose in that order, so it shares the list's palette with anything
+        # else drawn from the list. Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
-                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name
+                 layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list,
+                 follows_unchanging: :list
+
+        # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
+        # or nil for a pose that is shown as it was drawn.
+        def list_followed_by_pose(colors_name)
+          colors_name if colors_name && follows_each&.include?(colors_name)
+        end
       end
 
       class OnTimer
@@ -1227,7 +1322,7 @@ module VBlank
         include Node
         kind :pixelate
         category :draw
-        operands size: :value, under: :name
+        operands size: :value, under: :name, keeps_sprites: :flag, bar_in_blocks: :flag
       end
 
       class PixelsOverlap
@@ -1305,6 +1400,13 @@ module VBlank
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
       #
+      # +for_unpacking+ is true for a port's unpacking routine (Builder::DataPacks#unpacking_program):
+      # a program that fills a data pack from the player's copy of the original and only ever runs
+      # on a computer, in a shell or as a build makes its pack. It is not the same as +for_computer+:
+      # a game built for a computer is still checked against its console's limits, since the same
+      # game is that console's cartridge too, while no build checks an unpacking against them
+      # (Testing::BuildChecks reads this). Absent for every game; no backend reads it to run one.
+      #
       # +border+ is the picture the game gave for the border round its screen, two bytes a pixel as
       # a picture keeps them, and +border_size+ its [width, height] (Builder::Images#border). Both
       # are nil where the game gave none, or where the console shows the game's screen whole and no
@@ -1330,11 +1432,19 @@ module VBlank
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
-                 for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 start_file: :start_file
+                 for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
+                 start_file: :start_file, mix_rate: :int, computer_controls: :list
 
+        # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
+        # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
+        # game that adds none. A console's cartridge never reads it.
+        #
         # +start_file+ is the file the program is handed as it starts, which some of its tables and
         # pictures are read from (a StartFile), or absent for a program that reads none.
+        #
+        # +mix_rate+ is the rate the game asked its recordings to be mixed at, in samples a second
+        # (`enable_sound mix_rate: 13379`), or absent where the mix runs at the rate most of its
+        # recordings were made at (IR::Mixing.requested_rate).
 
         # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last
@@ -1487,7 +1597,22 @@ module VBlank
         declaration!
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
-                 envelope: :shape, holds_from: :int, from_file: :int
+                 envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape,
+                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording
+
+        # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in
+        # the file the program is handed as it starts (a StartFile::RecordingSettings), for those
+        # it reads from there: +rate+, +holds_from+ and +envelope+ are then stand-ins. Nil otherwise.
+
+        # +chip_envelope+ is the same shape as one console's sound chip keeps it, for a recording
+        # whose settings came from a game for that console. A backend for that console may hand it
+        # to the chip; +envelope+ is then the nearest shape every other backend plays, and the one
+        # that says how long a note holds its voice on all of them.
+
+        # +chip_recording+ is the recording as one console's sound chip keeps it, packed its own way,
+        # for a recording that came from a game for that console. A backend for that console may
+        # hand those bytes to the chip as they are; +bytes+ and +holds_from+ are then what the chip
+        # decodes from them, which every other backend plays.
       end
 
       class SaveInit
@@ -1615,11 +1740,18 @@ module VBlank
         # rather than at the next break (see IR::LatePages); nil, the default, always waits.
         # +late_pace+: how many breaks a pass may take and be on time; nil is one.
         # +backdrop+: the colour shown wherever nothing is drawn, as a 15-bit colour; nil is black.
+        # +backdrop_from_file+: where that colour is in the file the program is handed as it starts
+        # (a StartFile::Color), for a program that holds none of it; absent on every other screen. A
+        # screen has one of the two or neither, never both.
         # +pixel_size+: on the game's first screen, how many of the console's pixels across and down
         # one of the game's is shown as; nil is one. The program carries it for the whole game
         # (Program#pixel_size); here it is the line that asked, for a console that cannot.
         operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int,
-                 pixel_size: :int
+                 pixel_size: :int, backdrop_from_file: :file_color
+
+        # The backdrop this screen names in either form: its colour, where in the start file its
+        # colour is (a StartFile::Color), or nil for a screen that names none.
+        def backdrop_or_place_in_file = backdrop_from_file || backdrop
       end
 
       class ScrollBackground
@@ -1648,11 +1780,16 @@ module VBlank
       # variable is set to each row of the screen in turn, and +left+ and +right+ give where
       # that row's span starts and ends (the end not included), both worked out from it.
       # +amount+ is how dark the rest of the row goes, 0 (as drawn) to 100 (black).
+      #
+      # A light that +shuts_out+ darkens nothing: the rest of each row is not drawn at all, so the
+      # colour the screen shows wherever nothing is drawn shows there, with whatever fade or tint
+      # walks the colours. Its +amount+ is then only on or off: nothing while it rounds to no
+      # darkness (Backends::FadeSteps.sixteenths), the whole of it otherwise.
       class ShadeOutside
         include Node
         kind :shade_outside
         category :draw
-        operands row: :name, left: :value, right: :value, amount: :value
+        operands row: :name, left: :value, right: :value, amount: :value, shuts_out: :flag
       end
 
       # The light worked out again where this is reached, so the picture of this pass shows it
@@ -1684,7 +1821,13 @@ module VBlank
         declaration!
         category :sound
         operands name: :name, voices: :score, total_frames: :int, loop_frame: :int, priority: :int,
-                 group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag
+                 group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag,
+                 length_from_file: :file_song_length
+
+        # +length_from_file+ is where the song's length and the tick it comes round to are in the
+        # file the program is handed as it starts (a StartFile::SongLength), or absent for a song
+        # whose length the program holds. Until the file is read +total_frames+ is the most the
+        # song can last.
       end
 
       # A named list of songs that each play ONCE, over the tune playing now, when the program
@@ -1771,23 +1914,33 @@ module VBlank
         declaration!
         category :data
         operands name: :name, values: :list, width: :option, signed: :flag, from_file: :int, entries_in_file: :int,
-                 file_number_format: :number_format
+                 file_number_format: :number_format, painted_from_file: :file_painted_tiles
 
         # +from_file+ is where its first entry is in the file the program is handed as it starts
         # (StartFile), for a table read from there, and +entries_in_file+ how many it has: its
         # +values+ are empty, since a program is written with none of them. Both are absent on
         # every other table. +file_number_format+ is the Console::NumberFormat the entries are
         # kept in in the file, and absent on every other table.
+        #
+        # +painted_from_file+ is a table of bytes read from the file as painted tiles
+        # (StartFile::PaintedTiles), which the program holds as zeros of their number until then.
 
         # How many entries the table has, wherever they are.
         def entry_count = from_file ? entries_in_file : values.length
+
+        # Whether its entries are read from the file the program is handed as it starts.
+        def read_from_file? = !(from_file.nil? && painted_from_file.nil?)
       end
 
+      # An entry of table +name+. An index outside the table is held to it: wrapped for a table
+      # whose length is a power of two, held to its ends for any other. +in_range+ is set by a
+      # builder whose own sums keep the index inside the table (IR::PlaceDrawing's faces table), so
+      # a lowering may read the entry without holding the index; the answer is the same.
       class TableGet
         include Node
         kind :table_get
         category :value
-        operands name: :name, index: :value
+        operands name: :name, index: :value, in_range: :flag
       end
 
       class TimerStart

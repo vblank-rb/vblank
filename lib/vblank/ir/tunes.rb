@@ -87,13 +87,18 @@ module VBlank
 
       # Every sounding a song asks for. A note's own instrument and envelope win over the part's,
       # and the part's own pairing is here too, for a part whose notes all set nothing.
+      #
+      # A part that reads its notes from the file the program is handed as it starts
+      # (StartFile::Notes) has no events yet: any of the instruments it names may sound, each
+      # shaped as the part is.
       def soundings(song)
         song.voices.flat_map do |part|
           next [] unless part.instrument
 
+          from_file = (part.from_file&.instruments || []).map { |name| Sounding.new(name: name, envelope: part.envelope) }
           part.events.map do |event|
             Sounding.new(name: event[2] || part.instrument, envelope: event[4] || part.envelope)
-          end.push(Sounding.new(name: part.instrument, envelope: part.envelope))
+          end.push(Sounding.new(name: part.instrument, envelope: part.envelope), *from_file)
         end.uniq
       end
 
@@ -138,9 +143,13 @@ module VBlank
       # HOW A NOTE WOBBLES ITS PITCH (an Audio::Vibrato), as the note or its part set it, or nil.
       def said_vibrato(part, event) = event[Audio::Music::Part::VIBRATO_SLOT] || part.vibrato
 
-      # THE SPEAKER A NOTE PLAYS FROM, as the note or its part set it: :left or :right, or nil for
-      # both (Audio::Pan.side_of) — which a note that names :center plays from, in a part that pans.
-      def note_side(part, event) = Audio::Pan.side_of(event[Audio::Music::Part::PAN_SLOT] || part.pan)
+      # WHERE A NOTE SITS BETWEEN THE SPEAKERS (an Audio::Pan), as the note or its part set it, or
+      # nil for both whole — which a note that names :center is, in a part that pans.
+      def note_pan(part, event) = event[Audio::Music::Part::PAN_SLOT] || part.pan
+
+      # THE SPEAKER A NOTE PLAYS FROM on a voice that only switches between them: :left or :right,
+      # or nil for both (Audio::Pan.side_of), a shade taken to the nearest of the three.
+      def note_side(part, event) = Audio::Pan.side_of(note_pan(part, event))
 
       # A SQUARE NOTE'S SHAPE, or the shapes it steps through (an Audio::Duty), as the note or its
       # part named a Duty, or nil when neither did — a part that names one shape plays it, as it
@@ -150,6 +159,17 @@ module VBlank
       # A DRUM'S OWN NOISE SETTING, [divider, halvings], when its note set one, or nil. Only a
       # console told the setting itself reads it: the rate it makes is the note's pitch already.
       def said_noise_clock(event) = event[Audio::Music::Part::NOISE_CLOCK_SLOT]
+
+      # A RECORDED NOTE'S ENVELOPE AS A SOUND CHIP KEEPS IT (an Audio::SNESEnvelope), where the
+      # note or its part was given one, or nil. It goes with the envelope that shapes the note: a
+      # note that set its own envelope has its own bytes or none, whatever its part was given,
+      # and a note that set none has its part's. Nil for a note and a part that set no envelope
+      # at all, which is shaped as the recording was declared; the backend holding the
+      # declarations knows that one. Only a console whose chip takes the bytes reads this: the
+      # nearest ordinary shape is in the envelope's own place already.
+      def said_chip_envelope(part, event)
+        event[4] ? event[Audio::Music::Part::CHIP_ENVELOPE_SLOT] : part.chip_envelope
+      end
 
       # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
@@ -275,6 +295,16 @@ module VBlank
 
       # How many of a song's parts play a recording rather than one of the console's own voices.
       def recorded_parts(song) = parts_on(song, :recorded)
+
+      # Whether +program+ has a song or sound effect with a recorded note off the middle of the
+      # speakers, which a console with a volume for each side of a voice then works out (Audio::Pan).
+      def recorded_pans?(program)
+        program.walk.any? do |node|
+          node.kind == :song && node.voices.any? do |part|
+            part_kind(part) == :recorded && part.events.any? { |event| !Audio::Pan.centered?(note_pan(part, event)) }
+          end
+        end
+      end
 
       # The most recorded parts any one played tune has — how many parts the player has to be
       # ready to find a voice for at once, since one tune plays at a time.
@@ -414,9 +444,10 @@ module VBlank
       # Does anything sound once the song has come round? A part does if a note in its later
       # passes does — which counts a note held across the loop frame and sounded again there —
       # or if the song ends on a note, which then carries on into the repeat.
+      # A part whose notes are known only once the program reads its file may sound there.
       def repeat_sounds?(song)
         song.voices.zip(loop_passes(song)).any? do |part, pass|
-          sounding?(part.events.last) || pass.again.any? { |event| sounding?(event) }
+          part.from_file || sounding?(part.events.last) || pass.again.any? { |event| sounding?(event) }
         end
       end
 

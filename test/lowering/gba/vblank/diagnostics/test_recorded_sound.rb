@@ -77,6 +77,21 @@ class TestRecordedSound < Minitest::Test
     assert_equal LOUDNESS, sound.energy_by_frame
   end
 
+  # The loudest sample of a frame is the furthest any is from nought, and an empty frame's is 0.
+  def test_the_loudest_sample_of_each_frame_is_the_same_wherever_the_frame_is_kept
+    assert_equal [4, 0, 32_768, 0, 5], RecordedSound.new.keep(SIGNED_FRAMES).loudest_by_frame
+
+    Dir.mktmpdir("recorded-sound") do |folder|
+      sound = RecordedSound.new(frames_in_memory: 2, folder: folder)
+      FRAMES.first(4).each_slice(3) { |played| sound.keep(played) }
+
+      assert_equal [0, 101, 202, 303], sound.loudest_by_frame
+      sound.keep(FRAMES.drop(4))
+
+      assert_equal [0, 101, 202, 303, 404, 505, 606, 707, 808, 909], sound.loudest_by_frame, "asked again after more frames"
+    end
+  end
+
   def test_how_loud_each_frame_was_is_the_same_wherever_the_frame_is_kept
     Dir.mktmpdir("recorded-sound") do |folder|
       in_file = RecordedSound.new(frames_in_memory: 2, folder: folder)

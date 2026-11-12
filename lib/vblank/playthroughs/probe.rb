@@ -206,6 +206,15 @@ module VBlank
       # Diagnostics::Verifier::SoundWrite (address, value as written). Empty until #watch_sound.
       def sound_writes = @reader.sound_writes
 
+      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST (Diagnostics::FrameSound): its +samples+,
+      # 16 bits each, left and right by turns, and the +loudest+ of them, the furthest any is from
+      # nought. The same on every console whose emulator hands its sound over, for any cartridge
+      # file; a PlayStation program is refused, saying its emulator gives no samples yet.
+      #
+      #   probe.step
+      #   probe.last_frame_sound.loudest   # => 0 for a frame of silence
+      def last_frame_sound = @reader.last_frame_sound
+
       # Write the console's whole state to +path+, to come back to with #load_state.
       def save_state(path)
         @reader.save_state(path.to_s)

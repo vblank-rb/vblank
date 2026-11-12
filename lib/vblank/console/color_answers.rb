@@ -134,15 +134,19 @@ module VBlank
                       "than eight lists on the screen at once do not fit, and a sprite that finds no " \
                       "free list shows another list's colours. A profile of the game says how many " \
                       "times a sprite showed another list's colours."),
-        recolor: works,
+        recolor: works("a background that draws with more than one list the game changes is not made yet: the " \
+                       "build refuses it and says so."),
         color_walk: works,
+        colors_name_of: works,
         colors_in_use: works("a set can name eight lists or fewer, because the console holds eight lists " \
                              "for sprites. A set with more is refused, naming the set."),
         mirror: works,
         upside_down: works,
         blit: works("on a painted screen, its colours count towards the four colours of each square that it covers."),
         sprite: works("a sprite is made of the console's 8×8 pieces, forty at once and ten on any one " \
-                      "row of the screen. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is " \
+                      "row of the screen. A sprite whose poses are drawn from different lists of colors shows " \
+                      "each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+                      "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is " \
                       "named, every piece is 8×16: two 8×8 squares one above the other are one of the forty, " \
                       "and a square with none under it is one too, with an empty lower half. " \
                       "`scale`, `face_angle` and `turn` are refused: a Game Boy " \
@@ -241,6 +245,7 @@ module VBlank
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: works("it lists the SM83 code a routine was made into, with the game's variables and " \
                          "the runtime's routines by name."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Game Boy Color does " \
@@ -258,6 +263,7 @@ module VBlank
         players_connected: works("always 1: a Game Boy Color has one controller."),
         rumble: works("the cartridge carries a rumble motor, and the motor runs on the frames the pattern " \
                       "says. A cartridge with a `clock` has no motor, so a game that uses both is refused."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
@@ -271,7 +277,8 @@ module VBlank
         stop_wave: works,
         song: works("on the square, wave and noise voices. A part played on a recording " \
                     "(`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a " \
-                    "time, and the game's own recordings use it (see `sample`)."),
+                    "time, and the game's own recordings use it (see `sample`). " \
+                    "#{Answers::NEAREST_SIDE}"),
         play_song: works,
         stop_music: works,
         hold_music: works,

@@ -43,7 +43,8 @@
 #
 # Run it to build examples/wanderers.gba and examples/wanderers.gbc:
 #   ruby examples/wanderers.rb
-# or play four on a computer, with a controller each:
+# or play four on a computer, with a controller each (the first controller is player 1, the next
+# player 2, and so on), or two at one keyboard: player 1 on the arrows, player 2 on I J K L:
 #   vblank run examples/wanderers.rb
 
 require_relative "../lib/vblank"

@@ -72,6 +72,7 @@ module VBlank
             @sprites = @objects.each_key.with_index.to_h # sprite name -> the number rg_screen.c knows it by
             @drawn_sprites = DrawnSprites.new(@program) # the names a run gives its sprites by
             @left_out_of_blocks = names_left_out_of_blocks
+            @bar_in_blocks = Blocks.bar_in_blocks!(@program, LoweringError)
             # The runs of tiles and the pictures the game paints from lists as it runs, and the
             # number rg_screen.c knows each by.
             @tile_runs = by_name(@program.walk, :tile_run)
@@ -125,6 +126,12 @@ module VBlank
           # blocks while the picture is shown in them? By its name, as the interpreter asks.
           def shown_in_blocks?(thing) = !@left_out_of_blocks.nil? && !@left_out_of_blocks.include?(thing.name)
 
+          # ...and for a background, which a status bar is only where the program puts its bar in
+          # blocks too (Reference#paint_status_bar).
+          def background_in_blocks?(bg)
+            shown_in_blocks?(bg) && (!bg.bar? || @bar_in_blocks)
+          end
+
           def refuse_picture!(what)
             raise LoweringError, "this program uses #{what}, which #{build_name} cannot draw yet. " \
                                  "The cartridge build can."
@@ -170,7 +177,10 @@ module VBlank
           end
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).
-          def runtime_array(what, type, values) = Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true)
+          # +writable+ is for one the routine that reads the start file writes into.
+          def runtime_array(what, type, values, writable: false)
+            Statements::ConstArray.new(name: @names.own(what), type: type, values: values, exported: true, writable: writable)
+          end
 
           # Every picture a sprite can show, once for each list of colors it is drawn with. A pixel
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
@@ -189,11 +199,13 @@ module VBlank
                       else
                         sprite_pixels(image, colors)
                       end
-              if drawn.any? { |pixel| pixel > MAX_COLOR }
+              if drawn.any? { |pixel| pixel > MAX_COLOR && !IR::StartFile.marker?(pixel) }
                 raise LoweringError, "picture #{name.inspect} holds a pixel past the fifteen bits a colour has, " \
                                      "so #{build_name} cannot make it."
               end
-              pixels.concat(drawn)
+              # A pixel in a colour read as the game starts is its marker until then (StartFileFills).
+              record_marked_pixels(:image, pixels.length, drawn)
+              pixels.concat(drawn.map { |pixel| image_pixel_kept(pixel) })
             end
             @image_pixel_count = pixels.length # what the runtime copies them by, to fill an image read from the start file
             [runtime_array("image_pixels", "int16_t", pixels), runtime_array("images", "int32_t", info), *sprite_name_arrays]
@@ -209,11 +221,14 @@ module VBlank
           end
 
           # For every sprite, where the boxes it is put into blocks by start, or NOT_IN_BLOCKS for
-          # one the game leaves as drawn; and the boxes themselves (see rg_screen.h for the layout).
+          # one the game leaves as drawn, every one of them in a game that pixelates its
+          # backgrounds alone (Reference#sprite_in_blocks?); and the boxes themselves (see
+          # rg_screen.h for the layout).
           def sprite_block_arrays
             boxes = []
+            keeps_sprites = Blocks.keeps_sprites?(@program, LoweringError)
             starts = @objects.each_value.map do |obj|
-              next NOT_IN_BLOCKS unless shown_in_blocks?(obj)
+              next NOT_IN_BLOCKS if keeps_sprites || !shown_in_blocks?(obj)
 
               boxes.length.tap { boxes.concat(boxes_by_picture(obj)) }
             end
@@ -375,10 +390,16 @@ module VBlank
 
               first = images.length / (PLACES_IN_RUN_COLORS + 1)
               shown_as = @images.select { |(name, _), _| name == run.picture }
-              shown_as.each { |(_, colors), number| images.push(number, *sprite_pixels(every_place_of(run), colors)) }
+              shown_as.each do |(_, colors), number|
+                shown = sprite_pixels(every_place_of(run), colors)
+                # A place in a colour read as the game starts is its marker until then (StartFileFills).
+                record_marked_numbers(:run_images, images.length + 1, shown)
+                images.push(number, *shown)
+              end
               [0, run.width, run.height, start, first, shown_as.size, planes]
             end
-            [runtime_array("tile_runs", "int32_t", runs), runtime_array("run_images", "int32_t", images)]
+            [runtime_array("tile_runs", "int32_t", runs),
+             runtime_array("run_images", "int32_t", images, writable: marked_numbers_in?(:run_images))]
           end
 
           # Reference#exec_copy_tiles and what a scene arriving does with each run it shows.
@@ -416,33 +437,45 @@ module VBlank
             fields = @stacking.scenery.flat_map do |bg|
               tiles_start = tile_pixels.length
               steps = color_swaps(bg)
+              # A background whose map is read from the start file has, after the tiles the game
+              # holds for it, a tile for every cell of the map, see-through until the file is read
+              # (StartFileFills#record_start_file_background_fill).
+              cell_tiles = bg.from_file ? bg.from_file.tiles_drawn : 0
+              tile_count = bg.tiles.length + cell_tiles
+              record_start_file_background_fill(tiles_start, bg, steps) if bg.from_file
               [nil, *steps].each do |swaps|
                 bg.tiles.each do |tile|
                   if (read_at_start = picture_from_start_file(tile))
                     record_start_file_fill(:tile, tile_pixels.length, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from])
                   end
-                  tile_pixels.concat(tile_colors(tile, swaps))
+                  drawn = tile_colors(tile, swaps)
+                  record_marked_pixels(:tile, tile_pixels.length, drawn)
+                  tile_pixels.concat(drawn)
                 end
+                tile_pixels.concat(Array.new(cell_tiles * RUN_TILE_PIXELS, 0xFFFF))
               end
               painted_start, colors_start = painted_tiles_of(bg, steps, painted_tiles, run_colors)
               first_map = maps.length / MAP_FIELDS
               bg.every_map.each do |map|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
-                cells.concat(map_cells(map))
+                # Read from the start file, each cell names its own tile, in order, after the tiles
+                # the game holds.
+                cells.concat(bg.from_file ? (bg.tiles.length...tile_count).to_a : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
                bg.scene ? @scenes.fetch(bg.scene, NEVER_ARRIVES) : EVERY_SCENE, bg.bar? ? NOT_A_BAR : @stacking.depths.of_scenery(bg),
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
                see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
-               bg.tiles.length, steps.length, shown_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
+               tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR]
             end
             @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file
             [runtime_array("tile_pixels", "uint16_t", tile_pixels), runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
-             runtime_array("painted_tiles", "int32_t", painted_tiles), runtime_array("run_colors", "uint16_t", run_colors)]
+             runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
+             runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
           end
 
           # A background's tiles the game paints, added to the two arrays rg_screen.c finds them
@@ -459,8 +492,19 @@ module VBlank
             bg.tiles.zip(runs) do |tile, run|
               painted_tiles.concat(run ? [@run_numbers.fetch(run.name), run.tiles.index(tile)] : [NOT_PAINTED, 0])
             end
+            # A background read from the start file whose tiles take turns through pictures has
+            # a tile for every cell after the ones the game holds, none painted until the routine
+            # reading the file points the cells naming such a tile at a run's (StartFileFills).
+            if bg.from_file && !bg.from_file.moving.empty?
+              record_start_file_moving_cells(bg, starts.first)
+              painted_tiles.concat(Array.new(bg.from_file.tiles_drawn * 2) { |at| at.even? ? NOT_PAINTED : 0 })
+            end
             [nil, *steps].each do |swaps|
-              @tile_runs.each_value { |run| run_colors.concat(colors_as_tile(every_place_of(run), swaps)) }
+              @tile_runs.each_value do |run|
+                shown = colors_as_tile(every_place_of(run), swaps)
+                record_marked_numbers(:run_colors, run_colors.length, shown)
+                run_colors.concat(shown)
+              end
             end
             starts
           end
@@ -547,8 +591,9 @@ module VBlank
 
           # The routines rg_screen.c calls to work the game's light out (Reference#work_out_shade):
           # where the lit span of one row starts and ends, the row going into the light's
-          # variable first, and then how dark the rest of every row goes. Empty for a game with
-          # no light, which never calls them.
+          # variable first, and then how dark the rest of every row goes, or for a light that
+          # shows nothing outside it, whether it is on. Empty for a game with no light, which
+          # never calls them.
           def shade_span
             body = if @shade
                      [assign(@shade.row, call("rg_shade_line")), *body_of(@shade),
@@ -561,7 +606,8 @@ module VBlank
           end
 
           def shade_amount
-            body = @shade ? [eval_call("rg_shade_darkness", value(@shade.amount))] : []
+            amount_call = @shade&.shuts_out ? "rg_shade_shut_out" : "rg_shade_darkness"
+            body = @shade ? [eval_call(amount_call, value(@shade.amount))] : []
             Statements::Function.new(name: @names.own("shade_amount"), body: body, exported: true)
           end
 
@@ -584,7 +630,78 @@ module VBlank
           # Reference#background_swap, for every step a background can be told: each of the lists
           # its tiles were drawn from, to the list that step draws it with instead, or to nil
           # where that list stays as drawn.
-          def color_swaps(bg) = Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
+          def color_swaps(bg)
+            return followed_color_swaps(bg) if bg.follows_several?
+
+            Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
+          end
+
+          # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each) has its
+          # tiles written again for every set each of those lists can hold, list after list, the set
+          # a list was declared with first, and every other list as declared in each. No set is a
+          # pair of two lists' sets, which would be one list's sets times the other's. The picture is
+          # drawn from the tiles as declared, and when a list is told what to hold, the tiles drawn
+          # from it alone are copied over those from the set it names (#followed_tile_copies).
+          def followed_color_swaps(bg)
+            (@followed_color_swaps ||= {})[bg.object_id] ||= begin
+              declared = bg.lists_followed.to_h { |list| [list, sets_held_by(list).first] }
+              bg.lists_followed.flat_map do |list|
+                sets_held_by(list).map { |set| bg.followed_list_swaps(declared.merge(list => set)) }
+              end
+            end
+          end
+
+          # Reference#followed_background_swap, for the list +name+: on each background that follows
+          # it beside other lists, the tiles drawn from it are copied from the set it holds now.
+          # The rules rg_background_follow reads are how many tile pixels the game has, the
+          # background's entry, how many of its tiles are drawn from the list, and those tiles.
+          #
+          # Written where the list is told what to hold, and again where a state is read
+          # (Lowering#visit_state).
+          def followed_tile_copies(name)
+            (@lists_copied_to_followers ||= []) << name
+            @stacking.scenery.select { |bg| bg.lists_followed.include?(name) }.filter_map do |bg|
+              rules = followed_tile_rules(bg, name) or next
+              first = 1 + bg.lists_followed.take_while { |list| list != name }.sum { |list| sets_held_by(list).length }
+              held = call("rg_place_of_choice", held_colors(name), Statements::Int.new(sets_held_by(name).length - 1))
+              eval_call("rg_background_follow", rules, call("rg_add", Statements::Int.new(first), held))
+            end
+          end
+
+          # The copies of every list a statement of the game tells what to hold, made again: their
+          # rules are written already, so this adds no array after the arrays are written out.
+          def followed_tile_copies_again = (@lists_copied_to_followers || []).uniq.flat_map { |name| followed_tile_copies(name) }
+
+          # The rules for one background and one list it follows, made once, or nil where none of
+          # its tiles is drawn from the list.
+          #
+          # A BACKGROUND READ FROM THE START FILE has a tile for every cell of its map after the
+          # tiles the game holds, and which bank a cell is of is in the file. So its rules are
+          # written with room for every one of those tiles, where the routine reading the file can
+          # write, and that routine adds the tiles of the cells whose bank is drawn from the list
+          # (StartFileFills#record_start_file_followed_tiles).
+          def followed_tile_rules(bg, name)
+            (@followed_tile_rules ||= {})[[bg.object_id, name]] ||= begin
+              tiles = bg.tiles.each_index.select { |at| bg.list_followed_by(tile_image(bg.tiles[at]).list_drawn_from) == name }
+              rules = [tile_pixel_total, entry_of(bg), tiles.length, *tiles]
+              if bg.from_file
+                record_start_file_followed_tiles(bg, tiles, rules)
+              else
+                tiles.empty? ? :none : drawing_array("followed_tiles", "int32_t", rules)
+              end
+            end
+            @followed_tile_rules[[bg.object_id, name]].then { |rules| rules == :none ? nil : rules }
+          end
+
+          # How many pixels the tiles of every background take, each written once for the colors it
+          # was drawn in and once for each step (#background_arrays).
+          def tile_pixel_total
+            @stacking.scenery.sum do |bg|
+              tiles = bg.tiles.sum { |tile| tile_image(tile).then { |image| image.width * image.height } }
+              tiles += bg.from_file.tiles_drawn * RUN_TILE_PIXELS if bg.from_file
+              tiles * (color_swaps(bg).length + 1)
+            end
+          end
 
           # Reference#tile_colors: a tile's pixels as colors, or as the colors +swaps+ gives the
           # list it was drawn from. A swap goes by place, and is read off the pixel as drawn, so
@@ -607,8 +724,15 @@ module VBlank
             Array.new(image.width * image.height) do |i|
               next 0xFFFF if image.tile_see_through_at?(i)
 
-              recolor ? recolor.color_for(i, image.color_at(i)) : image.color_at(i)
+              recolor ? recolor.color_for(i, tile_color_at(image, i)) : tile_color_at(image, i)
             end
+          end
+
+          # The colour a tile's pixel is drawn in: its fifteen bits, or, for a pixel in a colour
+          # read as the game starts, the marker it is (IR::StartFile), which those bits are no part of.
+          def tile_color_at(image, index)
+            raw = image.raw_at(index)
+            IR::StartFile.marker?(raw) ? raw : image.color_at(index)
           end
 
           # The number of the picture +name+ as drawn with the list +colors+, or with its own.
@@ -632,8 +756,11 @@ module VBlank
           def screen_change(function, screen, two_pages, backdrop)
             two_pages &&= @program.described_console.painted_pages == 2
             # A backdrop that follows a list (nil) is left as the list has it, which rg_screen.c reads
-            # as a colour below nought.
-            change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), Statements::Int.new(backdrop || -1))
+            # as a colour below nought. One read from the start file is its entry of the colours
+            # filled from it (StartFileFills#start_file_color), and so is the colour of a list read
+            # from it, which is a marker here.
+            shown = backdrop.is_a?(IR::StartFile::Color) ? start_file_color(backdrop) : color_or_start_file_entry(backdrop || -1)
+            change = call(function, Statements::Int.new(SCREEN_KINDS.fetch(screen)), yes_or_no(two_pages), shown)
             always = @handover.always_up
             put_back = [*always.map_choices.map { |var| assign(var, Statements::Int.new(0)) },
                         *(always.painted_tiles + always.painted_pictures).map { |run| tile_copy(run) }]
@@ -695,7 +822,11 @@ module VBlank
                      else
                        [0]
                      end
-            drawing_array("shading", "int32_t", values)
+            return drawing_array("shading", "int32_t", values) unless shading&.from_file
+
+            array = drawing_array("shading", "int32_t", values, writable: true)
+            record_start_file_shading_fill(array, shading)
+            array
           end
 
           # The key, in place of a list of colours, of an image whose pixels are a picture's numbers
@@ -770,7 +901,13 @@ module VBlank
             [eval_call("rg_background_scroll", background_number(node), value(node.x), value(node.y))]
           end
 
+          # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
+          # the runtimes take a tile's number, and keep no table of a background's cells to index.
           def lower_set_tile(node)
+            if node.picked?
+              tests = PickedTile.tests(node)
+              return tests ? lower(tests) : []
+            end
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
                                 Statements::Int.new(node.tile), Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
@@ -798,9 +935,15 @@ module VBlank
             end)
           end
 
+          # Reference#exec_affine_background: a map whose named point sits at the pivot is first
+          # moved that far from the screen's corner, as a scroll, which the turn is worked out over.
           def lower_affine_background(node)
-            [eval_call("rg_background_turn", background_number(node), value(node.angle),
-                       value(node.scale), Statements::Int.new(node.around_x), Statements::Int.new(node.around_y))]
+            turn = eval_call("rg_background_turn", background_number(node), value(node.angle),
+                             value(node.scale), Statements::Int.new(node.around_x), Statements::Int.new(node.around_y))
+            return [turn] if node.map_shift == [0, 0]
+
+            [eval_call("rg_background_scroll", background_number(node), *node.map_shift.map { |pixels| Statements::Int.new(pixels) }),
+             turn]
           end
 
           # Reference#exec_present_objects: every sprite the frame draws is taken off the picture,
@@ -955,6 +1098,8 @@ module VBlank
           # has a row for every set it can hold, the ones it was declared with first, and the
           # set it holds now picks which of those rows (Reference#colors_held_by).
           def picture_drawn(obj, pose)
+            return picture_following_pose_lists(obj, pose) if obj.follows_each
+
             lists = Array(obj.recolors)
             sets = [[nil], *lists.map { |colors| colors.is_a?(Symbol) ? sets_held_by(colors) : [colors] }]
             rows = sets.flatten(1).flat_map { |colors| obj.poses.map { |name| image_number(name, colors) } }
@@ -963,6 +1108,50 @@ module VBlank
 
             row = row_drawn_with(obj, lists, sets)
             Statements::Index.new(pictures, call("rg_add", call("rg_mul", row, Statements::Int.new(obj.poses.length)), pose))
+          end
+
+          # The same for a sprite whose poses are drawn from several lists, some of which it follows
+          # (Object#follows_each, Reference#object_color_list). A pose drawn from a list it follows
+          # has a picture for every set that list can hold, the declared one first; any other pose
+          # has its one picture. They are kept one pose after another, so the picture drawn is
+          # where the pose's pictures start plus the set its own list holds now, which is nothing
+          # for a pose that follows no list.
+          def picture_following_pose_lists(obj, pose)
+            chosen = obj.poses.map { |name| lists_chosen_by_frame(obj, name) }
+            followed = obj.poses.zip(chosen).map { |name, banks| obj.list_followed_by_pose(picture_named(name).colors_name) unless banks }
+            pictures = obj.poses.zip(followed, chosen).map do |name, list, banks|
+              next [image_number(name), *banks.compact.flat_map { |each| pictures_held_by(name, each) }] if banks
+
+              list ? pictures_held_by(name, list) : [image_number(name)]
+            end
+            starts = pictures.each_with_object([0]) { |held, so_far| so_far << (so_far.last + held.length) }.first(pictures.length)
+            lists = (followed + chosen.compact.flatten).compact.uniq
+            writable = chosen.any? { |banks| banks&.any? }
+            pose_lists = drawing_array("pose_lists", "int32_t", followed.map { |list| lists.index(list) || -1 }, writable: writable)
+            pose_starts = drawing_array("pose_starts", "int32_t", starts, writable: writable)
+            record_pose_lists_chosen_by_frames(obj, chosen, starts, lists, pose_lists, pose_starts) if writable
+            list_of_pose = Statements::Index.new(pose_lists, pose)
+            at = lists.each_with_index.reduce(Statements::Index.new(pose_starts, pose)) do |so_far, (list, number)|
+              held = call("rg_place_of_choice", held_colors(list), Statements::Int.new(sets_held_by(list).length - 1))
+              call("rg_add", so_far, call("rg_mul", call("rg_eq", list_of_pose, Statements::Int.new(number)), held))
+            end
+            Statements::Index.new(drawing_array("pose_pictures", "int32_t", pictures.flatten), at)
+          end
+
+          # The pictures of the pose +name+ in every set of colours the list +list+ can hold, the
+          # declared one first.
+          def pictures_held_by(name, list) = sets_held_by(list).map { |colors| image_number(name, colors) }
+
+          # A POSE WHOSE LIST ITS FRAME PICKS AS THE GAME STARTS (IR::StartFile::Pose#bank_lists): for
+          # each bank, the list of that bank where +obj+ follows it, or nil; nil for any other pose.
+          # Such a pose has its own picture, in its frame's bank's colours, and then the pictures of
+          # each followed bank's list; which of them it starts at, and which list it follows, are
+          # written as the game starts (StartFileFills#record_pose_lists_chosen_by_frames).
+          def lists_chosen_by_frame(obj, name)
+            where = picture_from_start_file(name)&.from_file
+            return nil unless where.is_a?(IR::StartFile::Pose) && where.bank_lists
+
+            where.bank_lists.map { |list| list if obj.follows_each.include?(list) }
           end
 
           # Which row of its pictures a sprite is on: the first row of the list it is drawn with
@@ -1001,13 +1190,20 @@ module VBlank
           # one colour in each set, the declared set first as rg_place_of_choice counts them.
           def lower_color_list_holds(node)
             held = Statements::Assign.new(held_colors(node.name), value(node.which))
+            followers = followed_tile_copies(node.name)
             place = @color_lists.fetch(node.name).backdrop_place
-            return [held] unless place
+            return [held, *followers] unless place
 
             sets = sets_held_by(node.name)
-            colors = drawing_array("backdrop_colors", "int32_t", sets.map { |set| set.fetch(place) & 0x7FFF })
+            shown = sets.map { |set| set.fetch(place) }
+            # A set read from the start file has a marker there, which the runtime reads as the
+            # colour filled from the file (StartFileFills).
+            marked = shown.any? { |color| IR::StartFile.marker?(color) }
+            colors = drawing_array("backdrop_colors", "int32_t", shown.map { |color| IR::StartFile.marker?(color) ? color : color & 0x7FFF })
             choice = call("rg_place_of_choice", held_colors(node.name), Statements::Int.new(sets.length - 1))
-            [held, eval_call("rg_screen_show_backdrop", Statements::Index.new(colors, choice))]
+            color = Statements::Index.new(colors, choice)
+            color = call("rg_start_file_marked_color", start_file_colors_name, color) if marked
+            [held, eval_call("rg_screen_show_backdrop", color), *followers]
           end
 
           # Reference#pixels_overlap?: each side's picture now, and where it is.
@@ -1096,9 +1292,10 @@ module VBlank
           def yes_or_no(answer) = Statements::Int.new(answer ? 1 : 0)
 
           # A constant array for one drawing statement, kept to be written before the routines.
-          def drawing_array(what, type, values)
+          # +writable+ is for one the routine that reads the start file writes into.
+          def drawing_array(what, type, values, writable: false)
             name = @names.own("#{what}_#{@drawing_arrays.length + 1}")
-            @drawing_arrays << Statements::ConstArray.new(name: name, type: type, values: values)
+            @drawing_arrays << Statements::ConstArray.new(name: name, type: type, values: values, writable: writable)
             name
           end
         end

@@ -114,6 +114,9 @@ module VBlank
                     handed
                   },
                   refused: ->(words) { refusals << words },
+                  # A player is never told of a kept pack that is not read; the check is, since
+                  # the pack its first start kept must be the one its second start reads.
+                  kept_pack_refused: ->(words) { refusals << words },
                   play_game: ->(game) { played = record_play(Session.new(game: game)) })
         Start.new(played: played, refusals: refusals, times_asked: asked)
       end

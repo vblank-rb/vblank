@@ -115,24 +115,41 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds sixteen places on a Genesis, the first see-through. The console " \
-                      "holds four lists, for the sprites and the backgrounds together. A list that the game does " \
-                      "not change takes one of the four, however many things draw with it: the sprites and a " \
-                      "background told `draw_with` that list use the same one."),
+                      "holds four lists on each screen, for the sprites and the backgrounds together. A list that " \
+                      "the game does not change takes one of the four, however many things draw with it: the " \
+                      "sprites and a background told `draw_with` that list use the same one. If the pictures of " \
+                      "all the scenes need more than four lists, each scene gets the lists that every scene does " \
+                      "not use, and writes its own colours into them when it starts. A list that the game changes " \
+                      "keeps the same one of the four in every scene."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
                        "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
                        "from that one list, however many sets it holds in turn. A background with tiles from other " \
                        "lists too draws only its tiles of that list from it, since each cell names its own list. " \
+                       "A background that draws with several lists the game changes draws its tiles of each " \
+                       "list from that list, so every list of a screen can change on one frame. " \
                        "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \
                        "(`draw_with [...], showing:`) takes one of the four for each list."),
         color_walk: works,
         colors_in_use: works,
+        colors_name_of: works,
         mirror: works,
         upside_down: works,
         blit: works,
         sprite: works("a sprite is made of the console's pieces. A piece is up to 32×32 pixels, so a picture " \
                       "of 32×32 or smaller is one piece, and the build covers a bigger picture with few pieces. " \
+                      "A sprite whose poses are drawn from different lists of colors shows each pose in the " \
+                      "colors of its own list, and it can follow those lists (`draw_with({ hero: :hero })`). " \
+                      "Each list that it follows uses one of the four palettes. Sprites that show the same " \
+                      "poses use one table of them. " \
+                      "The build draws a pose read from the frames of a data pack as the pieces of its frame. " \
+                      "Each piece of the frame is one piece of the console. The video memory keeps each 8×8 " \
+                      "square of picture one time. Every sprite and background that shows the square uses it, " \
+                      "mirrored or upside down too. So a screen drawn from one slot of tiles uses each tile of " \
+                      "the slot one time. If the pictures of a screen " \
+                      "need more squares than the video memory holds, the build stops. It says how many they " \
+                      "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
                       "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
@@ -202,6 +219,7 @@ module VBlank
         case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: refused("it lists the ARM a routine was made into, and a Genesis has no ARM processor to " \
                            "list it for."),
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Genesis does not have."),
@@ -217,6 +235,7 @@ module VBlank
         players_connected: works("always 1: this build reads the first pad only."),
         rumble: works("nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same " \
                       "without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
@@ -232,7 +251,10 @@ module VBlank
         wave: works("a Genesis has no wave voice: the first voice of its FM chip plays each waveform as a tone of " \
                     "its own, the first four harmonics of the waveform."),
         stop_wave: works,
-        song: works("see `define_sound` for the square and wave voices."),
+        song: works("see `define_sound` for the square and wave voices. A wave part between the speakers " \
+                    "(`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other " \
+                    "side. If not, it plays from both speakers. A part that plays a recording plays from both " \
+                    "speakers, wherever `pan` puts it: the FM chip's sixth voice plays it from both."),
         play_song: works,
         stop_music: works,
         hold_music: works,
@@ -295,7 +317,8 @@ module VBlank
         "a scene that says a backdrop of its own (`screen ... backdrop:`)",
         "background tiles that are not 8×8, or backgrounds of different sizes on one screen",
         "a map too big to hold",
-        "more lists of colours than the console's four"
+        "more lists of colours than the console's four",
+        "a sprite's picture painted from a list (`image ..., from: list`), and tiles of 16x16 painted from one"
       ].freeze
 
       # What the page says of the steps the Genesis's build does not make yet.

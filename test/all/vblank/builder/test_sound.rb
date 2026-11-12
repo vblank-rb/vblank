@@ -26,6 +26,29 @@ class TestSound < Minitest::Test
     end
   end
 
+  # A game naming the rate its recordings are mixed at asks for that rate, whatever its recordings'
+  # own: what a port names when its recordings' rates come from its data pack.
+  def test_enable_sound_names_the_rate_the_mix_is_asked_to_run_at
+    named = Builder.new
+    named.instance_eval do
+      enable_sound mix_rate: 13_379
+      sample :clip, pcm: [0, 40, 80, 40] * 8, rate: 8000
+    end
+    plain = Builder.new
+    plain.instance_eval do
+      enable_sound
+      sample :clip, pcm: [0, 40, 80, 40] * 8, rate: 8000
+    end
+
+    assert_equal 13_379, VBlank::IR::Mixing.requested_rate(named.program)
+    assert_equal 8000, VBlank::IR::Mixing.requested_rate(plain.program)
+  end
+
+  def test_enable_sound_refuses_a_mix_rate_that_is_no_rate
+    error = assert_raises(ArgumentError) { Builder.new.instance_eval { enable_sound mix_rate: 12.5 } }
+    assert_includes error.message, "mix_rate"
+  end
+
   # ========================================================================
   # Error handling
   # ========================================================================

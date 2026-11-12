@@ -235,6 +235,16 @@ void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t ste
   fade_to(1, layer_place, toward_white, steps, walked);
 }
 
+/* Reference#lift_placed_fade_for_light: a light that takes turns takes a placed fade off on the
+ * pass of a scene it is on in, where every other scene leaves a fade as the game set it. +on+ is
+ * the light's switch as the scene that ran set it. The fade was painted into the picture, so the
+ * picture is built again. */
+void rg_lift_placed_fade_for_light(int32_t on) {
+  if (!on || !placed_fade.in_force) return;
+  placed_fade.in_force = 0;
+  request_repaint();
+}
+
 /* Reference#tint_by_display?: does the display mix a tint in as it draws, which only the plain
  * bitmap screen does, on a console that blends? Every other screen has it mixed into a colour
  * table. */

@@ -1,86 +1,14 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "digest"
-require "tmpdir"
-require "made_up_original_layouts"
+require "pack_background_tests"
 
 # A BACKGROUND DRAWN FROM THE ORIGINAL'S OWN TILES, MAP AND COLOURS (Builder::PackBackgrounds), read
-# from a made-up original in the layout of the console it is for. The answer key is the made-up
-# data itself: each cell of the map names a tile, a bank of colours and a turn, and the screen must
-# show that tile's places in that bank's colours, turned that way.
+# from a made-up original in the layout of the console it is for (PackBackgroundGames). The answer
+# key is the made-up data itself: each cell of the map names a tile, a bank of colours and a turn,
+# and the screen must show that tile's places in that bank's colours, turned that way.
 class TestPackBackgrounds < Minitest::Test
-  # Four colours a tile, so the Game Boy Color can show every tile here too.
-  PLACES = [
-    Array.new(64, 0),                                                     # tile 0: draws nothing
-    (0...64).map { |at| ((at % 8) + (2 * (at / 8))) % 4 },                # tile 1: no row reads the same both ways
-    (0...64).map { |at| (at / 8).even? ? 1 + ((at % 8) / 3) : 3 },        # tile 2: no column reads the same up and down
-    (0...64).map { |at| at % 8 < 4 ? 2 : 1 }                              # tile 3
-  ].freeze
-  # Two banks of sixteen colours: each place a colour of its own in each bank, every one a colour
-  # the Genesis shows exactly.
-  BANKS = [MadeUpOriginalLayouts::PALETTE, MadeUpOriginalLayouts::PALETTE.rotate(7)].freeze
-  OTHER = MadeUpOriginalLayouts::PALETTE.rotate(3)
-  LATER = MadeUpOriginalLayouts::PALETTE.rotate(5)
-
-  # The Advance keeps a tile two pixels a byte, the left one in the low half.
-  LOW_HALF_FIRST = ->(places) { places.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*") }
-
-  # A cell of the Advance's map: tile in bits 0 to 9, mirrored 10, upside down 11, bank 12 to 15.
-  ADVANCE_CELL = ->(tile, bank: 0, mirrored: false, upside_down: false) do
-    tile | (mirrored ? 1 << 10 : 0) | (upside_down ? 1 << 11 : 0) | (bank << 12)
-  end
-  # A cell of the Super Nintendo's: tile 0 to 9, bank 10 to 12, priority 13, mirrored 14, upside down 15.
-  SNES_CELL = ->(tile, bank: 0, mirrored: false, upside_down: false) do
-    tile | (bank << 10) | (1 << 13) | (mirrored ? 1 << 14 : 0) | (upside_down ? 1 << 15 : 0)
-  end
-
-  # A cell of the Genesis's: tile 0 to 10, mirrored 11, upside down 12, bank 13 and 14, priority 15.
-  GENESIS_CELL = ->(tile, bank: 0, mirrored: false, upside_down: false) do
-    tile | (mirrored ? 1 << 11 : 0) | (upside_down ? 1 << 12 : 0) | (bank << 13) | (1 << 15)
-  end
-  # The Genesis keeps its colours in nine bits, high byte first; BANKS are levels it shows exactly.
-  GENESIS_COLORS = lambda do |levels|
-    levels.map { |red, green, blue| (red << 1) | (green << 5) | (blue << 9) }.pack("n*")
-  end
-
-  TILES_AT = 0x100
-  COLORS_AT = 0x40
-  MAP_AT = 0x20
-
-  # A made-up original for +platform+: +tiles+ (bytes) at TILES_AT, the two banks at COLORS_AT and
-  # +words+, the map, at MAP_AT. Hands back the Original::Game and the slots' sizes.
-  private def original(folder, platform, tiles, words)
-    copy = "\0".b * (TILES_AT + tiles.bytesize)
-    genesis = platform == :genesis
-    levels = MadeUpOriginalLayouts::LEVELS
-    copy[COLORS_AT, 64] = genesis ? GENESIS_COLORS.(levels + levels.rotate(7)) : BANKS.flatten.pack("v*")
-    copy[MAP_AT, words.length * 2] = words.pack(genesis ? "n*" : "v*")
-    copy[TILES_AT, tiles.bytesize] = tiles
-    path = File.join(folder, "made_up.bin")
-    File.binwrite(path, copy)
-    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: platform,
-                               settings_file: File.join(folder, "made_up.yml"),
-                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
-  end
-
-  # A game showing one background from the pack, +across+ cells to a row, each +cell+ pixels square.
-  private def pack_game(from, tile_count, words, across:, cell:, colors: 16, &more)
-    b = Builder.new
-    b.instance_eval do
-      screen :tiled
-      pack = data_pack from: from, version: "1" do |slots|
-        slots.tiles :video, at: TILES_AT, count: tile_count, colors: colors
-        slots.numbers :map, at: MAP_AT, count: words.length, width: :half, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 32
-      end
-      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: across, cell: cell
-      instance_exec(world, &more) if more
-      game_loop { wait_vblank }
-    end
-    b.finalize_program
-    b.program
-  end
+  include PackBackgroundGames
 
   # The colour at (x, y) of a cell drawn from +places+ (rows of +side+) in +bank+, turned as asked.
   private def cell_color(places, side, x, y, bank, mirrored: false, upside_down: false)
@@ -159,6 +87,158 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
+  # A MAP OF CELLS OF VBLANK'S OWN (Original::MapCell), which a port's unpacking writes from its
+  # original's maps: here a Color original's two maps, a tile number and an attribute byte a cell.
+  # The screen is the one the decoded cells written in the game show, tile, video bank, colour
+  # bank and both turns included.
+  def test_a_map_of_cells_written_by_the_unpacking_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder))
+
+      assert_equal game_player.run(color_cells_drawn_by_hand, frames: 3).screen.to_a, game_player.run(program, frames: 3).screen.to_a
+    end
+  end
+
+  # Every bank of such a background is a list named for its slot, so the game walks all eight up
+  # from black by name, as a Color game fades its screen in.
+  def test_a_map_of_cells_is_walked_by_its_banks_names
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder), walked: true)
+      by_hand = color_cells_drawn_by_hand(walked: true)
+
+      [2, COLOR_WALK_STEPS + 2].each do |frames|
+        assert_equal game_player.run(by_hand, frames: frames).screen.to_a, game_player.run(program, frames: frames).screen.to_a,
+                     "the screen after #{frames} frames"
+      end
+    end
+  end
+
+  # A SCREEN IN SEVEN BANKS OF COLOURS whose tiles each draw only some of their bank's places, as a
+  # Color game's title is (SEVEN_BANKS_SCREEN). It shows the decoded cells, and the Color holds it
+  # in its eight lists of colours as the original does: a list for each bank, whichever of the
+  # bank's places a tile draws. The decoded cells written in the game are played by the interpreter
+  # alone: a Color build gives a picture of the game's own the colours it draws, not its bank. The
+  # interpreter plays them as the run's console (program_played), so their colours are the ones
+  # that console shows: the Genesis keeps three bits of each channel, not five.
+  def test_a_map_of_cells_in_seven_banks_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), color_screen: SEVEN_BANKS_SCREEN)
+      by_hand = color_cells_drawn_by_hand(color_screen: SEVEN_BANKS_SCREEN)
+
+      assert_equal map_pixels(Reference.new.run(program_played(by_hand), frames: 3).screen, SEVEN_BANKS_SCREEN),
+                   map_pixels(game_player.run(program, frames: 3).screen, SEVEN_BANKS_SCREEN)
+    end
+  end
+
+  # ...and the game walks all eight banks of it up from black by their names, as the Color game
+  # fades its title in. The interpreter plays both games on one screen, so the walk is held to
+  # the decoded cells there, and the run's own build of the game is held to the interpreter on
+  # every pass (on the Color, its picture a pass sooner than the Advance's).
+  def test_a_map_of_cells_in_seven_banks_is_walked_by_its_banks_names
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), walked: true,
+                                                                                      color_screen: SEVEN_BANKS_SCREEN)
+      by_hand = program_played(color_cells_drawn_by_hand(walked: true, color_screen: SEVEN_BANKS_SCREEN))
+
+      [2, 4, COLOR_WALK_STEPS + 2].each do |frames|
+        assert_equal map_pixels(Reference.new.run(by_hand, frames: frames).screen, SEVEN_BANKS_SCREEN),
+                     map_pixels(Reference.new.run(program_played(program), frames: frames).screen, SEVEN_BANKS_SCREEN),
+                     "the screen after #{frames} frames"
+      end
+      refute_equal map_pixels(Reference.new.run(program_played(program), frames: 2).screen, SEVEN_BANKS_SCREEN),
+                   map_pixels(game_player.run(program, frames: COLOR_WALK_STEPS + 2).screen, SEVEN_BANKS_SCREEN),
+                   "the walk moves the screen"
+    end
+  end
+
+  # A game of the Color original whose data pack names a slot of map cells and whose block, run on
+  # the builder with the pack, declares the rest. +routine+ is the unpacking's, given the pack.
+  private def color_map_cells_refusal(folder, routine: ->(_pack) {}, &declares)
+    from = color_original(folder)
+    assert_raises(ArgumentError) do
+      b = Builder.new
+      b.instance_eval do
+        screen :tiled
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :video, at: TILES_AT, count: COLOR_VIDEO.length
+          slots.colors :palette, at: COLORS_AT, count: COLOR_PALETTE.length
+          slots.numbers :numbers, at: COLOR_TILE_MAP_AT, count: 8, width: :half, signed: false
+          slots.map_cells :map, count: 8
+          slots.fill_from_copy { |_copy, filled| routine.(filled) }
+        end
+        instance_exec(pack, &declares)
+      end
+    end
+  end
+
+  def test_a_two_byte_map_of_an_original_whose_cells_vblank_does_not_know_points_at_map_cells
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder) do |pack|
+        background :world, tiles: pack[:video], map: pack[:numbers], colors: pack[:palette], across: 4
+      end
+
+      assert_includes error.message, "slots.map_cells"
+      assert_includes error.message, "write_cell"
+    end
+  end
+
+  def test_write_cell_on_a_slot_that_is_not_map_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:numbers].write_cell(0, tile: 1) }) { |_pack| nil }
+
+      assert_includes error.message, "write_cell"
+      assert_includes error.message, ":numbers"
+    end
+  end
+
+  def test_write_cell_past_the_slot_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(8, tile: 1) }) { |_pack| nil }
+
+      assert_includes error.message, "no cell 8"
+    end
+  end
+
+  # A tile or a bank too big for the record's field would keep only its low bits, and draw another
+  # cell than the one written.
+  def test_write_cell_of_a_tile_past_the_records_field_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(0, tile: 65_536) }) { |_pack| nil }
+
+      assert_includes error.message, "65536"
+      assert_includes error.message, "65535"
+    end
+  end
+
+  def test_write_cell_of_a_bank_past_the_records_field_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(0, tile: 1, bank: 256) }) { |_pack| nil }
+
+      assert_includes error.message, "256"
+      assert_includes error.message, "255"
+    end
+  end
+
+  # Told cells written later (`set_cells:`) change nothing until the game writes one: the screen
+  # is the decoded cells'. That a written cell shows is test_pack_background_set_cell.rb's.
+  def test_a_map_of_cells_told_cells_written_later_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder), set_cells: [VBlank::Original::MapCell::Cell.new(tile: 3, bank: 2)])
+
+      assert_equal game_player.run(color_cells_drawn_by_hand, frames: 3).screen.to_a, game_player.run(program, frames: 3).screen.to_a
+    end
+  end
+
+  def test_a_big_cell_of_a_map_of_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder) do |pack|
+        background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, cell: 16
+      end
+
+      assert_includes error.message, "cell:"
+    end
+  end
+
   # Each bank is a list of colours named for its slot, so a game draws the background with other
   # colours by place as it would one of its own.
   def test_a_bank_is_a_list_of_colours_named_for_its_slot
@@ -168,6 +248,7 @@ class TestPackBackgrounds < Minitest::Test
       program = pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 1, cell: 8) do |world|
         colors :other, other
         world.draw_with({ palette_0: :other })
+        game_loop { wait_vblank }
       end
       screen = game_player.run(program, frames: 3).screen
       place = PLACES[1][1]
@@ -177,10 +258,13 @@ class TestPackBackgrounds < Minitest::Test
   end
 
   # A game showing one cell of tile 1 from bank 0, its slot of colours holding two banks, and
-  # whatever the block says.
+  # whatever the block says, then a loop that only waits.
   private def game_drawn_from_bank_0(folder, &more)
     words = [ADVANCE_CELL.(1)]
-    pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 1, cell: 8, &more)
+    pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 1, cell: 8) do |world|
+      instance_exec(world, &more)
+      game_loop { wait_vblank }
+    end
   end
 
   # +colors+ as a `colors` list, its first place see-through.
@@ -238,6 +322,52 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
+  # Every pixel of the 8x8 cell at (+at_x+, 0) drawn from +places+ shows +list+'s colour at its place.
+  private def assert_cell_drawn_with(screen, places, at_x, list, message)
+    64.times do |at|
+      next if places.fetch(at).zero?
+
+      assert_equal list.fetch(places.fetch(at)), screen.pixel(at_x + (at % 8), at / 8), "#{message}, at (#{at % 8}, #{at / 8})"
+    end
+  end
+
+  # A SCREEN THAT FADES EVERY BANK AT ONCE: a map with cells in two banks, both told `recolor`, each
+  # on a pass of its own. The background follows both, a cell showing what its own bank holds.
+  def test_a_background_follows_two_banks_the_game_recolors
+    Dir.mktmpdir do |folder|
+      first = see_through_first(OTHER)
+      second = see_through_first(LATER)
+      words = [ADVANCE_CELL.(1), ADVANCE_CELL.(2, bank: 1)]
+      program = pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 2, cell: 8) do |world|
+        colors :first, first
+        colors :second, second
+        world.draw_with({ palette_0: :palette_0, palette_1: :palette_1 })
+        %i[palette_0 palette_1].each_with_index do |bank, at|
+          image :"dot_#{at}", width: 8, height: 8, places: Array.new(64, 2), colors: bank
+          sprite(:"dot_#{at}", at: [40 + (at * 20), 40]).draw_with bank
+        end
+        pass = var :pass, 0
+        game_loop do
+          pass += 1
+          recolor :palette_0, :first if pass >= 3
+          recolor :palette_1, :second if pass >= 5
+        end
+      end
+      shown_after = ->(pass) { game_player.run(program, frames: pass + framework_drawing_lag).screen }
+
+      early = shown_after.(2)
+      assert_cell(early, PLACES[1], 8, 0, 0, 0)
+      assert_cell(early, PLACES[2], 8, 8, 0, 1)
+      between = shown_after.(3)
+      assert_cell_drawn_with(between, PLACES[1], 0, first, "bank 0's cell once bank 0 holds :first")
+      assert_cell(between, PLACES[2], 8, 8, 0, 1)
+      late = shown_after.(5)
+      assert_cell_drawn_with(late, PLACES[1], 0, first, "bank 0's cell, still :first")
+      assert_cell_drawn_with(late, PLACES[2], 8, second, "bank 1's cell once bank 1 holds :second")
+      assert_equal [first.fetch(2), second.fetch(2)], [late.pixel(41, 41), late.pixel(61, 41)], "the sprites drawn with each bank"
+    end
+  end
+
   def test_a_list_that_is_not_a_bank_of_the_slot_is_still_refused
     Dir.mktmpdir do |folder|
       other = see_through_first(OTHER)
@@ -284,20 +414,64 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
+  # A BUILD THAT READS ITS PACK AS THE GAME STARTS knows a bank's name and none of its colours.
+  # What it shows, a bank walked, recoloured or drawn in among it, is PackBackgroundAtStartTests's,
+  # on the runs that are handed a file. These are what it refuses as the game is built.
+  private def left_out_refusal(folder, &uses_bank)
+    words = [ADVANCE_CELL.(1)]
+    options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    assert_raises(ArgumentError) do
+      pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 1, cell: 8, options: options, &uses_bank)
+    end
+  end
+
+  # The build cannot find a pixel's place in colours it does not hold, which drawing a picture
+  # given as colours with another list needs. Drawn as it is, such a picture shows its own
+  # colours (PackGames::ColorLists holds that to the all-in-one build).
+  def test_a_picture_of_colors_in_a_bank_read_as_the_game_starts_drawn_with_another_list_is_refused
     Dir.mktmpdir do |folder|
-      from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, [ADVANCE_CELL.(1)])
-      b = Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
-      pack = b.data_pack(from: from, version: "1") do |slots|
-        slots.tiles :video, at: TILES_AT, count: 4
-        slots.numbers :map, at: MAP_AT, count: 1, width: :half, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 32
-      end
-      error = assert_raises(ArgumentError) do
-        b.background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 1
+      error = left_out_refusal(folder) do |_world|
+        image :mark, width: 8, height: 8, colors: :palette_1, data: Array.new(64, :red)
+        sprite(:mark, at: [40, 40]).draw_with :palette_0
       end
 
-      assert_includes error.message, "not made that way yet"
+      assert_includes error.message, "image :mark"
+      assert_includes error.message, "as the game starts"
+    end
+  end
+
+  def test_a_game_list_named_as_a_bank_read_as_the_game_starts_is_refused
+    Dir.mktmpdir do |folder|
+      error = left_out_refusal(folder) { |_world| colors :palette_0, %i[transparent red green blue] }
+
+      assert_includes error.message, ":palette_0"
+    end
+  end
+
+  def test_a_cell_changed_on_a_background_read_as_the_game_starts_is_refused
+    Dir.mktmpdir do |folder|
+      error = left_out_refusal(folder) do |world|
+        tile = var :tile, 0
+        game_loop do
+          world.set_tile 0, 0, tile
+          wait_vblank
+        end
+      end
+
+      assert_includes error.message, "set_tile"
+      assert_includes error.message, "as the game starts"
+    end
+  end
+
+  def test_a_map_of_more_cells_than_a_build_reading_its_pack_keeps_is_refused
+    Dir.mktmpdir do |folder|
+      words = [ADVANCE_CELL.(1)] * (256 * 129)
+      options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+      error = assert_raises(ArgumentError) do
+        pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 256, cell: 8, options: options)
+      end
+
+      assert_includes error.message, "cells"
     end
   end
 

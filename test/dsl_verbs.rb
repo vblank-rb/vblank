@@ -49,6 +49,9 @@ module DslVerbs
   # remember_sprite_recolors and remember_background_draws_with are the hooks behind `recolor`:
   # a sprite, a pool and a background say which lists they draw with, so a list that changes
   # can find them. The reference documents `recolor`; nobody writes these.
+  # follow_pose_lists is what a sprite's handle calls when `draw_with` is given a hash, documented there;
+  # list_chosen_at_start? and follow_lists_chosen_at_start are what it asks and calls for a pose whose list
+  # its frame picks in a build that reads its pack as the game starts, documented with the pose.
   # record_light_shape, light_circle and show_light_now are the hooks behind `shape`, `circle`
   # and `show_now` on the light, documented on `spotlight`. game_pack_checks is what a build asks of `uses`, documented there.
   # record_clock_set is the hook behind `set_to` on the clock, documented on `clock`.
@@ -57,7 +60,8 @@ module DslVerbs
   # Background asks of the build; the reference documents `set_tile` and `solid:` on `tiles`.
   # store!, increase!, decrease! and copy_variable! are what a variable's own handle calls.
   # declared_data_pack is what a shell build asks of the game (Original::Shell), and made_data_pack_file
-  # what Cartridge::Game#data_pack_file does, both documented on `data_pack`.
+  # what Cartridge::Game#data_pack_file does, both documented on `data_pack`. declared_shell_screen
+  # is the same question for the shell's first screen, documented on `shell_screen`.
   SKIP = %i[variables debug_halted? make_object_rotatable make_object_scalable with_test set_shown_tile_picture
             store! increase! decrease! copy_variable!
             keep_walls_changeable kept_walls_of every_kept_walls record_wall_change record_walls_brought_up
@@ -66,12 +70,12 @@ module DslVerbs
             record_row_bend make_background_affine screen_pages keep_showing_pictures
             tile_collision_routine play_from_list play_sound_effect
             declare_instance_routine record_walk_instance_writes pool_walk_scratch_var
-            colors_to_draw_with make_object_recolorable make_pool_recolorable
+            colors_to_draw_with follow_pose_lists list_chosen_at_start? follow_lists_chosen_at_start make_object_recolorable make_pool_recolorable
             make_object_layer_choosable refuse_unknown_layers! put_objects_in_layer write_picked_choice
             lists_drawn_from list_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
             request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose
             record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack
-            made_data_pack_file].freeze
+            made_data_pack_file declared_shell_screen].freeze
 
   # …plus the verbs the loaded effect packs contribute. A pack's verb is an ordinary
   # DSL verb at the call site, so it has to be looked up in the same place.

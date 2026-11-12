@@ -51,7 +51,7 @@ module TestSuites
   # The tests of the program a player runs, with its window. It builds with SDL, whose first build
   # fetches its source over the network, so it is loaded only when asked (SDL=1).
   DESKTOP_TESTS = Ractor.make_shareable(%w[test_native_desktop.rb test_native_shell.rb test_native_shell_folder.rb
-                                           test_native_pacman_port_shell.rb].map { |file| "#{NATIVE_DIR}/#{file}" })
+                                           test_native_pacman_port_shell.rb test_native_shell_screen.rb].map { |file| "#{NATIVE_DIR}/#{file}" })
 
   module_function
 

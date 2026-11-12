@@ -13,13 +13,15 @@ module VBlank
           # layers of sixteen-colour tiles, the one declared last in front (BG1), as the interpreter
           # paints the one declared last over the rest. Each map it can show is made into a grid of
           # 32 or 64 cells each way (IR::TileMap), kept whole in the cartridge and copied onto its
-          # layer when it is put up. A status bar shown beside two backgrounds goes on the third
+          # layer when it is put up. A status bar or a background held above a row shown beside two
+          # backgrounds, or a status bar beside a sprite behind a background, goes on the third
           # layer, of four-colour tiles (#make_third_layer_art). Each sprite is made of the console's 8×8 sprite pieces, placed
           # in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENT_KINDS = %i[
               screen background scroll_background set_tile show_map present_objects hide_sprites fade tint
               place_bar scroll_rows copy_tiles copy_owed_tiles background_colors color_list_holds see_through
+              pixelate
             ].freeze
 
             def emit_picture_statement(node)
@@ -40,6 +42,7 @@ module VBlank
               when :background_colors then emit_background_colors(node)
               when :color_list_holds then emit_color_list_holds(node)
               when :see_through then emit_see_through_amount(node)
+              when :pixelate then emit_pixelate(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -48,20 +51,35 @@ module VBlank
             # (Runtime::Picture's rt_bar_place).
             def self.status_bar?(program) = program.walk.any? { |node| node.kind == :background && node.bar? }
 
-            # WHETHER +program+'S STATUS BAR GOES ON THE THIRD LAYER: some screen shows it beside two
-            # other backgrounds. Mode 1 has two layers of sixteen-colour tiles and a third of four,
-            # and the bar is the one that goes there: it is what Super Bomberman puts there (its
-            # stages show an arena and an overlay on the two and the bar on the third), and a bar of
-            # numbers and icons is the picture that fits four colours. A game whose screens show the
-            # bar beside one background at most keeps it on one of the two, as before, and builds the
-            # same bytes.
-            def self.status_bar_on_third_layer?(program)
+            # WHETHER +program+ PUTS A BACKGROUND HELD TO SOME ROWS ON THE THIRD LAYER (#held_to_rows?: a
+            # status bar, or a background held above a row): some screen shows it beside two other
+            # backgrounds. Mode 1 has two layers of sixteen-colour tiles and a third of four, and the
+            # held background is the one that goes there: it is what Super Bomberman puts there (its
+            # stages show an arena on the two, each at its own scroll, and the bar on the third, which
+            # its line interrupt switches on above line 32), and a bar of numbers and icons is the
+            # picture that fits four colours. A game whose screens show it beside one background at
+            # most keeps it on one of the two, as before, and builds the same bytes.
+            #
+            # Or some screen shows a status bar beside a sprite the stack puts behind a background. The
+            # interpreter draws no background under the bar, so there the sprite shows over the bar
+            # while the background hides it above the bar's top. A sprite's priority puts it behind a
+            # layer on every row, the bar's too; but the third layer, kept low, is behind every
+            # sprite whatever its priority, and the bar's rows show no other layer
+            # (Runtime::Picture's line table), so there the two agree.
+            def self.third_layer?(program)
               return false if Lowering::Paint.painted?(program)
 
               Stacking.screenfuls(program).any? do |screenful|
-                screenful.scenery.length > BACKGROUND_LAYERS && screenful.scenery.any?(&:bar?)
+                scenery = screenful.scenery
+                (scenery.any? { |bg| held_to_rows?(bg) } && scenery.length > BACKGROUND_LAYERS) ||
+                  (scenery.any?(&:bar?) &&
+                   Stacking.scenery_over_objects?(screenful.depths, scenery: scenery, objects: screenful.objects))
               end
             end
+
+            # Whether +bg+ is shown on some rows of the screen and not the rest, which the line table
+            # switches (Runtime::Picture's BAR_TABLE): a status bar, or a background held above a row.
+            def self.held_to_rows?(bg) = bg.bar? || !bg.above_row.nil?
 
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
@@ -154,7 +172,7 @@ module VBlank
 
             def prepare_picture
               refuse_backdrops_of_its_own!
-              @third_layer = Picture.status_bar_on_third_layer?(@program)
+              @third_layer = Picture.third_layer?(@program)
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
@@ -164,7 +182,6 @@ module VBlank
               @pictures = by_kind(:bitmap)
               @objects = by_kind(:object)
               @backgrounds = by_kind(:background)
-              @backgrounds_by_name = backgrounds_declared.group_by(&:name) # every declaration of each name (#background_declared_for)
               @set_tiles_by_name = @program.walk.select { |node| node.kind == :set_tile }.group_by(&:name)
               @sprite_names = SpriteNames.new(@program)
               @grids = {}
@@ -481,7 +498,7 @@ module VBlank
 
               backgrounds_declared.reject(&:scene).each do |bg|
                 shown = bg.every_map.flat_map { |map| map.flat_map { |row| Array(row) } }
-                changed = @set_tiles_by_name.fetch(bg.name, []).map(&:tile)
+                changed = @set_tiles_by_name.fetch(bg.name, []).flat_map(&:tiles_named)
                 (shown + changed).uniq.each { |tile| cell_of(bg, tile) if tile.nil? || tile < bg.tiles.length }
               end
               @tile_runs.each_index { |number| make_run_art(number) unless @run_places[number] }
@@ -908,6 +925,9 @@ module VBlank
                       if priority != 3 && !@third_layer && screenful.scenery.any?(&:bar?)
                         refuse_unmade!("a status bar beside a sprite behind a background")
                       end
+                      # A background held above a row there is behind every sprite too, and the
+                      # interpreter draws it over one the stack puts behind it.
+                      refuse_unmade!("a sprite behind a background held above a row beside two other backgrounds") if front.include?(THIRD_LAYER)
                       found[name] = priority
                     end
                   end
@@ -968,6 +988,78 @@ module VBlank
 
             BIG_TILE_BIT = 0x10
 
+            # MOSAIC'S LOW FOUR BITS for a game that pixelates (Runtime::Mosaic): the layers whose
+            # backgrounds are put in blocks, BG1's the lowest. A painted screen is one picture, the
+            # text over it included, so every layer it shows is in blocks, as the interpreter shows
+            # the whole of a painted picture in blocks. On a tiled screen a background is in blocks
+            # unless the game's place leaves it as drawn (`under:`), or it is a status bar the game
+            # does not put in blocks too (`status_bar: true`), as Reference#paint_scenery, #paint_status_bar
+            # and #place_blocks decide.
+            #
+            # A LAYER WHOSE SCENES DIFFER in that (a menu's status bar as drawn, and a stage's clouds
+            # in blocks, on one layer) is among these bits too, and each scene taking over notes the
+            # layers it leaves as drawn (#emit_scene_mosaic), which the blank takes out of the byte
+            # (Runtime::Mosaic::KEPT_LAYERS). A layer one background holds in every scene, or none
+            # does, keeps its one answer, and a game with no such layer has none of it.
+            def mosaic_backgrounds
+              return ALL_MOSAIC_LAYERS if painted?
+
+              @layers.reduce(0) { |bits, (bg, layer)| background_in_blocks?(bg) ? bits | (1 << layer) : bits }
+            end
+
+            ALL_MOSAIC_LAYERS = 0x0F
+
+            # Reference#in_blocks? and #paint_status_bar, all but the size: whether +bg+ is in blocks while
+            # the picture is.
+            def background_in_blocks?(bg)
+              choice = blocks_choice
+              (!bg.bar? || choice.bars) && !choice.kept.include?(bg.name)
+            end
+
+            # What the program chose for its blocks, worked out once: the names left as drawn
+            # (`under:`), and whether a status bar is in blocks (`status_bar: true`).
+            BlocksChoice = Data.define(:kept, :bars)
+
+            # Raises for a program that chooses both ways (Blocks.bar_in_blocks!), which the builder
+            # refuses before it gets here.
+            def blocks_choice
+              @blocks_choice ||= begin
+                places = Blocks.places(@program)
+                kept = places.first ? Stacking.at_or_above(Stacking.picture(@program), places.first).map(&:name) : []
+                BlocksChoice.new(kept: kept, bars: Blocks.bar_in_blocks!(@program, LoweringError))
+              end
+            end
+
+            # The layers whose backgrounds are in blocks in one scene and not in another, a bit each.
+            def mosaic_layers_by_scene
+              @layers.group_by { |_, layer| layer }.sum do |layer, held|
+                held.map { |bg, _| background_in_blocks?(bg) }.uniq.length > 1 ? 1 << layer : 0
+              end
+            end
+
+            # A scene taking over, in a game with a layer whose scenes differ (#mosaic_backgrounds):
+            # the layers of those whose background in this scene is left as drawn, noted for the blank.
+            def emit_scene_mosaic(arrival)
+              return unless Runtime::Mosaic.kept?(@memory)
+
+              differing = mosaic_layers_by_scene
+              return if differing.zero?
+
+              kept = arrival.scenery.reduce(0) do |bits, bg|
+                @layers.key?(bg) && !background_in_blocks?(bg) ? bits | (1 << layer_of(bg)) : bits
+              end
+              Runtime::Mosaic.reserve_kept_layers(@memory)
+              @asm.lda(kept & differing)
+              @asm.sta(@asm.abs(@memory[Runtime::Mosaic::KEPT_LAYERS]))
+            end
+
+            # Reference#exec_pixelate: blocks of this size from the next picture on (Runtime::Mosaic).
+            # Which backgrounds are in them is settled as the cartridge is built (#mosaic_backgrounds).
+            def emit_pixelate(node) = runtime_call("rt_mosaic", [node.size])
+
+            # Whether +program+ pixelates, which the runtime then carries the mosaic for.
+            def self.pixelates?(program) = program.walk.any? { |node| node.kind == :pixelate }
+
             private
 
             def layers_of_two_sizes
@@ -1009,8 +1101,13 @@ module VBlank
 
             def emit_put_up(bg)
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
-              # A status bar put up shows from the top it was declared with (Reference#bar_top_shown).
-              runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)]) if bg.bar?
+              # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
+              # covers sprites as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up).
+              if bg.bar?
+                runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)])
+                covers = @handover.bar_covers_on_put_up(bg)
+                runtime_call("rt_bar_covers", [covers]) if covers
+              end
               runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row)]) if bg.above_row
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
@@ -1023,12 +1120,11 @@ module VBlank
             # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
             # pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
-              if placed.call(:scroll_background)
+              if @plan.places_at_pass_end?(:scroll_background)
                 layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
                 @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
               end
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
+              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
             end
 
             # The two layers a background can be on.
@@ -1042,7 +1138,7 @@ module VBlank
             # +node+'s write, unless it is written at the end of a pass that put its background or bar
             # up (+note+, #keep_corner_notes).
             def emit_unless_put_up(node, note)
-              return yield unless note && placed_at_pass_end?(node)
+              return yield unless note && @plan.placed_at_pass_end?(node)
 
               held = fresh("held_at_corner")
               jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
@@ -1061,20 +1157,20 @@ module VBlank
             # background, SPRITE_IN_FRONT: a background in front of a sprite needs the sprite in a
             # layer, which #refuse_unmade_picture! refuses.)
             #
-            # A STATUS BAR ON THE THIRD LAYER (Picture.status_bar_on_third_layer?) is left out of that
-            # count and order: it is on THIRD_LAYER whichever screen shows it, and the other two layers
-            # are shared out as they are in a game with no bar.
+            # A STATUS BAR OR A BACKGROUND HELD ABOVE A ROW ON THE THIRD LAYER (Picture.third_layer?) is
+            # left out of that count and order: it is on THIRD_LAYER whichever screen shows it, and the
+            # other two layers are shared out as they are in a game with neither.
             def assign_background_layers
               @layers = {}.compare_by_identity
               always = layered_scenery(@handover.always_up.scenery)
               own = @scenes.keys.map { |scene| layered_scenery(@handover.arrival(scene).scenery) }
               @scene_layers = own.map(&:length).max || 0
               if always.length + @scene_layers > BACKGROUND_LAYERS
-                refuse_unmade!(@third_layer ? "more than two backgrounds on the screen at once beside its status bar" : "more than two backgrounds on the screen at once")
+                refuse_unmade!(@third_layer ? "more than two backgrounds on the screen at once beside a status bar or a background held above a row" : "more than two backgrounds on the screen at once")
               end
-              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| bg.bar? || bg.above_row } }
+              @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| Picture.held_to_rows?(bg) } }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
-              refuse_unmade_stacking!(always)
+              refuse_unmade_stacking!
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
@@ -1082,65 +1178,115 @@ module VBlank
               refuse_unmade_see_through!
             end
 
-            # The layer Runtime::Picture keeps a status bar on beside two backgrounds (BG3).
+            # The layer Runtime::Picture keeps a status bar or a background held above a row on beside
+            # two backgrounds, or a status bar beside a sprite behind a background (BG3).
             THIRD_LAYER = 2
 
-            # +scenery+ less a status bar that is on the third layer.
-            def layered_scenery(scenery) = @third_layer ? scenery.reject(&:bar?) : scenery
+            # +scenery+ less a background on the third layer.
+            def layered_scenery(scenery) = @third_layer ? scenery.reject { |bg| Picture.held_to_rows?(bg) } : scenery
 
-            # Whether +bg+ is a status bar on the third layer.
-            def on_third_layer?(bg) = @third_layer && bg.bar?
+            # Whether +bg+ is on the third layer.
+            def on_third_layer?(bg) = @third_layer && Picture.held_to_rows?(bg)
 
-            # THE BAR'S TILES AND COLOURS, made before any other background's, so that the lists of the
-            # backgrounds its colours take are the first (Art#reserve_bar_palettes) and its tiles are
-            # among the places it can name. Every tile its maps show and every tile the game sets in it
-            # is made now, so none comes later, after a scene has taken its copy of the tiles.
+            # +bg+ on the third layer, as a refusal names it (the answers name when one is there).
+            def third_layer_refusal_words(bg) = bg.bar? ? "a status bar on the third layer" : "a background held above a row beside two other backgrounds"
+
+            # THE THIRD LAYER'S TILES AND COLOURS, made before any other background's, so that the lists
+            # of the backgrounds its colours take are the first (Art#reserve_bar_palettes) and its tiles
+            # are among the places it can name. Every tile its maps show and every tile the game sets in
+            # it is made now, so none comes later, after a scene has taken its copy of the tiles.
             def make_third_layer_art
-              backgrounds_declared.select(&:bar?).each do |bar|
-                @layers[bar] = THIRD_LAYER
-                refuse_unmade_third_layer_bar!(bar)
-                bar.every_map.each_index { |which| grid_of(bar, which) }
-                @set_tiles_by_name.fetch(bar.name, []).select { |node| node.tile.is_a?(Integer) }
-                        .each { |node| cell_of(bar, node.tile) if node.tile < bar.tiles.length }
+              refuse_unmade!("two backgrounds held to rows on one screen beside two other backgrounds") if Stacking.screenfuls(@program).any? { |screenful| screenful.scenery.count { |bg| Picture.held_to_rows?(bg) } > 1 }
+              backgrounds_declared.select { |bg| Picture.held_to_rows?(bg) }.each do |held|
+                @layers[held] = THIRD_LAYER
+                refuse_unmade_third_layer!(held)
+                held.every_map.each_index { |which| grid_of(held, which) }
+                @set_tiles_by_name.fetch(held.name, []).flat_map(&:tiles_named).grep(Integer)
+                        .each { |tile| cell_of(held, tile) if tile < held.tiles.length }
               end
               @art.reserve_bar_palettes
             end
 
-            # What a bar on the third layer cannot be yet.
-            def refuse_unmade_third_layer_bar!(bar)
-              refuse_unmade!("a status bar beside two backgrounds drawn with other colours (`draw_with`)") unless Array(bar.recolors).empty?
-              refuse_unmade!("a status bar beside two backgrounds drawn from 16×16 tiles") unless bar.tile_w == 8
-              refuse_unmade!("a status bar beside two backgrounds bent row by row") if bends.any? { |bend| bend.name == bar.name }
-              return if @tile_runs.none? { |run| bar.tiles.intersect?(Array(run.tiles)) }
+            # What a background on the third layer cannot be yet.
+            def refuse_unmade_third_layer!(held)
+              words = third_layer_refusal_words(held)
+              refuse_unmade!("#{words} drawn with other colours (`draw_with`)") unless Array(held.recolors).empty?
+              refuse_unmade!("#{words} drawn from 16×16 tiles") unless held.tile_w == 8
+              refuse_unmade!("#{words} bent row by row") if bends.any? { |bend| bend.name == held.name }
+              refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
+              return unless held.above_row
 
-              refuse_unmade!("a status bar beside two backgrounds showing tiles painted from a list")
+              refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
+              refuse_unmade!("#{words} beside a see-through layer") unless SeeThrough.layers(@program).empty?
+              refuse_held_see_through!(held)
+            end
+
+            # Whether a screen showing +held+ draws another background in front of it: one after it in
+            # the stack's order, or a scene's own where +held+ is every screen's (the interpreter paints
+            # a scene's own over what every screen shows). The third layer is shown alone above the row,
+            # so it is in front there whatever the stack says.
+            def held_behind_scenery?(held)
+              Stacking.screenfuls(@program).any? do |screenful|
+                scenery = screenful.scenery
+                same = ->(bg) { bg.name == held.name && bg.scene == held.scene }
+                next false unless scenery.any?(&same)
+
+                !same.call(scenery.last) || (held.scene.nil? && scenery.any?(&:scene))
+              end
+            end
+
+            # A BACKGROUND HELD ABOVE A ROW ON THE THIRD LAYER shows alone above its row, as a Super
+            # Nintendo game's bar does: the line table shows the third layer and the sprites there, and
+            # the other two layers from the row down (Runtime::Picture#emit_bar_table). The third layer
+            # is behind the other two in mode 1 (and, with BGMODE's bit for it, in front of the sprites
+            # too), so showing all three above the row would put the arena over the bar. The
+            # interpreter draws the backgrounds behind it there too, where it is see-through. So a held
+            # background that can be see-through on its rows is refused: a tile with a see-through
+            # pixel, or a cell left empty that can come into view. Without a scroll of its own the cells
+            # in view are the ones its corner shows; with one, every cell of its grid.
+            def refuse_held_see_through!(held)
+              subject = "The background :#{held.name} is held above a row beside two other backgrounds"
+              why = "On a Super Nintendo, that background goes on a layer that shows alone above its row. " \
+                    "The backgrounds behind it cannot show through it there."
+              tile = held.tiles.find { |name| (0...64).any? { |at| @cache.image(picture_named(name)).tile_see_through_at?(at) } }
+              if tile
+                raise Art::HeldArtSeeThrough, "#{subject}, and its tile :#{tile} has see-through pixels. #{why} " \
+                                              "To fix this, draw the tile :#{tile} with no see-through pixels."
+              end
+              return unless held_cells_empty?(held)
+
+              raise Art::HeldArtSeeThrough, "#{subject}, and its map has empty cells that can show above the row. #{why} " \
+                                            "To fix this, put a tile in each cell of its map. If the game does not scroll " \
+                                            "it, only the cells above the row must have a tile."
+            end
+
+            # Whether a cell of +held+'s maps that can come into view above its row is empty. (A
+            # `set_tile` never empties one: it names a tile the background has, and a picked tile
+            # that stands for none changes nothing, Reference#exec_set_tile.)
+            def held_cells_empty?(held)
+              scrolled = @program.walk.any? { |node| node.kind == :scroll_background && node.name == held.name }
+              held.every_map.any? do |map|
+                columns, rows = TileMap.grid(map)
+                unless scrolled
+                  rows = [rows, (held.above_row + held.tile_h - 1) / held.tile_h].min
+                  columns = [columns, (Console::SUPER_NINTENDO.screen_width + held.tile_w - 1) / held.tile_w].min
+                end
+                (0...rows).any? { |row| (0...columns).any? { |column| (tile = Array(map[row])[column]).nil? || tile.negative? } }
+              end
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }
 
             # A stack the layers' order cannot show: a scene's own background behind one every screen
             # shows (see #assign_background_layers).
-            def refuse_unmade_stacking!(always)
-              @scenes.each_key do |scene|
-                own = layered_scenery(@handover.arrival(scene).scenery)
-                drawn = @handover.showing(scene).select { |bg| (always + own).any? { |up| up.equal?(bg) } }
-                next if drawn.map(&:object_id) == (always + own).map(&:object_id)
-
-                refuse_unmade!("a scene's own background in a layer behind a background every screen shows")
-              end
+            def refuse_unmade_stacking!
+              stacked = @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) { |bg| !on_third_layer?(bg) } }
+              refuse_unmade!("a scene's own background in a layer behind a background every screen shows") if stacked
             end
 
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by
-            # that name, or — where several scenes each declare their own by one name — the one of the
-            # scene whose routine is being lowered, or the one every screen shows.
-            def background_declared_for(node)
-              declared = @backgrounds_by_name.fetch(node.name, [])
-              raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
-              return declared.first if declared.length == 1
-
-              own = @lowering_scene && @handover.arrival(@lowering_scene).scenery.find { |bg| bg.name == node.name }
-              own || @handover.always_up.scenery.find { |bg| bg.name == node.name }
-            end
+            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names
+            # (SceneHandover#background_named); nil where that cannot be told while the game is built.
+            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
 
             # +node+'s change made to the background it names (#background_declared_for), yielded
             # to the block. Where that is not known while the game is built — a change outside every
@@ -1174,6 +1320,7 @@ module VBlank
               (arrival.painted_tiles + arrival.painted_pictures).each { |run| emit_tile_run_copy(run.name) }
               emit_see_through_for_scene(scene)
               emit_scene_backdrop(arrival)
+              emit_scene_mosaic(arrival)
               # (A scene's own status bar on the third layer is a scene's own scenery on no layer of
               # the two.)
               own_scenery = !@scene_layers.zero? || scene_bars?
@@ -1188,7 +1335,7 @@ module VBlank
               ((0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }).each do |layer|
                 runtime_call("rt_background_put_up", [Build.int(layer), Build.int(empty_grid.number), Build.int(1)])
               end
-              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none? { |bg| bg.bar? || bg.above_row }
+              runtime_call("rt_bar_gone", []) if scene_bars? && arrival.scenery.none? { |bg| Picture.held_to_rows?(bg) }
             end
 
             # The layers some scene bends and the one taking over does not: their rows go straight.
@@ -1224,7 +1371,7 @@ module VBlank
               return nil if tile.nil? || tile.negative?
 
               name = bg.tiles.fetch(tile)
-              return @art.bar_cell(@cache.image(picture_named(name)), bar: bg.name, tile: name) if on_third_layer?(bg)
+              return @art.bar_cell(@cache.image(picture_named(name)), owner: Art::ThirdLayerOwner.new(name: bg.name, held_above: !bg.above_row.nil?), tile: name) if on_third_layer?(bg)
 
               @run_cells.fetch(name) do
                 image = @cache.image(picture_named(name))
@@ -1248,7 +1395,16 @@ module VBlank
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.
-            def emit_set_tile(node) = for_background(node) { |bg| emit_set_tile_on(node, bg) }
+            #
+            # A tile picked as the program runs is written as the tests it stands for
+            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
+            # background's cells to index yet.
+            def emit_set_tile(node)
+              return for_background(node) { |bg| emit_set_tile_on(node, bg) } unless node.picked?
+
+              tests = PickedTile.tests(node)
+              statement(tests) if tests
+            end
 
             def emit_set_tile_on(node, bg)
               return if node.tile && node.tile >= bg.tiles.length
@@ -1828,7 +1984,7 @@ module VBlank
               if objects.any?(&:layer_pick)
                 emit_layer_changing_sprites(node, objects)
               else
-                present_items(node).each do |item|
+                Stacking.items_in_draw_order(node).each do |item|
                   next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
 
                   emit_sprite_placing(object_named(item), item)
@@ -1847,15 +2003,6 @@ module VBlank
               behind = sprite_depths.empty? ? [] : [Build.int((3 - sprite_depths.fetch(at, 3)) << SPRITE_PRIORITY_SHIFT)]
               emit_sprite_place(obj, obj.name, behind)
               @asm.label(skip)
-            end
-
-            # The frame's sprites back to front, each a name — or, for a run the game orders
-            # (`draw_in_order`), the run, at the place of its first sprite.
-            def present_items(node)
-              Array(node.orders).reduce(node.names.dup) do |names, run|
-                first = names.index(run.objects.first)
-                names[0...first] + [run] + names[(first + run.objects.length)..]
-              end
             end
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
@@ -1965,7 +2112,7 @@ module VBlank
               depths = @cache.stacking.depths
               depth_of = ->(obj, level) { depth_names(obj).find { |name| depths[name] == level } }
               objects.flat_map { |obj| Stacking.levels_of(depths, obj) }.uniq.sort.each do |level|
-                present_items(node).each do |item|
+                Stacking.items_in_draw_order(node).each do |item|
                   if item.is_a?(Build::DrawOrder)
                     here = item.objects.to_h { |name| [name, depth_of.call(object_named(name), level)] }.compact
                     emit_ordered_run(item, here) unless here.empty?

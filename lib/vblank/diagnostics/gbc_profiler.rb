@@ -50,13 +50,15 @@ module VBlank
       end
 
       # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
-      def self.run_tape(rom, tape:, frames:)
+      # +routines+ is how many of a frame's routines each reading keeps.
+      def self.run_tape(rom, tape:, frames:, routines: TapeProfile::ROUTINES_KEPT)
         Emulator.load!
-        TapeProfile.play(rom, tape: tape, frames: frames, meter: new(rom))
+        TapeProfile.play(rom, tape: tape, frames: frames, meter: new(rom, routines: routines))
       end
 
-      def initialize(rom)
+      def initialize(rom, routines: TapeProfile::ROUTINES_KEPT)
         @rom = rom
+        @routines = routines
         @places = rom.built or raise ArgumentError, "this cartridge carries no record of its build to name its routines by"
         @labels = @places.code.map { |label, place| [counted_key(place), label] }.sort
         @starts = @labels.map(&:first)
@@ -90,9 +92,8 @@ module VBlank
           return nil
         end
         asleep, total, game, runtime = cycles_by_routine(core.profile_gb(1))
-        kept = TapeProfile::ROUTINES_KEPT
         TapeProfile::FrameCost.new(lines_spare: (asleep * LINES_A_FRAME / total).floor, awake_share: 1 - (asleep / total),
-                                   game: by_share(game, total).first(kept), runtime: by_share(runtime, total).first(kept))
+                                   game: by_share(game, total).first(@routines), runtime: by_share(runtime, total).first(@routines))
       end
 
       # The report, for a person.

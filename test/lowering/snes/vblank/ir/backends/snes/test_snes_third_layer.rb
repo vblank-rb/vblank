@@ -3,7 +3,7 @@
 require "test_helper"
 
 # A STATUS BAR ON THE THIRD LAYER, beside two backgrounds (SNES::Lowering::Picture
-# .status_bar_on_third_layer?): its tiles are four-colour, from eight lists of three colours, and
+# .third_layer?): its tiles are four-colour, from eight lists of three colours, and
 # a bar whose art does not fit that is refused by name. A bar of many lists, its cells changed as
 # a score's are, is drawn as the interpreter draws it on every pass.
 class TestSNESThirdLayer < Minitest::Test
@@ -25,7 +25,7 @@ class TestSNESThirdLayer < Minitest::Test
 
   def test_a_bar_tile_of_four_colours_is_refused_naming_the_bar_and_the_tile
     colors = [[0x001F, 0x03E0, 0x7C00, 0x7FFF]]
-    error = assert_raises(SNES::Art::BarArtTooColorful) { SNES.new.build(game_with_bar(colors)) }
+    error = assert_raises(SNES::Art::ThirdLayerArtTooColorful) { SNES.new.build(game_with_bar(colors)) }
 
     assert_match(/:score/, error.message)
     assert_match(/:bar_art_0/, error.message)
@@ -34,9 +34,66 @@ class TestSNESThirdLayer < Minitest::Test
 
   def test_a_bar_of_more_colours_than_eight_lists_hold_is_refused
     colors = Array.new(9) { |n| [(n + 1) * 0x0421, (n + 1) * 0x0401, (n + 1) * 0x0021] }
-    error = assert_raises(SNES::Art::BarArtTooColorful) { SNES.new.build(game_with_bar(colors)) }
+    error = assert_raises(SNES::Art::ThirdLayerArtTooColorful) { SNES.new.build(game_with_bar(colors)) }
 
     assert_match(/8 lists of 3 colours/, error.message)
+  end
+
+  # A BACKGROUND HELD ABOVE A ROW beside two others goes on the third layer too, and shows alone
+  # above its row: a tile it cannot draw in four colours is refused as a bar's is, and so is one
+  # that could show the arena behind it, which that layer cannot.
+  def test_a_held_tile_of_four_colours_is_refused_naming_the_background_and_the_tile
+    error = assert_raises(SNES::Art::ThirdLayerArtTooColorful) { SNES.new.build(game_with_held([0x001F, 0x03E0, 0x7C00, 0x7FFF])) }
+
+    assert_match(/background :top/, error.message)
+    assert_match(/:top_art/, error.message)
+    assert_match(/four colours/, error.message)
+  end
+
+  def test_a_held_tile_with_see_through_pixels_is_refused
+    error = assert_raises(SNES::Art::HeldArtSeeThrough) { SNES.new.build(game_with_held([0x001F, 0x0000])) }
+
+    assert_match(/:top_art has see-through pixels/, error.message)
+  end
+
+  def test_a_held_map_with_empty_cells_that_can_scroll_into_view_is_refused
+    error = assert_raises(SNES::Art::HeldArtSeeThrough) { SNES.new.build(game_with_held([0x001F, 0x03E0], scrolls: true)) }
+
+    assert_match(/empty cells/, error.message)
+  end
+
+  def test_a_held_background_behind_the_arena_is_refused
+    error = assert_raises(SNES::Lowering::NotMadeYet) { SNES.new.build(game_with_held([0x001F, 0x03E0], first: true)) }
+
+    assert_match(/behind another background/, error.message)
+  end
+
+  def test_a_held_map_that_fills_its_rows_and_never_scrolls_builds
+    refute_nil SNES.new.build(game_with_held([0x001F, 0x03E0]))
+  end
+
+  # The arena of game_with_bar and a background of four rows held above row 32, its one tile in
+  # stripes of +colors+; +scrolls+ moves it every pass, and +first+ declares it before the arena,
+  # behind it.
+  private def game_with_held(colors, scrolls: false, first: false)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:ground, "a" => 0x0118, "b" => 0x0231) { "abababab\n" * 8 }
+      image(:cloud, "." => :transparent, "w" => :white) { "ww....ww\n" * 8 }
+      keys = PIXEL_KEYS.first(colors.length)
+      image(:top_art, keys.zip(colors).to_h) { "#{(keys * 8).join[0, 8]}\n" * 8 }
+      tiles :arena_tiles, "#" => :ground
+      tiles :cloud_tiles, "o" => :cloud
+      tiles :top_tiles, "t" => :top_art
+      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32 if first
+      background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
+      background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
+      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32 unless first
+      game_loop { top.scroll_by 0, 1 if scrolls }
+    end
+    b.finalize_program
+    b.program.copy.tap { |program| program.console = :snes }
   end
 
   # An arena of two colours, a cloud layer over it, and a bar of one tile for each list of colours

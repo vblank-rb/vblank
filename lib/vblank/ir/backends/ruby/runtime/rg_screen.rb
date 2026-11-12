@@ -793,6 +793,11 @@ def rg_fade_nothing
   @rg_paint_fade = nil
 end
 
+# Reference#placed_fade_in_picture?: a placed fade in force changes the backdrop, which is behind
+# everything, unless it is one of no amount. Scenery stamped as drawn is then not the picture, and
+# what stamps it asks for the view to be rebuilt.
+def rg_placed_fade_in_picture? = !rg_hook_paint_fade_for(RG_NO_LAYER).nil?
+
 # Back to front: the backdrop, then each level's scenery (rg_hook_paint_level) and its sprites,
 # with what a feature paints first and last (rg_hook_repaint_began, rg_hook_repaint_ending).
 def rg_repaint_view

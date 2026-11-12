@@ -73,13 +73,14 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: the same as on the Advance.
 - `rgb8` — works: the same as on the Advance.
 - `colors` — works: a list of colours holds four places on a Game Boy Color, the first see-through on a sprite. The console holds eight lists for sprites. A game can use more: each list borrows one of the eight when a sprite that wears it is drawn. More than eight lists on the screen at once do not fit, and a sprite that finds no free list shows another list's colours. A profile of the game says how many times a sprite showed another list's colours.
-- `recolor` — works: the same as on the Advance.
+- `recolor` — works: a background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `colors_in_use` — works: a set can name eight lists or fewer, because the console holds eight lists for sprites. A set with more is refused, naming the set.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: on a painted screen, its colours count towards the four colours of each square that it covers.
-- `sprite` — works: a sprite is made of the console's 8×8 pieces, forty at once and ten on any one row of the screen. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is named, every piece is 8×16: two 8×8 squares one above the other are one of the forty, and a square with none under it is one too, with an empty lower half. `scale`, `face_angle` and `turn` are refused: a Game Boy Color cannot turn or resize a sprite. Draw the turns as poses. The console holds 256 tiles of sprite pictures at once. When a game needs more, the pictures that only one scene's sprites show come in as that scene takes over. The display is off while they come in, and the scene takes over on the same frame as when every picture fits. A scene that needs more than 256 tiles, with the pictures that every scene shows, is refused. A sprite with `over_picture: true` is shown over a painted screen, as on the Advance. The sprites are then copied to the console in each blank. So less of each blank is left to copy the painted screen's tiles.
+- `sprite` — works: a sprite is made of the console's 8×8 pieces, forty at once and ten on any one row of the screen. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. Such a sprite cannot follow those lists (`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. If the game says `sprite_piece_size: { gbc: [8, 16] }` where it is named, every piece is 8×16: two 8×8 squares one above the other are one of the forty, and a square with none under it is one too, with an empty lower half. `scale`, `face_angle` and `turn` are refused: a Game Boy Color cannot turn or resize a sprite. Draw the turns as poses. The console holds 256 tiles of sprite pictures at once. When a game needs more, the pictures that only one scene's sprites show come in as that scene takes over. The display is off while they come in, and the scene takes over on the same frame as when every picture fits. A scene that needs more than 256 tiles, with the pictures that every scene shows, is refused. A sprite with `over_picture: true` is shown over a painted screen, as on the Advance. The sprites are then copied to the console in each blank. So less of each blank is left to copy the painted screen's tiles.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: on the next frame, no sprite shows. On the frame after, every sprite shows where it is.
 - `picture_groups` — works: the Color copies a group's pictures into its sprite memory when the group comes up, as the Advance does. The Color holds 256 tiles of sprite pictures. A frame copies 32 tiles. If a group has more, the copy takes more frames, and no sprite shows until the copy ends.
@@ -131,6 +132,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
+- `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — works: it lists the SM83 code a routine was made into, with the game's variables and the runtime's routines by name.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
 - `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
@@ -140,6 +142,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Color has one controller.
 - `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. A cartridge with a `clock` has no motor, so a game that uses both is refused.
+- `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.
 - `roll` — works: the same as on the Advance.
@@ -152,7 +156,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `noise` — works: the same as on the Advance.
 - `wave` — works: the same as on the Advance.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: on the square, wave and noise voices. A part played on a recording (`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a time, and the game's own recordings use it (see `sample`).
+- `song` — works: on the square, wave and noise voices. A part played on a recording (`voice ..., plays:`) is refused. A Game Boy Color plays one recording at a time, and the game's own recordings use it (see `sample`). A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.

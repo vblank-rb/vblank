@@ -60,8 +60,14 @@ module VBlank
     # at once. `keeps_voices: true` on an effect's Score holds each voice it has taken through such a
     # silence until the effect ends, the way a cartridge's own sound engine can, so a song note
     # falling in that silence is lost. It means nothing for a song.
+    #
+    # A SONG WHOSE LENGTH IS IN THE PLAYER'S DATA PACK. A port reading its original's songs as the
+    # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
+    # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
+    # is then the most ticks the song can last, the one number such a build must know: it holds room
+    # for that many. Any other Score leaves it out, and one that gives it plays as without it.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
-                        :low_notes_intended, :keeps_voices)
+                        :low_notes_intended, :keeps_voices, :longest)
 
     class Score
       # FRAMES A SECOND, the rate the music is played at — the same round figure a song block's
@@ -77,7 +83,7 @@ module VBlank
       # it comes round TO; left out, that is its start. A song that +plays_once+ does not come
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
-                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false)
+                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil)
         super
       end
 
@@ -118,8 +124,8 @@ module VBlank
         # sets them (Music::VoiceContext#slide_up), and only the song's first square part can.
         # +vibrato+ is how each note wobbles its pitch, :none or { depth:, speed:, after: } with the
         # wait in frames (Audio::Vibrato.said), and the square parts and the wave part can. +pan+ is
-        # the speaker each note plays from, :left, :right or :center (Audio::Pan.said), and every
-        # part but one that plays a recording can. +duty+ is a square part's shape, or a list of two
+        # where each note sits between the speakers, :left, :right, :center or a shade from -1.0 to
+        # 1.0 (Audio::Pan.said), and any part can. +duty+ is a square part's shape, or a list of two
         # or four that each note steps through a frame at a time (Audio::Duty.said). +transpose+
         # moves every note by whole semitones and +pitch_offset+ by the voice's own pitch steps after
         # that (Audio::PitchShift); any part can be transposed, and a square part or the wave part
@@ -127,7 +133,10 @@ module VBlank
         #
         # +envelope+ shapes how each of this part's notes starts and ends — read only by a part
         # that plays a recording, since the console's own voices shape their own. A part that sets
-        # nothing takes whatever the instrument it plays was declared with.
+        # nothing takes whatever the instrument it plays was declared with. It is a Hash of times,
+        # an Envelope, or the Super Nintendo sound chip's own bytes (an SNESEnvelope): that
+        # console's build writes the bytes to the note's voice, and every other build plays the
+        # nearest Envelope, so one instrument serves every shape a game plays it with.
         def initialize(notes:, plays: nil, volume: 12, duty: :half, decay: nil, swell: nil, metallic: false,
                        envelope: nil, slide_up: nil, slide_down: nil, vibrato: nil, pan: nil, transpose: nil,
                        pitch_offset: nil)
@@ -146,7 +155,8 @@ module VBlank
           Music::Part.playing(plays, who: who, events: Events.for_part(self, frames, total, who), duty: one, duties: duties,
                                      shift: PitchShift.said(transpose: transpose, pitch_offset: pitch_offset, where: who),
                                      volume: volume, decay: (drum && decay) || :fast, metallic: metallic,
-                                     envelope: Envelope.of(envelope, "a part"),
+                                     envelope: SNESEnvelope.nearest_shape(envelope, "a part"),
+                                     chip_envelope: SNESEnvelope.chip_envelope_of(envelope),
                                      fade: NoteFade.for_part(NoteFade.said(decay: decay, swell: swell, where: who),
                                                              drum: drum),
                                      slide: PitchSlide.said(up: slide_up, down: slide_down, where: who),
@@ -262,14 +272,18 @@ module VBlank
       module Events
         module_function
 
+        # Notes on one tick keep the order they were given in, so which of them is kept is the
+        # same wherever the part's events are worked out (a build that reads its notes as the
+        # game starts works them out again in each runtime).
         def for_part(part, frames, total, who)
-          notes = part.notes.sort_by(&:at)
+          notes = part.notes.each_with_index.sort_by { |note, place| [note.at, place] }.map(&:first)
           kind = Music.kind_played(Music.resolve_plays(part.plays))
           events = notes.each_with_index.flat_map do |note, n|
             said = Music.without_trailing_nils([note.fade(who), note.slide(who), note.wobble(who), note.side(who),
-                                                note.shape(who), note.noise_clock, note.glides || nil])
+                                                note.shape(who), note.noise_clock, note.glides || nil,
+                                                SNESEnvelope.chip_envelope_of(note.envelope)])
             on = [frames.at(note.at), note.frequency(kind), note.instrument_name, note.volume,
-                  Envelope.of(note.envelope, "a note"), *said]
+                  SNESEnvelope.nearest_shape(note.envelope, "a note"), *said]
             next [on] unless note.length
 
             ends = note.at + note.length
@@ -304,6 +318,10 @@ module VBlank
                                  "Give `group:` a name, or remove it."
           end
           true_or_false!(:low_notes_intended, score.low_notes_intended)
+          unless score.longest.nil? || (score.longest.is_a?(Integer) && score.longest.positive?)
+            raise ArgumentError, "A Score has `longest: #{score.longest.inspect}`. It is the most ticks the song can " \
+                                 "last, a whole number more than 0."
+          end
           plays_once!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
         end

@@ -78,7 +78,7 @@ module VBlank
         # The runtime every program carries, in the order it is put together: the game's
         # arithmetic first, then everything that keeps the game's state. A driver follows it:
         # rg_headless.js for node, or rg_page.js inside createGame for a browser.
-        RUNTIME = %w[rg_int32.js rg_refusal.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_save.js rg_state.js].freeze
+        RUNTIME = %w[rg_int32.js rg_refusal.js rg_runtime.js rg_list.js rg_screen.js rg_sound.js rg_spu.js rg_save.js rg_state.js].freeze
 
         # What only a game for several players carries: the session of a match and the relay's room
         # (Program#several_players?), with the fingerprint a match tells it by. A game for one player is
@@ -177,11 +177,11 @@ module VBlank
           end
 
           write_output(game, path, console: console, settings: settings, data: data, err: err, progress: progress,
-                       pack_at_start: pack_at_start) do |text, data_file, described|
+                       pack_at_start: pack_at_start) do |text, data_file, described, program|
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.screen_size,
-                      shoulders: described.buttons.include?(:l))
+                      shoulders: described.buttons.include?(:l), players: program.most_players || 1)
           end
         end
 
@@ -300,7 +300,7 @@ module VBlank
           program = checked_program(game, console: console, settings: settings, err: err, progress: progress, pack_at_start: pack_at_start)
           progress.step("Writing JavaScript")
           text, data_file = factory_and_data_file(program, title: game.title, data: data, menu: game.menu?, code: game.identifying_code)
-          File.write(path, yield(text, data_file, program.described_console))
+          File.write(path, yield(text, data_file, program.described_console, program))
           File.binwrite(File.join(File.dirname(path), data_file_name(path)), data_file) if data_file
           progress.done
           path

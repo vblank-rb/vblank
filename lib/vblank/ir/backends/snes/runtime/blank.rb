@@ -78,8 +78,11 @@ module VBlank
 
             def scratch(memory) = Scratch.new(wanted: memory.scratch(2), room: memory.scratch(2), line: memory.scratch(2))
 
-            # Each routine keeps X and Y; A is not kept.
+            # Each routine keeps X and Y; A is not kept. A cartridge that switches the screen off
+            # above and below its picture (Letterbox) has the same routines counting those lines too.
             def emit(asm, memory, s)
+              return emit_for_window(asm, memory, s) if Letterbox.kept?(memory)
+
               asm.label("rt_blank_room_with_registers")
               asm.clc
               asm.adc((AFTER_LUMP_LINES - AFTER_PIECE_LINES) * BYTES_A_LINE)
@@ -178,6 +181,138 @@ module VBlank
               asm.label("rt_blank_next")
               emit_next_blank(asm)
               asm.rts
+            end
+
+            # THE SAME ROUTINES WHERE THE SCREEN IS OFF ABOVE AND BELOW THE PICTURE (Letterbox). The
+            # time for copying is then the WINDOW: from the line after the last one shown (LAST),
+            # round through the blank, to the line before the first one shown (FIRST). With the
+            # whole screen on, FIRST is 1 and LAST 224, and every count here comes to what the
+            # routines above count. The line just before FIRST is never counted: the screen comes
+            # back on at its end.
+            def emit_for_window(asm, memory, s)
+              first = asm.abs(memory[Letterbox::FIRST])
+              last = asm.abs(memory[Letterbox::LAST])
+              display_on = asm.abs(memory[Frame::DISPLAY_ON])
+
+              asm.label("rt_blank_room_with_registers")
+              asm.clc
+              asm.adc((AFTER_LUMP_LINES - AFTER_PIECE_LINES) * BYTES_A_LINE)
+              asm.label("rt_blank_room")
+              asm.sta(asm.direct(s.wanted))
+              asm.lda(display_on)
+              asm.beq("rt_blank_room_there")
+              asm.jsr(asm.abs("rt_blank_left_on"))
+              asm.sta(asm.direct(s.room))
+              asm.lda(asm.direct(s.wanted))
+              asm.clc
+              asm.adc(AFTER_PIECE_LINES * BYTES_A_LINE)
+              asm.cmp(asm.direct(s.room))
+              asm.bcc("rt_blank_room_there")
+              asm.beq("rt_blank_room_there")
+              # Short of room as the window opens, no window has more: it goes now.
+              emit_line_now(asm)
+              asm.cmp(last)
+              asm.bcc("rt_blank_room_wait")
+              asm.beq("rt_blank_room_wait")
+              asm.sbc(last) # the carry is set: the lines since the window opened
+              asm.cmp(Letterbox::WINDOW_JUST_OPEN_LINES + 1)
+              asm.bcc("rt_blank_room_there")
+              asm.label("rt_blank_room_wait")
+              asm.jsr(asm.abs("rt_letterbox_next"))
+              asm.label("rt_blank_room_there")
+              asm.rts
+
+              [["rt_blank_time", 1], ["rt_blank_time_for_cells", LINES_FOR_CELLS]].each do |routine, lines|
+                asm.label(routine)
+                asm.lda(display_on)
+                asm.beq("#{routine}_there")
+                asm.jsr(asm.abs("rt_blank_lines"))
+                asm.bmi("#{routine}_wait")
+                asm.cmp(lines)
+                asm.bcs("#{routine}_there")
+                asm.label("#{routine}_wait")
+                asm.jsr(asm.abs("rt_letterbox_next"))
+                asm.label("#{routine}_there")
+                asm.rts
+              end
+
+              # rt_blank_lines (JSR): A = the whole lines of the window after the line the picture is
+              # on, nought or less when there are none. Below the band they are the rest of the frame
+              # and the lines above the band; above it, the lines to the one before FIRST.
+              asm.label("rt_blank_lines")
+              emit_line_now(asm)
+              asm.cmp(last)
+              asm.bcc("rt_blank_lines_above")
+              asm.beq("rt_blank_lines_above")
+              # Before the blank, its interrupt is still to come and takes its lines out of the
+              # window while a copy waits: they are counted as gone already. It reads a controller
+              # by hand, which is most of its time, and a game that reads two reads two.
+              asm.cmp(FIRST_BLANK_LINE)
+              asm.bcs("rt_blank_lines_interrupt_counted")
+              interrupt_lines = COPY_START_LINE - FIRST_BLANK_LINE + 1
+              asm.adc(memory.reserved?(Frame::SECOND_HELD) ? interrupt_lines * 2 : interrupt_lines) # the carry is clear
+              asm.label("rt_blank_lines_interrupt_counted")
+              asm.eor(0xFFFF)
+              asm.sec
+              asm.adc(LAST_BLANK_LINE - 1)
+              asm.clc
+              asm.adc(first)
+              asm.rts
+              asm.label("rt_blank_lines_above")
+              asm.eor(0xFFFF)
+              asm.sec
+              asm.adc(first)
+              asm.sec
+              asm.sbc(2)
+              asm.rts
+
+              asm.label("rt_blank_left")
+              asm.lda(display_on)
+              asm.bne("rt_blank_left_on")
+              asm.lda(BLANK_BYTES)
+              asm.rts
+              asm.label("rt_blank_left_on")
+              asm.jsr(asm.abs("rt_blank_lines"))
+              asm.bmi("rt_blank_left_none")
+              asm.beq("rt_blank_left_none")
+              asm.cmp(MOST_LINES_COUNTED + 1)
+              asm.bcc("rt_blank_left_lines")
+              asm.lda(MOST_LINES_COUNTED)
+              asm.label("rt_blank_left_lines")
+              asm.sta(asm.direct(s.line))
+              emit_lines_as_bytes(asm, s)
+              asm.sec
+              asm.sbc(EDGE_BYTES)
+              asm.bcc("rt_blank_left_none")
+              asm.rts
+              asm.label("rt_blank_left_none")
+              asm.lda(0)
+              asm.rts
+
+              asm.label("rt_blank_next")
+              asm.jsr(asm.abs("rt_letterbox_next"))
+              asm.rts
+            end
+
+            # The most lines of a window counted as room at once, so the bytes they hold stay a
+            # number that reads the same signed or not.
+            MOST_LINES_COUNTED = 190
+
+            # A = the lines at +line+ × BYTES_A_LINE: × 128, + × 32, + × 4, + × 1.
+            def emit_lines_as_bytes(asm, s)
+              7.times { asm.asl }
+              asm.sta(asm.direct(s.room))
+              asm.lda(asm.direct(s.line))
+              5.times { asm.asl }
+              asm.clc
+              asm.adc(asm.direct(s.room))
+              asm.sta(asm.direct(s.room))
+              asm.lda(asm.direct(s.line))
+              2.times { asm.asl }
+              asm.clc
+              asm.adc(asm.direct(s.line))
+              asm.clc
+              asm.adc(asm.direct(s.room))
             end
 
             # The next blank waited for; X and Y kept.

@@ -50,7 +50,8 @@ module VBlank
           end
 
           # THE COUNT STARTS AT NOUGHT, for a game that reads it as frames since power-on — put
-          # before the screen's interrupt is armed, so that every frame from then on is in it.
+          # at the top of setting up, where the frames start being counted (see
+          # GBA#emit_arm_frame_counting), so that every frame from then on is in it.
           # This console's memory is not cleared at power-on, so without this the count starts
           # wherever the memory happened to be. A game that never reads it needs nothing: the
           # marks below only ever look at differences.

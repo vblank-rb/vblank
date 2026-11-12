@@ -34,7 +34,8 @@ module VBlank
     # time as well (it then counts more than a frame's worth of time), and the two words can
     # be read a little early. `rom.profile` adds frames up the same way, so the two agree.
     class TapeProfile
-      # How many of a frame's routines a reading keeps, the game's and the runtime's each.
+      # How many of a frame's routines a reading keeps, the game's and the runtime's each, where the
+      # profile is not told (`rom.profile(tape:, frames:, routines:)`).
       ROUTINES_KEPT = 3
 
       # What a console's meter measured of one frame: the +lines_spare+ the game waited through, the
@@ -76,11 +77,13 @@ module VBlank
       class ProcessorTimeMeter
         attr_reader :file_name
 
-        def initialize(time:, file_name:, shown_at:, passes_at:)
+        # +routines+ is how many of a frame's routines a reading keeps, the game's and the runtime's each.
+        def initialize(time:, file_name:, shown_at:, passes_at:, routines: ROUTINES_KEPT)
           @time = time
           @file_name = file_name
           @shown_at = shown_at
           @passes_at = passes_at
+          @routines = routines
           @counting = false
         end
 
@@ -104,28 +107,62 @@ module VBlank
           core.run_frame
           report = @time.report([core.take_processor_time])
           FrameCost.new(lines_spare: report.fewest_lines_spare, awake_share: 1 - report.idle_share,
-                        game: report.game.first(ROUTINES_KEPT), runtime: report.runtime.first(ROUTINES_KEPT))
+                        game: report.game.first(@routines), runtime: report.runtime.first(@routines))
         end
       end
 
       # What `rom.profile(tape:, frames:)` does on a console whose +profiler+ answers run_tape: the
-      # tape and the frames checked, played, and reported for a person or as JSON.
-      def self.profile(rom, profiler, tape:, frames:, keys:, settle:, format:, out:)
+      # tape and the frames checked, played, and reported for a person or as JSON. +routines+ is how
+      # many of a frame's routines each reading keeps, the game's and the runtime's each; nil for
+      # ROUTINES_KEPT.
+      def self.profile(rom, profiler, tape:, frames:, keys:, settle:, format:, out:, routines: nil)
         refuse_unplayable!(tape, frames, keys: keys, settle: settle)
         raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)" unless %i[human json].include?(format)
 
-        result = profiler.run_tape(rom, tape: tape, frames: frames)
+        result = profiler.run_tape(rom, tape: tape, frames: frames, routines: routines_kept(routines))
         format == :human ? render(result, out: out) : out.puts(JSON.generate(result.to_h))
         result
       end
 
+      # How many routines a reading keeps where the profile was told +routines+: that many, or
+      # ROUTINES_KEPT where it was told none.
+      def self.routines_kept(routines)
+        return ROUTINES_KEPT if routines.nil?
+        return routines if routines.is_a?(Integer) && routines.positive?
+
+        raise ArgumentError, "routines: must be a whole number of routines to keep for each frame, 1 or more. " \
+                             "It was #{routines.inspect}."
+      end
+
+      # A profile with no tape adds its frames into one report, which lists its routines itself.
+      def self.refuse_routines_without_tape!(routines)
+        return if routines.nil?
+
+        raise ArgumentError, "routines: sets how many routines each frame of a tape keeps. This profile has no tape. " \
+                             "To fix this, remove routines:, or give tape: and a range of frames."
+      end
+
       # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1.
       # +time+ is the console's TimeByRoutine, +file_name+ what the cartridge is written as for its
-      # emulator, and +shown_at+ and +passes_at+ where its runtime keeps Frame::SHOWN and
-      # Frame::PASSES.
-      def self.run(rom, tape:, frames:, time:, file_name:, shown_at:, passes_at:)
-        meter = ProcessorTimeMeter.new(time: time, file_name: file_name, shown_at: shown_at, passes_at: passes_at)
+      # emulator, +shown_at+ and +passes_at+ where its runtime keeps Frame::SHOWN and
+      # Frame::PASSES, and +routines+ how many of a frame's routines each reading keeps.
+      def self.run(rom, tape:, frames:, time:, file_name:, shown_at:, passes_at:, routines: ROUTINES_KEPT)
+        meter = ProcessorTimeMeter.new(time: time, file_name: file_name, shown_at: shown_at, passes_at: passes_at,
+                                       routines: routines)
         play(rom, tape: tape, frames: frames, meter: meter)
+      end
+
+      # THE FRAMES A PASS OF THE GAME LOOP RAN OVER, counted from 1 at power-on as a tape counts
+      # them, so a slow pass a profile names can be read frame by frame with a tape. +took+ is the
+      # frames each measured pass took, by pass, in order, and +first+ the first frame the time was
+      # read over (a profile's +measured_frames+).
+      #
+      # A profile settles by counting passes ended, and reads the time from the frame after the
+      # count passes its settling. The first pass of +took+ is the one whose end did that, so it
+      # ended on the frame before +first+, and each later pass ends its own frames after the last.
+      def self.frames_of_pass(took, pass, first)
+        ended_on = first - 1 + took.sum { |each, frames| each > took.keys.first && each <= pass ? frames : 0 }
+        (ended_on - took.fetch(pass) + 1)..ended_on
       end
 
       # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1, with
@@ -168,6 +205,14 @@ module VBlank
         return :setting_up if passes_before.zero?
 
         passes_before > shown ? :gap : :pass
+      end
+
+      # A profile's line for its slowest pass: how many frames it took, which pass it was, and the
+      # frames it ran over, to give a tape's profile as `frames:`.
+      def self.slowest_pass_line(result)
+        frames = result.slowest_pass_frames
+        "The slowest pass took #{result.slowest_frames} frames: pass #{result.slowest_pass}, frames #{frames.begin} to " \
+          "#{frames.end} from power-on."
       end
 
       # The buttons the tape holds on each frame up to +last+, from frame 1; past its end, none.

@@ -191,7 +191,7 @@ module VBlank
             # At power-on (Paint's rt_paint_start, the area the whole screen): no tile painted in any
             # generation, no row covered, the key of a clear to black.
             def emit_start(asm, memory)
-              Paint.emit_fill_work_ram(asm, memory[PAINTED_IN], Paint::TILES, "rt_paint_no_generation")
+              Picture.emit_fill_work_ram(asm, memory[PAINTED_IN], Paint::TILES, "rt_paint_no_generation")
               asm.ldx(0)
               asm.label("rt_paint_log_start_row")
               [READIED, MAP_DIRTY].each do |name|
@@ -1014,11 +1014,11 @@ module VBlank
               # address reaches them, and the first 8K, where the rest is kept, is the same memory
               # there as in bank 0.
               far = [keys_now, keys_copy, memory[PAINTED_IN], memory[UNSENT]]
-              raise ArgumentError, "a tile's keys and bytes share work RAM's first bank" unless far.all? { |at| at >> 16 == Paint::WORK_RAM >> 16 }
+              raise ArgumentError, "a tile's keys and bytes share work RAM's first bank" unless far.all? { |at| at >> 16 == Picture::WORK_RAM >> 16 }
 
               asm.phb
               asm.sep(0x20)
-              asm.lda(Paint::WORK_RAM >> 16)
+              asm.lda(Picture::WORK_RAM >> 16)
               asm.pha
               asm.plb
               asm.rep(0x20)

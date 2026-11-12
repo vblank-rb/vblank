@@ -127,7 +127,7 @@ module VBlank
               [OTHER_VALID, MATCHING_OTHER, OTHER_MAP_PENDING, NEWEST_GENERATION, MAP_DIFFERS_LAST].each { |name| asm.stz(asm.abs(memory[name])) }
               asm.lda(Paint::ROWS)
               asm.sta(asm.abs(memory[MAP_DIFFERS_FIRST]))
-              Paint.emit_fill_work_ram(asm, memory[OTHER_MAP], Paint::MAP_BYTES, "rt_paint_clear_cell") if room_reserved?(memory)
+              Picture.emit_fill_work_ram(asm, memory[OTHER_MAP], Paint::MAP_BYTES, "rt_paint_clear_cell") if room_reserved?(memory)
             end
 
             # The log's halves as rt_paint_log_halves: each one's bytes, and how far a pass writes in

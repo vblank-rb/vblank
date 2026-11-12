@@ -64,11 +64,21 @@ module VBlank
                                                     name: @samples.keys.index(name), step: step)
               end
               table.data_words(0) if @plays.empty? # a label has to be somewhere
-              [table.section, *@plays.map(&:first).uniq.map { |name| recording_section(name) }]
+              [table.section, *@plays.map { |name, *| recording_kept_as(name) }.uniq.map { |name| recording_section(name) }]
             end
-            
-            def recording_label(name) = "recording #{name}"
-            
+
+            # The label of the bytes a play of recording +name+ reads.
+            def recording_label(name) = "recording #{recording_kept_as(name)}"
+
+            # THE RECORDING WHOSE BYTES THE CARTRIDGE KEEPS FOR +name+: the first one declared with the
+            # same samples. A row of the table carries everything else about a play (how fast it is
+            # read, where it goes back to, and which recording it is to the game), so recordings
+            # declared under several names with the same samples read one copy of them.
+            def recording_kept_as(name)
+              bytes = @samples.fetch(name).bytes
+              @samples.each_key.find { |other| @samples.fetch(other).bytes == bytes }
+            end
+
             def recording_section(name)
               asm = M68000.new(recording_label(name), holds: PLAYS)
               asm.label(recording_label(name))
@@ -85,8 +95,12 @@ module VBlank
             # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+ read at
             # +frequency+, from its start, back to where it holds from at its end. Nothing is logged as it comes
             # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
-            # is one thing it does not do yet. Its number in "recording_plays".
-            def recorded_note_row(name, frequency, _volume, envelope = nil)
+            # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
+            # another console's sound chip's bytes for the shape, which nothing here reads. +pan+ is where
+            # the note sits between the speakers, which nothing here reads either: every recording is
+            # mixed into the one stream the sixth FM voice plays, from both speakers.
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil)
+              _ = pan
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?
@@ -131,7 +145,7 @@ module VBlank
               info = Assets::Sample.of(declared)
               clock = Console::GENESIS.sample_clock(declared.rate)
               step = IR::Mixing.step(info, frequency, clock.rate)
-              row = [name, info.length, back, step * clock.samples_a_frame, logged, [step >> 8, 0xFFFF].min]
+              row = [name, info.length, back, step * clock.samples_a_frame, logged, Runtime::Recordings.z80_step(step, clock.rate)]
               @plays << row unless @plays.include?(row)
               @plays.index(row)
             end

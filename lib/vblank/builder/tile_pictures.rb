@@ -16,29 +16,49 @@ module VBlank
       # The tiles in a group, and a group's picture bytes, are kept to what a game can use.
       TILE_BYTES = TileRuns::TILE_BYTES
 
+      # One run of a group (#declare_tile_picture_run).
+      TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)
+
       # The group +name+: each key of +tiles+ is one tile, and its value the pictures it goes
       # through, in order, the same number for each. +colors+ is the `colors` list they are all
       # drawn from. The tiles show their first pictures from the start.
-      def tile_pictures(name, tiles:, colors:, fast: false)
+      #
+      # A key that is a tile of a slot of the data pack (`pack[:video].tile(5)`) is a tile of the
+      # backgrounds drawn from that slot, and its pictures tiles of the pack too
+      # (PackTilePictures): the colours are then the bank each cell names, so there is no +colors+.
+      def tile_pictures(name, tiles:, colors: nil, fast: false)
+        return declare_pack_tile_pictures(name, tiles, colors, fast: fast) if pack_tile_pictures?(tiles)
+
         refuse_bad_tile_pictures!(name, tiles, colors)
-        count = tiles.length
         side = tile_picture_side(name, tiles)
         pictures = tiles.each_value.first.length
+        bytes = (0...pictures).flat_map { |picture| tiles.values.flat_map { |row| tile_picture_bytes(name, row[picture], colors, side) } }
+        part = declare_tile_picture_run(name, count: tiles.length, colors: colors, side: side, bytes: bytes, fast: fast)
+        shown = var(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :picture), 0)
+        DSL::TilePictureGroup.new(self, name: name, keys: tiles.keys, pictures: pictures, list: part.list, held: part.held,
+                                        run: part.run, shown: shown, bytes_shown: part.bytes_shown)
+      end
+
+      # ONE RUN OF TILES TAKING TURNS THROUGH PICTURES: the run +name+ of +count+ tiles +side+
+      # pixels square drawn from +colors+, the list in memory it shows, and the table in the
+      # cartridge holding +bytes+, each picture's tiles one after another. A group of `tile_pictures`
+      # is one of these; a group of a pack's tiles is one for each background and bank that draws
+      # it. +held+ is a table the caller made (a DSL::Table) in place of one made of +bytes+.
+      # Hands back a TilePictureRun: the list, the table (a DSL::Table), the run, and the bytes a
+      # picture takes.
+      private def declare_tile_picture_run(name, count:, colors:, side:, bytes:, fast:, held: nil)
         bytes_shown = count * TILE_BYTES * ((side / 8)**2)
         list_name = Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
         at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0))
         list = DSL::List.new(self, list_name)
-        bytes = (0...pictures).flat_map { |picture| tiles.values.flat_map { |row| tile_picture_bytes(name, row[picture], colors, side) } }
-        held = table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
+        held ||= table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
         run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name, tile_side: side })
         # At power-on, not here: this line can be inside a scene, whose body runs every pass, and
         # the first picture would be put back every time. A scene's screen copies a run in as it
         # comes up, so only a group declared outside any scene has its first copy to ask for.
         at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: bytes_shown))
         run.changed(now: true) unless recording_game_code?
-        shown = var(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :picture), 0)
-        DSL::TilePictureGroup.new(self, name: name, keys: tiles.keys, pictures: pictures, list: list, held: held, run: run,
-                                        shown: shown, bytes_shown: bytes_shown)
+        TilePictureRun.new(list: list, held: held, run: run, bytes_shown: bytes_shown)
       end
 
       # The block's statements, run where +test+ holds, for a group's `show`.

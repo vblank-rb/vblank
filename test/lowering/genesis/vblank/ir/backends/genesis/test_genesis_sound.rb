@@ -119,7 +119,97 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta 433, pitch_of(run), 25
   end
 
+  # THE SOUND PROCESSOR IS STOPPED WHILE THE VIDEO CHIP COPIES A BLOCK, and for every write the
+  # 68000 makes to the FM chip. A recording has to keep its pitch through that, so these hold it
+  # far closer than the test above, by where the sound crosses its middle and not by a count.
+  def test_a_recording_alone_keeps_its_pitch
+    assert_in_delta RECORDED_HZ, pitch_while { game_loop { nil } }, 2
+  end
+
+  # A long recording is read with a different end in sight for most of its length than a short one.
+  def test_a_long_recording_keeps_its_pitch
+    assert_in_delta RECORDED_HZ, pitch_while(clip: CLIP * 100) { game_loop { nil } }, 2
+  end
+
+  # A RECORDED PART SET TO ONE SIDE is heard from both speakers alike: the FM chip's sixth voice plays
+  # every recording, and it plays from both.
+  def test_a_recorded_part_set_to_one_side_is_heard_from_both_speakers
+    run = Genesis::HeadlessRun.new(keep_sound: true)
+    clip = CLIP
+    run.run(program_of do
+      enable_sound
+      instrument :clip, pcm: clip.unpack("c*") * 100, rate: 13_000, note: :C4
+      song(:tune) do
+        tempo 150
+        voice(:keys, plays: :clip) { |v| v.pan :left; v.note :C4, :whole }
+      end
+      play_song :tune
+      game_loop { nil }
+    end, frames: 20)
+    left, right = run.sound_made.last(SAMPLE_RATE / 6 * 2).each_slice(2).to_a.transpose.map { |side| side.max - side.min }
+
+    assert_operator left, :>, 1000, "the recording is heard"
+    assert_in_delta 1.0, left.fdiv(right), 0.05, "as loud from the right (#{left}, #{right})"
+  end
+
+  def test_a_recording_played_once_leaves_the_speaker_still
+    run = Genesis::HeadlessRun.new(keep_sound: true)
+    run.run(recording_program(loop: false), frames: 40)
+    left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE / 6)
+
+    assert_operator left.max - left.min, :<, 200, "the recording is over, and the sound processor has stopped writing it"
+  end
+
+  def test_a_recording_keeps_its_pitch_while_eighty_sprites_move
+    heard = pitch_while do
+      image(:dot, "#" => :red) { Array.new(8, "########").join("\n") }
+      things = Array.new(80) { |i| sprite :dot, at: [8 + ((i % 16) * 16), 8 + ((i / 16) * 20)] }
+      t = var :t, 0
+      game_loop do
+        t += 1
+        things.each_with_index { |thing, i| thing.move_to 8 + ((i % 16) * 16) + (t & 7), 8 + ((i / 16) * 20) }
+      end
+    end
+
+    assert_in_delta RECORDED_HZ, heard, 2
+  end
+
+  def test_a_recording_keeps_its_pitch_while_a_painted_screen_sends_tiles_every_pass
+    heard = pitch_while(:bitmap) do
+      game_loop { 16.times { |k| fill_rect 8 + (k * 16), 100, 8, 8, :red } }
+    end
+
+    assert_in_delta RECORDED_HZ, heard, 2
+  end
+
   private
+
+  # CLIP at 13000 samples a second: fifteen up and fifteen down.
+  RECORDED_HZ = 13_000 / 30.0
+
+  # The pitch +clip+ is heard at, looping, in a game that also does +game+ on a +kind+ of screen:
+  # the waves between the first upward crossing of the middle and the last, over the last third
+  # of a second, each crossing placed between its two samples.
+  def pitch_while(kind = :tiled, clip: CLIP, &game)
+    clip = clip.unpack("c*")
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen kind
+      enable_sound
+      sample(:clip, pcm: clip, rate: 13_000).play(loop: true)
+      instance_eval(&game)
+    end
+    builder.finalize_program
+    run = Genesis::HeadlessRun.new(keep_sound: true)
+    run.run(builder.program.copy.tap { |program| program.console = :genesis }, frames: 60)
+    left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE / 3)
+    middle = (left.max + left.min) / 2.0
+    crossings = []
+    left.each_cons(2).with_index do |(before, after), i|
+      crossings << (i + ((middle - before) / (after - before).to_f)) if before < middle && after >= middle
+    end
+    (crossings.length - 1) * SAMPLE_RATE / (crossings.last - crossings.first)
+  end
 
   def recording_program(loop:)
     build = VBlank::IR::Build

@@ -47,11 +47,12 @@ module VBlank
 
           # The page for +title+'s game, its +script+ inside, written by +template+, its canvas
           # +screen+ ([width, height] in pixels: the console the game is built as) +scale+ times
-          # over, its key help and pad showing L and R only when +shoulders+ (the console has them).
+          # over, its key help and pad showing L and R only when +shoulders+ (the console has them),
+          # and player 2's keys only when the game seats more than one player (+players+).
           # A template that leaves the game out is a LoweringError, as anything else that stops a
           # web build is.
-          def html(title:, script:, screen:, scale: 3, template: DEFAULT, shoulders: true)
-            pieces = pieces(title: title, script: script, scale: scale, screen: screen, shoulders: shoulders)
+          def html(title:, script:, screen:, scale: 3, template: DEFAULT, shoulders: true, players: 1)
+            pieces = pieces(title: title, script: script, scale: scale, screen: screen, shoulders: shoulders, players: players)
             page = ERB.new(File.read(template, encoding: Encoding::UTF_8), trim_mode: "-").result_with_hash(pieces)
             return page if page.include?(pieces[:game])
 
@@ -59,12 +60,12 @@ module VBlank
                                  "play it. Put <%= game %> in the template where the game goes."
           end
 
-          def pieces(title:, script:, scale:, screen:, shoulders: true)
+          def pieces(title:, script:, scale:, screen:, shoulders: true, players: 1)
             l_and_r = shoulders ? " <kbd>A</kbd> and <kbd>S</kbd> are L and R," : ""
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. <kbd>X</kbd> is A, <kbd>Z</kbd> is B, <kbd>Enter</kbd> is Start, <kbd>Backspace</kbd> is
               Select,#{l_and_r} <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
-              Press a key or click to hear the sound.</p>
+              Press a key or click to hear the sound.#{more_players_words(shoulders) if players > 1}</p>
             HTML
             controller = '<p id="controller"></p>'
             fullscreen = '<button id="fullscreen" type="button">Full screen</button>'
@@ -74,6 +75,14 @@ module VBlank
             { title: CGI.escapeHTML(title.to_s), style: style(scale, screen), game: game(script, screen), keys: keys,
               controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, message: message,
               extras: [touchpad, keys, controller, fullscreen, pause, message].join("\n") }
+          end
+
+          # Player 2's keys (rg_page.js's PAGE_SECOND_PLAYER_KEYS) and the controllers' players, for
+          # a game more than one person plays.
+          def more_players_words(shoulders)
+            l_and_r = shoulders ? " <kbd>7</kbd> and <kbd>9</kbd> are L and R," : ""
+            "\nPlayer 2: <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> move, <kbd>O</kbd> is A, <kbd>U</kbd> is B," \
+              "#{l_and_r} <kbd>0</kbd> is Start, <kbd>8</kbd> is Select. Each controller is one player, in the order you connect them."
           end
 
           # THE PAD ON THE SCREEN, for a phone or a tablet, which has no keys: the console's buttons

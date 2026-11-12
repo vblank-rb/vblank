@@ -7,6 +7,27 @@
 # A concern with game code of its own comes in the way a part of a game does, since it is written
 # in normal Ruby: a name that holds a variable is changed by assigning to it, and `if` on a test
 # the game makes records that test.
+
+module VBlank
+  # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
+  # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
+  class Builder
+    # The builder of the game being built here, for a part of a game that makes a variable with
+    # no `var` of its own to call.
+    def self.in_use = Ractor.current[:vblank_builder_in_use]
+
+    # Run the block, then put back the builder that was in use before it, whatever the block made.
+    # Builder.new makes each new builder the one in use, so a builder made to build a program
+    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
+    def self.keeping_builder_in_use
+      was = Ractor.current[:vblank_builder_in_use]
+      yield
+    ensure
+      Ractor.current[:vblank_builder_in_use] = was
+    end
+  end
+end
+
 require_relative "builder/randomness"
 require_relative "builder/sound"
 VBlank.require_game_file "builder/music"
@@ -50,8 +71,11 @@ require_relative "builder/debug"               # The probe-only verbs, defined b
 require_relative "builder/game_effects"        # uses: a game's own effect packs, for its build alone
 require_relative "builder/data_packs"          # data_pack: the original's data, read through the pack made from the copy
 require_relative "builder/pack_backgrounds"    # background tiles: pack[...]: the original's own tiles, map and colours
+require_relative "builder/pack_tile_pictures"  # tile_pictures tiles: { pack[...] => ... }: a pack's tile taking turns through pictures
 require_relative "builder/pack_poses"          # image frame: pack[...]: a pose that is one of the original's frames
 require_relative "builder/pack_scores"         # notes: pack[...]: the original's songs as notes, and its instruments' settings
+require_relative "builder/pack_places"         # place, shading, viewer from pack[...]: a 3D level read from the copy
+require_relative "builder/shell_screens"       # shell_screen: a shell's first screen, made the game's own
 
 module VBlank
   # DSL context for building a GBA ROM.
@@ -110,8 +134,11 @@ module VBlank
     include GameEffects # uses (a game's own effect packs, for its build alone)
     include DataPacks  # data_pack (the original's data, read through a pack made from the player's copy)
     include PackBackgrounds # background tiles: pack[...] (the original's own tiles, map and colours)
+    include PackTilePictures # tile_pictures tiles: { pack[...] => ... } (a pack's tile taking turns through pictures)
     include PackPoses  # image frame: pack[...] (a pose that is one of the original's own frames)
     include PackScores # notes: pack[...] (the original's songs as notes, and its instruments' settings)
+    include PackPlaces # place, shading, viewer from pack[...] (a 3D level read from the player's copy)
+    include ShellScreens # shell_screen (a shell's first screen: its font, colours, picture, words and lines)
 
     # Shorthand for the IR node constructors, so DSL methods can build tree
     # nodes as terse Build.set(...) calls.
@@ -143,6 +170,7 @@ module VBlank
       @fraction_lists = {}     # ...and the same for lists, from what `holds:` showed
       @name_vars = {}          # name → the NameSet, for variables that hold one of a set of names
       @var_declarations = {}   # name → what its first `var` started it at, and where (see Variables#var)
+      @plain_locals = {}       # [source, local's name] → its PlainLocal (see #plain_local_variable)
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
@@ -166,8 +194,11 @@ module VBlank
       @game_whiles = 0         # how many game `while` loops are open now
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @hidden_variable_notes = []
+      @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
+      @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
       @variables_with_no_var_line = []
+      @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
       Ractor.current[:vblank_builder_in_use] = self
       @boolean_variables = {}   # the variables started with `true` or `false`
       @timer_seq = 0           # counts every/after timers, to name each one's hidden counter var
@@ -235,6 +266,8 @@ module VBlank
       @current_layer = nil     # while a `layer` block runs: the layer its declarations belong to
       @routine_layer = {}      # routine name → [layer, what the author wrote] when it was declared inside one
       @deferred_layer = nil    # while such a routine's body is built: that pair, so a declaration in it can be refused
+      @shell_screen = nil      # what the game gave for its shell's first screen (see ShellScreens)
+      @shell_first_screen = false # whether this builder makes a shell's first screen, where no data pack slot may be used
 
       # The program the DSL builds: an IR tree of nodes that {VBlank.build}
       # lowers to a ROM. Each statement attaches to the container on top of the
@@ -644,6 +677,7 @@ module VBlank
       finalize_held_tiles # after the maps, so its write comes before theirs in the gap
       refuse_shifted_tile_run_lists!
       refuse_filled_shifted_lists!
+      refuse_set_tile_read_at_start!
       finalize_tile_copies
       link_backgrounds_to_changing_lists # before the colours: it sets what those backgrounds are drawn with
       finalize_background_colors
@@ -673,6 +707,8 @@ module VBlank
       finalize_sprite_readings
       finalize_background_readings
       refuse_local_player_outside_views!
+      finalize_start_file_colors # last: a walk named in a routine built above makes colours too
+      finalize_pack_frames
     end
 
     # A routine the framework writes whose body depends on every line of the game, built only
@@ -811,6 +847,14 @@ module VBlank
       @inline_color_nodes << node if node
     end
 
+    # Undo {#defer_recolor_write}: +name+ has no colours of its own to write between frames. A
+    # {Background} calls this once it is known to follow several lists the game changes, whose
+    # own writes change its tiles (DSL::Background#follow_changing_lists!).
+    def forget_recolor_write(name)
+      declared_background(name).shown_colors = nil
+      declared_background(name).live_colors = nil
+    end
+
     # The affine counterpart to {#defer_scroll_write}: remember that +name+ turns or
     # resizes, so its matrix is written once a frame in the gap between frames rather
     # than wherever the game happened to change its angle or size. Called once, as soon
@@ -869,8 +913,12 @@ module VBlank
     # rather than with one turn, because a picture turns around one point however many
     # times the game turns it (see {Background#turns_around}). Every write of that
     # background's matrix carries it, so there is nowhere for a second answer to live.
-    def set_background_pivot(name, x, y)
+    #
+    # +map_point+ is the point of the background's own map that sits there, or nil for a map
+    # hung from the screen's corner, whose point there is the same two numbers.
+    def set_background_pivot(name, x, y, map_point: nil)
       declared_background(name).pivot = [x, y]
+      declared_background(name).pivot_map_point = map_point
     end
 
     # The last statement recorded into the block being built, or nil where nothing has been
@@ -1051,20 +1099,48 @@ module VBlank
       container.children.delete_if { |each_statement| each_statement.equal?(statement) }
     end
 
+    # Where the next statement will be recorded, for #take_statements_since: the open container
+    # and the statement last recorded in it (nil for none), so a statement taken back before it
+    # cannot move the place.
+    StatementMark = Data.define(:container, :last)
+
+    def statement_mark = StatementMark.new(container: @container_stack.last, last: @container_stack.last.children.last)
+
+    # The statements recorded since +mark+, taken out of where they were recorded and handed back.
+    def take_statements_since(mark)
+      children = mark.container.children
+      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+      unless mark.container.equal?(@container_stack.last) && start
+        raise IR::InvariantError, "statements were taken from a place that is no longer where the builder records"
+      end
+
+      children.slice!((start + 1)..)
+    end
+
     # A `repeat` with a stop test, likewise opened and closed rather than given a block.
-    def open_repeat(most_passes, stop_node)
+    #
+    # +test_statements+ are what working the test out recorded: a read's check of its place, the
+    # answer of `a && b` whose right side does something, kept in a variable. The test reads what
+    # they leave, so they must run again on every round, before the test is asked. Such a loop is
+    #
+    #   stopped = 0
+    #   repeat most_passes, stop_when: stopped
+    #     <test_statements>
+    #     if <stop_node> then stopped = 1 else <body> end
+    #
+    # and the body goes in the `else`. A loop whose test records nothing is the plain repeat.
+    def open_repeat(most_passes, stop_node, test_statements: [])
       @repeat_seq += 1
       index = :"__repeat_#{@repeat_seq}"
       ensure_var(index)
-      node = Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: stop_node)
-      record(node)
-      @container_stack.push(node)
-      @game_whiles += 1
+      return open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements) unless test_statements.empty?
+
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node)))
     end
 
     def close_repeat
       @game_whiles -= 1
-      @container_stack.pop
+      @open_repeat_container_counts.pop.times { @container_stack.pop }
     end
 
     # Is a `while` on a game test open, in normal Ruby? (see #wait_vblank)
@@ -1084,19 +1160,14 @@ module VBlank
       value_handle_for(name)
     end
 
-    # The builder of the game being built here, for a part of a game that makes a variable with
-    # no `var` of its own to call.
-    def self.in_use = Ractor.current[:vblank_builder_in_use]
-
-    # Run the block, then put back the builder that was in use before it, whatever the block made.
-    # Builder.new makes each new builder the one in use, so a builder made to build a program
-    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
-    def self.keeping_builder_in_use
-      was = Ractor.current[:vblank_builder_in_use]
-      yield
-    ensure
-      Ractor.current[:vblank_builder_in_use] = was
-    end
+    # Variable +name+ holds the value node +node+, set where it is written, so the text of a
+    # program does not repeat the expression wherever its answer is used
+    # (Original::Packing::BlockKitInternals holds a read's place this way). A loop's test must
+    # still work the expression out afresh each time round, as it did written inline: the variable
+    # is set once, before the loop, while a test is asked again on every round. So a loop's test
+    # reads the expression in place of the variable (#inline_held_expressions). Public for
+    # BlockKitInternals#emit_held_place, which holds those places.
+    def register_held_expression(name, node) = @held_expressions[name] = node
 
     # +name+, or the first of name_2, name_3... that no variable has.
     def free_variable_name(name)
@@ -1104,6 +1175,28 @@ module VBlank
 
       (2..).lazy.map { |number| :"#{name}_#{number}" }.find { |each_name| !@variables.include?(each_name) }
     end
+
+    # Has a `var` line made +name+ already? PlainRuby::Writes asks, for a line that makes a variable
+    # and is reached a second time.
+    def variable_declared?(name) = @var_declarations.key?(name)
+
+    # A local of plain Ruby that a game variable keeps: the variable's name, and the number the
+    # local's first line started it at, which is the variable's start at power-on.
+    PlainLocal = Data.define(:variable_name, :start)
+
+    # The game variable for the local +name+ of +source+, one rewritten game block or game file
+    # (PlainRuby::Writes.variable_with_no_var_line). As in Ruby, a local is its own whatever other
+    # sources call theirs: the first source to use a name gets it, and each other takes name_2 and
+    # on. The line that makes the variable can run again, in a method called twice or a loop
+    # written out, with another start. The variable keeps the first as its power-on number, and
+    # the line sets it to the other where it runs.
+    def plain_local_variable(source, name, start)
+      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: free_variable_name(name), start: start))
+      var(local.variable_name, local.start)
+    end
+
+    # Has the line of +source+ that makes the local +name+'s variable run already?
+    def plain_local_made?(source, name) = @plain_locals.key?([source, name])
 
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
@@ -1134,7 +1227,74 @@ module VBlank
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
 
+    # The outermost body of game code being recorded now: the routine, scene or loop it is in,
+    # nil while setting up. DSL::PlainRuby::InstanceVariables::Uses tells two routines apart by it.
+    def recorded_routine_body = @container_stack[1]
+
+    # The instance variables the game names as game variables, and what game code did to the
+    # others (DSL::PlainRuby::InstanceVariables::Uses).
+    attr_reader :instance_variable_uses
+
     private
+
+    # #open_repeat's loop for a test that records statements. The statements were recorded where
+    # the test was worked out, and move into the loop here. Two containers are opened, the loop
+    # and the `else` the body goes in, and #close_repeat closes both.
+    #
+    # The test is not given #inline_held_expressions: a held place's store is one of the
+    # statements, so it is set afresh each round before the test reads it. Nor does the `else`
+    # gate what is declared in the body (no #open_container), as the plain repeat's body is not.
+    def open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements)
+      stopped = :"#{index}_stopped"
+      ensure_var(stopped)
+      record(Build.set(stopped, 0))
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      test_statements.each { |statement| attach(statement) }
+      ask = Build.if_(stop_node, Build.set(stopped, 1))
+      ask.else = Build.else_
+      record(ask)
+      @container_stack.push(ask.else)
+      @open_repeat_container_counts[-1] += 1
+    end
+
+    # Records +node+, a game `while`'s repeat, and opens it until #close_repeat.
+    def push_open_repeat(node)
+      record(node)
+      @container_stack.push(node)
+      @open_repeat_container_counts.push(1)
+      @game_whiles += 1
+    end
+
+    # +node+ (a loop's test), with every read of a variable #register_held_expression named
+    # replaced by the expression it holds, and those inside it in turn; +node+ itself where it
+    # reads none. A copy, so the expression stays as it is where it was written.
+    def inline_held_expressions(node)
+      return node if @held_expressions.empty? || !reads_held_expression?(node)
+      return inline_held_expressions(@held_expressions.fetch(node.name).copy) if held_expression_read?(node)
+
+      fresh = node.copy
+      replace_held_expression_reads!(fresh)
+      fresh
+    end
+
+    def held_expression_read?(node) = node.is_a?(IR::Nodes::VarRef) && @held_expressions.key?(node.name)
+
+    def reads_held_expression?(node)
+      node.is_a?(IR::Node) && (held_expression_read?(node) || node.operand_nodes.any? { |part| reads_held_expression?(part) })
+    end
+
+    # Each read of a held variable among +node+'s operands, however deep, replaced by what it holds.
+    # A read held in a list of nodes cannot be replaced, and raises rather than read a stale place.
+    def replace_held_expression_reads!(node)
+      node.operand_nodes.each do |part|
+        if held_expression_read?(part)
+          replaced = node.replace_operand(part, inline_held_expressions(@held_expressions.fetch(part.name).copy))
+          raise IR::InvariantError, "#{node.kind} holds a read of #{part.name} in a list, which a loop's test cannot inline" unless replaced
+        else
+          replace_held_expression_reads!(part)
+        end
+      end
+    end
 
     def open_container(node, shown_while)
       @container_stack.push(node)
@@ -1485,7 +1645,10 @@ module VBlank
       # so the ones being kept are told now, when every line has been read.
       @inline_affine_nodes.each do |node|
         pivot = declared_background(node.name).pivot
-        node.around_x, node.around_y = pivot if pivot
+        next unless pivot
+
+        node.around_x, node.around_y = pivot
+        node.map_x, node.map_y = declared_background(node.name).pivot_map_point || pivot
       end
 
       write_between_frames(@inline_affine_nodes, backgrounds_that(&:turns_each_frame?)) do |name, background|
@@ -1519,7 +1682,8 @@ module VBlank
       write = Build.if_(changed,
                         Build.affine_background(name, angle: Build.var_ref(background.angle),
                                                       scale: Build.var_ref(background.scale),
-                                                      around: background.pivot || @console.middle),
+                                                      around: background.pivot || @console.middle,
+                                                      map_point: background.pivot_map_point),
                         Build.set(told_angle, Build.var_ref(background.angle)),
                         Build.set(told_size, Build.var_ref(background.scale)))
 

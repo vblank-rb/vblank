@@ -56,7 +56,9 @@ module VBlank
 
           # A place named in an instruction, filled in once everything is placed (Sections::Fixup). Its
           # +kind+ here is :abs32 (the whole address, four bytes), :abs16 (an address that fits a signed
-          # sixteen-bit place) or :rel16 (a distance from the word the hole is in, one signed word).
+          # sixteen-bit place), :rel16 (a distance from the word the hole is in, one signed word) or
+          # :rel8 (a distance from the word after the instruction the hole is the low byte of, one
+          # signed byte).
           Fixup = Sections::Fixup
           Section = Sections::Section
           Holding = Sections::Holding
@@ -325,6 +327,15 @@ module VBlank
           end
 
           def bra(target) = branch(:t, target)
+
+          # Branch to +target+, which is near, when +condition+ holds: one word, the distance in its
+          # low byte, so the target is no more than about 127 bytes away and is not the next
+          # instruction. Where the branch is mostly not taken it is the one to use: the processor
+          # goes on past a short branch in two thirds of the time it takes past a long one.
+          def branch_near(condition, target)
+            fixup(:rel8, target)
+            word(0x6000 | (condition_bits(condition) << 8))
+          end
 
           def bsr(target)
             word(0x6100)

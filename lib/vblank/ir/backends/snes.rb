@@ -120,6 +120,10 @@ module VBlank
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
         # given up if the lists do not fit that way.
         #
+        # A game whose recordings all together do not fit the sound unit's memory, some of them
+        # played by one scene alone, is built again with each scene sending its own across as it
+        # takes over (+scene_recordings+, Runtime::Sound, "Each scene's recordings").
+        #
         # A game whose runtime and variables do not fit the first 8K of work RAM, even with the
         # variables it names least past it (Lowering#place_variables), is built again with the
         # runtime's tables past it too (+far_tables+, Memory#reserve_table).
@@ -139,7 +143,7 @@ module VBlank
         # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
         def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
                            sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
-                           far_tables: false, cache:)
+                           scene_recordings: false, far_tables: false, cache:)
           board = board_for(program)
           memory = Memory.new(far_tables: far_tables)
           carries = cache.facts.carries(board, screen_colors: screen_colors, sprite_colors: sprite_colors,
@@ -149,11 +153,11 @@ module VBlank
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
-                                                cache: cache)
+                                                scene_recordings: scene_recordings, cache: cache)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
-                      far_tables: far_tables, cache: cache }
+                      scene_recordings: scene_recordings, far_tables: far_tables, cache: cache }
           begin
             game = lowering.sections + lowering.art_sections
           rescue Art::ScreenSpritesFull => e
@@ -176,9 +180,16 @@ module VBlank
             findings << small_pieces_finding
             return build(program, title: title, **choices, sprite_squares: false)
           end
+          begin
+            runtime = Runtime.sections(memory, carries, lowering)
+          rescue Runtime::Sound::TooBig
+            raise if scene_recordings || !lowering.recordings_of_one_scene?
+
+            return build(program, title: title, **choices, scene_recordings: true)
+          end
           findings.concat(lowering.sprite_table_findings)
+          findings.concat(lowering.scene_recording_findings)
           findings.concat(routines_without_their_chip(program)) unless carries.chip?
-          runtime = Runtime.sections(memory, carries, lowering)
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)

@@ -43,6 +43,34 @@ class TestGenesisLinker < Minitest::Test
     assert_equal "4e71" "6000" "fffc", image.unpack1("H*"), "the hole is at 4, the target at 0"
   end
 
+  def test_a_near_branch_is_one_word_with_the_distance_from_the_word_after_it_in_its_low_byte
+    code = section("code") do |asm|
+      asm.label("top")
+      asm.nop
+      asm.branch_near(:ne, "top")
+      asm.branch_near(:eq, "on")
+      asm.nop
+      asm.label("on")
+      asm.rts
+    end
+    image = Linker.new([code]).link.image
+
+    assert_equal "4e71" "66fc" "6702" "4e71" "4e75", image.unpack1("H*")
+  end
+
+  def test_a_near_branch_to_the_next_instruction_or_too_far_is_refused
+    to_next = section("code") { |asm| asm.branch_near(:ne, "next"); asm.label("next"); asm.rts }
+    too_far = section("code") do |asm|
+      asm.branch_near(:ne, "far")
+      65.times { asm.nop }
+      asm.label("far")
+      asm.rts
+    end
+
+    assert_match(/near branch/, assert_raises(Linker::Error) { Linker.new([to_next]).link }.message)
+    assert_match(/near branch/, assert_raises(Linker::Error) { Linker.new([too_far]).link }.message)
+  end
+
   def test_a_table_of_addresses_names_labels
     code = section("code") do |asm|
       asm.label("here")

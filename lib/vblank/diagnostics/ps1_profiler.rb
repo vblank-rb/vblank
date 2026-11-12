@@ -15,9 +15,11 @@ module VBlank
     # that waited. The build records where each of the game's routines went (PS1::GameRoutine); the
     # runtime's code is named by the label before it.
     #
-    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime hands it a command and carries on
-    # until the chip's queue is full, and only then waits (rt_gp0_word_wait and the waits beside it, in
-    # the runtime's list). So the chip's work shows in two places: its own share, the cycles it spent
+    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime puts its commands in a list the
+    # DMA hands to the chip, and waits only where a list must be gone before the next is sent, or where
+    # a pass's picture must be whole (rt_draw_list_send_wait, rt_draw_list_finish_wait and
+    # rt_draw_list_drawn_wait); a place's faces go straight to the chip's port and wait for room in its
+    # queue (rt_gp0_port_word_wait). So the chip's work shows in two places: its own share, the cycles it spent
     # drawing out of all the time measured (+gpu_share+, the emulator's count of the time the chip was
     # paying back what each command cost it), and the processor's waits on it, which are the part of
     # that drawing the processor could not work beside.
@@ -59,11 +61,14 @@ module VBlank
       # frame fewer, in the order they ran. +late_passes+ is the same lines for the passes that went to
       # sleep inside the blank itself, a few lines late, as the Advance's profile has it
       # (Profiler::Result#late_passes): a game whose rate halves for a few lines of work says why there.
-      Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :passes_by_frames,
+      # +slowest_pass_frames+ is the frames from power-on the slowest pass ran over, counted as a tape
+      # counts them, so a tape reads them one by one.
+      Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :slowest_pass_frames, :passes_by_frames,
                            :late_passes, :lines_past_blank, :idle_share, :fewest_lines_spare, :game, :runtime,
                            :gpu_share, :measured_frames) do
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
-                               measured_frames: [measured_frames.begin, measured_frames.end])
+                               measured_frames: [measured_frames.begin, measured_frames.end],
+                               slowest_pass_frames: [slowest_pass_frames.begin, slowest_pass_frames.end])
       end
 
       # +rom+ is a PS1EXE built with its record (PS1::Places). +keys+ are held from power-on, and
@@ -87,12 +92,13 @@ module VBlank
       end
 
       # +tape+ played on +rom+ from power-on, and each of +frames+ read by itself (TapeProfile).
-      def self.run_tape(rom, tape:, frames:)
+      # +routines+ is how many of a frame's routines each reading keeps.
+      def self.run_tape(rom, tape:, frames:, routines: TapeProfile::ROUTINES_KEPT)
         places = rom.built or raise ArgumentError, "this program carries no record of its build to play it from"
         Emulator.load_ps1!
         meter = Meter.new(time: time_by_routine(places), file_name: FILE_NAME,
                           shown_at: places.runtime.fetch(IR::Backends::PS1::Runtime::Frame::SHOWN),
-                          passes_at: places.waits_counted_at)
+                          passes_at: places.waits_counted_at, routines: routines)
         TapeProfile.play(rom, tape: tape, frames: frames, meter: meter)
       end
 
@@ -148,7 +154,9 @@ module VBlank
         by_frames = past.group_by { |pass, _| took.fetch(pass) }.sort.to_h
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
-                   slowest_frames: slowest_frames, slowest_pass: counted - 1, passes_by_frames: took.values.tally.sort.to_h,
+                   slowest_frames: slowest_frames, slowest_pass: counted - 1,
+                   slowest_pass_frames: TapeProfile.frames_of_pass(took, counted, measured_frames.begin),
+                   passes_by_frames: took.values.tally.sort.to_h,
                    late_passes: past.values.select { |lines| lines <= BLANK_LINES },
                    lines_past_blank: by_frames.transform_values { |passes| passes.map(&:last) },
                    gpu_share: gpu_share, measured_frames: measured_frames, **time.to_h)
@@ -163,7 +171,7 @@ module VBlank
                  "the processor. Where the processor waited for it, the wait is in the runtime's lines below."
         out.puts "The time was measured over frames #{result.measured_frames.begin} to #{result.measured_frames.end} " \
                  "from power-on. A tape's frames are counted the same way: `rom.profile(tape:, frames:)` reads each one."
-        out.puts "The slowest pass took #{result.slowest_frames} frames: pass #{result.slowest_pass}." if result.slowest_frames > 1
+        out.puts TapeProfile.slowest_pass_line(result) if result.slowest_frames > 1
         result.passes_by_frames.each do |frames, passes|
           out.puts format("  %4d of them took %d %s", passes, frames, frames == 1 ? "frame" : "frames")
         end

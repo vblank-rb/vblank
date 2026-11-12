@@ -92,7 +92,7 @@ module VBlank
           # screen with no background and no sprite shows that colour, which the author chose: a
           # title card of one colour, or a colour a fade walks. It is not the silent black screen.
           def backdrop?(program)
-            program.each.any? { |node| node.kind == :screen && !node.backdrop.nil? }
+            program.each.any? { |node| node.kind == :screen && !node.backdrop_or_place_in_file.nil? }
           end
 
           # The verb the developer typed for the first bitmap-only draw, or nil if

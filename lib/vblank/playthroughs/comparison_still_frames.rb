@@ -90,7 +90,8 @@ module VBlank
             read_after_frame!
           end
 
-          def refuse_stood_still!(_wanted)
+          # (+past:+ is never set here: a frame whose picture changed is not compared at its end.)
+          def refuse_stood_still!(_wanted, **)
             raise PictureStoodStill, "The second cartridge's picture stayed the same for #{LinedUp::MOST_FRAMES_STILL} " \
                                      "frames, after the first cartridge's picture changed. The comparison skips the second " \
                                      "cartridge's still frames, so it waited for a change, and none came. Make the tape end " \

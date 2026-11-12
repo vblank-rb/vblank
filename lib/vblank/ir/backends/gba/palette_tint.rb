@@ -203,7 +203,7 @@ module VBlank
           # is known (see #emit_recolored_banks).
           def emit_send_bg_colors(units, up: :unknown)
             @primitives.store_var(ACC, BG_TABLE_AT)
-            if @palette_tint || @layout.bg_recolor_restore_banks.any?
+            if @palette_tint || bg_restore_banks.any?
               emit_colors_into_bank(BG_PALETTE, units)
               return emit_recolored_banks(up: up)
             end
@@ -260,7 +260,7 @@ module VBlank
           def emit_changed_lists_at_power_on
             emit_no_area_colors_up # ...until the screen is set up, which sets which
             lists = @layout.screen.color_lists
-            bg_lists = @layout.bg_recolor_restore_banks.map { |_dest, source_var, *| source_var }.uniq
+            bg_lists = bg_restore_banks.map { |_dest, source_var, *| source_var }.uniq
             return if lists.empty? && @layout.screen.lending.nil? && bg_lists.empty?
 
             emit_tint_state_init
@@ -277,7 +277,7 @@ module VBlank
           # list it shows now, through the tint in force, as a scene sending its own colours does
           # (#emit_send_bg_colors). Nothing for a game with no such group.
           def emit_changed_bg_lists_again
-            return if @layout.bg_recolor_restore_banks.empty?
+            return if bg_restore_banks.empty?
 
             emit_tint_shares_from_state
             emit_recolored_banks
@@ -297,6 +297,25 @@ module VBlank
 
             @drawing.scene_entry.emit_if_scene_up(:art, list.scene) do
               emit_list_colors_into(list.group_at, list.source_var)
+            end
+          end
+
+          # PUT THE SET A CHANGING LIST NOW HOLDS INTO EACH GROUP OF BACKGROUND COLOURS THAT FOLLOWS
+          # IT (see ScreenLayout::FollowedColors), through whatever tint is in force. The variable
+          # +followed+ names already holds where the set starts.
+          #
+          # A GROUP OF A BACKGROUND ONE SCENE OWNS is that background's only while the scene's
+          # scenery is up, and holds another scene's colours the rest of the time. So the write
+          # waits, as a scene's sprite list does: the variable is kept either way, and the set goes
+          # in as the scene sends its background colours (#emit_send_bg_colors), which puts every
+          # such group back.
+          def emit_followed_list_colors(followed)
+            followed.groups.each do |group|
+              next emit_list_colors_into(group.group_at, followed.source_var) unless group.scene
+
+              @drawing.scene_entry.emit_if_scene_up(:scenery, group.scene) do
+                emit_list_colors_into(group.group_at, followed.source_var)
+              end
             end
           end
 
@@ -345,6 +364,64 @@ module VBlank
             end
             @fine = program.walk.any? { |node| %i[tint fade].include?(node.kind) && node.fraction_bits }
             mark_tint_tables_unpacked if @palette_tint
+            prepare_screen_backdrops(program)
+          end
+
+          # A BACKDROP A `screen` NAMES, IN A BUILD THAT MOVES ITS COLOUR TABLES. The console keeps
+          # its backdrop in the first place of the background colours, and a walk writes that place
+          # from the table of colours in force, whose first place is the game's backdrop unless the
+          # scene up sends a table of its own. So a scene that names a backdrop and sends no table
+          # showed the game's under a tint, and any scene arriving under a tint showed its backdrop
+          # as drawn until the tint next moved.
+          #
+          # So such a build keeps every backdrop a `screen` can name in a table of its own
+          # (SCREEN_BACKDROPS), a halfword each, and where in it the one in force is
+          # (SCREEN_BACKDROP_AT). A backdrop goes in through the tint in force
+          # (#emit_backdrop_through_tint), and it is one more group to put back after whatever
+          # writes the background colours again (#bg_restore_banks), as a backdrop that follows a
+          # list is (ScreenLayout::BACKDROP_AT).
+          #
+          # Only a build that walks its tables and names a backdrop has any of it. A backdrop that
+          # follows a list is the list's, and no `screen` writes one.
+          SCREEN_BACKDROPS = :__screen_backdrops
+          SCREEN_BACKDROP_AT = :__screen_backdrop_at
+
+          def prepare_screen_backdrops(program)
+            handover = @layout.screen&.handover
+            @screen_backdrops = []
+            return unless @palette_tint && handover&.backdrops? && !handover.backdrop_follows_list?
+
+            named = program.walk.filter_map { |node| node.backdrop if node.kind == :screen }
+            @screen_backdrops = [0, handover.game_backdrop, *named].uniq
+            @emitter.data_blobs[SCREEN_BACKDROPS] = @screen_backdrops.pack("v*")
+            @layout.blob_codecs[SCREEN_BACKDROPS] = :none # read a colour at a time, by where one is
+          end
+
+          # Does a backdrop a `screen` names go in through the tint in force?
+          def tints_screen_backdrops? = @screen_backdrops.any?
+
+          # THE BACKDROP +color+ INTO THE FIRST PLACE OF THE BACKGROUND COLOURS, through whatever
+          # tint is in force, and kept as the one to put back there.
+          def emit_backdrop_through_tint(color)
+            @emitter.emit_load_data_address(ACC, SCREEN_BACKDROPS)
+            along = @screen_backdrops.index(color) * 2
+            @primitives.emit_add_const(ACC, ACC, along, TMP) unless along.zero?
+            @primitives.store_var(ACC, SCREEN_BACKDROP_AT)
+            emit_colors_into_bank(BG_PALETTE, 1)
+          end
+
+          # A painted screen has no backdrop: the first place of its colours is a colour of its
+          # picture, which nothing may put a backdrop back over.
+          def emit_no_screen_backdrop
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, SCREEN_BACKDROP_AT)
+          end
+
+          # The groups to write again after the background colours are (ScreenLayout
+          # #bg_recolor_restore_banks), and last the backdrop a `screen` named, one colour.
+          def bg_restore_banks
+            banks = @layout.bg_recolor_restore_banks
+            tints_screen_backdrops? ? banks + [[BG_PALETTE, SCREEN_BACKDROP_AT, 0, nil, 1]] : banks
           end
 
           # The steps a walk counts in for this game: 256ths when it asks for a fraction
@@ -731,7 +808,7 @@ module VBlank
           # that layer was DRAWN in, which is not what it is being drawn with. So each such
           # group is written again, from the list it is really showing.
           #
-          # The layout's +bg_recolor_restore_banks+ are (where the group sits, the variable holding
+          # The groups (#bg_restore_banks) are (where the group sits, the variable holding
           # where its layer's current version starts, how far along that version this group's
           # list is, the layer's scene) — nought in that variable meaning the layer has never been
           # told anything, where the tables already hold the right colours.
@@ -757,7 +834,7 @@ module VBlank
           # Written out there instead, a scene of many borrowed lists put them all in the gap
           # between frames, where the routine that walks into an area runs.
           def emit_recolored_banks(up: :unknown)
-            return emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, up) unless recolored_banks_routine?
+            return emit_recolored_banks_of(bg_restore_banks, :scenery, up) unless recolored_banks_routine?
 
             emit_recolored_scene_up(up) if recolored_banks_by_scene?
             @lowering.statement(Build.call(RECOLORED_BANKS_ROUTINE))
@@ -774,15 +851,15 @@ module VBlank
 
           # The routine's name and whether this build has it: only one with a group to put back.
           RECOLORED_BANKS_ROUTINE = :__recolored_banks
-          def recolored_banks_routine? = @layout.bg_recolor_restore_banks.any?
+          def recolored_banks_routine? = bg_restore_banks.any?
 
           # The scene whose layers' groups that routine writes, when some layer is a scene's own.
           RECOLORED_SCENE_UP = :_recolored_scene_up
-          def recolored_banks_by_scene? = @layout.bg_recolor_restore_banks.any? { |entry| entry[3] }
+          def recolored_banks_by_scene? = bg_restore_banks.any? { |entry| entry[3] }
 
           # The body of that routine.
           def emit_recolored_banks_routine
-            emit_recolored_banks_of(@layout.bg_recolor_restore_banks, :scenery, :unknown, scene_up_in: RECOLORED_SCENE_UP)
+            emit_recolored_banks_of(bg_restore_banks, :scenery, :unknown, scene_up_in: RECOLORED_SCENE_UP)
           end
 
           # THE SAME AGREEMENT FOR SPRITES: a list of sprite colours that changes has a group of
@@ -941,7 +1018,16 @@ module VBlank
             @primitives.store_var(ACC, TINT_STATE)
             tint_tables(mode).each { |blob, dest, units| emit_restore_palette_table(blob, dest, units) }
             emit_changed_obj_lists_again(up: :unknown) if walks_obj_table?(mode)
+            # The copy put the declared colours back over every group the game has written since
+            # (#bg_restore_banks): a layer drawn with another list, one that follows a list the
+            # game changes, the backdrop. Those are written again, with no tint in force now.
+            emit_changed_bg_lists_again if walks_bg_table?(mode)
             @emitter.place_label(skip)
+          end
+
+          # Is the table of background colours every layer shares one a tint on this screen moves?
+          def walks_bg_table?(mode)
+            tint_tables(mode).any? { |blob, _dest, _units| blob == BG_SHARED_PAL }
           end
 
           # Copy a table's originals back into place, from wherever #emit_table_source finds them.

@@ -62,4 +62,15 @@ class TestConsoleTables < Minitest::Test
       assert_equal [[40, 60, 8, 8]], bare.sprite_boxes.map { |box| [box.x, box.y, box.width, box.height] }
     end
   end
+
+  # The Advance's sound is all in its registers, so the sound chip's own memory is refused, naming
+  # what to read instead.
+  def test_the_sound_ram_is_refused_on_the_advance
+    with_recorded_and_bare do |_recorded, bare|
+      message = assert_raises(ArgumentError) { bare.sound_ram }.message
+
+      assert_match "Game Boy Advance", message
+      assert_match "sound_registers", message
+    end
+  end
 end

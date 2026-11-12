@@ -46,6 +46,13 @@
 #define RG_CONSOLE_BLENDS 1
 #endif
 
+/* Whether the console's sound chip plays each of the game's voices as a loop it reads out of sound
+ * memory, as the PlayStation's does (rg_spu.c; Console::Description#voices_read_sound_memory), rather
+ * than making a square wave, a waveform and a hiss itself, as the Game Boy family's do. */
+#ifndef RG_VOICES_READ_SOUND_MEMORY
+#define RG_VOICES_READ_SOUND_MEMORY 0
+#endif
+
 /* How many pieces of sprites the console draws on one line of the screen, the rest of the line's
  * left out, or 0 where every piece is drawn (Console::Description#sprite_pieces_drawn_a_line). */
 #ifndef RG_SPRITE_PIECES_A_LINE
@@ -72,24 +79,53 @@
 #define RG_CONSOLE_PLAYS_BIOS_START_UP 0
 #endif
 
-/* Where each number of a picture's tile and colour layouts sits in the rules a start-file fill is
- * handed (Computer::StartFileNumbers, which writes them into every build). These are the same numbers,
- * for a file of the runtime read on its own, as an editor's checker reads it; a test holds them to
- * StartFileNumbers::NAMES. */
+/* Where each number of a picture's tile and colour layouts sits in
+ * the rules a start-file fill is handed (Computer::StartFileNumbers, which writes them into every
+ * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
+ * checker reads it; a test holds them to StartFileNumbers.names.
+ *
+ * A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original.
+ * lib/vblank/original/frame_record.rb (Original::FrameRecord) is where that layout is written
+ * down, and the RG_FRAME_ and RG_PIECE_ numbers are its own, written into every build from there.
+ * Every number is low byte first. A frame is RG_FRAME_HEADER_BYTES, the pieces it holds and the
+ * pieces the original names, two bytes each, then RG_FRAME_PIECE_BYTES a piece: x and y from the
+ * object's place, two bytes each and signed; its first tile, two bytes; how many tiles on the tile
+ * one column to the right is, and the tile one row down, two bytes each; how many tiles it is
+ * across and down, a byte each; how it is turned, a byte of RG_PIECE_MIRRORED and
+ * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
+ * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
+#define RG_FILL_POSE_HEADER_NUMBERS 16
+#define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
+#define RG_FRAME_ENTRY_BYTES 4
+#define RG_FRAME_HEADER_BYTES 4
+#define RG_FRAME_PIECE_BYTES 16
+#define RG_PIECE_X_AT 0
+#define RG_PIECE_Y_AT 2
+#define RG_PIECE_TILE_AT 4
+#define RG_PIECE_COLUMN_STEP_AT 6
+#define RG_PIECE_ROW_STEP_AT 8
+#define RG_PIECE_COLUMNS_AT 10
+#define RG_PIECE_ROWS_AT 11
+#define RG_PIECE_TURNS_AT 12
+#define RG_PIECE_BANK_AT 14
+#define RG_PIECE_MIRRORED 1
+#define RG_PIECE_UPSIDE_DOWN 2
 #define RG_TILE_BYTES_AT 0
 #define RG_TILE_PLANES_AT 1
 #define RG_TILE_PLANE_BITS_AT 2
-#define RG_TILE_ROW_BITS_AT 6
-#define RG_TILE_COLUMN_BITS_AT 7
-#define RG_TILE_FORMAT_NUMBERS 15
+#define RG_TILE_ROW_BITS_AT 10
+#define RG_TILE_COLUMN_BITS_AT 11
+#define RG_TILE_FORMAT_NUMBERS 19
 #define RG_COLOR_HIGH_BYTE_FIRST_AT 0
 #define RG_COLOR_RED_AT 1
 #define RG_COLOR_GREEN_AT 2
 #define RG_COLOR_BLUE_AT 3
 #define RG_COLOR_CHANNEL_BITS_AT 4
 #define RG_COLOR_FORMAT_NUMBERS 5
-#define RG_FILL_RULES_HEADER_NUMBERS 13
+#define RG_FILL_RULES_HEADER_NUMBERS 14
+#define RG_FILL_BACKGROUND_HEADER_NUMBERS 21
+#define RG_MARKED_COLOR 32768
 #endif
 
 #endif

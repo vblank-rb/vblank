@@ -109,6 +109,19 @@ module VBlank
       #   screen :tiled, backdrop: :screen_colors
       #   recolor :screen_colors, color_walk(:screen_colors, from: :black), showing: step
       #
+      # +backdrop:+ also takes a slot of colours of the data pack, or one bank of it, and is then
+      # the colour the slot holds first (+backdrop_place:+ picks another): the colour the original's
+      # own screen shows wherever none of its tiles draws (see DataPacks#pack_backdrop_color). It
+      # is a colour like one written in the game, so a scene's own `screen` line takes it. A build
+      # that reads its pack as the game starts reads the colour then
+      # (DataPacks#pack_backdrop_in_start_file).
+      #
+      # @example A scene whose backdrop is the first colour its original loaded
+      #   scene(:logos) do
+      #     screen :tiled, backdrop: pack[:logo_colors]
+      #     background :logos, tiles: pack[:logo_video], map: pack[:logo_map], colors: pack[:logo_colors], across: 32
+      #   end
+      #
       # +pixel_size: 2+ shows each pixel of a painted screen twice as wide and twice as tall: the
       # game draws a picture half the screen's width and height, and the console shows it filling
       # the screen. Everything the game draws costs a quarter of what it did — the old games that
@@ -149,11 +162,18 @@ module VBlank
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
         late_rows = resolve_late_pages(late, tear_free)
+        if backdrop.is_a?(DSL::PackSlot)
+          refuse_backdrop_on_painted_screen!(mode)
+          # A build that leaves its pack out keeps where the colour is in the pack, not the colour.
+          backdrop_from_file = (pack_backdrop_in_start_file(backdrop, backdrop_place) if pack_left_out?)
+          backdrop = backdrop_from_file ? nil : pack_backdrop_color(backdrop, backdrop_place)
+          backdrop_place = nil
+        end
         followed = followed_backdrop_list(backdrop, backdrop_place, mode)
         node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
                                          late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
                                          backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode),
-                                         pixel_size: size_said))
+                                         pixel_size: size_said, backdrop_from_file: backdrop_from_file))
         @backdrop_list = followed.with(screen: node) if followed
         node
       end
@@ -643,14 +663,30 @@ module VBlank
       #
       # A game names one place, and every `pixelate` in it names the same one.
       #
+      # `sprites: false` puts the backgrounds alone in blocks and leaves every sprite as
+      # drawn, which is all a Super Nintendo's display can do, so a game for one says it:
+      #
+      #   pixelate 16 - brightness, sprites: false
+      #
+      # It is one choice for the whole game too, like the place.
+      #
+      # A status bar stays as drawn unless the game writes `status_bar: true`: then it is in
+      # blocks too, in the one grid from the top of the screen that everything else's blocks are
+      # in. One choice for the whole game as well.
+      #
       # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
       # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen
-      def pixelate(size, under: nil)
+      # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
+      # @param status_bar [Boolean] whether a status bar is put in blocks with the backgrounds
+      def pixelate(size, under: nil, sprites: true, status_bar: false)
         refuse_unusable_block_size!(size)
         check_effect_layer!(:pixelate, under) if under
         refuse_second_pixelate_place!(under)
+        refuse_second_pixelate_sprites!(sprites)
+        refuse_second_pixelate_bar!(status_bar)
 
-        record(Build.pixelate(size: DSL::Value.node_for(size), under: under))
+        record(Build.pixelate(size: DSL::Value.node_for(size), under: under, keeps_sprites: !sprites,
+                              bar_in_blocks: status_bar))
         ensure_var(size)
       end
 
@@ -677,13 +713,30 @@ module VBlank
       # with no light yet gets one that reaches past every edge of the screen and darkens
       # nothing, so the picture is as drawn until something moves it.
       #
+      # `outside: :nothing` makes it a light that SHOWS NOTHING OUTSIDE IT, where a light
+      # otherwise darkens what is there: outside the circle no layer and no sprite is drawn, so
+      # the screen's backdrop colour shows, black unless the game gave the screen another. It
+      # is the circle a scene change closes, and the one light that shares a scene with a
+      # see-through layer, because it darkens nothing: the layer goes on mixing inside the
+      # circle. Its `dark` is then a switch, 0 for off and 100 for on, which is what
+      # `iris_out` and `iris_in` set. It is said once, where the game's light is declared:
+      #
+      #   spotlight outside: :nothing    # the game's light, off until an `iris_out` closes it
+      #   spotlight at: [120, 80], radius: 40, outside: :nothing
+      #
       # @param at [Array(Integer, Integer)] where the middle of the light starts, in screen pixels
       # @param radius [Integer] how far it reaches from its middle, in pixels
       # @param dark [Integer] how dark the picture is outside it, 0 to 100
+      # @param outside [Symbol, nil] :darkened (what a light does unless told) or :nothing
       # @return [DSL::Spotlight]
-      def spotlight(at: nil, radius: nil, dark: nil)
+      def spotlight(at: nil, radius: nil, dark: nil, outside: nil)
+        refuse_unknown_light_outside!(outside)
         said = !(at.nil? && radius.nil? && dark.nil?)
-        return @spotlight if @spotlight && !said
+        shuts_out = outside == :nothing
+        if @spotlight && !said
+          refuse_light_outside_changed!(shuts_out) unless outside.nil?
+          return @spotlight
+        end
 
         refuse_second_spotlight!
         refuse_spotlight_off_tiles!
@@ -697,11 +750,11 @@ module VBlank
                                    radius: var(Spotlights::RADIUS, radius), dark: var(Spotlights::DARK, dark),
                                    builder: self)
         @spotlight_tables = Spotlights.declare_tables(self)
-        shade = Spotlights.shade_node(self, light)
+        shade = Spotlights.shade_node(self, light, shuts_out: shuts_out)
         push_container(shade) { Spotlights.work_out_half_width(self, light, @spotlight_tables) }
         record(shade)
         @spotlight_shade = shade
-        @spotlight_unsaid = !said
+        @spotlight_unsaid = !said && outside.nil?
         @spotlight = light
       end
 
@@ -897,6 +950,37 @@ module VBlank
               "every `pixelate` the same `under:`."
       end
 
+      # ...and so is whether the sprites are among them: one choice for the whole game.
+      def refuse_second_pixelate_sprites!(sprites)
+        unless [true, false].include?(sprites)
+          raise ArgumentError, "The `sprites:` setting of `pixelate` must be true or false. You gave #{sprites.inspect}."
+        end
+
+        @pixelate_sprites = sprites unless defined?(@pixelate_sprites)
+        return if @pixelate_sprites == sprites
+
+        raise ArgumentError,
+              "This game pixelates with `sprites: false` in one place and with the sprites in blocks " \
+              "in another. The build sets which things are in blocks one time, before the game runs. " \
+              "To fix this, give every `pixelate` the same `sprites:`."
+      end
+
+      # ...and whether a status bar is among them: one choice for the whole game.
+      def refuse_second_pixelate_bar!(status_bar)
+        unless [true, false].include?(status_bar)
+          raise ArgumentError,
+                "The `status_bar:` setting of `pixelate` must be true or false. You gave #{status_bar.inspect}."
+        end
+
+        @pixelate_bar = status_bar unless defined?(@pixelate_bar)
+        return if @pixelate_bar == status_bar
+
+        raise ArgumentError,
+              "This game pixelates with `status_bar: true` in one place and with the status bar as drawn " \
+              "in another. The build sets which things are in blocks one time, before the game runs. " \
+              "To fix this, give every `pixelate` the same `status_bar:`."
+      end
+
       # SWITCH THE LIGHT OFF IN THE SCENES IT IS OFF IN: those that see through a layer, or
       # fade under one (see IR::LightScenes). Each scene sets, as it starts its pass, whether
       # the light is on, and the light's darkness is that much of what the game sets — so
@@ -1046,6 +1130,38 @@ module VBlank
               "handle the first `spotlight` gives back. To fix this, keep the handle " \
               "(`light = spotlight at: [x, y], radius: r`) and change `light.x`, `light.y`, " \
               "`light.radius` and `light.dark` where the second light was."
+      end
+
+      LIGHT_OUTSIDES = %i[darkened nothing].freeze
+
+      def refuse_unknown_light_outside!(outside)
+        return if outside.nil? || LIGHT_OUTSIDES.include?(outside)
+
+        raise ArgumentError,
+              "`spotlight outside:` is what the picture is outside the light: `outside: :darkened` " \
+              "(what a light does unless told) or `outside: :nothing` (nothing is drawn there). " \
+              "You gave #{outside.inspect}."
+      end
+
+      # WHAT IS OUTSIDE THE LIGHT IS SETTLED AS THE CARTRIDGE IS BUILT, since it decides what
+      # the display is told at power-on and which scenes the light can share. So it is set where
+      # the game's one light is declared, and asking for the light again with the other answer
+      # is refused rather than quietly ignored.
+      def refuse_light_outside_changed!(shuts_out)
+        return if @spotlight_shade.shuts_out == shuts_out
+
+        wanted = shuts_out ? ":nothing" : ":darkened"
+        if @spotlight_unsaid
+          raise ArgumentError,
+                "This game asks for `spotlight outside: #{wanted}` after an `iris_out` (or a `spotlight` " \
+                "with nothing after it) already gave it a light. A game has one light. To fix this, " \
+                "write `spotlight outside: #{wanted}` before the first `iris_out`."
+        end
+
+        raise ArgumentError,
+              "This game asks for `spotlight outside: #{wanted}`, and its light was declared with the " \
+              "other answer. A game has one light, and what is outside it is set once. To fix this, " \
+              "give `outside: #{wanted}` to the `spotlight` that declares the light, and to no other."
       end
 
       # A light is a window in the picture the console composes from tiles. A bitmap screen

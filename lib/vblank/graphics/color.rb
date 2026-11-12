@@ -125,6 +125,22 @@ module VBlank
         end
       end
 
+      # How many steps a channel of a color has from one end to the other.
+      CHANNEL_STEPS = 31
+
+      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further: one
+      # step of a walk from one color to another (Builder#color_walk). A build works a walk's
+      # steps out with this, and so does whatever plays a game that learns the color only as it
+      # starts (IR::StartFile::WalkedColor), which the runtimes for a computer write again as
+      # rg_start_file_walk_colors.
+      def walked_toward(color, far, steps)
+        [0, 5, 10].sum do |shift|
+          own = (color >> shift) & CHANNEL_STEPS
+          limit = (far >> shift) & CHANNEL_STEPS
+          (own < limit ? [own + steps, limit].min : [own - steps, limit].max) << shift
+        end
+      end
+
       # A color as a person would name it — :magenta where there is a name for it, and
       # the raw value where there is not. For messages: an author reading about a color
       # in their own art wants the word they typed, not a number they never saw.

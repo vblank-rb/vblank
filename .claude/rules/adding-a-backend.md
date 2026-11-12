@@ -101,15 +101,25 @@ calls and where the console keeps things are each lowering's alone. Everything t
 writing an instruction is shared, because two copies of a decision drift apart:
 
 - `Backends::LoweringPlan` — what a run reaches, the numbers timers and scenes are known by, how
-  each table is kept, constant folding, the game loop in the console's order, and the refusals
-  every console makes alike (a step only the Advance has, what the console's answers refuse, a
-  routine that calls itself).
+  each table is kept, constant folding, the game loop in the console's order and which of its writes
+  are placed at the end of a pass (`placed_at_pass_end?`), and the refusals
+  every console makes alike, in one order (`refuse_unbuildable!`: a start file, a step only the
+  Advance has, what the lowering does not make yet, what the console's answers refuse, a routine
+  that calls itself), which a lowering calls first and then adds its own refusals after.
+- `Backends::MeasuredOnCopies` — `bytes_of`, a run of statements measured on copies of the
+  lowering's state (`LoweringState#on_copies`), for `RoutineCuts`; the lowering gives its
+  `measuring_assembler`. The Color measures its own way, listed with its reason in
+  `MeasuredOnCopies::OWN_WAYS`.
 - `Backends::ControlFlow` — the loops, tests and choices between scenes (`if`, `loop`, `repeat`,
   `every`, `after`, `case`): where each label goes and which way each jump points. It is mixed into
   the lowering and calls a dozen things of it written in that processor's instructions (a fresh
   label, a jump, a jump unless a condition holds, a load, a store), which the comment atop the module
   lists. `test/all/vblank/ir/backends/test_control_flow.rb` walks it over a chip that only writes
-  down what it was asked for.
+  down what it was asked for. A step of the walk a lowering writes its own way is listed in
+  `ControlFlow::OWN_WAYS` with its reason, and that test holds the lowerings to the list.
+  `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
+  variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
+  body is written, so a read of a table or a list there needs no check of the index.
 - `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
   the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
   `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.
@@ -127,6 +137,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   own. The Color's table is another shape and is not one of them.
 - `IR::Tunes.ranks_in_order`, `Backends::FadeSteps` — the order sound ranks are kept in, and a
   fade's steps.
+- `IR::Stacking.items_in_draw_order` — a frame's sprites back to front, each run the game orders in
+  its place; `IR::SceneHandover#background_named` — which declaration a change to a background names;
+  `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
+  every screen shows.
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).

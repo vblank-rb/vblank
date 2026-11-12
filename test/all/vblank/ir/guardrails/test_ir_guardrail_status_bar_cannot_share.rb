@@ -70,4 +70,16 @@ class TestIRGuardrailStatusBarCannotShare < Minitest::Test
 
     assert_nil refusal(program)
   end
+
+  # The same game on the PlayStation, whose bar is a picture its graphics chip draws like any other.
+  def test_a_sprite_behind_a_background_beside_a_bar_on_the_playstation_fits
+    program = bar_program(:ps1) do
+      layers :back, :world
+      layer(:back) { sprite :ball, at: [10, 10] }
+      layer(:world) { background :field, tiles: :t, map: ["#" * 20] }
+      status_bar :score, tiles: :t, map: ["#" * 20], top: 100
+    end
+
+    assert_nil refusal(program)
+  end
 end

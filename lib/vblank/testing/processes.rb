@@ -14,15 +14,31 @@
 # HOW IT IS ONE RUN. The process rake starts loads every test file and runs minitest as usual:
 # its options, its seed, its reporters and the suite's own (the skips by reason). Only the
 # playing moves. Where minitest would play the tests one after another, this starts
-# TEST_PROCESSES children, each loading the same files, and hands them tests one at a time — the
-# next to whichever child asks first, so a slow test holds up one child and not a share of the
-# suite. Each child plays the test it is given and sends the result back, and the parent hands
-# it to its reporters as if it had played the test itself. So the report is the one a single
-# process prints, because it is printed by the same reporters from the same results.
+# TEST_PROCESSES children, each loading the same files, and hands them work a test class at a
+# time — the next class to whichever child asks first, so a slow class holds up one child and
+# not a share of the suite. Each child plays the tests it is given and sends each result back,
+# and the parent hands it to its reporters as if it had played the test itself. So the report is
+# the one a single process prints, because it is printed by the same reporters from the same
+# results.
+#
+# Why a class and not a test. A game's test class often makes one long thing and shares it
+# across its tests — a recording of a tape played on both cartridges, kept in `@@runs ||= ...` —
+# and each test asserts on a part of it. Dealt a test at a time, a class's tests land in
+# different children and each child makes the recording again; dealt a class at a time, it is
+# made once in the run. A class is split only where a child would otherwise sit idle: once no
+# class is waiting, a child that asks takes the back half of the class with the most tests still
+# waiting in another child. So a big class at the end of a run spreads over the idle children as
+# separate tests would, and a class with shared setup pays it once more per split, only where a
+# child would sit idle: at the end of a run, or from the start when there are fewer classes than
+# children (one file of one class, say). No record of how long a class takes is needed.
+#
+# The wire still carries one test at a time — the child asks, the parent answers with the next
+# test of the class that child holds — so FAIL_FAST can stop in the middle of a class.
 #
 # A child that dies part way through a test — a crash in a program it started, a signal — costs
 # that test, which is reported as an error naming how the child ended and what it printed, and a
-# new child takes its place for the tests still waiting.
+# new child takes its place: the rest of that class goes back first in the queue, for the next
+# child that asks.
 #
 # Several children build C at the same moment, and nothing has to keep them apart: each build is
 # written under a name of its own and renamed into place once whole (Native::Zig), and zig keeps
@@ -76,35 +92,73 @@ module VBlank
 
       # --- the parent ---
 
-      # In place of minitest's own: the same tests, in the same order, played by children.
+      # One piece of work for a child: a test class and the names of its tests not yet handed out,
+      # in the order minitest would play them.
+      class ClassOfTests
+        attr_reader :klass
+
+        def initialize(klass, names)
+          @klass = klass
+          @names = names.dup
+        end
+
+        def left? = !@names.empty?
+        def count = @names.size
+        def next_name = @names.shift
+        def put_back(name) = @names.unshift(name)
+
+        # The back half of the tests not yet handed out, taken away from this piece as a piece of
+        # its own. Nil when fewer than two are left: the child holding one last test plays it next,
+        # sooner than another child could set the class up again.
+        def split_off_back_half
+          return if count < 2
+
+          ClassOfTests.new(klass, @names.pop(count / 2))
+        end
+
+        # Each test not yet handed out, as a class and a name.
+        def tests = @names.map { |name| [klass, name] }
+      end
+
+      # In place of minitest's own: the same tests, in the same order, played by children a class
+      # at a time.
       module PlayInChildren
         def run_all_suites(reporter, options)
-          tests = Minitest::Runnable.runnables.shuffle.flat_map do |klass|
-            klass.filter_runnable_methods(options).map { |name| [klass, name] }
+          classes = Minitest::Runnable.runnables.shuffle.filter_map do |klass|
+            names = klass.filter_runnable_methods(options)
+            ClassOfTests.new(klass, names) unless names.empty?
           end
-          Children.new(tests, reporter, options).play
+          Children.new(classes, reporter, options).play
         end
       end
 
-      # The children and the tests waiting for them.
+      # The children and the classes of tests waiting for them.
       class Children
-        Child = Struct.new(:pid, :records, :work, :output, :buffer, :printed, :playing, :asked_for_work)
+        # +holding+ is the class it was handed, its tests still to hand it; +playing+ the test it
+        # is playing now.
+        Child = Struct.new(:pid, :records, :work, :output, :buffer, :printed, :holding, :playing, :asked_for_work,
+                           keyword_init: true)
 
-        def initialize(tests, reporter, options)
-          @waiting = tests
+        def initialize(classes, reporter, options)
+          @waiting = classes
           @reporter = reporter
           @options = options
           @children = []
           Processes.running.children = self
         end
 
-        # No more tests start, and the ones playing finish (Testing::FailFast).
-        def stop_handing_out = @waiting.clear
+        # No more tests start, not even the rest of a class a child holds, and the ones playing
+        # finish (Testing::FailFast).
+        def stop_handing_out
+          @waiting.clear
+          @children.each { |child| child.holding = nil }
+        end
 
         def play
-          count = [Processes.processes, @waiting.size].min
+          tests = @waiting.sum(&:count)
+          count = [Processes.processes, tests].min
           if count.positive?
-            @options[:io].puts "Playing #{@waiting.size} #{@waiting.size == 1 ? 'test' : 'tests'} in " \
+            @options[:io].puts "Playing #{tests} #{tests == 1 ? 'test' : 'tests'} in " \
                                "#{count} #{count == 1 ? 'process' : 'processes'}"
           end
           count.times { start_child }
@@ -123,7 +177,8 @@ module VBlank
                               RECORDS_FD => records_w, WORK_FD => work_r, out: output_w, err: output_w)
           [records_w, work_r, output_w].each(&:close)
           work_w.sync = true
-          @children << Child.new(pid, records_r, work_w, output_r, +"", +"", nil, false)
+          @children << Child.new(pid: pid, records: records_r, work: work_w, output: output_r, buffer: +"",
+                                 printed: +"", asked_for_work: false)
         end
 
         def read_children
@@ -157,18 +212,32 @@ module VBlank
           reap_child(child)
         end
 
-        # The next test to a child that asked. One that died between asking and being answered
-        # leaves its test for the next child; its closed pipe shows it in a moment.
+        # The next test to a child that asked: the next of the class it holds, or else the first of
+        # the next class waiting, or else — no class waiting — the first of the back half taken
+        # from the child holding the most tests not yet handed out. One that died between asking
+        # and being answered keeps its test in the class it holds, which goes back in the queue
+        # when its closed pipe shows it.
         def hand_next_test(child)
           child.asked_for_work = true
-          klass, name = @waiting.shift
-          return child.work.close unless klass
+          child.holding = @waiting.shift || split_off_largest_held unless child.holding&.left?
+          return child.work.close unless child.holding
 
+          klass = child.holding.klass
+          name = child.holding.next_name
           child.work.puts "#{klass.name}\t#{name}"
           child.playing = [klass, name]
           @reporter.prerecord(klass, name)
         rescue Errno::EPIPE
-          @waiting.unshift([klass, name])
+          child.holding.put_back(name)
+          child.playing = nil
+        end
+
+        # Work for a child that would otherwise sit idle at the end of a run: the back half of the
+        # class with the most tests still waiting in another child, which keeps the front half and
+        # carries on in order. A class whose tests share a setup pays it once more for the split,
+        # which is cheaper than a child idle while one class plays out alone.
+        def split_off_largest_held
+          @children.filter_map(&:holding).max_by(&:count)&.split_off_back_half
         end
 
         # A result is the test's own, as minitest made it to be sent, with minitest's own words
@@ -189,8 +258,10 @@ module VBlank
         end
 
         # A child's results pipe closes when it ends. One that ended in the middle of a test
-        # costs that test, and a new child takes its place. One that ended before asking for
-        # anything could not load the tests, and every child after it would do the same: the
+        # costs that test, the rest of its class goes back first in the queue, and a new child
+        # takes its place. The class goes back before the lost test is recorded, so a stop at
+        # that failure (Testing::FailFast) clears it with the rest. One that ended before asking
+        # for anything could not load the tests, and every child after it would do the same: the
         # tests still waiting are reported as not played, so the run still ends in a report.
         def reap_child(child)
           @children.delete(child)
@@ -200,6 +271,7 @@ module VBlank
           how = Processes.how_ended(status)
           return give_up_on_waiting(child, how) unless child.asked_for_work
 
+          @waiting.unshift(child.holding) if child.holding&.left?
           if child.playing
             said = child.printed.strip.empty? ? "" : ", having printed:\n#{child.printed}"
             @reporter.record Processes.error_result(*child.playing, "the process playing this test ended " \
@@ -209,7 +281,7 @@ module VBlank
         end
 
         def give_up_on_waiting(child, how)
-          first, *rest = @waiting
+          first, *rest = @waiting.flat_map(&:tests)
           @waiting = []
           return unless first
 

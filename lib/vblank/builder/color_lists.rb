@@ -114,11 +114,15 @@ module VBlank
       # game pays for the lists and for naming which one shows, and only the lists it names move.
       # How fast it goes is how fast the game moves the number it hands to `showing:`.
       #
+      # A LIST READ FROM THE DATA PACK AS THE GAME STARTS is walked too. The build does not hold
+      # its colours, so each step's colours are made as the game starts, from the file's, by the
+      # same sum (Graphics::Color.walked_toward; #walked_color).
+      #
       # @param name [Symbol] a list declared with `colors`
       # @param from [Symbol, String, Integer] the colour the walk starts at
       # @param steps [Integer] how many steps from there to the list itself
       # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
-      def color_walk(name, from:, steps: CHANNEL_STEPS)
+      def color_walk(name, from:, steps: Graphics::Color::CHANNEL_STEPS)
         own = @color_lists.fetch(name) do
           raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
                                "To fix this, declare it first with `colors :#{name}, [:transparent, ...]`."
@@ -130,9 +134,19 @@ module VBlank
         far = Graphics::Color.resolve(from)
         (0..steps).map do |step|
           walked = :"#{name}_walk_#{from.to_s.delete_prefix('#')}_#{steps}_#{step}"
-          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : color_steps_from(color, far, steps - step) }
+          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : walked_color(color, far, steps - step) }
           walked
         end
+      end
+
+      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further. A
+      # colour the build holds is worked out here. One it reads from the data pack as the game
+      # starts (a marker, IR::StartFile) is another colour made then, of the same sum.
+      private def walked_color(color, far, steps)
+        return Graphics::Color.walked_toward(color, far, steps) unless IR::StartFile.marker?(color)
+        return color if steps.zero?
+
+        start_file_color_marker(IR::StartFile::WalkedColor.new(of: IR::StartFile.entry_of(color), far: far, steps: steps))
       end
 
       # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
@@ -178,7 +192,8 @@ module VBlank
                                "0 to #{colors.length - 1}. To fix this, use a place in that range."
         end
 
-        BackdropList.new(name: backdrop, place: place, color: colors.fetch(place) & 0x7FFF, screen: nil)
+        # A colour read from the data pack as the game starts is kept as the marker it is.
+        BackdropList.new(name: backdrop, place: place, color: list_color(colors.fetch(place)), screen: nil)
       end
 
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
@@ -210,11 +225,24 @@ module VBlank
       #
       # A background with tiles drawn from a changing list that was never told to draw with it
       # would show the list's power-on colours whatever it holds, so it is refused, naming the list.
+      #
+      # A BACKGROUND DRAWN WITH SEVERAL CHANGING LISTS is told all of them at once and keeps no sets:
+      # each list's own write changes its tiles (DSL::Background#follow_changing_lists!).
       def link_backgrounds_to_changing_lists
-        @changing_color_lists.each do |name, list|
-          following = @lists_backgrounds_draw_with.fetch(name, [])
+        followers = @changing_color_lists.keys.to_h { |name| [name, @lists_backgrounds_draw_with.fetch(name, [])] }
+        followers.each do |name, following|
           (@background_handles - following).each { |background| background.refuse_unfollowed_changing_list!(name) }
-          following.each do |background|
+        end
+        followed = followers.each_with_object({}) do |(name, following), lists|
+          following.each { |background| (lists[background] ||= []) << name }
+        end
+        followed.each { |background, lists| background.follow_changing_lists!(lists) if lists.length > 1 }
+
+        @changing_color_lists.each do |name, list|
+          followers.fetch(name).each do |background|
+            next if followed.fetch(background).length > 1
+
+
             background.follow_changing_list!(name, list.recolors.names_by_number, list.shown)
             next unless @frame_boundaries.empty?
 
@@ -271,23 +299,11 @@ module VBlank
       end
 
       def refuse_scene_backdrop_beside_backdrop_list!(node)
-        return if node.backdrop.nil?
+        return if node.backdrop_or_place_in_file.nil?
 
         raise ArgumentError, "The backdrop takes its color from the list :#{@backdrop_list.name} for the whole game. " \
                              "The `screen` at #{node.source} gives a backdrop of its own. To fix this, remove backdrop: " \
                              "from that `screen` line."
-      end
-
-      # How many steps a channel of a colour has from one end to the other.
-      CHANNEL_STEPS = 31
-
-      # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further.
-      def color_steps_from(color, far, steps)
-        [0, 5, 10].sum do |shift|
-          own = (color >> shift) & CHANNEL_STEPS
-          limit = (far >> shift) & CHANNEL_STEPS
-          (own < limit ? [own + steps, limit].min : [own - steps, limit].max) << shift
-        end
       end
 
       # Everything kept about the list +name+, made the first time it is told `recolor`.
@@ -407,11 +423,13 @@ module VBlank
       def finalize_changing_color_lists
         places = places_for_lists_in_use
         shared = shared_lists_in_use(places)
+        followed_by_poses = keep_changing_lists_poses_follow
         return if @changing_color_lists.empty? && shared.empty?
 
         @changing_color_lists.each do |name, list|
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
-          refuse_changing_list_without_sprites!(name) if users.empty? && @backdrop_list&.name != name
+          followed = @backdrop_list&.name == name || followed_by_poses.include?(name)
+          refuse_changing_list_without_sprites!(name) if users.empty? && !followed
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
           drawn_in_list = ->(pose) { list_drawn_from(pose).last == declared_colors(name) }
           users.each { |user| (boot = user.follow_changing_list_for_good(name, drawn_in_list)) && at_boot(boot) }
@@ -423,6 +441,21 @@ module VBlank
         held.merge!(places)
         @sprite_recolors.each { |recolors| recolors.name_changing_lists!(held) }
         write_changed_colors_between_frames(@changing_color_lists.merge(shared))
+      end
+
+      # THE LISTS A SPRITE OF SEVERAL LISTS FOLLOWS (Images#follow_pose_lists), kept on each such
+      # object only where the game changes the list: a list never told `recolor` holds the colours it
+      # was declared with for good, which are the colours its poses were drawn in, so following it
+      # is drawing them as drawn and the object names nothing. Those it names apart
+      # (IR::Nodes::Object#follows_unchanging), for a target that keeps a pose's colours in the order
+      # of its list. Hands back every list still followed.
+      def keep_changing_lists_poses_follow
+        (@pose_list_followers || []).uniq.flat_map do |node|
+          kept, unchanging = node.follows_each.partition { |name| @changing_color_lists.key?(name) }
+          node.follows_each = kept.empty? ? nil : kept
+          node.follows_unchanging = unchanging.empty? ? nil : unchanging
+          kept
+        end.uniq
       end
 
       # THE LISTS THAT LISTS NEVER IN USE TOGETHER TAKE TURNS IN, from +places+ (see

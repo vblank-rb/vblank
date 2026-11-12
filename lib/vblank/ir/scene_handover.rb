@@ -70,7 +70,10 @@ module VBlank
       # scene starts at once.
       #
       # Its +backdrop+ is the colour it shows wherever nothing is drawn: what its own `screen`
-      # names, or else what the game's names (#game_backdrop), 0 being black.
+      # names, or else what the game's names (#game_backdrop), 0 being black. In a program that
+      # reads its data from a file as it starts it can be where the colour is in that file instead
+      # (a StartFile::Color; Nodes::Screen#backdrop_or_place_in_file), which only the builds that
+      # read such a file ever meet.
       Arrival = Data.define(:scene, :screen, :mode, :scenery, :map_choices, :painted_tiles, :painted_pictures,
                             :takes_down_scenery, :takes_down_art, :loads_first, :backdrop) do
         def takes_down_scenery? = takes_down_scenery
@@ -105,10 +108,11 @@ module VBlank
         @funcs = program.children.select { |node| node.kind == :func }.to_h { |func| [func.name, func] }
         @cases = program.walk.select { |node| node.kind == :case }
         @game_screen = program.children.find { |node| node.kind == :screen }
-        @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop }
+        @backdrops = program.walk.any? { |node| node.kind == :screen && node.backdrop_or_place_in_file }
         @backdrop_follows_list = program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
         @modes = Modes.resolve(program)
         @paced = program.walk.any? { |node| node.kind == :wait_vblank }
+        @covered_bars = program.walk.filter_map { |node| node.name if node.kind == :place_bar && node.covers }.uniq
         @arrivals = {}
       end
 
@@ -130,7 +134,7 @@ module VBlank
 
       # THE COLOUR THE GAME SHOWS WHEREVER NOTHING IS DRAWN, as its own `screen` — the one in no
       # scene — names it: 0, black, when it names none. A scene that names no backdrop shows this.
-      def game_backdrop = (@game_screen&.backdrop if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
+      def game_backdrop = (@game_screen.backdrop_or_place_in_file if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
 
       # Does any `screen` name a backdrop? A game where none does shows black wherever nothing is
       # drawn, as every game did before a screen could name one, and a backend emits nothing for it.
@@ -158,7 +162,7 @@ module VBlank
         return 0 unless DISPLAYS.key?(node.mode) && self.class.tiles?(node.mode)
         return nil if @backdrop_follows_list && !node.equal?(@game_screen)
 
-        node.backdrop || game_backdrop
+        node.backdrop_or_place_in_file || game_backdrop
       end
 
       # A scene's backdrop as it arrives (Arrival#backdrop): nil, as it is, where the backdrop
@@ -167,7 +171,7 @@ module VBlank
         return 0 unless tiled
         return nil if @backdrop_follows_list
 
-        screen&.backdrop || game_backdrop
+        screen&.backdrop_or_place_in_file || game_backdrop
       end
 
       # The scene whose routine has +node+ at its top, or nil — a scene, and not any other routine.
@@ -209,6 +213,47 @@ module VBlank
 
       # The scenery on screen while +scene+ runs: what every screen shows, and its own.
       def showing(scene) = @scenery.select { |node| node.scene.nil? || node.scene == scene }
+
+      # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over (+node+) names, in the routine
+      # of +scene+ (nil outside every scene's): the one by that name, or, where several scenes each declare
+      # one by that name, +scene+'s own, or the one every screen shows. Nil where which it is cannot be told
+      # while the game is built: a lowering then makes the change to the one of the scene up as it runs. A
+      # name nothing declares raises +error+.
+      def background_named(node, scene:, error:)
+        declared = @scenery.select { |bg| bg.name == node.name }
+        raise error, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
+        return declared.first if declared.length == 1
+
+        own = scene && arrival(scene).scenery.find { |bg| bg.name == node.name }
+        own || always_up.scenery.find { |bg| bg.name == node.name }
+      end
+
+      # DOES THE STACK PUT ONE OF +scene+'S OWN BACKGROUNDS BEHIND ONE EVERY SCREEN SHOWS? A lowering that
+      # keeps a scene's own scenery in the layers in front of the shared scenery cannot show that. The block
+      # picks the backgrounds the lowering stacks in its layers (all of them where none is given).
+      def own_scenery_behind_shared?(scene, &stacked)
+        stacked ||= ->(_bg) { true }
+        layered = always_up.scenery.select(&stacked) + arrival(scene).scenery.select(&stacked)
+        drawn = showing(scene).select { |bg| layered.any? { |up| up.equal?(bg) } }
+        drawn.map(&:object_id) != layered.map(&:object_id)
+      end
+
+      # The value a console's one setting for whether the bar shown covers sprites takes as +bar+
+      # goes up, or nil where the setting needs no write.
+      #
+      # Whether a bar covers sprites is the bar's own: the interpreter keeps it by the bar's name
+      # (Reference#exec_place_bar), and the game keeps it in the variable its `covers_sprites =`
+      # sets for that bar (Nodes::Background.bar_covers_var). A console's runtime keeps one setting,
+      # for the one bar it shows, so in a game with bars of more than one name, one of them set to
+      # cover, a bar going up sets it: from that variable, or to 0 for a bar no `covers_sprites =`
+      # names, which covers none. A game with one bar, or with none set to cover, writes nothing
+      # here and builds as it did: the setting is always that one bar's.
+      def bar_covers_on_put_up(bar)
+        return unless @covered_bars.any? && @scenery.select(&:bar?).map(&:name).uniq.length > 1
+        return Build.int(0) unless @covered_bars.include?(bar.name)
+
+        Build.var_ref(Nodes::Background.bar_covers_var(bar.name))
+      end
 
       # Whether +background+ goes up as its scene takes over, rather than where it is written.
       # Only scenery drawn from tiles is up in that sense: a scene on a painted screen paints

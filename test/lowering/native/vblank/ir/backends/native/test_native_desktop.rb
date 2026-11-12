@@ -199,6 +199,69 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GAME'S OWN KEYS (computer_keys): the window starts with them, beside VBlank's. How the window
+  # keeps them is tested with no window (test_native_window.rb); this is that the game's build hands
+  # them to it.
+  def test_the_window_starts_with_the_keys_the_game_adds
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("ADDS KEYS", consoles: %i[gba]) do
+        computer_keys a: :d
+        screen :bitmap
+        frames = 0
+        held_a = var(:held_a, 0)
+        held_right = var(:held_right, 0)
+        game_loop do
+          clear_screen :black
+          frames += 1
+          held_a.increase! 1 if held(:a)
+          held_right.increase! 1 if held(:right)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "adds"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      held_d = play_window(exe, dir, ["0", "0 keydown:D", "0", "0", "0", "0 keyup:D", "0 keydown:Right", "0", "0 keyup:Right"], frames: 12)
+
+      assert_match(/^  A +X, D$/, help)
+      assert_match(/^  Right +Right$/, help, "the right arrow is still Right")
+      refute_match(/More players/, help, "a game that names no players has no player 2 keys")
+      assert_operator held_d.variables[:held_a], :>=, 3, "D presses A"
+      assert_operator held_d.variables[:held_right], :>=, 1, "and the right arrow still presses Right"
+    end
+  end
+
+  # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
+  # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
+  # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help
+  # names the keys.
+  def test_the_keyboards_right_hand_is_player_two
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("TWO AT ONE", consoles: %i[gba], players: { computer: 1..2, else: 1 }) do
+        screen :bitmap
+        frames = 0
+        right_one = var(:right_one, 0)
+        right_two = var(:right_two, 0)
+        a_two = var(:a_two, 0)
+        game_loop do
+          clear_screen :black
+          frames += 1
+          right_one.increase! 1 if held(:right)
+          right_two.increase! 1 if held(:right, player: 2)
+          a_two.increase! 1 if held(:a, player: 2)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "two"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:L", "0", "0", "0 keydown:O", "0 keyup:L", "0 keyup:O keydown:Right", "0",
+                                      "0 keyup:Right"], frames: 12)
+
+      assert_match(/O is A/, help)
+      assert_operator played.variables[:right_two], :>=, 3, "L is player 2's Right"
+      assert_operator played.variables[:a_two], :>=, 1, "O is player 2's A"
+      assert_operator played.variables[:right_one], :>=, 1, "the right arrow is still player 1's"
+      assert_operator played.variables[:right_one], :<=, 3, "and L is not player 1's"
+    end
+  end
+
   # A game that counts its frames and, for each console button, the frames it was held: what the
   # window does to itself must leave every one of these as a run with none of it would, and what a
   # button does must show in its own. It plays a long note so there is a sound to hear.

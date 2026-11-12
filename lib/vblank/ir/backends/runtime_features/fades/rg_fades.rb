@@ -250,6 +250,16 @@ def rg_screen_fade_under(layer_place, toward_white, steps, walked)
   rg_fade_to(true, layer_place, toward_white, steps, walked)
 end
 
+# Reference#lift_placed_fade_for_light: a light that takes turns takes a placed fade off on the pass
+# of a scene it is on in, where every other scene leaves a fade as the game set it. +on+ is the
+# light's switch as the scene that ran set it.
+def rg_lift_placed_fade_for_light(on)
+  return if on == 0 || !@rg_placed_fade.in_force
+
+  @rg_placed_fade.in_force = false
+  rg_request_repaint
+end
+
 # Reference#tint_by_display?: does the display mix a tint in as it draws, which only the plain
 # bitmap screen does, on a console that blends? Every other screen has it mixed into a colour table.
 def rg_tint_mixed_by_display? = rg_painted_screen? && @rg_pixels.equal?(@rg_viewed) && RG_CONSOLE_BLENDS

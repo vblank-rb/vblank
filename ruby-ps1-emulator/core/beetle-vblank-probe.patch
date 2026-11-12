@@ -60,7 +60,7 @@
     VCD_Init();
 
     struct retro_log_callback log;
-@@ -7638,8 +7666,58 @@
+@@ -7638,8 +7666,64 @@
     okay           = MDFNSS_LoadSM(&st, 0, 0);
     FastSaveStates = false;
     return okay;
@@ -79,6 +79,12 @@
 + * (gpu.c), a little-endian count of 64 bits. */
 +#define VBLANK_PROBE_PROFILE   0x8007
 +#define VBLANK_PROBE_GPU_BUSY  0x8008
++/* The sound chip's registers as the program last wrote them (spu.c), 512
++ * bytes from 1F801C00h, and its 512K of sound RAM. */
++#define VBLANK_PROBE_SPU       0x8005
++#define VBLANK_PROBE_SPU_RAM   0x8006
++extern uint16_t *vblank_probe_spu_registers(void);
++extern uint16_t *vblank_probe_spu_ram(void);
 +extern PS_GPU GPU;
 +extern uint8_t *vblank_probe_profile_bytes;
 +extern uint32_t vblank_probe_profile_take(void);
@@ -119,10 +125,14 @@
  void *retro_get_memory_data(unsigned type)
  {
     /* This callback may be invoked before retro_load_game or after
-@@ -7647,6 +7725,18 @@
+@@ -7647,6 +7731,22 @@
      * libretro spec; the frontend must cope with that. */
     switch (type)
     {
++      case VBLANK_PROBE_SPU:
++         return vblank_probe_spu_registers();
++      case VBLANK_PROBE_SPU_RAM:
++         return vblank_probe_spu_ram();
 +      case VBLANK_PROBE_VRAM:
 +         return GPU.vram;
 +      case VBLANK_PROBE_GPU:
@@ -138,10 +148,14 @@
        case RETRO_MEMORY_SYSTEM_RAM:
           return MainRAM ? MainRAM->data8 : NULL;
        case RETRO_MEMORY_SAVE_RAM:
-@@ -7666,6 +7756,18 @@
+@@ -7666,6 +7766,22 @@
  {
     switch (type)
     {
++      case VBLANK_PROBE_SPU:
++         return 0x200;
++      case VBLANK_PROBE_SPU_RAM:
++         return 0x80000;
 +      case VBLANK_PROBE_VRAM:
 +         return GPU.vram ? (size_t)(1024 * 512 * 2) << (2 * GPU.upscale_shift) : 0;
 +      case VBLANK_PROBE_GPU:
@@ -258,6 +272,15 @@
 +
   if(gte_ts_done > 0)
    gte_ts_done -= timestamp;
+ 
+--- a/mednafen/psx/spu.c
++++ b/mednafen/psx/spu.c
+@@ -467,2 +467,6 @@
+ static uint16_t SPURAM[524288 / sizeof(uint16_t)];
++/* VBlank probe: the registers as the program last wrote them, 512 bytes from
++ * 1F801C00h, and sound RAM, for a test reading back what a program did. */
++uint16_t *vblank_probe_spu_registers(void) { return regs.Regs; }
++uint16_t *vblank_probe_spu_ram(void) { return SPURAM; }
  
 --- a/mednafen/psx/gpu.c
 +++ b/mednafen/psx/gpu.c

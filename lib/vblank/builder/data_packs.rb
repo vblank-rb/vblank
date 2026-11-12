@@ -42,7 +42,9 @@ module VBlank
     # starts (IR::StartFile). The pack's layout follows from the slots' shapes and sizes alone
     # (Original::Pack.layout), so the build knows where each slot will be in the file: a table given
     # a slot is read from there (#table_from_start_file), and so is a picture given a slot of colours
-    # or tiles of a slot of tiles, or both (#define_picture_from_start_file). The program holds none
+    # or tiles of a slot of tiles, or both (#define_picture_from_start_file), and a screen's backdrop
+    # given a slot of colours (#pack_backdrop_in_start_file), and a list of colours declared from a
+    # slot holds a marker for each colour (#pack_colors_read_at_start). The program holds none
     # of a table's entries and zeros for a picture's pixels, and nothing the build works out may depend
     # on what a slot holds: a table read from the file is not one whose entries a build looks at (a
     # pose stepped through by a table's entries), and a picture read from the file is a whole box of
@@ -99,13 +101,15 @@ module VBlank
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
         slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, cache) : copied
-        @data_pack_file = Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes.freeze
-        @data_pack_contents = Original::Pack.from_bytes(@data_pack_file)
+        @data_pack_contents = Original::Pack.from_bytes(Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes)
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
+        made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
-                                       slots: slots.list,
+                                       slots: slots.list, platform: from.platform,
                                        make_unpacking: lambda { |_release|
-                                         unpacking || unpacking_program(bytes, copy_release_slots, nil, reading, release: copy_release)
+                                         frames = pack_frame_section
+                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, slots.routine, reading,
+                                                                            release: copy_release, frames: frames)
                                        })
       end
 
@@ -148,13 +152,18 @@ module VBlank
         refuse_places_not_matching_releases!(slots, from, nil)
         layout = Original::Pack.layout(slots.list, build_version: version)
         @program.start_file = IR::StartFile.new(called: PACK_FILE_TITLE, size: layout.size, checks: layout.checks)
-        @pack_slot_starts = layout.slot_starts
+        @pack_slot_starts = Original::SlotStarts.new(by_name: layout.slot_starts)
+        # The records of the frames the game goes on to name follow the last slot (PackPoses).
+        @pack_frames_at = layout.size
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
+        made = {}
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
+                                       platform: from.platform,
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
-                                         unpacking_program(nil, slots_in_release(slots, release.name), slots.routine, reading,
-                                                           release: release)
+                                         frames = pack_frame_section
+                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routine,
+                                                                                       reading, release: release, frames: frames)
                                        })
       end
 
@@ -165,8 +174,18 @@ module VBlank
       def declared_data_pack = @data_pack
 
       # The data pack file this build made from the copy, its bytes, or nil for a build that made
-      # none (a game with no data pack, or a build that leaves its pack out).
-      def made_data_pack_file = @data_pack_file
+      # none (a game with no data pack, or a build that leaves its pack out): its slots, and the
+      # record of each frame the game has named by now (PackPoses#pack_frame_section), so it is the
+      # whole file once the game is declared. The same game built with its pack left out reads this file.
+      def made_data_pack_file
+        return nil unless @data_pack_contents
+
+        frames = pack_frame_section
+        (@made_data_pack_files ||= {})[frames] ||= Original::Pack.holding(
+          @data_pack_contents.slots, sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
+          frame_records: frames.bytes(@data_pack_contents.slots)
+        ).to_bytes.freeze
+      end
 
       private
 
@@ -303,12 +322,13 @@ module VBlank
         define_pixel_image(name, width: width, height: height, data: data, transparent: see_through ? true : nil)
       end
 
-      # The same picture with the pack left out: its colours held in the program, its pixels zeros
-      # until they are filled from the file as the game starts (IR::StartFile::Picture, its places
-      # one byte each). Its places are held as all 1, so the build treats it as a solid box, as a
+      # The same picture with the pack left out: its colours held in the program (the game's own,
+      # or a marker for each colour of a slot, IR::StartFile "MARKERS"), its pixels zeros until
+      # they are filled from the file as the game starts (IR::StartFile::Picture, its places one
+      # byte each). Its places are held as all 1, so the build treats it as a solid box, as a
       # picture of tiles from the file.
       def define_pixels_picture_from_start_file(name, width, height, places, colors, see_through)
-        table = colors.map { |color| Graphics::Color.resolve(color) }
+        table = colors.map { |color| list_color(color) }
         count = width * height
         node = Build.bitmap(name, width: width, height: height, pixels: Array.new(count, 0).pack("v*"),
                                   transparent: nil, colors: table, places: Array.new(count, 1).pack("C*"))
@@ -322,20 +342,26 @@ module VBlank
       end
 
       # The colours of a picture of pixels: a list the game gives (names or numbers), or a slot of
-      # colours of the pack, read here, which a build that leaves its pack out cannot do.
+      # colours of the pack, up to 256 of them taken whole. The slot is read here; a build that
+      # leaves its pack out holds a marker for each of its colours instead, as a list declared
+      # from the pack does (#pack_colors_read_at_start), so the picture's pixels are filled as
+      # markers as the game starts and put in the file's colours with every other marker.
       def pixels_picture_colors(name, colors)
-        if colors.is_a?(DSL::PackSlot) && pack_left_out?
-          raise ArgumentError, "image :#{name} takes its colors from slot :#{colors.layout.name}. This build reads its pack " \
-                               "as the game starts, so a picture of pixels must hold its own colors. To fix this, give " \
-                               "the game's own list, like `colors: [:black, :white, ...]`."
-        end
-
-        list = colors.is_a?(DSL::PackSlot) ? pack_slot_values(colors, :colors, "image :#{name}'s colors:") : colors
+        list = colors.is_a?(DSL::PackSlot) ? pixels_picture_pack_colors(name, colors) : colors
         return list.to_a if list.is_a?(Array) && list.length.between?(1, MOST_PIXEL_PLACES)
 
         raise ArgumentError, "image :#{name} takes its pixels from a slot of pixels. It needs colors: with 1 to " \
                              "#{MOST_PIXEL_PLACES} colors, place 0 first. To fix this, give the game's own list, like " \
                              "`colors: [:black, :white, ...]`."
+      end
+
+      def pixels_picture_pack_colors(name, slot)
+        where = "image :#{name}'s colors:"
+        return pack_slot_values(slot, :colors, where) unless pack_left_out?
+
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        pack_colors_read_at_start(slot)
       end
 
       def refuse_pixels_picture_options!(name, opts)
@@ -386,17 +412,45 @@ module VBlank
 
       # A picture turned +way+ (:mirrored, :upside_down) from +source+, which is read from the file
       # the program is handed: it is read from the same place and turned as it is read. Places the
-      # game holds are turned here already, in +node+, and are not turned again.
+      # game holds are turned here already, in +node+, and are not turned again. A pose's pieces
+      # are always in the file (IR::StartFile::Pose).
       def read_turned_picture_from_start_file(node, source, way)
         return unless picture_from_start_file?(source)
 
         from = @pictures_from_start_file.fetch(source)
-        node.from_file = from.places_at ? from.turned(way) : from
+        places_in_file = from.is_a?(IR::StartFile::Pose) || from.places_at
+        node.from_file = places_in_file ? from.turned(way) : from
         @pictures_from_start_file[node.name] = node.from_file
       end
 
       # Whether the picture +name+ is read from the file the program is handed as it starts.
       def picture_from_start_file?(name) = @pictures_from_start_file&.key?(name) || false
+
+      # A PIECE OF A PICTURE READ FROM THE FILE, a picture of its own: +piece+ is +width+ pixels of
+      # every row of +source+ from +left+ on, as a font cut from a strip of pictures cuts each
+      # letter (PictureFonts#declare_strip_piece). The build holds none of the source's pixels, so
+      # nothing is cut here: the piece reads the file as the source does, from its own part of it.
+      #
+      # A source whose places are a slot's pixels, one byte each, gives a piece that reads the same
+      # rows from further along (IR::StartFile::Picture#piece_from). A source that holds its places
+      # and reads only its colours gives a piece of those places, reading the same colours.
+      # Hands back +piece+, or nil for a source that cannot be cut this way: one turned as it is
+      # read, one of tiles, or a pose painted from an original's frame.
+      def define_piece_read_from_start_file(piece, source, left:, width:)
+        from = @pictures_from_start_file.fetch(source)
+        return nil unless from.is_a?(IR::StartFile::Picture) && from.turns.empty? && (from.places_by_byte || from.places_at.nil?)
+
+        whole = @program.walk.find { |found| found.kind == :bitmap && found.name == source }
+        cut = ->(cells) { (0...whole.height).flat_map { |row| cells[(row * whole.width) + left, width] } }
+        node = Build.bitmap(piece, width: width, height: whole.height, pixels: cut.call(whole.pixels.unpack("v*")).pack("v*"),
+                                   transparent: whole.transparent, colors: whole.colors,
+                                   places: cut.call(whole.places.bytes).pack("C*"), colors_name: whole.colors_name)
+        node.from_file = from.places_at ? from.piece_from(left, whole_width: whole.width) : from
+        record_picture(node)
+        @pictures_from_start_file[piece] = node.from_file
+        record_visible_bounds(name: piece, width: width, height: whole.height, cells: [], transparent: nil)
+        piece
+      end
 
       # With the pack left out, a picture reads from the pack only as a slot of colours or tiles of
       # places, or both, and nothing else: the build knows nothing else of it that does not depend on
@@ -444,12 +498,16 @@ module VBlank
       # the player's machine, so it shows how far it has got (#define_unpacking_progress). Both are
       # built for the game's console. +reading+ (a CopyReading) says which packed formats the copy
       # offers the routine.
-      def unpacking_program(bytes, slots, routine, reading, release:)
+      #
+      # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
+      # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
+      def unpacking_program(bytes, slots, routine, reading, release:, frames: Original::FrameRecord::Section.new(sources: []))
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
           copy_table = declare_copy_table_from_start_file(maker, slots, copy_size)
-          list = maker.list(Original::Unpacking::BYTES, capacity: slots.sum(&:byte_size), width: :byte, full_of: 0)
+          slots_size = slots.sum(&:byte_size)
+          list = maker.list(Original::Unpacking::BYTES, capacity: slots_size + frames.size, width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
           progress = (Original::Unpacking::PROGRESS unless bytes)
@@ -470,6 +528,11 @@ module VBlank
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
           maker.instance_exec(reader, pack, release.name, &routine) if routine
+          wait = lambda do
+            maker.call(progress) if progress
+            maker.wait_vblank
+          end
+          Original::FrameRewrite.new(maker, pack: list, section: frames, section_at: slots_size, slot_places: places, wait: wait).emit
           finished.store!(1)
           if progress
             maker.call(progress)
@@ -477,8 +540,11 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: copy_size,
-                                  format_words: reader.format_words, copy_bytes: bytes&.b)
+          maker.program.for_unpacking = true
+          # Written, so a lowering's many questions of a long routine read one walk of it rather
+          # than walking it again for each (IR::Node#mark_written!).
+          Original::Unpacking.new(program: maker.program.mark_written!, slots: slots, copy_size: copy_size,
+                                  format_words: reader.format_words, copy_bytes: bytes&.b, frames: frames)
         end
       end
 
@@ -657,10 +723,14 @@ module VBlank
       # What the slot +handle+ (a DSL::PackSlot) holds, read as +wanted+ asks: :colors and :numbers
       # take a whole slot of that shape, :tile one tile of a slot of tiles. +where+ names the line
       # for the error ("image :wall's colors:").
+      #
+      # Must be called only in a build that holds its pack. A build that leaves its pack out holds
+      # none to read, and every verb that takes a handle is made for that build, or refuses it in
+      # words of its own, before it gets here. A verb added later that is not is found by its game
+      # in test/pack_games.rb, which the coverage check asks for, failing here in that build.
       def pack_slot_values(handle, wanted, where)
         refuse_slot_from_elsewhere!(handle, where)
         refuse_slot_read_wrongly!(handle, wanted, where)
-        refuse_slot_read_while_left_out!(handle, where)
         values = handle.layout.decode(@data_pack_contents.bytes_of(handle.layout.name))
         return values.slice(handle.first_color, handle.color_count) if handle.bank?
         return values unless handle.one_tile?
@@ -672,13 +742,17 @@ module VBlank
       # list of its 64 places row by row, for a verb that draws the original's own tiles by number
       # (PackBackgrounds, PackPoses). +subject+ names the line for the error.
       def pack_tile_places(tiles, subject)
-        unless tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
-          raise ArgumentError, "#{subject} needs tiles:, a slot of tiles like `pack[:video]`, or the tiles from one tile " \
-                               "on, like `pack[:video].tile(256)`."
-        end
-
+        refuse_tiles_not_from_slot!(tiles, subject)
         refuse_slot_from_elsewhere!(tiles, "#{subject}'s tiles:")
         tiles.layout.decode(@data_pack_contents.bytes_of(tiles.layout.name)).drop(tiles.tile_index || 0)
+      end
+
+      # tiles: is a slot of tiles, or the tiles of one from a tile on.
+      def refuse_tiles_not_from_slot!(tiles, subject)
+        return if tiles.is_a?(DSL::PackSlot) && tiles.shape == :tiles && tiles.across == 1 && tiles.down == 1
+
+        raise ArgumentError, "#{subject} needs tiles:, a slot of tiles like `pack[:video]`, or the tiles from one tile " \
+                             "on, like `pack[:video].tile(256)`."
       end
 
       # Tile +at+ of +tile_places+ (#pack_tile_places), which +subject+ draws, or a friendly error.
@@ -697,11 +771,27 @@ module VBlank
       end
 
       # +opts+ for `image`, each handle in colors: or places: replaced by what its slot holds.
+      #
+      # With the pack left out a slot of colours is a marker for each colour, as a list declared
+      # from the pack is (#pack_colors_read_at_start): what a picture drawn in characters takes,
+      # whose pixels are the game's own colours.
       def opts_with_pack_slots_read(name, opts)
         read = opts.dup
-        read[:colors] = pack_slot_values(opts[:colors], :colors, "image :#{name}'s colors:") if opts[:colors].is_a?(DSL::PackSlot)
+        if opts[:colors].is_a?(DSL::PackSlot)
+          where = "image :#{name}'s colors:"
+          read[:colors] = pack_left_out? ? picture_colors_read_at_start(name, opts[:colors], where) : pack_slot_values(opts[:colors], :colors, where)
+        end
         read[:places] = pack_slot_values(opts[:places], :tile, "image :#{name}'s places:") if opts[:places].is_a?(DSL::PackSlot)
         read
+      end
+
+      # The colours of the picture +name+ given the slot +slot+ of colours, in a build that leaves
+      # its pack out: a marker for each, sixteen at most, as a picture's own list is.
+      def picture_colors_read_at_start(name, slot, where)
+        refuse_slot_from_elsewhere!(slot, where)
+        refuse_slot_read_wrongly!(slot, :colors, where)
+        refuse_too_many_pack_colors!(name, slot)
+        pack_colors_read_at_start(slot)
       end
 
       # THE COLOURS OF A LIST DECLARED FROM THE PACK (`colors :name, pack[:palette].bank(2)`): what
@@ -717,8 +807,57 @@ module VBlank
         refuse_slot_from_elsewhere!(slot, where)
         refuse_slot_read_wrongly!(slot, :colors, where)
         refuse_pack_color_list_too_long!(name, slot)
-        refuse_pack_color_list_left_out!(name)
+        return pack_colors_read_at_start(slot) if pack_left_out?
+
         pack_slot_values(slot, :colors, where)
+      end
+
+      # THE SAME LIST WITH THE PACK LEFT OUT: the build holds none of the original's colours, so
+      # the list holds a marker for each (IR::StartFile, "MARKERS"), which names where the colour
+      # is in the file the program is handed as it starts. Everything that takes a list's name
+      # takes this one, since a marker goes wherever a colour goes: into a picture drawn in the
+      # list, a sprite's other colours, a list told to hold it, a backdrop that follows it. Each
+      # backend that plays the program puts the file's colour where a marker is, as it starts.
+      # The first place keeps the slot's own colour here too.
+      def pack_colors_read_at_start(slot)
+        first = colors_in_pack(slot)
+        Array.new(slot.count) do |place|
+          start_file_color_marker(IR::StartFile::Color.new(at: first + (place * slot.layout.item_bytes), format: slot.layout.format))
+        end
+      end
+
+      # The marker of +source+ (an IR::StartFile::Color, or a WalkedColor made from one), which is
+      # one of the file's colours (IR::StartFile#colors) from here on. The same source asked for
+      # again has the same marker, so two lists of one bank hold equal colours, as they do when the
+      # build holds what the bank holds.
+      def start_file_color_marker(source)
+        @start_file_colors ||= []
+        entry = (@start_file_color_entries ||= {})[source] ||= begin
+          refuse_too_many_start_file_colors!
+          @start_file_colors << source
+          @start_file_colors.length - 1
+        end
+        IR::StartFile.marker_of(entry)
+      end
+
+      # A colour a list holds, as the build keeps it: its fifteen bits, or the marker it is.
+      def list_color(color) = IR::StartFile.marker?(color) ? color : Graphics::Color.resolve(color)
+
+      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the program every colour it reads from the file as
+      # it starts, in the order the markers count them.
+      def finalize_start_file_colors
+        return unless @start_file_colors
+
+        @program.start_file = @program.start_file.with(colors: @start_file_colors.dup.freeze)
+      end
+
+      # A marker fits in the sixteen bits a picture keeps a pixel in, so there are so many of them.
+      def refuse_too_many_start_file_colors!
+        return if @start_file_colors.length < IR::StartFile::MOST_MARKED_COLORS
+
+        raise ArgumentError, "This build reads its pack as the game starts, and it reads more than " \
+                             "#{IR::StartFile::MOST_MARKED_COLORS} colors of lists from it, with the steps of each " \
+                             "`color_walk`. To fix this, walk fewer lists or use fewer steps, or build the game all-in-one."
       end
 
       # A list holds as many colours as one picture can be drawn from (Images::PICTURE_COLORS), and
@@ -732,23 +871,46 @@ module VBlank
                              "one bank of the slot, like `pack[:#{slot.layout.name}].bank(0, size: #{most})`."
       end
 
-      # A build that leaves its pack out holds none of the original's colours, and a list's colours
-      # are part of the program every lowering writes. Filling a list at power-on is not made yet.
-      def refuse_pack_color_list_left_out!(name)
-        return unless pack_left_out?
-
-        raise ArgumentError, "colors :#{name} reads its colors from the data pack, and this build reads its pack as " \
-                             "the game starts. A list of colors from the pack is not made that way yet. To fix this, " \
-                             "build the game all-in-one."
+      # THE COLOUR OF A BACKDROP TAKEN FROM THE PACK (`screen :tiled, backdrop: pack[:palette]`): the
+      # colour at +place+ of +slot+ (a DSL::PackSlot on a slot of colours, or on one bank of it),
+      # the first when +place+ is nil, as a `screen` keeps a backdrop's colour.
+      #
+      # A console shows the first colour of its background colours wherever no tile draws, so a
+      # retail game's screen shows there whatever its colours hold first: a white field behind a
+      # logo, a sky. That colour is data of the player's copy like the rest, and no picture can
+      # show it, since the first place of a bank is see-through to one. Read here, it is the
+      # backdrop a game would get by writing the colour out, on its own `screen` line or a
+      # scene's, and builds the same bytes.
+      def pack_backdrop_color(slot, place)
+        place = pack_backdrop_place(slot, place)
+        Graphics::Color.resolve(pack_slot_values(slot, :colors, PACK_BACKDROP_LINE).fetch(place)) & 0x7FFF
       end
 
-      # A verb that reads what a slot holds as the game is built, in a build that leaves its pack out.
-      def refuse_slot_read_while_left_out!(handle, where)
-        return unless pack_left_out?
+      # THE SAME BACKDROP WITH THE PACK LEFT OUT: where the colour is in the file the program is
+      # handed as it starts (an IR::StartFile::Color), which a `screen` keeps in place of the
+      # colour. The build holds none of the original's colours, and each backend that plays such a
+      # program reads this one as it starts. The slot's size is the game's own word, so a place
+      # the slot does not have is refused here as it is all-in-one.
+      def pack_backdrop_in_start_file(slot, place)
+        place = pack_backdrop_place(slot, place)
+        IR::StartFile::Color.new(at: colors_in_pack(slot) + (place * slot.layout.item_bytes), format: slot.layout.format)
+      end
 
-        raise ArgumentError, "#{where} reads what slot :#{handle.layout.name} holds as the game is built, and this " \
-                             "build reads its data pack as the game starts. Read the slot with `table` or with " \
-                             "`image colors:, places:`, or build the game all-in-one."
+      # How the errors of a backdrop from the pack name the line.
+      PACK_BACKDROP_LINE = "`screen ... backdrop:`"
+
+      # The place of +slot+ (a DSL::PackSlot on colours) that a backdrop shows: +place+, or the
+      # first where it is nil. Refuses a slot that is not this pack's or holds no colours, and a
+      # place past the colours the handle is on.
+      def pack_backdrop_place(slot, place)
+        refuse_slot_from_elsewhere!(slot, PACK_BACKDROP_LINE)
+        refuse_slot_read_wrongly!(slot, :colors, PACK_BACKDROP_LINE)
+        place = 0 if place.nil?
+        return place if place.is_a?(Integer) && place.between?(0, slot.count - 1)
+
+        raise ArgumentError, "`screen ... backdrop_place: #{place.inspect}` asks for a place that the backdrop's colors " \
+                             "do not have. backdrop: was given #{slot.count} colors of slot :#{slot.layout.name}, at " \
+                             "places 0 to #{slot.count - 1}. To fix this, use a place in that range."
       end
 
       def refuse_second_data_pack!
@@ -774,7 +936,10 @@ module VBlank
       end
 
       def refuse_slot_from_elsewhere!(handle, where)
-        return if @data_pack_slots&.fetch(handle.layout.name, nil) == handle.layout
+        refuse_slot_on_first_screen!(handle)
+        # A view of a slot (Original::Slot#viewed) is this pack's where the slot it reads is.
+        declared = handle.layout.declared
+        return if @data_pack_slots&.fetch(declared.name, nil) == declared
 
         raise ArgumentError, "#{where} was given slot :#{handle.layout.name}, and this game's data pack has no such slot. " \
                              "Use a slot from this game's `data_pack`."
@@ -782,13 +947,18 @@ module VBlank
 
       # What each way of reading a slot needs, in words, for the error.
       SLOT_READING_WORDS = { colors: "a slot of colors", tile: "one tile, like `pack[:walls].tile(0)`",
-                             numbers: "a slot of numbers", samples: "a slot of samples" }.freeze
+                             numbers: "a slot of numbers", samples: "a slot of samples",
+                             map_cells: "a slot of map cells" }.freeze
 
       def refuse_slot_read_wrongly!(handle, wanted, where)
-        fits = wanted == :tile ? handle.one_tile? : handle.shape == wanted && !handle.one_tile?
+        # A run of a slot of numbers is a background's map alone (PackBackgrounds#pack_map_cells).
+        fits = wanted == :tile ? handle.one_tile? : handle.shape == wanted && !handle.one_tile? && !handle.run_of_numbers?
         return if fits
 
-        given = handle.one_tile? ? "one tile of slot :#{handle.layout.name}" : "slot :#{handle.layout.name}, which holds #{handle.shape}"
+        given = if handle.one_tile? then "one tile of slot :#{handle.layout.name}"
+                elsif handle.run_of_numbers? then "some of the numbers of slot :#{handle.layout.name}"
+                else "slot :#{handle.layout.name}, which holds #{handle.shape}"
+                end
         raise ArgumentError, "#{where} was given #{given}. It must be given #{SLOT_READING_WORDS.fetch(wanted)}."
       end
     end

@@ -229,6 +229,75 @@ class TestAffineBackgroundOnTheAdvance < Minitest::Test
     assert_equal Color.resolve(:white), picture.call(nil).pixel(*where_it_was_drawn)
   end
 
+  # WHICH POINT OF THE MAP SITS AT THE PIVOT. A turning background hangs from the screen's corner
+  # unless the game names a point of the map (`map_point:`, in the map's own pixels): then that
+  # point is the one at the pivot, at every size and angle. Here the map's middle, the mark at
+  # column 16 and row 16, sits at the screen's (60, 40). The mark is found by its colour and by
+  # the blank beside it, so a map still hung from the corner fails both.
+  private def a_board_with_its_middle_at(x, y, size: nil, degrees: nil)
+    map = marked_map({ [16, 16] => "#", [18, 16] => "$" })
+    builder = Builder.new
+    builder.instance_eval do
+      screen :rotozoom
+      image :white, "#" => :white do "########\n" * 8 end
+      image :red, "#" => :red do "########\n" * 8 end
+      tiles :t, "#" => :white, "$" => :red
+      board = background(:board, tiles: :t, map: map).turns_around(x, y, map_point: [128, 128])
+      board.scale(size) if size
+      board.rotate(degrees) if degrees
+      game_loop { wait_vblank }
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_named_point_of_the_map_sits_at_the_pivot_at_its_drawn_size
+    screen = game_player.run(a_board_with_its_middle_at(60, 40), frames: 4).screen
+
+    assert_equal Color.resolve(:white), screen.pixel(60, 40), "the map's point 128, 128 is the white tile's corner"
+    assert_equal Color.resolve(:white), screen.pixel(67, 47)
+    refute_equal Color.resolve(:white), screen.pixel(59, 40), "the tile left of it is blank"
+    assert_equal Color.resolve(:red), screen.pixel(76, 40), "two tiles right of it is the red one"
+  end
+
+  def test_a_named_point_of_the_map_stays_at_the_pivot_when_resized
+    twice = game_player.run(a_board_with_its_middle_at(60, 40, size: 2.0), frames: 4).screen
+    half = game_player.run(a_board_with_its_middle_at(60, 40, size: 0.5), frames: 4).screen
+
+    assert_equal Color.resolve(:white), twice.pixel(60, 40)
+    assert_equal Color.resolve(:white), twice.pixel(75, 55), "at twice the size the tile is 16 pixels"
+    refute_equal Color.resolve(:white), twice.pixel(59, 40)
+    assert_equal Color.resolve(:red), twice.pixel(92, 40), "and the red one is four tiles' width away"
+    assert_equal Color.resolve(:white), half.pixel(60, 40)
+    assert_equal Color.resolve(:red), half.pixel(68, 40), "at half the size the red one is one tile's width away"
+  end
+
+  # Turned a quarter clockwise the tile right of the middle is below it.
+  def test_a_named_point_of_the_map_stays_at_the_pivot_when_turned
+    screen = game_player.run(a_board_with_its_middle_at(60, 40, degrees: 90), frames: 4).screen
+
+    assert_equal Color.resolve(:red), screen.pixel(57, 60), "the red tile, two tiles right of the map's point, is below the pivot"
+    refute_equal Color.resolve(:red), screen.pixel(80, 44)
+  end
+
+  def test_the_two_backends_agree_about_the_point_of_the_map_at_the_pivot
+    assert_backends_agree(a_board_with_its_middle_at(60, 40, size: 3.0, degrees: 30), frames: 4)
+  end
+
+  def test_a_point_of_the_map_that_is_not_two_whole_numbers_is_a_friendly_error
+    map = marked_map({})
+    err = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        screen :rotozoom
+        image :white, "#" => :white do "########\n" * 8 end
+        tiles :t, "#" => :white
+        background(:board, tiles: :t, map: map).turns_around(60, 40, map_point: 128)
+      end
+    end
+
+    assert_match(/map_point/, err.message)
+  end
+
   # A pivot named in the MIDDLE of a declaration must not break the line it is in: the
   # size written after it is still the size the picture starts at, which a scene's body
   # would otherwise put back on every frame it runs. Written as a scene because that is

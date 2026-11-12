@@ -170,6 +170,12 @@ module VBlank
           elsif !stop_when.nil?
             DSL::Value.node_for(stop_when)
           end
+        if leave
+          inlined = inline_held_expressions(leave)
+          # The test is now the copy, so the value given is used, not thrown away.
+          forget_expression(stop_when) if stop_when.is_a?(DSL::Value) && !inlined.equal?(leave)
+          leave = inlined
+        end
         push_container(Build.repeat(DSL::Value.node_for(count), index, stop_when: leave)) do
           run_block(i, &block)
         end

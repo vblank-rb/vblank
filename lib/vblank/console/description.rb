@@ -32,7 +32,10 @@ module VBlank
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
-    # layer the console keeps beside them. +turning_sprites+ marks whether a sprite can turn and resize.
+    # layer the console keeps beside them. +bar_shares_display+ marks whether the bar takes a part of the
+    # display something else needs as well (a window the Advance's lights use, the memory the Color's
+    # painted screen keeps its picture in), which Checks::StatusBarCannotShare asks about; where it is
+    # false the bar is a picture drawn like any other. +turning_sprites+ marks whether a sprite can turn and resize.
     # +sprite_sizes+ is the sizes one sprite of the console is drawn at whole, in pixels across and
     # down, which a picture the game paints from a list has to be; nil where its build draws every
     # sprite's picture in pieces of 8×8, so such a picture can be any size in whole pieces.
@@ -134,7 +137,7 @@ module VBlank
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
                               :glides_recordings, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
-                              :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
+                              :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
@@ -142,7 +145,8 @@ module VBlank
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
-                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels) do
+                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
+                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -167,8 +171,35 @@ module VBlank
       # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
       # game's small picture, which is what the game lays itself out on and what the interpreter
       # plays. +shows_bigger_pixels+ marks whether the console's hardware can show it that way.
+      #
+      # +pose_lists+ sets what the console's build makes of one sprite whose poses are drawn from
+      # different lists of colours. A console's sprite table names the group of colours of each entry
+      # beside its tile, so its own games change the two together for nothing; what differs is how far
+      # each build goes. :one where the build keeps one group for a whole sprite, so such a sprite is
+      # refused, naming the console. :own where it writes the group with the pose's tiles, so each
+      # pose is shown in its own list's colours. :followed where such a sprite can also follow its
+      # lists, each pose shown in what its list holds now (IR::Nodes::Object#follows_each); under :own
+      # that is refused, naming the console. Checks::PosesWithDifferentColors makes both refusals.
+      #
+      # +sprites_in_blocks+ marks whether the display can show its sprites in blocks when the game
+      # pixelates (`pixelate`), as well as its backgrounds. False where its blocks reach the
+      # backgrounds alone (the Super Nintendo's mosaic), and nil where it has no blocks at all,
+      # which its answers refuse whole.
+      #
+      # +voices_read_sound_memory+ marks a sound chip that plays each of the game's four voices as a
+      # loop it reads out of a memory of its own (the PlayStation's: Backends::PS1::SoundMemory), where
+      # the Game Boy family's chip makes its square waves, waveform and hiss itself. A desktop, web or
+      # Ruby build made as such a console plays its voices that chip's way (runtime/rg_spu.c), so it
+      # sounds like the console it was made as.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
-                     pixel_size: 1, shows_bigger_pixels: false, **rest) = super
+                     pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
+                     voices_read_sound_memory: false, **rest) = super
+
+      # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
+      def poses_keep_own_lists? = pose_lists != :one
+
+      # Whether such a sprite can follow the lists its poses are drawn from.
+      def poses_follow_lists? = pose_lists == :followed
 
       def screen_size = [screen_width, screen_height]
 
@@ -253,7 +284,7 @@ module VBlank
                               # Four layers that scroll, or two that scroll and one that turns.
                               backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
                               # A status bar is one of those layers.
-                              bar_is_a_background: true,
+                              bar_is_a_background: true, bar_shares_display: true,
                               changes_cells_while_drawing: true,
                               blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 5, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
@@ -301,7 +332,7 @@ module VBlank
                             sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
-                            bar_is_a_background: false,
+                            bar_is_a_background: false, bar_shares_display: true,
                             changes_cells_while_drawing: true,
                             blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, color_bits: 5, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
@@ -328,11 +359,16 @@ module VBlank
                             roomier_memory_bytes: 0, variables_go_far: false,
                             # The sprite table and the scroll are sent from a copy as the wait
                             # ends, so a pass's are placed before it to show on the frame after.
+                            # Each piece's attributes name its list (Backends::GBC::Lowering::Picture
+                            # #pose_rows). A sprite that follows its poses' lists is not made yet.
+                            pose_lists: :own,
                             sprites_placed_before_wait: true,
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,
                             # Its own start-up is not played: the game starts at once.
-                            plays_bios_start_up: false, whole_screen_size: nil, extension: ".gbc")
+                            plays_bios_start_up: false, whole_screen_size: nil, extension: ".gbc",
+                            # It has no mosaic.
+                            sprites_in_blocks: nil)
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
@@ -356,13 +392,13 @@ module VBlank
                                      sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
                                      # layers called mode 1: two of sixteen colours and one of four.
-                                     # The build puts a status bar on the one of four, beside two
-                                     # other backgrounds (Backends::SNES::Lowering::Picture
-                                     # .status_bar_on_third_layer?); three with no bar among them it
-                                     # does not make yet, and says so.
+                                     # The build puts a status bar, or a background held above a
+                                     # row, on the one of four, beside two other backgrounds
+                                     # (Backends::SNES::Lowering::Picture.third_layer?); three with
+                                     # neither among them it does not make yet, and says so.
                                      # Mode 7 turns one layer, alone; the build does not use it.
                                      backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                                     bar_is_a_background: true,
+                                     bar_is_a_background: true, bar_shares_display: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
@@ -393,9 +429,15 @@ module VBlank
                                      roomier_memory_bytes: 120 * 1024, variables_go_far: true,
                                      # The wait sends the sprite table and the scroll from a copy, so
                                      # a pass places them in it before its wait, as the Color's does.
+                                     # Each picture's pieces name its palette (Backends::SNES::Art). A
+                                     # sprite that follows its poses' lists is not made yet.
+                                     pose_lists: :own,
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                                     # Its mosaic (MOSAIC, $2106) has a switch for each background
+                                     # and none for the sprites.
+                                     sprites_in_blocks: false,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
@@ -418,7 +460,7 @@ module VBlank
                               # Two planes of tiles that scroll. The window plane is a third, but it
                               # only covers whole rows of tiles and the build does not use it.
                               backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                              bar_is_a_background: false,
+                              bar_is_a_background: false, bar_shares_display: true,
                               # The build writes video RAM only in the gap between frames.
                               changes_cells_while_drawing: false,
                               # Nothing mixes one layer into another by degrees, and the shadow and
@@ -446,9 +488,14 @@ module VBlank
                               roomier_memory_bytes: 0, variables_go_far: false,
                               # The wait sends the sprite table and the scroll from a copy, so a
                               # pass places them in it before its wait, as the Super Nintendo's does.
+                              # Each picture's pieces name its palette, cut against the list it
+                              # follows (Backends::Genesis::Lowering::Picture#followed_list_of).
+                              pose_lists: :followed,
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
                               rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                              # It has no mosaic.
+                              sprites_in_blocks: nil,
                               extension: ".gen")
 
     # The PlayStation: a 320×240 screen, a pad whose buttons a game names by the shared names (Cross is
@@ -460,8 +507,9 @@ module VBlank
                                   # Two ports for pads (the build reads the first alone for now).
                                   controllers: 2,
                                   # A background is a picture the graphics chip draws, so it can be held to
-                                  # a box (the chip's drawing area) that nothing else uses.
-                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                                  # a box (the chip's drawing area) that nothing else uses. A recorded note
+                                  # can glide: its voice's pitch is a register written while it plays.
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true,
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,
@@ -473,7 +521,9 @@ module VBlank
                                   sprite_sizes: nil, tile_planes: nil,
                                   # ...and a turned background the same way, beside the others, as the Advance shows it.
                                   backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
-                                  bar_is_a_background: false,
+                                  # A status bar is one more plane the chip draws, kept to its rows by where it
+                                  # is drawn, so it shares nothing with anything else.
+                                  bar_is_a_background: true, bar_shares_display: false,
                                   # Video RAM can be written while a frame is drawn.
                                   changes_cells_while_drawing: true,
                                   # The chip mixes by halves and sums, never by sixteen steps, so a fade is
@@ -487,11 +537,21 @@ module VBlank
                                   # measured in Beetle PSX (the sound chip makes a pair of samples every 768
                                   # cycles: test_ps1_boot.rb).
                                   cycles_a_second: 33_868_800, cycles_a_frame: 566_122,
-                                  # The sound chip's 24 voices each read a recording of their own. The
-                                  # framework plays 16 at once, the most the desktop builds' mixer holds.
+                                  # The sound chip's 24 voices each read a recording of their own. Four of
+                                  # them are the game's square, wave and noise voices
+                                  # (Backends::PS1::SPUWrites::VOICES), so 20 are left for recordings, and
+                                  # the build plays 16 at once, on voices 4 to 19 (Runtime::Recordings).
+                                  # Sixteen, and not 20, because a recording past the console's number is
+                                  # dropped and counted (Reference::Mixer#record_drop), and the desktop, web
+                                  # and Ruby builds made as the PlayStation mix their recordings in a mixer
+                                  # of 16 voices (Audio::Sound::MIXER_VOICES): at 20 the console would sound
+                                  # a play those builds drop. Sixteen is also the framework's number on
+                                  # every console that mixes, so a game sized for one fits the others.
                                   samples_a_copy: nil, sample_timer_step: nil, sample_timer_counts: nil,
                                   recordings_at_once: 16, mixes_recordings: true,
                                   recording_voice_hz: 44_100, lowest_square_hz: nil, voice_output_hz: 44_100,
+                                  # Every voice reads a loop out of sound memory (Backends::PS1::SoundMemory).
+                                  voices_read_sound_memory: true,
                                   # Lists and pools go in main RAM with the program after them
                                   # (Backends::PS1::Memory): 2 megabytes less the BIOS's 64K and the
                                   # stack's 32K, which the two share. The build says whether they fit
@@ -499,7 +559,12 @@ module VBlank
                                   largest_memory_bytes: 1952 * 1024,
                                   work_memory_bytes: 1952 * 1024, work_memory_kept_bytes: 4096,
                                   roomier_memory_bytes: 0, variables_go_far: false,
-                                  # A pass's drawing is sent to the graphics chip as its wait ends.
+                                  # A pass's drawing is sent to the graphics chip as its wait begins, its
+                                  # sprites placed before it, so the frame after the wait shows the pass
+                                  # just ended (Runtime::Tiles' rt_tiles_draw; test_frame_pairing.rb
+                                  # holds it to that on the PlayStation's run). Each pose is a picture
+                                  # of its own, drawn from its own list.
+                                  pose_lists: :followed,
                                   sprites_placed_before_wait: true,
                                   rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
                                   extension: ".exe",

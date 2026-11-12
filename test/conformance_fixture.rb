@@ -284,6 +284,10 @@ module ConformanceFixture
       # a variable — a door opening. A backend that wrote the wrong cell, or none, draws a
       # different picture.
       B.set_tile(:grid, B.var_ref(:x), B.int(1), 0),
+      # ...and one whose tile is picked by a variable from a list that starts at 5: :x is 7, the
+      # third entry, so the empty cell takes the first tile. A backend that read the list from
+      # nought, or took the entry that stands for no tile, draws a different picture.
+      B.set_tile_picked(:grid, B.int(1), B.int(1), B.var_ref(:x), [1, nil, 0], from: 5),
       # ...and one change held for the frame boundary, then every held change shown: a backend that
       # dropped the held change, or showed it before the boundary, draws a different picture.
       B.set_tile(:grid, B.int(0), B.var_ref(:y), 1, held: true),

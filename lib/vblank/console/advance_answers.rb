@@ -56,10 +56,16 @@ module VBlank
         camera_follows: works,
 
         # --- pictures and sprites ---
-        image: works, color: works, rgb: works, rgb8: works, colors: works, recolor: works,
-        colors_in_use: works, color_walk: works, mirror: works, upside_down: works, blit: works,
+        image: works, color: works, rgb: works, rgb8: works, colors: works,
+        recolor: works("a background that draws with more than one list the game changes has one group of 16 " \
+                       "background colors for each of those lists. When a list changes, the build copies its colors " \
+                       "into that group. A background that walks between areas is refused there: this build does " \
+                       "not make it yet."),
+        colors_in_use: works, colors_name_of: works, color_walk: works, mirror: works, upside_down: works, blit: works,
         sprite: works("a sprite with `over_picture: true` on a painted screen is the console's own sprite. The " \
-                      "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K."),
+                      "painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K. " \
+                      "A sprite whose poses are drawn from different lists of colors is refused: this build " \
+                      "draws all the poses of one sprite from one list. Use one sprite for the poses of each list."),
         draw_in_order: works, hide_sprites: works, picture_groups: works, pool: works, box: works,
 
         # --- backgrounds and layers ---
@@ -93,6 +99,7 @@ module VBlank
         func: works, call: works, scene: works, case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
+        shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
         dump_func: works("it lists the ARM a routine was made into."),
         entry: works("raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`)."),
 
@@ -108,13 +115,15 @@ module VBlank
         players_connected: works("always 1: a Game Boy Advance has one controller."),
         rumble: works("nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, " \
                       "so the game plays the same without it."),
+        computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
 
         # --- randomness ---
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
         enable_sound: works, define_sound: works, beep: works, noise: works, wave: works, stop_wave: works,
-        song: works, play_song: works, stop_music: works, hold_music: works, release_music: works,
+        song: works("#{Answers::PAN_LEAD} #{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_FROM_BOTH}"),
+        play_song: works, stop_music: works, hold_music: works, release_music: works,
         music_volume: works, fade_music_in: works, fade_music_out: works,
         songs: works("a recorded note with `glides: true` is refused: this build does not make it yet."),
         sound_effects: works, sample: works, instrument: works

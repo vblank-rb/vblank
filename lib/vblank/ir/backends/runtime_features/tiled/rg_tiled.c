@@ -345,7 +345,8 @@ static void forget_held_tiles(int32_t background) {
  * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
  * are stamped again over it. A turned background is painted through its turn at the next rebuild,
  * and a status bar from its own top,
- * rather than stamped as drawn. */
+ * rather than stamped as drawn. So is anything put up while a placed fade is in the picture, which
+ * a stamp leaves out. */
 void rg_background_put_up(int32_t background) {
   forget_held_tiles(background);
   if (background_field(background, RG_BG_ON_ARRIVAL)) {
@@ -357,7 +358,7 @@ void rg_background_put_up(int32_t background) {
   scenery_kept = 0;
   if (turns[keeper_of(background)].turned || background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
       background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || bar_showing() >= 0 ||
-      boxes[keeper_of(background)].held) {
+      boxes[keeper_of(background)].held || placed_fade_in_picture()) {
     request_repaint();
     return;
   }
@@ -502,6 +503,29 @@ void rg_background_draw_with(int32_t background, int32_t which) {
   request_repaint();
 }
 
+/* Reference#followed_background_swap, a list at a time. A background that follows several lists
+ * the game changes is drawn from its tiles as declared, and its tiles as each list's sets draw
+ * them come after those, a whole set of tiles each. So when a list is told what to hold, the tiles
+ * drawn from that list are copied from set number +set+ over the ones the picture is drawn from,
+ * and the other lists' tiles stay as they are. A tile that holds those colors already is left, and
+ * the picture is asked for only when one changed. The game asks again as a state is read or
+ * written (its visit_state): a state holds the number each list holds and not these copies, so a
+ * run read from one copies them then, and a run writing one finds them made and copies nothing. */
+void rg_background_follow(const int32_t *rules, int32_t set) {
+  int32_t background = rules[1], count = rules[2], changed = 0;
+  size_t tile_size = (size_t)background_field(background, RG_BG_TILE_W) * (size_t)background_field(background, RG_BG_TILE_H);
+  size_t start = (size_t)background_field(background, RG_BG_TILES_START);
+  size_t set_size = (size_t)background_field(background, RG_BG_TILES) * tile_size;
+  for (int32_t i = 0; i < count; i++) {
+    size_t to = start + (size_t)rules[3 + i] * tile_size, from = to + (size_t)set * set_size;
+    if (!memcmp(tile_pixels_drawn + to, tile_pixels_drawn + from, tile_size * sizeof *tile_pixels_drawn)) continue;
+    uint16_t *pixels = rg_screen_tile_pixels_to_fill(rules[0]);
+    memcpy(pixels + to, pixels + from, tile_size * sizeof *pixels);
+    changed = 1;
+  }
+  if (changed) request_repaint();
+}
+
 /* Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
  * which is on the screen, mixed and faded as whatever is in force sets. */
 static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
@@ -572,7 +596,7 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
 }
 
 /* The row of the picture that screen row +py+ is drawn from: its own, or the row at the top of
- * its block while a background is being painted for blocks. */
+ * its block while a background is being painted for blocks: one grid from the screen's top. */
 static int64_t row_drawn_from(int64_t py) { return py - py % rows_tall; }
 
 /* The background and the line of the screen the game is being asked about, when it is being
@@ -695,11 +719,41 @@ static void paint_background(int32_t background) {
   else paint_window(background);
 }
 
-/* Reference#paint_status_bar: from its top row to the bottom of the screen, its map from its own
- * corner, never scrolled; past the end of its map the backdrop stays. */
-static void paint_status_bar(int32_t bar) {
+/* Reference#paint_status_bar_rows: from its top row to the bottom of the screen, its map from its own
+ * corner, never scrolled; past the end of its map the backdrop stays. A row in a block that starts
+ * above the bar reads the bar's map above its first row, where its grid comes round. */
+static void paint_status_bar_rows(int32_t bar) {
   int64_t top = bar_top_shown(bar);
-  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) paint_map_row(bar, py - top, 0, 0, py);
+  int64_t grid_h = (int64_t)map_now(bar)[RG_MAP_GRID_ROWS] * background_field(bar, RG_BG_TILE_H);
+  for (int64_t py = top; py < RG_SCREEN_HEIGHT; py++) {
+    int64_t my = row_drawn_from(py) - top;
+    if (my < 0) {
+      if (grid_h == 0) continue;
+      my = floor_mod(my, grid_h);
+    }
+    paint_map_row(bar, my, 0, 0, py);
+  }
+}
+
+/* Reference#paint_status_bar: the status bar as drawn, or in blocks while the picture is shown in them and
+ * the game puts its bar there too (RG_BG_IN_BLOCKS), in the one grid from the screen's top. */
+static void paint_status_bar(int32_t bar) {
+  int32_t block = rg_hook_block_size();
+  if (block == 1 || !background_field(bar, RG_BG_IN_BLOCKS)) {
+    paint_status_bar_rows(bar);
+    return;
+  }
+  for (int32_t i = 0; i < CELLS; i++) sheet[i] = NOTHING_ON_SHEET;
+  onto_sheet = 1;
+  rows_tall = block;
+  paint_status_bar_rows(bar);
+  onto_sheet = 0;
+  rows_tall = 1;
+  for (int64_t py = bar_top_shown(bar); py < RG_SCREEN_HEIGHT; py++)
+    for (int64_t px = 0; px < RG_SCREEN_WIDTH; px++) {
+      int32_t color = sheet[py * RG_SCREEN_WIDTH + px - px % block];
+      if (color != NOTHING_ON_SHEET) lay_scenery(px, py, (uint16_t)color);
+    }
 }
 
 /* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
@@ -840,7 +894,8 @@ static int32_t rg_tiled_layer_holds_scenery(int32_t layer) {
 }
 
 /* Reference#take_down_scenery: the last scene's own scenery comes down, and the picture goes back
- * to the scenery every screen shows. Answers whether any came down. */
+ * to the scenery every screen shows. A placed fade stays across the change, so while one is in the
+ * picture the view is rebuilt with it. Answers whether any came down. */
 static int32_t rg_tiled_scene_take_down(int32_t brings_scenery) {
   int32_t any_scene_owned = 0;
   for (int32_t i = 0; i < shown_count; i++)
@@ -857,6 +912,7 @@ static int32_t rg_tiled_scene_take_down(int32_t brings_scenery) {
   scenery_kept = 0;
   clear_to(backdrop);
   stamp_in_stack_order(-1);
+  if (placed_fade_in_picture()) request_repaint();
   return 1;
 }
 

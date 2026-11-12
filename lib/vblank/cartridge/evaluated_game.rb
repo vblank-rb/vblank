@@ -56,6 +56,9 @@ module VBlank
       # The game's data pack (DSL::DataPack), or nil for a game with none.
       def declared_data_pack = @builder.declared_data_pack
 
+      # What the game gave for its shell's first screen, or nil (Builder::ShellScreens#declared_shell_screen).
+      def declared_shell_screen = @builder.declared_shell_screen
+
       # The data pack file the build made from the copy, or nil (Builder::DataPacks#made_data_pack_file).
       def made_data_pack_file = @builder.made_data_pack_file
 

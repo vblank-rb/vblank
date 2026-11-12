@@ -38,6 +38,14 @@ module VBlank
       # for one of 16x16. The picture's own pixels are those pieces laid over each other, so a
       # console that draws sprites from pieces can draw it from the same ones; nil for any other
       # picture. A console with no piece of 16x16 reads #small_pieces.
+      #
+      # +piece_groups+ is, where those pieces were cut from bigger ones, how many of them each bigger
+      # piece became, in their order: [4, 1] is a piece cut into the first four and a piece that is
+      # the fifth alone. Art taken from a console's own sprite frames comes as pieces of up to 32x32,
+      # and a picture's pieces are 8x8 or 16x16, so a bigger one is cut. A console whose sprite
+      # table draws a piece that big puts the group back together and draws it as one; nil where
+      # every piece is its own.
+      #
       # The side of a piece of a picture made of pieces (Image#pieces), and of the larger kind.
       PIECE_SIZE = 8
       BIG_PIECE_SIZE = 16
@@ -78,14 +86,15 @@ module VBlank
       end
 
       Image = Data.define(:width, :height, :transparent, :pixels, :colors, :places, :colors_name, :pieces,
-                         :places_from_pack) do
+                         :places_from_pack, :piece_groups) do
         def initialize(width:, height:, transparent:, pixels:, colors:, places:, colors_name: nil, pieces: nil,
-                       places_from_pack: false) = super
+                       places_from_pack: false, piece_groups: nil) = super
 
         def self.of(node)
           new(width: node.width, height: node.height, transparent: node.transparent,
               pixels: node.pixels, colors: node.colors, places: node.places, colors_name: node.colors_name,
               pieces: (node.pieces if node.respond_to?(:pieces)),
+              piece_groups: (node.piece_groups if node.respond_to?(:piece_groups)),
               places_from_pack: node.respond_to?(:places_from_pack) && node.places_from_pack == true)
         end
 

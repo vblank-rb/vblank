@@ -38,9 +38,11 @@ module VBlank
         # is read, once, whether or not readings are compared: a drift says them all, and a
         # block that cannot read its cartridge is found on the first frame and not on the
         # frame of a drift. +part+ is the part of the screen looked at on this frame
-        # (LookedAt::Part).
-        def seen_on(first, second, part)
-          readings = @readings.values_on(first, second)
+        # (LookedAt::Part). +readings+ is every reading already read, as `Readings#values_on` pairs
+        # them (those of the frame before, for two compared at the end of each pass), or nil to read
+        # them now.
+        def seen_on(first, second, part, readings: nil)
+          readings ||= @readings.values_on(first, second)
           differed = []
           differed << PICTURE if picture? && !@likeness.alike?(first, second, part)
           differed.concat(Readings.differing(readings)) if readings?

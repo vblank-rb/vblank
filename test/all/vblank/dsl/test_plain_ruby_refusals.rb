@@ -70,6 +70,36 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
+  # A slot at a key worked out on the line is not followed to the test, so it still holds Ruby's
+  # number there. The words say that, and not that a number is something a game cannot keep.
+  def test_a_plain_number_changed_under_a_game_test_is_refused_saying_ruby_holds_it
+    error = assert_raises(Refused) do
+      built do
+        hp = var :hp, 5
+        counts = [7]
+        counts[0 + 0] += 1 if hp > 3
+        game_loop { wait_vblank }
+      end
+    end
+
+    assert_includes error.message, "holds `7`, which Ruby set"
+    assert_includes error.message, "var :counts, 7"
+    refute_includes error.message, "can keep only numbers"
+  end
+
+  def test_an_object_changed_under_a_game_test_is_named_with_the_right_article
+    error = assert_raises(Refused) do
+      built do
+        hp = var :hp, 5
+        names = { first: [1] }
+        names[:first] = [2] if hp > 3
+        game_loop { wait_vblank }
+      end
+    end
+
+    assert_includes error.message, "holds an Array"
+  end
+
   def test_case_in_with_a_pattern_a_game_cannot_answer_is_refused
     assert_refused("`case ... when`") do
       hp = 5

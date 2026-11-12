@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include "rg_runtime.h"
 #include "rg_save.h"
+#include "rg_state.h"
 
 /* The 32K memory that takes any byte: 32768 bytes, none wiped together, 0xFF where nothing has
  * written and 0x00 for a byte being wiped. */
@@ -26,6 +27,21 @@ _Noreturn void rg_fault(const char *format, ...) {
   vfprintf(stderr, format, args);
   va_end(args);
   exit(1);
+}
+
+/* rg_save.c also keeps the save memory's place in the state image (rg_save_visit_state), and so
+ * names the state image's own functions (rg_state.c), which visit the whole runtime and cannot be
+ * linked without it. No state image is written or read here, so these stand in for them, as the
+ * two above stand in for the driver's. */
+int rg_state_reading(void) { return 0; }
+int32_t rg_state_number(const char *name, int32_t value) {
+  (void)name;
+  return value;
+}
+void rg_state_numbers(const char *name, int64_t *values, int32_t count) {
+  (void)name;
+  (void)values;
+  (void)count;
 }
 
 int main(void) {

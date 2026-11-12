@@ -28,6 +28,11 @@ void rg_game_dump_state(void);
 /* The game's name, as VBlank.game was given it: the window's title. */
 extern const char rg_game_title[];
 
+/* The keys and gamepad buttons the game adds to the window's layout (rg_window_use_game_controls). */
+extern const int32_t rg_game_controls[];
+/* The most players the build seats (`players:`), 0 for none named: one number (rg_seats.h). */
+extern const int32_t rg_game_seats[];
+
 /* What the game does when one of its timers ticks. The runtime calls it once for each tick with
  * one timer in mind, and the game runs that timer's handler, if it has one:
  *
@@ -151,17 +156,141 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * many tiles wide its places are, where in the file its places are (-1 where the game holds them),
  * where its colours are (-1 where the game holds them), how many colours, how many colours of
  * another list it is drawn with, 1 where its places in the file are one byte a pixel row by row
- * rather than tiles (a picture of up to 256 colours), and the place that is see-through (0 for a
- * picture of tiles, -1 for none). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
+ * rather than tiles (a picture of up to 256 colours), the place that is see-through (0 for a
+ * picture of tiles, -1 for none), and how many bytes of the file are from one row of a picture of
+ * bytes to the next (its width, or the width of the wider picture it is a piece of, as a letter is
+ * of a strip of them). Then the layout its tiles are kept in, RG_TILE_FORMAT_NUMBERS
  * numbers (Console::TileFormat; the numbers are written ahead of the runtime, Computer::StartFileNumbers): a tile's bytes, how many bit planes, where each plane's first bit
- * is (four, the unused ones 0), the bits from one row to the next, and where each of the eight
+ * is (eight, the unused ones 0), the bits from one row to the next, and where each of the eight
  * columns' bits is, a bit counted through the tile's bytes from bit 0 of the first; and the layout its
  * colours are kept in, RG_COLOR_FORMAT_NUMBERS numbers (Console::ColorFormat): 1 for the high byte
  * first, where red, green and blue are in the two bytes, and how many bits each has. Each is all 0
  * where the game holds that list. Then the game's own places (one for each pixel) where the file has
  * none, its own colours where the file has none, and the other list. A place is the see-through one,
  * or a place in the colours: its fifteen bits, the other list's colour at that place where it has one,
- * and 0 for a place past the colours. */
+ * and 0 for a place past the colours.
+ *
+ * rg_start_file_fill_background: the tiles of a background whose map, tiles and colours are all in
+ * the file (IR::StartFile::Background), its map in VBlank's own record or as the original's console
+ * keeps it, and its tiles and colours as that console keeps them. Which tiles the map
+ * names is in the file, so the game holds a tile for every cell of the map, in the map's order, and
+ * this fills each: the cell's tile, turned as the cell says, in the colours of the cell's bank.
+ * +rules+ are RG_FILL_BACKGROUND_HEADER_NUMBERS numbers: how many tile pixels there are in all,
+ * where this background's start, where its map is in the file, how many cells the map has, how many
+ * to a row, how many tiles a side a cell is, 1 where a cell's two bytes are high byte first; then
+ * how a cell is read (Console::MapWordFormat): how many bits name its tile, the bit for mirrored,
+ * the bit for upside down (each a bit past the cell's last, which is never set, for a cell that
+ * cannot turn its tile), where its bank starts and how many bits that is (none for a cell whose
+ * tiles all draw from the first bank), and how many tiles a
+ * row of video memory holds, by which a cell of several tiles finds its lower ones (0 for a cell of
+ * one); then where the tiles are in the file and how many, where the colours are, how many banks
+ * and how many colours a bank; and how many sets of colours the tiles are written in, the first
+ * their own and one more for each step of other colours the background can be told; and how many
+ * tiles the game holds for the background before the map's in each set (a stand-in for each bank,
+ * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
+ * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
+ * a map of bytes, each a tile's number, as a layer that turns keeps its map, or four for a cell of
+ * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb). Then the two
+ * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
+ * of the file they are, or -1, and then a colour for each place, which the game holds, where it
+ * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell
+ * naming a tile past the file's draws nothing, and one naming a bank past its colours is drawn in
+ * colour 0: the file is the player's, and the game plays on.
+ *
+ * rg_start_file_fill_followed_tiles: which of such a background's tiles are drawn from one list of
+ * colours the game changes, for a background that follows several (rg_background_follow, whose
+ * rules +followed+ is: how many tile pixels, the background, how many tiles, and the tiles). The
+ * game writes the tiles it holds and leaves room for one for every cell of the map; which bank a
+ * cell is of is in the file, so this adds the tile of each cell whose bank has its bit set in
+ * +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the background's own, as
+ * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
+ *
+ * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
+ * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
+ * paints, chosen by the cell's bank and turn. +painted+ is rg_game_painted_tiles, written where it
+ * can be. +rules+ are the background's own, as rg_start_file_fill_background has them. +moving+ is:
+ * where the background's painted tiles start in +painted+, how many moving tiles, and for each its
+ * tile as a cell names it and then, for each bank and each of the four turns (none, mirrored,
+ * upside down, both), the run and which of its tiles. A cell naming such a tile in a bank past the
+ * colours keeps its own tile.
+ *
+ * rg_start_file_fill_painted_tiles: +tiles+ tiles of the file into +table+, 32 bytes each, as a run
+ * of painted tiles keeps them: two places a byte, the left one in the low four bits.
+ * +rules+ are the layout the tiles are kept in, RG_TILE_FORMAT_NUMBERS numbers, then for each tile
+ * where it is in the file and how it is turned (RG_TURN_MIRRORED, RG_TURN_UPSIDE_DOWN).
+ *
+ * rg_start_file_fill_pose: the pixels of a picture that is one frame of the original's sprites
+ * (IR::StartFile::Pose): a list of pieces, each saying where it sits from the object's place,
+ * which tile it starts at, how it is turned and how many tiles it is each way. The frame is in the
+ * file as a record of VBlank's own (Original::FrameRecord, lib/vblank/original/frame_record.rb,
+ * which is where its layout is written down), the same whatever the original: the pack's
+ * unpacking reads the original's frame and writes the record, so this is told nothing of how an
+ * original keeps one. How many
+ * pieces there are and what each is is in the file, so the game holds a picture of the size it
+ * was given and this paints each piece into it, the earlier in front where two overlap. +rules+
+ * are RG_FILL_POSE_HEADER_NUMBERS numbers: what is filled, +total+, where the picture's pixels
+ * start, its width and height and how it is turned once painted, as rg_start_file_fill_picture
+ * has them; where its colours are in the file (-1 where the game holds them), how many colours,
+ * how many colours of another list it is drawn with; where the frame's entry is in the file, four
+ * bytes saying where its record starts, and where the records start, which that is counted from
+ * (0 for a frame with no record); where
+ * the object's place is in the picture, across and down; and where the tiles are in the file and
+ * how many. Then the two layouts, the
+ * game's own colours where the file has none, and the other list, as rg_start_file_fill_picture
+ * has them. Place 0 is see-through. The file is the player's, and the game plays on whatever it
+ * holds: pieces are read while they end inside the file, a piece or the part of one outside the
+ * picture is not painted, and a tile past the file's paints nothing.
+ *
+ * rg_start_file_fill_colors: +count+ entries of +colors+ from entry +first+ on, each the fifteen
+ * bits of a colour of the file, two bytes each from byte +at+ on, kept in the layout +format+
+ * (RG_COLOR_FORMAT_NUMBERS numbers, as above). These are the colours that are no part of a
+ * picture (IR::StartFile::Color): the game keeps them in an array of its own and reads an entry
+ * where a game holding its data writes a colour, as a screen's backdrop does. The colours of a
+ * list of colours read from the file are entries of it too (IR::StartFile#colors).
+ *
+ * rg_start_file_fill_places: +count+ entries of +numbers+ from entry +first+ on, each a byte of the
+ * file from byte +at+ on, a place among +places+ colours: a byte past them is place 0. The levels of
+ * a shading read from the file (IR::StartFile::Shading), whose colours rg_start_file_fill_colors
+ * fills into the same array.
+ *
+ * rg_start_file_walk_colors: +count+ entries of +colors+ from entry +first+ on, each made from an
+ * entry before it (IR::StartFile::WalkedColor): +made+ holds three numbers for each, the entry it
+ * is made from, the colour it is walked toward, and how many steps each of its three channels is
+ * moved toward that colour's, and no further. It is one step of a walk of a list read from the
+ * file, which the build works out itself for a list it holds (Graphics::Color.walked_toward).
+ *
+ * rg_start_file_choose_colors: +count+ entries of +colors+ from entry +first+ on, each a colour of
+ * a list the file chooses (IR::StartFile::ChosenColor). +rules+ are RG_CHOSEN_COLORS_HEADER_NUMBERS
+ * numbers: where a frame's entry is in the file and where the frames' records start, as
+ * rg_start_file_fill_pose has them; where the lists' colours are in the file, how many colours a
+ * list is, and how many lists there are; and the place of the first entry filled, the next entry
+ * being the next place. Then the layout the colours are kept in. The list is the bank the frame's
+ * front piece names in its record (RG_PIECE_BANK_AT), bank 0 for a frame with no piece. A console's
+ * sprite entry names the bank of colours it is drawn from, so a pose drawn in its frame's bank is
+ * drawn in these. The file is the player's: a bank past the lists is colour 0.
+ *
+ * rg_start_file_frame_bank: that bank itself, of the frame whose entry is at +entry_at+, the
+ * frames' records starting at +records_at+: 0 for a frame with no piece. The game writes with it
+ * which list a pose drawn in its frame's bank follows (IR::StartFile::Pose#bank_lists).
+ *
+ * A COLOUR OF SUCH A LIST IS WRITTEN IN THE GAME AS A MARKER wherever the game would hold the
+ * colour (IR::StartFile, "MARKERS"): a number of sixteen bits above RG_MARKED_COLOR, never all
+ * sixteen, which names entry (marker - RG_MARKED_COLOR - 1) of +colors+.
+ * rg_start_file_fill_marked_pixels puts the entry's colour where each marker is among +count+
+ * pixels from +start+ on, of the +kind+ of pixels (RG_FILL_TILE or RG_FILL_IMAGE), of which there
+ * are +total+. The game calls it once the colours are filled and every picture read from the file
+ * is, since one of those drawn in such a list is filled with markers.
+ * rg_start_file_fill_marked_numbers does the same among +count+ numbers from +start+ on of +table+,
+ * a table of colours of the game's own kept as +kept+ (RG_TABLE_UINT16 or RG_TABLE_INT32): the
+ * colour each place of what the game paints as it runs shows (rg_game_run_images,
+ * rg_game_run_colors), which the game then writes where it can be written.
+ * rg_start_file_marked_color is +color+, or the entry it names where it is a marker, for a colour
+ * a statement picks from a table as the game runs.
+ *
+ * WHAT A RUNTIME FEATURE READS THE FILE BY, for the parts of the file only some games read (a
+ * recording's settings, a song part's notes), which the feature fills itself: the file's bytes,
+ * and the number +width+ bytes from +at+ in it hold, low byte first, or high byte first where
+ * +high_byte_first+ is 1. */
 enum { RG_FILL_TILE = 0, RG_FILL_IMAGE = 1 };
 enum { RG_TURN_MIRRORED = 1, RG_TURN_UPSIDE_DOWN = 2 };
 int rg_start_file_read(const char *path);
@@ -170,5 +299,20 @@ void rg_start_file_open(const int32_t *rules, const char *missing, const char *w
 void rg_start_file_fill_table(void *table, int32_t kept, int32_t count, int32_t at, int32_t high_byte_first);
 void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_t file_at);
 void rg_start_file_fill_picture(const int32_t *rules);
+void rg_start_file_fill_background(const int32_t *rules);
+void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
+void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
+void rg_start_file_fill_pose(const int32_t *rules);
+void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
+void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);
+void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
+void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
+int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at);
+void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);
+void rg_start_file_fill_marked_numbers(const int32_t *colors, void *table, int32_t kept, int32_t start, int32_t count);
+int32_t rg_start_file_marked_color(const int32_t *colors, int32_t color);
+const uint8_t *rg_start_file_bytes(void);
+uint32_t rg_start_file_number(int32_t at, int32_t width, int32_t high_byte_first);
 
 #endif

@@ -22,6 +22,8 @@ module RuntimeSounds
   # A waveform of the game's own: high for a quarter of its length, which no named shape is.
   THIN_PULSE = ([15] * 8 + [0] * 24).freeze
 
+  SIDES = %i[left right].freeze # the speakers, each compared on its own
+
   def test_a_beep_sounds_as_on_the_native_runtime
     program = sound_program do
       enable_sound
@@ -275,6 +277,31 @@ module RuntimeSounds
     assert_sounds_like_the_native_runtime program, frames: 60
   end
 
+  # A shaped recording looping and stopped, and a song's recorded part with a rest and a note that
+  # glides on: what a console whose voices read sound memory plays on a voice of its own each.
+  def test_shaped_and_gliding_recordings_sound_as_on_the_native_runtime
+    score = VBlank::Audio::Score
+    root = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(:C4)
+    program = sound_program do
+      enable_sound
+      pad = sample :pad, pcm: [0, 40, 80, 110, 80, 40, 0, -40, -80, -110, -80, -40] * 50, rate: 13_000,
+                         envelope: { attack: 0.2, decay: 0.3, sustain: 0.5, release: 0.3 }
+      instrument :chime, pcm: [0, 60, 0, -60] * 800, rate: 13_000, note: :C4
+      music = songs :music, [score.new(tempo: 150, ticks_per_beat: 4, plays_once: true, parts: [score::Part.new(plays: :chime, notes: [
+                                       score::Note.new(at: 0, hz: root, length: 4), score::Note.new(at: 6, hz: root * 2, length: 4, glides: true)
+                                     ])])]
+      count = var :count, 0
+      music.play 0
+      game_loop do
+        count += 1
+        pad.play(loop: true) if count == 5
+        pad.stop if count == 40
+      end
+    end
+
+    assert_sounds_like_the_native_runtime program, frames: 70
+  end
+
   # Whole games. Pong: START, the zoom, and a rally long enough for its song to come round and the
   # ball to hit a wall and a paddle.
   def test_pongs_rally_sounds_as_on_the_native_runtime
@@ -306,16 +333,24 @@ module RuntimeSounds
 
   # Every sample of +frames+ frames, from each speaker, the same from both runtimes, and some of
   # them not silence. +only+ hears one voice (:square1, :square2, :wave, :noise).
+  #
+  # A program that names no console is played as the Advance and again as the PlayStation, whose
+  # voices are its sound chip's, reading loops out of sound memory (runtime/rg_spu.c), and not the
+  # Game Boy family's: each runtime keeps both, so both are held alike.
   def assert_sounds_like_the_native_runtime(program, frames:, only: nil, buttons: {})
-    %i[left right].each do |side|
-      native, under_test = [:native, runtime_under_test].map do |on|
-        VBlank::Diagnostics::SoundRecording.of(program, on: on, frames: frames, buttons: buttons, only: only, side: side)
-      end
+    played_as = program.console ? [program] : [program, program.copy.tap { |copy| copy.console = :ps1 }]
+    played_as.each do |each_program|
+      SIDES.each do |side|
+        native, under_test = [:native, runtime_under_test].map do |on|
+          VBlank::Diagnostics::SoundRecording.of(each_program, on: on, frames: frames, buttons: buttons, only: only, side: side)
+        end
 
-      refute native.samples.all?(&:zero?), "the native runtime made no sound on the #{side}, so there is nothing to compare"
-      first = native.first_difference(under_test)
-      assert_nil first, "the two runtimes' sound on the #{side} differs first at sample #{first} " \
-                        "(#{native.samples.length} samples against #{under_test.samples.length})"
+        console = each_program.console || :gba
+        refute native.samples.all?(&:zero?), "the native runtime made no sound on the #{side} as #{console}, so there is nothing to compare"
+        first = native.first_difference(under_test)
+        assert_nil first, "the two runtimes' sound on the #{side} as #{console} differs first at sample #{first} " \
+                          "(#{native.samples.length} samples against #{under_test.samples.length})"
+      end
     end
   end
 end

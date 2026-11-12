@@ -17,7 +17,13 @@ class TestNativeCheckerFlags < Minitest::Test
   # has fetched SDL; every other file needs nothing but the runtime's own folder.
   WINDOW_FILE = "rg_sdl.c"
 
-  private def runtime_files = Dir.glob(File.join(Zig::RUNTIME_DIR, "*.c")).sort
+  # A file another one joins in with `#include "rg_spu.c"` is part of that one's translation unit
+  # and reads what it declares before the line, so it is checked as part of it, never alone.
+  private def runtime_files
+    files = Dir.glob(File.join(Zig::RUNTIME_DIR, "*.c")).sort
+    joined = files.flat_map { |file| File.read(file).scan(/^#include "(\w+\.c)"/).flatten }
+    files.reject { |file| joined.include?(File.basename(file)) }
+  end
 
   # What the compiler says about one file read with those flags and nothing else, or nil when it
   # has nothing to say. The file is compiled on its own into something thrown away, which is the
@@ -37,13 +43,15 @@ class TestNativeCheckerFlags < Minitest::Test
   end
 
   # A file of the runtime read on its own has no build's numbers beside it, so rg_console.h gives
-  # the start file's layout numbers itself, and they must be the ones every build writes.
+  # the start file's layout numbers itself, and they must be the ones every build writes: the
+  # layouts a console keeps its tiles and colours in, and the layout of a frame's record
+  # (Original::FrameRecord), which is the same for every original.
   def test_the_start_file_numbers_a_file_read_alone_sees_are_the_builds
     header = File.read(File.join(Zig::RUNTIME_DIR, "rg_console.h"))
     defined = header.scan(/^#define (RG_\w+) (\d+)$/).to_h { |name, value| [name, Integer(value)] }
+    written = VBlank::IR::Backends::Computer::StartFileNumbers.names
 
-    assert_equal VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.to_h,
-                 defined.slice(*VBlank::IR::Backends::Computer::StartFileNumbers::NAMES.keys)
+    assert_equal written, defined.slice(*written.keys)
   end
 
   # The C the tests compile beside the runtime (a harness that drives one header on its own) is

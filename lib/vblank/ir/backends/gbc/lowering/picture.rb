@@ -382,7 +382,9 @@ module VBlank
                   cells = Array(row)
                   cells.length < cols || cells.first(cols).any? { |tile| tile.nil? || tile.negative? }
                 end
-              end || @reachable.any? { |node| node.kind == :set_tile && node.name == bg.name && !tile_index_known?(node.tile) }
+              end || @reachable.any? do |node|
+                node.kind == :set_tile && node.name == bg.name && !node.tiles_named.all? { |tile| tile_index_known?(tile) }
+              end
             end
 
             # Whether a background's view moves, or a status bar's top: any of them past the screen's
@@ -1132,10 +1134,14 @@ module VBlank
             end
 
             # A STATUS BAR goes up into the console's window (Runtime::Picture#emit_bar), at the row
-            # it was declared with until it is placed (Reference#bar_top_shown).
+            # it was declared with until it is placed (Reference#bar_top_shown), and covering sprites
+            # as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up). The setting is kept
+            # only where a reachable `covers_sprites =` sets it (#bar_covers_sprites?).
             def bar_put_up(bar)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
               runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              covers = @handover.bar_covers_on_put_up(bar)
+              emit_store_bar_covers(covers) if covers && bar_covers_sprites?
               note_put_up(@bar_up_this_pass)
             end
 
@@ -1143,11 +1149,14 @@ module VBlank
             def emit_place_bar(node)
               return unless declared_background!(node).bar? # one that is not a status bar has no top to place
 
-              if node.covers
-                emit_low_byte_in_a(node.covers)
-                @asm.load([@memory[Runtime::Picture::BAR_COVERS]], :a)
-              end
+              emit_store_bar_covers(node.covers) if node.covers
               emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_place_bar", [node.top]) }
+            end
+
+            # The runtime's one setting for whether the bar shown covers sprites, set to +covers+.
+            def emit_store_bar_covers(covers)
+              emit_low_byte_in_a(covers)
+              @asm.load([@memory[Runtime::Picture::BAR_COVERS]], :a)
             end
 
             def emit_scroll_background(node)
@@ -1337,7 +1346,15 @@ module VBlank
             #
             # A big map's cell is changed where the map is kept while it is up (Runtime::BigMaps's
             # rt_big_set).
+            #
+            # A tile picked as the program runs is written as the tests it stands for
+            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
+            # background's cells to index yet.
             def emit_set_tile(node)
+              if node.picked?
+                tests = PickedTile.tests(node)
+                return tests && statement(tests)
+              end
               each_declaration(node) do |bg|
                 # A tile only another scene's declaration of this name has, from a line written for
                 # that scene: this declaration's part of the line writes nothing.
@@ -1647,8 +1664,9 @@ module VBlank
               run = run_painting(name)
               if run
                 swapped = swaps && swaps[run.list_drawn_from]
-                own = run.colors.drop(1).first(solid_run?(run) ? Art::PLACES : Art::OWN_COLORS)
-                shown = own.each_with_index.map { |color, i| swapped && swapped[i + 1] || color }
+                own = run_colors_shown(run).drop(1).first(solid_run?(run) ? Art::PLACES : Art::OWN_COLORS)
+                places = run_places_drawn(run) || (1..own.length).to_a
+                shown = own.each_with_index.map { |color, i| swapped && swapped[places[i]] || color }
                 return solid_run?(run) ? shown.map { |color| color & 0x7FFF } : padded_colors(shown)
               end
 
@@ -1791,7 +1809,7 @@ module VBlank
               changing = node.names.map(&object).select { |obj| Stacking.levels_of(@stacking.depths, obj).uniq.length > 1 }
               return emit_layer_changing_sprites(node, node.names.map(&object)) unless changing.empty?
 
-              items = present_items(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
+              items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
               front_first = items.each_with_index.sort_by { |item, at| [item_level(item, object), at] }.map(&:first).reverse
               placings = {}
               emit_groups_wanted
@@ -1827,7 +1845,7 @@ module VBlank
             # behind the background in front of one before it would hide that one where they cross.
             def emit_layer_changing_sprites(node, objects)
               placings = {}
-              items = present_items(node)
+              items = IR::Stacking.items_in_draw_order(node)
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
@@ -1894,9 +1912,8 @@ module VBlank
             # pass, and the write at the end of it leaves the background or bar where it was put up;
             # the wait forgets the note (#emit_corners_forgotten), and the next pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
-              @put_up_this_pass = keep_local(:put_up_this_pass) if placed.call(:scroll_background)
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
+              @put_up_this_pass = keep_local(:put_up_this_pass) if @plan.places_at_pass_end?(:scroll_background)
+              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
             end
 
             # +note+ (a local of #keep_corner_notes, or nil for none) set: the background or bar was
@@ -1913,7 +1930,7 @@ module VBlank
             # +node+'s write, unless it is written at the end of a pass that put its background or bar
             # up (+note+, #keep_corner_notes).
             def emit_unless_put_up(node, note)
-              return yield unless note && placed_at_pass_end?(node)
+              return yield unless note && @plan.placed_at_pass_end?(node)
 
               held = fresh("held_at_corner")
               jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
@@ -1962,14 +1979,6 @@ module VBlank
                 tests << Build.binop(:or, Build.binop(:<, pick, Build.int(0)), Build.binop(:>=, pick, Build.int(layers.length)))
               end
               tests.reduce { |either, test| Build.binop(:or, either, test) }
-            end
-
-            # The frame's sprites back to front, each a name — or, for a run the game orders, the run.
-            def present_items(node)
-              Array(node.orders).reduce(node.names.dup) do |names, run|
-                first = names.index(run.objects.first)
-                names[0...first] + [run] + names[(first + run.objects.length)..]
-              end
             end
 
             # How deep an item sits: a sprite's level, and a run's, which its sprites share: `draw_in_order`

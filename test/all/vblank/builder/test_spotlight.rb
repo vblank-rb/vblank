@@ -82,6 +82,46 @@ class TestSpotlight < Minitest::Test
     assert_match(/needs `radius:`/, error.message)
   end
 
+  # --- what is outside the light: darkened, or nothing ---
+
+  def test_what_is_outside_a_light_is_darkened_or_nothing
+    error = assert_raises(ArgumentError) do
+      program do
+        screen :tiled
+        spotlight at: [120, 80], radius: 40, outside: :black
+      end
+    end
+
+    assert_match(/outside: :nothing/, error.message)
+    assert_match(/:black/, error.message)
+  end
+
+  # A game has one light, so what is outside it is set once: where the light is declared, before
+  # anything else (an `iris_out`) gives the game a light that darkens.
+  def test_a_light_given_by_an_iris_cannot_be_told_later_to_show_nothing_outside
+    error = assert_raises(ArgumentError) do
+      program do
+        screen :tiled
+        iris_out
+        spotlight outside: :nothing
+      end
+    end
+
+    assert_match(/before the first `iris_out`/, error.message)
+  end
+
+  def test_asking_again_for_the_light_that_shows_nothing_outside_hands_back_the_same_light
+    lights = []
+    program do
+      screen :tiled
+      lights << spotlight(outside: :nothing) << spotlight(outside: :nothing) << spotlight
+      game_loop {}
+    end
+
+    assert_same lights[0], lights[1]
+    assert_same lights[0], lights[2]
+  end
+
   def test_where_a_light_starts_is_a_number
     error = assert_raises(ArgumentError) do
       program do

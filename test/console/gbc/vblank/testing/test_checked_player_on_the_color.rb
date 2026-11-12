@@ -24,4 +24,19 @@ class TestCheckedPlayerOnTheColor < Minitest::Test
     assert_match(/Game Boy Color cannot/, error.message)
     assert_match(/mosaic/, error.message)
   end
+
+  # A game is held to the Color's work memory, though a port's unpacking, which only a computer
+  # runs, is not (CopyReaderTests#test_a_pack_bigger_than_a_cartridges_work_memory_unpacks).
+  def test_a_game_bigger_than_the_colors_work_memory_is_refused
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      list :big, capacity: 10 * 1024, width: :byte, full_of: 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    error = assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(b.program, frames: 2) }
+
+    assert_match(/work memory/, error.message)
+  end
 end

@@ -19,7 +19,7 @@ class TestJSPageMenu < Minitest::Test
   class KeyNames
     NAMES = { 27 => "X", 29 => "Z", 42 => "Backspace", 229 => "Right Shift", 40 => "Return", 79 => "Right", 80 => "Left", 81 => "Down",
               82 => "Up", 22 => "S", 4 => "A", 19 => "P", 17 => "N", 60 => "F3", 68 => "F", 16 => "M", 58 => "F1", 43 => "Tab",
-              20 => "Q", 26 => "W" }.freeze
+              20 => "Q", 26 => "W", 7 => "D" }.freeze
     def name(key) = NAMES[key]
     def key(name) = NAMES.key(name)
   end
@@ -78,8 +78,9 @@ class TestJSPageMenu < Minitest::Test
   end
 
   # Plays +walk+ through both and fails at the first step they differ.
-  private def assert_same_menu(walk)
-    menu = Live::Menu.new(controls: Live::Settings.new(key_names: KeyNames.new), states: EmptySlots.new)
+  private def assert_same_menu(walk, game = walking_game)
+    controls = VBlank::IR::ComputerControls.runtime_numbers(game.program.computer_controls)
+    menu = Live::Menu.new(controls: Live::Settings.new(key_names: KeyNames.new, game_controls: controls), states: EmptySlots.new)
     expected = [ruby_says(menu)]
     codes = walk.map do |step|
       case step
@@ -90,7 +91,7 @@ class TestJSPageMenu < Minitest::Test
       expected << ruby_says(menu)
       step == :toggle ? "F1" : step.is_a?(Integer) ? CHOSEN.fetch(step) : MOVES.fetch(step)
     end
-    said = page_says(codes)
+    said = page_says(codes, game)
     expected.each_with_index { |want, at| assert_equal want, page_as_ruby_says(said.fetch(at)), "after step #{at}, #{walk[at - 1]}" }
   end
 
@@ -128,6 +129,46 @@ class TestJSPageMenu < Minitest::Test
 
     assert_equal "X / east", shown.fetch("lines")[0].last
     assert_equal "Z / south", shown.fetch("lines")[1].last
+  end
+
+  # --- the game's own keys (computer_keys, computer_gamepad) ---
+
+  # The walking game, with D for Right besides the right arrow, and the north button too.
+  private def game_with_keys
+    VBlank.game "PAGE KEYS", consoles: %i[gba] do
+      computer_keys right: :d
+      computer_gamepad right: :north
+      screen :bitmap
+      x = var :x, 0
+      game_loop do
+        x += 1 if held(:right)
+        clear_screen :black
+        draw_rect_at x, 20, 4, 4, :green
+      end
+    end
+  end
+
+  def test_the_controls_show_the_games_keys_and_reset_puts_them_back_as_in_ruby
+    to_keys = [:toggle, :right, :right, :right]
+    assert_same_menu([*to_keys, *[:down] * 5, :enter, 20, *[:down] * 6, :enter, :toggle], game_with_keys)
+  end
+
+  def test_a_games_key_plays_the_button_with_the_menu_and_without
+    arrows = pictures_in(played_page(["down ArrowRight", "play 10", "picture"], game_with_keys)).first
+    with_d = pictures_in(played_page(["down KeyD", "play 10", "picture"], game_with_keys)).first
+    in_menu_page = pictures_in(played_page(["down KeyD", "play 10", "picture one"], game_with_keys, html: page_with_menu(game_with_keys))).first
+
+    assert_same_picture arrows, with_d, "after ten frames holding D"
+    assert_same_picture arrows, in_menu_page, "after ten frames holding D on a page with the menu"
+  end
+
+  def test_the_games_keys_are_not_kept_for_every_game_on_the_site
+    steps = ["down KeyM", "up KeyM", 'js localStorage.getItem("vblank-settings")']
+    kept_line = played_page(steps, game_with_keys, html: page_with_menu(game_with_keys)).grep(/\Ajs /).first
+    kept = JSON.parse(kept_line.delete_prefix("js "))
+
+    assert_equal ["ArrowRight", nil], kept.dig("keys", "right")
+    assert_equal [15, nil], kept.dig("pads", "right")
   end
 
   def test_p_pauses_the_page_and_the_menu_holds_the_game

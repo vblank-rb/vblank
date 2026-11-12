@@ -13,6 +13,11 @@ module VBlank
     # a layer and moves the light — is the one thing that cannot be, and a guardrail says so
     # (see Guardrails::Checks::LightCannotShare).
     #
+    # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out) darkens nothing, so
+    # it stays on in a scene that sees through a layer, and the layer goes on mixing inside it.
+    # It still takes turns with a fade placed in the stack: such a fade keeps the things in front
+    # of it out with a second shape of its own, which a light's shape would take the place of.
+    #
     # A game with no scenes is one screen, which is dark here only if the light is refused.
     #
     # WHEN IT SWITCHES, on every backend: off on the picture of the pass whose scene has it off,
@@ -27,12 +32,12 @@ module VBlank
       # :fade node placed in the stack }. Empty for a game with no light, or one whose light
       # is on everywhere — and for a game with no scenes at all.
       def dark(program)
-        return {} unless light_of(program)
+        light = light_of(program) or return {}
 
         names = scenes(program)
         return {} if names.empty?
 
-        see_through = SeeThrough.layers(program)
+        see_through = shares_with_see_through?(light) ? [] : SeeThrough.layers(program)
         on_screen = Stacking.screenfuls(program).to_h do |screenful|
           [screenful.scene, SeeThrough.on_screen(screenful, see_through).first]
         end
@@ -73,6 +78,10 @@ module VBlank
       def switches?(program) = program.walk.any? { |node| node.kind == :set && node.var == ON }
 
       def light_of(program) = program.walk.find { |node| node.kind == :shade_outside }
+
+      # Is +light+ on in a scene that sees through a layer? One that shows nothing outside it is:
+      # it darkens nothing, so it never asks for the mixing the layer needs.
+      def shares_with_see_through?(light) = light.shuts_out
 
       def placed_fade?(node) = node.kind == :fade && !node.under.nil?
 

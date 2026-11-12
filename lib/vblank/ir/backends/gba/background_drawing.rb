@@ -337,7 +337,15 @@ module VBlank
           #
           # ...and a background declared `held: true` asks for the other bargain: its changes
           # wait for the gap between frames and go in together (see HeldTiles).
+          #
+          # A tile picked as the program runs is written as the tests it stands for
+          # (IR::PickedTile), each with a store of its own: this lowering keeps no table of a
+          # background's cells to index yet.
           def emit_set_tile(node)
+            if node.picked?
+              tests = PickedTile.tests(node)
+              return tests && @lowering.statement(tests)
+            end
             emit_for_each_declaration(node.name) do |bg|
               next if bg.nil? # a background with no tiled layer (a bitmap-mode program)
 
@@ -607,13 +615,7 @@ module VBlank
             emit(ASM.bic_imm(ACC, ACC, BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE))
             emit(ASM.store_halfword(ACC, TMP))
 
-            emit_number(TMP, swap.stride)
-            emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
-            emit_load_data_address(TMP, swap.tiles)
-            emit(ASM.add_reg(ACC, ACC, TMP))
-            @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(swap.routine), swap.stride)
-            emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
-                                   control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
+            emit_copy_set_tiles(swap)
             emit_set_char_base(bg, swap) if swap.char_base_table
             emit_walking_runs_again(swap)
 
@@ -626,6 +628,27 @@ module VBlank
             load_var(ACC, SET_SWAP_DISPLAY)
             emit_number(TMP, REG_DISPCNT)
             emit(ASM.store_halfword(ACC, TMP))
+          end
+
+          # Copy the tiles of the set in SET_PICKED over the stretch of tile memory every set of
+          # that background sits in.
+          #
+          # Must copy nothing for sets that hold no tiles of their own. The build keeps two tiles
+          # of the same pixels once, so a walking background declared after one that stays can
+          # find every tile of every area in video memory already, and its sets are then empty.
+          # The copy engine reads a count of nought as its biggest count, not as nothing: asked
+          # for no words it copies more than all of video memory holds, from past the end of the
+          # sets, over every tile and every map on the screen.
+          def emit_copy_set_tiles(swap)
+            return if swap.stride.zero?
+
+            emit_number(TMP, swap.stride)
+            emit(ASM.mul(ACC, SET_PICKED, TMP)) # r0 = how far along the blob that set starts
+            emit_load_data_address(TMP, swap.tiles)
+            emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.note_video_copy(Messages::MadeNames.words_for_made_name(swap.routine), swap.stride)
+            emit_start_copy_engine(from: in_register(ACC), to: VRAM_START + swap.at,
+                                   control: (swap.stride / 4) | DMA_ENABLE | DMA_32BIT)
           end
 
           # A walking background put up as declared is back in its first area, tiles and all, so
@@ -1234,7 +1257,7 @@ module VBlank
             # Builder#affine_write_if_changed). So reaching this is already the answer
             # to both questions, and what is left is the write.
             emit_bg_affine_matrix(node)
-            emit_bg_affine_reference_point(node.around_x, node.around_y)
+            emit_bg_affine_reference_point(node.around_x, node.around_y, node.map_x, node.map_y)
           end
 
           # The same numbers a turning hardware sprite reads (see
@@ -1308,7 +1331,12 @@ module VBlank
           # what makes a pivot free of side effects: at its drawn size, upright, the matrix
           # is the identity and the reference point comes out at nought wherever the pivot
           # is, so a background that is not turning lands in exactly the same place.
-          def emit_bg_affine_reference_point(px, py)
+          #
+          # (+map_x+, +map_y+) is the point of the map that lands at the pivot: those same two
+          # numbers for a map hung from the screen's corner, or the point the game named
+          # (Nodes::AffineBackground). It is the "pivot's texture position" above, a number
+          # written in the cartridge either way, so naming one costs no instruction.
+          def emit_bg_affine_reference_point(px, py, map_x, map_y)
             load_var(2, BG_AFFINE_PA)
             emit_number(3, px)
             emit(ASM.mul(4, 2, 3))                       # r4 = PA * px
@@ -1316,7 +1344,7 @@ module VBlank
             emit_number(3, py)
             emit(ASM.mul(5, 2, 3))                       # r5 = PB * py
             emit(ASM.add_reg(4, 4, 5))                   # r4 = PA*px + PB*py
-            emit_number(ACC, px * Affine::ONE_TH)
+            emit_number(ACC, map_x * Affine::ONE_TH)
             emit(ASM.sub_reg(ACC, ACC, 4))
             store_word_acc(REG_BG2X)
 
@@ -1327,7 +1355,7 @@ module VBlank
             emit_number(3, py)
             emit(ASM.mul(5, 2, 3))                       # r5 = PD * py
             emit(ASM.add_reg(4, 4, 5))                   # r4 = PC*px + PD*py
-            emit_number(ACC, py * Affine::ONE_TH)
+            emit_number(ACC, map_y * Affine::ONE_TH)
             emit(ASM.sub_reg(ACC, ACC, 4))
             store_word_acc(REG_BG2Y)
           end

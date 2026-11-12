@@ -417,7 +417,11 @@ module VBlank
           # this is cold — give it room", true to insist on the quick memory, nil to let the
           # framework decide (see #place_list). +roomy+ is the framework's own decision, made
           # by {QuickMemoryPlan}, that the room is worth more to something else.
-          def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false)
+          #
+          # +at+ is an address the list's slots are kept at instead of room of their own: words
+          # something else already keeps (see Faces#corner_lists_in_words). Such a list is never
+          # moved to the roomy memory.
+          def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false, at: nil)
             if (existing = @lists[name])
               return if existing[:capacity] == capacity && existing[:width] == width
 
@@ -431,7 +435,8 @@ module VBlank
             # Rounded up to a whole word so the NEXT thing allocated stays word-aligned — a
             # narrow list is allowed to be an odd number of bytes long, but nothing after it is.
             want = ((slots * bytes) + 3) & ~3
-            base, in_roomy = place_list(name, want, roomy ? false : fast)
+            base, in_roomy = at ? [at, false] : place_list(name, want, roomy ? false : fast)
+            fast = true if at
             # Placed before its counters are named, since where they go follows where it went.
             @lists[name] = { capacity: capacity, ring: ring, mask: slots - 1, base: base,
                              width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast }

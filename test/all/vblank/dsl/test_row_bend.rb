@@ -469,4 +469,52 @@ class TestRowBend < Minitest::Test
     end
     assert_backends_agree(program, frames: 4, name: "BUSY")
   end
+
+  # A BLOCK THAT CALLS A ROUTINE WHICH IS ITSELF WAITING. The rows are worked out at the frame
+  # boundary, which here comes inside :walk's own loop, and the block calls :walk again. Each call
+  # counts its own turns, as the interpreter's does, so the walk that waited goes on from its own
+  # turn and finishes its four steps before the game counts a walk.
+  def test_a_call_the_block_interrupted_carries_on_where_it_was
+    b = Builder.new(options: VBlank::Cartridge::Options.new(frame_sync: :manual))
+    b.instance_eval do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(20) { "#" * 30 }
+      waiting = var :waiting, 0
+      steps = var :steps, 0
+      walks = var :walks, 0
+      answered = var :answered, 0
+      func(:walk) do
+        repeat(4) do
+          steps += 1
+          wait_vblank if waiting == 1
+        end
+      end
+      water.scroll_each_row do |row|
+        if row == 0
+          waiting = 0
+          call :walk
+          waiting = 1
+          answered += 1
+        end
+        0
+      end
+      game_loop do
+        waiting = 1
+        call :walk
+        walks += 1
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    run = game_player.run(b.program, frames: 10)
+
+    # Each boundary is answered with a walk of four steps (one more of them by the tenth frame on a
+    # console that works the rows out before its wait); the game's own walks take a step a frame and
+    # a frame more to count: two finished and a step into the third. A walk that lost its own count
+    # would have finished early, and more of them.
+    game_steps = run[:steps] - (4 * run[:answered])
+    assert_equal [9, 2], [game_steps, run[:walks]]
+  end
 end

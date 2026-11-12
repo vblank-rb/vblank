@@ -413,6 +413,11 @@ module VBlank
 
         # Every moment named so far.
         def names = @steps.flat_map(&:names)
+
+        # The buttons held on each frame so far, one key mask a frame.
+        def keys_by_frame
+          @steps.grep(Playthrough::Hold).flat_map { |hold| Array.new(hold.frames, Playthrough.key_mask(hold.buttons)) }
+        end
       end
 
       # ONE READING OF A TAPE'S TEXT. A tape is written by a program and read back by one, but

@@ -632,13 +632,45 @@ module VBlank
       # video chip's register 5 points at, 80 entries of eight bytes on a screen 320 wide and 64 on
       # one 256 wide; its square voices' registers, scroll memory and video registers are GenesisReading's.
       # The Super Nintendo's sprite table is bsnes's: four bytes for each of 128 sprites, then 32
-      # bytes holding each one's top bit of across and its size.
+      # bytes holding each one's top bit of across and its size. Its sound unit keeps a memory of its
+      # own as well, which #sound_ram reads.
       #
       # @return [String]
       def video_ram = probe_table(:video_ram) { @probe.video_ram }
       def color_ram = probe_table(:color_ram) { @probe.color_ram }
       def sprite_table = probe_table(:sprite_table) { @probe.sprite_table }
       def sound_registers = probe_table(:sound_registers) { @probe.sound_registers }
+
+      # WHAT THE SOUND CHIP HOLDS IN ITS OWN MEMORY, on the frame the run stopped on: on the Super
+      # Nintendo, the sound chip's 64K, where its program, its table of recordings and the recordings
+      # are kept. The table starts at the page the DSP's DIR register (0x5D of #sound_registers) names,
+      # four bytes an entry, where a recording starts and then where it loops back to, both low byte
+      # first; a voice plays the entry its SRCN register numbers. So a port reads where each recording
+      # is and holds its bytes and its loop to its original's:
+      #
+      #   table = sound_registers.getbyte(0x5D) << 8
+      #   start, loop_point = sound_ram.byteslice(table + (source * 4), 4).unpack("vv")
+      #
+      # The Advance and the Color keep their sound in registers alone. The Genesis's sound processor
+      # and the PlayStation's sound chip have memories of their own, which their emulators do not hand
+      # over yet. So every reader but the Super Nintendo's refuses it.
+      #
+      # @return [String]
+      def sound_ram
+        ensure_rendered!
+        refuse_missing_sound_ram_reader! unless @probe.respond_to?(:sound_ram)
+        @probe.sound_ram
+      end
+
+      private def refuse_missing_sound_ram_reader!
+        instead = if @probe.respond_to?(:sound_registers)
+                    "Read the sound chip's registers (`sound_registers`) instead."
+                  else
+                    "Read its memory by address (`mem8`, `mem16`, `mem32`) instead."
+                  end
+        raise ArgumentError, "This reader cannot read the sound chip's own memory on a #{kit.title} cartridge yet. " \
+                             "It reads that memory only on a Super Nintendo cartridge. #{instead}"
+      end
 
       # One write a cartridge made to its sound chip: the register's address, and the value written, as
       # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
@@ -816,6 +848,24 @@ module VBlank
       def last_frame_samples
         ensure_rendered!
         @sound.last_frame.unpack("s<*")
+      end
+
+      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST, as a FrameSound: its samples, and the
+      # loudest of them. One name and one meaning on every console whose emulator hands its sound
+      # over, for a cartridge built here or anybody's file: 16-bit samples, left and right by turns,
+      # and the loudest the furthest any is from nought on either speaker. A run that has played no
+      # frame has no samples, and its loudest is 0. A PlayStation program's reader refuses, since its
+      # emulator hands over none yet (PS1Reading).
+      def last_frame_sound
+        ensure_rendered!
+        FrameSound.from_bytes(@sound.last_frame)
+      end
+
+      # The loudest sample of every frame played so far, oldest first: FrameSound#loudest for each,
+      # worked out once a frame and kept, so it can be asked after every frame of a long run.
+      def loudest_by_frame
+        ensure_rendered!
+        @sound.loudest_by_frame
       end
 
       # True when the run produced no sound at all (energy exactly 0).

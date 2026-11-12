@@ -32,13 +32,16 @@ module VBlank
           # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it. +glides+ has a
           # recorded note that carries on the one sounding at a new pitch (Recordings). +text_layer+
           # shows text at places known when it is built on a layer over the painted one (TextLayer).
-          # +paint_turns+ keeps a second painted picture to swap with (PaintTurns).
+          # +paint_turns+ keeps a second painted picture to swap with (PaintTurns). +chip_envelopes+
+          # has a recording shaped by the sound chip's own envelope bytes (Recordings). +mosaic+ shows
+          # its backgrounds in blocks (Mosaic). +recorded_pans+ has a recorded note that sits off the
+          # middle of the speakers (Recordings::SIDES).
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
-                                :paint_turns, :third_layer) do
+                                :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -68,11 +71,18 @@ module VBlank
                   second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
-                  third_layer: picture.status_bar_on_third_layer?(program))
+                  third_layer: picture.third_layer?(program),
+                  chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
+                  recorded_pans: IR::Tunes.recorded_pans?(program))
             end
 
             # A Super FX on the board (Chip).
             def chip? = board.name == :super_fx
+
+            # A painted screen on a Super FX switched off above and below its picture (Letterbox).
+            # Not where the game changes its colours as it runs or fades to black: the black of the
+            # bars would have to follow, and the display's brightness is the fade's to set.
+            def letterboxes? = chip? && painted && !dims && !changing_colors
 
             # A line table for TM to carry: a status bar's, or the same for a background held above a row.
             def bar? = status_bar || row_held

@@ -13,6 +13,9 @@ void rg_screen_fade(int32_t toward_white, int32_t steps, int32_t walked);
  * everything fades. Each thing gives how far forward such a layer can be and still leave it as
  * drawn (RG_BG_FADE_PLACE, rg_game_sprite_fade_places). */
 void rg_screen_fade_under(int32_t layer_place, int32_t toward_white, int32_t steps, int32_t walked);
+/* A game whose light takes turns with a fade placed in the stack calls this as each frame ends,
+ * with the light's switch: a scene the light is on in (+on+ not 0) takes such a fade off. */
+void rg_lift_placed_fade_for_light(int32_t on);
 /* The same fade HELD TO A RECTANGLE: inside it (+reaches+ RG_FADE_INSIDE) or everywhere but it
  * (RG_FADE_OUTSIDE), the rest of the screen as drawn. The rectangle is +left+, +top+, +right+
  * and +bottom+ in screen pixels, the right and bottom one past the last pixel. Always the

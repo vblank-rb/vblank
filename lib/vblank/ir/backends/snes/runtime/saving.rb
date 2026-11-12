@@ -35,12 +35,12 @@ module VBlank
             R2 = Memory.register(2)
 
             # The direct page the routines work on: the pointer to save memory (three bytes and a
-            # spare), the bytes still to go, and the fault's code while it is being said.
-            Scratch = Data.define(:pointer, :left, :fault)
+            # spare), and the fault's code while it is being said.
+            Scratch = Data.define(:pointer, :fault)
 
             module_function
 
-            def scratch(memory) = Scratch.new(pointer: memory.scratch(4), left: memory.scratch(2), fault: memory.scratch(2))
+            def scratch(memory) = Scratch.new(pointer: memory.scratch(4), fault: memory.scratch(2))
 
             # +bank+ is the bank the console sees the save in (Cartridge::SNESROM::Board#save_bank).
             def emit(asm, memory, s, bank:)
@@ -104,12 +104,39 @@ module VBlank
               asm.stz(asm.direct(R0 + 2))
               asm.lda(asm.direct(R1 + 2))
               asm.bmi("rt_save_sum_done")
-              asm.lda(asm.direct(R1)) # inside the 32K, so the length's low half is all of it
-              asm.sta(asm.direct(s.left))
-              asm.label("rt_save_sum_byte")
-              asm.lda(asm.direct(s.left))
+              # Inside the 32K, so the length's low half is all of it. Y counts up from minus the
+              # length to nought, and the pointer is moved back by as much, so one increase of Y both
+              # steps to the next byte and says when the last is summed: the pointer, $bank:0000,
+              # becomes the place past the last byte less 64K, which Y's 64K less the length brings
+              # back to the first. The loop sums two bytes a time round, and an odd length starts
+              # at its second.
+              asm.lda(asm.direct(R1))
               asm.beq("rt_save_sum_done")
-              asm.dec(asm.direct(s.left))
+              asm.tya
+              asm.clc
+              asm.adc(asm.direct(R1))
+              asm.sta(asm.direct(s.pointer))
+              asm.lda(asm.direct(s.pointer + 2))
+              asm.adc(0xFFFF)
+              asm.sta(asm.direct(s.pointer + 2))
+              asm.lda(0)
+              asm.sec
+              asm.sbc(asm.direct(R1))
+              asm.tay
+              asm.lda(asm.direct(R1))
+              asm.lsr
+              asm.bcs("rt_save_sum_second")
+              asm.label("rt_save_sum_byte")
+              emit_sum_byte(asm, s)
+              asm.label("rt_save_sum_second")
+              emit_sum_byte(asm, s)
+              asm.bne("rt_save_sum_byte")
+              asm.label("rt_save_sum_done")
+              asm.rtl
+            end
+
+            # The byte Y names into both totals, and Y on to the next; Z is set past the last.
+            def emit_sum_byte(asm, s)
               asm.lda(asm.ind_long_y(s.pointer))
               asm.and_a(0x00FF)
               asm.clc
@@ -119,9 +146,6 @@ module VBlank
               asm.adc(asm.direct(R0 + 2))
               asm.sta(asm.direct(R0 + 2))
               asm.iny
-              asm.bra("rt_save_sum_byte")
-              asm.label("rt_save_sum_done")
-              asm.rtl
             end
 
             # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK RAM AS A BLOCK (IR save_load_list,
@@ -141,8 +165,14 @@ module VBlank
             # round to the first slot where the slots end. The bytes are written in rising order, as
             # the writes one at a time were, so a power cut leaves what it left then.
             #
+            # A run of the list's slots is one stretch of work RAM, so each run is copied by a loop of
+            # one read and one write a byte, Y indexing both sides: a second pointer (+lists.table+)
+            # is set to the list's slot less the place in save memory, so the same Y that walks save
+            # memory walks the slots. A store comes round the ring in at most two runs.
+            #
             # +lists+ is Lists' own scratch: the list's pointer, how far into the list the copy is
-            # (slot), how far into save memory (count) and where the slots end (table).
+            # (slot), how far into save memory (count), and the second pointer (table), which holds
+            # where the slots end until the runs are known.
             def emit_list_moves(asm, s, lists)
               list = lists.list
 
@@ -162,19 +192,17 @@ module VBlank
               asm.sty(asm.direct(lists.count))
               asm.lda(Lists::HEADER)
               asm.sta(asm.direct(lists.slot))
-              asm.lda(asm.direct(R2))
+              asm.ldx(asm.direct(R2))
               asm.beq("rt_save_load_list_done")
-              asm.label("rt_save_load_list_byte")
-              asm.ldy(asm.direct(lists.count))
+              emit_run_pointer(asm, lists)
               asm.sep(0x20)
+              asm.label("rt_save_load_list_byte")
               asm.lda(asm.ind_long_y(s.pointer))
-              asm.ldy(asm.direct(lists.slot))
-              asm.sta(asm.ind_long_y(list))
-              asm.rep(0x20)
-              asm.inc(asm.direct(lists.count))
-              asm.inc(asm.direct(lists.slot))
-              asm.dec(asm.direct(R2))
+              asm.sta(asm.ind_long_y(lists.table))
+              asm.iny
+              asm.dex
               asm.bne("rt_save_load_list_byte")
+              asm.rep(0x20)
               asm.label("rt_save_load_list_done")
               asm.rtl
 
@@ -200,25 +228,63 @@ module VBlank
               asm.sty(asm.direct(lists.count))
               asm.lda(asm.direct(R2))
               asm.beq("rt_save_store_list_done")
-              asm.label("rt_save_store_list_byte")
-              asm.ldy(asm.direct(lists.slot))
-              asm.sep(0x20)
-              asm.lda(asm.ind_long_y(list))
-              asm.ldy(asm.direct(lists.count))
-              asm.sta(asm.ind_long_y(s.pointer))
-              asm.rep(0x20)
-              asm.inc(asm.direct(lists.count))
-              asm.inc(asm.direct(lists.slot))
-              asm.lda(asm.direct(lists.slot))
-              asm.cmp(asm.direct(lists.table))
-              asm.bne("rt_save_store_list_in_ring")
-              asm.lda(Lists::HEADER) # past the last slot: round to the first
-              asm.sta(asm.direct(lists.slot))
-              asm.label("rt_save_store_list_in_ring")
-              asm.dec(asm.direct(R2))
-              asm.bne("rt_save_store_list_byte")
+              # The first run: from the oldest item to the last slot, or fewer where the list ends
+              # first. Then what is left, from the first slot.
+              asm.sec
+              asm.lda(asm.direct(lists.table))
+              asm.sbc(asm.direct(lists.slot))
+              asm.cmp(asm.direct(R2))
+              asm.bcc("rt_save_store_list_to_end")
+              asm.lda(asm.direct(R2))
+              asm.label("rt_save_store_list_to_end")
+              asm.jsr(asm.abs("rt_save_store_run"))
+              asm.lda(asm.direct(R2))
+              asm.beq("rt_save_store_list_done")
+              asm.ldx(Lists::HEADER)
+              asm.stx(asm.direct(lists.slot))
+              asm.jsr(asm.abs("rt_save_store_run"))
               asm.label("rt_save_store_list_done")
               asm.rtl
+
+              # rt_save_store_run (JSR): A bytes (more than nought) from the slot to the place in
+              # save memory, both moved on past them, and R2 less them.
+              asm.label("rt_save_store_run")
+              asm.tax
+              asm.eor(0xFFFF)
+              asm.sec
+              asm.adc(asm.direct(R2))
+              asm.sta(asm.direct(R2))
+              emit_run_pointer(asm, lists)
+              asm.sep(0x20)
+              asm.label("rt_save_store_list_byte")
+              asm.lda(asm.ind_long_y(lists.table))
+              asm.sta(asm.ind_long_y(s.pointer))
+              asm.iny
+              asm.dex
+              asm.bne("rt_save_store_list_byte")
+              asm.rep(0x20)
+              asm.sty(asm.direct(lists.count))
+              asm.rts
+            end
+
+            # The second pointer, the list's place and slot less the place in save memory, into
+            # +lists.table+, and Y the place in save memory.
+            def emit_run_pointer(asm, lists)
+              asm.lda(asm.direct(lists.list))
+              asm.clc
+              asm.adc(asm.direct(lists.slot))
+              asm.sta(asm.direct(lists.table))
+              asm.lda(asm.direct(lists.list + 2))
+              asm.adc(0)
+              asm.sta(asm.direct(lists.table + 2))
+              asm.lda(asm.direct(lists.table))
+              asm.sec
+              asm.sbc(asm.direct(lists.count))
+              asm.sta(asm.direct(lists.table))
+              asm.lda(asm.direct(lists.table + 2))
+              asm.sbc(0)
+              asm.sta(asm.direct(lists.table + 2))
+              asm.ldy(asm.direct(lists.count))
             end
 
             # The count in working number +count+ made a count of bytes: doubled once for a list of

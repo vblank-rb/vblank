@@ -43,20 +43,20 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `change_picture` — works: every picture the place lists is in video memory from the start, so a change copies nothing.
 - `shading` — works: a shading is data in the program.
 - `screen_spot` — works: the processor turns and projects the point, as the drawing of a place does.
-- `draw_place` — works: the processor turns and projects every corner, as the other consoles do. The graphics chip fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or one picture pixel away from where the other consoles put them. In perspective, the processor cuts a face into squares of 32 pixels (8 for `perspective: :every_pixel`), and the picture is exact at the corners of each square. The graphics chip lights a face, as the console's own games did: it makes each picture pixel darker by the light, which changes smoothly across the face. If the shading makes each colour darker evenly, a pixel is one level or less from the shading's colour. If the shading changes colours in another way, the pixel is the picture's colour made darker.
+- `draw_place` — works: the processor turns and projects every corner, as the other consoles do. The graphics chip fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or one picture pixel away from where the other consoles put them. In perspective, the processor cuts a face into rectangles, and the picture is exact at the corners of each rectangle. The rectangles are small where the face is near and at a slant. They are narrow in the direction where the distance changes. Thus the picture is approximately four pixels or less from its exact place (two pixels for `perspective: :every_pixel`), and the picture of a near wall stays on the wall as the view turns. A face that is far away or seen straight on is cut into few rectangles or none. The graphics chip lights a face, as the console's own games did: it makes each picture pixel darker by the light, which changes smoothly across the face. If the shading makes each colour darker evenly, a pixel is one level or less from the shading's colour. If the shading changes colours in another way, the pixel is the picture's colour made darker.
 - `clear_screen` — works: the same as on the Advance.
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
 - `keep_showing` — works: the same as on the Advance.
-- `fade` — works: `fade` and `tint` change the colours the console shows. How the graphics chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
+- `fade` — works: `fade` and `tint` change the colours the console shows. On a screen drawn from tiles every list of colours the graphics chip reads is worked out again, once, on a pass that changes them. A painted screen that fades is drawn with a number for each colour, 128 colours at most. At the end of each pass, the graphics chip copies it onto the screen through a list of those colours. When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, `outside:`, `under:`) is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
 - `fade_out` — works: the same as on the Advance.
 - `flash_screen` — works: the same as on the Advance.
 - `fade_level` — works: the same as on the Advance.
 - `shake_screen` — works: the same as on the Advance.
-- `pixelate` — works: each block is the colour of one of its pixels, drawn by the graphics chip.
+- `pixelate` — works: the build does not make `pixelate` yet. Until it does, the build refuses a game that pixelates, and names `pixelate`.
 - `pixelate_in` — works: see `pixelate`.
 - `pixelate_out` — works: see `pixelate`.
 - `pixelate_size` — works: the same as on the Advance.
@@ -71,20 +71,21 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds 256 places on a PlayStation, the first see-through.
-- `recolor` — works: the same as on the Advance.
+- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen, a list changes the sprites that draw with it. The build makes sprites over a painted screen (`over_picture: true`) drawn with another list. It does not make a list that changes as the game runs there yet: it refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
+- `colors_name_of` — works: the same as on the Advance.
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape.
+- `sprite` — works: a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a textured shape. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. On a painted screen, a sprite with `over_picture: true` is drawn over a copy of the picture as it goes to the screen, so the picture stays as the game painted it. The build does not make a sprite painted into the picture yet: it refuses it and says so.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: the same as on the Advance.
 - `picture_groups` — works: the same as on the Advance.
 - `pool` — works: the same as on the Advance.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: the same as on the Advance.
-- `background` — works: a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. `show_only_inside` holds it to the chip's drawing area, and a background that turns or resizes is drawn as a textured shape.
+- `background` — works: a background is a picture kept in video RAM, drawn by the graphics chip at its scroll. Each pixel is a number into a list of the background's colours, 4 bits a pixel for 15 colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. A background of more colours takes 16 bits a pixel, and its colours cannot change. `show_only_inside` holds it to the chip's drawing area, and a background that turns or resizes is drawn as a textured shape. On a painted screen, a background is painted into the picture where it is put up. The build does not make one there that moves or changes yet. A game can show a painted screen and one drawn from tiles at different times; the build does not make a fade or a tint in such a game yet. It refuses each of these and says so.
 - `status_bar` — works: the same as on the Advance.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
@@ -129,6 +130,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the program holds what each slot holds, as if the game had written it.
+- `shell_screen` — works: the program holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a PlayStation has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a PlayStation does not have.
 - `held` — works: a game names the pad's buttons by the shared names: `:a` is Cross, `:b` Circle, `:x` Triangle, `:y` Square, `:l` L1 and `:r` R1, with `:select`, `:start` and the D-pad. A PlayStation has two ports for pads. The build reads the first alone for now, so `player: 2` and `players:` more than 1 are not made yet.
@@ -138,6 +140,8 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `mark` — works: the same as on the Advance.
 - `players_connected` — works: 1 while the build reads the first pad alone.
 - `rumble` — works: nothing is felt. The build reads a digital pad, which has no motor, so the game plays the same without it.
+- `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `seed` — works: the same as on the Advance.
 - `randomize` — works: the same as on the Advance.
 - `roll` — works: the same as on the Advance.
@@ -145,12 +149,12 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
 - `enable_sound` — works: the same as on the Advance.
-- `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own.
+- `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own. A fade moves the voice's loudness a step at a time, at the same pace as on the Advance.
 - `beep` — works: see `define_sound`.
-- `noise` — works: the sound chip has a noise voice.
-- `wave` — works: the waveform is played as a short recording of one wave.
+- `noise` — works: the sound chip plays the Advance's noise as a recording, at the pitch the game names. A metallic noise is a recording of the Advance's rattle.
+- `wave` — works: the waveform is played as a short recording of seven waves. Its loudness is one of the same five steps as on the Advance.
 - `stop_wave` — works: the same as on the Advance.
-- `song` — works: the same as on the Advance.
+- `song` — works: a part can sit between the speakers. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording is heard where `pan` puts it: each voice of the sound chip has a volume for the left speaker and one for the right.
 - `play_song` — works: the same as on the Advance.
 - `stop_music` — works: the same as on the Advance.
 - `hold_music` — works: the same as on the Advance.
@@ -160,7 +164,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `fade_music_out` — works: the same as on the Advance.
 - `songs` — works: the same as on the Advance.
 - `sound_effects` — works: see `song`.
-- `sample` — works: the sound chip plays recordings itself, 24 voices of them, each with its own loudness.
+- `sample` — works: the sound chip plays recordings itself, each on a voice of its own with its own loudness and shape, 16 at once.
 - `instrument` — works: see `sample`.
 
 ## Not made yet
@@ -168,8 +172,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 An answer above is what the PlayStation does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made.
 
-- the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`, `sprite`; the steps `draw_column_at`, `save_region`, `restore_region`, `camera`
-- fades, lights and screen effects: the verbs `fade`, `tint`, `fade_in`, `fade_out`, `flash_screen`, `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `fade`, `tint`, `pixelate`, `shade_outside`
-- sprites and tiled backgrounds: the verbs `sprite`, `tiles`, `background`, `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `draw_in_order`, `hide_sprites`, `picture_groups`, `colors`, `recolor`, `color_walk`; the steps `background`, `scroll_background`, `set_tile`, `show_map`, `present_objects`, `color_list_holds`, `background_colors`, `hide_sprites`, `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`, `pixels_overlap`
-- sound: the verbs `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `enable_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `play_from_list`, `play_sound_effect`, `play_sample`, `stop_sample`
+- the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`; the steps `draw_column_at`, `camera`
+- fades, lights and screen effects: the verbs `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `pixelate`, `shade_outside`
+- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`

@@ -76,4 +76,31 @@ class TestOriginalSlot < Minitest::Test
 
     assert_match ":late", refused.message
   end
+
+  # A view reads some of a slot's bytes in a shape of its own, and a pack finds them by its name.
+  def test_a_view_reads_its_part_of_the_slots_bytes_in_its_own_shape
+    video = Slot.tiles(:video, at: 0, count: 2)
+    bytes = (0...64).to_a.pack("C*")
+    pack = VBlank::Original::Pack.holding({ video: bytes }, sha1: "0" * 40, build_version: "1")
+    halves = video.viewed("as_numbers", at: 6, count: 3) do |name, count|
+      Slot.numbers(name, count: count, width: :half, signed: false)
+    end
+
+    assert_predicate halves, :view?
+    assert_equal video, halves.declared
+    assert_equal [0x0706, 0x0908, 0x0B0A], halves.decode(pack.bytes_of(halves.name))
+    assert_equal 100 + 6, VBlank::Original::SlotStarts.new(by_name: { video: 100 }).fetch(halves.name)
+  end
+
+  # A view of a view reads the same slot, further in, and to its end where no count is given.
+  def test_a_view_of_a_view_counts_from_the_first_views_start
+    video = Slot.tiles(:video, at: 0, count: 2)
+    pack = VBlank::Original::Pack.holding({ video: (0...64).to_a.pack("C*") }, sha1: "0" * 40, build_version: "1")
+    bytes = video.viewed("as_pixels", at: 40, count: nil) { |name, count| Slot.pixels(name, count: count) }
+    last = bytes.viewed("as_pixels", at: 20, count: nil) { |name, count| Slot.pixels(name, count: count) }
+
+    assert_equal 24, bytes.count
+    assert_equal video, last.declared
+    assert_equal [60, 61, 62, 63], last.decode(pack.bytes_of(last.name))
+  end
 end

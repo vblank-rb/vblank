@@ -117,7 +117,7 @@ class TestSNESSound < Minitest::Test
       rti
     end
 
-    linked = SNES::Linker.new([boot.section, runtime.section, *Sound.sections([])]).link
+    linked = SNES::Linker.new([boot.section, runtime.section, *Sound.sections(memory, [])]).link
     vectors = { reset: linked.address_of("reset"), nmi: linked.address_of("interrupted"),
                 irq: linked.address_of("interrupted") }
     VBlank::Cartridge::SNESROM.new(linked.banks, title: "SOUND", vectors: vectors.transform_values { |at| at & 0xFFFF })

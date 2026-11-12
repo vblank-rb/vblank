@@ -605,6 +605,12 @@ module VBlank
         --reads-buttons-every-frame
                                  With --by-passes: the game reads its buttons
                                  every frame, not once a pass.
+        --passes-compared-at WHERE
+                                 With --by-passes: start or end. Default: start.
+                                 end: the readings on the last frame that shows
+                                 each pass, and the picture on the frame after,
+                                 for a game whose slow pass counts itself before
+                                 its work is done.
         --skipping-still-frames-of WHICH
                                  first, second or both: skip that cartridge's
                                  frames whose picture is the one before's, as
@@ -627,6 +633,12 @@ module VBlank
         --pixels-apart N         Look at every Nth pixel across and down only.
         --layers WHICH           backgrounds: the picture without its sprites.
                                  sprites: the sprites alone.
+        --ignoring-sprites       Leave out the box of every sprite either
+                                 cartridge shows, on each frame and the frame
+                                 before.
+        --sprite-sizes SIZES     With --ignoring-sprites, for a Super Nintendo
+                                 cartridge: its two sprite sizes, small then
+                                 large, like 8x8,16x16.
         --forgiving-torn-frames-of WHICH
                                  first or second: forgive that cartridge a frame
                                  unlike the frames either side of it, where the
@@ -656,6 +668,8 @@ module VBlank
     option :looking_at, type: :array, banner: "X,Y,WIDTH,HEIGHT"
     option :pixels_apart, type: :numeric, banner: "N"
     option :layers, banner: "WHICH", enum: %w[backgrounds sprites]
+    option :ignoring_sprites, type: :boolean
+    option :sprite_sizes, banner: "SIZES"
     option :forgiving_torn_frames_of, banner: "WHICH", enum: %w[first second]
     option :ignoring_frames, type: :array, banner: "RANGE"
     option :readings, type: :array, banner: "NAME[=VARIABLE[,VARIABLE]]"
@@ -666,6 +680,7 @@ module VBlank
     option :by_passes, banner: "COUNT"
     option :pass_count_wraps_at, type: :numeric, banner: "N"
     option :reads_buttons_every_frame, type: :boolean
+    option :passes_compared_at, banner: "WHERE", enum: %w[start end]
     option :skipping_still_frames_of, banner: "WHICH", enum: %w[first second both]
     option :save, banner: "PATH"
     option :saves, type: :array, banner: "PATH"
@@ -751,6 +766,9 @@ module VBlank
         X, Z                     A, B
         Enter, Backspace         Start, Select
         A key, S key             L, R
+        the game's own keys      a game can add keys and gamepad buttons with
+                                 computer_keys and computer_gamepad. The menu's
+                                 Controls shows every key a button has.
         F1 or `                  open the menu. On a Mac keyboard, ` (the key
                                  above Tab) needs no fn key. The game pauses
                                  while the menu is open. In the menu, you can
@@ -1237,7 +1255,8 @@ module VBlank
       console = built.game.described_console
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
                                      height: console.screen_height, menu: game.menu?,
-                                     settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir])
+                                     settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
       warn window.settings_problems_message if window.settings_problems_message
       folder = options[:pack_folder] || window.folder_for(shell.folder) or
         raise Thor::Error, "#{game.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
@@ -1246,7 +1265,7 @@ module VBlank
                                 refused: lambda { |words|
                                   warn words
                                   window.notice(words)
-                                }, play_game: ->(playing) { play_shell_game(window, game, playing) })
+                                }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) })
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise Thor::Error, e.message
@@ -1459,7 +1478,8 @@ module VBlank
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
                                      height: console.screen_height, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
-                                     config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network))
+                                     config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
+                                     game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."

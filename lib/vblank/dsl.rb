@@ -17,6 +17,7 @@ require_relative "dsl/plain_ruby_names"    # What each local name in that block 
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
+require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
 # A handle that does its work in game words is written in normal Ruby, as a game is, so it comes in
 # the way a part of a game does. Everything above this line is what that needs.
 VBlank.require_game_file "dsl/bounds"
@@ -48,10 +49,13 @@ require_relative "dsl/score_list"
 require_relative "dsl/song_list"
 require_relative "dsl/sound_effect_list"
 VBlank.require_game_file "dsl/background"
+require_relative "dsl/pack_cells"          # The cells a background from the data pack may be written later
 VBlank.require_game_file "dsl/status_bar"
 require_relative "dsl/tile_run"            # Tiles whose pixels the game paints, in a list of its own
 require_relative "dsl/tile_picture_group"  # Tiles taking turns through pictures in the cartridge
+require_relative "dsl/pack_tile_picture_group" # A data pack's tiles taking turns through pictures of the pack
 require_relative "dsl/sprite_tile_set"     # Sprite tiles loaded from the cartridge, for poses drawn from them
 VBlank.require_game_file "dsl/canvas"      # A picture the game draws into with words
 VBlank.require_game_file "dsl/list_text"   # Words held in a list, drawn on a painted screen
 require_relative "dsl/data_pack"           # The original's data, read through the pack made from the player's copy
+require_relative "dsl/shell_screen"        # A shell's first screen, as a game makes it its own

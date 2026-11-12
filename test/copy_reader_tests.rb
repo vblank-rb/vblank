@@ -5,6 +5,7 @@ require "tmpdir"
 require "folder_original"
 
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
+VBlank.require_game_file "fixtures/name_search/name_search_part"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -95,6 +96,22 @@ module CopyReaderTests
     end
   end
 
+  # A PACK BIGGER THAN A CARTRIDGE'S WORK MEMORY UNPACKS on each run that plays this file, as every
+  # console, the Color's 8 KB among them. An unpacking runs only on a computer, in a shell, so no
+  # build holds it to the console's memory, and a run's player does not either (Testing::BuildChecks).
+  def test_a_pack_bigger_than_a_cartridges_work_memory_unpacks
+    raw = (0...(10 * 1024)).map { |at| (at * 7) & 0xFF }.pack("C*")
+    Dir.mktmpdir do |folder|
+      unpacking = VBlank::Builder.new.data_pack(from: copy_of(folder, raw), version: "1") do |slots|
+        slots.numbers :big, at: 0, count: raw.bytesize, width: :byte, signed: false
+      end.unpacking
+      played = unpacking.run_on(game_player, frames: 80)
+
+      assert unpacking.finished_in?(played), "the unpacking got to its end"
+      assert_equal raw, unpacking.slot_bytes_in(played)[:big]
+    end
+  end
+
   # A routine can read the copy and write a slot a byte at a time, for a layout no building block
   # knows: here the speeds, read as halves high byte first, kept as their low bytes reversed.
   def test_a_routine_reads_and_writes_bytes_itself
@@ -139,6 +156,190 @@ module CopyReaderTests
     end
   end
 
+  # READS PLACED BY THE ANSWERS OF READS: a byte, a half high byte first and a word, each at the
+  # place the read before it gave, round after round. Each such place is kept where its read is
+  # written (BlockKitInternals#emit_held_place), and what is read is what Ruby reads from the copy.
+  CHAINED_ROUNDS = 6
+
+  private def chained_copy = (0...512).map { |at| ((at * 37) + 11) & 0xFF }.pack("C*")
+
+  private def chained_answers(copy)
+    at = copy.getbyte(5)
+    Array.new(CHAINED_ROUNDS) do
+      at = copy.byteslice(at, 4).unpack1("V") & 0xFF
+      at = copy.byteslice(at, 2).unpack1("n") & 0xFF
+      at = copy.getbyte(at)
+    end
+  end
+
+  def test_reads_placed_by_the_answers_of_reads_read_what_the_copy_holds
+    Dir.mktmpdir do |folder|
+      rounds = CHAINED_ROUNDS
+      unpacking = VBlank::Builder.new.data_pack(from: copy_of(folder, chained_copy), version: "1") do |slots|
+        slots.numbers :read, count: rounds, width: :byte, signed: false
+        slots.fill_from_copy do |copy, pack|
+          at = copy.byte(5)
+          rounds.times do |round|
+            at = copy.word(at) & 0xFF
+            at = copy.half(at, big_endian: true) & 0xFF
+            at = copy.byte(at)
+            pack[:read][round] = at
+          end
+        end
+      end.unpacking
+      played = unpacking.run_on(game_player, frames: 4)
+
+      assert_nil unpacking.fault_in(played)
+      assert_equal({ read: chained_answers(chained_copy).pack("C*") }, unpacking.slot_bytes_in(played))
+    end
+  end
+
+  # A LOOP WHOSE TEST READS THE COPY at a place the loop moves on reads the new place each time
+  # round: a place the routine keeps in a variable is read where the answer is used, not held.
+  def test_a_loop_whose_test_reads_the_copy_reads_each_new_place
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, [9, 8, 7, 6, 0, 5].pack("C*"))
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :until_nought, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(at) != 0
+            pack[:until_nought][0] = at
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+
+      assert_equal({ until_nought: [4].pack("C*") }, unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4)))
+    end
+  end
+
+  # ...and so does one whose test reads the copy at a place another read gives: the place is read
+  # again each time round, in a `while` and in `stop_when:` alike. Bytes 0 to 7 are places of bytes
+  # 8 to 15, and the byte at the place byte 5 gives is the first that is 0.
+  POINTED_COPY = Ractor.make_shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
+
+  private def first_pointing_at_nought(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)).zero? }
+
+  # The first place whose byte, read three deep, is 13; and the first whose byte read two deep is
+  # not 7.
+  private def first_three_deep_at_thirteen(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(copy.getbyte(at))) == 13 }
+  private def first_two_deep_not_seven(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)) != 7 }
+
+  def test_a_loop_whose_test_reads_the_copy_at_a_place_another_read_gives_reads_each_new_place
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, POINTED_COPY)
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :by_while, count: 1, width: :byte, signed: false
+          slots.numbers :by_stop_when, count: 1, width: :byte, signed: false
+          slots.numbers :three_deep, count: 1, width: :byte, signed: false
+          slots.numbers :by_stop_value, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(copy.byte(at)) != 0
+            pack[:by_while][0] = at
+            walked = var(:walked, 0)
+            repeat(15, stop_when: copy.byte(copy.byte(walked)) == 0) { walked.increase!(1) }
+            pack[:by_stop_when][0] = walked
+            deep = 0
+            deep += 1 while copy.byte(copy.byte(copy.byte(deep))) != 13
+            pack[:three_deep][0] = deep
+            stepped = var(:stepped, 0)
+            repeat(15, stop_when: copy.byte(copy.byte(stepped)) ^ 7) { stepped.increase!(1) }
+            pack[:by_stop_value][0] = stepped
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+      first = [first_pointing_at_nought(POINTED_COPY)].pack("C*")
+
+      assert_equal({ by_while: first, by_stop_when: first, three_deep: [first_three_deep_at_thirteen(POINTED_COPY)].pack("C*"),
+                     by_stop_value: [first_two_deep_not_seven(POINTED_COPY)].pack("C*") },
+                   unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4)))
+    end
+  end
+
+  # A LOOP BOUNDED BY A COUNT AND BY A MARKER OF THE COPY, joined with `&&`, stops at whichever
+  # comes first, as Ruby's does: pieces of four bytes, a piece whose first byte is 0x80 ending each
+  # frame. The second frame is longer than the bound, so the bound stops it.
+  PIECE_BYTES = 4
+  MOST_PIECES = 5
+  PIECES_END = 0x80
+  PIECES_IN_EACH_FRAME = Ractor.make_shareable([3, 7, 1])
+  ORDINARY_PIECE_BYTES = Ractor.make_shareable([1, 2, 3, 4])
+  FRAME_END_PIECE_BYTES = Ractor.make_shareable([PIECES_END, 0, 0, 0])
+
+  private def piece_copy
+    PIECES_IN_EACH_FRAME.flat_map { |pieces| (ORDINARY_PIECE_BYTES * pieces) + FRAME_END_PIECE_BYTES }.pack("C*")
+  end
+
+  # Where each frame starts in the copy: after the pieces of those before it and their end pieces.
+  private def frame_starts = PIECES_IN_EACH_FRAME.each_with_index.map { |_, frame| PIECES_IN_EACH_FRAME.take(frame).sum { |pieces| (pieces + 1) * PIECE_BYTES } }
+
+  private def pieces_counted(copy)
+    frame_starts.map do |at|
+      count = 0
+      count += 1 while count < MOST_PIECES && copy.getbyte(at + (count * PIECE_BYTES)) != PIECES_END
+      count
+    end
+  end
+
+  def test_a_loop_bounded_by_a_count_and_a_marker_of_the_copy_stops_at_either
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, piece_copy)
+      starts = frame_starts
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :counts, count: PIECES_IN_EACH_FRAME.length, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            starts.each_with_index do |at, frame|
+              count = 0
+              count += 1 while count < MOST_PIECES && copy.byte(at + (count * PIECE_BYTES)) != PIECES_END
+              pack[:counts][frame] = count
+            end
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+      played = unpacking.run_on(game_player, frames: 4)
+
+      assert unpacking.finished_in?(played), "the unpacking got to its end"
+      assert_equal({ counts: pieces_counted(piece_copy).pack("C*") }, unpacking.slot_bytes_in(played))
+    end
+  end
+
+  # A loop's test is checked against the copy's end on every round, as a read in its body is: a
+  # copy with no 0 is read past its end on the seventh round, and the build says which byte. A
+  # read past the end does not stop the routine, so the loop has a bound of its own to end on.
+  def test_a_loop_whose_test_reads_past_the_copys_end_is_refused_naming_that_byte
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, [9, 8, 7, 6, 5, 4].pack("C*"))
+      b = VBlank::Builder.new
+      refused = assert_raises(VBlank::Original::WrongCopy) do
+        b.instance_eval do
+          data_pack(from: from, version: "1") do |slots|
+            slots.numbers :until_nought, count: 1, width: :byte, signed: false
+            slots.fill_from_copy do |copy, pack|
+              at = 0
+              at += 1 while at < 10 && copy.byte(at) != 0
+              pack[:until_nought][0] = at
+            end
+          end
+        end
+      end
+
+      assert_match "byte 6 ", refused.message
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
@@ -179,6 +380,62 @@ module CopyReaderTests
       assert_equal records_copied(copy), walked_records(folder, copy, :number), "kept as the number read"
       assert_equal records_copied(copy), walked_records(folder, copy, :flag), "kept as true or false"
     end
+  end
+
+  # AN ARCHIVE SEARCHED FOR ONE FILE BY ITS NAME, as an original keeps its pictures and levels:
+  # NameSearchPart (test/fixtures/name_search) says the layout. The file looked for is the third,
+  # after one whose name differs in every letter and one that differs in a single letter, so a
+  # count of differing letters that is not set back to 0 each round never finds it. The archive
+  # ends with the header of a file longer than what is left, which ends every search: one that
+  # never finds the name answers 0, and the bytes copied from there are the wrong ones, where a
+  # search walking on would read past the end of the copy.
+  ARCHIVE_FILES = Ractor.make_shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
+  ARCHIVE_END = ("tail".b + [0xFFFF].pack("V")).freeze
+  ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ARCHIVE_END).freeze
+  ARCHIVE_NAME = "door"
+
+  # The slot a routine fills from where +search+ says the named file starts. +search+ is called on
+  # the routine's builder with a NameSearchPart, the copy and a table of the name's letters.
+  private def bytes_found_in_archive(folder, &search)
+    from = copy_of(folder, ARCHIVE)
+    held = ARCHIVE_FILES.to_h.fetch(ARCHIVE_NAME).bytesize
+    b = VBlank::Builder.new
+    made_pack = nil
+    b.instance_eval do
+      made_pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :found, count: held, width: :byte, signed: false
+        slots.fill_from_copy do |copy, pack|
+          letters = table :archive_name, ARCHIVE_NAME.bytes, width: :byte
+          part = NameSearchPart.new(self, copy, ARCHIVE.bytesize)
+          copy.copy_bytes at: instance_exec(part, copy, letters, &search), count: held, into: pack[:found]
+        end
+      end
+    end
+    unpacking = made_pack.unpacking
+    unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 8))[:found]
+  end
+
+  private def assert_archive_file_found(why = nil, &search)
+    Dir.mktmpdir { |folder| assert_equal ARCHIVE_FILES.to_h.fetch(ARCHIVE_NAME), bytes_found_in_archive(folder, &search), why }
+  end
+
+  # `differing = 0` at the top of a `while` in a part's method, changed in a `@build.repeat` block:
+  # the line sets it on every round, as it does written in the routine's own block.
+  def test_a_count_set_at_the_top_of_a_loop_in_a_parts_method_starts_afresh_each_round
+    assert_archive_file_found("while") { |part, _copy, letters| part.start_counted_by_repeat(letters) }
+    assert_archive_file_found("until") { |part, _copy, letters| part.start_counted_in_until(letters) }
+    assert_archive_file_found("a while inside") { |part, _copy, letters| part.start_counted_by_inner_while(letters) }
+    assert_archive_file_found("a Ruby list") { |part, _copy, _letters| part.start_counted_over_ruby_list(ARCHIVE_NAME.bytes) }
+  end
+
+  def test_a_count_set_at_the_top_of_a_loop_in_a_game_files_method_starts_afresh_each_round
+    assert_archive_file_found { |_part, copy, letters| name_search_start(self, copy, ARCHIVE.bytesize, letters) }
+  end
+
+  # The names the loop's test reads are plain numbers when the loop is reached, and the body
+  # changes them only under a test the routine makes: they are the routine's to keep from there.
+  def test_a_loop_whose_names_change_only_under_a_test_of_the_routines_is_the_routines_loop
+    assert_archive_file_found { |part, _copy, letters| part.start_moved_on_in_else(letters) }
   end
 
   # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:

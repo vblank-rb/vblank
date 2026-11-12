@@ -5,6 +5,7 @@ require_relative "ir/constant_divisor"      # Dividing by a number written in th
 require_relative "ir/program_error"         # A game that goes wrong, as every backend reports it
 require_relative "ir/faults"                # The sentence a program error is reported in
 require_relative "ir/buttons"
+require_relative "ir/computer_controls"     # The keys and gamepad buttons a game adds on a computer
 require_relative "ir/clock"                 # What a game reads of the date and time, on every backend
 require_relative "ir/clock_calendar"        # The calendar a cartridge adds to a time the game set
 require_relative "ir/frames"                # How many frames a pass of the game loop took
@@ -22,6 +23,7 @@ require_relative "ir/save_layout"           # Where save data lives in save memo
 require_relative "ir/save_image"            # Save memory held in Ruby, laid out the same way
 require_relative "ir/tile_map"              # How big a grid a background scrolls over, for every backend
 require_relative "ir/build"
+require_relative "ir/picked_tile"           # A tile picked as the program runs, as the tests it stands for
 require_relative "ir/save_list_moves"       # A whole list moved to or from save memory, as the loops it stands for
 require_relative "ir/place_drawing"        # How a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/viewer_motion"         # How the viewer moves and turns

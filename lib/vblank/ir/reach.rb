@@ -64,10 +64,14 @@ module VBlank
       # Every routine a run can reach from +program+ and +also+ (what a bend runs, what a timer
       # does when it ticks), following each into the routines it calls, in the order the routines
       # were declared.
-      def routines(program, also: [])
+      def routines(program, also: []) = routines_called_from(program, [program, *also])
+
+      # Every routine of +program+ the statements under +roots+ call, however deep, in the order the
+      # routines were declared.
+      def routines_called_from(program, roots)
         funcs = program.walk.select { |node| node.kind == :func }.to_h { |node| [node.name, node] }
         reached = []
-        waiting = routines_named(statements_from(program, *also))
+        waiting = routines_named(statements_from(*roots))
         until waiting.empty?
           name = waiting.shift
           next if reached.include?(name) || !funcs.key?(name)

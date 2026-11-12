@@ -15,7 +15,7 @@ static const struct {
   const char *name;
   int key;
 } key_table[] = {
-  {"A", 4},      {"B", 5},    {"M", 16},        {"N", 17},      {"P", 19},          {"S", 22},   {"X", 27},
+  {"A", 4},      {"B", 5},    {"D", 7},         {"M", 16},        {"N", 17},      {"P", 19},          {"S", 22},   {"X", 27},
   {"Z", 29},     {"Q", 20},   {"Return", 40},   {"Escape", 41}, {"Backspace", 42},  {"Tab", 43}, {"Space", 44},
   {",", 54},     {"F1", 58},  {"F3", 60},       {"F11", 68},    {"Right", 79},      {"Left", 80}, {"Down", 81},
   {"Up", 82},    {"Right Shift", 229},
@@ -126,7 +126,32 @@ int main(void) {
       int b = button_word(words[1]);
       printf("%s %s\n", rg_window_key_name(rg_window_button_key(b, 0)), rg_window_key_name(rg_window_button_key(b, 1)));
     } else if (!strcmp(c, "hotkey_of")) printf("%s\n", rg_window_key_name(rg_window_hotkey_key(hotkey_word(words[1]))));
-    else if (!strcmp(c, "pad_of")) printf("%s\n", rg_window_pad_button_name(rg_window_pad_button(button_word(words[1]))));
+    else if (!strcmp(c, "pad_of")) {
+      int b = button_word(words[1]);
+      for (int slot = 0; slot < RG_WINDOW_PADS_A_BUTTON; slot++) {
+        int pad = rg_window_pad_button(b, slot);
+        if (pad != RG_NO_PAD) printf("%s%s", slot ? " " : "", rg_window_pad_button_name(pad));
+      }
+      putchar('\n');
+    } else if (!strcmp(c, "button_text")) {
+      char text[128];
+      rg_window_button_text(button_word(words[1]), text, sizeof text);
+      puts(text);
+    } else if (!strcmp(c, "game_controls")) {
+      /* The game's keys and gamepad buttons, as a game is built with them: a button, then "key" or
+       * "pad", then the key's or the gamepad button's name, for each. The window starts again. */
+      static int32_t controls[1 + 3 * 8];
+      int entries = 0;
+      for (int i = 1; i + 2 < count && entries < 8; i += 3, entries++) {
+        int is_key = !strcmp(words[i + 1], "key");
+        controls[1 + 3 * entries] = button_word(words[i]);
+        controls[2 + 3 * entries] = is_key ? 0 : 1;
+        controls[3 + 3 * entries] = is_key ? key_word(words[i + 2]) : pad_word(words[i + 2]);
+      }
+      controls[0] = entries;
+      rg_window_use_game_controls(controls);
+      rg_window_use_defaults();
+    }
     else if (!strcmp(c, "bind_key")) said(rg_window_bind_key(button_word(words[1]), atoi(words[2]), key_word(words[3])));
     else if (!strcmp(c, "bind_hotkey")) said(rg_window_bind_hotkey(hotkey_word(words[1]), key_word(words[2])));
     else if (!strcmp(c, "bind_pad")) said(rg_window_bind_pad(button_word(words[1]), pad_word(words[2])));

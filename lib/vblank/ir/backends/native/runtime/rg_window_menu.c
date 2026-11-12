@@ -151,10 +151,7 @@ static void control_text(const rg_menu_line *line, char *text, size_t room) {
   } else if (line->kind == RG_MENU_HOTKEY) {
     snprintf(text, room, "%s", rg_window_key_name(rg_window_hotkey_key(line->place)));
   } else {
-    int first = rg_window_button_key(line->place, 0), second = rg_window_button_key(line->place, 1);
-    const char *pad = rg_window_pad_button_name(rg_window_pad_button(line->place));
-    if (first != RG_NO_KEY && second != RG_NO_KEY) snprintf(text, room, "%s, %s / %s", rg_window_key_name(first), rg_window_key_name(second), pad);
-    else snprintf(text, room, "%s / %s", rg_window_key_name(first != RG_NO_KEY ? first : second), pad);
+    rg_window_button_text(line->place, text, room);
   }
 }
 
