@@ -47,13 +47,27 @@ module VBlank
             def self.changes_colors?(program) = tiled?(program) && program.walk.any? { |node| COLOR_CHANGES.include?(node.kind) }
 
             # Whether +program+'s screen is drawn from tiles: it says `screen :tiled`, or it has a background
-            # or a sprite and paints nothing. A game that paints (Paint) keeps its painted screen.
+            # or a sprite and paints nothing. A game that paints (Paint) keeps its painted screen, unless it shows a
+            # screen drawn from tiles too (#crosses?), which then has everything a screen drawn from tiles has.
             def self.tiled?(program)
+              return true if crosses?(program)
+
               modes = program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq
               return false if modes.include?(:bitmap)
               return false if modes.empty? && program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
 
               program.walk.any? { |node| %i[background object].include?(node.kind) || (node.kind == :screen && node.mode == :tiled) }
+            end
+
+            # WHETHER +program+ SHOWS A PAINTED SCREEN AND ONE DRAWN FROM TILES, at different times: it says `screen
+            # :tiled`, and `screen :bitmap` or paints. Handing over from one kind to the other replaces the whole
+            # picture (IR::SceneHandover.crossing?), which the runtime keeps by whether tiles are up
+            # (Runtime::Tiles::TILES_UP): only while they are is the picture drawn from tiles as each pass ends.
+            def self.crosses?(program)
+              screens = program.walk.select { |node| node.kind == :screen }.map(&:mode)
+              return false unless screens.include?(:tiled)
+
+              screens.include?(:bitmap) || program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
             end
 
             # Whether +program+'s screen is painted and shows sprites over what it paints (`sprite ..., over_picture:
@@ -78,11 +92,12 @@ module VBlank
 
               bars = @layers.select { |bg, _| bg.bar? }.values.uniq.sort
               Runtime::Tiles::Screen.new(places: @plane_places, depths: @plane_depths, opaque: @opaque_planes, bar_planes: bars,
-                                         levels: @levels)
+                                         levels: @levels, crosses: @crosses)
             end
 
             def prepare_picture
               @tiled = Picture.tiled?(@program)
+              @crosses = Picture.crosses?(@program)
               @over_picture = Picture.over_picture?(@program)
               @objects = @program.walk.select { |node| node.kind == :object }.to_h { |node| [node.name, node] }
               @backgrounds = @program.walk.select { |node| node.kind == :background }
@@ -109,8 +124,9 @@ module VBlank
               refuse_fades_of_part!
               return refuse_unmade_painted! unless @tiled
 
-              others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled]
+              others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled bitmap]
               refuse_unmade!(TILED_SCREEN, "shows a `screen :#{others.first}`") unless others.empty?
+              refuse_unmade_crossing! if @crosses
               if @program.walk.any? { |node| node.kind == :tile_pose }
                 refuse_unmade!(TILED_SCREEN, "draws a sprite's pose from sprite tiles it loads (`sprite_tiles`)")
               end
@@ -149,6 +165,29 @@ module VBlank
               end
               refuse_unmade_sprites!
             end
+
+            # A GAME THAT SHOWS A PAINTED SCREEN AND ONE DRAWN FROM TILES, as this build makes it: its backgrounds are
+            # each a scene's own, on a scene drawn from tiles, and go up as the scene takes over; and nothing changes
+            # its colours as it runs. A background every screen shows, which goes up again each time tiles come
+            # back (IR::SceneHandover#always_up), one stamped onto a painted scene, and a fade, a tint or a list of
+            # colours that changes, read through tables on one screen and baked into the picture on the other, are
+            # not made yet.
+            def refuse_unmade_crossing!
+              if fades? || @program.walk.any? { |node| %i[color_list_holds background_colors].include?(node.kind) }
+                refuse_unmade!(FADES, "fades, tints or changes the colours of a game that shows both a painted (bitmap) " \
+                                      "screen and one drawn from tiles")
+              end
+              @backgrounds.each do |bg|
+                tiled_scene = bg.scene && @handover.on_arrival?(bg) && SceneHandover.tiles?(scene_screen(bg.scene))
+                next if tiled_scene
+
+                refuse_unmade!(TILED_SCREEN, "shows a background outside a scene drawn from tiles, in a game that also " \
+                                             "shows a painted (bitmap) screen")
+              end
+            end
+
+            # The kind of screen +scene+ draws on (SceneHandover::Arrival#mode), as a `screen` names it.
+            def scene_screen(scene) = IR::Modes::SCREEN_OF_MODE.fetch(@handover.arrival(scene).mode)
 
             # A background stamped onto a painted screen: one of a scene's own, a status bar, one held above a row
             # and one drawn with other colours are not made yet.
@@ -640,6 +679,7 @@ module VBlank
             # use, which the scene before may have used, come down (IR::SceneHandover). The scenery every screen
             # shows stays as it is.
             def emit_scene_arrival(scene)
+              emit_arrival_screen(@handover.arrival(scene)) if @crosses
               return unless @tiled && @scene_planes.positive?
 
               arrival = @handover.arrival(scene)
@@ -648,6 +688,33 @@ module VBlank
               ((0...@scene_planes).to_a - arrival.scenery.map { |bg| plane_of(bg) }).each do |plane|
                 runtime_call("rt_plane_take_down", [Build.int(plane)])
               end
+            end
+
+            # A SCENE TAKING OVER IN A GAME THAT SHOWS BOTH KINDS OF SCREEN puts its own screen up first, since changing
+            # the kind wipes what went up before it (Reference#take_over): the `screen` it writes, or, for one that
+            # writes none, the kind it draws on, which changes the screen only where the kind differs
+            # (Reference#cross_to_scene_screen).
+            def emit_arrival_screen(arrival)
+              return emit_screen(arrival.screen) if arrival.screen
+
+              screen = IR::Modes::SCREEN_OF_MODE.fetch(arrival.mode)
+              emit_screen_kind(SceneHandover.tiles?(screen), pages: arrival.mode == IR::Modes::BUFFERED ? 2 : 1, implied: true)
+            end
+
+            # A `screen` in a game that shows both kinds (#crosses?): +tiles+ for one drawn from tiles. Where the kind
+            # up is the other, the picture is wiped and every plane taken down (Runtime::Tiles' rt_screen_cross,
+            # Reference#exec_screen); then the screen is one page or two, +pages+ (a screen drawn from tiles is always
+            # two, since its whole picture is drawn again each pass). An +implied+ screen, a scene's that writes
+            # none, changes nothing where the kind up is the same.
+            def emit_screen_kind(tiles, pages:, implied: false)
+              same = fresh_label("same_kind_of_screen")
+              paged = [Build.int(tiles || pages == 2 ? 1 : 0)]
+              emit_load_word(:t0, runtime_place(Runtime::Tiles::TILES_UP))
+              tiles ? @asm.bne(:t0, :zero, same) : @asm.beq(:t0, :zero, same)
+              runtime_call("rt_screen_cross", [Build.int(tiles ? 1 : 0)])
+              runtime_call("rt_paint_screen", paged) if implied
+              @asm.label(same)
+              runtime_call("rt_paint_screen", paged) unless implied
             end
 
             # --- colours that change as the game runs (Runtime::Colors) ---

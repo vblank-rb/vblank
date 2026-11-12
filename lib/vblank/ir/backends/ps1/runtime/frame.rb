@@ -191,7 +191,10 @@ module VBlank
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
               asm.sw(:t0, at.call(Paint::PASS_PAGE_Y), :gp)
               # ...and on a screen shown from pages of its own, the page shown it was copied onto.
-              asm.jal(shown_by) { asm.move(:a0, :t0) } if shown_by
+              if shown_by
+                asm.li(:a1, 1) # a pass's page published
+                asm.jal(shown_by) { asm.move(:a0, :t0) }
+              end
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp) # the page this pass drew is shown
               asm.sw(:t0, at.call(WAITING), :gp)
@@ -359,7 +362,7 @@ module VBlank
               asm.beq(:t0, :zero, "rt_stop_page_shown")
               asm.xori(:a0, :a0, Paint::SECOND_PAGE_TOP_LINE)
               asm.label("rt_stop_page_shown")
-              asm.jal(shown_by)
+              asm.jal(shown_by) { asm.move(:a1, :zero) } # no page published
             end
           end
         end

@@ -183,13 +183,14 @@ module VBlank
               Build.int(Console::PS1Hardware::GP0_RECTANGLE | Console::PS1Hardware.command_color(shown))
             end
 
-            # Reference#exec_screen: a painted screen of one page or two. Any other kind of screen is
-            # refused before anything is made (#refuse_unmade_parts!) in a game that paints, and shows
-            # nothing in one that does not.
+            # Reference#exec_screen: a painted screen of one page or two. In a game that shows a screen drawn
+            # from tiles too, either kind, which wipes the picture where the kind changes
+            # (Picture#emit_screen_kind); in one drawn from tiles alone, nothing.
             def emit_screen(node)
+              tear_free = node.buffered && CONSOLE.painted_pages == 2
+              return emit_screen_kind(node.mode == :tiled, pages: tear_free ? 2 : 1) if @crosses
               return unless node.mode == :bitmap
 
-              tear_free = node.buffered && CONSOLE.painted_pages == 2
               runtime_call("rt_paint_screen", [Build.int(tear_free ? 1 : 0)])
             end
 

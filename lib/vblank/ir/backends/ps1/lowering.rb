@@ -281,8 +281,9 @@ module VBlank
             backdrop = !tiled? && @program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
             refuse_unmade!(BACKDROP_COLOUR, "shows a backdrop colour where nothing is drawn that follows a list of colours") if backdrop
             # Handing over between a painted screen and one drawn from tiles wipes the picture
-            # (SceneHandover.crossing?), which is made with the screens drawn from tiles.
-            if @program.walk.any? { |node| tiles_screen?(node) } &&
+            # (SceneHandover.crossing?), which is made between a painted screen and `screen :tiled`
+            # (Picture.crosses?), and not yet with a screen that turns.
+            if !Picture.crosses?(@program) && @program.walk.any? { |node| tiles_screen?(node) } &&
                @program.walk.any? { |node| node.kind != :screen && Paint::STATEMENT_KINDS.include?(node.kind) }
               refuse_unmade!(TILED_SCREEN, "paints a picture and also shows a screen drawn from tiles")
             end

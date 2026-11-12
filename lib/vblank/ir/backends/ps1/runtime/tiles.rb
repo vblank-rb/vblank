@@ -68,13 +68,18 @@ module VBlank
             # The fill command (its colour in its low 24 bits) for what shows where nothing is drawn.
             BACKDROP = "rt backdrop"
 
+            # IN A GAME THAT SHOWS A PAINTED SCREEN TOO (Screen#crosses), not nought while the screen up is drawn from
+            # tiles: only then is the picture drawn whole as a pass ends (rt_tiles_draw). Nought from power-on.
+            TILES_UP = "rt tiles up"
+
             # WHAT THE RUNTIME DRAWS A GAME'S TILED SCREEN WITH, worked out as the game is built
             # (Lowering::Picture#tiled_screen): each plane's place in video RAM (TextureMemory::Plane), how many
             # bits a texel each is kept at, the planes whose every background draws every pixel (+opaque+), the
             # planes a status bar goes up on (+bar_planes+), and +levels+: nil where every sprite is drawn in
             # front of every background in the order the pass placed them, or how many levels the stack has,
-            # each drawn in turn, its backgrounds and then its sprites (Reference#repaint_view).
-            Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels)
+            # each drawn in turn, its backgrounds and then its sprites (Reference#repaint_view); +crosses+ for a game
+            # that shows a painted screen too (TILES_UP).
+            Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels, :crosses)
 
             # The sprites the last pass placed: how many, a word, then a row of DRAWN_BYTES for each:
             # whose it is (Backends::SpriteNames#name_number), which picture (#picture_number), its place
@@ -109,6 +114,7 @@ module VBlank
             def reserve(memory)
               memory.reserve(PLANES, MOST_PLANES * PLANE_BYTES)
               memory.reserve(BACKDROP, 4)
+              memory.reserve(TILES_UP, 4)
               reserve_sprites(memory)
               memory.reserve(BAR_TOP, 4)
               memory.reserve(BAR_COVERS, 4)
@@ -129,6 +135,7 @@ module VBlank
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm)
               emit_plane_routines(asm, at)
+              emit_crossing(asm, at, screen.places.length) if screen.crosses
               emit_cell(asm)
               emit_sprites(asm, at, levels: !screen.levels.nil?)
               emit_bar(asm, at) unless screen.bar_planes.empty?
@@ -242,6 +249,31 @@ module VBlank
               emit_plane_state(asm, at)
               asm.sw(:a1, PLANE_SCROLL_X, :v0)
               asm.jr(:ra) { asm.sw(:a2, PLANE_SCROLL_Y, :v0) }
+            end
+
+            # HANDING OVER TO THE OTHER KIND OF SCREEN replaces the whole picture (Reference#exec_screen): what was
+            # up is gone, and comes back only by being put up again.
+            #
+            # rt_screen_cross: a0 = 1 for a screen drawn from tiles, 0 for a painted one. TILES_UP is set to it, every
+            # plane is taken down, and both pages are made black, the painted screen's backdrop
+            # (SceneHandover#backdrop_of), with fills (GP0 02h). A screen drawn from tiles fills its pages again as
+            # each pass ends.
+            def emit_crossing(asm, at, planes)
+              h = Console::PS1Hardware
+              asm.label("rt_screen_cross")
+              asm.sw(:a0, at.call(TILES_UP), :gp)
+              planes.times { |plane| asm.sw(:zero, at.call(PLANES) + (plane * PLANE_BYTES) + PLANE_UP, :gp) }
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              [0, Paint::SECOND_PAGE_TOP_LINE].each do |top|
+                DrawList.emit_command(asm, 3) { asm.lui(:a0, h::GP0_FILL >> 16) }
+                asm.lui(:t0, top)
+                asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
+                asm.li(:t0, SCREEN_SIZE)
+                asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
+              end
+              asm.lw(:ra, 0, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 4) }
             end
 
             # +register+ = the corner in video RAM of the plane numbered +plane+ (a register), y << 16 | x,
@@ -410,6 +442,13 @@ module VBlank
               bar = !screen.bar_planes.empty?
               frame = 4 * (DRAW_KEPT.length + 1)
               asm.label("rt_tiles_draw")
+              if screen.crosses
+                # A painted screen up draws itself.
+                asm.lw(:t0, at.call(TILES_UP), :gp)
+                asm.bne(:t0, :zero, "rt_tiles_draw_up")
+                asm.jr(:ra)
+                asm.label("rt_tiles_draw_up")
+              end
               asm.addiu(:sp, :sp, -frame)
               asm.sw(:ra, 0, :sp)
               DRAW_KEPT.each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }

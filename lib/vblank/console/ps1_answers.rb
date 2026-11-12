@@ -129,7 +129,10 @@ module VBlank
         sprite: works("a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is " \
                       "no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a " \
                       "textured shape. A sprite whose poses are drawn from different lists of colors shows each " \
-                      "pose in the colors of its own list."),
+                      "pose in the colors of its own list. On a painted screen, a sprite with `over_picture: true` is " \
+                      "drawn over a copy of the picture as it goes to the screen, so the picture stays as the game " \
+                      "painted it. The build does not make a sprite painted into the picture yet: it refuses it and " \
+                      "says so."),
         draw_in_order: works,
         hide_sprites: works,
         picture_groups: works,
@@ -143,7 +146,10 @@ module VBlank
                           "colours or fewer and 8 for 255 or fewer, so `draw_with` and a fade change one list. " \
                           "A background of more colours takes 16 bits a pixel, and its colours cannot change. " \
                           "`show_only_inside` holds it to the chip's drawing area, and a background that turns or " \
-                          "resizes is drawn as a textured shape."),
+                          "resizes is drawn as a textured shape. On a painted screen, a background is painted into the " \
+                          "picture where it is put up. The build does not make one there that moves or changes yet. A " \
+                          "game can show a painted screen and one drawn from tiles at different times; the build does " \
+                          "not make a fade or a tint in such a game yet. It refuses each of these and says so."),
         status_bar: works,
         canvas: works,
         tile_pictures: works,

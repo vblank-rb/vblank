@@ -115,19 +115,22 @@ module VBlank
             # places, which the chip's drawing offset (GP0 E5h) moves onto that page. The blank then shows it
             # (rt_paint_flip). A copy inside video RAM is the chip's alone: the processor touches no pixel.
             #
-            # rt_paint_sprites_shown: a0 = the top line of the page drawn on to show. The area drawing is held to and
-            # the page drawn on are given back as they were.
+            # rt_paint_sprites_shown: a0 = the top line of the page drawn on to show, a1 = not nought where a pass's
+            # page is published, nought where the game stops. The area drawing is held to and
+            # the page drawn on are given back as they were. On a tear-free screen it runs the game's own code, which
+            # changes s4 to s7 unkept, so it is called only where the game's timers are run too: from the wait and
+            # from stopping, both statements, never while a value is being worked out (Lowering#emit_keep_temporary).
             SPRITES_SHOWN_KEPT = %i[s0 s1 s2 s3].freeze
             # The words kept on the stack besides the registers: the area's four, then PAGE_Y; and after them the page
             # drawn on.
-            SPRITES_SHOWN_PUT_BACK = 5
+            SPRITES_SHOWN_STACK_WORDS = 5
 
             def emit_sprites_shown(asm, at)
               h = Console::PS1Hardware
               word = ->(index) { DrawList.word_offset_bytes(index) }
               drawn = at.call(Tiles::DRAWN)
               kept_bytes = 4 * (SPRITES_SHOWN_KEPT.length + 1)
-              frame = kept_bytes + (4 * (SPRITES_SHOWN_PUT_BACK + 1))
+              frame = kept_bytes + (4 * (SPRITES_SHOWN_STACK_WORDS + 1))
               put_back = ->(i) { kept_bytes + (i * 4) }
               places = [AREA_LEFT_OFFSET_BYTES, AREA_TOP_OFFSET_BYTES, AREA_RIGHT_OFFSET_BYTES, AREA_BOTTOM_OFFSET_BYTES]
                        .map { |offset| at.call(AREA) + offset } + [at.call(PAGE_Y)]
@@ -140,15 +143,17 @@ module VBlank
                 asm.sw(:t0, put_back.call(i), :sp)
               end
               # On a tear-free screen the sprites are placed again first, from the numbers the pass finished with
-              # (Lowering::Picture#sprites_over_picture_section). The game's code changes the saved registers
-              # without keeping them, so the page drawn on waits on the stack meanwhile.
-              asm.sw(:a0, put_back.call(SPRITES_SHOWN_PUT_BACK), :sp)
+              # (Lowering::Picture#sprites_over_picture_section), where a pass's page is published (a1 not nought):
+              # a game that stops publishes none, and the interpreter places nothing again there. The game's code
+              # changes the saved registers without keeping them, so the page drawn on waits on the stack meanwhile.
+              asm.sw(:a0, put_back.call(SPRITES_SHOWN_STACK_WORDS), :sp)
+              asm.beq(:a1, :zero, "rt_paint_sprites_shown_placed")
               asm.lw(:t0, at.call(PAGED), :gp)
               asm.beq(:t0, :zero, "rt_paint_sprites_shown_placed")
               asm.jal(Lowering::Picture::SPRITES_OVER_PICTURE)
               asm.label("rt_paint_sprites_shown_placed")
               # s2: the page shown that is not up, its top line; s3: the page drawn on.
-              asm.lw(:s3, put_back.call(SPRITES_SHOWN_PUT_BACK), :sp)
+              asm.lw(:s3, put_back.call(SPRITES_SHOWN_STACK_WORDS), :sp)
               asm.lw(:s2, at.call(SHOWN_PAGE_Y), :gp)
               asm.xori(:s2, :s2, SECOND_PAGE_TOP_LINE)
               asm.sw(:s2, at.call(PASS_PAGE_Y), :gp)
