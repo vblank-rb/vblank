@@ -11,16 +11,25 @@ module VBlank
           # the backdrop, each background back to front, then each sprite. That is how the console's own 2D
           # games drew.
           #
-          # A BACKGROUND IS A PLANE: a picture of its whole map, 256 × 256 pixels of 15-bit colour, kept in
-          # video RAM beside the screen's pages (PS1::TextureMemory#reserve_planes says where). A map is
-          # put on its plane once, as it goes up: the plane emptied with a fill, then each cell's tile
-          # copied in from the sheet of tiles kept further along video RAM, video RAM to video RAM (GP0
-          # 80h), a command of four words. A changed cell is one more copy. Then each frame the plane is
-          # drawn as one textured rectangle the size of the screen, its corner in the plane where the
-          # background is scrolled to. A rectangle's place in its texture is a byte across and a byte
-          # down, which come round at 256 by themselves, so the map comes round as a background does.
-          # A pixel of the plane that no tile draws is 0000h, which the chip leaves undrawn, so what is
-          # behind shows through.
+          # A BACKGROUND IS A PLANE: a picture of its whole map, 256 × 256 pixels or more, kept in video RAM
+          # beside the screen's pages (PS1::TextureMemory#reserve_planes says where). A map is put on its
+          # plane once, as it goes up: the plane emptied with a fill, then each cell's tile copied in from
+          # the sheet of tiles kept further along video RAM, video RAM to video RAM (GP0 80h), a command of
+          # four words. A changed cell is one more copy. Then each frame the plane is drawn as one textured
+          # rectangle the size of the screen, its corner in the plane where the background is scrolled to. A
+          # rectangle's place in its texture is a byte across and a byte down, which come round at 256 by
+          # themselves, so the map comes round as a background does.
+          #
+          # A PLANE HOLDS PLACES IN A COLOUR TABLE, 4 or 8 bits a texel (PS1::PlaneColors), not colours: so a
+          # halfword of video RAM holds four texels or two, and the chip reads a quarter or half of what it
+          # would at 15 bits as it draws the plane; and a colour the game changes is one entry of the
+          # background's table written again (Runtime::Colors). The background up on the plane names its
+          # table (PLANE_TABLE). A plane of more colours than a table holds keeps them at 15 bits. How deep
+          # each plane is is fixed when the game is built (rt_plane_shifts), so a tile on the sheet, a cell
+          # copied and the fill that empties the plane are each that many halfwords narrower.
+          #
+          # A texel of the plane that no tile draws is nought: the table's place 0, which holds 0000h, or the
+          # colour 0000h itself, which the chip leaves undrawn, so what is behind shows through.
           #
           # A SPRITE is a picture the painted screen draws too (Runtime::Paint's rt_paint_blit), drawn in
           # front of every background, in the order the pass placed them (rt_sprite_place). The ones a pass
@@ -28,14 +37,18 @@ module VBlank
           module Tiles
             h = Console::PS1Hardware
 
-            # Each plane's state, PLANE_BYTES each: whether it is up, where it is scrolled to, and the map's
-            # width and height in pixels less one, which a place on it is masked with to come round.
+            # Each plane's state, PLANE_BYTES each: whether it is up, where it is scrolled to, the map's
+            # width and height in pixels less one, which a place on it is masked with to come round, the colour
+            # table of the background up on it as a textured rectangle names it (in the word's top half), and
+            # how many texels a halfword holds, as a shift (rt_plane_shifts).
             PLANES = "rt planes"
             PLANE_UP = 0
             PLANE_SCROLL_X = 4
             PLANE_SCROLL_Y = 8
             PLANE_WIDTH_MASK = 12
             PLANE_HEIGHT_MASK = 16
+            PLANE_TABLE = 20
+            PLANE_SHIFT = 24
             PLANE_BYTES = 32
             MOST_PLANES = 4
 
@@ -63,8 +76,11 @@ module VBlank
 
             # The copy inside video RAM: then where from (y << 16 | x), where to, and height << 16 | width.
             COPY_IN_VRAM = h::GP0_COPY_IN_VRAM
-            CELL_SIZE = (8 << 16) | 8
+            # A cell's side in texels, and the halfwords a texel takes at 15 bits; a plane of places takes fewer.
+            CELL_TEXELS = 8
             SCREEN_SIZE = (h::SCREEN_HEIGHT << 16) | h::SCREEN_WIDTH
+            # How far a halfword's texels count is shifted at each depth: one at 15 bits, two at 8, four at 4.
+            SHIFT_BY_DEPTH = { 15 => 0, 8 => 1, 4 => 2 }.freeze
 
             module_function
 
@@ -74,17 +90,18 @@ module VBlank
               memory.reserve(DRAWN, 4 + (MOST_SPRITES * DRAWN_BYTES))
             end
 
-            # +places+ is each plane's place in video RAM (TextureMemory::Plane), by its number; +faces+ whether the game
-            # also fills the faces of a place, which leave the chip's texture window set.
-            def emit(asm, memory, places:, faces: false)
+            # +places+ is each plane's place in video RAM (TextureMemory::Plane), by its number, and +depths+ how many
+            # bits a texel each is kept at; +faces+ whether the game also fills the faces of a place, which leave the
+            # chip's texture window set.
+            def emit(asm, memory, places:, depths:, faces: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm)
               emit_plane_routines(asm, at)
               emit_cell(asm)
               emit_sprites(asm, at)
-              emit_draw(asm, at, places, faces)
+              emit_draw(asm, at, places, depths, faces)
               emit_plane_drawing(asm, at)
-              emit_plane_tables(asm, places)
+              emit_plane_tables(asm, places, depths)
             end
 
             # rt_tiles_start: two pages, one drawn while the other is shown (Runtime::Paint's
@@ -101,14 +118,17 @@ module VBlank
               asm.addiu(:v0, :v0, at.call(PLANES))
             end
 
-            PUT_UP_KEPT = %i[s0 s1 s2 s3 s4 s5 s6].freeze
+            PUT_UP_KEPT = %i[s0 s1 s2 s3 s4 s5 s6 s7].freeze
 
             # rt_plane_put_up: a0 = the plane, a1 = the map's cells (Lowering::Picture#grid_label: a word a
             # cell, row by row, each the place in video RAM of the tile it shows, y << 16 | x, or nought for
             # none), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
-            # power of two (5 for 32, 6 for 64), t4 = how many rows it has. The map's grid is the plane's size
-            # until another goes up on it, so the plane comes round where the map's grid does.
+            # power of two (5 for 32, 6 for 64), t4 = how many rows it has, t5 = the background's colour table
+            # (PLANE_TABLE). The map's grid is the plane's size until another goes up on it, so the plane comes
+            # round where the map's grid does.
             # rt_plane_take_down: a0 = the plane. rt_plane_scroll: a0 = the plane, a1, a2 = where its view is.
+            #
+            # s4 and s5 are the plane's width and height in texels, s7 its shift (PLANE_SHIFT).
             def emit_plane_routines(asm, at)
               word = ->(index) { DrawList.word_offset_bytes(index) }
               asm.label("rt_plane_put_up")
@@ -122,6 +142,9 @@ module VBlank
               asm.sw(:zero, PLANE_SCROLL_X, :v0)
               asm.sw(:zero, PLANE_SCROLL_Y, :v0)
               asm.label("rt_plane_put_up_view_kept")
+              asm.sw(:t5, PLANE_TABLE, :v0)
+              emit_plane_shift(asm, :s7, :a0)
+              asm.sw(:s7, PLANE_SHIFT, :v0)
               asm.li(:t0, 8)
               asm.sllv(:s4, :t0, :a3) # the width in pixels
               asm.addiu(:t0, :s4, -1)
@@ -141,8 +164,9 @@ module VBlank
               asm.sll(:t0, :s0, 16)
               asm.addu(:t0, :t0, :s1)
               asm.sw(:t0, word.call(1), :t1)
+              asm.srlv(:t2, :s4, :s7) # the width in halfwords
               asm.li(:t0, PAGE_SIDE << 16)
-              asm.or(:t0, :t0, :s4)
+              asm.or(:t0, :t0, :t2)
               asm.sw(:t0, word.call(2), :t1)
               asm.addiu(:s0, :s0, PAGE_SIDE)
               asm.slt(:t0, :s0, :s5)
@@ -164,10 +188,11 @@ module VBlank
               asm.addiu(:t6, :t6, -1)
               asm.and(:t6, :t6, :s3)
               asm.sll(:t6, :t6, 3)
+              asm.srlv(:t6, :t6, :s7) # the column's left edge, in halfwords
               asm.addu(:t5, :t5, :t6)
               asm.addu(:t5, :t5, :s1)
               asm.sw(:t5, word.call(2), :t1)
-              asm.li(:t0, CELL_SIZE)
+              emit_cell_size(asm, :t0, :s7)
               asm.b("rt_plane_put_up_cell") { asm.sw(:t0, word.call(3), :t1) }
               asm.label("rt_plane_put_up_end")
               asm.lw(:ra, 0, :sp)
@@ -186,11 +211,26 @@ module VBlank
 
             # +register+ = the corner in video RAM of the plane numbered +plane+ (a register), y << 16 | x,
             # from the table rt_plane_places. Changes t0 and t9.
-            def emit_plane_place(asm, register, plane)
-              asm.la(:t0, "rt_plane_places")
+            def emit_plane_place(asm, register, plane) = emit_plane_table_word(asm, register, plane, "rt_plane_places")
+
+            # +register+ = the shift of the plane numbered +plane+ (PLANE_SHIFT), from the table rt_plane_shifts.
+            # Changes t0 and t9.
+            def emit_plane_shift(asm, register, plane) = emit_plane_table_word(asm, register, plane, "rt_plane_shifts")
+
+            def emit_plane_table_word(asm, register, plane, table)
+              asm.la(:t0, table)
               asm.sll(:t9, plane, 2)
               asm.addu(:t0, :t0, :t9)
               asm.lw(register, 0, :t0)
+            end
+
+            # +register+ = the size of a cell as a copy inside video RAM takes it, height << 16 | width in
+            # halfwords, on a plane of the shift in +shift+. Changes t2.
+            def emit_cell_size(asm, register, shift)
+              asm.li(:t2, CELL_TEXELS)
+              asm.srlv(:t2, :t2, shift)
+              asm.lui(register, CELL_TEXELS)
+              asm.or(register, register, :t2)
             end
 
             # rt_plane_cell: a0 = the plane, a1, a2 = the cell's column and row, a3 = where the tile it is to
@@ -203,18 +243,20 @@ module VBlank
               asm.beq(:t0, :zero, "rt_plane_cell_done")
               asm.sltu(:t0, :a2, :t5)
               asm.beq(:t0, :zero, "rt_plane_cell_done")
+              emit_plane_shift(asm, :t8, :a0)
               emit_plane_place(asm, :t6, :a0)
               asm.sll(:t7, :a2, 19)
               asm.addu(:t6, :t6, :t7)
               asm.sll(:t7, :a1, 3)
+              asm.srlv(:t7, :t7, :t8)
               asm.addu(:t6, :t6, :t7)
+              emit_cell_size(asm, :t9, :t8)
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
               DrawList.emit_command(asm, 4) { asm.lui(:a0, COPY_IN_VRAM >> 16) }
               asm.sw(:a3, word.call(1), :t1)
               asm.sw(:t6, word.call(2), :t1)
-              asm.li(:t0, CELL_SIZE)
-              asm.sw(:t0, word.call(3), :t1)
+              asm.sw(:t9, word.call(3), :t1)
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
               asm.label("rt_plane_cell_done")
@@ -258,7 +300,7 @@ module VBlank
             # backdrop is a fill of the page; each plane that is up, the back one first, is a textured
             # rectangle the size of the screen from its page of video RAM; then each sprite the pass
             # placed, as the painted screen draws a picture.
-            def emit_draw(asm, at, places, faces)
+            def emit_draw(asm, at, places, depths, faces)
               h = Console::PS1Hardware
               page = at.call(Paint::PAGE_Y)
               asm.label("rt_tiles_draw")
@@ -285,7 +327,7 @@ module VBlank
                 asm.lw(:t0, state + PLANE_UP, :gp)
                 asm.beq(:t0, :zero, skip)
                 asm.addiu(:a0, :gp, state)
-                asm.li(:a1, plane_draw_mode(places.fetch(plane)))
+                asm.li(:a1, plane_draw_mode(places.fetch(plane), depths.fetch(plane)))
                 asm.jal("rt_plane_draw")
                 asm.jal("rt_draw_list_kick")
                 asm.label(skip)
@@ -308,11 +350,11 @@ module VBlank
               asm.jr(:ra) { asm.addiu(:sp, :sp, 12) }
             end
 
-            # The draw mode naming the texture page at the corner of +place+ (TextureMemory::Plane), at 15 bits.
-            def plane_draw_mode(place)
+            # The draw mode naming the texture page at the corner of +place+ (TextureMemory::Plane), at +depth+ bits.
+            def plane_draw_mode(place, depth)
               h = Console::PS1Hardware
               h::GP0_DRAW_MODE | (place.x / TextureMemory::PAGE_STEP_HALFWORDS) | ((place.y / TextureMemory::PAGE_TEXELS) << 4) |
-                h::TEXTURE_15_BIT | h::DRAW_ON_SHOWN_PICTURE
+                TextureMemory::DEPTH_BITS.fetch(depth) | h::DRAW_ON_SHOWN_PICTURE
             end
 
             PLANE_DRAW_KEPT = %i[s0 s1 s2 s3 s4 s5 s6 s7].freeze
@@ -346,9 +388,13 @@ module VBlank
               asm.move(:s5, :zero)
               asm.label("rt_plane_draw_piece")
               emit_run_to_page_edge(asm, :s7, :s6, h::SCREEN_WIDTH, :s5, "rt_plane_draw_piece_fits")
-              # The page: the corner's, then four 64s of halfwords across for each page across, one down.
+              # The page: the corner's, then for each page across as many 64s of halfwords as 256 texels take
+              # (four at 15 bits, two at 8, one at 4), and one down.
+              asm.lw(:t4, PLANE_SHIFT, :s0)
+              asm.li(:t5, 2)
+              asm.subu(:t5, :t5, :t4)
               asm.srl(:t0, :s6, 8)
-              asm.sll(:t0, :t0, 2)
+              asm.sllv(:t0, :t0, :t5)
               asm.srl(:t1, :s3, 8)
               asm.sll(:t1, :t1, 4)
               asm.addu(:a0, :s1, :t0)
@@ -363,6 +409,8 @@ module VBlank
               asm.sll(:t2, :t2, 8)
               asm.andi(:t3, :s6, PAGE_SIDE - 1)
               asm.or(:t2, :t2, :t3)
+              asm.lw(:t4, PLANE_TABLE, :s0)
+              asm.or(:t2, :t2, :t4)
               asm.sw(:t2, word.call(2), :t1)
               asm.sll(:t0, :s4, 16)
               asm.or(:t0, :t0, :s7)
@@ -398,10 +446,13 @@ module VBlank
               asm.label(fits)
             end
 
-            # rt_plane_places: each plane's corner in video RAM, y << 16 | x, a word each.
-            def emit_plane_tables(asm, places)
+            # rt_plane_places: each plane's corner in video RAM, y << 16 | x, a word each; rt_plane_shifts: each
+            # plane's shift (PLANE_SHIFT), a word each.
+            def emit_plane_tables(asm, places, depths)
               asm.label("rt_plane_places")
               asm.data_words(places.map { |place| (place.y << 16) | place.x })
+              asm.label("rt_plane_shifts")
+              asm.data_words(depths.map { |depth| SHIFT_BY_DEPTH.fetch(depth) })
             end
 
             # The fill command that shows +color+ (a 15-bit colour) where nothing is drawn.

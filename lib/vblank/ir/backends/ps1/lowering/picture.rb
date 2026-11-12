@@ -147,7 +147,50 @@ module VBlank
               end
               @plane_places = texture_memory.reserve_planes(Array.new(count) { |plane| plane_size(plane) }) or
                 refuse_unmade!(TILED_SCREEN, "has backgrounds whose maps together are bigger than the video memory kept for them")
+              make_plane_tables(count)
               make_tile_sheet
+            end
+
+            # HOW DEEP EACH PLANE IS, and each background's colour table (PS1::PlaneColors). A plane is kept at
+            # 4 bits a texel where every background that goes up on it has 15 entries or fewer besides the
+            # see-through one, at 8 where each has 255 or fewer, and at 15, the colours themselves, past that:
+            # the fewer bits, the less the chip reads drawing it. Each background has a table of its own, kept
+            # (TextureMemory#reserve_table) since it may be written as the game runs, and placed now, since the
+            # code that puts the background up names it.
+            def make_plane_tables(count)
+              @plane_colors = {}.compare_by_identity
+              @layers.each_key do |bg|
+                @plane_colors[bg] = PlaneColors.new(bg, image_of: ->(key) { @cache.image(picture_named(key)) },
+                                                        list_named: ->(name) { color_list_named(name) })
+              end
+              @plane_depths = Array.new(count) do |plane|
+                most = @layers.select { |_, number| number == plane }.keys.map { |bg| @plane_colors[bg].entries.length }.max.to_i
+                TextureMemory::TABLE_COLORS.find { |depth, capacity| most < capacity }&.first || 15
+              end
+              @plane_tables = {}.compare_by_identity
+              @layers.each do |bg, plane|
+                depth = @plane_depths.fetch(plane)
+                colors = @plane_colors[bg]
+                if depth == 15
+                  refuse_unmade!(TILED_SCREEN, "draws a background of more than 255 colours with other colours") if colors.changes?
+                  next
+                end
+                entries = [0, *colors.entries.map { |entry| TextureMemory.texel_for_color(entry.colors.first) }]
+                @plane_tables[bg] = texture_memory.reserve_table(capacity: TextureMemory::TABLE_COLORS.fetch(depth), entries: entries)
+              end
+            end
+
+            # How deep each plane is (4, 8 or 15 bits a texel), by its number (Runtime.sections's +plane_depths+).
+            def plane_depths = @plane_depths
+
+            # The word a plane's textured rectangle names +bg+'s colour table by, in its top half; nought for a
+            # plane of colours.
+            def plane_table_word(bg) = (table = @plane_tables[bg]) ? table.field << 16 : 0
+
+            # The list of colours declared by +name+.
+            def color_list_named(name)
+              @color_lists_declared ||= @program.walk.select { |node| node.kind == :color_list }.to_h { |node| [node.name, node] }
+              @color_lists_declared.fetch(name) { raise LoweringError, "the list of colours #{name.inspect} is drawn with and never declared" }
             end
 
             # How big plane +plane+ is, [width, height] in pixels: the biggest grid of the maps that go up on it.
@@ -169,33 +212,40 @@ module VBlank
 
             def plane_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
 
-            # THE SHEET OF TILES: every tile any background can show, as its pixels are drawn (a see-through
-            # one nil, Reference#tile_colors), kept once however many backgrounds and cells show it, in
-            # columns of TILES_PER_COLUMN tiles from the first column past the planes. A tile is only ever
-            # copied, so where it sits needs no texture page; it is held at 15 bits, as a plane is.
+            # THE SHEET OF TILES: every tile any background can show, as its plane holds it (#tile_halfwords),
+            # kept once however many backgrounds and cells show it the same, in columns of TILES_PER_COLUMN
+            # tiles from the first column past the planes. A tile is only ever copied, so where it sits needs
+            # no texture page. Each slot is TILE_SIDE halfwords across whatever the plane's depth, a tile of
+            # places at its left.
             def make_tile_sheet
-              @backgrounds.each do |bg|
+              @layers.each_key do |bg|
                 bg.tiles.each_index { |tile| tile_slot(bg, tile) }
               end
               slots = @tile_slots.values.uniq.length
-              blank = Array.new(TILE_SIDE * TILE_SIDE)
-              @blank_slot = slot_for_colors(blank)
+              @blank_slot = slot_for_halfwords(Array.new(TILE_SIDE * TILE_SIDE, 0))
               columns = ((slots + 1 + TILES_PER_COLUMN - 1) / TILES_PER_COLUMN) * TILE_SIDE
               @sheet_column = texture_memory.reserve_columns(columns)
             end
 
             # The slot in the sheet of +bg+'s tile number +tile+.
-            def tile_slot(bg, tile)
-              key = bg.tiles.fetch(tile)
-              @tile_slots[key] ||= begin
-                image = @cache.image(picture_named(key))
-                slot_for_colors(Array.new(image.width * image.height) { |at| image.tile_see_through_at?(at) ? nil : image.color_at(at) })
-              end
+            def tile_slot(bg, tile) = (@tile_slots[[bg.object_id, tile]] ||= slot_for_halfwords(tile_halfwords(bg, tile)))
+
+            # +bg+'s tile number +tile+ as the plane it goes up on holds it, TILE_SIDE halfwords a row: its colours
+            # at 15 bits (0000h see-through), or its places in the background's table, packed, each row filled
+            # out with nought.
+            def tile_halfwords(bg, tile)
+              entries = @plane_colors[bg].tile_entries(tile)
+              depth = @plane_depths.fetch(plane_of(bg))
+              return entries.map { |entry| TextureMemory.texel_for_color(entry&.colors&.first) } if depth == 15
+
+              place_of = @plane_colors[bg].entries.each_with_index.to_h { |entry, at| [entry, at + 1] }
+              packed = TextureMemory.pack_places(entries.map { |entry| entry ? place_of.fetch(entry) : 0 }, TILE_SIDE, depth)
+              packed.each_slice(packed.length / TILE_SIDE).flat_map { |row| row + Array.new(TILE_SIDE - row.length, 0) }
             end
 
-            def slot_for_colors(colors)
-              @sheet_colors ||= {}
-              @sheet_colors[colors] ||= @sheet_colors.length
+            def slot_for_halfwords(halfwords)
+              @sheet_halfwords ||= {}
+              @sheet_halfwords[halfwords] ||= @sheet_halfwords.length
             end
 
             # Where the tile in sheet slot +slot+ is in video RAM, y << 16 | x.
@@ -225,7 +275,7 @@ module VBlank
             def emit_put_up(bg, which, reset_view:)
               columns, rows = TileMap.grid(bg.every_map.fetch(which))
               runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view),
-                                               Build.int(columns.bit_length - 1), Build.int(rows)])
+                                               Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg))])
               note = @put_up_this_pass&.fetch(plane_of(bg)) if reset_view.nonzero?
               statement(Build.set(note, 1)) if note
             end
@@ -316,14 +366,11 @@ module VBlank
             end
 
             # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by): the number, less the one the picks start
-            # at, is a place in a table of where each picked tile is in video RAM; one past either end, or one
-            # standing for no tile the background has (NO_PICK), changes nothing (Reference#tile_picked).
+            # at, is a place in a table of where each picked tile is in video RAM; one past either end, one whose
+            # entry is nil, or one standing for no tile the background has (NO_PICK), changes nothing
+            # (Reference#tile_picked, Nodes::SetTile).
             def emit_set_picked_tile_of(bg, node, columns, rows)
-              places = node.picks.map do |tile|
-                next tile_place(@blank_slot) if tile.nil?
-
-                tile < bg.tiles.length ? cell_place(bg, tile) : NO_PICK
-              end
+              places = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_place(bg, tile) : NO_PICK }
               return if places.all?(NO_PICK)
 
               table = @pick_tables[places] ||= "tiles picks #{@pick_tables.length}"
@@ -484,9 +531,7 @@ module VBlank
             def colors_of_list(entry)
               return entry unless entry.is_a?(Symbol)
 
-              list = @program.walk.find { |node| node.kind == :color_list && node.name == entry } or
-                raise LoweringError, "the list of colours #{entry.inspect} is drawn with and never declared"
-              list.colors
+              color_list_named(entry).colors
             end
 
             # The table of a sprite's pictures, in the colours +colors+ (nil for their own): how many, then each
@@ -558,10 +603,9 @@ module VBlank
 
             # The sheet's tiles copied into video RAM at power-on, a column of tiles a copy.
             def upload_tile_sheet
-              @sheet_colors.keys.each_slice(TILES_PER_COLUMN).with_index do |column, number|
-                halfwords = column.flat_map { |colors| colors.map { |color| TextureMemory.texel_for_color(color) } }
+              @sheet_halfwords.keys.each_slice(TILES_PER_COLUMN).with_index do |column, number|
                 texture_memory.add_upload(x: @sheet_column + (number * TILE_SIDE), y: 0, width: TILE_SIDE,
-                                          height: column.length * TILE_SIDE, halfwords: halfwords)
+                                          height: column.length * TILE_SIDE, halfwords: column.flatten)
               end
             end
           end

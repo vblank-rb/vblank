@@ -6,7 +6,9 @@ require "stringio"
 # What drawing a whole tiled screen costs a PlayStation pass, read from where Beetle PSX says the time
 # went. The runtime draws every pass whole (Runtime::Tiles): four backgrounds that each fill the screen
 # and scroll, and the most sprites the console's description allows. The graphics chip fills every
-# pixel of each background. The commands go to it in a list by DMA (Runtime::DrawList), each background
+# pixel of each background, reading each from a plane of 4-bit places in a colour table (PlaneColors),
+# a quarter of what it reads from a plane of 15-bit colours: the wait was half a frame with those, and
+# is under a third with these. The commands go to it in a list by DMA (Runtime::DrawList), each background
 # as soon as it is in the list, and the processor waits only for the chip to finish the pass's picture
 # before it is shown (the list's waits), so that wait is where the chip's time shows. The pass must
 # still take one frame.
@@ -41,6 +43,6 @@ class TestPS1TiledScreenCost < Minitest::Test
     wait = result.runtime.select { |spent| spent.routine.to_s.match?(CHIP_WAIT) }.sum(&:share)
 
     assert_equal({ 1 => 20 }, result.passes_by_frames)
-    assert_operator wait, :<, 0.54, "the processor waited on the graphics chip for #{wait.round(4)} of each frame"
+    assert_operator wait, :<, 0.34, "the processor waited on the graphics chip for #{wait.round(4)} of each frame"
   end
 end

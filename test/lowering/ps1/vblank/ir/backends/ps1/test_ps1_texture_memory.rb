@@ -138,9 +138,7 @@ class TestPS1TextureMemory < Minitest::Test
     assert_match(/video memory/, error.message)
   end
 
-  private
-
-  def assert_none_overlap(textures)
+  private def assert_none_overlap(textures)
     cells = {}
     textures.each do |texture|
       texture.height.times do |down|
@@ -155,7 +153,7 @@ class TestPS1TextureMemory < Minitest::Test
 
   # Read back through the draw mode and the corner, as the chip reads them: the page's left edge and top,
   # and u, v inside it, must come back to where the texture is, and its last texel must still be in the page.
-  def assert_inside_its_page(texture)
+  private def assert_inside_its_page(texture)
     mode = texture.draw_mode
     corner = texture.texture_corner
     page_x = (mode & 0xF) * 64
@@ -181,6 +179,44 @@ class TestPS1TextureMemory < Minitest::Test
     assert_equal [[320, 256, 256, 256], [320, 0, 512, 256], [576, 256, 256, 256]], planes.map { |plane| [plane.x, plane.y, plane.width, plane.height] }
     assert_equal 832, sheet
     assert_operator picture.x, :>=, 840
+  end
+
+  # A table kept for something whose colours change as the game runs (a plane, a sprite drawn with a list
+  # the game changes) is its own: placed in a row of its own as it is asked for, so its place is known while
+  # the game's code is still being made, and never shared with a texture of the same colours.
+  def test_a_kept_table_takes_a_row_of_its_own_and_is_never_shared
+    memory = TextureMemory.new
+    kept = memory.reserve_table(capacity: 16, entries: [0, 0x801F, 0x83E0])
+    picture = memory.add_texture(width: 2, height: 1, colors: [31, 992])
+    large = memory.add_texture(width: 20, height: 1, colors: (1..20).to_a)
+    memory.allocate!
+
+    assert_equal [0, 240], [kept.x, kept.y]
+    refute_same kept, picture.table
+    refute_equal 240, large.table.y
+    assert_includes memory.tables, kept
+    upload = memory.uploads.find { |one| one.x.zero? && one.y == 240 }
+    assert_equal [0x801F_0000, 0x0000_83E0], upload.words.first(2)
+  end
+
+  # A texture read through a kept table is given its texels as places in that table, packed as any other.
+  def test_a_texture_read_through_a_kept_table_holds_the_places_it_is_given
+    memory = TextureMemory.new
+    kept = memory.reserve_table(capacity: 16, entries: [0, 0x801F, 0x83E0])
+    texture = memory.add_texture(width: 4, height: 1, places: [0, 1, 2, 1], table: kept)
+    memory.allocate!
+
+    assert_equal 4, texture.depth
+    assert_same kept, texture.table
+    assert_equal [0 | (1 << 4) | (2 << 8) | (1 << 12)], texture.halfwords
+  end
+
+  def test_kept_tables_past_the_rows_for_tables_are_refused_in_plain_words
+    memory = TextureMemory.new
+    32.times { memory.reserve_table(capacity: 256, entries: [0]) }
+
+    error = assert_raises(TextureMemory::Full) { memory.reserve_table(capacity: 16, entries: [0]) }
+    assert_match(/colou?rs/, error.message)
   end
 
   def test_planes_that_do_not_fit_beside_the_screen_are_answered_with_nothing

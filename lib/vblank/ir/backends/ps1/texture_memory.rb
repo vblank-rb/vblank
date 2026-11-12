@@ -54,8 +54,9 @@ module VBlank
           class Full < LoweringError; end
 
           # A colour table: its entries (each a colour as the chip reads it, 0000h the see-through one), how
-          # many it may hold, and once placed, where it is.
-          Table = Struct.new(:entries, :capacity, :x, :y) do
+          # many it may hold, and once placed, where it is. A KEPT table (#reserve_table) is one thing's own:
+          # its entries are written again as the game runs, so no texture shares it by its colours.
+          Table = Struct.new(:entries, :capacity, :x, :y, :kept) do
             # The chip's name for where it is, as a textured command takes it: x / 16, and y from bit 6.
             def field = (x / TABLE_STEP_HALFWORDS) | (y << 6)
 
@@ -103,14 +104,10 @@ module VBlank
             def halfwords
               return texels if depth == 15
 
-              texels_a_halfword = TEXELS_A_HALFWORD.fetch(depth)
-              bits_a_texel = 16 / texels_a_halfword
+              # A texture read through a kept table holds the places themselves (TextureMemory#add_texture).
               index_by_texel = table.entries.each_with_index.to_h
-              texels.each_slice(width).flat_map do |row|
-                row.each_slice(texels_a_halfword).map do |group|
-                  group.each_with_index.sum { |texel, i| index_by_texel.fetch(texel) << (bits_a_texel * i) }
-                end
-              end
+              places = table.kept ? texels : texels.map { |texel| index_by_texel.fetch(texel) }
+              TextureMemory.pack_places(places, width, depth)
             end
           end
 
@@ -142,13 +139,40 @@ module VBlank
           # A colour as a texel holds it: 0000h for nil (see-through), any other with its top bit set.
           def self.texel_for_color(color) = color.nil? ? 0 : (color & 0x7FFF) | Console::PS1Hardware::TEXEL_DRAWN
 
+          # +places+ (each a place in a colour table) row by row, +width+ to a row, as video RAM holds them at
+          # +depth+ bits: the leftmost in the low bits, and a row's last halfword filled out with nought.
+          def self.pack_places(places, width, depth)
+            texels_a_halfword = TEXELS_A_HALFWORD.fetch(depth)
+            bits_a_texel = 16 / texels_a_halfword
+            places.each_slice(width).flat_map do |row|
+              row.each_slice(texels_a_halfword).map do |group|
+                group.each_with_index.sum { |place, i| place << (bits_a_texel * i) }
+              end
+            end
+          end
+
           attr_reader :textures, :tables
 
           def initialize
             @textures = []
             @tables = []
+            @kept_rows = 0
             @first_column = FIRST_TEXTURE_COLUMN
             @extra_uploads = []
+          end
+
+          # A KEPT TABLE of +capacity+ entries (16 or 256), starting as +entries+ (each a colour as the chip
+          # reads it; the rest nought): one thing's own, which the game writes again as it runs, so it is placed
+          # at once, at the left of the next row for tables, and the code that names it can be made before
+          # the textures are placed. Each takes a whole row, however few its entries.
+          def reserve_table(capacity:, entries:)
+            raise ArgumentError, "a colour table holds 16 or 256 colours, not #{capacity}" unless TABLE_COLORS.value?(capacity)
+            raise Full, kept_tables_full_message if @kept_rows >= TABLE_LINES.length
+
+            Table.new(entries: entries.dup, capacity: capacity, x: 0, y: TABLE_LINES.fetch(@kept_rows), kept: true).tap do |table|
+              @kept_rows += 1
+              tables << table
+            end
           end
 
           # PLANES: pictures of 15-bit colour each one or more whole texture pages, kept right of the screen's
@@ -204,17 +228,29 @@ module VBlank
           # ALIGNED (+align:+ true), it is placed where its page's u and v are multiples of its width and
           # height, which must be powers of two: then the chip's texture window (GP0 E2h) can repeat it
           # across a shape larger than itself, as a face of a place repeats its picture like wallpaper.
-          def add_texture(width:, height:, colors:, align: false)
-            unless width.between?(1, PAGE_TEXELS) && height.between?(1, PAGE_TEXELS) && colors.length == width * height
+          #
+          # READ THROUGH A KEPT TABLE (+table:+, from #reserve_table), it is given +places+ in that table instead
+          # of colours, one a texel (0 the see-through one), and takes the table's depth.
+          def add_texture(width:, height:, colors: nil, align: false, places: nil, table: nil)
+            given = places || colors
+            unless width.between?(1, PAGE_TEXELS) && height.between?(1, PAGE_TEXELS) && given.length == width * height
               raise ArgumentError, "a texture is 1 to #{PAGE_TEXELS} texels each way, a colour for each; not #{width} × #{height} " \
-                                   "with #{colors.length}"
+                                   "with #{given.length}"
             end
             if align && ![width, height].all? { |side| (side & (side - 1)).zero? }
               raise ArgumentError, "an aligned texture's sides are powers of two; not #{width} × #{height}"
             end
 
-            Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) },
-                        aligned: align).tap { |texture| @textures << texture }
+            texture = if table
+                        raise ArgumentError, "a texture read through a kept table is given places" unless places && table.kept
+
+                        Texture.new(width: width, height: height, texels: places, aligned: align, table: table,
+                                    depth: TABLE_COLORS.key(table.capacity))
+                      else
+                        Texture.new(width: width, height: height, texels: colors.map { |color| TextureMemory.texel_for_color(color) },
+                                    aligned: align)
+                      end
+            texture.tap { @textures << texture }
           end
 
           # Every texture given its depth, its colour table and its place, and every table its place. Called
@@ -249,7 +285,7 @@ module VBlank
           # colours fit in theirs. When the rows for tables are full, a texture that needs a new one keeps
           # its colours themselves, at 15 bits: more room, but no table.
           def share_tables
-            textures.sort_by { |texture| -texture.colors.length }.each do |texture|
+            textures.reject(&:table).sort_by { |texture| -texture.colors.length }.each do |texture|
               colors = texture.colors
               capacity = TABLE_COLORS.values.find { |most| colors.length <= most }
               texture.table = capacity && find_or_add_table(colors, capacity)
@@ -260,7 +296,7 @@ module VBlank
           # The first table of +capacity+ entries with room for +colors+, or a new one, given them; nil when
           # a new one is needed and the rows for tables have no room left for it.
           def find_or_add_table(colors, capacity)
-            table = tables.find { |one| one.capacity == capacity && (one.entries | colors).length <= capacity }
+            table = tables.find { |one| !one.kept && one.capacity == capacity && (one.entries | colors).length <= capacity }
             unless table
               return nil unless room_for_table?(capacity)
 
@@ -273,26 +309,30 @@ module VBlank
           # Whether one more table of +capacity+ fits in the rows for tables, beside those already made: a
           # row holds one table of 256 and TABLE_ROW_HALFWORDS left for tables of 16 (#place_tables).
           def room_for_table?(capacity)
-            large = tables.count { |table| table.capacity == TABLE_COLORS.fetch(8) }
-            small = tables.length - large
+            shared = tables.reject(&:kept)
+            large = shared.count { |table| table.capacity == TABLE_COLORS.fetch(8) }
+            small = shared.length - large
             large += 1 if capacity == TABLE_COLORS.fetch(8)
             small += 1 if capacity == TABLE_COLORS.fetch(4)
-            large <= TABLE_LINES.length && small <= small_table_slots(large).length
+            @kept_rows + large <= TABLE_LINES.length && small <= small_table_slots(large).length
           end
+
+          # The rows for tables the kept tables leave.
+          def shared_table_lines = TABLE_LINES.drop(@kept_rows)
 
           # Where the tables of 16 can go, [column, line] each, once +large+ tables of 256 have a row each.
           def small_table_slots(large)
-            TABLE_LINES.each_with_index.flat_map do |line, row|
+            shared_table_lines.each_with_index.flat_map do |line, row|
               first = row < large ? TABLE_COLORS.fetch(8) : 0
               (first...TABLE_ROW_HALFWORDS).step(TABLE_STEP_HALFWORDS).map { |column| [column, line] }
             end
           end
 
           # The tables of 256 one to a row from the left; then the tables of 16 in the room left in every row.
-          # #find_or_add_table made no more than these rows hold.
+          # #find_or_add_table made no more than these rows hold. The kept tables have their rows already.
           def place_tables
-            large, small = tables.partition { |table| table.capacity == TABLE_COLORS.fetch(8) }
-            large.zip(TABLE_LINES) { |table, line| table.x, table.y = 0, line }
+            large, small = tables.reject(&:kept).partition { |table| table.capacity == TABLE_COLORS.fetch(8) }
+            large.zip(shared_table_lines) { |table, line| table.x, table.y = 0, line }
             small.zip(small_table_slots(large.length)) { |table, (column, line)| table.x, table.y = column, line }
           end
 
@@ -327,6 +367,11 @@ module VBlank
               return Shelf.new(top_line: top, height: texture.height, free_column: @first_column).tap { |shelf| shelves << shelf }
             end
             nil
+          end
+
+          def kept_tables_full_message
+            "This game changes the colours of more backgrounds and lists of colours than the PlayStation has room " \
+              "for. It has room for #{TABLE_LINES.length}. To fix this, use fewer backgrounds or fewer lists of colours."
           end
 
           def full_message

@@ -33,11 +33,14 @@ module VBlank
           # Registers the picture known by +key+, made from what the block gives the first time, and
           # returns its label: the block gives a colour for each [x, y] the picture draws, counted from
           # its corner (a place left of or above the corner too, for a letter that reaches there).
-          def register_picture(key)
+          #
+          # Read through a kept colour table (+table:+, TextureMemory#reserve_table), the block gives a place in
+          # that table for each [x, y] instead of a colour.
+          def register_picture(key, table: nil)
             @pictures.fetch(key) do
               drawn = yield
               label = "paint picture #{@pictures.length}"
-              @pictures[key] = Picture.new(label: label, pieces: cut(drawn))
+              @pictures[key] = Picture.new(label: label, pieces: cut(drawn, table))
             end.label
           end
 
@@ -45,7 +48,7 @@ module VBlank
 
           # +drawn+ cut into pieces of at most PIECE_WIDTH_TEXELS × PIECE_HEIGHT_LINES, from the box round
           # what it draws; a piece that draws nothing is left out.
-          def cut(drawn)
+          def cut(drawn, table)
             return [] if drawn.empty?
 
             first_x, last_x = drawn.keys.map(&:first).minmax
@@ -57,8 +60,12 @@ module VBlank
                 colors = Array.new(across * down) { |at| drawn[[left + (at % across), top + (at / across)]] }
                 next if colors.none?
 
-                Piece.new(dx: left, dy: top, width: across, height: down,
-                          texture: @texture_memory.add_texture(width: across, height: down, colors: colors))
+                texture = if table
+                            @texture_memory.add_texture(width: across, height: down, places: colors.map { |place| place || 0 }, table: table)
+                          else
+                            @texture_memory.add_texture(width: across, height: down, colors: colors)
+                          end
+                Piece.new(dx: left, dy: top, width: across, height: down, texture: texture)
               end
             end
           end

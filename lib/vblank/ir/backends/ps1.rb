@@ -25,6 +25,7 @@ require_relative "ps1/runtime"
 require_relative "ps1/spu_tables" # the sound chip's numbers and loops a computer's build made as the PlayStation plays
 require_relative "ps1/texture_memory"
 require_relative "ps1/painted_art"
+require_relative "ps1/plane_colors" # the colour table each background is drawn through
 require_relative "ps1/lowering/paint"
 require_relative "ps1/lowering/picture"
 require_relative "ps1/lowering/collision"
@@ -116,7 +117,8 @@ module VBlank
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
-                                             planes: lowering.plane_places, collides: lowering.collides?)
+                                             planes: lowering.plane_places, plane_depths: lowering.plane_depths,
+                                             collides: lowering.collides?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
