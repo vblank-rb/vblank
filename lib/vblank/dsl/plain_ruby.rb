@@ -376,10 +376,12 @@ module VBlank
           outer_block_tests = @block_tests
           outer_statements = @open_statements
           outer_initialize = @in_initialize
+          outer_method = @in_method
           @block_tests = node.is_a?(Prism::DefNode) ? [] : @block_tests + outer
           @open_tests = []
           @open_statements = []
           @in_initialize = node.is_a?(Prism::DefNode) && node.name == :initialize && node.receiver.nil?
+          @in_method ||= node.is_a?(Prism::DefNode)
           @tail_ternaries[node.body.body.last] = true if method_body?(node)
           copied_text(node)
         ensure
@@ -387,6 +389,7 @@ module VBlank
           @block_tests = outer_block_tests
           @open_statements = outer_statements
           @in_initialize = outer_initialize
+          @in_method = outer_method
         end
 
         def method_body?(node) = node.is_a?(Prism::DefNode) && node.body.is_a?(Prism::StatementsNode)
@@ -421,10 +424,12 @@ module VBlank
           return bits_text(node) if Steps::BIT_JOINS.include?(node.name) && node.receiver && node.arguments
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
           return game_variables_text(node) if game_variables_call?(node)
+          return "#{INSTANCE_VARIABLES}.followed_struct(#{copied_text(node)})" if struct_made?(node)
           if @follows_instance_variables && @whole_statements.key?(node)
             return attribute_methods_text(node) if attribute_call?(node)
             return visible_attribute_methods_text(node) if visibility_of_attribute_call?(node)
           end
+          return listed_attribute_methods_text(node) if listed_attribute_call?(node)
 
           copied_text(node)
         end
@@ -434,7 +439,21 @@ module VBlank
           @follows_instance_variables && node.name == :game_variables && node.receiver.nil? && node.block.nil?
         end
 
+        # `Struct.new(:count)`, whose named fields InstanceVariables follows as it follows named
+        # instance variables.
+        def struct_made?(node)
+          return false unless @follows_instance_variables && node.name == :new
+
+          receiver = node.receiver
+          (receiver.is_a?(Prism::ConstantReadNode) && receiver.name == :Struct) ||
+            (receiver.is_a?(Prism::ConstantPathNode) && receiver.parent.nil? && receiver.name == :Struct)
+        end
+
+        # In a method, `def self.setup` above all, it would run on whatever the method runs on, and
+        # name nothing a game reads, so it is refused there.
         def game_variables_text(node)
+          return "#{INSTANCE_VARIABLES}.refuse_named_in_method!" if @in_method
+
           names = node.arguments ? rewritten_text(node.arguments) : ""
           "#{INSTANCE_VARIABLES}.name_game_variables(self, [#{names}])"
         end
@@ -468,6 +487,18 @@ module VBlank
           given = "__plain_ruby_written"
           write = write_call(instance_variable_place_text(place), given, place, options: ", moves: true, owner: self")
           "def #{name}=(#{given}); #{place} = #{write}; end"
+        end
+
+        # `attr_accessor(*LEVELS)`, or any call whose names are not written out as symbols, which no
+        # source can be written for: InstanceVariables.attribute_methods makes the same methods as
+        # the class's body runs, and answers their names, as Ruby's call does.
+        def listed_attribute_call?(node)
+          @follows_instance_variables && ATTRIBUTE_METHODS_MADE.key?(node.name) && node.receiver.nil? &&
+            node.block.nil? && node.arguments && !attribute_call?(node)
+        end
+
+        def listed_attribute_methods_text(node)
+          "#{INSTANCE_VARIABLES}.attribute_methods(self, :#{node.name}, [#{rewritten_text(node.arguments)}])"
         end
 
         # `private attr_reader :busy`.

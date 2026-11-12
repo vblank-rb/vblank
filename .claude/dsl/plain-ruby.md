@@ -51,17 +51,39 @@ A part of a game is a plain class (`Splitting a game into files`), and it keeps 
 instance variables.
 
 - **`game_variables :busy, :seed` names the instance variables that are the game's.** Write it in the
-  class's body, under `class`, once. Game code that reads or changes `@busy` then reads and changes a
-  game variable. It starts at power-on from the number `@busy` holds as Ruby (`@busy = 0` in
-  `initialize`), and `if @busy == 1` above the line that changes it asks the number the pass before
-  left. A sum works the same: `(@seed << 5) + @seed` in a routine reads the game's seed.
+  class's body, under `class`. A second line, or the class reopened, names more. In a method
+  (`def self.setup` too) it is refused, and in a file loaded with `require_relative` it stops the
+  build naming `VBlank.require_game_file`.
+- **A named instance variable is a game variable from its first number on**, as if `var` had made
+  it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
+  that is the game's, wherever it is: in another routine, in a block another part calls later,
+  through `attr_reader`, or in a part it was handed to as that part was made (`Ball.new(selection:
+  menu.selection)` hands the variable). `if @busy == 1` above the line that changes it asks the
+  number the pass before left, and `(@seed << 5) + @seed` reads the game's seed.
+- **A part made inside a scene or a routine starts once.** A line of its `initialize` gives the
+  start, as `var` does: `screen = FadedScreen.new(...)` in `scene :copyright do`, with `@phase =
+  WAITING` in `initialize`, starts the phase at WAITING and does not set it back on every pass. A
+  first number given anywhere else in game code, a method `initialize` calls included, is set there
+  on every pass, as Ruby would.
+- Setting-up code that works with a named one works with the game variable, so `@busy.times` while
+  setting up is refused as any game number is: keep a number only the build uses unnamed.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as
   `tilt_busy`, and a second Tilt's as `tilt_busy_2`.
 - A subclass has its parent's names and can name more; a module the class includes can name its own.
-  `attr_reader`, `attr_writer` and `attr_accessor` reach the same variable, so another part can test
-  `tilt.busy` and write `tilt.busy = 1` in its game code.
+  `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
+  (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
+  `tilt.busy = 1` in its game code.
 - **The game block names its own the same way**: `game_variables :score` in the block, then `@score =
   0` above the game loop and `@score += 1` in it. Its variable is `score`.
+- **A named Hash or Array of numbers is a game variable for each key**: `game_variables
+  :tilt_counters`, `@tilt_counters = SIDES.to_h { |side| [side, 0] }` in `initialize`, then
+  `@tilt_counters[side] += 1` and `if @tilt_counters[side] > 2` in game code, inside `SIDES.each do
+  |side|`. A profile reads `tilt_tilt_counters_left` for a `Tilt`. The key must be known while
+  building; a key the game works out (`@counts[which]`, `which` a game number) is refused: keep
+  those numbers in a game's own list (`lists.md`).
+- **A Struct's fields are named the same way**, in the block of `Struct.new` (`Box = Struct.new(:count,
+  :step) { game_variables :count }`) or in the body of a class made from one. Then `box.count += 1` in
+  game code changes a game variable, `box_count` in a profile. A field nobody names is plain Ruby.
 - **Any other instance variable is plain Ruby.** One that game code changes and also reads back is
   refused at the line that changes it, since the game would never see the change: name it. One changed
   only while setting up (a counter that makes names, a count a setting-up method works out and game
@@ -150,7 +172,9 @@ Each is a friendly error naming the line.
 | a misspelt key of a Hash of game variables | one of the keys it has |
 | an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
-| `game_variables` in two lines of one class, or in a method | one `game_variables` line in the class's body |
+| `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
+| `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
+| a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |

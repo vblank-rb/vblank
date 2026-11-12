@@ -5,6 +5,7 @@ require "test_helper"
 VBlank.require_game_file "../../../fixtures/game_with_two_parts/first"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 VBlank.require_game_file "../../../plain_ruby_loop_parts"
+VBlank.require_game_file "../../../plain_ruby_named_parts"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -112,6 +113,136 @@ class TestPlainRubyParts < Minitest::Test
 
   def test_a_number_set_in_initialize_while_game_code_records_and_read_in_another_routine_is_not_refused
     assert_equal 6, played(ScrollPart, :scroll_part_make, :scroll_part_tick)[:scroll_part_shown]
+  end
+
+  # A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER ON (test/plain_ruby_named_parts.rb), each
+  # held to its twin written with `var`.
+
+  def test_a_named_value_read_in_a_block_another_part_calls_and_set_back_elsewhere_plays_as_a_var
+    named = played(StartingTitlePart, :starting_title_tick, frames: 8)[:starting_title_ended]
+
+    assert_equal played(StartingTitleWithVarPart, :var_starting_title_tick, frames: 8)[:var_starting_title_ended], named
+    assert_equal 2, named
+  end
+
+  private def cursor_menu(prefix, cursor)
+    builder = Builder.new
+    CursorMenuPart.new(builder, prefix, cursor.call(builder))
+    builder.game_loop { builder.call(:"#{prefix}_tick") }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 3)
+    [player[:"#{prefix}_ball_seen"], player[:"#{prefix}_others"]]
+  end
+
+  def test_a_named_value_read_through_attr_reader_and_handed_to_another_part_plays_as_a_var
+    named = cursor_menu(:named_cursor, ->(_builder) { NamedCursor.new })
+
+    assert_equal cursor_menu(:var_cursor, ->(builder) { VarCursor.new(builder) }), named
+    assert_equal [2, 1], named
+  end
+
+  def test_named_values_changed_in_a_method_setting_up_also_calls_play_as_vars
+    named = played(BlinkPart, :blink_tick)[:blink_shown]
+
+    assert_equal played(BlinkWithVarPart, :var_blink_tick)[:var_blink_shown], named
+    assert_equal 2, named
+  end
+
+  def test_a_named_phase_changed_only_by_a_helper_is_read_as_the_game_plays
+    named = (1..6).map do |frames|
+      player = played(PhasedFadePart, :phased_fade_tick, frames: frames)
+      [player[:phased_fade_frames], player[:phased_fade_fading]]
+    end
+    with_var = (1..6).map do |frames|
+      player = played(PhasedFadeWithVarPart, :var_phased_fade_tick, frames: frames)
+      [player[:var_phased_fade_frames], player[:var_phased_fade_fading]]
+    end
+
+    assert_equal with_var, named
+    assert_equal [4, 4], with_var.last
+  end
+
+  # Frames and passes of fading after six passes of a screen made inside a routine.
+  private def screen_in_play(screen_class, prefix, made_in_play:)
+    builder = Builder.new
+    ScreenInPlayPart.new(builder, screen_class, prefix, made_in_play: made_in_play)
+    builder.game_loop { builder.call(:"#{prefix}_tick") }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 6)
+    [player[:"#{prefix}_frames"], player[:"#{prefix}_fading"]]
+  end
+
+  def test_a_named_phase_set_in_initialize_of_a_screen_made_in_a_routine_starts_it_once
+    [HelperScreen, EndlessHelperScreen, WriterScreen, DirectedScreen].each do |screen_class|
+      prefix = screen_class.name.gsub(/([a-z])([A-Z])/, '\1_\2').downcase
+
+      assert_equal [4, 4], screen_in_play(screen_class, :"set_up_#{prefix}", made_in_play: false), "#{screen_class} set up"
+      assert_equal [4, 4], screen_in_play(screen_class, prefix, made_in_play: true), "#{screen_class} made in play"
+    end
+  end
+
+  def test_a_named_hash_of_numbers_plays_as_a_var_for_each_key
+    named = played(TiltCountersPart, :tilt_counters_tick, frames: 4)
+    with_var = played(TiltCountersWithVarPart, :var_tilt_counters_tick, frames: 4)
+
+    counts = [named[:tilt_counters_part_tilt_counters_left], named[:tilt_counters_part_tilt_counters_right],
+              named[:tilt_counters_over]]
+
+    assert_equal %i[var_tilt_counters_left var_tilt_counters_right var_tilt_counters_over].map { |name| with_var[name] }, counts
+    assert_equal [4, 3, 3], counts
+  end
+
+  def test_a_named_array_of_numbers_at_an_index_the_game_works_out_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByNumberPart, :counts_by_number_tick) }
+
+    assert_match(/worked out as the game plays/, error.message)
+  end
+
+  def test_a_named_struct_field_changed_under_a_test_plays_as_a_var
+    named = (1..4).map { |frames| played(BoxCountPart, :box_count_tick, frames: frames)[:box_count_seen] }
+    with_var = (1..4).map { |frames| played(BoxCountWithVarPart, :box_var_count_tick, frames: frames)[:box_var_count_seen] }
+
+    assert_equal with_var, named
+    assert_equal [2, 4, 6, 6], named
+  end
+
+  # Moving from the second pass on, so two of three passes see it moving.
+  def test_a_struct_subclass_naming_its_field_keeps_a_game_state
+    assert_equal 2, played(ModeBoxPart, :mode_box_tick)[:mode_box_turns]
+  end
+
+  def test_attributes_made_from_a_list_of_names_reach_the_named_instance_variable
+    assert_equal 3, played(ListedGaugePart, :listed_gauge_tick)[:listed_gauge_seen]
+  end
+
+  def test_a_class_reopened_to_name_more_follows_every_name
+    assert_equal 9, played(ReopenedCounter, :reopened_counter_tick)[:reopened_counter_seen]
+  end
+
+  def test_game_variables_in_a_method_of_a_module_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { NamedInMethod.name_them }
+
+    assert_match(/`game_variables`.*body/, error.message)
+  end
+
+  # BUILD-TIME RUBY STAYS RUBY'S. Planned: 2 loads that do not fit, 12 by each, 6 by to_h, 6 by
+  # times, 15 + 3 filled in, 2 by a lambda, 2 in a Struct, 6 of its own, 15 in the buffer; written
+  # to the list on every pass.
+  def test_build_time_ruby_in_a_part_made_inside_a_routine_stays_ruby
+    builder = Builder.new
+    PlanInPlayPart.new(builder, :plan_in_play)
+    builder.game_loop { builder.call(:plan_in_play_tick) }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 2)
+
+    assert_equal [2, 12, 6, 6, 18, 2, 2, 6, 15], player.list(:plan_in_play_answers)
+  end
+
+  def test_a_buffer_a_plan_fills_from_a_routine_stays_ruby
+    assert_equal 15, played(BufferedPlanPart, :buffered_plan_tick)[:buffered_plan_total]
   end
 
   def test_a_named_instance_variable_read_while_it_holds_nil_is_refused

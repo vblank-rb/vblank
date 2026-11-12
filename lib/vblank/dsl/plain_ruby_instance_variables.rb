@@ -55,18 +55,65 @@ module VBlank
           :"@#{name.to_s.delete_prefix('@')}"
         end
 
-        # A class keeps its names in a constant, which every Ractor that builds a game can read. The
-        # same line run again (a file loaded twice) changes nothing.
+        # A class keeps its names in a constant, which every Ractor that builds a game can read. A
+        # second line, in the body or in the class reopened, adds its names, as a second
+        # `attr_reader` does; the same line run again (a file loaded twice) changes nothing.
         def name_in_module(owner, labels)
-          labels = labels.uniq
           if owner.const_defined?(NAMES_CONSTANT, false)
-            return if owner.const_get(NAMES_CONSTANT, false) == labels
+            named = owner.const_get(NAMES_CONSTANT, false)
+            labels = named | labels
+            return if labels == named
 
-            raise Refused, "#{owner.name || 'This class'} names its game variables in two lines. To fix this, name " \
-                           "all of them in one `game_variables` line.#{Messages::AuthorSource.at_author_line}"
+            owner.class_eval { remove_const(NAMES_CONSTANT) }
           end
 
-          owner.const_set(NAMES_CONSTANT, Ractor.make_shareable(labels))
+          owner.const_set(NAMES_CONSTANT, Ractor.make_shareable(labels.uniq))
+        end
+
+        # `game_variables` in a method, `def self.setup` above all: there it would run on whatever the
+        # method runs on, naming nothing a game reads.
+        def refuse_named_in_method!
+          raise Refused, "`game_variables` names the instance variables of a class's objects, so it goes in the " \
+                         "class's body. Here it is in a method. To fix this, move it to the line after `class`." \
+                         "#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # `game_variables` reached as a real method: its file came in with `require` or
+        # `require_relative`, which no rewrite reads, so its class's instance variables would never
+        # be followed (Module#game_variables, below).
+        def refuse_unread_file!(at)
+          name = File.basename(at.path, ".rb")
+          raise Refused, "`game_variables` is in `#{File.basename(at.path)}`, which came in with `require` or " \
+                         "`require_relative`, so VBlank did not read it as game code. To fix this, load it with " \
+                         "`VBlank.require_game_file \"#{name}\"`. (at #{File.basename(at.path)}:#{at.lineno})"
+        end
+
+        # `attr_accessor(*LEVELS)` in a class of a game file: each reader and writer made to read and
+        # write as a line of game code does, as Rewriter#attribute_method_text writes them out for
+        # names written as symbols. Written as source, since a method made from a block cannot be
+        # called from another Ractor. The answer is the methods' names, as Ruby's own call gives.
+        def attribute_methods(owner, kind, names)
+          names.flat_map do |name|
+            raise NameError, "invalid attribute name `#{name}'" unless name.to_s.match?(/\A[a-z_][a-zA-Z0-9_]*\z/)
+
+            ivar = "@#{name}"
+            made = []
+            if %i[attr_reader attr_accessor].include?(kind)
+              owner.class_eval("def #{name} = ::VBlank::DSL::PlainRuby::InstanceVariables.read_value(self, #{ivar}, " \
+                               ":#{ivar}) { |given| #{ivar} = given }", __FILE__, __LINE__ - 1)
+              made << name.to_sym
+            end
+            if %i[attr_writer attr_accessor].include?(kind)
+              owner.class_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+                def #{name}=(written)
+                  current = ::VBlank::DSL::PlainRuby::InstanceVariables.value_before_write(self, #{ivar}, :#{ivar}) { |given| #{ivar} = given }
+                  #{ivar} = ::VBlank::DSL::PlainRuby::Writes.write(current, written, [], :#{ivar}, moves: true, owner: self) { |value| value }
+                end
+              RUBY
+              made << :"#{name}="
+            end
+            made
+          end
         end
 
         def refuse_named_outside_class!(owner)
@@ -167,8 +214,159 @@ module VBlank
         def game_variable_of(owner, current, label)
           return current if Steps.variable?(current) || current.is_a?(Condition)
           return make_variable(owner, label, current) if STARTS.any? { |kind| current.is_a?(kind) }
+          return game_variables_in(owner, label, current) if numbers_collection?(current)
 
           refuse_named_object!(label, current)
+        end
+
+        # A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER. The line that first gives a named
+        # instance variable (or a named field) a number, while setting up or anywhere else, makes its
+        # game variable, starting at power-on from that number as `var` would. From then on it holds
+        # the variable, so every read is the game's, wherever it is recorded: in another routine, in a
+        # block another part calls later, through `attr_reader`, or in a part it was handed to as that
+        # part was made. A Hash or an Array of numbers makes a variable for each key.
+        #
+        # Nil where this is not such a line: no builder, a name not on the class's list, a place
+        # that holds something already, or a value no game variable starts from. Nothing unnamed
+        # comes here.
+        def first_variable(owner, current, value, label)
+          builder = Builder.in_use
+          return unless current.nil? && builder && !owner.is_a?(Module)
+          return unless builder.instance_variable_uses.named?(owner, label)
+          return game_variables_in(owner, label, value) if numbers_collection?(value)
+          return unless STARTS.any? { |kind| value.is_a?(kind) }
+
+          make_variable(owner, label, value)
+        end
+
+        # Does a first number given in game code also set the variable where the line runs? Not
+        # where `initialize` gives it (+starting+): that part is made once, as its routine is recorded
+        # (`screen = FadedScreen.new(...)` in `scene :copyright do`), and its number is the start.
+        # Anywhere else in game code the line runs on every pass, as Ruby's would.
+        def first_number_set_where_reached?(starting) = Builder.in_use.recording_game_code? && !starting
+
+        # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
+        # made of game variables here.
+        def numbers_collection?(held)
+          values = held.is_a?(Hash) ? held.values : held
+          return false unless (held.is_a?(Hash) || held.is_a?(Array)) && !values.empty?
+
+          values.all? { |value| Steps.variable?(value) || STARTS.any? { |kind| value.is_a?(kind) } }
+        end
+
+        # A NAMED HASH OR ARRAY OF NUMBERS is a game variable for each key, each starting from the
+        # number Ruby holds there and named after the key (`tilt_counters_left`). The game reads and
+        # changes one at a key known while building (`@tilt_counters[side] += 1`, with `side` a
+        # symbol of a Ruby loop). A key the game works out has no slot to name, so the copy refuses
+        # one (KeyedVariables); it is frozen, so a key it does not have is refused as a misspelling.
+        def game_variables_in(owner, label, held)
+          return held if held.is_a?(KeyedVariables)
+
+          base = variable_name(owner, label)
+          if held.is_a?(Hash)
+            KeyedHash[held.map { |key, value| [key, element_variable(base, key, value)] }].freeze
+          else
+            KeyedArray.new(held.each_with_index.map { |value, index| element_variable(base, index, value) }).freeze
+          end
+        end
+
+        def element_variable(base, key, start)
+          return start if Steps.variable?(start)
+
+          builder = Builder.in_use
+          suffix = key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key.to_s : "key"
+          variable = builder.var(builder.free_variable_name(:"#{base}_#{suffix}"), start)
+          variable.note_made_with_no_var_line
+          Writes.keep_as_own(variable)
+        end
+
+        # What a named Hash or Array of numbers becomes: its slots are game variables, taken at keys
+        # Ruby holds while building.
+        module KeyedVariables
+          def [](*keys)
+            if keys.any?(Value)
+              Steps.refuse_game_code!("This Hash or Array holds game variables, and this line takes one at a key " \
+                                      "that is worked out as the game plays. Ruby finds a slot while it builds the " \
+                                      "game, so it cannot find this one. To fix this, use a key known while " \
+                                      "building, like a symbol from a Ruby loop (`SIDES.each do |side|`), or keep " \
+                                      "the numbers in a game's own list.")
+            end
+
+            super
+          end
+        end
+
+        class KeyedHash < Hash
+          include KeyedVariables
+        end
+
+        class KeyedArray < Array
+          include KeyedVariables
+        end
+
+        # `Struct.new(:count, :step)` in game code: the class it makes, its readers and writers
+        # written again to come through #read_field and #write_field, which follow a field the class
+        # names (`game_variables :count` in the block of `Struct.new`, or in a class made from one)
+        # as a named instance variable is, and leave every other field to Ruby. A field is kept as
+        # `:@count`, the label its instance variable would have, so one list of names serves. Written
+        # as source, since a method made from a block cannot be called from another Ractor.
+        def followed_struct(made)
+          return made unless made.is_a?(Class) && made < Struct
+
+          accessors = Module.new
+          # Struct's own `initialize` sets the fields without their writers, so the named ones are
+          # made game variables after it, as a named instance variable is at its first number.
+          accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+            def initialize(...)
+              super
+              ::VBlank::DSL::PlainRuby::InstanceVariables.start_named_fields(self)
+            end
+          RUBY
+          made.members.each do |field|
+            accessors.module_eval(<<~RUBY, __FILE__, __LINE__ + 1)
+              def #{field} = ::VBlank::DSL::PlainRuby::InstanceVariables.read_field(self, :#{field})
+              def #{field}=(given)
+                ::VBlank::DSL::PlainRuby::InstanceVariables.write_field(self, :#{field}, given)
+              end
+            RUBY
+          end
+          made.prepend(accessors)
+          made
+        end
+
+        # Is +field+ of +holder+, a Struct, one its class names?
+        def named_field?(holder, field)
+          holder.is_a?(Struct) && names_in_module(holder.class).include?(:"@#{field}")
+        end
+
+        def read_field(holder, field)
+          return holder[field] unless named_field?(holder, field)
+
+          read_value(holder, holder[field], :"@#{field}") { |variable| holder[field] = variable }
+        end
+
+        def write_field(holder, field, given)
+          return holder[field] = given unless named_field?(holder, field)
+
+          label = :"@#{field}"
+          current = field_before_write(holder, field)
+          holder[field] = Writes.write(current, given, [], label, moves: true, owner: holder) { |value| value }
+        end
+
+        # What Writes.attribute finds in a named field about to be written: as #value_before_write.
+        def field_before_write(holder, field)
+          value_before_write(holder, holder[field], :"@#{field}") { |variable| holder[field] = variable }
+        end
+
+        # Each named field of +holder+, just made, given its game variable (#first_variable).
+        def start_named_fields(holder)
+          holder.members.each do |field|
+            next unless named_field?(holder, field)
+
+            current = holder[field]
+            made = first_variable(holder, nil, current, :"@#{field}")
+            holder[field] = made if made
+          end
         end
 
         def make_variable(owner, label, start)
@@ -300,4 +498,11 @@ module VBlank
       end
     end
   end
+end
+
+# `game_variables` in a class body is rewritten into a call to InstanceVariables in every file VBlank
+# reads as game code, so the method itself is only ever reached from a file that came in some other
+# way. Without it that file stops with a NoMethodError naming no fix; this names the fix instead.
+class Module
+  private def game_variables(*) = VBlank::DSL::PlainRuby::InstanceVariables.refuse_unread_file!(caller_locations(1, 1).first)
 end

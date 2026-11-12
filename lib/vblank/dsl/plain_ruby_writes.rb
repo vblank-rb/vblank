@@ -38,7 +38,15 @@ module VBlank
         # is a write in its `initialize`.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
                   before_plain_start: 0, owner: nil, starting: false)
-          current = InstanceVariables.write_target(owner, current, value, label, starting: starting) if owner
+          if owner
+            first = InstanceVariables.first_variable(owner, current, value, label)
+            # A Hash or Array of game variables is a start wherever it is given: no line sets it whole.
+            if first && (!Steps.variable?(first) || !InstanceVariables.first_number_set_where_reached?(starting))
+              return first
+            end
+
+            current = first || InstanceVariables.write_target(owner, current, value, label, starting: starting)
+          end
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
           return yield(own_copy(label, value)) if copies && Steps.variable?(value) && !own_variable?(current)
@@ -123,6 +131,9 @@ module VBlank
         # What an attribute holds. The library's own objects keep what they keep behind their setters,
         # so unless the attribute is a game variable the setter is left to do its work.
         def attribute(receiver, name)
+          # A named field of a Struct made in game code, read without counting as a read the game makes.
+          return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.named_field?(receiver, name)
+
           current = receiver.public_send(name) if receiver.respond_to?(name)
           Steps.variable?(current) || !receiver.class.name.to_s.start_with?("VBlank::") ? current : nil
         end
@@ -147,7 +158,11 @@ module VBlank
         # #promote for an attribute of an object of the game's own.
         def promote_attribute(receiver, name, test, *outer)
           current = attribute(receiver, name)
-          receiver.public_send(:"#{name}=", promote_place(current, test, *outer)) unless current.nil? || Steps.variable?(current)
+          return if current.nil? || Steps.variable?(current)
+
+          # A named field of a Struct is followed as an instance variable is.
+          field = InstanceVariables.named_field?(receiver, name) ? { owner: receiver, label: :"@#{name}" } : {}
+          receiver.public_send(:"#{name}=", promote_place(current, test, *outer, **field))
         end
 
         # Put +value+ in a game variable. A yes or no is kept as 1 or 0, and a test's answer is
