@@ -153,10 +153,9 @@ module FrameRecordUnpackingTests
       sha1 = Digest::SHA1.hexdigest(copy)
       release = VBlank::Original::Release.from("Test", { "sha1" => sha1, "size" => copy.bytesize })
       unpacking = left_out.declared_data_pack.unpacking(release: release)
-      # Its tiles are 10 KB, a frame of the unpacking each 256 bytes. No shell holds an unpacking to
-      # a cartridge's memory, so it is played unchecked, as PackParityTests plays one.
-      player = game_player.hand_file(copy)
-      played = VBlank::Testing::BuildChecks.without_checks { player.run(unpacking.program, frames: 80) }
+      # Its tiles are 10 KB, more than the Color's work memory, a frame of the unpacking each 256
+      # bytes. An unpacking is held to no cartridge's memory (Testing::BuildChecks).
+      played = game_player.hand_file(copy).run(unpacking.program, frames: 80)
       unpacked = unpacking.pack_file_in(played, sha1: sha1, build_version: "1")
 
       assert unpacking.finished_in?(played), "the unpacking got to its end"

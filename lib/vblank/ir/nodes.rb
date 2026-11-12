@@ -1400,6 +1400,13 @@ module VBlank
       # (Cartridge::Players), or nil where it gave nothing. +for_computer+ is true for a build that
       # plays on a computer, whose controllers are not the console's (#described_build).
       #
+      # +for_unpacking+ is true for a port's unpacking routine (Builder::DataPacks#unpacking_program):
+      # a program that fills a data pack from the player's copy of the original and only ever runs
+      # on a computer, in a shell or as a build makes its pack. It is not the same as +for_computer+:
+      # a game built for a computer is still checked against its console's limits, since the same
+      # game is that console's cartridge too, while no build checks an unpacking against them
+      # (Testing::BuildChecks reads this). Absent for every game; no backend reads it to run one.
+      #
       # +border+ is the picture the game gave for the border round its screen, two bytes a pixel as
       # a picture keeps them, and +border_size+ its [width, height] (Builder::Images#border). Both
       # are nil where the game gave none, or where the console shows the game's screen whole and no
@@ -1425,7 +1432,7 @@ module VBlank
         operands console: :name, variant: :name, sprite_piece_sizes: :list, kept_widths: :list,
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
-                 for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
+                 for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
                  start_file: :start_file, mix_rate: :int
 
         # +start_file+ is the file the program is handed as it starts, which some of its tables and

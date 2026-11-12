@@ -110,14 +110,12 @@ module PackParityTests
   # the Color's work memory unpacks for a player: the unpacking runs only on a computer, never in a
   # cartridge's memory.
   #
-  # A checked run's player holds each program it plays to the build's guardrails for the run's
-  # console (Testing::BuildChecks), which is right for a game and wrong for an unpacking: no build
-  # checks one. So it plays without them here.
+  # A checked run's player holds each game it plays to the build's guardrails for the run's
+  # console, and plays an unpacking without them, as a shell does (Testing::BuildChecks).
   private def unpacked_pack_file(game, data_pack)
     copy = data_pack.original.copy
     unpacking = data_pack.unpacking(release: data_pack.original.releases.with_sha1(copy.sha1))
-    player = game_player.hand_file(File.binread(copy.path))
-    played = VBlank::Testing::BuildChecks.without_checks { player.run(unpacking.program, frames: UNPACKING_FRAMES) }
+    played = game_player.hand_file(File.binread(copy.path)).run(unpacking.program, frames: UNPACKING_FRAMES)
     assert unpacking.finished_in?(played), "#{game.name}: its pack's unpacking did not finish in #{UNPACKING_FRAMES} frames"
     assert_nil unpacking.fault_in(played), "#{game.name}: its pack's unpacking went wrong"
     unpacking.pack_file_in(played, sha1: copy.sha1, build_version: data_pack.build_version)

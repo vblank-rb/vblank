@@ -96,6 +96,22 @@ module CopyReaderTests
     end
   end
 
+  # A PACK BIGGER THAN A CARTRIDGE'S WORK MEMORY UNPACKS on each run that plays this file, as every
+  # console, the Color's 8 KB among them. An unpacking runs only on a computer, in a shell, so no
+  # build holds it to the console's memory, and a run's player does not either (Testing::BuildChecks).
+  def test_a_pack_bigger_than_a_cartridges_work_memory_unpacks
+    raw = (0...(10 * 1024)).map { |at| (at * 7) & 0xFF }.pack("C*")
+    Dir.mktmpdir do |folder|
+      unpacking = VBlank::Builder.new.data_pack(from: copy_of(folder, raw), version: "1") do |slots|
+        slots.numbers :big, at: 0, count: raw.bytesize, width: :byte, signed: false
+      end.unpacking
+      played = unpacking.run_on(game_player, frames: 80)
+
+      assert unpacking.finished_in?(played), "the unpacking got to its end"
+      assert_equal raw, unpacking.slot_bytes_in(played)[:big]
+    end
+  end
+
   # A routine can read the copy and write a slot a byte at a time, for a layout no building block
   # knows: here the speeds, read as halves high byte first, kept as their low bytes reversed.
   def test_a_routine_reads_and_writes_bytes_itself

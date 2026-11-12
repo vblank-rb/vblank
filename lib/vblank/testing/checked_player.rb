@@ -25,7 +25,13 @@ module VBlank
     # The interpreter's own run does not ask: it is the answer key for a game a console plays, and a
     # game its console refuses is not one, so there is nothing to compare.
     #
-    # One program is played without them: the conformance fixture, which holds every kind of step
+    # A PORT'S UNPACKING IS NOT CHECKED either (IR::Nodes::Program#for_unpacking). It runs only on a
+    # computer, in a shell or as a build makes its pack, and no build checks it against the console's
+    # limits: a shell builds it for the game's console, so its screen and clock are that console's,
+    # but its pack can be bigger than a cartridge's work memory. Every shell plays it unchecked
+    # (Original::Shell.build checks only the game), so a test plays it as a shell does.
+    #
+    # One more program is played without them: the conformance fixture, which holds every kind of step
     # the IR has in one program so that each lowering is seen to write every one. No build accepts
     # it (a light beside a painted screen, a fade held to a box beside a light), and it is no game,
     # so its test plays it inside ::without_checks.
@@ -33,7 +39,7 @@ module VBlank
       LEFT_OUT = :vblank_build_checks_left_out
 
       def self.refuse_unbuildable!(program)
-        return if Thread.current[LEFT_OUT] || program.kind != :program
+        return if Thread.current[LEFT_OUT] || program.kind != :program || program.for_unpacking
 
         IR::Guardrails::Validator.new.run(program, autofix: false).raise_on_error!
       end
