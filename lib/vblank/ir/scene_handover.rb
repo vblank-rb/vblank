@@ -112,6 +112,7 @@ module VBlank
         @backdrop_follows_list = program.walk.any? { |node| node.kind == :color_list && node.backdrop_place }
         @modes = Modes.resolve(program)
         @paced = program.walk.any? { |node| node.kind == :wait_vblank }
+        @covered_bars = program.walk.filter_map { |node| node.name if node.kind == :place_bar && node.covers }.uniq
         @arrivals = {}
       end
 
@@ -235,6 +236,23 @@ module VBlank
         layered = always_up.scenery.select(&stacked) + arrival(scene).scenery.select(&stacked)
         drawn = showing(scene).select { |bg| layered.any? { |up| up.equal?(bg) } }
         drawn.map(&:object_id) != layered.map(&:object_id)
+      end
+
+      # The value a console's one setting for whether the bar shown covers sprites takes as +bar+
+      # goes up, or nil where the setting needs no write.
+      #
+      # Whether a bar covers sprites is the bar's own: the interpreter keeps it by the bar's name
+      # (Reference#exec_place_bar), and the game keeps it in the variable its `covers_sprites =`
+      # sets for that bar (Nodes::Background.bar_covers_var). A console's runtime keeps one setting,
+      # for the one bar it shows, so in a game with bars of more than one name, one of them set to
+      # cover, a bar going up sets it: from that variable, or to 0 for a bar no `covers_sprites =`
+      # names, which covers none. A game with one bar, or with none set to cover, writes nothing
+      # here and builds as it did: the setting is always that one bar's.
+      def bar_covers_on_put_up(bar)
+        return unless @covered_bars.any? && @scenery.select(&:bar?).map(&:name).uniq.length > 1
+        return Build.int(0) unless @covered_bars.include?(bar.name)
+
+        Build.var_ref(Nodes::Background.bar_covers_var(bar.name))
       end
 
       # Whether +background+ goes up as its scene takes over, rather than where it is written.

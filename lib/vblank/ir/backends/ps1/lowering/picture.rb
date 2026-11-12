@@ -402,14 +402,12 @@ module VBlank
             end
 
             # A STATUS BAR PUT UP shows from the top it was declared with, and the runtime's one top and one setting
-            # for covering sprites become this bar's. The interpreter keeps whether a bar covers sprites by its name
-            # (Reference#exec_place_bar), and so does the game, in the variable its `covers_sprites =` sets
-            # (Nodes::Background.bar_covers_var): a bar the game never tells covers none. The top the game keeps
-            # is placed at the end of every pass the bar is up (Builder#finalize_status_bars).
+            # for covering sprites become this bar's (IR::SceneHandover#bar_covers_on_put_up). The top the game
+            # keeps is placed at the end of every pass the bar is up (Builder#finalize_status_bars).
             def emit_bar_put_up(bg)
               runtime_call("rt_bar_place", [Build.int(bg.bar_top)])
-              told = @program.walk.any? { |node| node.kind == :place_bar && node.name == bg.name && node.covers }
-              runtime_call("rt_bar_covers", [told ? Build.var_ref(Nodes::Background.bar_covers_var(bg.name)) : Build.int(0)])
+              covers = @handover.bar_covers_on_put_up(bg)
+              runtime_call("rt_bar_covers", [covers]) if covers
             end
 
             # The label of the table of +bg+'s map number +which+, made with the art (#picture_sections).

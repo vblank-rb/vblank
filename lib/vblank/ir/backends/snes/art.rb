@@ -317,8 +317,8 @@ module VBlank
             colors = drawn.map { |at| image.color_at(at) }.uniq
             if colors.length > BAR_OWN_COLORS
               raise BarArtTooColorful, "The status bar :#{bar} shows the tile :#{tile} in #{colors.length} colours. " \
-                                       "On a Super Nintendo, a status bar beside two backgrounds uses tiles of four " \
-                                       "colours. A tile shows #{BAR_OWN_COLORS} colours and see-through. To fix this, " \
+                                       "On a Super Nintendo, a status bar beside two backgrounds or beside a sprite " \
+                                       "behind a background uses tiles of four colours. A tile shows #{BAR_OWN_COLORS} colours and see-through. To fix this, " \
                                        "draw the tile :#{tile} in #{BAR_OWN_COLORS} colours or fewer."
             end
 
@@ -626,7 +626,8 @@ module VBlank
 
             if @bar_palettes.length >= BAR_PALETTES
               raise BarArtTooColorful, "The tiles of the status bar :#{bar} use more colours than its layer holds. On a " \
-                                       "Super Nintendo, a status bar beside two backgrounds uses tiles of four colours. " \
+                                       "Super Nintendo, a status bar beside two backgrounds or beside a sprite behind " \
+                                       "a background uses tiles of four colours. " \
                                        "The layer holds #{BAR_PALETTES} lists of #{BAR_OWN_COLORS} colours, and each " \
                                        "tile uses one list. To fix this, use fewer colours in the bar's tiles."
             end

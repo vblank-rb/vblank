@@ -85,11 +85,7 @@ module VBlank
             Stacking.screenfuls(program).each do |screenful|
               next unless screenful.scenery.any?(&:bar?)
 
-              scenery = screenful.scenery.reject(&:bar?)
-              next if scenery.empty?
-
-              frontmost = scenery.map { |node| screenful.depths[node.name] }.max
-              sprite = screenful.objects.find { |node| Stacking.levels_of(screenful.depths, node).min < frontmost }
+              sprite = Stacking.object_behind_scenery(screenful.depths, scenery: screenful.scenery, objects: screenful.objects)
               return sprite if sprite
             end
             nil

@@ -73,6 +73,16 @@ class TestStatusBarHandle < Minitest::Test
     refute_equal WHITE, picture(prog, 6).pixel(42, screen_height - BAR_HEIGHT - 2)
   end
 
+  # Whether a bar covers sprites is its own: a scene's bar set to cover leaves the next scene's bar, never
+  # set, showing the sprite over it (Reference#exec_place_bar keeps it by the bar's name).
+  def test_a_bar_covering_sprites_leaves_the_next_scenes_bar_uncovered
+    prog = two_scene_bars_game
+
+    assert_equal GREEN, picture(prog, 3).pixel(44, screen_height - 8), "the first scene's bar covers the sprite"
+    assert_equal WHITE, picture(prog, 8).pixel(44, screen_height - 8), "the second scene's bar does not"
+    assert_backends_agree(prog, frames: [3, 8], name: "BARSCENE")
+  end
+
   def test_covers_sprites_takes_true_or_false
     error = assert_raises(ArgumentError) { bar_game_under_a_sprite { |bar, _step| bar.covers_sprites = :yes } }
 

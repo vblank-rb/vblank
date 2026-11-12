@@ -13,8 +13,8 @@ module VBlank
           # layers of sixteen-colour tiles, the one declared last in front (BG1), as the interpreter
           # paints the one declared last over the rest. Each map it can show is made into a grid of
           # 32 or 64 cells each way (IR::TileMap), kept whole in the cartridge and copied onto its
-          # layer when it is put up. A status bar shown beside two backgrounds goes on the third
-          # layer, of four-colour tiles (#make_third_layer_art). Each sprite is made of the console's 8×8 sprite pieces, placed
+          # layer when it is put up. A status bar shown beside two backgrounds, or beside a sprite
+          # behind a background, goes on the third layer, of four-colour tiles (#make_third_layer_art). Each sprite is made of the console's 8×8 sprite pieces, placed
           # in the sprite table every pass the game places its sprites.
           module Picture
             STATEMENT_KINDS = %i[
@@ -57,11 +57,20 @@ module VBlank
             # numbers and icons is the picture that fits four colours. A game whose screens show the
             # bar beside one background at most keeps it on one of the two, as before, and builds the
             # same bytes.
+            #
+            # Or some screen shows it beside a sprite the stack puts behind a background. The
+            # interpreter draws no background under the bar, so there the sprite shows over the bar
+            # while the background hides it above the bar's top. A sprite's priority puts it behind a
+            # layer on every row, the bar's too; but the third layer, kept low, is behind every
+            # sprite whatever its priority, and the bar's rows show no other layer
+            # (Runtime::Picture's line table), so there the two agree.
             def self.status_bar_on_third_layer?(program)
               return false if Lowering::Paint.painted?(program)
 
               Stacking.screenfuls(program).any? do |screenful|
-                screenful.scenery.length > BACKGROUND_LAYERS && screenful.scenery.any?(&:bar?)
+                screenful.scenery.any?(&:bar?) &&
+                  (screenful.scenery.length > BACKGROUND_LAYERS ||
+                   Stacking.scenery_over_objects?(screenful.depths, scenery: screenful.scenery, objects: screenful.objects))
               end
             end
 
@@ -1038,8 +1047,13 @@ module VBlank
 
             def emit_put_up(bg)
               runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
-              # A status bar put up shows from the top it was declared with (Reference#bar_top_shown).
-              runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)]) if bg.bar?
+              # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
+              # covers sprites as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up).
+              if bg.bar?
+                runtime_call("rt_bar_place", [Build.int(layer_of(bg)), Build.int(bg.bar_top)])
+                covers = @handover.bar_covers_on_put_up(bg)
+                runtime_call("rt_bar_covers", [covers]) if covers
+              end
               runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row)]) if bg.above_row
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
@@ -1110,8 +1124,12 @@ module VBlank
               refuse_unmade_see_through!
             end
 
-            # The layer Runtime::Picture keeps a status bar on beside two backgrounds (BG3).
+            # The layer Runtime::Picture keeps a status bar on beside two backgrounds, or beside a sprite
+            # behind a background (BG3).
             THIRD_LAYER = 2
+
+            # A bar on the third layer, as a refusal names it (the answers say when a bar is there).
+            THIRD_LAYER_BAR_WORDS = "a status bar on the third layer"
 
             # +scenery+ less a status bar that is on the third layer.
             def layered_scenery(scenery) = @third_layer ? scenery.reject(&:bar?) : scenery
@@ -1136,12 +1154,12 @@ module VBlank
 
             # What a bar on the third layer cannot be yet.
             def refuse_unmade_third_layer_bar!(bar)
-              refuse_unmade!("a status bar beside two backgrounds drawn with other colours (`draw_with`)") unless Array(bar.recolors).empty?
-              refuse_unmade!("a status bar beside two backgrounds drawn from 16×16 tiles") unless bar.tile_w == 8
-              refuse_unmade!("a status bar beside two backgrounds bent row by row") if bends.any? { |bend| bend.name == bar.name }
+              refuse_unmade!("#{THIRD_LAYER_BAR_WORDS} drawn with other colours (`draw_with`)") unless Array(bar.recolors).empty?
+              refuse_unmade!("#{THIRD_LAYER_BAR_WORDS} drawn from 16×16 tiles") unless bar.tile_w == 8
+              refuse_unmade!("#{THIRD_LAYER_BAR_WORDS} bent row by row") if bends.any? { |bend| bend.name == bar.name }
               return if @tile_runs.none? { |run| bar.tiles.intersect?(Array(run.tiles)) }
 
-              refuse_unmade!("a status bar beside two backgrounds showing tiles painted from a list")
+              refuse_unmade!("#{THIRD_LAYER_BAR_WORDS} showing tiles painted from a list")
             end
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }

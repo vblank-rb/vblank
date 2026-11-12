@@ -159,7 +159,8 @@ module VBlank
                           "`held: true` changes nothing: a Super Nintendo writes its video memory only between " \
                           "frames, so the cells a pass changes with `set_tile` already show together."),
         status_bar: works("beside one background, the bar is one of the two background layers. Beside two " \
-                          "backgrounds, the bar is on the third layer, which has tiles of four colours. Then each " \
+                          "backgrounds, or beside a sprite behind a background, the bar is on the third layer. " \
+                          "That layer has tiles of four colours. Then each " \
                           "tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists " \
                           "of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. " \
                           "On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles " \

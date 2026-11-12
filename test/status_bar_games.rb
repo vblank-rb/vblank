@@ -154,8 +154,8 @@ module StatusBarGames
 end
 
 # A sprite the stack puts behind the field, beside a bar, played by each console that draws the bar
-# behind every sprite whatever the stack says (the Color puts such a sprite behind its bar too, and
-# refuses the game: Checks::StatusBarCannotShare).
+# behind every sprite whatever the stack says: the Advance, the Super Nintendo and the PlayStation (the
+# Color puts such a sprite behind its bar too, and refuses the game: Checks::StatusBarCannotShare).
 module SpriteBehindFieldOverBarTests
   include StatusBarGames
 
@@ -167,6 +167,16 @@ module SpriteBehindFieldOverBarTests
     assert_equal RED, shown.pixel(44, screen_height - 20), "the field covers the sprite above the bar"
     assert_equal WHITE, shown.pixel(44, screen_height - 12), "the sprite shows over the bar"
     assert_equal GREEN, shown.pixel(8, screen_height - 12)
+  end
+
+  # A bar set to cover sprites hides one stacked behind the field too.
+  def test_a_bar_covering_sprites_hides_a_sprite_behind_the_field
+    prog = sprite_behind_field_game do |bar, step|
+      bar.covers_sprites = true if step == 3
+    end
+
+    assert_equal WHITE, picture(prog, 2).pixel(44, screen_height - 12), "over the bar before it covers"
+    assert_equal GREEN, picture(prog, 6).pixel(44, screen_height - 12), "hidden once it covers"
   end
 end
 

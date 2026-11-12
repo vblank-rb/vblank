@@ -17,7 +17,8 @@ module VBlank
           #   $5000-$5FFF  BG2's map
           #   $6000-$7FFF  the sprites' tiles, 512 of them
           #
-          # THE THIRD LAYER holds a status bar shown beside two other backgrounds (+third_layer+,
+          # THE THIRD LAYER holds a status bar shown beside two other backgrounds, or beside a sprite
+          # behind a background (+third_layer+,
           # Lowering::Picture.status_bar_on_third_layer?), and is left off in every other game. Its map
           # is the last 1K words of the backgrounds' tiles, $3C00-$3FFF, a bar's 32×32 cells, so
           # such a game has 960 tiles of sixteen colours. Its tiles are read from $0000 too, 8 words

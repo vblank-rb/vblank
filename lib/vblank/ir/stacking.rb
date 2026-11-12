@@ -321,14 +321,16 @@ module VBlank
       # a picture cannot fall into by accident, and it is where "it named no layer, so
       # leave it where it was" stops having an answer: once the levels are no longer
       # simply scenery-then-objects, a thing with no layer has no place among them.
-      def scenery_over_objects?(depths, scenery:, objects:)
-        return false if scenery.empty? || objects.empty?
+      def scenery_over_objects?(depths, scenery:, objects:) = !object_behind_scenery(depths, scenery: scenery, objects: objects).nil?
 
+      # The first of +objects+ the stack can put behind one of +scenery+, at its own level or in
+      # any other layer it can be put in, or nil for none.
+      def object_behind_scenery(depths, scenery:, objects:)
         # A status bar takes no depth (see #depths), so it puts nothing in front of anything.
         frontmost = scenery.reject(&:bar?).map { |node| depths.of_scenery(node) }.max
-        return false if frontmost.nil?
+        return if frontmost.nil?
 
-        objects.any? { |node| levels_of(depths, node).min < frontmost }
+        objects.find { |node| levels_of(depths, node).min < frontmost }
       end
     end
   end

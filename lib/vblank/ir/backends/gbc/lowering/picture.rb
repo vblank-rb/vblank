@@ -1134,10 +1134,14 @@ module VBlank
             end
 
             # A STATUS BAR goes up into the console's window (Runtime::Picture#emit_bar), at the row
-            # it was declared with until it is placed (Reference#bar_top_shown).
+            # it was declared with until it is placed (Reference#bar_top_shown), and covering sprites
+            # as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up). The setting is kept
+            # only where a reachable `covers_sprites =` sets it (#bar_covers_sprites?).
             def bar_put_up(bar)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
               runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              covers = @handover.bar_covers_on_put_up(bar)
+              emit_store_bar_covers(covers) if covers && bar_covers_sprites?
               note_put_up(@bar_up_this_pass)
             end
 
@@ -1145,11 +1149,14 @@ module VBlank
             def emit_place_bar(node)
               return unless declared_background!(node).bar? # one that is not a status bar has no top to place
 
-              if node.covers
-                emit_low_byte_in_a(node.covers)
-                @asm.load([@memory[Runtime::Picture::BAR_COVERS]], :a)
-              end
+              emit_store_bar_covers(node.covers) if node.covers
               emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_place_bar", [node.top]) }
+            end
+
+            # The runtime's one setting for whether the bar shown covers sprites, set to +covers+.
+            def emit_store_bar_covers(covers)
+              emit_low_byte_in_a(covers)
+              @asm.load([@memory[Runtime::Picture::BAR_COVERS]], :a)
             end
 
             def emit_scroll_background(node)
