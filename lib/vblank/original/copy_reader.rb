@@ -15,7 +15,8 @@ module VBlank
     #   copy.file("MAPHEAD.WL6").word(2)          # one file of a copy that is several (FileReader)
     #
     # THE PACKED FORMATS the copy offers are those of the platform its original is for
-    # (Packing.formats_for: an Advance original's are LZ77 and RLE, a Genesis original's Nemesis and
+    # (Packing.formats_for: an Advance original's are LZ77, RLE and the songs of its common sound
+    # driver, MusicPlayer2000 (Packing::M4A), a Genesis original's Nemesis and
     # Enigma), and any the port names in
     # `data_pack formats: [...]` (a Packing::Format). Each gives the copy `unpack_<name>`; asking for
     # one the copy does not offer is refused in plain words, naming the ones it does.

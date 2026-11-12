@@ -165,7 +165,22 @@ from that copy. The game's code says each piece's shape and size; it never depen
     of the platform its original is for, and any the port names in `data_pack ..., formats: [MyFormat]`;
     asking for another is refused, naming the ones it offers. An Advance original's are
     `copy.unpack_lz77` and `copy.unpack_rle`, the BIOS's LZ77 and RLE (4-byte header: the scheme in the
-    first byte's top half, 1 or 3, then the unpacked size; `BiosCompress` is the answer key). A Genesis
+    first byte's top half, 1 or 3, then the unpacked size; `BiosCompress` is the answer key), and **the
+    songs of MusicPlayer2000**, the sound driver most Advance games keep their music in (`m4a`,
+    `Original::Packing::M4A`, whose comment says every command and what is not kept):
+    `copy.unpack_m4a_track at: SONG, into: pack[:title_0], track: 0` writes a track's notes as pack notes
+    (`kind: 4` keeps only its notes on the noise voice, `0` on recordings, `1` to `3` the squares and the
+    wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
+    the song's length in frames and the frame it comes round to (65535 for a song that ends), two numbers
+    of two bytes; `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
+    `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to, its length and its
+    envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
+    fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes. A
+    recorded part's instrument numbers are the voices' numbers in the song's voice group, or the keys of
+    a drum kit. Its Score plays a tick a frame: `Score.new(parts:, tempo: 3600, ticks_per_beat: 1,
+    length: pack[:timing].number(0), loop_from: pack[:timing].number(1), longest: 2000)`. Worked
+    example: the `MusicPlayer2000Songs` kit in `test/pack_games.rb`; the answer key is
+    `test/m4a_answers.rb`, written from the driver's source. A Genesis
     original's are `copy.unpack_nemesis` (tiles, 32 bytes each in the Genesis's layout; the block's first
     word says XOR mode and the tile count) and `copy.unpack_enigma ..., base: 0` (a plane map, each cell a
     word high byte first with `base:` added, ending at its own end mark; NOT the usual reading: a spelt
@@ -225,7 +240,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
   `self.routine(block)`: game code, written into the unpacking once. `block` is the `Packing::BlockKit`
   every format is written with, the library's too: `block.from`, `block.setting(:base)`,
   `block.byte(at)`, `block.variable(:name)`, `block.list(:name, capacity:, width:)`, `block.repeat`,
-  `block.expect_size(n)`, `block.write(value)`, `block.written_byte(back)`, `block.finished`,
+  `block.expect_size(n)`, `block.write(value)`, `block.written_byte(back)`, `block.written` and
+  `block.rewrite(at, value)` (a byte the block wrote, written again once what it holds is known: a
+  length, a count), `block.finished`,
   `block.finish!` and `block.emit_wrong_format_fault`. Each write is checked against the slot and
   counted toward the progress bar. Put the module in a file the game loads with
   `VBlank.require_game_file`, so an `if` in it is a branch of the routine. Worked example: `PairRuns`

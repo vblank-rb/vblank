@@ -21,4 +21,20 @@ class TestPackingGBAOnInterpreter < Minitest::Test
     assert_match "LZ77", refused.message
     assert_match RLE_AT.to_s, refused.message
   end
+
+  # A voice of the console's own has no recording to read.
+  def test_a_recording_read_from_a_voice_that_plays_none_is_refused_at_build_time
+    square = M4AAnswers::GROUP_AT + 12
+    refused = Dir.mktmpdir do |folder|
+      assert_raises(VBlank::Original::WrongCopy) do
+        Builder.new.data_pack(from: copy_of(folder, M4AAnswers::COPY), version: "1") do |slots|
+          slots.samples :wave, count: 40
+          slots.fill_from_copy { |copy, pack| copy.unpack_m4a_recording at: square, into: pack[:wave] }
+        end
+      end
+    end
+
+    assert_match "MusicPlayer2000 recording", refused.message
+    assert_match square.to_s, refused.message
+  end
 end

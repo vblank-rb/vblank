@@ -18,6 +18,7 @@ require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
 require "pack_place_games"
+require "m4a_answers"
 
 # EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
@@ -1281,6 +1282,65 @@ module PackGames
     ].freeze
   end
 
+  # A SONG OF THE ADVANCE'S COMMON SOUND DRIVER (Packing::M4A), read from the made-up copy of
+  # M4AAnswers by the pack's unpacking: its first track on the recording its voice names, every
+  # setting of that from the voice, its second track's notes on the first square, its third's on
+  # the noise voice, and the song's length and loop, played a tick a frame.
+  class MusicPlayer2000Songs < Kit
+    NOTES = 16
+
+    private def m4a_original(folder)
+      path = File.join(folder, "made_up_m4a.bin")
+      File.binwrite(path, M4AAnswers::COPY)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(M4AAnswers::COPY), "size" => M4AAnswers::COPY_SIZE } })
+    end
+
+    GAMES = [
+      game(:music_player_2000_song_read_by_the_unpacking, passes: 120, presses: { 1 => [:a] }) do |folder, options|
+        from = m4a_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound mix_rate: 13_379
+          song = M4AAnswers::SONG_AT
+          piano = M4AAnswers::GROUP_AT
+          pack = data_pack(from: from, version: "1") do |slots|
+            slots.notes :melody, count: NOTES
+            slots.notes :square, count: NOTES
+            slots.notes :noise, count: NOTES
+            slots.numbers :timing, count: 2, width: :half, signed: false
+            slots.samples :piano, count: 40
+            slots.numbers :piano_voice, count: 4, width: :word, signed: false
+            slots.fill_from_copy do |copy, unpacked|
+              copy.unpack_m4a_track at: song, into: unpacked[:melody], track: 0
+              copy.unpack_m4a_track at: song, into: unpacked[:square], track: 1, kind: 1
+              copy.unpack_m4a_track at: song, into: unpacked[:noise], track: 2, kind: 4
+              copy.unpack_m4a_length at: song, into: unpacked[:timing]
+              copy.unpack_m4a_recording at: piano, into: unpacked[:piano]
+              copy.unpack_m4a_voice at: piano, into: unpacked[:piano_voice]
+            end
+          end
+          voice = pack[:piano_voice]
+          instrument :piano, pcm: pack[:piano], note: :C4, rate: voice.number(0), holds_from: voice.number(1), length: voice.number(2),
+                             envelope: voice.as_numbers(at: 12, count: 4, width: :byte, signed: false).envelope(0)
+          parts = [VBlank::Audio::Score::Part.new(plays: :piano, notes: pack[:melody].notes(instruments: %i[piano])),
+                   VBlank::Audio::Score::Part.new(notes: pack[:square].notes),
+                   VBlank::Audio::Score::Part.new(plays: :noise, notes: pack[:noise].notes)]
+          music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end
+    ].freeze
+  end
+
   # ONE SLOT READ IN SEVERAL SHAPES THROUGH VIEWS (PackSlotViewGames): a stretch of video memory
   # kept as one slot of sixteen-colour tiles, and parts of it read as tiles of a byte a pixel, a
   # map of bytes, a picture of pixels and tables of numbers.
@@ -1432,7 +1492,7 @@ module PackGames
   end
 
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places].freeze
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

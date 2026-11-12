@@ -20,6 +20,8 @@ module VBlank
       #   block.expect_size(size)         # the block unpacks to +size+ bytes: checked against the slot
       #   block.write(value)              # the next byte of the slot, the low 8 bits of +value+
       #   block.written_byte(back)        # a byte written +back+ bytes before the next one
+      #   block.written                   # how many bytes the block has written so far
+      #   block.rewrite(at, value)        # byte +at+ of those, 0 first, written again
       #   block.room                      # bytes the slot has left
       #   block.finished                  # true once the size is written, the block ends, or a write failed
       #   block.finish!                   # the block ends here (a format with an end mark)
@@ -80,6 +82,22 @@ module VBlank
         end
 
         def written_byte(back) = @internals.pack[@internals.routine_variable(:out) - back]
+
+        # How many bytes this block has written so far: where the next is, from the block's first.
+        def written = @internals.routine_variable(:out) - @internals.routine_variable(:to)
+
+        # Byte +at+ of this block (0 its first) written again as the low 8 bits of +value+, for a
+        # format that knows a field only once the bytes after it are written: a note's length, a
+        # count. One that is no byte the block has written is not made: it is the fault the build
+        # stops on, and it finishes the block. It moves nothing on and counts nothing.
+        def rewrite(at, value)
+          if at >= 0 && at < written
+            @internals.pack[@internals.routine_variable(:to) + at] = value
+          else
+            @internals.emit_outside_slot_fault
+            finish!
+          end
+        end
 
         # How many bytes the slot has left from the next one written: a bound for the loop of a
         # format whose size is known only at its end mark.

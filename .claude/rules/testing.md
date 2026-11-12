@@ -127,6 +127,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `pack_scores_at_start_tests.rb` (songs and sound effects whose parts read their notes from a data pack slot with the pack left out, held to the same song written by hand, played by the interpreter and the game as C, JavaScript and Ruby),
 `copy_reader_tests.rb`, `packing_gba_tests.rb` and `packing_genesis_tests.rb` (a port's unpacking routine, a format of a port's own, and each platform's packed formats in it, played on the interpreter and the native, JavaScript and Ruby runs, which are where an unpacking runs; no console runs one),
 `genesis_packing_answers.rb` (the answer key for the Genesis's packed formats, decoders written from the 68000 routines and writers of made-up blocks),
+`m4a_answers.rb` (the answer key for the Advance's common sound driver, MusicPlayer2000: a made-up song of VBlank's own using each command the reader reads, and a player written from the driver's source),
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `console_bios_cases.rb` (where a player's Game Boy Advance BIOS is found and whether it is used, the same for the Ruby and C rules, with made-up files and a made-up checksum, so no BIOS is needed),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
