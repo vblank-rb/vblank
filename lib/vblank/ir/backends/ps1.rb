@@ -130,7 +130,8 @@ module VBlank
                                              tiled: lowering.tiled_screen, colors: colors,
                                              collides: lowering.collides?, by_number: by_number, over_picture: over_picture)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
-          linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
+          late = Runtime.late_sections(memory, faces: lowering.fills_faces?)
+          linked = Linker.new(runtime + game + late, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
                              source_program: program, code: linked.places, bytes: byte_counts(linked),

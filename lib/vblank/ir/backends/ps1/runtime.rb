@@ -99,6 +99,10 @@ module VBlank
             [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
           end
 
+          # The runtime's sections placed after the game's: for a game that fills faces (+faces+), the routine
+          # working out a face's cells (Faces.cells_section).
+          def late_sections(memory, faces: false) = faces ? [Faces.cells_section(memory)] : []
+
           # The runtime place +name+, as the distance from gp an instruction names. The runtime's places
           # are reserved first, so every one is within reach of gp.
           def at(memory, name) = Memory.distance_from_base(memory[name]) || raise(LoweringError, "#{name} is out of gp's reach")

@@ -83,18 +83,21 @@ module VBlank
             RIGHT_OFFSET_BYTES = 16
             BOTTOM_OFFSET_BYTES = 20
             SPANS_OFFSET_BYTES = 24
-            SIDE_OFFSET_BYTES = 28 # The side of a square a face in perspective is cut into, in sixteenths
             # Nought for a face not lit; for a lit one, what its darkest light adds to a corner's colour, with
             # sixteen bits of fraction (FacePieces.light_floor).
-            LIGHT_FLOOR_OFFSET_BYTES = 32
+            LIGHT_FLOOR_OFFSET_BYTES = 28
             # The least and the most of each of EXTENT_NUMBERS over the piece being sent, a word each, in
             # that order (rt_face_extents).
-            EXTENTS_OFFSET_BYTES = 36
+            EXTENTS_OFFSET_BYTES = 32
             EXTENT_NUMBERS = [FacePieces::TEXEL_U, FacePieces::TEXEL_V].freeze
+            # Words of those rt_face_cell_sides borrows while it works, before any piece is sent: the face's
+            # reach across and down, and its own return address.
+            REACH_OFFSET_BYTES = EXTENTS_OFFSET_BYTES
+            CELL_SIDES_RETURN_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + 8
             # Words of those rt_face_row borrows between the pieces it sends, since nothing else reads them
             # until rt_face_send_piece sends one: how many corners the strip's run going back round passed
             # before a line, where in the strip it reached the line, and the crossing a square of four
-            # corners made first (#emit_four_corner_square).
+            # corners made first (#emit_four_corner_cell).
             BACK_PASSED_OFFSET_BYTES = EXTENTS_OFFSET_BYTES
             BACK_REACHED_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + 4
             CROSSING_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + 8
@@ -104,8 +107,11 @@ module VBlank
             # Where a face in perspective's squares start (FacePieces.each_cell): its least x, then its least
             # y, a word each, so a number's offset in a corner (X's or Y's) is its offset from here too.
             CELL_START_OFFSET_BYTES = WAITING_MARKS_OFFSET_BYTES + (FacePieces::MOST_WAITING * 4)
+            # The width and the height of its cells (FacePieces.cell_side_shifts), in sixteenths, in the same
+            # order, so a number's offset in a corner is its side's offset from here too.
+            CELL_SIDE_OFFSET_BYTES = CELL_START_OFFSET_BYTES + 8
             # The caller's stack pointer while rt_fill_face runs on FILL_STACK.
-            CALLER_STACK_OFFSET_BYTES = CELL_START_OFFSET_BYTES + 8
+            CALLER_STACK_OFFSET_BYTES = CELL_SIDE_OFFSET_BYTES + 8
             # The chip's texture window and drawing area as the last face set them, a word each, the window
             # first; nought while the chip has its own (rt_face_chip_put_back). See CHIP_WORDS.
             CHIP_OFFSET_BYTES = CALLER_STACK_OFFSET_BYTES + 4
@@ -129,6 +135,11 @@ module VBlank
             POLYGON_BYTES = 4 + (FacePieces::MOST_CORNERS * 4)
             # Where each number of a corner is (FacePieces::X to V).
             NUMBER_OFFSETS = (0...FacePieces::NUMBERS).to_h { |number| [number, number * 4] }.freeze
+            # Must hold for rt_face_cell_sides, which reads a corner made in the pool and one as the list
+            # holds it alike: x, y and the nearness at the same offsets in both.
+            unless NUMBER_OFFSETS.values_at(FacePieces::X, FacePieces::Y, FacePieces::NEARNESS) == [0, 4, 16]
+              raise "a corner in the pool keeps x, y and its nearness where the list's corner does not"
+            end
 
             # The pieces, in PIECES: the face, two rests for cutting it into rows, a row, two rests for
             # cutting a row into squares, a square, two for cutting on the picture, then those waiting.
@@ -219,10 +230,23 @@ module VBlank
               emit_compact_routine(asm, at, pieces + COMPACT_OFFSET_BYTES)
               emit_texel_routine(asm, at)
               emit_chip_put_back_routine(asm, at)
-              emit_cell_side_routine(asm)
+              emit_one_cell_routine(asm, at)
               emit_row_routine(asm, at, polygon)
               emit_column_corner_routine(asm, at)
               emit_quad_routine(asm, at, memory, polygon)
+            end
+
+            # WORKING OUT A FACE'S CELLS (rt_face_cell_sides), a section of its own, which the build places
+            # after the game's code (Runtime.late_sections). It is a few hundred instructions run once for
+            # each face cut into cells, a few dozen a pass, while the routines that send every face run
+            # hundreds of times a pass beside the game's own. The processor keeps the last 4 KB of code it ran
+            # by address, so code that grows ahead of those routines moves them and the game's code against
+            # each other, and a place's pass gains or loses a frame on where they fall: placed last, this
+            # routine moves nothing that runs often.
+            def cells_section(memory)
+              asm = R3000.new("runtime face cells")
+              emit_cell_sides_routine(asm, Memory.distance_from_scratchpad(memory[FACE]))
+              asm.section
             end
 
             # The reciprocal table, a section of its own.
@@ -462,33 +486,17 @@ module VBlank
               asm.jal("rt_face_send_piece")
               asm.b("rt_fill_face_done")
               asm.label("rt_fill_face_squares")
-              # The squares start at the face's least x and least y, and their side is the face's own
-              # (FacePieces.cell_side_shift), from its reach each way, s4 across and s5 down, and its
-              # nearness.
-              [[x, :s4], [y, :s5]].each do |number, reach|
-                asm.li(:a0, face)
-                asm.jal("rt_face_extent") { asm.li(:a1, number) }
-                asm.sw(:v0, at + CELL_START_OFFSET_BYTES + number, FACE_BASE)
-                asm.subu(reach, :v1, :v0)
-              end
+              # The cells start at the face's least x and least y, and their width and height are the face's
+              # own (FacePieces.cell_side_shifts).
               asm.li(:a0, face)
-              asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(FacePieces::NEARNESS)) }
-              asm.move(:a1, :v0)
-              asm.move(:a2, :v1)
-              asm.lw(:a3, at + SPANS_OFFSET_BYTES, FACE_BASE)
-              asm.move(:a0, :s4)
-              asm.slt(:t0, :s5, :s4)
-              asm.beq(:t0, :zero, "rt_fill_face_lesser_reach")
-              asm.label("rt_fill_face_down_lesser")
-              asm.move(:a0, :s5)
-              asm.label("rt_fill_face_lesser_reach")
-              asm.jal("rt_face_cell_side")
-              asm.sw(:v0, at + SIDE_OFFSET_BYTES, FACE_BASE)
-              # A face reaching no further than a square's side either way crosses no line strictly inside
-              # it (FacePieces.each_strip's first line is a side past its least), so it is one square, sent
-              # as it is without a sweep down it and along each row.
-              asm.slt(:t0, :v0, :s4)
-              asm.slt(:t1, :v0, :s5)
+              asm.jal("rt_face_cell_sides")
+              asm.sw(:v0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
+              asm.sw(:v1, at + CELL_SIDE_OFFSET_BYTES + y, FACE_BASE)
+              # A face reaching no further than a cell's width across and its height down crosses no line
+              # strictly inside it (FacePieces.each_strip's first line is a side past its least), so it is
+              # one cell, sent as it is without a sweep down it and along each row.
+              asm.slt(:t0, :v0, :a2)
+              asm.slt(:t1, :v1, :a3)
               asm.or(:t0, :t0, :t1)
               asm.beq(:t0, :zero, "rt_fill_face_one_piece")
               asm.li(:a0, face)
@@ -709,9 +717,8 @@ module VBlank
             end
 
             # The first part of #emit_straight_face_records: on to rt_fill_face_pieces for a face of more than
-            # STRAIGHT_CORNERS corners, one FacePieces.sent_unclipped? would clip, or one in perspective
-            # reaching further than its squares' side either way (rt_face_cell_side; FacePieces.each_cell
-            # would cut it). t1 to t4 are the least and most a corner may be across and down, in
+            # STRAIGHT_CORNERS corners, one FacePieces.sent_unclipped? would clip, or one in perspective not
+            # found to be one cell by the quick tests below (FacePieces.each_cell might cut it). t1 to t4 are the least and most a corner may be across and down, in
             # sixteenths; t7 to v1 the face's own.
             def emit_straight_face_bounds(asm, at)
               asm.lw(:t5, at + COUNT_OFFSET_BYTES, FACE_BASE)
@@ -745,58 +752,53 @@ module VBlank
               asm.addiu(:t5, :t5, -1)
               asm.bne(:t5, :zero, "rt_face_straight_reach") { asm.addiu(:t6, :t6, LIST_CORNER_BYTES) }
               asm.beq(:t0, :zero, "rt_face_straight_square")
-              # In perspective, its reach each way, t1 across and t2 down, no further than its squares' side
-              # (rt_face_cell_side). A face reaching no further than the least side either way, most of a
-              # place's faces, a few pixels big, is within its squares whatever their side, and needs none.
+              # In perspective, one cell (FacePieces.cell_side_shifts). A face reaching no further than the
+              # least side either way, most of a place's faces, a few pixels big, is within its cells whatever
+              # their sides; one off by no more than allowed whole is one cell (rt_face_one_cell). Any other
+              # is made into pieces, where its cells' sides are worked out in full (rt_face_cell_sides), and
+              # one that is one cell after all is sent as it is from there, as the same triangles.
+              least_side = 16 << FacePieces::LEAST_CELL_SHIFT
               asm.subu(:t1, :t8, :t7)
               asm.subu(:t2, :v1, :t9)
-              least_side = 16 << FacePieces::LEAST_CELL_SHIFT
               asm.slti(:a0, :t1, least_side + 1)
               asm.slti(:a1, :t2, least_side + 1)
               asm.and(:a0, :a0, :a1)
               asm.bne(:a0, :zero, "rt_face_straight_square")
               emit_straight_face_nearness(asm, at)
-              asm.move(:a0, :t1)
-              asm.slt(:a3, :t2, :t1)
-              asm.beq(:a3, :zero, "rt_face_straight_lesser_reach")
-              asm.label("rt_face_straight_down_lesser")
-              asm.move(:a0, :t2)
-              asm.label("rt_face_straight_lesser_reach")
-              asm.jal("rt_face_cell_side") { asm.move(:a3, :t0) }
-              asm.slt(:t3, :v0, :t1)
-              asm.slt(:t4, :v0, :t2)
-              asm.or(:t3, :t3, :t4)
-              asm.bne(:t3, :zero, "rt_fill_face_pieces")
+              emit_longer(asm, :t9, :t1, :t2, "rt_face_straight")
+              asm.jal("rt_face_one_cell")
+              asm.bne(:v0, :zero, "rt_fill_face_pieces")
               asm.label("rt_face_straight_square")
             end
 
-            # a1 and a2, the least and the most nearness of the straight face's corners as the list holds
-            # them (rt_face_corners). Changes t3 to t5.
+            # t5 and t6, the least and the most nearness of the straight face's corners as the list holds
+            # them (rt_face_corners). Changes t3, t4, a0 and a3.
             def emit_straight_face_nearness(asm, at)
+              w = NUMBER_OFFSETS.fetch(FacePieces::NEARNESS)
               asm.addiu(:t3, FACE_BASE, at + CORNERS_OFFSET_BYTES)
-              asm.lw(:a1, 16, :t3)
-              asm.move(:a2, :a1)
+              asm.lw(:t5, w, :t3)
+              asm.move(:t6, :t5)
               asm.lw(:t4, at + COUNT_OFFSET_BYTES, FACE_BASE)
               asm.label("rt_face_straight_nearness")
               asm.addiu(:t4, :t4, -1)
               asm.beq(:t4, :zero, "rt_face_straight_nearness_done")
               asm.addiu(:t3, :t3, LIST_CORNER_BYTES)
-              asm.lw(:t5, 16, :t3)
-              emit_keep_least_and_most(asm, :t5, :a1, :a2, "rt_face_straight_w")
+              asm.lw(:a0, w, :t3)
+              emit_keep_least_and_most(asm, :a0, :t5, :t6, "rt_face_straight_w")
               asm.b("rt_face_straight_nearness")
               asm.label("rt_face_straight_nearness_done")
             end
 
             # +number+ kept in +least+ when it is less and in +most+ when it is more; +label+ names the places
-            # between. Changes a3.
-            def emit_keep_least_and_most(asm, number, least, most, label)
-              asm.slt(:a3, number, least)
-              asm.beq(:a3, :zero, "#{label}_not_least")
+            # between. Changes +scratch+.
+            def emit_keep_least_and_most(asm, number, least, most, label, scratch: :a3)
+              asm.slt(scratch, number, least)
+              asm.beq(scratch, :zero, "#{label}_not_least")
               asm.label("#{label}_least")
               asm.move(least, number)
               asm.label("#{label}_not_least")
-              asm.slt(:a3, most, number)
-              asm.beq(:a3, :zero, "#{label}_not_most")
+              asm.slt(scratch, most, number)
+              asm.beq(scratch, :zero, "#{label}_not_most")
               asm.label("#{label}_most")
               asm.move(most, number)
               asm.label("#{label}_not_most")
@@ -932,68 +934,321 @@ module VBlank
               asm.label(label)
             end
 
-            # rt_face_cell_side: a0 = a face's lesser reach, across or down, in sixteenths; a1 and a2 the least
-            # and the most nearness of its corners; a3 its perspective (not nought). v0 = the side of the
-            # squares it is cut into, in sixteenths (FacePieces.cell_side_shift). Changes t3 to t6 and a0;
-            # keeps t0 to t2, so a caller's extents live through it.
+            # rt_face_cell_sides: a0 = a piece of three corners or more, the face as clipped. v0 = the width of
+            # the cells it is cut into and v1 their height, in sixteenths (FacePieces.cell_side_shifts); a2 =
+            # its reach across and a3 down, in sixteenths; and its least x and y in CELL_START_OFFSET_BYTES.
+            # Changes t0 to t9 and a0 to a3.
             #
-            # A leaf: it calls nothing. Its one divide is for the nearness change, and only faces wider than
-            # the least square get here.
-            def emit_cell_side_routine(asm)
+            # It keeps nothing on the stack: the routines it calls (rt_face_one_cell, and the test of one
+            # pair of sides, rt_face_cell_sides_within) are leaves, and its own return address waits in
+            # CELL_SIDES_RETURN_OFFSET_BYTES. A look at the corners for their least and most; a face that is
+            # one cell whole (rt_face_one_cell) goes no further. Any other has a second look, each corner's
+            # share of the least nearness, a divide each, and Newell's sums (#emit_cell_side_slopes); then
+            # the pairs of sides, a row's height at a time (#emit_cell_side_search).
+            def emit_cell_sides_routine(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              y = NUMBER_OFFSETS.fetch(FacePieces::Y)
+              w = NUMBER_OFFSETS.fetch(FacePieces::NEARNESS)
+              asm.label("rt_face_cell_sides")
+              asm.sw(:ra, at + CELL_SIDES_RETURN_OFFSET_BYTES, FACE_BASE)
+              # a2 the first slot, a3 the one past the last.
+              asm.lw(:t0, 0, :a0)
+              asm.addiu(:a2, :a0, 4)
+              asm.sll(:t0, :t0, 2)
+              asm.addu(:a3, :a2, :t0)
+              # The least and most x (t1, t2), y (t3, t4) and nearness (t5, t6).
+              asm.li(:t1, 0x7FFF_FFFF)
+              asm.li(:t2, -0x8000_0000)
+              asm.move(:t3, :t1)
+              asm.move(:t4, :t2)
+              asm.move(:t5, :t1)
+              asm.move(:t6, :t2)
+              asm.move(:t0, :a2)
+              asm.label("rt_face_cell_sides_reach")
+              asm.lw(:t7, 0, :t0)
+              asm.lw(:t8, x, :t7)
+              emit_keep_least_and_most(asm, :t8, :t1, :t2, "rt_face_cell_sides_x", scratch: :t9)
+              asm.lw(:t8, y, :t7)
+              emit_keep_least_and_most(asm, :t8, :t3, :t4, "rt_face_cell_sides_y", scratch: :t9)
+              asm.lw(:t8, w, :t7)
+              emit_keep_least_and_most(asm, :t8, :t5, :t6, "rt_face_cell_sides_w", scratch: :t9)
+              asm.addiu(:t0, :t0, 4)
+              asm.bne(:t0, :a3, "rt_face_cell_sides_reach")
+              asm.label("rt_face_cell_sides_reached")
+              asm.sw(:t1, at + CELL_START_OFFSET_BYTES + x, FACE_BASE)
+              asm.sw(:t3, at + CELL_START_OFFSET_BYTES + y, FACE_BASE)
+              asm.subu(:t2, :t2, :t1)
+              asm.sw(:t2, at + REACH_OFFSET_BYTES, FACE_BASE)
+              asm.subu(:t4, :t4, :t3)
+              asm.sw(:t4, at + REACH_OFFSET_BYTES + 4, FACE_BASE)
+              # A face off by no more than allowed whole is one cell: the most sides, and its reach.
+              emit_longer(asm, :t9, :t2, :t4, "rt_face_cell_sides_whole")
+              asm.jal("rt_face_one_cell")
+              asm.bne(:v0, :zero, "rt_face_cell_sides_sloping")
+              asm.label("rt_face_cell_sides_one_cell")
+              asm.li(:v0, 1 << (FacePieces::MOST_CELL_SHIFT + 4))
+              asm.move(:v1, :v0)
+              asm.move(:a2, :t2)
+              asm.move(:a3, :t4)
+              asm.lw(:ra, at + CELL_SIDES_RETURN_OFFSET_BYTES, FACE_BASE)
+              asm.jr(:ra)
+              asm.label("rt_face_cell_sides_sloping")
+              emit_cell_side_slopes(asm)
+              emit_cell_side_search(asm, at)
+              emit_cell_side_within(asm)
+            end
+
+            # +into+ = the greater of +across+ and +down+; +label+ names the places between.
+            def emit_longer(asm, into, across, down, label)
+              asm.slt(into, across, down)
+              asm.beq(into, :zero, "#{label}_longer") { asm.move(into, across) }
+              asm.label("#{label}_taller")
+              asm.move(into, down)
+              asm.label("#{label}_longer")
+            end
+
+            # rt_face_one_cell: t5 = a face's least nearness, t6 its most, t9 its longer reach in sixteenths.
+            # v0 = nought when it is off by no more than allowed whole, and so one cell
+            # (FacePieces.cell_side_shifts): its change (FacePieces.nearness_change) times that reach in whole
+            # pixels within the bound. t1 = the least over the share's bits, one at the least, which
+            # #emit_cell_side_slopes divides by. A leaf; changes t7 to t9.
+            #
+            # Both rt_face_cell_sides and a face sent straight from its corners ask it: most of a place's faces
+            # in perspective are a few pixels big or far off, and are one cell by it, which costs one divide.
+            def emit_one_cell_routine(asm, at)
               bits = FacePieces::NEARNESS_CHANGE_BITS
-              asm.label("rt_face_cell_side")
-              # The change: the most less the least, over the least moved down (one at the least), held to
-              # the most.
-              asm.sra(:t3, :a1, bits)
-              asm.slti(:t4, :t3, 1)
-              asm.beq(:t4, :zero, "rt_face_cell_side_over")
-              asm.label("rt_face_cell_side_over_one")
-              asm.li(:t3, 1)
-              asm.label("rt_face_cell_side_over")
-              asm.subu(:t4, :a2, :a1)
-              asm.divu(:t4, :t3)
-              # While the divide works: t5, how far the reach is moved up to make the bound, by the pixels
-              # allowed.
-              asm.li(:t5, bits + 2 - 4 + FacePieces::OFF_PIXELS_SHIFT)
-              asm.addiu(:t6, :a3, -1)
-              asm.bne(:t6, :zero, "rt_face_cell_side_allowed")
-              asm.label("rt_face_cell_side_every_pixel")
-              asm.li(:t5, bits + 2 - 4 + FacePieces::EVERY_PIXEL_OFF_PIXELS_SHIFT)
-              asm.label("rt_face_cell_side_allowed")
-              asm.mflo(:t3)
-              asm.slti(:t4, :t3, FacePieces::MOST_NEARNESS_CHANGE + 1)
-              asm.bne(:t4, :zero, "rt_face_cell_side_held")
-              asm.label("rt_face_cell_side_most")
-              asm.li(:t3, FacePieces::MOST_NEARNESS_CHANGE)
-              asm.label("rt_face_cell_side_held")
-              # A face off by no more than allowed whole, the change times the reach no more than one moved
-              # up eight places further than the reach is (the bound below moves it up by 2 - 4 + the pixels
-              # allowed, and cell_side_shift's test of the whole face by 2 + 4 + them), is not cut.
-              asm.mult(:t3, :a0)
-              asm.li(:v0, FacePieces::MOST_CELL_SHIFT)
-              asm.addiu(:t6, :t5, 8)
-              asm.li(:t4, 1)
-              asm.sllv(:t6, :t4, :t6)
-              asm.mflo(:t4)
-              asm.slt(:t4, :t6, :t4)
-              asm.beq(:t4, :zero, "rt_face_cell_side_found")
-              # The side halved, from the most, while the change times its square passes the bound, the reach
-              # moved up: v0 the shift, t5 twice it.
-              asm.label("rt_face_cell_side_cut")
-              asm.sllv(:a0, :a0, :t5)
-              asm.label("rt_face_cell_side_try")
-              asm.slti(:t4, :v0, FacePieces::LEAST_CELL_SHIFT + 1)
-              asm.bne(:t4, :zero, "rt_face_cell_side_found")
-              asm.sll(:t5, :v0, 1)
-              asm.sllv(:t5, :t3, :t5)
-              asm.slt(:t4, :a0, :t5)
-              asm.beq(:t4, :zero, "rt_face_cell_side_found")
-              asm.label("rt_face_cell_side_finer")
-              asm.b("rt_face_cell_side_try") { asm.addiu(:v0, :v0, -1) }
-              asm.label("rt_face_cell_side_found")
+              asm.label("rt_face_one_cell")
+              asm.sra(:t1, :t5, bits)
+              asm.bgtz(:t1, "rt_face_one_cell_over")
+              asm.label("rt_face_one_cell_over_one")
+              asm.li(:t1, 1)
+              asm.label("rt_face_one_cell_over")
+              asm.subu(:t7, :t6, :t5)
+              asm.div(:t7, :t1) # signed, as Int32.div is
+              # While the divide works: the reach in whole pixels, and v0 the bound.
+              asm.sra(:t9, :t9, 4)
+              asm.lw(:t8, at + SPANS_OFFSET_BYTES, FACE_BASE)
+              asm.li(:v0, 1 << (bits + 2 + FacePieces::OFF_PIXELS_SHIFT))
+              asm.addiu(:t8, :t8, -1)
+              asm.bne(:t8, :zero, "rt_face_one_cell_bound")
+              asm.label("rt_face_one_cell_every_pixel")
+              asm.li(:v0, 1 << (bits + 2 + FacePieces::EVERY_PIXEL_OFF_PIXELS_SHIFT))
+              asm.label("rt_face_one_cell_bound")
+              asm.mflo(:t7)
+              asm.slti(:t8, :t7, FacePieces::MOST_NEARNESS_CHANGE + 1)
+              asm.bne(:t8, :zero, "rt_face_one_cell_change")
+              asm.label("rt_face_one_cell_change_most")
+              asm.li(:t7, FacePieces::MOST_NEARNESS_CHANGE)
+              asm.label("rt_face_one_cell_change")
+              asm.mult(:t7, :t9)
+              asm.mflo(:t7)
+              asm.jr(:ra) { asm.slt(:v0, :v0, :t7) }
+            end
+
+            # THE NEARNESS'S SLOPES ACROSS AND DOWN (FacePieces.nearness_slopes), from the corners a2 to a3,
+            # the least nearness in t5 and t1 the least over the share's bits: t1 across, t2 down, with
+            # SLOPE_BITS of fraction.
+            #
+            # Each corner's place in quarter pixels and its share, the last corner's then this one's in t2 to
+            # t4 and t6, t8, t9; Newell's sums in v0 (nx), v1 (ny) and a0 (nz), each corner's terms with the
+            # one before it. The first corner starts with no corner before (whose terms are nought) and is
+            # looked at again at the end, which adds its terms with the last.
+            def emit_cell_side_slopes(asm)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              y = NUMBER_OFFSETS.fetch(FacePieces::Y)
+              w = NUMBER_OFFSETS.fetch(FacePieces::NEARNESS)
+              %i[t2 t3 t4 v0 v1 a0].each { |register| asm.move(register, :zero) }
+              asm.move(:t0, :a2)
+              asm.label("rt_face_cell_sides_corner")
+              asm.lw(:t7, 0, :t0)
+              asm.lw(:t9, w, :t7)
+              asm.lw(:t6, x, :t7)
+              asm.subu(:t9, :t9, :t5)
+              asm.div(:t9, :t1) # signed, as Int32.div is
+              asm.lw(:t8, y, :t7)
+              asm.sra(:t6, :t6, FacePieces::PLACE_SHIFT)
+              asm.sra(:t8, :t8, FacePieces::PLACE_SHIFT)
+              asm.mflo(:t9)
+              asm.slti(:t7, :t9, FacePieces::MOST_NEARNESS_CHANGE + 1)
+              asm.bne(:t7, :zero, "rt_face_cell_sides_share")
+              asm.label("rt_face_cell_sides_share_most")
+              asm.li(:t9, FacePieces::MOST_NEARNESS_CHANGE)
+              asm.label("rt_face_cell_sides_share")
+              # nx += y e' - y' e, ny += e x' - e' x, nz += x y' - x' y: the last corner unprimed, this one
+              # primed.
+              [[:v0, :t3, :t9, :t8, :t4], [:v1, :t4, :t6, :t9, :t2], [:a0, :t2, :t8, :t6, :t3]].each do |sum, a, b, c, d|
+                asm.mult(a, b)
+                asm.mflo(:t7)
+                asm.addu(sum, sum, :t7)
+                asm.mult(c, d)
+                asm.mflo(:t7)
+                asm.subu(sum, sum, :t7)
+              end
+              asm.move(:t2, :t6)
+              asm.move(:t3, :t8)
+              asm.move(:t4, :t9)
+              asm.addiu(:t0, :t0, 4)
+              asm.bne(:t0, :a3, "rt_face_cell_sides_corner")
+              # Past the last: the first again, once, ending one slot past it.
+              asm.label("rt_face_cell_sides_round")
+              asm.addiu(:t7, :a2, 4)
+              asm.beq(:a3, :t7, "rt_face_cell_sides_summed")
+              asm.label("rt_face_cell_sides_first_again")
+              asm.move(:a3, :t7)
+              asm.b("rt_face_cell_sides_corner") { asm.move(:t0, :a2) }
+              asm.label("rt_face_cell_sides_summed")
+              # No area, no slope; otherwise each slope is its sum's size moved up, over the area's, held to
+              # MOST_SLOPE (a sum past a word's reach after the move turns negative, and is held too).
+              asm.move(:t1, :zero)
+              asm.beq(:a0, :zero, "rt_face_cell_sides_sloped") { asm.move(:t2, :zero) }
+              asm.label("rt_face_cell_sides_area")
+              emit_magnitude(asm, :a0)
+              [[:v0, :t1, "across"], [:v1, :t2, "down"]].each do |sum, slope, way|
+                emit_magnitude(asm, sum)
+                asm.sll(sum, sum, FacePieces::SLOPE_SHIFT)
+                asm.div(sum, :a0)
+                asm.mflo(slope)
+                asm.bltz(slope, "rt_face_cell_sides_steepest_#{way}")
+                asm.label("rt_face_cell_sides_not_negative_#{way}")
+                asm.li(:t7, FacePieces::MOST_SLOPE)
+                asm.slt(:t7, :t7, slope)
+                asm.beq(:t7, :zero, "rt_face_cell_sides_held_#{way}")
+                asm.label("rt_face_cell_sides_steepest_#{way}")
+                asm.li(slope, FacePieces::MOST_SLOPE)
+                asm.label("rt_face_cell_sides_held_#{way}")
+              end
+              asm.label("rt_face_cell_sides_sloped")
+            end
+
+            # +number+ without its sign (FacePieces.magnitude). Changes t7.
+            def emit_magnitude(asm, number)
+              asm.sra(:t7, number, 31)
+              asm.xor(number, number, :t7)
+              asm.subu(number, number, :t7)
+            end
+
+            # THE PAIR OF SIDES CUTTING THE FACE INTO THE FEWEST CELLS (FacePieces.cell_side_shifts), from the
+            # slopes in t1 and t2 and the reach kept in REACH_OFFSET_BYTES, into v0 and v1 in sixteenths, and
+            # the return. t4 is the width's shift, up to t0, the widest worth trying; t5 the height's, from the
+            # tallest worth trying down; t6 the fewest cells so far, and v0 and v1 the shifts that made them;
+            # t3 the bound.
+            def emit_cell_side_search(asm, at)
+              least = FacePieces::LEAST_CELL_SHIFT
+              most = FacePieces::MOST_CELL_SHIFT
+              asm.lw(:a2, at + REACH_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:a3, at + REACH_OFFSET_BYTES + 4, FACE_BASE)
+              asm.lw(:t7, at + SPANS_OFFSET_BYTES, FACE_BASE)
+              asm.li(:t3, 1 << (FacePieces::SLOPE_BITS + 2 + FacePieces::OFF_PIXELS_SHIFT))
+              asm.addiu(:t7, :t7, -1)
+              asm.bne(:t7, :zero, "rt_face_cell_sides_bound")
+              asm.label("rt_face_cell_sides_every_pixel")
+              asm.li(:t3, 1 << (FacePieces::SLOPE_BITS + 2 + FacePieces::EVERY_PIXEL_OFF_PIXELS_SHIFT))
+              asm.label("rt_face_cell_sides_bound")
+              # t0 the widest shift worth trying, t5 the tallest (FacePieces.covering_shift).
+              emit_covering_shift(asm, :t0, :a2, "rt_face_cell_sides_widest_shift")
+              emit_covering_shift(asm, :t5, :a3, "rt_face_cell_sides_tallest_shift")
+              asm.li(:t4, least)
+              asm.li(:t6, 0x7FFF_FFFF)
+              asm.li(:v0, least)
+              asm.li(:v1, least)
+              # The widest cells within the bound at this height: wider while the next is within it.
+              asm.label("rt_face_cell_sides_height")
+              asm.slt(:t8, :t4, :t0)
+              asm.beq(:t8, :zero, "rt_face_cell_sides_widest")
+              asm.label("rt_face_cell_sides_wider")
+              asm.jal("rt_face_cell_sides_within") { asm.addiu(:t7, :t4, 1) }
+              asm.beq(:t8, :zero, "rt_face_cell_sides_widest")
+              asm.label("rt_face_cell_sides_widened")
+              asm.b("rt_face_cell_sides_height") { asm.addiu(:t4, :t4, 1) }
+              asm.label("rt_face_cell_sides_widest")
+              asm.jal("rt_face_cell_sides_within") { asm.move(:t7, :t4) }
+              asm.beq(:t8, :zero, "rt_face_cell_sides_lower")
+              # The cells: the columns the width makes times the rows the height makes (FacePieces.cells_along).
+              asm.label("rt_face_cell_sides_count")
+              [[:a2, :t4, :t9], [:a3, :t5, :a0]].each do |reach, shift, cells|
+                asm.addiu(:t7, shift, 4)
+                asm.addiu(cells, reach, -1)
+                asm.srav(cells, cells, :t7)
+                asm.addiu(cells, cells, 1)
+              end
+              asm.mult(:t9, :a0)
+              asm.mflo(:t9)
+              asm.slt(:t8, :t9, :t6)
+              asm.beq(:t8, :zero, "rt_face_cell_sides_counted")
+              asm.label("rt_face_cell_sides_fewer")
+              asm.move(:t6, :t9)
+              asm.move(:v0, :t4)
+              asm.move(:v1, :t5)
+              # One column, and lower cells only make more rows.
+              asm.label("rt_face_cell_sides_counted")
+              asm.beq(:t4, :t0, "rt_face_cell_sides_found")
+              asm.label("rt_face_cell_sides_lower")
+              asm.slti(:t8, :t5, least + 1)
+              asm.bne(:t8, :zero, "rt_face_cell_sides_found")
+              asm.label("rt_face_cell_sides_next_height")
+              asm.b("rt_face_cell_sides_height") { asm.addiu(:t5, :t5, -1) }
+              asm.label("rt_face_cell_sides_found")
+              asm.lw(:ra, at + CELL_SIDES_RETURN_OFFSET_BYTES, FACE_BASE)
+              asm.li(:t8, 1)
               asm.addiu(:v0, :v0, 4)
-              asm.li(:t4, 1)
-              asm.jr(:ra) { asm.sllv(:v0, :t4, :v0) }
+              asm.sllv(:v0, :t8, :v0)
+              asm.addiu(:v1, :v1, 4)
+              asm.jr(:ra) { asm.sllv(:v1, :t8, :v1) }
+            end
+
+            # +into+ = the least shift whose side cuts the reach in +reach+ (sixteenths) into one cell
+            # (FacePieces.covering_shift); +label+ names the places between. Changes t7 and t8.
+            def emit_covering_shift(asm, into, reach, label)
+              asm.li(into, FacePieces::LEAST_CELL_SHIFT)
+              asm.label(label)
+              asm.slti(:t8, into, FacePieces::MOST_CELL_SHIFT)
+              asm.beq(:t8, :zero, "#{label}_found")
+              asm.label("#{label}_try")
+              asm.addiu(:t7, into, 4)
+              asm.addiu(:t8, reach, -1)
+              asm.srav(:t8, :t8, :t7)
+              asm.blez(:t8, "#{label}_found")
+              asm.label("#{label}_wider")
+              asm.b(label) { asm.addiu(into, into, 1) }
+              asm.label("#{label}_found")
+            end
+
+            # rt_face_cell_sides_within: t7 = a width's shift, t5 a height's; t8 = 1 when cells of those sides
+            # are within the bound in t3, from the slopes in t1 and t2 and the reach in a2 and a3, and nought
+            # when not (FacePieces.cell_side_shifts' test). Each side is held to the reach that way, in whole
+            # pixels. Changes t9, a0 and a1.
+            def emit_cell_side_within(asm)
+              asm.label("rt_face_cell_sides_within")
+              asm.li(:t8, 1)
+              [[:a0, :t7, :a2, "across"], [:a1, :t5, :a3, "down"]].each do |side, shift, reach, way|
+                asm.sllv(side, :t8, shift)
+                asm.sra(:t9, reach, 4)
+                asm.slt(:t9, :t9, side) # the reach is the lesser
+                asm.beq(:t9, :zero, "rt_face_cell_sides_side_#{way}")
+                asm.label("rt_face_cell_sides_reach_#{way}")
+                asm.sra(side, reach, 4)
+                asm.label("rt_face_cell_sides_side_#{way}")
+              end
+              asm.mult(:t1, :a0)
+              asm.mflo(:t9)
+              asm.mult(:t2, :a1)
+              asm.mflo(:t8)
+              asm.addu(:t9, :t9, :t8)
+              asm.slt(:t8, :t3, :t9)
+              asm.bne(:t8, :zero, "rt_face_cell_sides_without")
+              # The sum times the longer side.
+              asm.label("rt_face_cell_sides_sum_within")
+              asm.slt(:t8, :a0, :a1)
+              asm.beq(:t8, :zero, "rt_face_cell_sides_longer")
+              asm.label("rt_face_cell_sides_taller")
+              asm.move(:a0, :a1)
+              asm.label("rt_face_cell_sides_longer")
+              asm.mult(:t9, :a0)
+              asm.mflo(:t9)
+              asm.slt(:t8, :t3, :t9)
+              asm.jr(:ra) { asm.xori(:t8, :t8, 1) }
+              asm.label("rt_face_cell_sides_without")
+              asm.jr(:ra) { asm.move(:t8, :zero) }
             end
 
             # The face's corners as pieces' corners, into +face+ (FacePieces.corner_from_list): x and y, then
@@ -1057,8 +1312,8 @@ module VBlank
             # rt_face_sweep: a0 = a piece, a1 = which number it is cut along (X or Y's offset), a2 = where
             # each part before a line goes, a3 = two pieces, one after the other, the rest goes in by turns,
             # t4 = the routine each part of three corners or more is handed to in a0
-            # (FacePieces.each_strip): cut along every multiple of SIDE_OFFSET_BYTES strictly inside the
-            # piece, the part before each line in turn, then the rest. Keeps s0 to s7. Whatever of the
+            # (FacePieces.each_strip): cut along every multiple of the cells' side that way
+            # (CELL_SIDE_OFFSET_BYTES) strictly inside the piece, the part before each line in turn, then the rest. Keeps s0 to s7. Whatever of the
             # pool a part before a line took is handed back once it is sent; what the rest takes is the
             # caller's to hand back.
             def emit_sweep_routine(asm, at)
@@ -1071,11 +1326,11 @@ module VBlank
               asm.move(:s4, :t4)
               asm.jal("rt_face_extent") # a0 and a1 as handed in
               asm.move(:s5, :v1) # the most
-              # The first line: the face's squares' start, and whole squares on to the one the least is in,
-              # then one more.
-              asm.addu(:t2, :s1, FACE_BASE)
-              asm.lw(:t2, at + CELL_START_OFFSET_BYTES, :t2)
-              asm.lw(:t0, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              # The first line: the face's cells' start that way, and whole cells' sides that way on to the
+              # one the least is in, then one more.
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t2, at + CELL_START_OFFSET_BYTES, :t3)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
               asm.subu(:t1, :zero, :t0)
               asm.subu(:t3, :v0, :t2)
               asm.and(:t1, :t3, :t1)
@@ -1106,7 +1361,8 @@ module VBlank
               asm.jalr(:s4) { asm.move(:a0, :s2) }
               asm.sw(:s7, at + POOL_NEXT_OFFSET_BYTES, FACE_BASE)
               asm.label("rt_face_sweep_next")
-              asm.lw(:t0, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              asm.addu(:t0, :s1, FACE_BASE)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t0)
               asm.b("rt_face_sweep_line") { asm.addu(:s6, :s6, :t0) }
               asm.label("rt_face_sweep_rest")
               asm.lw(:t0, 0, :s0)
@@ -1119,10 +1375,10 @@ module VBlank
             end
 
             # rt_face_row: a0 = a strip of the face, between two of its rows' lines, cut into squares along the
-            # columns' lines and each square sent (FacePieces.each_square_in_strip): the strip's two runs from
+            # columns' lines and each square sent (FacePieces.each_cell_in_strip): the strip's two runs from
             # its least x to its most walked across it (#emit_strip_runs), and each square made from the
             # corners each run passes and the crossings it makes. A square of four corners, most of them, is
-            # sent by rt_face_quad (#emit_four_corner_square); any other is put together in `square` and
+            # sent by rt_face_quad (#emit_four_corner_cell); any other is put together in `square` and
             # handed to rt_face_send_piece. A strip no line crosses is sent as it is, and one without the two
             # runs is handed to rt_face_sweep.
             #
@@ -1144,7 +1400,7 @@ module VBlank
               asm.label("rt_face_row_line")
               asm.slt(:t0, :s5, :s6)
               asm.beq(:t0, :zero, "rt_face_row_last")
-              emit_four_corner_square(asm, at, x)
+              emit_four_corner_cell(asm, at, x)
               # Any other square: put together in `square`, and sent as any piece is.
               asm.label("rt_face_row_any")
               asm.jal("rt_face_row_left")
@@ -1152,7 +1408,7 @@ module VBlank
               emit_run_behind(asm, at)
               emit_send_square(asm, "rt_face_row_sent")
               asm.label("rt_face_row_next")
-              asm.lw(:t0, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
               asm.b("rt_face_row_line") { asm.addu(:s5, :s5, :t0) }
               # rt_face_row_left: `square` (a3) started with a square's left side, each run's last crossing
               # (or first corner), the run going back's first. Changes t0 and t1.
@@ -1232,7 +1488,7 @@ module VBlank
             # the line s5 or meets one on it. It is then each run's last crossing (or first corner) and the
             # crossing each makes on this line, sent by rt_face_quad without being put together in `square`;
             # then on to rt_face_row_next. Any other square goes on to rt_face_row_any.
-            def emit_four_corner_square(asm, at, x)
+            def emit_four_corner_cell(asm, at, x)
               asm.lw(:a1, 0, :s1)
               asm.lw(:t1, x, :a1)
               asm.slt(:t0, :s5, :t1)
@@ -1270,7 +1526,7 @@ module VBlank
               # s5, the first line past the least (FacePieces.first_line); a strip it does not cross is one
               # square, sent as it is.
               asm.lw(:t1, at + CELL_START_OFFSET_BYTES + x, FACE_BASE)
-              asm.lw(:t2, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t2, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
               asm.subu(:t0, :v0, :t1)
               asm.subu(:t3, :zero, :t2)
               asm.and(:t0, :t0, :t3)
@@ -1507,7 +1763,7 @@ module VBlank
               asm.jr(:v1)
             end
 
-            # rt_face_quad: a0 to a3 = the corners of a square of four (#emit_four_corner_square), in order round it,
+            # rt_face_quad: a0 to a3 = the corners of a square of four (#emit_four_corner_cell), in order round it,
             # sent as FacePieces.send_cut_on_picture sends that piece. Most need no cut on the picture, and
             # are sent here as rt_face_fan would send them, its two triangles from the first corner, with no
             # piece made: s0 to s3 hold each corner's place as the chip takes it once worked out, s4 to s7

@@ -28,13 +28,13 @@ module VBlank
         #    face without perspective already on the screen is not clipped (#sent_unclipped?): the
         #    drawing area alone holds it to its edges. Nor is one in perspective inside its edges, which
         #    the cuts would leave as it is.
-        # 2. IN PERSPECTIVE, CUT INTO SQUARES, along rows and columns from its top left corner, their side
-        #    the face's own (#cell_side_shift): small where it is near and at a slant, and none at all for
-        #    most faces far off or seen straight on. Each new corner's place on the picture is worked out
+        # 2. IN PERSPECTIVE, CUT INTO CELLS, along rows and columns from its top left corner, their width
+        #    and height the face's own (#cell_side_shifts): small where it is near and at a slant, narrow
+        #    the way its nearness changes, and none at all for most faces far off or seen straight on. Each new corner's place on the picture is worked out
         #    exactly (the place over the distance, times the distance, as Reference#place_in_perspective
         #    does), and the chip steps straight between. That is how the console's own games drew a near
         #    wall. The face is cut into strips along its rows' lines (#each_strip), and each strip into
-        #    squares by walking its edges across it (#each_square_in_strip), not by cutting it again.
+        #    cells by walking its edges across it (#each_cell_in_strip), not by cutting it again.
         # 3. CUT WHERE THE PICTURE WOULD RUN PAST A BYTE: a piece whose place on the picture spans more
         #    than 256 is cut at 256 past its least, as often as it takes. The picture repeats by the
         #    chip's texture window (GP0 E2h), so each piece's places are moved by whole pictures to
@@ -84,37 +84,46 @@ module VBlank
           FULL_COLOR = 0x80
 
           # The most corners a piece keeps: a face's eight, one more for each of the four clipping
-          # edges, the two lines of a square it is cut by each way and a cut each way on the picture,
+          # edges, the two lines of a cell it is cut by each way and a cut each way on the picture,
           # with room over. A face that is not flat can cross a line more often than a flat one; past
           # this many, a piece keeps its first ones.
           MOST_CORNERS = 24
 
-          # The sides a square a face in perspective is cut into may have, as powers of two of pixels
-          # (#cell_side_shift): from the least, a square of 8, to the most, 512, which is wider than the
-          # screen, so a face given it is not cut at all.
+          # The sides a cell a face in perspective is cut into may have each way, as powers of two of
+          # pixels (#cell_side_shifts): from the least, 8, to the most, 512, which is wider than the
+          # screen, so a face given it that way is not cut that way at all.
           LEAST_CELL_SHIFT = 3
           MOST_CELL_SHIFT = 9
 
-          # How far the place on the picture a square shows may be off on the screen (#cell_side_shift), as
-          # a power of two of pixels: two pixels, and one for a face the interpreter works out at every
-          # pixel.
-          OFF_PIXELS_SHIFT = 1
-          EVERY_PIXEL_OFF_PIXELS_SHIFT = 0
+          # How far the place on the picture a cell shows may be off on the screen by #cell_side_shifts'
+          # sum, as a power of two of pixels: four, and two for a face the interpreter works out at every
+          # pixel. The sum is an estimate, and four by it keeps a near wall at a slant within the two
+          # texels the corners' whole texels leave it (the face-pieces test's turning wall).
+          OFF_PIXELS_SHIFT = 2
+          EVERY_PIXEL_OFF_PIXELS_SHIFT = 1
 
-          # The relative change in nearness across a face (#nearness_change) is kept with this many bits
-          # of fraction, and held to MOST_NEARNESS_CHANGE, sixteen times its least: a face changing that
-          # much across is cut into the least squares on any screen.
+          # A corner's nearness past the least of its face, as a share of that least (#nearness_slopes), is
+          # kept with this many bits of fraction and held to MOST_NEARNESS_CHANGE, sixteen times the least.
           NEARNESS_CHANGE_BITS = 8
           MOST_NEARNESS_CHANGE = 16 << NEARNESS_CHANGE_BITS
 
-          # Must hold for #cell_side_shift: the change times the most side's square stays a positive word,
-          # and a face whose change is held to the most is cut into the least squares however big it is
-          # on the screen, so holding it changes no side.
-          raise "the nearness change overflows a word" unless (MOST_NEARNESS_CHANGE << (2 * MOST_CELL_SHIFT)) < (1 << 31)
-          unless (MOST_NEARNESS_CHANGE << (2 * (LEAST_CELL_SHIFT + 1))) >
-                 ((Console::PLAYSTATION.screen_size.min * 16) << (NEARNESS_CHANGE_BITS + 2 - 4 + OFF_PIXELS_SHIFT))
-            raise "a face whose nearness change is held is not cut into the least squares"
-          end
+          # How fast that share changes a pixel across a face and down it (#nearness_slopes) is kept with
+          # this many bits of fraction, more than the shares have, since a far face's slope is a small
+          # share; and held to MOST_SLOPE, sixteen times the least a pixel: a face changing that fast is
+          # cut into the least cells on any screen. The corners' places are taken in quarters of a pixel
+          # (PLACE_SHIFT moves sixteenths down to them), which keeps the sums inside a word.
+          SLOPE_BITS = 12
+          MOST_SLOPE = 16 << SLOPE_BITS
+          PLACE_SHIFT = 2
+          # How far Newell's sums are moved up before the divide makes them slopes with SLOPE_BITS.
+          SLOPE_SHIFT = SLOPE_BITS - NEARNESS_CHANGE_BITS + 4 - PLACE_SHIFT
+
+          # Must hold for #nearness_slopes and #cell_side_shifts: Newell's sums over a face on the screen,
+          # its places in quarter pixels and its shares held, moved up SLOPE_SHIFT places, and a slope times
+          # the most side each way, added, each stay a positive word.
+          screen_places = (Console::PLAYSTATION.screen_size.max * 16) >> PLACE_SHIFT
+          raise "a face's Newell sums overflow a word" unless ((4 * MOST_NEARNESS_CHANGE * screen_places) << SLOPE_SHIFT) < (1 << 31)
+          raise "a cell's sum overflows a word" unless (2 * MOST_SLOPE) << MOST_CELL_SHIFT < (1 << 31)
 
           # The bits of fraction in the share of an edge a cut is along.
           SHARE_BITS = 14
@@ -168,8 +177,8 @@ module VBlank
           #
           # A face in perspective whose corners all lie inside its edges: clipping it would keep every
           # corner and make none, so the four cuts are left out and the pieces are the same. One reaching
-          # past an edge is clipped, since its squares start at its own least corner (#each_cell), and
-          # squares wholly outside the edges would be cut and sent for the drawing area to throw away.
+          # past an edge is clipped, since its cells start at its own least corner (#each_cell), and
+          # cells wholly outside the edges would be cut and sent for the drawing area to throw away.
           def sent_unclipped?(face, spans, edges)
             left, top, right, bottom = edges
             bounds = if spans == Nodes::FillFace::PERSPECTIVE_NONE
@@ -183,42 +192,87 @@ module VBlank
             end
           end
 
-          # HOW BIG THE SQUARES ARE THAT A FACE IN PERSPECTIVE IS CUT INTO: the side, as a power of two of
-          # pixels, from LEAST_CELL_SHIFT to MOST_CELL_SHIFT, for +face+ as clipped.
+          # HOW BIG THE CELLS ARE THAT A FACE IN PERSPECTIVE IS CUT INTO, a side each way: [across, down],
+          # each a power of two of pixels from LEAST_CELL_SHIFT to MOST_CELL_SHIFT, for +face+ as clipped.
           #
-          # The chip steps the place on the picture straight across a square, where the true place steps
-          # with one over the nearness; so the square shows its picture shifted most where the nearness
-          # changes most across it, and the more the bigger it is. Nearness changes evenly across the
-          # screen, so on a face whose nearness changes by a share c of its least across e pixels, a square
-          # of side s shows its picture off by at most about s * s * c / (4 * e) pixels, at the face's far
-          # side. e is the face's lesser reach, across or down: the nearness changes across one way or the
-          # other, and taking the shorter can only cut the face more finely than it needs. A square reaches
-          # no further across the face than the face does, so a face that is off by no more than allowed
-          # whole, e * c / 4, is not cut at all, however big its squares would be: most of a place's
-          # faces, a few pixels big or far off.
+          # The chip steps the place on the picture straight across a cell, where the true place steps with
+          # one over the nearness; so the cell shows its picture shifted most where the nearness changes
+          # most across it, and the more the bigger it is. Nearness changes evenly across the screen, by a
+          # share rx of the face's least a pixel across and ry a pixel down (#nearness_slopes). A cell sx
+          # across and sy down is sent as two triangles, split along its diagonal, and its picture is
+          # furthest off at the middle of that diagonal: by about (rx * sx + ry * sy) * max(sx, sy) / 4
+          # pixels. That is why a cell is not simply long the way the nearness does not change: on a wall
+          # down the viewer's side, the nearness changes only across, and yet a cell as tall as the wall
+          # shows its picture's top and bottom where its left and right sides' heights put them, which
+          # differ by the change across it.
           #
-          # So the side is the biggest that keeps that within OFF_PIXELS_SHIFT's pixels. A near wall at a
-          # slant is cut into small squares, each of which then shows its part of the picture where it lies
-          # and not a few pixels across, so the picture holds still on the wall as the view turns; a far
-          # face, or one seen straight on, whose nearness hardly changes across it, into a few big ones or
-          # none. That is how the console's own games cut a polygon: by how far its depth reaches and how big
-          # it is on the screen, more pieces only where the depth changes most, not a grid fixed on the
-          # screen.
+          # So each pair of sides keeping that within OFF_PIXELS_SHIFT's pixels is a choice, and the pair
+          # is the one cutting the face into the fewest cells, counted as the rows its height makes times
+          # the columns its width makes; the first found where two make as few, from the tallest cells
+          # down. A side past the face's own reach that way cuts nothing, and counts as the reach. A floor,
+          # whose nearness changes down the screen, is cut into wide cells; a wall at the viewer's side into
+          # tall narrow ones; a far wall at a slant into columns only.
+          #
+          # FIRST, THE WHOLE FACE. A face whose nearness changes by a share c of its least across it, and
+          # whose longer reach is e pixels, is off by about c * e / 4 pixels sent as it is; within the
+          # pixels allowed, it is one cell, and nothing more is worked out. That is most of a place's faces,
+          # a few pixels big or far off, and it costs one divide (Runtime::Faces's rt_face_one_cell, which a
+          # face sent straight from its corners asks too).
+          #
+          # The console's own games cut along the way the depth does not change, too, to the limit:
+          # PlayStation Doom drew a wall as columns a pixel wide and a floor as rows a pixel high, each at
+          # one depth, so with no error at all (PsyDoom's R_DrawWallPiece and R_DrawFlatSpans). Its walls
+          # stand upright and its view never tilts, and a column cost it a divide and one triangle. A cell
+          # here can lie any way and costs the processor a cut, so the cells are as big as the error
+          # allows, not a pixel.
           #
           # Every sum is IR::Int32's, and powers of two are shifts, as the runtime has them
-          # (rt_face_cell_side, Runtime::Faces#emit_cell_side_routine): the side is halved while s * s * c is more than
-          # 4 * e times the pixels allowed, c with NEARNESS_CHANGE_BITS of fraction and e in sixteenths.
-          def cell_side_shift(face, spans)
-            across = Int32.sub(*face.map { |corner| corner[X] }.minmax.reverse)
-            down = Int32.sub(*face.map { |corner| corner[Y] }.minmax.reverse)
+          # (rt_face_cell_sides, Runtime::Faces#emit_cell_sides_routine). The slopes have SLOPE_BITS of
+          # fraction, so (rx * sx + ry * sy) * max(sx, sy), sides in whole pixels, is held to 4 times the
+          # pixels allowed with those bits. A sum past that before it is multiplied by the longer side
+          # fails at once, which keeps the product inside a word.
+          def cell_side_shifts(face, spans)
+            least_x, most_x = face.map { |corner| corner[X] }.minmax
+            least_y, most_y = face.map { |corner| corner[Y] }.minmax
+            across = Int32.sub(most_x, least_x)
+            down = Int32.sub(most_y, least_y)
             off = spans == 1 ? EVERY_PIXEL_OFF_PIXELS_SHIFT : OFF_PIXELS_SHIFT
-            reach = [across, down].min
-            change = nearness_change(face)
-            shift = MOST_CELL_SHIFT
-            return shift if Int32.mul(change, reach) <= Int32.shift_left(1, NEARNESS_CHANGE_BITS + 2 + 4 + off)
+            longer = Int32.shift_right([across, down].max, 4)
+            return [MOST_CELL_SHIFT, MOST_CELL_SHIFT] if Int32.mul(nearness_change(face), longer) <= Int32.shift_left(1, NEARNESS_CHANGE_BITS + 2 + off)
 
-            bound = Int32.shift_left(reach, NEARNESS_CHANGE_BITS + 2 - 4 + off)
-            shift -= 1 while shift > LEAST_CELL_SHIFT && Int32.shift_left(change, 2 * shift) > bound
+            slope_x, slope_y = nearness_slopes(face)
+            bound = Int32.shift_left(1, SLOPE_BITS + 2 + off)
+            within = lambda do |across_shift, down_shift|
+              side_x = [Int32.shift_left(1, across_shift), Int32.shift_right(across, 4)].min
+              side_y = [Int32.shift_left(1, down_shift), Int32.shift_right(down, 4)].min
+              sum = Int32.add(Int32.mul(slope_x, side_x), Int32.mul(slope_y, side_y))
+              sum <= bound && Int32.mul(sum, [side_x, side_y].max) <= bound
+            end
+            best = nil
+            fewest = nil
+            widest = covering_shift(across)
+            across_shift = LEAST_CELL_SHIFT
+            covering_shift(down).downto(LEAST_CELL_SHIFT) do |down_shift|
+              across_shift += 1 while across_shift < widest && within.call(across_shift + 1, down_shift)
+              next unless within.call(across_shift, down_shift)
+
+              cells = Int32.mul(cells_along(across, across_shift), cells_along(down, down_shift))
+              if fewest.nil? || cells < fewest
+                fewest = cells
+                best = [across_shift, down_shift]
+              end
+              # One column, and lower cells only make more rows.
+              break if across_shift == widest
+            end
+            best || [LEAST_CELL_SHIFT, LEAST_CELL_SHIFT]
+          end
+
+          # The least shift, from LEAST_CELL_SHIFT to MOST_CELL_SHIFT, whose side cuts a reach of +reach+
+          # sixteenths into one cell (#cells_along). A greater one cuts it the same way, and its side, held
+          # to the reach, is the same: so #cell_side_shifts looks no further.
+          def covering_shift(reach)
+            shift = LEAST_CELL_SHIFT
+            shift += 1 while shift < MOST_CELL_SHIFT && cells_along(reach, shift) > 1
             shift
           end
 
@@ -230,6 +284,46 @@ module VBlank
             over = [Int32.shift_right(least, NEARNESS_CHANGE_BITS), 1].max
             [Int32.div(Int32.sub(most, least), over), MOST_NEARNESS_CHANGE].min
           end
+
+          # How many cells of side 2 ** +shift+ pixels a reach of +reach+ sixteenths is cut into: one more
+          # than the lines strictly inside it, at whole sides from its least (#each_strip).
+          def cells_along(reach, shift) = Int32.add(Int32.shift_right(Int32.sub(reach, 1), shift + 4), 1)
+
+          # HOW FAST THE NEARNESS CHANGES ACROSS +face+ AND DOWN IT: [rx, ry], a share of its least a pixel,
+          # with SLOPE_BITS of fraction, each held to MOST_SLOPE.
+          #
+          # Each corner's nearness is taken as a share of the least past it, e = (w - least) over the least
+          # moved down by NEARNESS_CHANGE_BITS (one at the least), held to MOST_NEARNESS_CHANGE. Over a flat
+          # face e is a plane over the screen, and its slopes are the plane's: by Newell's sums round the
+          # corners, nx = the sum of y e' - y' e, ny of e x' - e' x and nz of x y' - x' y (twice the face's
+          # area), each corner and the next, the slopes -nx / nz and -ny / nz. The places are the corners'
+          # in quarter pixels (PLACE_SHIFT), on the screen once the face is clipped, so every product and
+          # sum stays inside a word. A face of no area has no slope.
+          def nearness_slopes(face)
+            least = face.map { |corner| corner[NEARNESS] }.min
+            over = [Int32.shift_right(least, NEARNESS_CHANGE_BITS), 1].max
+            corners = face.map do |corner|
+              [Int32.shift_right(corner[X], PLACE_SHIFT), Int32.shift_right(corner[Y], PLACE_SHIFT),
+               [Int32.div(Int32.sub(corner[NEARNESS], least), over), MOST_NEARNESS_CHANGE].min]
+            end
+            nx = ny = nz = 0
+            corners.each_with_index do |(x, y, e), at|
+              x2, y2, e2 = corners[(at + 1) % corners.length]
+              nx = Int32.add(nx, Int32.sub(Int32.mul(y, e2), Int32.mul(y2, e)))
+              ny = Int32.add(ny, Int32.sub(Int32.mul(e, x2), Int32.mul(e2, x)))
+              nz = Int32.add(nz, Int32.sub(Int32.mul(x, y2), Int32.mul(x2, y)))
+            end
+            return [0, 0] if nz.zero?
+
+            area = magnitude(nz)
+            [nx, ny].map do |n|
+              slope = Int32.div(Int32.shift_left(magnitude(n), SLOPE_SHIFT), area)
+              slope.negative? || slope > MOST_SLOPE ? MOST_SLOPE : slope
+            end
+          end
+
+          # +number+ without its sign, as a word: the least word stays itself.
+          def magnitude(number) = number.negative? ? Int32.sub(0, number) : number
 
           # The corner a face's corner becomes (see the module's note). On a lit face (+levels+ not nought)
           # its shade is its colour with sixteen bits of fraction: its light held to nought to
@@ -310,22 +404,24 @@ module VBlank
           end
 
           # Each piece of +face+ in turn: the face itself without perspective; in perspective, the face cut
-          # along a row's line every square's side (#cell_side_shift) from its top corner, top down, and
-          # each strip into its squares along the columns' lines from its leftmost corner, left to right
-          # (#each_square_in_strip).
+          # along a row's line every cell's height (#cell_side_shifts) from its top corner, top down, and
+          # each strip into its cells along the columns' lines, every cell's width, from its leftmost
+          # corner, left to right (#each_cell_in_strip).
           #
-          # THE SQUARES START AT THE FACE'S OWN CORNER, not at the screen's: a face of a far room is a
-          # few squares wide, and lined up on the screen it would cross a line wherever it fell,
+          # THE CELLS START AT THE FACE'S OWN CORNER, not at the screen's: a face of a far room is a
+          # few cells wide, and lined up on the screen it would cross a line wherever it fell,
           # however small, and be sent in two pieces or four. Every strip of a face is cut along the
           # same columns, so a corner made on the line between two strips is a corner of the pieces on
           # both sides, and the chip leaves no crack between them.
           def each_cell(face, spans, &block)
             return yield(face) if spans == Nodes::FillFace::PERSPECTIVE_NONE
 
-            side = Int32.shift_left(1, cell_side_shift(face, spans) + 4)
+            across_shift, down_shift = cell_side_shifts(face, spans)
             left = face.map { |corner| corner[X] }.min
             top = face.map { |corner| corner[Y] }.min
-            each_strip(face, Y, side, top, spans) { |strip| each_square_in_strip(strip, side, left, spans, &block) }
+            each_strip(face, Y, Int32.shift_left(1, down_shift + 4), top, spans) do |strip|
+              each_cell_in_strip(strip, Int32.shift_left(1, across_shift + 4), left, spans, &block)
+            end
           end
 
           # +piece+ cut along every line of +number+ +start+ and a multiple of +side+ on, strictly inside
@@ -346,15 +442,15 @@ module VBlank
           # The first line, +start+ and a multiple of +side+ on, strictly past +least+.
           def first_line(least, start, side) = Int32.add(Int32.add(start, Int32.bit_and(Int32.sub(least, start), Int32.sub(0, side))), side)
 
-          # THE SQUARES OF ONE STRIP of a face (a part between two of its rows' lines), left to right: the
+          # THE CELLS OF ONE STRIP of a face (a part between two of its rows' lines), left to right: the
           # parts #each_strip cuts it into along the columns' lines, made without cutting.
           #
           # WHY. A cut walks every corner of the piece it cuts and writes two new pieces, and cutting each
-          # strip into squares that way, column by column, was most of what drawing a near wall cost. But a
+          # strip into cells that way, column by column, was most of what drawing a near wall cost. But a
           # strip is two runs of corners from its least x to its most, one each way round, x rising along
-          # both (#strip_chains): its square between two lines is the corners of each run between them and
+          # both (#strip_chains): its cell between two lines is the corners of each run between them and
           # the two places each run crosses the lines. So each run is walked once across the strip
-          # (ChainWalk), each line's crossing made once, and each square put together from them in the order
+          # (ChainWalk), each line's crossing made once, and each cell put together from them in the order
           # the strip's corners go round.
           #
           # A crossing is the corner the cut along that line would make: stepped (#corner_between) from the
@@ -362,20 +458,20 @@ module VBlank
           # line is the crossing itself. So the pieces either side of a line share their corners, and the
           # strips above and below, whose edges these are too, make the same ones.
           #
-          # Each square's left side is the two runs' last crossings, the run going back's first, and the
-          # first square's is the two runs' first corners: the strip's two corners at its least x, or its
+          # Each cell's left side is the two runs' last crossings, the run going back's first, and the
+          # first cell's is the two runs' first corners: the strip's two corners at its least x, or its
           # one corner there twice (whose two triangles' first has no area, and is not sent). So every
-          # square of four corners is two crossings and the two made from them, which the runtime sends
-          # without putting the square together (Runtime::Faces#emit_four_corner_square). A strip no line
-          # crosses is one square, sent as it is; one whose runs do not both rise (it is not flat, and
+          # cell of four corners is two crossings and the two made from them, which the runtime sends
+          # without putting the cell together (Runtime::Faces#emit_four_corner_cell). A strip no line
+          # crosses is one cell, sent as it is; one whose runs do not both rise (it is not flat, and
           # doubles back), or with more than two corners at its least, is cut as #each_strip cuts it.
-          def each_square_in_strip(strip, side, left, spans)
+          def each_cell_in_strip(strip, side, left, spans)
             least, most = strip.map { |corner| corner[X] }.minmax
             line = first_line(least, left, side)
             return yield(strip) unless line < most
 
             chains = strip_chains(strip)
-            return each_strip(strip, X, side, left, spans) { |square| yield square } unless chains
+            return each_strip(strip, X, side, left, spans) { |cell| yield cell } unless chains
 
             forward = ChainWalk.new(chains.forward)
             backward = ChainWalk.new(chains.backward)
@@ -383,13 +479,13 @@ module VBlank
             while line < most
               ahead, ahead_crossing = forward.cross(line, spans)
               behind, behind_crossing = backward.cross(line, spans)
-              square = left_side + ahead + [ahead_crossing, behind_crossing] + behind.reverse
-              yield square.first(MOST_CORNERS) if square.length >= 3
+              cell = left_side + ahead + [ahead_crossing, behind_crossing] + behind.reverse
+              yield cell.first(MOST_CORNERS) if cell.length >= 3
               left_side = [behind_crossing, ahead_crossing]
               line = Int32.add(line, side)
             end
-            square = left_side + forward.rest + chains.most_run + backward.rest.reverse
-            yield square.first(MOST_CORNERS) if square.length >= 3
+            cell = left_side + forward.rest + chains.most_run + backward.rest.reverse
+            yield cell.first(MOST_CORNERS) if cell.length >= 3
           end
 
           # A strip's corners from its least x to its most (#strip_chains): the run from the last corner at
@@ -399,7 +495,7 @@ module VBlank
           StripChains = Data.define(:forward, :backward, :most_run)
 
           # THE TWO RUNS OF +strip+ FROM ITS LEAST X TO ITS MOST, or nil where x does not rise strictly
-          # along both, or more than two corners are at its least (#each_square_in_strip). Where two
+          # along both, or more than two corners are at its least (#each_cell_in_strip). Where two
           # corners share the least x (a strip whose left side is upright), the runs start at the two of
           # them; where several share the most, they end at the two ends of those. The corners at the least
           # are found from the first in the strip's order whose corner before is not at the least.

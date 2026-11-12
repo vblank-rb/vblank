@@ -69,11 +69,12 @@ module VBlank
         draw_place: works("the processor turns and projects every corner, as the other consoles do. The graphics chip " \
                           "fills each face, by its own rules. Thus some pixels of a face's picture are one pixel or " \
                           "one picture pixel away from where the other consoles put them. In perspective, the " \
-                          "processor cuts a face into squares, and the picture is exact at the corners of each " \
-                          "square. The squares are small where the face is near and at a slant, so that the " \
-                          "picture is approximately two pixels or less from its exact place (one pixel for " \
-                          "`perspective: :every_pixel`). A face that is far away or seen straight on is cut into " \
-                          "few squares or none. The graphics chip lights a " \
+                          "processor cuts a face into rectangles, and the picture is exact at the corners of each " \
+                          "rectangle. The rectangles are small where the face is near and at a slant. They are " \
+                          "narrow in the direction where the distance changes. Thus the picture is approximately " \
+                          "four pixels or less from its exact place (two pixels for `perspective: :every_pixel`), " \
+                          "and the picture of a near wall stays on the wall as the view turns. A face that is far " \
+                          "away or seen straight on is cut into few rectangles or none. The graphics chip lights a " \
                           "face, as the console's own games did: it makes each picture pixel darker by the light, " \
                           "which changes smoothly across the face. If the shading makes each colour darker evenly, " \
                           "a pixel is one level or less from the shading's colour. If the shading changes colours " \
