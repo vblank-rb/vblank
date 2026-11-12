@@ -117,13 +117,15 @@ class TestPackBackgrounds < Minitest::Test
   # Color game's title is (SEVEN_BANKS_SCREEN). It shows the decoded cells, and the Color holds it
   # in its eight lists of colours as the original does: a list for each bank, whichever of the
   # bank's places a tile draws. The decoded cells written in the game are played by the interpreter
-  # alone: a Color build gives a picture of the game's own the colours it draws, not its bank.
+  # alone: a Color build gives a picture of the game's own the colours it draws, not its bank. The
+  # interpreter plays them as the run's console (program_played), so their colours are the ones
+  # that console shows: the Genesis keeps three bits of each channel, not five.
   def test_a_map_of_cells_in_seven_banks_shows_the_decoded_cells
     Dir.mktmpdir do |folder|
       program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), color_screen: SEVEN_BANKS_SCREEN)
       by_hand = color_cells_drawn_by_hand(color_screen: SEVEN_BANKS_SCREEN)
 
-      assert_equal map_pixels(Reference.new.run(by_hand, frames: 3).screen, SEVEN_BANKS_SCREEN),
+      assert_equal map_pixels(Reference.new.run(program_played(by_hand), frames: 3).screen, SEVEN_BANKS_SCREEN),
                    map_pixels(game_player.run(program, frames: 3).screen, SEVEN_BANKS_SCREEN)
     end
   end
@@ -136,14 +138,14 @@ class TestPackBackgrounds < Minitest::Test
     Dir.mktmpdir do |folder|
       program, = color_cells_game_and_file(color_original(folder, SEVEN_BANKS_SCREEN), walked: true,
                                                                                       color_screen: SEVEN_BANKS_SCREEN)
-      by_hand = color_cells_drawn_by_hand(walked: true, color_screen: SEVEN_BANKS_SCREEN)
+      by_hand = program_played(color_cells_drawn_by_hand(walked: true, color_screen: SEVEN_BANKS_SCREEN))
 
       [2, 4, COLOR_WALK_STEPS + 2].each do |frames|
         assert_equal map_pixels(Reference.new.run(by_hand, frames: frames).screen, SEVEN_BANKS_SCREEN),
-                     map_pixels(Reference.new.run(program, frames: frames).screen, SEVEN_BANKS_SCREEN),
+                     map_pixels(Reference.new.run(program_played(program), frames: frames).screen, SEVEN_BANKS_SCREEN),
                      "the screen after #{frames} frames"
       end
-      refute_equal map_pixels(Reference.new.run(program, frames: 2).screen, SEVEN_BANKS_SCREEN),
+      refute_equal map_pixels(Reference.new.run(program_played(program), frames: 2).screen, SEVEN_BANKS_SCREEN),
                    map_pixels(game_player.run(program, frames: COLOR_WALK_STEPS + 2).screen, SEVEN_BANKS_SCREEN),
                    "the walk moves the screen"
     end
