@@ -540,7 +540,9 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          Original::Unpacking.new(program: maker.program, slots: slots, copy_size: copy_size,
+          # Written, so a lowering's many questions of a long routine read one walk of it rather
+          # than walking it again for each (IR::Node#mark_written!).
+          Original::Unpacking.new(program: maker.program.mark_written!, slots: slots, copy_size: copy_size,
                                   format_words: reader.format_words, copy_bytes: bytes&.b, frames: frames)
         end
       end
