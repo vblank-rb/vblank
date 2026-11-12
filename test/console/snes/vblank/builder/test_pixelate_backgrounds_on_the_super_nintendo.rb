@@ -105,6 +105,58 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
     end
   end
 
+  # Two tiles in seven colours whose every pixel differs from its neighbours inside the tile, so a
+  # block that reads one column or one row off shows the wrong colour.
+  SEVEN_COLOR_KEY = Ractor.make_shareable(%i[red green blue yellow cyan magenta white].each_with_index.to_h { |name, i| [i.to_s, name] })
+  CROSSED = Ractor.make_shareable((0...8).map { |row| (0...8).map { |col| ((col + (3 * row)) % 7).to_s }.join }.join("\n"))
+  SLANTED = Ractor.make_shareable((0...8).map { |row| (0...8).map { |col| (((2 * col) + row + 1) % 7).to_s }.join }.join("\n"))
+  # A map 512 pixels tall, as a Super Nintendo stage keeps its arena.
+  TALL_ARENA = Ractor.make_shareable((0...64).map { |row| (0...32).map { |col| (((row * 5) + col) % 3) == 1 ? "a" : "b" }.join })
+
+  # The arena scrolled to (+across+, +down+) under the 32-row bar, in blocks of +size+. Without
+  # +held+ the arena alone.
+  private def scrolled_arena(size, across, down, held: true)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:crossed, SEVEN_COLOR_KEY) { CROSSED }
+      image(:slanted, SEVEN_COLOR_KEY) { SLANTED }
+      image(:bar_art, "#" => :yellow, "." => :black) { STRIPES }
+      tiles :set, "a" => :crossed, "b" => :slanted
+      tiles :bar_tiles, "a" => :bar_art, "b" => :bar_art
+      background(:arena, tiles: :set, map: TALL_ARENA).scroll_to across, down
+      background(:bar, tiles: :bar_tiles, map: ROOM.first(4), above_row: ARENA_BAR_ROWS).scroll_to 0, 0 if held
+      game_loop { pixelate size, sprites: false }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A SCROLLED ARENA keeps the grid fixed to the screen: every block shows the pixel the arena has,
+  # as drawn, at the block's top left on the screen, wherever the scroll puts the map: from the bar's
+  # last row down, the arena alone in its own blocks, a block that straddles that row read at its
+  # first row. The scrolls: a whole tile across and far down a 512-row map (the cartridge writes
+  # BG1HOFS 8 and BG1VOFS 487, a row less, as Runtime::Picture says), one off the tile grid both
+  # ways, and one that wraps past the map's top. On the snes run the cartridge's picture in bsnes is
+  # held to the interpreter's on every pass, which is the answer key for the console's mosaic
+  # (sfc/ppu/background.cpp, PPU::Background::run counts a block's columns from the screen's column
+  # 0 after the scroll; fetchNameTable reads the line less the mosaic's count, plus the scroll).
+  def test_a_scrolled_arena_under_the_bar_is_in_blocks_fixed_to_the_screen
+    sizes = [3, 6, 7]
+    [[8, 488], [3, 5], [8, -25]].each do |across, down|
+      sharp = game_player.run(scrolled_arena(1, across, down, held: false), frames: 2).screen
+      spots = (0...256).flat_map { |x| (ARENA_BAR_ROWS...224).step(2).map { |y| [x, y] } }
+      assert_operator spots.map { |x, y| sharp.pixel(x, y) }.uniq.size, :>, 2
+      sizes.each do |size|
+        screen = game_player.run(scrolled_arena(size, across, down), frames: 2).screen
+        spots.each do |x, y|
+          assert_equal sharp.pixel(x - (x % size), y - (y % size)), screen.pixel(x, y),
+                       "scroll (#{across}, #{down}), blocks of #{size}: (#{x}, #{y})"
+        end
+      end
+    end
+  end
+
   # A menu with a status bar as drawn beside its room, and a stage with clouds over the room in that
   # layer: the layer is in blocks on the stage and not on the menu, and the game goes from one to the
   # other and back.
