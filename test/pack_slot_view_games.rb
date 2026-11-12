@@ -99,9 +99,10 @@ module PackSlotViewGames
     [b.program, b.made_data_pack_file]
   end
 
-  # A GAME ANY CONSOLE PLAYS, reading the stretch in two more shapes: a tile of the layer as a
+  # A GAME OF ONE PAINTED SCREEN, reading the stretch in two more shapes: a tile of the layer as a
   # picture of pixels, and its first bytes as a table of numbers, signed and not, which place a
-  # mark each pass.
+  # mark each pass. The tile has five colours in one 8x8 square over black, more than a Game Boy
+  # Color keeps there, so its tests are PackSlotViewPixelTests', played by the other consoles.
   private def table_and_pixels_game_and_file(from, views:, options: VBlank::Cartridge::Options.new)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do

@@ -4,9 +4,10 @@ require "test_helper"
 require "pack_slot_view_games"
 
 # A VIEW OF A SLOT OF A DATA PACK (DSL::PackSlot#as_tiles and its siblings): some of a slot's bytes
-# read in a shape of their own. What a game that reads its one video slot through views shows is
-# held to the same game holding the data itself, and what a game is told when a view cannot be
-# made. The two backgrounds of the made-up original, one of them turning, are
+# read in a shape of their own, and what a game is told when a view cannot be made. What a game
+# that reads its pixels and tables through views shows, held to the same game holding them itself,
+# is in test/pack_slot_view_pixel_tests.rb, played by each console that shows its picture (not the
+# Color). The two backgrounds of the made-up original, one of them turning, are
 # test/console/gba/vblank/builder/test_pack_slot_views_on_the_advance.rb's.
 class TestPackSlotViews < Minitest::Test
   include PackSlotViewGames
@@ -25,21 +26,6 @@ class TestPackSlotViews < Minitest::Test
           instance_exec(pack, &reading)
         end
       end
-    end
-  end
-
-  def test_pixels_and_tables_viewed_in_a_slot_of_tiles_show_as_the_game_holding_them
-    Dir.mktmpdir do |folder|
-      from = slot_view_original(folder)
-      viewed, = table_and_pixels_game_and_file(from, views: true)
-      held, = table_and_pixels_game_and_file(from, views: false)
-
-      pictures = [2, 5, 9].map do |frames|
-        shown = game_player.run(held, frames: frames).screen
-        assert_equal shown.to_a, game_player.run(viewed, frames: frames).screen.to_a, "after #{frames} frames"
-        shown.to_a
-      end
-      assert_equal 3, pictures.uniq.length, "the marks move from pass to pass"
     end
   end
 
