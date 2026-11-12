@@ -31,6 +31,7 @@ module VBlank
             @pixelates = !places.empty?
             @kept = places.first ? IR::Stacking.at_or_above(picture, places.first).map(&:name) : []
             @keeps_sprites = Blocks.keeps_sprites?(program, LoweringError)
+            @bar_in_blocks = Blocks.bar_in_blocks!(program, LoweringError)
           end
 
           # Does the program pixelate at all?
@@ -38,6 +39,13 @@ module VBlank
 
           # The bit that goes into the control register of the background +name+.
           def background_bit(name) = in_blocks?(name) ? BG_MOSAIC : 0
+
+          # ...and of the status bar +name+, which is in blocks only where the game puts it there
+          # (`status_bar: true`). The display counts a block's lines from the top of the screen
+          # whichever layers it shows, so a block that starts above the bar's window shows on its
+          # rows inside it the bar's layer read at the block's first row, above the bar's map, as
+          # the interpreter draws it (Reference#paint_status_bar_rows).
+          def bar_bit(name) = @bar_in_blocks ? background_bit(name) : 0
 
           # ...and the one that goes into the first word of the sprite +name+'s table entry: never
           # set in a game that leaves its sprites as drawn (`sprites: false`).

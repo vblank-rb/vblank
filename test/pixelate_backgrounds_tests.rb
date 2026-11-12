@@ -124,6 +124,54 @@ module PixelateBackgroundsTests
     end
   end
 
+  # A room under a status bar whose top no size here divides, the bar in blocks too.
+  private def room_over_a_bar_in_blocks(size, bar_in_blocks: true)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:stripes, "#" => :red, "." => :blue) { STRIPES }
+      image(:steps, "#" => :green, "." => :white) { STEPS }
+      tiles :set, "a" => :stripes, "b" => :steps
+      tiles :bar_tiles, "a" => :steps, "b" => :stripes
+      room = background(:room, tiles: :set, map: ROOM)
+      status_bar :score, tiles: :bar_tiles, map: ROOM.first(3), top: screen_height - 21
+      var :tall, screen_height
+      across = var :across, 0
+      game_loop do
+        across += 3
+        room.scroll_to across, across / 2
+        pixelate size, sprites: false, status_bar: bar_in_blocks
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # `status_bar: true`: the bar is in blocks of the one grid from the screen's top. A block that
+  # starts above the bar's top shows, on its rows from the bar down, the bar's layer read at the
+  # block's first row, which is above the bar's map: nothing of the bar is there, so the backdrop
+  # shows (black, as nothing here sets one).
+  def test_a_status_bar_in_blocks_keeps_the_grid_from_the_screens_top
+    [3, 8].product([2, 5]).each do |size, frames|
+      run = game_player.run(room_over_a_bar_in_blocks(size), frames: frames)
+      screen = run.screen
+      bar_top = run[:tall] - 21
+      bar = (0...200).step(3).flat_map { |x| (bar_top...run[:tall]).map { |y| [x, y] } }
+      straddling, inside = bar.partition { |_, y| y - (y % size) < bar_top }
+
+      assert_operator straddling.size, :>, 0
+      straddling.each { |x, y| assert_equal 0, screen.pixel(x, y), "blocks of #{size}, frame #{frames}: (#{x}, #{y})" }
+      inside.each do |x, y|
+        assert_equal screen.pixel(x - (x % size), y - (y % size)), screen.pixel(x, y),
+                     "blocks of #{size}, frame #{frames}: the bar's (#{x}, #{y}) shows its block's top left"
+      end
+      sharp = game_player.run(room_over_a_bar_in_blocks(size, bar_in_blocks: false), frames: frames).screen
+
+      refute_equal(inside.map { |x, y| sharp.pixel(x, y) }, inside.map { |x, y| screen.pixel(x, y) },
+                   "blocks of #{size}, frame #{frames}: the bar is in blocks")
+    end
+  end
+
   # Two backgrounds, the front one see-through in places, under a status bar along the top: the
   # layout of a Super Nintendo game's stage, whose bar is on a third layer. Both backgrounds are in
   # blocks, each by itself, and the bar is not.

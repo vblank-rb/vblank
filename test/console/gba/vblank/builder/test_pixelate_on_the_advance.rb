@@ -123,6 +123,25 @@ class TestPixelateOnTheAdvance < Minitest::Test
     [3, 4, 9].each { |frames| assert_backends_agree(walking, frames: frames, name: "WALK#{frames}") }
   end
 
+  # A status bar in blocks with the room (`status_bar: true`), its top on a row no size here
+  # divides: one grid from the screen's top through the bar, and a block that starts above the bar
+  # shows the bar's layer read at its first row on its rows from the bar down, as the console draws.
+  def test_a_status_bar_in_blocks_is_the_same_on_the_console
+    [3, 8].product([2, 5]).each do |size, frames|
+      barred = program do
+        screen :tiled
+        instance_exec(&ROOM_TILES)
+        tiles :bar_tiles, "a" => :steps, "b" => :stripes
+        room = background :room, tiles: :set, map: ROOM
+        status_bar :score, tiles: :bar_tiles, map: ROOM.first(3), top: HEIGHT - 21
+        pixelate size, sprites: false, status_bar: true
+        game_loop { room.scroll_by 1, 2 }
+      end
+
+      assert_backends_agree(barred, frames: frames, name: "BAR#{size}#{frames}")
+    end
+  end
+
   # A background whose rows are each bent a different way keeps each row's own bend: a
   # block is the picture row at its top, drawn where each of its rows sits.
   def test_a_bent_background_keeps_each_rows_own_bend

@@ -671,8 +671,8 @@ module VBlank
       # It is one choice for the whole game too, like the place.
       #
       # A status bar stays as drawn unless the game writes `status_bar: true`: then it is in
-      # blocks too, and its blocks start at its own top row, as the rest of the screen's start
-      # at the top. One choice for the whole game as well.
+      # blocks too, in the one grid from the top of the screen that everything else's blocks are
+      # in. One choice for the whole game as well.
       #
       # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
       # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen

@@ -425,14 +425,22 @@ end
 def rg_held_above_row?(background) = rg_background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR
 
 # Reference#paint_status_bar_rows: from its top row to the bottom of the screen, its map from its own
-# corner, never scrolled; past the end of its map the backdrop stays.
+# corner, never scrolled; past the end of its map the backdrop stays. A row in a block that starts
+# above the bar reads the bar's map above its first row, where its grid comes round.
 def rg_paint_status_bar_rows(bar)
   top = rg_bar_top_shown(bar)
-  (top...RG_SCREEN_HEIGHT).each { |py| rg_paint_map_row(bar, rg_row_drawn_from(py) - top, 0, nil, py) }
+  grid_h = @rg_game_maps[rg_map_now(bar) + RG_MAP_GRID_ROWS] * rg_background_field(bar, RG_BG_TILE_H)
+  (top...RG_SCREEN_HEIGHT).each do |py|
+    my = rg_row_drawn_from(py) - top
+    next if my.negative? && grid_h.zero?
+
+    my %= grid_h if my.negative?
+    rg_paint_map_row(bar, my, 0, nil, py)
+  end
 end
 
 # Reference#paint_status_bar: the status bar as drawn, or in blocks while the picture is shown in them and
-# the game puts its bar there too (RG_BG_IN_BLOCKS), its blocks starting at its own top row.
+# the game puts its bar there too (RG_BG_IN_BLOCKS), in the one grid from the screen's top.
 def rg_paint_status_bar(bar)
   block = rg_hook_block_size
   return rg_paint_status_bar_rows(bar) if block == 1 || rg_background_field(bar, RG_BG_IN_BLOCKS).zero?
@@ -440,26 +448,15 @@ def rg_paint_status_bar(bar)
   @rg_sheet.fill(RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = true
   @rg_rows_tall = block
-  @rg_rows_split = rg_bar_top_shown(bar)
   rg_paint_status_bar_rows(bar)
   @rg_onto_sheet = false
   @rg_rows_tall = 1
-  @rg_rows_split = nil
   (rg_bar_top_shown(bar)...RG_SCREEN_HEIGHT).each do |py|
     RG_SCREEN_WIDTH.times do |px|
       color = @rg_sheet[(py * RG_SCREEN_WIDTH) + px - (px % block)]
       rg_lay_scenery(px, py, color) if color != RG_NOTHING_ON_SHEET
     end
   end
-end
-
-# Reference#block_split: the row the screen is split at, where its blocks start again, or nil.
-def rg_block_split
-  bar = rg_bar_showing
-  return rg_bar_top_shown(bar) if bar
-
-  held = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times.find { |bg| rg_showing?(bg) && rg_held_above_row?(bg) }
-  held && rg_background_field(held, RG_BG_ABOVE_ROW)
 end
 
 # Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. A cell is
@@ -543,12 +540,7 @@ end
 
 # The row of the picture that screen row +py+ is drawn from: its own, or the row at the top of its
 # block while a background is being painted for blocks.
-def rg_row_drawn_from(py)
-  split = @rg_rows_split
-  return split + ((py - split) / @rg_rows_tall * @rg_rows_tall) if split && py >= split
-
-  py - (py % @rg_rows_tall)
-end
+def rg_row_drawn_from(py) = py - (py % @rg_rows_tall)
 
 def rg_bend_asked(background) = background == @rg_asked_bend[0] ? 1 : 0
 def rg_bend_line = @rg_asked_bend[1]
@@ -825,11 +817,9 @@ def rg_paint_scenery_in_blocks(background, block, box)
   @rg_sheet.fill(RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = true
   @rg_rows_tall = block
-  @rg_rows_split = rg_block_split
   rg_paint_background(background)
   @rg_onto_sheet = false
   @rg_rows_tall = 1
-  @rg_rows_split = nil
   wide = rg_background_field(background, RG_BG_CAN_TURN) != 0 && block == 2 ? 1 : block
   rg_scenery_rows.times do |py|
     RG_SCREEN_WIDTH.times do |px|
@@ -891,7 +881,6 @@ def rg_tiled_setup
   @rg_sheet = Array.new(RG_SCREEN_CELLS, RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = false
   @rg_rows_tall = 1
-  @rg_rows_split = nil # ...and the row a split screen's blocks start again at
   @rg_shown_backgrounds = []
   # What the game does to a background, kept by the entry that keeps its NAME (rg_keeper_of): the
   # map its cells hold now, the run's own copy of them and the entry whose map that is (Reference

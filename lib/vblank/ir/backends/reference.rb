@@ -2104,14 +2104,24 @@ module VBlank
         # its map, leave the backdrop, since the backgrounds under it are not painted there (see
         # #scenery_rows).
         #
-        # +tall+ is how many rows a block is, for a bar being put into blocks: its blocks start at
-        # its own top row (Blocks.block_top), as the display's do where its line table starts the bar.
+        # +tall+ is how many rows a block is, for a bar being put into blocks. The blocks are the one
+        # grid from the screen's top, so a block can start above the bar and end inside it. Its rows
+        # from the bar down show the bar's layer, where its display has the bar switched on, but read
+        # at the block's first row with the bar's scroll, which is the row above the bar's map that
+        # many rows (bsnes, sfc/ppu/background.cpp, PPU::Background::fetchNameTable: the line less
+        # the mosaic's count, plus the scroll register as it is on the current line). The layer's
+        # grid comes round there, as a scrolled background's does (IR::TileMap), so it is the
+        # grid's last rows, where the bar's map has no cells and the backdrop stays.
         def paint_status_bar_rows(bar, tall = 1)
           map = map_of(bar)
           swapped = background_swap(bar)
           top = bar_top_shown(bar)
+          grid_h = IR::TileMap.grid(map)[1].to_i * bar.tile_h
           (top...@screen.height).each do |py|
-            my = Blocks.block_top(py, tall, top) - top
+            my = py - (py % tall) - top
+            next if my.negative? && grid_h.zero?
+
+            my %= grid_h if my.negative?
             row = map[my / bar.tile_h]
             next unless row
 
@@ -2167,16 +2177,6 @@ module VBlank
         # is the picture as drawn, unless set.
         def rows_shown_of(bg) = bg.above_row ? [scenery_rows, bg.above_row].min : scenery_rows
 
-        # THE ROW THE SCREEN IS SPLIT AT, where its blocks start again (Blocks.block_top): the top
-        # of the status bar showing, or the row a background showing is held above. Nil for a
-        # screen in one piece. The build lets a screen have one of the two at a time.
-        def block_split
-          bar = bar_showing
-          return bar_top_shown(bar) if bar
-
-          showing_scenery.find(&:above_row)&.above_row
-        end
-
         def paint_background_window(bg, tall = 1)
           turn = @bg_affine[bg.name]
           return paint_affine_background_window(bg, turn, tall) if turn
@@ -2196,13 +2196,12 @@ module VBlank
           base_x, off_y = scroll_shown(bg)
           off_y %= map_h
           width = @screen.width
-          split = block_split
 
           rows_shown_of(bg).times do |py|
             # A bending background sits somewhere different on every row: this row's own
             # sideways offset, on top of wherever the background is scrolled to.
             off_x = (base_x + bend_offset_at(bg.name, py)) % map_w # Ruby % wraps negatives into 0..map_w-1
-            my = (off_y + Blocks.block_top(py, tall, split)) % map_h
+            my = (off_y + py - (py % tall)) % map_h
             row = map[my / tile_h]
             next unless row # no cell row here — the backdrop stays, and layers behind show
 
@@ -2240,10 +2239,9 @@ module VBlank
           map_h = map.length * tile_h
           base_x, off_y = scroll_shown(bg)
           width = @screen.width
-          split = block_split
 
           rows_shown_of(bg).times do |py|
-            my = off_y + Blocks.block_top(py, tall, split)
+            my = off_y + py - (py % tall)
             next if my.negative? || my >= map_h
 
             row = map[my / tile_h]
@@ -2291,10 +2289,9 @@ module VBlank
           pivot_x = turn.pivot_x
           pivot_y = turn.pivot_y
           pa, pb, pc, pd = Affine.matrix(turn.angle, turn.size)
-          split = block_split
 
           scenery_rows.times do |py|
-            dy = Blocks.block_top(py, tall, split) - pivot_y
+            dy = py - (py % tall) - pivot_y
             @screen.width.times do |px|
               dx = px - pivot_x
               tex_dx = ((pa * dx) + (pb * dy)) / Affine::ONE_TH
@@ -2647,8 +2644,8 @@ module VBlank
         end
 
         # Paint the status bar +bar+: as drawn, or in blocks while the picture is shown in them and
-        # the program puts its bar there too (`status_bar: true`). Its blocks start at its own top
-        # row, and across at the screen's left edge as everything's do.
+        # the program puts its bar there too (`status_bar: true`). Its blocks are the grid every
+        # background's are, from the screen's top left (#paint_status_bar_rows).
         def paint_status_bar(bar)
           return paint_status_bar_rows(bar) unless @bar_in_blocks && in_blocks?(bar.name)
 
@@ -2737,6 +2734,14 @@ module VBlank
         # block's top left corner — so a background that scrolls slides under a grid that
         # stays where it is. A corner that is see-through leaves the whole block
         # see-through, and what is behind shows there.
+        #
+        # A SCREEN SPLIT IN TWO KEEPS THE ONE GRID. Where a status bar starts, or a background
+        # held above a row stops, the display switches layers between two lines and its count
+        # of a block's lines goes on: Super Nintendo games split a screen that way, and their
+        # blocks run through the split (bsnes, sfc/ppu/mosaic.cpp, PPU::Mosaic::scanline,
+        # counts down the whole screen from its first line). A row past the split in a block
+        # that starts above it shows the layers shown on that row, each read at the block's
+        # first row with its own scroll, which is what the painters do.
         #
         # DOWN AND ACROSS ARE DONE APART, because a display draws a row at a time. Down:
         # every row of a block is drawn from the picture row its top row shows (the

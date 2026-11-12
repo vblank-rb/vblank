@@ -90,9 +90,10 @@ module VBlank
                         "build refuses the game. A status bar stays as drawn, unless the game writes " \
                         "`status_bar: true`. Each block shows the colour of its first pixel. The blocks " \
                         "start at the top left of the screen. On a screen split by a status bar or by a " \
-                        "background held above a row (`above_row:`), the blocks start again at the row of " \
-                        "the split. The line table that shows the split also writes the mosaic again on " \
-                        "that row, so this costs no processor time."),
+                        "background held above a row (`above_row:`), the blocks go on through the split " \
+                        "and do not start again. If a block starts above a status bar in blocks, its rows " \
+                        "in the bar show the bar's layer above the bar's top row. That part of the layer " \
+                        "is empty unless the bar's map fills the whole layer, so the backdrop shows."),
         pixelate_in: works("see `pixelate`."),
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,

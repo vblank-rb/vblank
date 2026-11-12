@@ -114,24 +114,6 @@ class TestRefusedVerbs < Minitest::Test
     end
   end
 
-  # A status bar in blocks starts its blocks at its own top, and the Advance's mosaic counts every
-  # block from the top of the screen: so it builds the bar as drawn, and refuses the bar in blocks.
-  def test_the_advance_refuses_a_status_bar_in_blocks
-    bar_game = lambda do |in_blocks|
-      tiled_game do
-        image(:digit, "#" => :yellow) { "########\n" * 8 }
-        tiles :hud, "#" => :digit
-        status_bar :score, tiles: :hud, map: ["####"], top: 139
-        pixelate 4, sprites: false, status_bar: in_blocks
-      end
-    end
-    said = said_building(VBlank::Console.for(:gba), bar_game.call(true))
-
-    assert_match(/status bar in blocks/, said)
-    assert_match(/top of the screen/, said)
-    VBlank.build("BLOCKS", console: :gba, out: StringIO.new, err: StringIO.new, &bar_game.call(false))
-  end
-
   # An answer that only points at another verb's is refused in that verb's words.
   def test_an_answer_that_points_at_another_is_said_in_that_ones_words
     answers = VBlank::Console::ColorAnswers

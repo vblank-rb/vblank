@@ -8,20 +8,17 @@ require "pixelate_backgrounds_tests"
 # (PixelateBackgroundsTests in test/pixelate_backgrounds_tests.rb). The Advance's twin is
 # test/console/gba/vblank/builder/test_pixelate_backgrounds_on_the_advance.rb.
 #
-# The tests below it are of the screen split in two. Of the cartridges, only the Super Nintendo's
-# builds both splits: a background held above a row (`above_row:`, which the others refuse), and a
-# status bar put in blocks with the rest (`status_bar: true`, which the Advance refuses). So they are
-# played by the runs that play games as the Super Nintendo: its cartridge, and the game as C,
-# JavaScript and Ruby. Each half of a split screen starts its blocks at its own first row, as the
-# console's mosaic starts them again where its line table switches the layers.
+# The tests below it are of a background held above a row (`above_row:`), which of the cartridges
+# only the Super Nintendo's builds. So they are played by the runs that play games as the Super
+# Nintendo: its cartridge, and the game as C, JavaScript and Ruby.
 class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
   include PixelateBackgroundsTests
 
   # A bar held above a row that no size here divides, over a room that scrolls every pass, in
-  # blocks of +size+ from the first pass.
+  # blocks of +size+ from the first pass. Without +held+ the room alone.
   BAR_ROWS = 20
 
-  private def room_under_a_held_bar(size)
+  private def room_under_a_held_bar(size, held: true)
     b = Builder.new
     b.instance_eval do
       screen :tiled
@@ -31,7 +28,7 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
       tiles :set, "a" => :stripes, "b" => :steps
       tiles :bar_tiles, "a" => :bar_art, "b" => :steps
       room = background(:room, tiles: :set, map: ROOM)
-      background :bar, tiles: :bar_tiles, map: ROOM.first(4), above_row: BAR_ROWS
+      background :bar, tiles: :bar_tiles, map: ROOM.first(4), above_row: BAR_ROWS if held
       across = var :across, 0
       game_loop do
         across += 3
@@ -43,65 +40,24 @@ class TestPixelateBackgroundsOnTheSuperNintendo < Minitest::Test
     b.program
   end
 
-  # Below the bar's last row the room's blocks start at that row, and above it at the screen's top.
-  def test_the_room_under_a_held_bar_starts_its_blocks_where_the_bar_ends
+  # One grid of blocks from the screen's top, straight through the bar's last row: the console's
+  # mosaic counts its lines down the whole screen, and the line table that ends the bar changes
+  # which layers show, never the count. So a block that starts on the bar's rows and ends below
+  # them shows, on its rows below the bar, the room as the block's first row reads it: below the
+  # bar the picture is the room's alone, in the blocks it has with no bar at all.
+  def test_the_room_under_a_held_bar_keeps_the_grid_from_the_screens_top
     [3, 8].product([2, 5]).each do |size, frames|
       screen = game_player.run(room_under_a_held_bar(size), frames: frames).screen
-      below = (0...200).step(3).flat_map { |x| (BAR_ROWS...150).step(2).map { |y| [x, y] } }
-      below.each do |x, y|
-        top = BAR_ROWS + ((y - BAR_ROWS) / size * size)
+      alone = game_player.run(room_under_a_held_bar(size, held: false), frames: frames).screen
+      below = (0...200).step(3).flat_map { |x| (BAR_ROWS...150).map { |y| [x, y] } }
 
-        assert_equal screen.pixel(x - (x % size), top), screen.pixel(x, y),
-                     "blocks of #{size}, frame #{frames}: (#{x}, #{y}) shows its block's top left, row #{top}"
-      end
+      assert_equal(below.map { |x, y| alone.pixel(x, y) }, below.map { |x, y| screen.pixel(x, y) },
+                   "blocks of #{size}, frame #{frames}: below the bar, the room in its own blocks")
       (0...200).step(3).flat_map { |x| (0...BAR_ROWS).map { |y| [x, y] } }.each do |x, y|
         assert_equal screen.pixel(x - (x % size), y - (y % size)), screen.pixel(x, y),
                      "blocks of #{size}, frame #{frames}: the bar's (#{x}, #{y})"
       end
       assert_operator below.map { |x, y| screen.pixel(x, y) }.uniq.size, :>, 1
-    end
-  end
-
-  # A room under a status bar whose top no size here divides, the bar in blocks too.
-  private def room_over_a_bar_in_blocks(size, bar_in_blocks: true)
-    b = Builder.new
-    b.instance_eval do
-      screen :tiled
-      image(:stripes, "#" => :red, "." => :blue) { STRIPES }
-      image(:steps, "#" => :green, "." => :white) { STEPS }
-      tiles :set, "a" => :stripes, "b" => :steps
-      tiles :bar_tiles, "a" => :steps, "b" => :stripes
-      room = background(:room, tiles: :set, map: ROOM)
-      status_bar :score, tiles: :bar_tiles, map: ROOM.first(3), top: screen_height - 21
-      var :tall, screen_height
-      across = var :across, 0
-      game_loop do
-        across += 3
-        room.scroll_to across, across / 2
-        pixelate size, sprites: false, status_bar: bar_in_blocks
-      end
-    end
-    b.finalize_program
-    b.program
-  end
-
-  # `status_bar: true`: the bar is in blocks, which start at its own top row.
-  def test_a_status_bar_in_blocks_starts_its_blocks_at_its_top
-    [3, 8].product([2, 5]).each do |size, frames|
-      run = game_player.run(room_over_a_bar_in_blocks(size), frames: frames)
-      screen = run.screen
-      bar_top = run[:tall] - 21
-      bar = (0...200).step(3).flat_map { |x| (bar_top...run[:tall]).map { |y| [x, y] } }
-      bar.each do |x, y|
-        top = bar_top + ((y - bar_top) / size * size)
-
-        assert_equal screen.pixel(x - (x % size), top), screen.pixel(x, y),
-                     "blocks of #{size}, frame #{frames}: the bar's (#{x}, #{y}) shows row #{top}"
-      end
-      sharp = game_player.run(room_over_a_bar_in_blocks(size, bar_in_blocks: false), frames: frames).screen
-
-      refute_equal(bar.map { |x, y| sharp.pixel(x, y) }, bar.map { |x, y| screen.pixel(x, y) },
-                   "blocks of #{size}, frame #{frames}: the bar is in blocks")
     end
   end
 

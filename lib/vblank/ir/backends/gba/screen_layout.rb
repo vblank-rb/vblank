@@ -1557,9 +1557,10 @@ module VBlank
               screen_block: store.vram.take_map(entries.size / MAP_ENTRIES_A_BLOCK),
               size: regular_map_size(cols, rows),
               # A status bar is drawn alone inside its window with the sprites, all of them in
-              # front of it, so it sits at the back; and it is never in blocks.
+              # front of it, so it sits at the back; and it is in blocks only where the game puts
+              # it there.
               priority: node.bar? ? BAR_PRIORITY : hardware_priority(name, scene: own_scene(node)),
-              in_blocks: node.bar? ? 0 : @pixelation.background_bit(name),
+              in_blocks: node.bar? ? @pixelation.bar_bit(name) : @pixelation.background_bit(name),
               affine: false,
               small: small,
               char_base: stored.char_base,

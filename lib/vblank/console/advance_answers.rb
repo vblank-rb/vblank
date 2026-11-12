@@ -51,11 +51,7 @@ module VBlank
 
         # --- fades, tints and screen effects ---
         fade: works, tint: works, fade_in: works, fade_out: works, flash_screen: works, fade_level: works,
-        shake_screen: works,
-        pixelate: works("a status bar in blocks (`status_bar: true`) is refused: the mosaic of an Advance " \
-                        "counts every block from the top of the screen, so it cannot start the bar's blocks " \
-                        "at the bar's top. A status bar as drawn works."),
-        pixelate_in: works("see `pixelate`."), pixelate_out: works("see `pixelate`."), pixelate_size: works,
+        shake_screen: works, pixelate: works, pixelate_in: works, pixelate_out: works, pixelate_size: works,
         spotlight: works, iris_in: works, iris_out: works, iris_shut?: works, pulse: works,
         camera_follows: works,
 

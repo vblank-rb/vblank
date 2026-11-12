@@ -983,7 +983,7 @@ module VBlank
             # text over it included, so every layer it shows is in blocks, as the interpreter shows
             # the whole of a painted picture in blocks. On a tiled screen a background is in blocks
             # unless the game's place leaves it as drawn (`under:`), or it is a status bar the game
-            # does not put in blocks too (`status_bar: true`), as Reference#paint_scenery, #paint_bar
+            # does not put in blocks too (`status_bar: true`), as Reference#paint_scenery, #paint_status_bar
             # and #place_blocks decide.
             #
             # A LAYER WHOSE SCENES DIFFER in that (a menu's status bar as drawn, and a stage's clouds
