@@ -719,14 +719,6 @@ module VBlank
 
           def console_loop(node) = @plan.console_loop(node)
 
-          # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in
-          # one (IR::Frames::ConsoleLoop#placed)?
-          def placed_at_pass_end?(node)
-            @placed_at_pass_end ||= game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
-                                              .to_set(&:object_id)
-            @placed_at_pass_end.include?(node.object_id)
-          end
-
           # Every game loop of the program.
           def game_loops = @plan.game_loops
 

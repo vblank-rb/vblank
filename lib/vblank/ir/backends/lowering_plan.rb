@@ -202,6 +202,14 @@ module VBlank
           (@console_loops ||= {})[node.object_id] ||= Frames.console_order_of(node, @console)
         end
 
+        # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in one
+        # (IR::Frames::ConsoleLoop#placed)? A background put up in that pass stays at its corner through it.
+        def placed_at_pass_end?(node)
+          @placed_at_pass_end ||= game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
+                                            .to_set(&:object_id)
+          @placed_at_pass_end.include?(node.object_id)
+        end
+
         # A step a run can reach that only means something on the Advance, refused by name. A step in
         # a routine nothing calls never runs, and is not refused.
         def refuse_hardware_only_kinds!

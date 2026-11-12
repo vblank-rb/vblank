@@ -101,7 +101,8 @@ calls and where the console keeps things are each lowering's alone. Everything t
 writing an instruction is shared, because two copies of a decision drift apart:
 
 - `Backends::LoweringPlan` — what a run reaches, the numbers timers and scenes are known by, how
-  each table is kept, constant folding, the game loop in the console's order, and the refusals
+  each table is kept, constant folding, the game loop in the console's order and which of its writes
+  are placed at the end of a pass (`placed_at_pass_end?`), and the refusals
   every console makes alike (a step only the Advance has, what the console's answers refuse, a
   routine that calls itself).
 - `Backends::ControlFlow` — the loops, tests and choices between scenes (`if`, `loop`, `repeat`,
@@ -131,6 +132,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   own. The Color's table is another shape and is not one of them.
 - `IR::Tunes.ranks_in_order`, `Backends::FadeSteps` — the order sound ranks are kept in, and a
   fade's steps.
+- `IR::Stacking.items_in_draw_order` — a frame's sprites back to front, each run the game orders in
+  its place; `IR::SceneHandover#background_named` — which declaration a change to a background names;
+  `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
+  every screen shows.
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).

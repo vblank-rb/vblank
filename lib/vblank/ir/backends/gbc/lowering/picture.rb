@@ -1801,7 +1801,7 @@ module VBlank
               changing = node.names.map(&object).select { |obj| Stacking.levels_of(@stacking.depths, obj).uniq.length > 1 }
               return emit_layer_changing_sprites(node, node.names.map(&object)) unless changing.empty?
 
-              items = present_items(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
+              items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object.call(item) }
               front_first = items.each_with_index.sort_by { |item, at| [item_level(item, object), at] }.map(&:first).reverse
               placings = {}
               emit_groups_wanted
@@ -1837,7 +1837,7 @@ module VBlank
             # behind the background in front of one before it would hide that one where they cross.
             def emit_layer_changing_sprites(node, objects)
               placings = {}
-              items = present_items(node)
+              items = IR::Stacking.items_in_draw_order(node)
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
@@ -1904,7 +1904,7 @@ module VBlank
             # pass, and the write at the end of it leaves the background or bar where it was put up;
             # the wait forgets the note (#emit_corners_forgotten), and the next pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
+              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && @plan.placed_at_pass_end?(node) } }
               @put_up_this_pass = keep_local(:put_up_this_pass) if placed.call(:scroll_background)
               @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
             end
@@ -1923,7 +1923,7 @@ module VBlank
             # +node+'s write, unless it is written at the end of a pass that put its background or bar
             # up (+note+, #keep_corner_notes).
             def emit_unless_put_up(node, note)
-              return yield unless note && placed_at_pass_end?(node)
+              return yield unless note && @plan.placed_at_pass_end?(node)
 
               held = fresh("held_at_corner")
               jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
@@ -1972,14 +1972,6 @@ module VBlank
                 tests << Build.binop(:or, Build.binop(:<, pick, Build.int(0)), Build.binop(:>=, pick, Build.int(layers.length)))
               end
               tests.reduce { |either, test| Build.binop(:or, either, test) }
-            end
-
-            # The frame's sprites back to front, each a name — or, for a run the game orders, the run.
-            def present_items(node)
-              Array(node.orders).reduce(node.names.dup) do |names, run|
-                first = names.index(run.objects.first)
-                names[0...first] + [run] + names[(first + run.objects.length)..]
-              end
             end
 
             # How deep an item sits: a sprite's level, and a run's, which its sprites share: `draw_in_order`

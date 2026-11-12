@@ -735,14 +735,6 @@ module VBlank
 
           def console_loop(node) = @plan.console_loop(node)
 
-          # Is +node+ one of the boundary's writes a game loop places at the end of its pass, or in
-          # one (IR::Frames::ConsoleLoop#placed)?
-          def placed_at_pass_end?(node)
-            @placed_at_pass_end ||= @plan.game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
-                                         .to_h { |write| [write.object_id, true] }
-            @placed_at_pass_end.key?(node.object_id)
-          end
-
           def emit_call(node)
             raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @funcs.key?(node.target)
 

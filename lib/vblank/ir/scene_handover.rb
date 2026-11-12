@@ -213,6 +213,30 @@ module VBlank
       # The scenery on screen while +scene+ runs: what every screen shows, and its own.
       def showing(scene) = @scenery.select { |node| node.scene.nil? || node.scene == scene }
 
+      # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over (+node+) names, in the routine
+      # of +scene+ (nil outside every scene's): the one by that name, or, where several scenes each declare
+      # one by that name, +scene+'s own, or the one every screen shows. Nil where which it is cannot be told
+      # while the game is built: a lowering then makes the change to the one of the scene up as it runs. A
+      # name nothing declares raises +error+.
+      def background_named(node, scene:, error:)
+        declared = @scenery.select { |bg| bg.name == node.name }
+        raise error, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
+        return declared.first if declared.length == 1
+
+        own = scene && arrival(scene).scenery.find { |bg| bg.name == node.name }
+        own || always_up.scenery.find { |bg| bg.name == node.name }
+      end
+
+      # DOES THE STACK PUT ONE OF +scene+'S OWN BACKGROUNDS BEHIND ONE EVERY SCREEN SHOWS? A lowering that
+      # keeps a scene's own scenery in the layers in front of the shared scenery cannot show that. The block
+      # picks the backgrounds the lowering stacks in its layers (all of them where none is given).
+      def own_scenery_behind_shared?(scene, &stacked)
+        stacked ||= ->(_bg) { true }
+        layered = always_up.scenery.select(&stacked) + arrival(scene).scenery.select(&stacked)
+        drawn = showing(scene).select { |bg| layered.any? { |up| up.equal?(bg) } }
+        drawn.map(&:object_id) != layered.map(&:object_id)
+      end
+
       # Whether +background+ goes up as its scene takes over, rather than where it is written.
       # Only scenery drawn from tiles is up in that sense: a scene on a painted screen paints
       # its background into the one picture where the statement is written, like any drawing.

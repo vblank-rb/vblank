@@ -178,7 +178,7 @@ module VBlank
               always = @handover.always_up.scenery
               own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
               @scene_planes = own.map(&:length).max || 0
-              refuse_unmade_stacking!(always)
+              refuse_unmade_stacking!
               always.each_with_index { |bg, i| @layers[bg] = @scene_planes + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
               count = @scene_planes + always.length
@@ -285,14 +285,10 @@ module VBlank
             end
 
             # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
-            def refuse_unmade_stacking!(always)
-              @scenes.each_key do |scene|
-                own = @handover.arrival(scene).scenery
-                drawn = @handover.showing(scene).select { |bg| (always + own).any? { |up| up.equal?(bg) } }
-                next if drawn.map(&:object_id) == (always + own).map(&:object_id)
+            def refuse_unmade_stacking!
+              return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) }
 
-                refuse_unmade!(TILED_SCREEN, "puts a scene's own background in a layer behind a background every screen shows")
-              end
+              refuse_unmade!(TILED_SCREEN, "puts a scene's own background in a layer behind a background every screen shows")
             end
 
             def plane_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
@@ -374,7 +370,7 @@ module VBlank
             # a note for each plane, and the scroll written at the end of the pass leaves it where it was put
             # up. The wait forgets the notes.
             def keep_corner_notes
-              return unless @tiled && @program.walk.any? { |node| node.kind == :scroll_background && placed_at_pass_end?(node) }
+              return unless @tiled && @program.walk.any? { |node| node.kind == :scroll_background && @plan.placed_at_pass_end?(node) }
 
               @put_up_this_pass = (0...@plane_places.length).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
             end
@@ -384,7 +380,7 @@ module VBlank
             end
 
             def emit_unless_put_up(node, note)
-              return yield unless note && placed_at_pass_end?(node)
+              return yield unless note && @plan.placed_at_pass_end?(node)
 
               held = fresh_label("held_at_corner")
               jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
@@ -392,23 +388,10 @@ module VBlank
               @asm.label(held)
             end
 
-            def placed_at_pass_end?(node)
-              @placed_at_pass_end ||= @plan.game_loops.flat_map { |loop_node| console_loop(loop_node).placed.flat_map { |write| write.walk.to_a } }
-                                           .to_set(&:object_id)
-              @placed_at_pass_end.include?(node.object_id)
-            end
-
             # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by that name,
             # or, where several scenes each declare one by that name, the one of the scene whose routine is being
             # lowered, or the one every screen shows; nil where that cannot be told while the game is built.
-            def background_declared_for(node)
-              declared = @backgrounds.select { |bg| bg.name == node.name }
-              raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
-              return declared.first if declared.length == 1
-
-              own = @lowering_scene && @handover.arrival(@lowering_scene).scenery.find { |bg| bg.name == node.name }
-              own || @handover.always_up.scenery.find { |bg| bg.name == node.name }
-            end
+            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
 
             # +node+'s change made to the background it names, yielded to the block; where that is not known
             # while the game is built, to the one of the scene up when it runs, each scene its own branch.
@@ -630,21 +613,12 @@ module VBlank
               emit_store_number(hidden, 0)
               @asm.b(done)
               @asm.label(placing)
-              present_items(node).each do |item|
+              IR::Stacking.items_in_draw_order(node).each do |item|
                 next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
 
                 emit_sprite_placing(object_named(item))
               end
               @asm.label(done)
-            end
-
-            # The frame's sprites back to front, each a name, or, for a run the game orders (`draw_in_order`),
-            # the run, at the place of its first sprite (Reference#names_in_draw_order).
-            def present_items(node)
-              Array(node.orders).reduce(node.names.dup) do |names, run|
-                first = names.index(run.objects.first)
-                names[0...first] + [run] + names[(first + run.objects.length)..]
-              end
             end
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its

@@ -166,7 +166,6 @@ module VBlank
               @pictures = by_kind(:bitmap)
               @objects = by_kind(:object)
               @backgrounds = by_kind(:background)
-              @backgrounds_by_name = backgrounds_declared.group_by(&:name) # every declaration of each name (#background_declared_for)
               @set_tiles_by_name = @program.walk.select { |node| node.kind == :set_tile }.group_by(&:name)
               @sprite_names = SpriteNames.new(@program)
               @grids = {}
@@ -1053,7 +1052,7 @@ module VBlank
             # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
             # pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && placed_at_pass_end?(node) } }
+              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && @plan.placed_at_pass_end?(node) } }
               if placed.call(:scroll_background)
                 layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
                 @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
@@ -1072,7 +1071,7 @@ module VBlank
             # +node+'s write, unless it is written at the end of a pass that put its background or bar
             # up (+note+, #keep_corner_notes).
             def emit_unless_put_up(node, note)
-              return yield unless note && placed_at_pass_end?(node)
+              return yield unless note && @plan.placed_at_pass_end?(node)
 
               held = fresh("held_at_corner")
               jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
@@ -1104,7 +1103,7 @@ module VBlank
               end
               @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any? { |bg| bg.bar? || bg.above_row } }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
-              refuse_unmade_stacking!(always)
+              refuse_unmade_stacking!
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
@@ -1150,27 +1149,14 @@ module VBlank
 
             # A stack the layers' order cannot show: a scene's own background behind one every screen
             # shows (see #assign_background_layers).
-            def refuse_unmade_stacking!(always)
-              @scenes.each_key do |scene|
-                own = layered_scenery(@handover.arrival(scene).scenery)
-                drawn = @handover.showing(scene).select { |bg| (always + own).any? { |up| up.equal?(bg) } }
-                next if drawn.map(&:object_id) == (always + own).map(&:object_id)
-
-                refuse_unmade!("a scene's own background in a layer behind a background every screen shows")
-              end
+            def refuse_unmade_stacking!
+              stacked = @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) { |bg| !on_third_layer?(bg) } }
+              refuse_unmade!("a scene's own background in a layer behind a background every screen shows") if stacked
             end
 
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by
-            # that name, or — where several scenes each declare their own by one name — the one of the
-            # scene whose routine is being lowered, or the one every screen shows.
-            def background_declared_for(node)
-              declared = @backgrounds_by_name.fetch(node.name, [])
-              raise LoweringError, "#{node.kind} of undeclared background #{node.name.inspect}" if declared.empty?
-              return declared.first if declared.length == 1
-
-              own = @lowering_scene && @handover.arrival(@lowering_scene).scenery.find { |bg| bg.name == node.name }
-              own || @handover.always_up.scenery.find { |bg| bg.name == node.name }
-            end
+            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names
+            # (SceneHandover#background_named); nil where that cannot be told while the game is built.
+            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
 
             # +node+'s change made to the background it names (#background_declared_for), yielded
             # to the block. Where that is not known while the game is built — a change outside every
@@ -1867,7 +1853,7 @@ module VBlank
               if objects.any?(&:layer_pick)
                 emit_layer_changing_sprites(node, objects)
               else
-                present_items(node).each do |item|
+                Stacking.items_in_draw_order(node).each do |item|
                   next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
 
                   emit_sprite_placing(object_named(item), item)
@@ -1886,15 +1872,6 @@ module VBlank
               behind = sprite_depths.empty? ? [] : [Build.int((3 - sprite_depths.fetch(at, 3)) << SPRITE_PRIORITY_SHIFT)]
               emit_sprite_place(obj, obj.name, behind)
               @asm.label(skip)
-            end
-
-            # The frame's sprites back to front, each a name — or, for a run the game orders
-            # (`draw_in_order`), the run, at the place of its first sprite.
-            def present_items(node)
-              Array(node.orders).reduce(node.names.dup) do |names, run|
-                first = names.index(run.objects.first)
-                names[0...first] + [run] + names[(first + run.objects.length)..]
-              end
             end
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS (Reference#names_in_draw_order): its list holds the
@@ -2004,7 +1981,7 @@ module VBlank
               depths = @cache.stacking.depths
               depth_of = ->(obj, level) { depth_names(obj).find { |name| depths[name] == level } }
               objects.flat_map { |obj| Stacking.levels_of(depths, obj) }.uniq.sort.each do |level|
-                present_items(node).each do |item|
+                Stacking.items_in_draw_order(node).each do |item|
                   if item.is_a?(Build::DrawOrder)
                     here = item.objects.to_h { |name| [name, depth_of.call(object_named(name), level)] }.compact
                     emit_ordered_run(item, here) unless here.empty?
