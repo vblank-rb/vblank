@@ -686,7 +686,7 @@ module VBlank
             # the background where it was put up. The wait forgets the notes (#emit_corners_forgotten),
             # and the next pass's write moves it.
             def keep_corner_notes
-              return unless @program.walk.any? { |node| node.kind == :scroll_background && @plan.placed_at_pass_end?(node) }
+              return unless @plan.places_at_pass_end?(:scroll_background)
 
               @put_up_this_pass = (0...PLANES).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
             end

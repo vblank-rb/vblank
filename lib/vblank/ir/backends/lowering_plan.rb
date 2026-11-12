@@ -210,6 +210,11 @@ module VBlank
           @placed_at_pass_end.include?(node.object_id)
         end
 
+        # Does a write of one of +kinds+ (a scroll, a status bar's top) go at the end of a pass? Then a lowering
+        # notes each background put up in a pass, so that write leaves it at its corner for the pass's frame
+        # (Reference#put_up_background).
+        def places_at_pass_end?(*kinds) = @program.walk.any? { |node| kinds.include?(node.kind) && placed_at_pass_end?(node) }
+
         # A step a run can reach that only means something on the Advance, refused by name. A step in
         # a routine nothing calls never runs, and is not refused.
         def refuse_hardware_only_kinds!

@@ -172,5 +172,5 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the painted (bitmap) screen: the verbs `draw_column_at`, `camera`, `camera_follows`, `shake_screen`; the steps `draw_column_at`, `camera`
 - fades, lights and screen effects: the verbs `pixelate`, `pixelate_in`, `pixelate_out`, `spotlight`, `iris_in`, `iris_out`; the steps `pixelate`, `shade_outside`
-- sprites and tiled backgrounds: the verbs `status_bar`, `canvas`, `tile_pictures`, `sprite_tiles`, `layers`, `layer`, `picture_groups`; the steps `place_bar`, `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
+- sprites and tiled backgrounds: the verbs `canvas`, `tile_pictures`, `sprite_tiles`, `picture_groups`; the steps `copy_tiles`, `box_background`, `copy_owed_tiles`, `load_sprite_tiles`, `affine_background`, `scroll_rows`, `see_through`, `show_held_tiles`, `show_picture_group`
 - save memory: the verbs `save_var`, `save_data`, `saves_keep_everything`; the steps `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`

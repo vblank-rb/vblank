@@ -31,7 +31,10 @@ module VBlank
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
-    # layer the console keeps beside them. +turning_sprites+ marks whether a sprite can turn and resize.
+    # layer the console keeps beside them. +bar_shares_display+ marks whether the bar takes a part of the
+    # display something else needs as well (a window the Advance's lights use, the memory the Color's
+    # painted screen keeps its picture in), which Checks::StatusBarCannotShare asks about; where it is
+    # false the bar is a picture drawn like any other. +turning_sprites+ marks whether a sprite can turn and resize.
     # +sprite_sizes+ is the sizes one sprite of the console is drawn at whole, in pixels across and
     # down, which a picture the game paints from a list has to be; nil where its build draws every
     # sprite's picture in pieces of 8×8, so such a picture can be any size in whole pieces.
@@ -133,7 +136,7 @@ module VBlank
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
                               :glides_recordings, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
-                              :backgrounds_beside_turning, :bar_is_a_background, :changes_cells_while_drawing,
+                              :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
@@ -280,7 +283,7 @@ module VBlank
                               # Four layers that scroll, or two that scroll and one that turns.
                               backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
                               # A status bar is one of those layers.
-                              bar_is_a_background: true,
+                              bar_is_a_background: true, bar_shares_display: true,
                               changes_cells_while_drawing: true,
                               blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 5, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
@@ -328,7 +331,7 @@ module VBlank
                             sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
-                            bar_is_a_background: false,
+                            bar_is_a_background: false, bar_shares_display: true,
                             changes_cells_while_drawing: true,
                             blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, color_bits: 5, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
@@ -394,7 +397,7 @@ module VBlank
                                      # does not make yet, and says so.
                                      # Mode 7 turns one layer, alone; the build does not use it.
                                      backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                                     bar_is_a_background: true,
+                                     bar_is_a_background: true, bar_shares_display: true,
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
@@ -456,7 +459,7 @@ module VBlank
                               # Two planes of tiles that scroll. The window plane is a third, but it
                               # only covers whole rows of tiles and the build does not use it.
                               backgrounds: 2, turning_backgrounds: 0, backgrounds_beside_turning: 0,
-                              bar_is_a_background: false,
+                              bar_is_a_background: false, bar_shares_display: true,
                               # The build writes video RAM only in the gap between frames.
                               changes_cells_while_drawing: false,
                               # Nothing mixes one layer into another by degrees, and the shadow and
@@ -517,7 +520,9 @@ module VBlank
                                   sprite_sizes: nil, tile_planes: nil,
                                   # ...and a turned background the same way, beside the others, as the Advance shows it.
                                   backgrounds: 4, turning_backgrounds: 1, backgrounds_beside_turning: 2,
-                                  bar_is_a_background: false,
+                                  # A status bar is one more plane the chip draws, kept to its rows by where it
+                                  # is drawn, so it shares nothing with anything else.
+                                  bar_is_a_background: true, bar_shares_display: false,
                                   # Video RAM can be written while a frame is drawn.
                                   changes_cells_while_drawing: true,
                                   # The chip mixes by halves and sums, never by sixteen steps, so a fade is

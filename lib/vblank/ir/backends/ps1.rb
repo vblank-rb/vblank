@@ -76,15 +76,19 @@ module VBlank
 
           # The sprites the last pass placed (Runtime::Tiles::DRAWN), as the interpreter's rows through
           # +drawn+ (SpriteNames), each word read by the block from its address; none on a screen with no
-          # sprites of its own.
+          # sprites of its own. In the order they are drawn: the back-most level first, and in the order
+          # placed within each (Reference#sprites_by_depth). A screen drawn with no levels never writes one,
+          # so every row there is at level nought, in the order placed.
           def drawn_sprite_rows(drawn)
             at = runtime[Runtime::Tiles::DRAWN] or return []
             word = ->(address) { Int32.wrap(yield(address)) }
-            Array.new(yield(at)) do |i|
+            rows = Array.new(yield(at)) do |i|
               row = at + 4 + (i * Runtime::Tiles::DRAWN_BYTES)
-              drawn.row(word.call(row + Runtime::Tiles::DRAWN_WHOSE), word.call(row + Runtime::Tiles::DRAWN_PICTURE),
-                        word.call(row + Runtime::Tiles::DRAWN_X), word.call(row + Runtime::Tiles::DRAWN_Y))
+              [word.call(row + Runtime::Tiles::DRAWN_LEVEL), i,
+               drawn.row(word.call(row + Runtime::Tiles::DRAWN_WHOSE), word.call(row + Runtime::Tiles::DRAWN_PICTURE),
+                         word.call(row + Runtime::Tiles::DRAWN_X), word.call(row + Runtime::Tiles::DRAWN_Y))]
             end
+            rows.sort_by { |level, placed, _| [level, placed] }.map(&:last)
           end
         end
 
@@ -119,9 +123,7 @@ module VBlank
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
-                                             planes: lowering.plane_places, plane_depths: lowering.plane_depths,
-                                             opaque_planes: lowering.opaque_planes,
-                                             colors: colors,
+                                             tiled: lowering.tiled_screen, colors: colors,
                                              collides: lowering.collides?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link

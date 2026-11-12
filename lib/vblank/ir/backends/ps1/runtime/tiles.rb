@@ -39,8 +39,9 @@ module VBlank
 
             # Each plane's state, PLANE_BYTES each: whether it is up, where it is scrolled to, the map's
             # width and height in pixels less one, which a place on it is masked with to come round, the colour
-            # table of the background up on it as a textured rectangle names it (in the word's top half), and
-            # how many texels a halfword holds, as a shift (rt_plane_shifts).
+            # table of the background up on it as a textured rectangle names it (in the word's top half), how
+            # many texels a halfword holds, as a shift (rt_plane_shifts), and how deep the background up on it
+            # sits in the stack (IR::Stacking's level, BAR_LEVEL for a status bar).
             PLANES = "rt planes"
             PLANE_UP = 0
             PLANE_SCROLL_X = 4
@@ -49,11 +50,31 @@ module VBlank
             PLANE_HEIGHT_MASK = 16
             PLANE_TABLE = 20
             PLANE_SHIFT = 24
+            PLANE_LEVEL = 28
             PLANE_BYTES = 32
             MOST_PLANES = 4
 
+            # A STATUS BAR takes no level of the stack: it is drawn in front of every background and behind
+            # every sprite (Reference#repaint_view). Its plane's level is this, which no level is.
+            BAR_LEVEL = -1
+            # The row the status bar up shows from, kept between 0 and the screen's height (rt_bar_place); and
+            # whether it hides the sprites under it, not nought for yes (rt_bar_covers). One bar shows at a time.
+            BAR_TOP = "rt bar top"
+            BAR_COVERS = "rt bar covers"
+            # How many rows from the top the backgrounds are drawn in this pass: down to the top of the status
+            # bar up, or the whole screen (Reference#scenery_rows).
+            SCENERY_ROWS = "rt scenery rows"
+
             # The fill command (its colour in its low 24 bits) for what shows where nothing is drawn.
             BACKDROP = "rt backdrop"
+
+            # WHAT THE RUNTIME DRAWS A GAME'S TILED SCREEN WITH, worked out as the game is built
+            # (Lowering::Picture#tiled_screen): each plane's place in video RAM (TextureMemory::Plane), how many
+            # bits a texel each is kept at, the planes whose every background draws every pixel (+opaque+), the
+            # planes a status bar goes up on (+bar_planes+), and +levels+: nil where every sprite is drawn in
+            # front of every background in the order the pass placed them, or how many levels the stack has,
+            # each drawn in turn, its backgrounds and then its sprites (Reference#repaint_view).
+            Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels)
 
             # The sprites the last pass placed: how many, a word, then a row of DRAWN_BYTES for each:
             # whose it is (Backends::SpriteNames#name_number), which picture (#picture_number), its place
@@ -66,6 +87,7 @@ module VBlank
             DRAWN_X = 8
             DRAWN_Y = 12
             DRAWN_ART = 16
+            DRAWN_LEVEL = 20 # how deep it sits, for a screen drawn level by level (Screen#levels)
             MOST_SPRITES = Console::PLAYSTATION.sprites
             # A picture in a sprite's table: its number, and where it is in the painted art.
             POSE_BYTES = 8
@@ -88,22 +110,25 @@ module VBlank
               memory.reserve(PLANES, MOST_PLANES * PLANE_BYTES)
               memory.reserve(BACKDROP, 4)
               memory.reserve(DRAWN, 4 + (MOST_SPRITES * DRAWN_BYTES))
+              memory.reserve(BAR_TOP, 4)
+              memory.reserve(BAR_COVERS, 4)
+              memory.reserve(SCENERY_ROWS, 4)
             end
 
-            # +places+ is each plane's place in video RAM (TextureMemory::Plane), by its number, and +depths+ how many
-            # bits a texel each is kept at; +faces+ whether the game also fills the faces of a place, which leave the
-            # chip's texture window set; +colors+ whether its colours change as it runs (Runtime::Colors).
-            #
-            # +opaque+ is the planes whose every background draws every pixel (Lowering::Picture#opaque_planes).
-            def emit(asm, memory, places:, depths:, opaque: [], faces: false, colors: false)
+            # +screen+ is what the game's tiled screen is drawn with (Screen); +faces+ whether the game also fills
+            # the faces of a place, which leave the chip's texture window set; +colors+ whether its colours change
+            # as it runs (Runtime::Colors).
+            def emit(asm, memory, screen:, faces: false, colors: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm)
               emit_plane_routines(asm, at)
               emit_cell(asm)
-              emit_sprites(asm, at)
-              emit_draw(asm, at, places, depths, opaque, faces, colors)
-              emit_plane_drawing(asm, at)
-              emit_plane_tables(asm, places, depths)
+              emit_sprites(asm, at, screen)
+              emit_bar(asm, at) unless screen.bar_planes.empty?
+              emit_draw(asm, at, screen, faces, colors)
+              emit_sprites_at_level(asm, at) if screen.levels
+              emit_plane_drawing(asm, at, bar: !screen.bar_planes.empty?)
+              emit_plane_tables(asm, screen.places, screen.depths)
             end
 
             # rt_tiles_start: two pages, one drawn while the other is shown (Runtime::Paint's
@@ -126,8 +151,8 @@ module VBlank
             # cell, row by row, each the place in video RAM of the tile it shows, y << 16 | x, or nought for
             # none), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
             # power of two (5 for 32, 6 for 64), t4 = how many rows it has, t5 = the background's colour table
-            # (PLANE_TABLE). The map's grid is the plane's size until another goes up on it, so the plane comes
-            # round where the map's grid does.
+            # (PLANE_TABLE), t6 = how deep it sits (PLANE_LEVEL). The map's grid is the plane's size until another
+            # goes up on it, so the plane comes round where the map's grid does.
             # rt_plane_take_down: a0 = the plane. rt_plane_scroll: a0 = the plane, a1, a2 = where its view is.
             #
             # s4 and s5 are the plane's width and height in texels, s7 its shift (PLANE_SHIFT).
@@ -145,6 +170,7 @@ module VBlank
               asm.sw(:zero, PLANE_SCROLL_Y, :v0)
               asm.label("rt_plane_put_up_view_kept")
               asm.sw(:t5, PLANE_TABLE, :v0)
+              asm.sw(:t6, PLANE_LEVEL, :v0)
               emit_plane_shift(asm, :s7, :a0)
               asm.sw(:s7, PLANE_SHIFT, :v0)
               asm.li(:t0, 8)
@@ -267,9 +293,10 @@ module VBlank
 
             # rt_sprites_begin: no sprite placed yet this pass. rt_sprite_place: a0 = the table of the
             # sprite's pictures (how many, then for each its number and where it is in the painted art, a word
-            # each: POSE_BYTES), a1 = which it shows, a2, a3 = where, t4 = whose it is. A number naming none of
-            # its pictures places nothing (Reference#object_pose_image).
-            def emit_sprites(asm, at)
+            # each: POSE_BYTES), a1 = which it shows, a2, a3 = where, t4 = whose it is, and on a screen drawn level
+            # by level (Screen#levels) t5 = how deep it sits. A number naming none of its pictures places nothing
+            # (Reference#object_pose_image).
+            def emit_sprites(asm, at, screen)
               drawn = at.call(DRAWN)
               asm.label("rt_sprites_begin")
               asm.jr(:ra) { asm.sw(:zero, drawn, :gp) }
@@ -280,7 +307,7 @@ module VBlank
               asm.beq(:t1, :zero, "rt_sprite_place_done")
               asm.sll(:t1, :a1, 3)
               asm.addu(:t1, :t1, :a0)
-              asm.lw(:t5, 8, :t1)
+              asm.lw(:t6, 8, :t1)
               asm.lw(:t1, 4, :t1)
               asm.lw(:t2, drawn, :gp)
               asm.sltiu(:t3, :t2, MOST_SPRITES)
@@ -288,7 +315,8 @@ module VBlank
               asm.sll(:t3, :t2, 5)
               asm.addu(:t3, :t3, :gp)
               asm.sw(:t4, drawn + 4 + DRAWN_WHOSE, :t3)
-              asm.sw(:t5, drawn + 4 + DRAWN_ART, :t3)
+              asm.sw(:t5, drawn + 4 + DRAWN_LEVEL, :t3) if screen.levels
+              asm.sw(:t6, drawn + 4 + DRAWN_ART, :t3)
               asm.sw(:t1, drawn + 4 + DRAWN_PICTURE, :t3)
               asm.sw(:a2, drawn + 4 + DRAWN_X, :t3)
               asm.sw(:a3, drawn + 4 + DRAWN_Y, :t3)
@@ -298,69 +326,279 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # rt_tiles_draw: the whole picture, into the page this pass draws (Runtime::Paint::PAGE_Y). The
-            # backdrop is a fill of the page; each plane that is up, the back one first, is a textured
-            # rectangle the size of the screen from its page of video RAM; then each sprite the pass
-            # placed, as the painted screen draws a picture.
+            # A STATUS BAR is a plane drawn from the row its top is at down to the bottom of the screen, its map
+            # from its corner, never scrolled (Reference#paint_status_bar): one textured rectangle, since a bar's map
+            # is one texture page at most (32 cells each way), no wider than the map, so the columns past it show
+            # the backdrop rather than the map come round. The rows past its map are the plane's empty texels.
+            #
+            # rt_bar_place: a0 = the row its top is at, kept between 0 and the screen's height
+            # (Reference#exec_place_bar). rt_bar_covers: a0 = not nought to hide the sprites under it.
+            # rt_bar_draw: a0 = the bar's plane's state, a1 = the draw mode naming the page at its corner.
+            def emit_bar(asm, at)
+              h = Console::PS1Hardware
+              word = ->(index) { DrawList.word_offset_bytes(index) }
+              asm.label("rt_bar_place")
+              asm.bgez(:a0, "rt_bar_place_below_top")
+              asm.move(:a0, :zero)
+              asm.label("rt_bar_place_below_top")
+              asm.slti(:t0, :a0, h::SCREEN_HEIGHT)
+              asm.bne(:t0, :zero, "rt_bar_place_on_screen")
+              asm.li(:a0, h::SCREEN_HEIGHT)
+              asm.label("rt_bar_place_on_screen")
+              asm.jr(:ra) { asm.sw(:a0, at.call(BAR_TOP), :gp) }
+
+              asm.label("rt_bar_covers")
+              asm.jr(:ra) { asm.sw(:a0, at.call(BAR_COVERS), :gp) }
+
+              asm.label("rt_bar_draw")
+              asm.lw(:t4, at.call(BAR_TOP), :gp)
+              asm.li(:t5, h::SCREEN_HEIGHT)
+              asm.subu(:t5, :t5, :t4) # how many rows it shows
+              asm.blez(:t5, "rt_bar_draw_none")
+              asm.move(:t6, :a0)
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              DrawList.emit_command(asm, 1) { asm.move(:a0, :a1) }
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_TEXTURED_RECTANGLE >> 16) }
+              asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
+              asm.addu(:t0, :t0, :t4)
+              asm.sll(:t0, :t0, 16)
+              asm.sw(:t0, word.call(1), :t1)
+              asm.lw(:t0, PLANE_TABLE, :t6) # its corner, 0 across and 0 down in the page, and its colour table
+              asm.sw(:t0, word.call(2), :t1)
+              asm.lw(:t0, PLANE_WIDTH_MASK, :t6)
+              asm.addiu(:t0, :t0, 1)
+              asm.slti(:t2, :t0, h::SCREEN_WIDTH)
+              asm.bne(:t2, :zero, "rt_bar_draw_fits")
+              asm.li(:t0, h::SCREEN_WIDTH)
+              asm.label("rt_bar_draw_fits")
+              asm.sll(:t5, :t5, 16)
+              asm.or(:t0, :t0, :t5)
+              asm.sw(:t0, word.call(3), :t1)
+              asm.lw(:ra, 0, :sp)
+              asm.addiu(:sp, :sp, 4)
+              asm.label("rt_bar_draw_none")
+              asm.jr(:ra)
+            end
+
+            # The registers rt_tiles_draw keeps: s0 and s1 walk the sprites, s2 and s3 are the status bar up's
+            # plane state (nought for none) and draw mode, s4 the level being drawn (Screen#levels).
+            DRAW_KEPT = %i[s0 s1 s2 s3 s4].freeze
+
+            # rt_tiles_draw: the whole picture, into the page this pass draws (Runtime::Paint::PAGE_Y), as the
+            # interpreter paints it (Reference#repaint_view). The backdrop is a fill of the page; then the status
+            # bar up, if one is; then each plane that is up, the back one first, a textured rectangle the size of
+            # the screen from its page of video RAM, down to the bar's top; then each sprite the pass placed, as
+            # the painted screen draws a picture. A screen whose stack puts a background in front of a sprite, or
+            # whose sprites change layer (Screen#levels), is drawn a level at a time instead: the planes at the
+            # level, then the sprites at it. Last, a bar that covers sprites is drawn again over them, on the
+            # backdrop.
             #
             # A PLANE THAT DRAWS EVERY PIXEL hides the backdrop and every plane behind it, so while one is up the
             # drawing starts at it: the front-most of them up is found first, and nothing behind it is sent to the
-            # chip, which would fill the whole screen for each only to have it covered.
-            def emit_draw(asm, at, places, depths, opaque, faces, colors)
+            # chip, which would fill the whole screen for each only to have it covered. Not while a status bar
+            # shows, below whose top no plane is drawn.
+            def emit_draw(asm, at, screen, faces, colors)
               h = Console::PS1Hardware
-              page = at.call(Paint::PAGE_Y)
+              bar = !screen.bar_planes.empty?
+              frame = 4 * (DRAW_KEPT.length + 1)
               asm.label("rt_tiles_draw")
-              asm.addiu(:sp, :sp, -12)
+              asm.addiu(:sp, :sp, -frame)
               asm.sw(:ra, 0, :sp)
-              asm.sw(:s0, 4, :sp)
-              asm.sw(:s1, 8, :sp)
+              DRAW_KEPT.each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
               # Must come first: the colours the pass changed are in their tables before anything reads them.
               asm.jal("rt_colors_shown") if colors
               asm.jal("rt_face_chip_put_back") if faces
               # The texels copied into a plane since the last picture are read afresh, not from the chip's cache.
               DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
-              opaque.sort.each do |plane|
-                asm.lw(:t0, at.call(PLANES) + (plane * PLANE_BYTES) + PLANE_UP, :gp)
-                asm.bne(:t0, :zero, "rt_tiles_draw_from_#{plane}")
+              emit_bar_search(asm, at, screen) if bar
+              unless screen.opaque.empty?
+                asm.bne(:s2, :zero, "rt_tiles_draw_backdrop") if bar
+                screen.opaque.sort.each do |plane|
+                  asm.lw(:t0, at.call(PLANES) + (plane * PLANE_BYTES) + PLANE_UP, :gp)
+                  asm.bne(:t0, :zero, "rt_tiles_draw_from_#{plane}")
+                end
               end
-              asm.lw(:a0, at.call(BACKDROP), :gp)
-              DrawList.emit_command(asm, 3)
-              asm.lw(:t0, page, :gp)
-              asm.sll(:t0, :t0, 16)
-              asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
-              asm.li(:t0, SCREEN_SIZE)
-              asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
+              asm.label("rt_tiles_draw_backdrop")
+              emit_backdrop_fill(asm, at, top: nil)
               # The backdrop and each background are a fill or rectangles the size of the screen, which the
               # chip takes long to draw: each goes to it as soon as the DMA is free (rt_draw_list_kick).
               asm.jal("rt_draw_list_kick")
-              (places.length - 1).downto(0) do |plane|
+              emit_bar_draw_call(asm, "rt_tiles_draw_scenery") if bar
+              if screen.levels
+                emit_draw_by_level(asm, at, screen)
+              else
+                emit_planes_then_sprites(asm, at, screen)
+              end
+              emit_bar_over_sprites(asm, at) if bar
+              asm.lw(:ra, 0, :sp)
+              DRAW_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
+              asm.jr(:ra) { asm.addiu(:sp, :sp, frame) }
+              emit_opaque_level_starts(asm, at, screen) if screen.levels
+            end
+
+            # A fill of the backdrop's colour, over the whole page, or from row +top+ (a register) down.
+            def emit_backdrop_fill(asm, at, top:)
+              h = Console::PS1Hardware
+              asm.lw(:a0, at.call(BACKDROP), :gp)
+              DrawList.emit_command(asm, 3)
+              asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
+              asm.addu(:t0, :t0, top) if top
+              asm.sll(:t0, :t0, 16)
+              asm.sw(:t0, DrawList.word_offset_bytes(1), :t1)
+              if top
+                asm.li(:t0, h::SCREEN_HEIGHT)
+                asm.subu(:t0, :t0, top)
+                asm.sll(:t0, :t0, 16)
+                asm.ori(:t0, :t0, h::SCREEN_WIDTH)
+              else
+                asm.li(:t0, SCREEN_SIZE)
+              end
+              asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
+            end
+
+            # THE STATUS BAR UP, if one is: s2 = its plane's state, or nought, and s3 = the draw mode naming its page;
+            # and SCENERY_ROWS set to the rows the backgrounds are drawn in, down to its top, or the whole screen.
+            def emit_bar_search(asm, at, screen)
+              asm.li(:t0, Console::PS1Hardware::SCREEN_HEIGHT)
+              asm.sw(:t0, at.call(SCENERY_ROWS), :gp)
+              asm.move(:s2, :zero)
+              screen.bar_planes.each do |plane|
+                state = at.call(PLANES) + (plane * PLANE_BYTES)
+                other = "rt_tiles_draw_no_bar_on_#{plane}"
+                asm.lw(:t0, state + PLANE_UP, :gp)
+                asm.beq(:t0, :zero, other)
+                asm.lw(:t0, state + PLANE_LEVEL, :gp)
+                asm.bgez(:t0, other)
+                asm.addiu(:s2, :gp, state)
+                asm.li(:s3, plane_draw_mode(screen.places.fetch(plane), screen.depths.fetch(plane)))
+                asm.lw(:t0, at.call(BAR_TOP), :gp)
+                asm.sw(:t0, at.call(SCENERY_ROWS), :gp)
+                asm.label(other)
+              end
+            end
+
+            # The status bar up drawn, if one is (s2, s3), going on at +past+.
+            def emit_bar_draw_call(asm, past)
+              asm.beq(:s2, :zero, past)
+              asm.move(:a0, :s2)
+              asm.jal("rt_bar_draw") { asm.move(:a1, :s3) }
+              asm.jal("rt_draw_list_kick")
+              asm.label(past)
+            end
+
+            # A STATUS BAR THAT COVERS SPRITES (Reference#paint_bar_over_sprites): its rows filled with the
+            # backdrop again, over the sprites, and the bar drawn on that.
+            def emit_bar_over_sprites(asm, at)
+              asm.beq(:s2, :zero, "rt_tiles_draw_uncovered")
+              asm.lw(:t0, at.call(BAR_COVERS), :gp)
+              asm.beq(:t0, :zero, "rt_tiles_draw_uncovered")
+              asm.lw(:t4, at.call(BAR_TOP), :gp)
+              asm.slti(:t0, :t4, Console::PS1Hardware::SCREEN_HEIGHT)
+              asm.beq(:t0, :zero, "rt_tiles_draw_uncovered")
+              emit_backdrop_fill(asm, at, top: :t4)
+              emit_bar_draw_call(asm, "rt_tiles_draw_uncovered")
+            end
+
+            # Each plane that is up, the back one first, and then every sprite, in the order the pass placed
+            # them. A status bar's plane is drawn by itself (#emit_bar_draw_call).
+            def emit_planes_then_sprites(asm, at, screen)
+              (screen.places.length - 1).downto(0) do |plane|
                 state = at.call(PLANES) + (plane * PLANE_BYTES)
                 skip = "rt_tiles_draw_not_#{plane}"
                 asm.lw(:t0, state + PLANE_UP, :gp)
                 asm.beq(:t0, :zero, skip)
-                asm.label("rt_tiles_draw_from_#{plane}") if opaque.include?(plane)
-                asm.addiu(:a0, :gp, state)
-                asm.li(:a1, plane_draw_mode(places.fetch(plane), depths.fetch(plane)))
-                asm.jal("rt_plane_draw")
-                asm.jal("rt_draw_list_kick")
+                if screen.bar_planes.include?(plane)
+                  asm.lw(:t0, state + PLANE_LEVEL, :gp)
+                  asm.bltz(:t0, skip)
+                end
+                asm.label("rt_tiles_draw_from_#{plane}") if screen.opaque.include?(plane)
+                emit_plane_draw_call(asm, screen, state, plane)
                 asm.label(skip)
               end
               drawn = at.call(DRAWN)
               asm.lw(:s0, drawn, :gp)
               asm.addiu(:s1, :gp, drawn + 4)
               asm.label("rt_tiles_draw_sprite")
-              asm.beq(:s0, :zero, "rt_tiles_draw_end")
+              asm.beq(:s0, :zero, "rt_tiles_draw_sprites_end")
               asm.lw(:a0, DRAWN_ART, :s1)
               asm.lw(:a1, DRAWN_X, :s1)
               asm.lw(:a2, DRAWN_Y, :s1)
               asm.jal("rt_paint_blit")
               asm.addiu(:s1, :s1, DRAWN_BYTES)
               asm.b("rt_tiles_draw_sprite") { asm.addiu(:s0, :s0, -1) }
-              asm.label("rt_tiles_draw_end")
+              asm.label("rt_tiles_draw_sprites_end")
+            end
+
+            def emit_plane_draw_call(asm, screen, state, plane)
+              asm.addiu(:a0, :gp, state)
+              asm.li(:a1, plane_draw_mode(screen.places.fetch(plane), screen.depths.fetch(plane)))
+              asm.jal("rt_plane_draw")
+              asm.jal("rt_draw_list_kick")
+            end
+
+            # THE PICTURE A LEVEL AT A TIME (Reference#repaint_view), s4 the level: at each, the planes up whose
+            # background sits there, the back one first, then the sprites placed at it (rt_sprites_draw_at_level).
+            # A status bar's plane sits at no level (BAR_LEVEL), so is never one of them.
+            def emit_draw_by_level(asm, at, screen)
+              asm.move(:s4, :zero)
+              asm.label("rt_tiles_draw_level")
+              (screen.places.length - 1).downto(0) do |plane|
+                state = at.call(PLANES) + (plane * PLANE_BYTES)
+                skip = "rt_tiles_draw_not_#{plane}"
+                asm.lw(:t0, state + PLANE_UP, :gp)
+                asm.beq(:t0, :zero, skip)
+                asm.lw(:t0, state + PLANE_LEVEL, :gp)
+                asm.bne(:t0, :s4, skip)
+                emit_plane_draw_call(asm, screen, state, plane)
+                asm.label(skip)
+              end
+              asm.jal("rt_sprites_draw_at_level") { asm.move(:a0, :s4) }
+              asm.addiu(:s4, :s4, 1)
+              asm.slti(:t0, :s4, screen.levels)
+              asm.bne(:t0, :zero, "rt_tiles_draw_level")
+            end
+
+            # Where the drawing starts from a plane that draws every pixel, on a screen drawn a level at a time: at
+            # its level, with nothing behind it drawn. Planes behind it at its own level are still drawn, and
+            # covered.
+            def emit_opaque_level_starts(asm, at, screen)
+              screen.opaque.each do |plane|
+                asm.label("rt_tiles_draw_from_#{plane}")
+                asm.lw(:s4, at.call(PLANES) + (plane * PLANE_BYTES) + PLANE_LEVEL, :gp)
+                asm.b("rt_tiles_draw_level")
+              end
+            end
+
+            # rt_sprites_draw_at_level: a0 = a level; every sprite the pass placed at it, in the order placed.
+            def emit_sprites_at_level(asm, at)
+              drawn = at.call(DRAWN)
+              asm.label("rt_sprites_draw_at_level")
+              asm.addiu(:sp, :sp, -16)
+              asm.sw(:ra, 0, :sp)
+              asm.sw(:s0, 4, :sp)
+              asm.sw(:s1, 8, :sp)
+              asm.sw(:s2, 12, :sp)
+              asm.move(:s2, :a0)
+              asm.lw(:s0, drawn, :gp)
+              asm.addiu(:s1, :gp, drawn + 4)
+              asm.label("rt_sprites_draw_at_level_next")
+              asm.beq(:s0, :zero, "rt_sprites_draw_at_level_end")
+              asm.lw(:t0, DRAWN_LEVEL, :s1)
+              asm.bne(:t0, :s2, "rt_sprites_draw_at_level_other")
+              asm.lw(:a0, DRAWN_ART, :s1)
+              asm.lw(:a1, DRAWN_X, :s1)
+              asm.lw(:a2, DRAWN_Y, :s1)
+              asm.jal("rt_paint_blit")
+              asm.label("rt_sprites_draw_at_level_other")
+              asm.addiu(:s1, :s1, DRAWN_BYTES)
+              asm.b("rt_sprites_draw_at_level_next") { asm.addiu(:s0, :s0, -1) }
+              asm.label("rt_sprites_draw_at_level_end")
               asm.lw(:ra, 0, :sp)
               asm.lw(:s0, 4, :sp)
               asm.lw(:s1, 8, :sp)
-              asm.jr(:ra) { asm.addiu(:sp, :sp, 12) }
+              asm.lw(:s2, 12, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 16) }
             end
 
             # The draw mode naming the texture page at the corner of +place+ (TextureMemory::Plane), at +depth+ bits.
@@ -380,10 +618,18 @@ module VBlank
             #
             # s2 and s3 are the screen's line and the plane's at the top of a band, s4 the band's height; s5 and
             # s6 the screen's column and the plane's at the left of a rectangle, s7 its width.
-            def emit_plane_drawing(asm, at)
+            #
+            # In a game with a status bar (+bar+) the bands go down to the bar's top (SCENERY_ROWS), and a bar at
+            # the top of the screen leaves nothing of the plane to draw.
+            def emit_plane_drawing(asm, at, bar:)
               h = Console::PS1Hardware
               word = ->(index) { DrawList.word_offset_bytes(index) }
+              rows = at.call(SCENERY_ROWS) if bar
               asm.label("rt_plane_draw")
+              if bar
+                asm.lw(:t0, rows, :gp)
+                asm.blez(:t0, "rt_plane_draw_none")
+              end
               asm.addiu(:sp, :sp, -4 * (PLANE_DRAW_KEPT.length + 1))
               asm.sw(:ra, 0, :sp)
               PLANE_DRAW_KEPT.each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
@@ -394,7 +640,7 @@ module VBlank
               asm.and(:s3, :t0, :t1)
               asm.move(:s2, :zero)
               asm.label("rt_plane_draw_band")
-              emit_run_to_page_edge(asm, :s4, :s3, h::SCREEN_HEIGHT, :s2, "rt_plane_draw_band_fits")
+              emit_run_to_page_edge(asm, :s4, :s3, h::SCREEN_HEIGHT, :s2, "rt_plane_draw_band_fits", limit_at: rows)
               asm.lw(:t0, PLANE_SCROLL_X, :s0)
               asm.lw(:t1, PLANE_WIDTH_MASK, :s0)
               asm.and(:s6, :t0, :t1)
@@ -438,20 +684,33 @@ module VBlank
               asm.addu(:s3, :s3, :s4)
               asm.lw(:t1, PLANE_HEIGHT_MASK, :s0)
               asm.and(:s3, :s3, :t1)
-              asm.slti(:t0, :s2, h::SCREEN_HEIGHT)
+              if bar
+                asm.lw(:t1, rows, :gp)
+                asm.slt(:t0, :s2, :t1)
+              else
+                asm.slti(:t0, :s2, h::SCREEN_HEIGHT)
+              end
               asm.bne(:t0, :zero, "rt_plane_draw_band")
               asm.lw(:ra, 0, :sp)
               PLANE_DRAW_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * (PLANE_DRAW_KEPT.length + 1)) }
+              return unless bar
+
+              asm.label("rt_plane_draw_none")
+              asm.jr(:ra)
             end
 
             # +run+ = how far from +place+ (in the plane) to its page's edge, or from +shown+ to the screen's
-            # edge at +screen+, whichever is nearer. Changes t0 to t2.
-            def emit_run_to_page_edge(asm, run, place, screen, shown, fits)
+            # edge at +screen+ (or at the row in the word +limit_at+ from gp), whichever is nearer. Changes t0 to t2.
+            def emit_run_to_page_edge(asm, run, place, screen, shown, fits, limit_at: nil)
               asm.andi(:t0, place, PAGE_SIDE - 1)
               asm.li(:t1, PAGE_SIDE)
               asm.subu(run, :t1, :t0)
-              asm.li(:t1, screen)
+              if limit_at
+                asm.lw(:t1, limit_at, :gp)
+              else
+                asm.li(:t1, screen)
+              end
               asm.subu(:t1, :t1, shown)
               asm.slt(:t2, :t1, run)
               asm.beq(:t2, :zero, fits)

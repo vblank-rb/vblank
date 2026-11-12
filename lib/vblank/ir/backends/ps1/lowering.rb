@@ -136,7 +136,7 @@ module VBlank
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the painted (bitmap) screen" => %i[draw_column_at camera],
                                                     "fades, lights and screen effects" => %i[pixelate shade_outside],
-                                                    "sprites and tiled backgrounds" => %i[place_bar copy_tiles box_background
+                                                    "sprites and tiled backgrounds" => %i[copy_tiles box_background
                                                                                           copy_owed_tiles load_sprite_tiles affine_background
                                                                                           scroll_rows see_through show_held_tiles
                                                                                           show_picture_group],

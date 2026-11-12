@@ -62,32 +62,30 @@ module VBlank
           # Sound, its loops in sound memory first copied there (the game's section "sound_memory"); +songs+
           # whether it plays songs, so carries Music, with its +effects+ and the address of its music volume
           # (+music_level_at+) if it sets one; +samples+ whether it plays recordings, so carries Recordings,
-          # which reads the game's table "recording_plays". +planes+ is, for a game whose screen is drawn
-          # from tiles, where each of its planes is in video RAM (Tiles), and nil for any other, and
-          # +plane_depths+ how many bits a texel each plane is kept at, +opaque_planes+ the planes that draw every
-          # pixel, and +colors+ whether its colours change as
-          # it runs, so carries Colors, which reads the game's tables of colours; +collides+
-          # whether it asks whether two sprites' pixels touch, so carries Collide.
+          # which reads the game's table "recording_plays". +tiled+ is, for a game whose screen is drawn
+          # from tiles, what Tiles draws it with (Tiles::Screen), and nil for any other, and +colors+ whether
+          # its colours change as it runs, so carries Colors, which reads the game's tables of colours;
+          # +collides+ whether it asks whether two sprites' pixels touch, so carries Collide.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, planes: nil, plane_depths: nil, opaque_planes: [], colors: false, collides: false)
+                       samples: false, tiled: nil, colors: false, collides: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             DrawList.reserve_late(memory)
             Boot.emit(asm, memory, main: main)
             DrawList.emit(asm, memory, faces: faces)
             Int32.emit(asm)
-            Frame.emit(asm, memory, sound: sound, tiles: !planes.nil?)
+            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces)
-            Tiles.emit(asm, memory, places: planes, depths: plane_depths, opaque: opaque_planes, faces: faces, colors: colors) if planes
+            Tiles.emit(asm, memory, screen: tiled, faces: faces, colors: colors) if tiled
             Colors.emit(asm, memory) if colors
             Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
-            emit_start(asm, sound: sound, tiles: !planes.nil?)
+            emit_start(asm, sound: sound, tiles: !tiled.nil?)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
           end

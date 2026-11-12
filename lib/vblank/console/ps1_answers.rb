@@ -269,7 +269,7 @@ module VBlank
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
         "the painted (bitmap) screen" => %i[draw_column_at camera camera_follows shake_screen],
         "fades, lights and screen effects" => %i[pixelate pixelate_in pixelate_out spotlight iris_in iris_out],
-        "sprites and tiled backgrounds" => %i[status_bar canvas tile_pictures sprite_tiles layers layer picture_groups],
+        "sprites and tiled backgrounds" => %i[canvas tile_pictures sprite_tiles picture_groups],
         "save memory" => %i[save_var save_data saves_keep_everything]
       })
 

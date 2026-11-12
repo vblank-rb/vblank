@@ -1052,12 +1052,11 @@ module VBlank
             # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
             # pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && @plan.placed_at_pass_end?(node) } }
-              if placed.call(:scroll_background)
+              if @plan.places_at_pass_end?(:scroll_background)
                 layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
                 @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
               end
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
+              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
             end
 
             # The two layers a background can be on.

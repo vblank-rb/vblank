@@ -23,7 +23,8 @@ module VBlank
         #
         # Both are asked of the console the program is built for (Console::Description
         # #bar_is_a_background tells the two apart), so the interpreter refuses what the
-        # cartridge would get wrong, in the same words.
+        # cartridge would get wrong, in the same words. A console whose bar is a picture drawn like
+        # any other, the PlayStation's, shares nothing (Description#bar_shares_display).
         class StatusBarCannotShare
           NAME = :status_bar_cannot_share
           PLAIN_NAME = "a status bar beside something that needs the same part of the display"
@@ -33,6 +34,8 @@ module VBlank
             return [] unless bar
 
             console = program.described_console
+            return [] unless console.bar_shares_display
+
             found = console.bar_is_a_background ? window_sharing(program, bar, console) : grid_sharing(program, bar, console)
             found ? [found] : []
           end

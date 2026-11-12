@@ -4,11 +4,11 @@ require "test_helper"
 require "differential"
 require "status_bar_games"
 
-# What a status bar does on the Advance alone: a game with a painted screen too, which the Color
-# refuses (Checks::StatusBarCannotShare).
+# What a status bar does on the Advance, which the Color refuses (Checks::StatusBarCannotShare): a game
+# with a painted screen too, and a sprite stacked behind the field.
 class TestStatusBarOnTheAdvance < Minitest::Test
   include Differential
-  include StatusBarGames
+  include SpriteBehindFieldOverBarTests
 
   # A painted screen, then a tiled one with a bar moved to the top.
   def test_a_bar_beside_a_painted_screen

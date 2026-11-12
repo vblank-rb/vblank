@@ -1904,9 +1904,8 @@ module VBlank
             # pass, and the write at the end of it leaves the background or bar where it was put up;
             # the wait forgets the note (#emit_corners_forgotten), and the next pass's write moves it.
             def keep_corner_notes
-              placed = ->(kind) { @program.walk.any? { |node| node.kind == kind && @plan.placed_at_pass_end?(node) } }
-              @put_up_this_pass = keep_local(:put_up_this_pass) if placed.call(:scroll_background)
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if placed.call(:place_bar)
+              @put_up_this_pass = keep_local(:put_up_this_pass) if @plan.places_at_pass_end?(:scroll_background)
+              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
             end
 
             # +note+ (a local of #keep_corner_notes, or nil for none) set: the background or bar was

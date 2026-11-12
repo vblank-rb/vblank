@@ -13,7 +13,9 @@ module VBlank
           # over the rest. Each map it can show is made into a table of cells, each the place in video RAM
           # of the tile it shows, which the runtime copies onto the plane as the map goes up. Every tile a
           # background can show is kept once in a sheet of tiles in video RAM, beside the planes. A sprite is
-          # a picture of the painted art (PS1::PaintedArt), drawn in front of every plane.
+          # a picture of the painted art (PS1::PaintedArt), drawn in front of every plane, or, where the stack
+          # puts a background in front of a sprite, at its level of the stack (#picture_levels). A status bar is
+          # a plane too, drawn from its top row down, in front of every other plane and behind every sprite.
           #
           # Everything such a screen shows is read through a colour table, so its colours changing as the game
           # runs (a list told to hold another set, a background drawn with other lists, a fade, a tint) are
@@ -21,12 +23,14 @@ module VBlank
           module Picture
             # The steps that change colours as the game runs (Runtime::Colors).
             COLOR_CHANGES = %i[color_list_holds background_colors fade tint].freeze
-            STATEMENT_KINDS = (%i[background scroll_background set_tile show_map present_objects hide_sprites] + COLOR_CHANGES).freeze
+            STATEMENT_KINDS = (%i[background scroll_background place_bar set_tile show_map present_objects hide_sprites] +
+                               COLOR_CHANGES).freeze
 
             def emit_picture_statement(node)
               case node.kind
               when :background then emit_background(node)
               when :scroll_background then emit_scroll_background(node)
+              when :place_bar then emit_place_bar(node)
               when :set_tile then emit_set_tile(node)
               when :show_map then emit_show_map(node)
               when :present_objects then emit_present_objects(node)
@@ -63,9 +67,15 @@ module VBlank
             NO_TILE = 0
             NO_PICK = 0xFFFF_FFFF
 
-            # Where each plane is in video RAM, [x, y] by its number, for a game whose screen is drawn from
-            # tiles, and nil for any other (Runtime.sections's +planes+).
-            def plane_places = @plane_places
+            # What the runtime draws the game's screen drawn from tiles with (Runtime::Tiles::Screen), and nil for a
+            # game whose screen is painted (Runtime.sections's +tiled+).
+            def tiled_screen
+              return nil unless @tiled
+
+              bars = @layers.select { |bg, _| bg.bar? }.values.uniq.sort
+              Runtime::Tiles::Screen.new(places: @plane_places, depths: @plane_depths, opaque: @opaque_planes, bar_planes: bars,
+                                         levels: @levels)
+            end
 
             def prepare_picture
               @tiled = Picture.tiled?(@program)
@@ -82,6 +92,7 @@ module VBlank
               @color_sources = {}
               @sprite_list_tables = {}
               @sprite_list_places = {}
+              @level_tables = {}
             end
 
             def tiled? = @tiled
@@ -133,7 +144,6 @@ module VBlank
 
             def refuse_unmade_backgrounds!
               @backgrounds.each do |bg|
-                refuse_unmade!(TILED_SCREEN, "shows a status bar") if bg.bar?
                 refuse_unmade!(TILED_SCREEN, "has background tiles of #{bg.tile_w}×#{bg.tile_h}") unless bg.tile_w == 8 && bg.tile_h == 8
                 refuse_unmade!(TILED_SCREEN, "has a background held above a row (`above_row:`)") if bg.above_row
                 if bg.streams?
@@ -145,7 +155,6 @@ module VBlank
 
             def refuse_unmade_sprites!
               @objects.each_value do |obj|
-                refuse_unmade!(TILED_SCREEN, "puts a sprite in another layer") if obj.layers && !obj.layers.empty?
                 if obj.follows_each&.any? && !obj.recolors.empty?
                   refuse_unmade!(TILED_SCREEN, "has a sprite that follows the lists its poses are drawn from and is also drawn " \
                                                "with other lists (`draw_with`)")
@@ -154,18 +163,56 @@ module VBlank
                   refuse_unmade!(TILED_SCREEN, "turns or resizes a sprite")
                 end
               end
-              return if @objects.empty? || @backgrounds.empty?
-
-              IR::Stacking.screenfuls(@program).each do |screenful|
-                scenery = screenful.scenery.reject(&:bar?)
-                screenful.objects.each do |obj|
-                  level = screenful.depths[obj.name]
-                  refuse_unmade!(TILED_SCREEN, "puts a sprite behind a background") if scenery.any? { |bg| screenful.depths.of_scenery(bg) > level }
-                end
-              end
             end
 
             def constant_number?(node, number) = node.is_a?(Node) && node.kind == :int && node.value == number
+
+            # HOW MANY LEVELS THE PICTURE IS DRAWN IN, a level at a time (Runtime::Tiles::Screen#levels), or nil where
+            # it is drawn as every background and then every sprite in the order the pass placed them. That is the
+            # same picture unless a sprite can sit at a level behind a background, or the sprites' levels are not
+            # in the order the frame places them, so they are drawn level by level only then
+            # (Reference#repaint_view; IR::Stacking#depths). A sprite that changes layer can do both.
+            def picture_levels
+              return nil if @objects.empty?
+
+              stacking = @cache.stacking
+              depths = stacking.depths
+              return depths.count if @objects.each_value.any? { |obj| obj.layers && !obj.layers.empty? }
+              return depths.count if IR::Stacking.scenery_over_objects?(depths, scenery: stacking.scenery, objects: stacking.objects)
+
+              levels = stacking.objects.map { |obj| depths[obj.name] }
+              levels.each_cons(2).all? { |back, front| back <= front } ? nil : depths.count
+            end
+
+            # How deep +bg+ sits (IR::Stacking#depths), or Runtime::Tiles::BAR_LEVEL for a status bar, which sits at no
+            # level.
+            def background_level(bg) = bg.bar? ? Runtime::Tiles::BAR_LEVEL : @cache.stacking.depths.of_scenery(bg)
+
+            # How deep +obj+ sits as the frame places it (Reference#object_level): the level of the layer its number
+            # picks (Nodes::Object#layer_pick), or of the one it was declared in for a number naming none of them.
+            def sprite_level(obj)
+              depths = @cache.stacking.depths
+              declared = depths[obj.name]
+              return Build.int(declared) if obj.layers.nil? || obj.layers.empty?
+
+              levels = obj.layers.map { |layer| depths[IR::Stacking.choice_name(obj, layer)] }
+              table = @level_tables[[declared, *levels]] ||= "tiles sprite levels #{@level_tables.length}"
+              level = @sprite_level ||= keep_local(:sprite_level)
+              picked = fresh_label("level_picked")
+              # The number one more, so the table's first entry, the declared layer's level, is for a number naming
+              # none: -1 is 0, and past the layers is out of the table.
+              emit_value(Build.var_ref(obj.layer_pick))
+              @asm.addiu(:v0, :v0, 1)
+              @asm.sltiu(:t0, :v0, levels.length + 1)
+              @asm.bne(:t0, :zero, picked) { @asm.sll(:v0, :v0, 2) }
+              @asm.move(:v0, :zero)
+              @asm.label(picked)
+              @asm.la(:t1, table)
+              @asm.addu(:t1, :t1, :v0)
+              @asm.lw(:v0, 0, :t1)
+              emit_store(level)
+              Build.var_ref(level)
+            end
 
             # WHICH PLANE EACH BACKGROUND IS ON, as the Genesis's lowering gives its planes
             # (Genesis::Lowering::Picture#assign_background_layers): a scene's own scenery in the front
@@ -188,10 +235,14 @@ module VBlank
               @plane_places = texture_memory.reserve_planes(Array.new(count) { |plane| plane_size(plane) }) or
                 refuse_unmade!(TILED_SCREEN, "has backgrounds whose maps together are bigger than the video memory kept for them")
               make_plane_tables(count)
-              @opaque_planes = (0...count).select do |plane|
+              # The planes every background that goes up on draws every pixel of (Runtime::Tiles::Screen#opaque): one
+              # of those up hides the backdrop and every plane behind it. A status bar is drawn below the rows the
+              # other planes are, so it hides nothing behind it.
+              @opaque_planes =(0...count).select do |plane|
                 showing = backgrounds_on(plane)
-                !showing.empty? && showing.all? { |bg| opaque_background?(bg) }
+                !showing.empty? && showing.all? { |bg| !bg.bar? && opaque_background?(bg) }
               end
+              @levels = picture_levels
               follow_backdrop_list
               make_tile_sheet
             end
@@ -243,10 +294,6 @@ module VBlank
             # Whether the game fades or tints its screen.
             def fades? = @program.walk.any? { |node| %i[fade tint].include?(node.kind) }
 
-            # The planes every background that goes up on draws every pixel of, by number (Runtime.sections's
-            # +opaque_planes+): one of those up hides the backdrop and every plane behind it.
-            def opaque_planes = @opaque_planes
-
             # WHETHER +bg+ DRAWS EVERY PIXEL wherever it is scrolled: every one of its tiles draws all of its pixels,
             # every cell of each map's grid (TileMap.grid, which comes round) names a tile, and nothing the game
             # does empties a cell (`set_tile` of no tile). A background whose tiles are read from the player's copy
@@ -264,9 +311,6 @@ module VBlank
                 end
               end
             end
-
-            # How deep each plane is (4, 8 or 15 bits a texel), by its number (Runtime.sections's +plane_depths+).
-            def plane_depths = @plane_depths
 
             # The word a plane's textured rectangle names +bg+'s colour table by, in its top half; nought for a
             # plane of colours.
@@ -353,12 +397,28 @@ module VBlank
               emit_put_up(node, 0, reset_view: 1)
             end
 
+            # A status bar put up from its corner shows from the top it was declared with (Reference#bar_top_shown).
             def emit_put_up(bg, which, reset_view:)
               columns, rows = TileMap.grid(bg.every_map.fetch(which))
               runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view),
-                                               Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg))])
-              note = @put_up_this_pass&.fetch(plane_of(bg)) if reset_view.nonzero?
+                                               Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg)),
+                                               Build.int(background_level(bg))])
+              return if reset_view.zero?
+
+              emit_bar_put_up(bg) if bg.bar?
+              note = @put_up_this_pass&.fetch(plane_of(bg))
               statement(Build.set(note, 1)) if note
+            end
+
+            # A STATUS BAR PUT UP shows from the top it was declared with, and the runtime's one top and one setting
+            # for covering sprites become this bar's. The interpreter keeps whether a bar covers sprites by its name
+            # (Reference#exec_place_bar), and so does the game, in the variable its `covers_sprites =` sets
+            # (Nodes::Background.bar_covers_var): a bar the game never tells covers none. The top the game keeps
+            # is placed at the end of every pass the bar is up (Builder#finalize_status_bars).
+            def emit_bar_put_up(bg)
+              runtime_call("rt_bar_place", [Build.int(bg.bar_top)])
+              told = @program.walk.any? { |node| node.kind == :place_bar && node.name == bg.name && node.covers }
+              runtime_call("rt_bar_covers", [told ? Build.var_ref(Nodes::Background.bar_covers_var(bg.name)) : Build.int(0)])
             end
 
             # The label of the table of +bg+'s map number +which+, made with the art (#picture_sections).
@@ -367,10 +427,10 @@ module VBlank
             # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
             # (Reference#put_up_background), as the Genesis's lowering keeps it
             # (Genesis::Lowering::Picture#keep_corner_notes): a put-up notes itself for the rest of its pass,
-            # a note for each plane, and the scroll written at the end of the pass leaves it where it was put
-            # up. The wait forgets the notes.
+            # a note for each plane, and the scroll, or a status bar's top, written at the end of the pass leaves
+            # it where it was put up. The wait forgets the notes.
             def keep_corner_notes
-              return unless @tiled && @program.walk.any? { |node| node.kind == :scroll_background && @plan.placed_at_pass_end?(node) }
+              return unless @tiled && @plan.places_at_pass_end?(:scroll_background, :place_bar)
 
               @put_up_this_pass = (0...@plane_places.length).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
             end
@@ -416,6 +476,17 @@ module VBlank
                 emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) do
                   runtime_call("rt_plane_scroll", [Build.int(plane_of(bg)), node.x, node.y])
                 end
+              end
+            end
+
+            # Reference#exec_place_bar: a background that is not a status bar has no top to place. Whether it covers
+            # sprites is set wherever it is written; its top not at the end of a pass that put it up.
+            def emit_place_bar(node)
+              for_background(node) do |bg|
+                next unless bg.bar?
+
+                runtime_call("rt_bar_covers", [node.covers]) if node.covers
+                emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
               end
             end
 
@@ -665,7 +736,8 @@ module VBlank
               skip = fresh_label("sprite_off")
               jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
               table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, followed_lists(obj))) : emit_recolored_pose_table(obj)
-              runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared))])
+              level = [sprite_level(obj)] if @levels
+              runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared)), *level])
               @asm.label(skip)
             end
 
@@ -748,6 +820,10 @@ module VBlank
               @pose_set_tables.each do |tables, label|
                 asm.label(label)
                 asm.data_words(tables)
+              end
+              @level_tables.each do |levels, label|
+                asm.label(label)
+                asm.data_words(levels)
               end
               upload_tile_sheet
               [asm.section]
