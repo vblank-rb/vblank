@@ -151,16 +151,17 @@ module VBlank
         # name, and the text grows with the routine, not with how deep its reads go.
         #
         # Only such a place is held. A place the routine keeps in a variable or works out from its
-        # own numbers is read where the answer is used, as any expression is: a loop's test that
-        # reads the copy at a place the loop moves on reads the new place each time round. A held
-        # place is set where the read is written, once, so a loop's test whose read is placed by
-        # another read (`while copy.byte(copy.byte(at)) != 0`) reads the place it had as the loop
-        # began; set the place in a variable in the loop's body for one that moves.
+        # own numbers is read where the answer is used, as any expression is. A loop's test reads
+        # a held place as the expression it holds (Builder#register_held_expression), since the
+        # variable is set once, before the loop: so a test whose read is placed by another read
+        # (`while copy.byte(copy.byte(at)) != 0`) reads the place afresh each time round, as one
+        # placed by a variable does.
         def emit_held_place(at)
           return at unless reads_copy?(at)
 
           held = @builder.var(made_name(:"place_#{@held_place_count += 1}"), 0)
           held.store!(at)
+          @builder.register_held_expression(held.name, value_of(at).node)
           held
         end
 

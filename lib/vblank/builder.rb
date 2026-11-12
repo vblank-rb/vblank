@@ -170,6 +170,7 @@ module VBlank
       @game_whiles = 0         # how many game `while` loops are open now
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @hidden_variable_notes = []
+      @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @handed_name_writes = []
       @variables_with_no_var_line = []
       Ractor.current[:vblank_builder_in_use] = self
@@ -1077,7 +1078,7 @@ module VBlank
       @repeat_seq += 1
       index = :"__repeat_#{@repeat_seq}"
       ensure_var(index)
-      node = Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: stop_node)
+      node = Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node))
       record(node)
       @container_stack.push(node)
       @game_whiles += 1
@@ -1104,6 +1105,15 @@ module VBlank
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
       value_handle_for(name)
     end
+
+    # Variable +name+ holds the value node +node+, set where it is written, so the text of a
+    # program does not repeat the expression wherever its answer is used
+    # (Original::Packing::BlockKitInternals holds a read's place this way). A loop's test must
+    # still work the expression out afresh each time round, as it did written inline: the variable
+    # is set once, before the loop, while a test is asked again on every round. So a loop's test
+    # reads the expression in place of the variable (#inline_held_expressions). Public for
+    # BlockKitInternals#emit_held_place, which holds those places.
+    def register_held_expression(name, node) = @held_expressions[name] = node
 
     # The builder of the game being built here, for a part of a game that makes a variable with
     # no `var` of its own to call.
@@ -1160,6 +1170,37 @@ module VBlank
     def recording_game_code? = @container_stack.length > 1
 
     private
+
+    # +node+ (a loop's test), with every read of a variable #register_held_expression named
+    # replaced by the expression it holds, and those inside it in turn; +node+ itself where it
+    # reads none. A copy, so the expression stays as it is where it was written.
+    def inline_held_expressions(node)
+      return node if @held_expressions.empty? || !reads_held_expression?(node)
+      return inline_held_expressions(@held_expressions.fetch(node.name).copy) if held_expression_read?(node)
+
+      fresh = node.copy
+      replace_held_expression_reads!(fresh)
+      fresh
+    end
+
+    def held_expression_read?(node) = node.is_a?(IR::Nodes::VarRef) && @held_expressions.key?(node.name)
+
+    def reads_held_expression?(node)
+      node.is_a?(IR::Node) && (held_expression_read?(node) || node.operand_nodes.any? { |part| reads_held_expression?(part) })
+    end
+
+    # Each read of a held variable among +node+'s operands, however deep, replaced by what it holds.
+    # A read held in a list of nodes cannot be replaced, and raises rather than read a stale place.
+    def replace_held_expression_reads!(node)
+      node.operand_nodes.each do |part|
+        if held_expression_read?(part)
+          replaced = node.replace_operand(part, inline_held_expressions(@held_expressions.fetch(part.name).copy))
+          raise IR::InvariantError, "#{node.kind} holds a read of #{part.name} in a list, which a loop's test cannot inline" unless replaced
+        else
+          replace_held_expression_reads!(part)
+        end
+      end
+    end
 
     def open_container(node, shown_while)
       @container_stack.push(node)

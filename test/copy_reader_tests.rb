@@ -201,6 +201,54 @@ module CopyReaderTests
     end
   end
 
+  # ...and so does one whose test reads the copy at a place another read gives: the place is read
+  # again each time round, in a `while` and in `stop_when:` alike. Bytes 0 to 7 are places of bytes
+  # 8 to 15, and the byte at the place byte 5 gives is the first that is 0.
+  POINTED_COPY = Ractor.make_shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
+
+  private def first_pointing_at_nought(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)).zero? }
+
+  # The first place whose byte, read three deep, is 13; and the first whose byte read two deep is
+  # not 7.
+  private def first_three_deep_at_thirteen(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(copy.getbyte(at))) == 13 }
+  private def first_two_deep_not_seven(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)) != 7 }
+
+  def test_a_loop_whose_test_reads_the_copy_at_a_place_another_read_gives_reads_each_new_place
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, POINTED_COPY)
+      b = VBlank::Builder.new
+      made_pack = nil
+      b.instance_eval do
+        made_pack = data_pack(from: from, version: "1") do |slots|
+          slots.numbers :by_while, count: 1, width: :byte, signed: false
+          slots.numbers :by_stop_when, count: 1, width: :byte, signed: false
+          slots.numbers :three_deep, count: 1, width: :byte, signed: false
+          slots.numbers :by_stop_value, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(copy.byte(at)) != 0
+            pack[:by_while][0] = at
+            walked = var(:walked, 0)
+            repeat(15, stop_when: copy.byte(copy.byte(walked)) == 0) { walked.increase!(1) }
+            pack[:by_stop_when][0] = walked
+            deep = 0
+            deep += 1 while copy.byte(copy.byte(copy.byte(deep))) != 13
+            pack[:three_deep][0] = deep
+            stepped = var(:stepped, 0)
+            repeat(15, stop_when: copy.byte(copy.byte(stepped)) ^ 7) { stepped.increase!(1) }
+            pack[:by_stop_value][0] = stepped
+          end
+        end
+      end
+      unpacking = made_pack.unpacking
+      first = [first_pointing_at_nought(POINTED_COPY)].pack("C*")
+
+      assert_equal({ by_while: first, by_stop_when: first, three_deep: [first_three_deep_at_thirteen(POINTED_COPY)].pack("C*"),
+                     by_stop_value: [first_two_deep_not_seven(POINTED_COPY)].pack("C*") },
+                   unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 4)))
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
