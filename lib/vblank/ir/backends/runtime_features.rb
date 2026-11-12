@@ -152,6 +152,11 @@ module VBlank
           # frame, never once a sample.
           Hook.new(name: :mixed_slice, way: :one, params: %i[samples], default: 0, joins: :sound,
                    c_signature: "static int32_t rg_hook_mixed_slice(const int32_t **samples)"),
+          # Where the console's sound chip plays each recording on a voice of its own (rg_spu.c), the
+          # chip is told once a frame what each of the mixer's voices plays (spu_tell_recording).
+          # Must be inline in C: only a console whose voices read sound memory asks it.
+          Hook.new(name: :recordings_told, way: :each, joins: :sound,
+                   c_signature: "static inline void rg_hook_recordings_told(void)"),
           # A windowless run prints a moment (rg_headless.c and its twins): each feature prints the
           # lines of its own state. A game with none of them prints nothing here.
           Hook.new(name: :moment_printed, way: :each, joins: :sound,

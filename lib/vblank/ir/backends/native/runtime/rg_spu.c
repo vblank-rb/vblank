@@ -51,7 +51,8 @@
  * rg_game_spu_rules: the chip's samples a second; the two halfwords of the envelope; a voice's volume
  * at its loudest; the main volume; the pitch that reads 44100 samples a second, and the highest the
  * chip reads at; the samples one wave of a square holds, and one wave of a waveform; where in sound
- * memory the game's loops start, in halfwords; and the 512 numbers of the Gaussian table.
+ * memory the game's loops start, in halfwords; a recording's loudness at full and the shift a shape's
+ * level scales it by; and the 512 numbers of the Gaussian table.
  *
  * rg_game_spu_loops: where each loop starts, in the 8-byte steps the chip's start register counts:
  * the squares high for 1, 2, 4 and 6 eighths, the hiss and the rattle (nought for a game that makes
@@ -59,12 +60,27 @@
  *
  * rg_game_spu_memory: how many halfwords of sound memory the loops fill, and those halfwords.
  *
+ * rg_game_spu_recordings: how many recordings the game declares, in the mixer's numbering, then three
+ * numbers each: where it starts played once through, how far back it reads when it holds, and where
+ * it starts played holding, in 8-byte steps; -1 for a way the game never plays it (PS1::SPUTables).
+ *
+ * RECORDINGS play on the chip's voices past the game's four, one for each of the mixer's
+ * (runtime_features/mix): the mixer keeps the interpreter's count of each, which voice plays what and
+ * how loud its shape has it, and once a frame the chip is told from it (spu_tell_recording), as the
+ * program's Runtime::Recordings tells its voices from the same count. The mixer's own slice is not
+ * heard: the chip plays the recordings.
+ *
  * A game of any other console keeps the chip's fields, all nought, so a state image reads on a build
  * of any console; the chip itself is left out of its build.
  */
 
-#define SPU_VOICES 4
-#define SPU_RING 32       /* the decoder's ring of samples */
+/* The game's four voices, then one for each of the mixer's voices (Console::Description#
+ * recordings_at_once), as Backends::PS1::Runtime::Recordings plays the game's recordings: the mixer's
+ * voice N is the chip's voice SPU_GAME_VOICES + N. */
+#define SPU_GAME_VOICES 4
+#define SPU_RECORDING_VOICES 16
+#define SPU_VOICES (SPU_GAME_VOICES + SPU_RECORDING_VOICES)
+#define SPU_RING 32      /* the decoder's ring of samples */
 #define SPU_DECODE_WHEN 11 /* fewer than this left in the ring, and it decodes four more */
 #define SPU_PLAY_DELAY 4  /* the samples a voice started waits before it plays */
 
@@ -99,6 +115,7 @@ static int32_t spu_struck;         /* the voices a song's notes struck this fram
 static int32_t spu_struck_by_game; /* ...the game's own sounds struck in the pass, started at the next wait's end */
 static int32_t spu_struck_waiting; /* ...and those of the pass before, started at this one */
 static int32_t spu_set_by_game;    /* the voices whose loudness the pass set, not counted on at this wait's end */
+static int32_t spu_stopped_by_game; /* the recordings' voices the game stopped in the pass, let go a frame later */
 static int32_t spu_keys_on;        /* the voices to start after the chip's next sample... */
 static int32_t spu_keys_off;       /* ...and the ones to let go */
 static int32_t spu_carry;          /* the chip's samples owed to the speaker, in its samples times the speaker's rate */
@@ -123,10 +140,29 @@ static inline void game_voice_struck(int32_t voice) {
 /* The waveform number +which+ is in the wave voice now. */
 static inline void spu_waveform_put_in(int32_t which) { spu_waveform = which; }
 
+/* The mixer's voice +place+ started a recording: the game's own play (+by_game+) is started a frame
+ * later, where the pass's wait ends, and a song's or an effect's note where the tune plays it
+ * (Runtime::Recordings#emit_take writes the voice at once and starts it at the frame boundary). */
+static inline void spu_recording_struck(int32_t place, int32_t by_game) {
+  if (by_game) {
+    spu_struck_by_game |= 1 << (SPU_GAME_VOICES + place);
+  } else {
+    spu_struck |= 1 << (SPU_GAME_VOICES + place);
+  }
+}
+
+/* The game stopped the recording on the mixer's voice +place+: the program frees its place at once and
+ * lets its voice go where the pass's wait ends, so the voice sounds on to the end of the frame. */
+static inline void spu_recording_stopped_by_game(int32_t place) { spu_stopped_by_game |= 1 << (SPU_GAME_VOICES + place); }
+
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
+                                      int32_t loudness, int32_t level);
+
 #if RG_VOICES_READ_SOUND_MEMORY
 extern const int32_t rg_game_spu_rules[];
 extern const int32_t rg_game_spu_loops[];
 extern const int32_t rg_game_spu_memory[];
+extern const int32_t rg_game_spu_recordings[];
 
 /* Where things are in rg_game_spu_rules (see the layout above). */
 #define SPU_HZ (rg_game_spu_rules[0])
@@ -139,7 +175,9 @@ extern const int32_t rg_game_spu_memory[];
 #define SPU_SQUARE_SAMPLES (rg_game_spu_rules[7])
 #define SPU_WAVE_SAMPLES (rg_game_spu_rules[8])
 #define SPU_MEMORY_BASE (rg_game_spu_rules[9])
-#define SPU_GAUSS (&rg_game_spu_rules[10])
+#define SPU_MIX_FULL (rg_game_spu_rules[10])
+#define SPU_SHAPE_SCALE (rg_game_spu_rules[11])
+#define SPU_GAUSS (&rg_game_spu_rules[12])
 
 /* Where things are in rg_game_spu_loops. */
 #define SPU_HISS_AT 4
@@ -378,9 +416,9 @@ static void spu_fade_a_frame(fading_volume *fading) {
   }
 }
 
-/* What +n+ (0 to 3, the game's voice less one) is told this frame: +sounding+ when it has something to
- * play, from loop +loop+ at +pitch+ and volume register +value+. */
-static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, int32_t value) {
+/* What the chip's voice +n+ is told this frame: +sounding+ when it has something to play, from loop
+ * +loop+ at +pitch+ and volume register +value+, from the speakers +side+ lets it. */
+static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, int32_t value, int32_t side) {
   spu_voice *voice = &spu[n];
   int32_t struck = ((spu_struck | spu_struck_waiting) >> n) & 1, waiting = (spu_struck_by_game >> n) & 1;
   if (!sounding) {
@@ -389,7 +427,7 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
     voice->keyed = 0;
     return;
   }
-  spu_set_volume(voice, value, sides[n + 1]);
+  spu_set_volume(voice, value, side);
   voice->pitch = pitch;
   if (struck) {
     voice->start = loop << 2;
@@ -402,6 +440,26 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
     voice->loop_held = 1;
     voice->loop_start = loop;
   }
+}
+
+/* WHAT THE MIXER'S VOICE +place+ PLAYS, told to the chip's voice for it once a frame: +sounding+, and
+ * if so +recording+ (the mixer's number) read +step+ of its samples for each of the mix's, going +back+
+ * at its end, at +loudness+ out of the mix's full and its shape at +level+. The voice reads the
+ * recording's loop for that way back out of sound memory at a sixteenth of the step (the mix runs at
+ * the chip's own 44100 a second, so a step of 65536 is a pitch of 1000h), at a loudness scaled by the
+ * level as Runtime::Recordings#emit_loudness scales it: the level's top bit added back, so full is
+ * the whole loudness. A way the game never plays it (nowhere in sound memory) is silent. */
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
+                                      int32_t loudness, int32_t level) {
+  if (!sounding && ((spu_stopped_by_game >> (SPU_GAME_VOICES + place)) & 1)) return; /* let go a frame later */
+  int32_t loop = -1;
+  if (sounding && recording >= 0 && recording < rg_game_spu_recordings[0]) {
+    const int32_t *ways = &rg_game_spu_recordings[1 + (recording * 3)];
+    loop = back == 0 ? ways[0] : back == ways[1] ? ways[2] : -1;
+  }
+  int32_t pitch = (step + 8) >> 4;
+  int32_t value = ((level + (level >> 7)) * ((loudness * SPU_LOUDEST) / SPU_MIX_FULL)) >> SPU_SHAPE_SCALE;
+  spu_tell(SPU_GAME_VOICES + place, loop >= 0, loop, pitch < 1 ? 1 : pitch > SPU_PITCH_TOP ? SPU_PITCH_TOP : pitch, value, 0);
 }
 
 /* THE 128THS OF A SECOND +frame+ FRAMES COME TO, counted from a note's start (SongTable#slide_record):
@@ -437,19 +495,22 @@ static void spu_frame_begins(void) {
     int32_t sounding = square->wave_ticks != 0 && ticks != 0;
     spu_tell(i, sounding, rg_game_spu_loops[square_loop_of_eighths[square->eighths_high & 7]],
              sounding ? spu_pitch(SQUARE_CLOCK_HZ, SPU_SQUARE_SAMPLES, ticks) : 0,
-             (square->loudness.volume * SPU_LOUDEST) / 15);
+             (square->loudness.volume * SPU_LOUDEST) / 15, sides[i + 1]);
   }
 
   int32_t waveforms = rg_game_spu_loops[SPU_WAVEFORMS_AT];
   int32_t wave_sounding = wave.wave_ticks != 0 && spu_waveform >= 0 && spu_waveform < waveforms;
   spu_tell(RG_WAVE_VOICE - 1, wave_sounding, wave_sounding ? rg_game_spu_loops[SPU_WAVEFORMS_AT + 1 + spu_waveform] : 0,
-           wave_sounding ? spu_pitch(WAVE_CLOCK_HZ, SPU_WAVE_SAMPLES, wave.wave_ticks) : 0, (wave.quarters * SPU_LOUDEST) / 4);
+           wave_sounding ? spu_pitch(WAVE_CLOCK_HZ, SPU_WAVE_SAMPLES, wave.wave_ticks) : 0, (wave.quarters * SPU_LOUDEST) / 4,
+           sides[RG_WAVE_VOICE]);
 
   int32_t hiss_sounding = hiss.step_ticks != 0;
   spu_tell(RG_NOISE_VOICE - 1, hiss_sounding, rg_game_spu_loops[hiss.bits <= 7 ? SPU_RATTLE_AT : SPU_HISS_AT],
-           hiss_sounding ? spu_pitch(NOISE_CLOCK_HZ, 1, hiss.step_ticks) : 0, (hiss.loudness.volume * SPU_LOUDEST) / 15);
+           hiss_sounding ? spu_pitch(NOISE_CLOCK_HZ, 1, hiss.step_ticks) : 0, (hiss.loudness.volume * SPU_LOUDEST) / 15,
+           sides[RG_NOISE_VOICE]);
+  rg_hook_recordings_told();
   spu_struck_waiting = spu_struck_by_game;
-  spu_struck = spu_struck_by_game = spu_set_by_game = 0;
+  spu_struck = spu_struck_by_game = spu_set_by_game = spu_stopped_by_game = 0;
 }
 
 /* The sound of a frame, made by the chip (rg_sound_render_frame's twin). */
@@ -458,9 +519,6 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
   int32_t count = (int32_t)(sample_carry / RG_CONSOLE_TICKS_A_SECOND);
   sample_carry %= RG_CONSOLE_TICKS_A_SECOND;
 
-  const int32_t *mixed;
-  int32_t mixed_count = heard_only == 0 ? rg_hook_mixed_slice(&mixed) : 0;
-
   spu_frame_begins();
   for (int32_t i = 0; i < count; i++) {
     spu_carry += SPU_HZ;
@@ -468,16 +526,15 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
       spu_carry -= RG_SOUND_RATE;
       spu_tick();
     }
-    int32_t on_left = spu_out[0], on_right = spu_out[1];
-    if (mixed_count > 0) { /* the recordings play from both */
-      int32_t sample = mixed[(int64_t)i * mixed_count / count] * MIX_STEP;
-      on_left += sample;
-      on_right += sample;
-    }
-    left[i] = held_in_range(on_left);
-    right[i] = held_in_range(on_right);
+    left[i] = (int16_t)spu_out[0];
+    right[i] = (int16_t)spu_out[1];
   }
   return count;
+}
+#else
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
+                                      int32_t loudness, int32_t level) {
+  (void)place, (void)sounding, (void)recording, (void)back, (void)step, (void)loudness, (void)level;
 }
 #endif
 
@@ -486,13 +543,13 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
 /* The chip's fields (Computer::StateFields "sound.spu"): the strikes, keys, carry, newest sample and
  * waveform, then each voice's. Written on every console, so a build of any console reads an image
  * of another's: where the voices are the Game Boy's, every one of them is nought. */
-enum { SPU_GENERAL_NUMBERS = 12, SPU_CARRY_AT = 6, SPU_VOICE_FIELDS = 24, SPU_VOICE_NUMBERS = SPU_VOICE_FIELDS + SPU_RING,
+enum { SPU_GENERAL_NUMBERS = 13, SPU_CARRY_AT = 6, SPU_VOICE_FIELDS = 24, SPU_VOICE_NUMBERS = SPU_VOICE_FIELDS + SPU_RING,
        SPU_STATE_NUMBERS = SPU_GENERAL_NUMBERS + (SPU_VOICES * SPU_VOICE_NUMBERS) };
 
 static void rg_spu_visit_state(void) {
   int32_t *general[SPU_GENERAL_NUMBERS] = {&spu_struck, &spu_struck_by_game, &spu_struck_waiting, &spu_set_by_game, &spu_keys_on,
                                            &spu_keys_off, &spu_carry, &spu_out[0], &spu_out[1], &spu_waveform,
-                                           &spu_slide_frame[0], &spu_slide_frame[1]};
+                                           &spu_slide_frame[0], &spu_slide_frame[1], &spu_stopped_by_game};
   int64_t numbers[SPU_STATE_NUMBERS];
   int64_t *at = numbers;
   for (int32_t i = 0; i < SPU_GENERAL_NUMBERS; i++) *at++ = *general[i];

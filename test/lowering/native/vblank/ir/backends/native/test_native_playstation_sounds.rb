@@ -47,7 +47,8 @@ class TestNativePlaystationSounds < Minitest::Test
   PITCH_SLACK = 0.002         # as a share of the pitch: three cents
   RISES_SLACK = 0.05          # as a share of how often the sound rises through nought in three frames
   HEARD = 0.05                # a frame at least this share of FULL_LOUDNESS is heard
-  STEADY = 0.03               # waves this near their mean length are one note
+  STEADY = 0.03               # waves this near their usual length are one note, in Beetle's sound...
+  NATIVE_STEADY = 0.06        # ...and in the desktop build's, whose 48000 a second put a high note's wave a sample out
   MOST_FRAMES_APART = 3
   EDGE_SAMPLES = 8            # left out at each end of a frame (#frames_of)
 
@@ -203,6 +204,55 @@ class TestNativePlaystationSounds < Minitest::Test
     end
   end
 
+  # A RECORDING plays on a voice of the chip's own, read out of sound memory as the program's (twelve
+  # samples a wave, so near the filters' guess that the blocks come back close to the recording).
+  CHIME = [0, 40, 80, 110, 80, 40, 0, -40, -80, -110, -80, -40].freeze
+
+  # The game's own: played once through, then looping and stopped.
+  def test_a_recording_played_once_and_looping_sounds_as_on_the_playstation
+    assert_sounds_like_the_playstation(frames: 110) do
+      enable_sound
+      once = sample :once, pcm: CHIME * 400, rate: 13_000
+      round = sample :round, pcm: CHIME * 50, rate: 13_000
+      count = var :count, 0
+      game_loop do
+        count += 1
+        once.play if count == 4
+        round.play(loop: true) if count == 50
+        round.stop if count == 90
+      end
+    end
+  end
+
+  # A recording with a shape, climbing to its sustain and falling away once stopped.
+  def test_a_shaped_recording_sounds_as_on_the_playstation
+    assert_sounds_like_the_playstation(frames: 90) do
+      enable_sound
+      pad = sample :pad, pcm: CHIME * 50, rate: 13_000, envelope: { attack: 0.2, decay: 0.3, sustain: 0.5, release: 0.3 }
+      count = var :count, 0
+      game_loop do
+        count += 1
+        pad.play(loop: true) if count == 4
+      end
+    end
+  end
+
+  # A song's part playing a recorded instrument: notes, a rest, and a note that glides on.
+  def test_a_recorded_song_part_sounds_as_on_the_playstation
+    score = VBlank::Audio::Score
+    root = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(:C4)
+    assert_sounds_like_the_playstation(frames: 120) do
+      enable_sound
+      instrument :chime, pcm: CHIME * 400, rate: 13_000, note: :C4
+      music = songs :music, [score.new(tempo: 150, ticks_per_beat: 4, plays_once: true, parts: [score::Part.new(plays: :chime, notes: [
+                                       score::Note.new(at: 0, hz: root, length: 4), score::Note.new(at: 6, hz: root * 1.5, length: 3),
+                                       score::Note.new(at: 9, hz: root * 2, length: 4, glides: true)
+                                     ])])]
+      music.play 0
+      game_loop { nil }
+    end
+  end
+
   # A part moving from one speaker to the other, heard from each.
   def test_a_part_on_one_speaker_sounds_as_on_the_playstation
     %i[left right].each do |side|
@@ -298,8 +348,8 @@ class TestNativePlaystationSounds < Minitest::Test
   def pitch_difference(beetle, native, at, index)
     return nil unless [at - 1, at + 1].all? { |frame| (beetle[frame].loudness - beetle[at].loudness).abs <= FULL_LOUDNESS * LOUDNESS_SLACK }
 
-    wanted = steady_pitch(beetle[(at - 1)..(at + 1)]) or return nil
-    played = steady_pitch(native[(index - 1)..(index + 1)])
+    wanted = steady_pitch(beetle[(at - 1)..(at + 1)], STEADY) or return nil
+    played = steady_pitch(native[(index - 1)..(index + 1)], NATIVE_STEADY)
     return [format("frame %d: no one note is held, and the PlayStation holds %.1f Hz", index, wanted)] if played.nil?
     return [format("frame %d: at %.2f Hz, and the PlayStation at %.2f", index, played, wanted)] if (played - wanted).abs > wanted * PITCH_SLACK
 
@@ -308,7 +358,7 @@ class TestNativePlaystationSounds < Minitest::Test
 
   # The pitch three frames hold, from how far apart their rises are, or nil when they are too quiet or
   # their waves are not all one length.
-  def steady_pitch(frames)
+  def steady_pitch(frames, slack)
     return nil unless frames.all? { |frame| frame.loudness >= FULL_LOUDNESS * HEARD }
 
     rises = frames.flat_map(&:rises)
@@ -316,9 +366,9 @@ class TestNativePlaystationSounds < Minitest::Test
     return nil if waves.length < 6
 
     usual = waves.sort[waves.length / 2]
-    return nil unless waves.all? { |wave| (wave - usual).abs <= usual * STEADY || (wave - usual).abs > usual * 0.5 }
+    return nil unless waves.all? { |wave| (wave - usual).abs <= usual * slack || (wave - usual).abs > usual * 0.5 }
 
-    whole = waves.select { |wave| (wave - usual).abs <= usual * STEADY }
+    whole = waves.select { |wave| (wave - usual).abs <= usual * slack }
     whole.length / whole.sum
   end
 

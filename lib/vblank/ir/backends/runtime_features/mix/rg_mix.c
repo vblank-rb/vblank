@@ -221,6 +221,7 @@ void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back
   start_voice(at, recording, step, back, loudness, &recording_numbers(recording)[2]);
   voices[at].loops = loops;
   voices[at].ticket = ++tickets;
+  spu_recording_struck(at, 1);
   record_peak();
 }
 
@@ -262,6 +263,7 @@ int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, cons
   voices[at].effect = effect;
   voices[at].lane = lane;
   voices[at].rank = rank;
+  spu_recording_struck(at, 0);
   return 1;
 }
 
@@ -301,7 +303,10 @@ int32_t rg_mix_rescale_music(int32_t lane, int32_t loudness) {
 void rg_mix_stop(int32_t recording) {
   for (int32_t i = 0; i < VOICES; i++) {
     mix_voice *voice = &voices[i];
-    if (voice->sounding && voice->owner == GAME && (recording < 0 || voice->recording == recording)) voice->sounding = 0;
+    if (voice->sounding && voice->owner == GAME && (recording < 0 || voice->recording == recording)) {
+      voice->sounding = 0;
+      spu_recording_stopped_by_game(i);
+    }
   }
   rg_sound_log("stop_sample");
 }
@@ -409,6 +414,15 @@ static void rg_mix_sound_frame_ended(void) {
     step_shape(voice);
     if (voice->level == 0 && voice->phase == FALLING) voice->phase = DONE;
     slide_gain(voice, first);
+  }
+}
+
+/* rg_hook_recordings_told: each voice told to the sound chip that plays recordings on voices of its
+ * own (rg_spu.c), as it stands where the frame's tune and shapes have played. */
+static inline void rg_mix_recordings_told(void) {
+  for (int32_t i = 0; i < VOICES; i++) {
+    const mix_voice *voice = &voices[i];
+    spu_tell_recording(i, voice->sounding, voice->recording, voice->back, voice->step, voice->loudness, voice->level);
   }
 }
 

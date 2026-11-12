@@ -24,6 +24,11 @@ static int32_t rg_hook_mixed_slice(const int32_t **samples) {
 }
 #endif
 
+/* No recordings: no voice of the chip's plays one. */
+#ifndef RG_HOOK_RECORDINGS_TOLD_TAKEN
+static inline void rg_hook_recordings_told(void) {}
+#endif
+
 #ifndef RG_HOOK_VISIT_SOUND_STATE_TAKEN
 static void rg_hook_visit_sound_state(void) {}
 #endif

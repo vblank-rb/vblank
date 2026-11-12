@@ -4,7 +4,9 @@
 # and the layout of @rg_game_spu_rules, @rg_game_spu_loops and @rg_game_spu_memory, which this one reads
 # the same way. Ruby's >> rounds down as the C's does on a number below nought, so the shifts are the C's.
 
-RG_SPU_VOICES = 4
+RG_SPU_GAME_VOICES = 4 # The game's four voices, then one for each of the mixer's (rg_spu.c says why)
+RG_SPU_RECORDING_VOICES = 16
+RG_SPU_VOICES = RG_SPU_GAME_VOICES + RG_SPU_RECORDING_VOICES
 RG_SPU_RING = 32 # The decoder's ring of samples
 RG_SPU_DECODE_WHEN = 11 # Fewer than this left in the ring, and it decodes four more
 RG_SPU_PLAY_DELAY = 4 # The samples a voice started waits before it plays
@@ -15,14 +17,14 @@ RG_ENVELOPE_SUSTAIN = 3
 RG_SPU_HISS_AT = 4 # Where the hiss's loop is in @rg_game_spu_loops
 RG_SPU_RATTLE_AT = 5 # ...the rattle's
 RG_SPU_WAVEFORMS_AT = 6 # ...and how many waveforms there are
-RG_SPU_GAUSS_AT = 10 # Where the Gaussian table starts in @rg_game_spu_rules
+RG_SPU_GAUSS_AT = 12 # Where the Gaussian table starts in @rg_game_spu_rules, after a recording's full and a shape's shift
 RG_SPU_SLIDE_FRAMES_MOST = 1 << 20
 RG_BLOCK_LOOP_END = 1
 RG_BLOCK_LOOP_REPEAT = 2
 RG_BLOCK_LOOP_START = 4
 RG_FILTER_WEIGHTS = Ractor.make_shareable([[0, 0], [60, 0], [115, -52], [98, -55], [122, -60], *Array.new(11) { [0, 0] }])
 RG_SQUARE_LOOP_OF_EIGHTHS = [0, 0, 1, 1, 2, 2, 3, 3, 3].freeze
-RG_SPU_GENERAL_NUMBERS = 12
+RG_SPU_GENERAL_NUMBERS = 13
 RG_SPU_CARRY_AT = 6
 RG_SPU_VOICE_FIELDS = 24
 
@@ -60,6 +62,7 @@ def rg_spu_setup
   @rg_spu_struck_by_game = 0 # ...the game's own sounds struck in the pass
   @rg_spu_struck_waiting = 0 # ...and those of the pass before
   @rg_spu_set_by_game = 0 # the voices whose loudness the pass set
+  @rg_spu_stopped_by_game = 0 # the recordings' voices the game stopped in the pass
   @rg_spu_keys_on = 0
   @rg_spu_keys_off = 0
   @rg_spu_carry = 0
@@ -83,6 +86,18 @@ end
 
 def rg_spu_waveform_put_in(which)
   @rg_spu_waveform = which
+end
+
+def rg_spu_recording_struck(place, by_game)
+  if by_game
+    @rg_spu_struck_by_game |= 1 << (RG_SPU_GAME_VOICES + place)
+  else
+    @rg_spu_struck |= 1 << (RG_SPU_GAME_VOICES + place)
+  end
+end
+
+def rg_spu_recording_stopped_by_game(place)
+  @rg_spu_stopped_by_game |= 1 << (RG_SPU_GAME_VOICES + place)
 end
 
 def rg_spu_memory_at(address)
@@ -308,7 +323,7 @@ def rg_spu_fade_a_frame(fading)
   end
 end
 
-def rg_spu_tell(n, sounding, loop, pitch, value)
+def rg_spu_tell(n, sounding, loop, pitch, value, side)
   voice = @rg_spu[n]
   struck = (@rg_spu_struck | @rg_spu_struck_waiting)[n] == 1
   waiting = @rg_spu_struck_by_game[n] == 1
@@ -318,7 +333,7 @@ def rg_spu_tell(n, sounding, loop, pitch, value)
     voice.keyed = 0
     return
   end
-  rg_spu_set_volume(voice, value, @rg_sides[n + 1])
+  rg_spu_set_volume(voice, value, side)
   voice.pitch = pitch
   if struck
     voice.start = loop << 2
@@ -361,20 +376,23 @@ def rg_spu_frame_begins
     sounding = square.wave_ticks != 0 && ticks != 0
     rg_spu_tell(i, sounding, loops[RG_SQUARE_LOOP_OF_EIGHTHS[square.eighths_high & 7]],
                 sounding ? rg_spu_pitch(rg_square_clock_hz, @rg_game_spu_rules[7], ticks) : 0,
-                square.loudness.volume * loudest / 15)
+                square.loudness.volume * loudest / 15, @rg_sides[i + 1])
   end
 
   wave = @rg_wave
   wave_sounding = wave.wave_ticks != 0 && @rg_spu_waveform >= 0 && @rg_spu_waveform < loops[RG_SPU_WAVEFORMS_AT]
   rg_spu_tell(RG_WAVE_VOICE - 1, wave_sounding, wave_sounding ? loops[RG_SPU_WAVEFORMS_AT + 1 + @rg_spu_waveform] : 0,
-              wave_sounding ? rg_spu_pitch(rg_wave_clock_hz, @rg_game_spu_rules[8], wave.wave_ticks) : 0, wave.quarters * loudest / 4)
+              wave_sounding ? rg_spu_pitch(rg_wave_clock_hz, @rg_game_spu_rules[8], wave.wave_ticks) : 0, wave.quarters * loudest / 4,
+              @rg_sides[RG_WAVE_VOICE])
 
   hiss = @rg_hiss
   hiss_sounding = hiss.step_ticks != 0
   rg_spu_tell(RG_NOISE_VOICE - 1, hiss_sounding, loops[hiss.bits <= 7 ? RG_SPU_RATTLE_AT : RG_SPU_HISS_AT],
-              hiss_sounding ? rg_spu_pitch(rg_noise_clock_hz, 1, hiss.step_ticks) : 0, hiss.loudness.volume * loudest / 15)
+              hiss_sounding ? rg_spu_pitch(rg_noise_clock_hz, 1, hiss.step_ticks) : 0, hiss.loudness.volume * loudest / 15,
+              @rg_sides[RG_NOISE_VOICE])
+  rg_hook_recordings_told
   @rg_spu_struck_waiting = @rg_spu_struck_by_game
-  @rg_spu_struck = @rg_spu_struck_by_game = @rg_spu_set_by_game = 0
+  @rg_spu_struck = @rg_spu_struck_by_game = @rg_spu_set_by_game = @rg_spu_stopped_by_game = 0
 end
 
 # The sound of a frame, made by the chip (rg_sound_render_frame's twin).
@@ -383,8 +401,6 @@ def rg_spu_render_frame
   count = @rg_sample_carry / RG_CONSOLE_TICKS_A_SECOND
   @rg_sample_carry %= RG_CONSOLE_TICKS_A_SECOND
 
-  mixed = @rg_heard_only.zero? ? rg_hook_mixed_slice(nil) : 0
-  mixed_count = mixed == 0 ? 0 : mixed.length
   rg_spu_frame_begins
   chip_hz = @rg_game_spu_rules[0]
   left = Array.new(count)
@@ -397,30 +413,43 @@ def rg_spu_render_frame
       @rg_spu_carry -= RG_SOUND_RATE
       rg_spu_tick
     end
-    on_left = out[0]
-    on_right = out[1]
-    if mixed_count > 0 # the recordings play from both
-      sample = mixed[i * mixed_count / count] * RG_MIX_STEP
-      on_left += sample
-      on_right += sample
-    end
-    left[i] = rg_held_to_16_bits(on_left)
-    right[i] = rg_held_to_16_bits(on_right)
+    left[i] = out[0]
+    right[i] = out[1]
     i += 1
   end
   [left, right]
+end
+
+# What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording).
+def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, level)
+  sounding = sounding && sounding != 0
+  return if !sounding && @rg_spu_stopped_by_game[RG_SPU_GAME_VOICES + place] == 1
+
+  ways = @rg_game_spu_recordings
+  loop = -1
+  if sounding && recording >= 0 && recording < ways[0]
+    at = 1 + (recording * 3)
+    loop = if back.zero? then ways[at]
+           elsif back == ways[at + 1] then ways[at + 2]
+           else -1
+           end
+  end
+  rules = @rg_game_spu_rules
+  pitch = ((step + 8) >> 4).clamp(1, rules[6])
+  value = ((level + (level >> 7)) * (loudness * rules[3] / rules[10])) >> rules[11]
+  rg_spu_tell(RG_SPU_GAME_VOICES + place, loop >= 0, loop, pitch, value, 0)
 end
 
 # --- the state image (rg_spu.c says what each field holds) ---
 
 def rg_spu_visit_state
   general = [@rg_spu_struck, @rg_spu_struck_by_game, @rg_spu_struck_waiting, @rg_spu_set_by_game, @rg_spu_keys_on, @rg_spu_keys_off,
-             @rg_spu_carry, *@rg_spu_out, @rg_spu_waveform, *@rg_spu_slide_frame]
+             @rg_spu_carry, *@rg_spu_out, @rg_spu_waveform, *@rg_spu_slide_frame, @rg_spu_stopped_by_game]
   numbers = rg_state_numbers("sound.spu", general + @rg_spu.flat_map { |voice| voice.fields + voice.ring })
   rg_state_refuse_damaged("the sound chip is somewhere it cannot be") unless numbers[RG_SPU_CARRY_AT].between?(0, RG_SOUND_RATE - 1)
 
   @rg_spu_struck, @rg_spu_struck_by_game, @rg_spu_struck_waiting, @rg_spu_set_by_game, @rg_spu_keys_on, @rg_spu_keys_off,
-    @rg_spu_carry, out_left, out_right, @rg_spu_waveform, first_slide, second_slide = numbers[0, RG_SPU_GENERAL_NUMBERS]
+    @rg_spu_carry, out_left, out_right, @rg_spu_waveform, first_slide, second_slide, @rg_spu_stopped_by_game = numbers[0, RG_SPU_GENERAL_NUMBERS]
   @rg_spu_out = [out_left, out_right]
   @rg_spu_slide_frame = [first_slide, second_slide]
   numbers.drop(RG_SPU_GENERAL_NUMBERS).each_slice(RG_SPU_VOICE_FIELDS + RG_SPU_RING).each_with_index do |slice, n|

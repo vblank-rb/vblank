@@ -446,7 +446,8 @@ module VBlank
 
             memory = PS1::SoundMemory.new(@program)
             [sound_table("spu_rules", PS1::SPUTables.rules), sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms)),
-             sound_table("spu_memory", PS1::SPUTables.memory(memory))]
+             sound_table("spu_memory", PS1::SPUTables.memory(memory)),
+             sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings))]
           end
 
           # +writable+ is for a table the routine that reads the start file writes into.

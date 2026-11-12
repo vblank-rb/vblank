@@ -53,11 +53,25 @@ module VBlank
 
           module_function
 
-          # The chip's numbers, then the Gaussian table.
+          # The chip's numbers, then the Gaussian table. A recording's loudness is out of the mix's full
+          # (IR::Tunes::MIX_FULL) and its shape's level out of 1 << Audio::Envelope::SCALE, as
+          # Runtime::Recordings#emit_loudness scales a voice by them.
           def rules
             [SPUWrites::SAMPLE_RATE, Runtime::Sound::ADSR_LOW, Runtime::Sound::ADSR_HIGH, SPUWrites::LOUDEST,
              H::SPU_MAIN_LOUDEST, SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
-             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, *GAUSS]
+             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, IR::Tunes::MIX_FULL, Audio::Envelope::SCALE, *GAUSS]
+          end
+
+          # Where each of +recordings+ (the declared samples, in the mixer's numbering) starts in +memory+,
+          # three numbers each: played once through, how far back it reads when it holds, and played
+          # holding; -1 for a way the program never plays it.
+          def recordings(memory, recordings)
+            rows = recordings.map do |sample|
+              info = Assets::Sample.of(sample)
+              back = info.loop_length.positive? ? info.loop_length : info.length
+              [memory.recording_start(sample.name, 0) || -1, back, memory.recording_start(sample.name, back) || -1]
+            end
+            [rows.size, *rows.flatten]
           end
 
           # Where each loop of +memory+ (a SoundMemory) starts, in 8-byte steps: the four squares by how

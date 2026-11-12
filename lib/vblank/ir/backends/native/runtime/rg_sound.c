@@ -120,6 +120,7 @@ static void rg_hook_sound_frame(void);                           /* the frame be
 static void rg_hook_sound_frame_ended(void);                     /* ...and what follows the tune's frame */
 static void rg_hook_voice_taken_by_game(int32_t voice);          /* a beep, wave or stop_wave took a voice */
 static int32_t rg_hook_mixed_slice(const int32_t **samples);     /* the newest mixed slice, or 0 for none */
+static inline void rg_hook_recordings_told(void);               /* the chip told what each mixer voice plays */
 static void rg_hook_moment_printed(void);                        /* a windowless run prints a moment */
 static void rg_hook_visit_sound_state(void);                     /* the state image visits each feature's fields */
 

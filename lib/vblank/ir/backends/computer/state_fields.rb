@@ -58,7 +58,7 @@ module VBlank
           # pitch counter, envelope (level, count, stage), whether it is started, the loop it plays; then
           # the ring of 32 samples.
           SPU_VOICE_NUMBERS = 24 + 32
-          SPU_NUMBERS = 12 + (4 * SPU_VOICE_NUMBERS) # the sound chip's own twelve, and four voices
+          SPU_NUMBERS = 13 + (20 * SPU_VOICE_NUMBERS) # the sound chip's own thirteen, the game's four voices and sixteen for recordings
           MIX_NUMBERS = 5 # the mixer's own counts
           MIX_VOICE_NUMBERS = 22 # one voice of the mixer
           MUSIC_NUMBERS = 10 # the music's own counts
@@ -153,8 +153,8 @@ module VBlank
             # on any other: the voices a song struck, the game struck in this pass and in the pass
             # before, and whose loudness the pass set; those to start and to let go; the chip's
             # samples owed to the speaker, its newest sample on each side, the wave voice's waveform
-            # and the frames since each square voice's note started; then each of its four voices'
-            # SPU_VOICE_NUMBERS.
+            # the frames since each square voice's note started, and the recordings' voices the game
+            # stopped in the pass; then each of its twenty voices' SPU_VOICE_NUMBERS.
             Field.new(name: "sound.spu", count: SPU_NUMBERS),
             # The mixer: slices made, the most voices at once, plays dropped and the most the music
             # held then, and sounds the game has started; then each voice's MIX_VOICE_NUMBERS, and the

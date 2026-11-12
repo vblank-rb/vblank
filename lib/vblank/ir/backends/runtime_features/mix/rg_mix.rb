@@ -182,6 +182,7 @@ def rg_mix_play(recording, step, loudness, back, loops)
   rg_mix_start_voice(at, recording, step, back, loudness, @rg_game_recordings, rg_recording_numbers(recording) + 2)
   @rg_mix_voices[at].loops = loops
   @rg_mix_voices[at].ticket = (@rg_mix_tickets += 1)
+  rg_spu_recording_struck(at, true)
   rg_mix_record_peak
 end
 
@@ -230,6 +231,7 @@ def rg_mix_start_music_note(effect, lane, rank, sound, loudness)
   voice.effect = effect
   voice.lane = lane
   voice.rank = rank
+  rg_spu_recording_struck(at, false)
   1
 end
 
@@ -262,10 +264,20 @@ def rg_mix_rescale_music(lane, loudness)
 end
 
 def rg_mix_stop(recording)
-  @rg_mix_voices.first(rg_mix_voice_count).each do |voice|
-    voice.sounding = false if voice.sounding && voice.owner == RG_MIX_GAME && (recording < 0 || voice.recording == recording)
+  @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
+    next unless voice.sounding && voice.owner == RG_MIX_GAME && (recording < 0 || voice.recording == recording)
+
+    voice.sounding = false
+    rg_spu_recording_stopped_by_game(i)
   end
   rg_sound_log("stop_sample")
+end
+
+# Each voice told to the sound chip that plays recordings on voices of its own (rg_mix.c says when).
+def rg_mix_recordings_told
+  @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
+    rg_spu_tell_recording(i, voice.sounding, voice.recording, voice.back, voice.step, voice.loudness, voice.level)
+  end
 end
 
 # One voice's frame added into +totals+. False when its recording ran out partway and it stopped.

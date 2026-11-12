@@ -105,6 +105,13 @@ module VBlank
             @loops.fetch(@kept_as.fetch(name, name)) { raise LoweringError, "no sound #{name.inspect} is in sound memory" }.start
           end
 
+          # Where recording +name+, played going +back+ samples at its end, starts, in 8-byte steps; nil
+          # where the program never plays it that way.
+          def recording_start(name, back)
+            kept = @kept_as[self.class.recording(name, back)]
+            kept && @loops.fetch(kept).start
+          end
+
           def empty? = @loops.empty?
 
           # The name of the square loop of +duty+ (Audio::Sound::SQUARE_HIGH_EIGHTHS's names).

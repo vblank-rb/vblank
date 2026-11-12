@@ -277,6 +277,31 @@ module RuntimeSounds
     assert_sounds_like_the_native_runtime program, frames: 60
   end
 
+  # A shaped recording looping and stopped, and a song's recorded part with a rest and a note that
+  # glides on: what a console whose voices read sound memory plays on a voice of its own each.
+  def test_shaped_and_gliding_recordings_sound_as_on_the_native_runtime
+    score = VBlank::Audio::Score
+    root = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(:C4)
+    program = sound_program do
+      enable_sound
+      pad = sample :pad, pcm: [0, 40, 80, 110, 80, 40, 0, -40, -80, -110, -80, -40] * 50, rate: 13_000,
+                         envelope: { attack: 0.2, decay: 0.3, sustain: 0.5, release: 0.3 }
+      instrument :chime, pcm: [0, 60, 0, -60] * 800, rate: 13_000, note: :C4
+      music = songs :music, [score.new(tempo: 150, ticks_per_beat: 4, plays_once: true, parts: [score::Part.new(plays: :chime, notes: [
+                                       score::Note.new(at: 0, hz: root, length: 4), score::Note.new(at: 6, hz: root * 2, length: 4, glides: true)
+                                     ])])]
+      count = var :count, 0
+      music.play 0
+      game_loop do
+        count += 1
+        pad.play(loop: true) if count == 5
+        pad.stop if count == 40
+      end
+    end
+
+    assert_sounds_like_the_native_runtime program, frames: 70
+  end
+
   # Whole games. Pong: START, the zoom, and a rally long enough for its song to come round and the
   # ball to hit a wall and a paddle.
   def test_pongs_rally_sounds_as_on_the_native_runtime
