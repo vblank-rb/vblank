@@ -113,6 +113,7 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = sound && Lowering::Sound.samples?(program)
           by_number = Lowering::Paint.by_number?(program)
+          over_picture = Lowering::Picture.over_picture?(program)
           colors = by_number || Lowering::Picture.changes_colors?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
                                   songs: songs, follows_level: follows_level, effects: effects,
@@ -120,14 +121,14 @@ module VBlank
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, tiles: Lowering::Picture.tiled?(program),
-                                  colors: colors, by_number: by_number)
+                                  colors: colors, by_number: by_number, over_picture: over_picture)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
-                                             collides: lowering.collides?, by_number: by_number)
+                                             collides: lowering.collides?, by_number: by_number, over_picture: over_picture)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           linked = Linker.new(runtime + game, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists.transform_values(&:to_a),

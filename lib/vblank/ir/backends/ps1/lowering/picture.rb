@@ -56,6 +56,10 @@ module VBlank
               program.walk.any? { |node| %i[background object].include?(node.kind) || (node.kind == :screen && node.mode == :tiled) }
             end
 
+            # Whether +program+'s screen is painted and shows sprites over what it paints (`sprite ..., over_picture:
+            # true`, IR::SpritesOverPicture), which Runtime::Paint draws over the page as it is shown.
+            def self.over_picture?(program) = !tiled?(program) && IR::SpritesOverPicture.any?(program)
+
             # How big a tile is, and a plane's cells each way where nothing goes up on it.
             TILE_SIDE = 8
             PLANE_CELLS = Runtime::Tiles::PAGE_SIDE / TILE_SIDE
@@ -79,6 +83,7 @@ module VBlank
 
             def prepare_picture
               @tiled = Picture.tiled?(@program)
+              @over_picture = Picture.over_picture?(@program)
               @objects = @program.walk.select { |node| node.kind == :object }.to_h { |node| [node.name, node] }
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)
@@ -98,12 +103,11 @@ module VBlank
             def tiled? = @tiled
 
             # Each piece of a picture this lowering does not make yet, refused by name: it makes a tiled
-            # screen of 8×8 tiles, backgrounds whose maps fit one plane, and plain sprites in front of them.
+            # screen of 8×8 tiles, backgrounds whose maps fit one plane, and plain sprites in front of them; and on
+            # a painted screen, backgrounds stamped where they are put up and sprites over the picture.
             def refuse_unmade_picture!
-              painted = !@tiled && (@backgrounds.any? || @objects.any?)
-              refuse_unmade!(TILED_SCREEN, "draws sprites or backgrounds on a painted (bitmap) screen") if painted
               refuse_fades_of_part!
-              return unless @tiled
+              return refuse_unmade_painted! unless @tiled
 
               others = @program.walk.select { |node| node.kind == :screen }.map(&:mode).uniq - %i[tiled]
               refuse_unmade!(TILED_SCREEN, "shows a `screen :#{others.first}`") unless others.empty?
@@ -113,6 +117,48 @@ module VBlank
               refuse_backdrops_of_its_own!
               refuse_unmade_backgrounds!
               refuse_unmade_sprites!
+            end
+
+            # The steps that make the interpreter paint a painted screen's backgrounds again as it runs
+            # (Reference#collect_definitions' @repaints): one moved, changed or put in a stack, which this build
+            # does not make on a painted screen.
+            REPAINTING_KINDS = %i[scroll_background place_bar box_background scroll_rows affine_background set_tile show_map
+                                  background_colors tile_run layers].freeze
+
+            # WHAT A PAINTED SCREEN SHOWS BESIDE WHAT IT PAINTS, as this build makes it: backgrounds stamped onto the
+            # picture as they are put up and never moved or changed after (#emit_stamp_background), and sprites
+            # over the picture (`over_picture: true`) that neither turn nor resize, nor follow a list the game
+            # changes. A sprite painted into the picture, which puts the scenery back under it as it moves
+            # (Reference#restore_scene_rect), is not made yet.
+            def refuse_unmade_painted!
+              unless @backgrounds.empty?
+                kinds = @program.walk.map(&:kind).uniq & REPAINTING_KINDS
+                unless kinds.empty?
+                  refuse_unmade!(TILED_SCREEN, "moves, changes or stacks a background on a painted (bitmap) screen " \
+                                               "(`#{kinds.first}`)")
+                end
+                @backgrounds.each { |bg| refuse_unmade_stamp!(bg) }
+              end
+              return if @objects.empty?
+
+              unless @objects.each_value.all?(&:over_picture)
+                refuse_unmade!(TILED_SCREEN, "draws sprites into a painted (bitmap) screen (without `over_picture: true`)")
+              end
+              if @program.walk.any? { |node| node.kind == :color_list_holds }
+                refuse_unmade!(TILED_SCREEN, "changes a list of colours on a painted (bitmap) screen with sprites over it")
+              end
+              refuse_unmade_sprites!
+            end
+
+            # A background stamped onto a painted screen: one of a scene's own, a status bar, one held above a row
+            # and one drawn with other colours are not made yet.
+            def refuse_unmade_stamp!(bg)
+              refuse_unmade!(TILED_SCREEN, "shows a scene's own background on a painted (bitmap) screen") if bg.scene
+              refuse_unmade!(TILED_SCREEN, "shows a status bar on a painted (bitmap) screen") if bg.bar?
+              refuse_unmade!(TILED_SCREEN, "holds a background above a row on a painted (bitmap) screen") if bg.above_row
+              return if bg.recolors.empty? && !bg.follows_several?
+
+              refuse_unmade!(TILED_SCREEN, "draws a background with other lists of colours on a painted (bitmap) screen")
             end
 
             # A FADE OF PART OF THE SCREEN, placed under a layer or held to a rectangle, is a blend, which the
@@ -384,8 +430,60 @@ module VBlank
             # takes over instead (#emit_scene_arrival).
             def emit_background(node)
               return if @handover.on_arrival?(node)
+              return emit_stamp_background(node) unless @tiled
 
               emit_put_up(node, 0, reset_view: 1)
+            end
+
+            # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
+            # (Reference#stamp_background): its map from the screen's corner, each cell's tile, the pixels its tiles
+            # leave see-through not drawn. Nothing moves or changes it after (#refuse_unmade_painted!), so the part
+            # of it the screen shows is one picture of the painted art, made while the game is built, and putting
+            # it up is one blit of that picture.
+            def emit_stamp_background(bg)
+              runtime_call("rt_paint_blit", [stamp_picture(bg), Build.int(0), Build.int(0)])
+            end
+
+            # The part of +bg+'s map on the screen as a picture (Reference#stamp_background): on a screen wider or
+            # taller than the map's grid, the grid comes round and is seen again (#stamp_repeats).
+            def stamp_picture(bg)
+              LabelAddress.new(painted_art.register_picture([:stamp, bg.object_id]) do
+                colors = PlaneColors.new(bg, image_of: ->(key) { @cache.image(picture_named(key)) },
+                                             list_named: ->(name) { color_list_named(name) })
+                width = Console::PS1Hardware::SCREEN_WIDTH
+                height = Console::PS1Hardware::SCREEN_HEIGHT
+                columns, rows = TileMap.grid(bg.map)
+                across, down = stamp_repeats(bg, columns, rows)
+                drawn = {}
+                down.times do |round_down|
+                  across.times do |round_across|
+                    bg.map.each_with_index do |row, r|
+                      Array(row).each_with_index do |tile, c|
+                        next if tile.nil? || tile.negative? || tile >= bg.tiles.length
+
+                        left = (round_across * columns * TILE_SIDE) + (c * bg.tile_w)
+                        top = (round_down * rows * TILE_SIDE) + (r * bg.tile_h)
+                        colors.tile_entries(tile).each_with_index do |entry, at|
+                          x = left + (at % bg.tile_w)
+                          y = top + (at / bg.tile_w)
+                          drawn[[x, y]] = painted_color(entry.colors.first) if entry && x < width && y < height
+                        end
+                      end
+                    end
+                  end
+                end
+                drawn
+              end)
+            end
+
+            # How many times +bg+'s grid of +columns+ by +rows+ cells is seen across the screen and down it
+            # (Reference#grid_repeats): once for a map shown a strip at a time, too big for a grid, or of tiles that
+            # are not 8 × 8.
+            def stamp_repeats(bg, columns, rows)
+              return [1, 1] if bg.streams? || !TileMap.fits?(bg.map) || bg.tile_w != TILE_SIDE || bg.tile_h != TILE_SIDE
+
+              [Console::PS1Hardware::SCREEN_WIDTH.fdiv(columns * TILE_SIDE).ceil,
+               Console::PS1Hardware::SCREEN_HEIGHT.fdiv(rows * TILE_SIDE).ceil]
             end
 
             # A status bar put up from its corner shows from the top it was declared with (Reference#bar_top_shown).
@@ -670,7 +768,7 @@ module VBlank
             # Reference#exec_present_objects: every sprite the frame draws, the back-most first, each placed by
             # the runtime from its table of pictures; or none at all on the pass after `hide_sprites`.
             def emit_present_objects(node)
-              return unless @tiled
+              return unless @tiled || @over_picture
 
               hidden = sprites_hidden_flag
               placing = fresh_label("sprites_placed")
@@ -686,6 +784,22 @@ module VBlank
                 emit_sprite_placing(object_named(item))
               end
               @asm.label(done)
+            end
+
+            # The routine Runtime::Paint's rt_paint_sprites_shown calls on a tear-free screen.
+            SPRITES_OVER_PICTURE = "game sprites over picture"
+
+            # SPRITES OVER A TEAR-FREE PAINTED SCREEN are placed again in the gap where a pass's page is published,
+            # from the numbers the pass just finished (Reference#advance_frame), and the page goes to the screen with
+            # them; the game's own step places them after the wait from the same numbers. So the frame's sprite
+            # step is a routine of its own too, which the runtime calls as it copies the page (rt_paint_sprites_shown),
+            # on a tear-free screen alone. A section for a game with sprites over its painted screen; none for any
+            # other.
+            def sprites_over_picture_section
+              return [] unless @over_picture
+
+              step = IR::SpritesOverPicture.frame_sprite_step(@program)
+              [routine_section(SPRITES_OVER_PICTURE, [], routine: "the sprites over the picture") { emit_present_objects(step) if step }]
             end
 
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
@@ -797,7 +911,7 @@ module VBlank
             # power-on. Made once every routine is, and before the painted art's (Paint#paint_sections), since
             # a sprite's pictures are registered with it here.
             def picture_sections
-              return [] unless @tiled
+              return [] unless @tiled || @over_picture
 
               asm = R3000.new("tiles tables", holds: TABLES_HOLDING)
               @grids.each_value do |label, bg, which|
@@ -821,7 +935,7 @@ module VBlank
                 asm.label(label)
                 asm.data_words(levels)
               end
-              upload_tile_sheet
+              upload_tile_sheet if @tiled
               [asm.section]
             end
 

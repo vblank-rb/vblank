@@ -71,7 +71,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds 256 places on a PlayStation, the first see-through.
-- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen, a list changes the sprites that draw with it. The build does not make sprites on a painted screen yet: it refuses them and says so.
+- `recolor` — works: on a screen drawn from tiles, the list's colours are written into the lists of colours the graphics chip reads, so everything drawn with it changes on the same pass. On a painted screen, a list changes the sprites that draw with it. The build makes sprites over a painted screen (`over_picture: true`) drawn with another list. It does not make a list that changes as the game runs there yet: it refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `colors_name_of` — works: the same as on the Advance.

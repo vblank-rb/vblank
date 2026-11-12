@@ -56,12 +56,13 @@ module VBlank
             # A SCREEN DRAWN BY NUMBER (PS1::PaintedNumbers) is drawn into the pages as any painted screen, and
             # shown from two pages of its own, right of them, from column PAGE_X: each pass's page is copied
             # there in its colours as the pass ends (rt_paint_numbers_shown), into the one not shown, which is
-            # shown in the blank (NUMBERS_COPY_PENDING). The copy reads the page through the colour table whose name
+            # shown in the blank (SHOWN_COPY_PENDING). The copy reads the page through the colour table whose name
             # (TextureMemory::Table#field) is in NUMBERS_TABLE. PASS_PAGE_Y, SHOWN_PAGE_Y and PASS_SHOWN_PAGE_Y
-            # then name the pages shown, from PAGE_X, which is where a reader reads them.
+            # then name the pages shown, from PAGE_X, which is where a reader reads them. A screen with sprites over
+            # it is shown the same way (rt_paint_sprites_shown).
             PAGE_X = "rt paint page x"
             NUMBERS_TABLE = "rt paint numbers table"
-            NUMBERS_COPY_PENDING = "rt paint numbers copy pending"
+            SHOWN_COPY_PENDING = "rt paint shown copy pending"
             # How wide a copy's piece is: half a texture page of bytes, its two triangles one texture page.
             NUMBERS_PIECE_PIXELS = 64
 
@@ -72,26 +73,122 @@ module VBlank
 
             module_function
 
-            # +by_number+ for a screen drawn by number.
-            def reserve(memory, by_number: false)
+            # +shown_apart+ for a screen shown from pages of its own (#shown_by).
+            def reserve(memory, shown_apart: false)
               memory.reserve(AREA, 16)
               [PAGE_Y, PAGED, FLIP_OWED, PASS_PAGE_Y, SHOWN_PAGE_Y, PASS_SHOWN_PAGE_Y].each { |name| memory.reserve(name, 4) }
-              [PAGE_X, NUMBERS_TABLE, NUMBERS_COPY_PENDING].each { |name| memory.reserve(name, 4) } if by_number
+              [PAGE_X, NUMBERS_TABLE, SHOWN_COPY_PENDING].each { |name| memory.reserve(name, 4) } if shown_apart
+            end
+
+            # THE ROUTINE THAT COPIES A PASS'S PAGE ONTO THE PAGE SHOWN, for a painted screen shown from pages of its
+            # own, from PAGE_X: a screen drawn by number (+by_number+, rt_paint_numbers_shown), or one with sprites
+            # over it (+over_picture+, rt_paint_sprites_shown); nil for one shown from the pages it is drawn in.
+            def shown_by(by_number:, over_picture:)
+              raise LoweringError, "a painted screen drawn by number has no sprites over it" if by_number && over_picture
+              return "rt_paint_numbers_shown" if by_number
+
+              "rt_paint_sprites_shown" if over_picture
             end
 
             # +faces+ is whether the game fills the faces of a place, which leave the chip's drawing area
             # and texture window set for the next face (Faces#emit_chip_put_back_routine): then a fill and a
-            # blit give the chip its own back first. +by_number+ for a screen drawn by number.
-            def emit(asm, memory, faces: false, by_number: false)
+            # blit give the chip its own back first. +shown_by+ is #shown_by's routine, or nil.
+            def emit(asm, memory, faces: false, shown_by: nil)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm, at)
               emit_area(asm, at)
               emit_fill(asm, at, faces)
               emit_blit(asm, at, faces)
-              emit_pages(asm, at, by_number)
-              emit_numbers_shown(asm, at) if by_number
+              emit_pages(asm, at, !shown_by.nil?)
+              emit_numbers_shown(asm, at) if shown_by == "rt_paint_numbers_shown"
+              emit_sprites_shown(asm, at) if shown_by == "rt_paint_sprites_shown"
               emit_upload(asm)
               emit_patches(asm, at)
+            end
+
+            # SPRITES OVER THE PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`) are drawn over it as it
+            # goes to the screen and never into it (Reference#show_objects_over_picture): what the game paints stays
+            # as it painted it, and a sprite that moves leaves nothing behind. So the screen is shown from pages of
+            # its own, from PAGE_X, as one drawn by number is: as each pass ends its page is copied onto the page
+            # shown that is not up, inside video RAM (GP0 80h), and the sprites the pass placed
+            # (Runtime::Tiles::DRAWN) are drawn over the copy, the whole screen open to them, at the screen's own
+            # places, which the chip's drawing offset (GP0 E5h) moves onto that page. The blank then shows it
+            # (rt_paint_flip). A copy inside video RAM is the chip's alone: the processor touches no pixel.
+            #
+            # rt_paint_sprites_shown: a0 = the top line of the page drawn on to show. The area drawing is held to and
+            # the page drawn on are given back as they were.
+            SPRITES_SHOWN_KEPT = %i[s0 s1 s2 s3].freeze
+            # The words kept on the stack besides the registers: the area's four, then PAGE_Y; and after them the page
+            # drawn on.
+            SPRITES_SHOWN_PUT_BACK = 5
+
+            def emit_sprites_shown(asm, at)
+              h = Console::PS1Hardware
+              word = ->(index) { DrawList.word_offset_bytes(index) }
+              drawn = at.call(Tiles::DRAWN)
+              kept_bytes = 4 * (SPRITES_SHOWN_KEPT.length + 1)
+              frame = kept_bytes + (4 * (SPRITES_SHOWN_PUT_BACK + 1))
+              put_back = ->(i) { kept_bytes + (i * 4) }
+              places = [AREA_LEFT_OFFSET_BYTES, AREA_TOP_OFFSET_BYTES, AREA_RIGHT_OFFSET_BYTES, AREA_BOTTOM_OFFSET_BYTES]
+                       .map { |offset| at.call(AREA) + offset } + [at.call(PAGE_Y)]
+              asm.label("rt_paint_sprites_shown")
+              asm.addiu(:sp, :sp, -frame)
+              asm.sw(:ra, 0, :sp)
+              SPRITES_SHOWN_KEPT.each_with_index { |register, i| asm.sw(register, 4 + (i * 4), :sp) }
+              places.each_with_index do |place, i|
+                asm.lw(:t0, place, :gp)
+                asm.sw(:t0, put_back.call(i), :sp)
+              end
+              # On a tear-free screen the sprites are placed again first, from the numbers the pass finished with
+              # (Lowering::Picture#sprites_over_picture_section). The game's code changes the saved registers
+              # without keeping them, so the page drawn on waits on the stack meanwhile.
+              asm.sw(:a0, put_back.call(SPRITES_SHOWN_PUT_BACK), :sp)
+              asm.lw(:t0, at.call(PAGED), :gp)
+              asm.beq(:t0, :zero, "rt_paint_sprites_shown_placed")
+              asm.jal(Lowering::Picture::SPRITES_OVER_PICTURE)
+              asm.label("rt_paint_sprites_shown_placed")
+              # s2: the page shown that is not up, its top line; s3: the page drawn on.
+              asm.lw(:s3, put_back.call(SPRITES_SHOWN_PUT_BACK), :sp)
+              asm.lw(:s2, at.call(SHOWN_PAGE_Y), :gp)
+              asm.xori(:s2, :s2, SECOND_PAGE_TOP_LINE)
+              asm.sw(:s2, at.call(PASS_PAGE_Y), :gp)
+              DrawList.emit_command(asm, 4) { asm.lui(:a0, h::GP0_COPY_IN_VRAM >> 16) }
+              asm.sll(:t0, :s3, 16)
+              asm.sw(:t0, word.call(1), :t1)
+              asm.lw(:t0, at.call(PAGE_X), :gp)
+              asm.sll(:t2, :s2, 16)
+              asm.or(:t0, :t0, :t2)
+              asm.sw(:t0, word.call(2), :t1)
+              asm.li(:t0, (h::SCREEN_HEIGHT << 16) | h::SCREEN_WIDTH)
+              asm.sw(:t0, word.call(3), :t1)
+              # The sprites, at the screen's places moved across onto the page shown, kept to the whole screen.
+              asm.lw(:a0, at.call(PAGE_X), :gp)
+              asm.lui(:t0, h::GP0_DRAWING_OFFSET >> 16)
+              DrawList.emit_command(asm, 1) { asm.or(:a0, :a0, :t0) }
+              asm.jal("rt_paint_start")
+              asm.sw(:s2, at.call(PAGE_Y), :gp)
+              asm.lw(:s0, drawn, :gp)
+              asm.addiu(:s1, :gp, drawn + 4)
+              asm.label("rt_paint_sprites_shown_next")
+              asm.beq(:s0, :zero, "rt_paint_sprites_shown_end")
+              asm.lw(:a0, Tiles::DRAWN_ART, :s1)
+              asm.lw(:a1, Tiles::DRAWN_X, :s1)
+              asm.lw(:a2, Tiles::DRAWN_Y, :s1)
+              asm.jal("rt_paint_blit")
+              asm.addiu(:s1, :s1, Tiles::DRAWN_BYTES)
+              asm.b("rt_paint_sprites_shown_next") { asm.addiu(:s0, :s0, -1) }
+              asm.label("rt_paint_sprites_shown_end")
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_DRAWING_OFFSET >> 16) }
+              places.each_with_index do |place, i|
+                asm.lw(:t0, put_back.call(i), :sp)
+                asm.sw(:t0, place, :gp)
+              end
+              asm.jal("rt_draw_list_finish")
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(SHOWN_COPY_PENDING), :gp)
+              asm.lw(:ra, 0, :sp)
+              SPRITES_SHOWN_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
+              asm.jr(:ra) { asm.addiu(:sp, :sp, frame) }
             end
 
             # rt_paint_numbers_shown: a0 = the top line of the page drawn by number to show. The colours walked
@@ -166,7 +263,7 @@ module VBlank
               asm.bgtz(:s3, "rt_paint_numbers_piece")
               asm.jal("rt_draw_list_finish")
               asm.li(:t0, 1)
-              asm.sw(:t0, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.sw(:t0, at.call(SHOWN_COPY_PENDING), :gp)
               asm.lw(:ra, 0, :sp)
               NUMBERS_KEPT.each_with_index { |register, i| asm.lw(register, 4 + (i * 4), :sp) }
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * (NUMBERS_KEPT.length + 1)) }
@@ -477,10 +574,10 @@ module VBlank
             # rt_paint_flip: at the frame boundary, once the blank has begun, a tear-free screen shows the
             # page just drawn and draws into the other. Only after a pass's wait (FLIP_OWED).
             #
-            # A SCREEN DRAWN BY NUMBER (+by_number+) never shows the pages it is drawn in: rt_paint_screen changes
+            # A SCREEN SHOWN FROM PAGES OF ITS OWN (+shown_apart+: drawn by number, or with sprites over it) never shows the pages it is drawn in: rt_paint_screen changes
             # which page is drawn into and shows nothing, and rt_paint_flip trades the pages drawn into as it
-            # does, then shows the page from PAGE_X its pass's copy went into (NUMBERS_COPY_PENDING).
-            def emit_pages(asm, at, by_number)
+            # does, then shows the page from PAGE_X its pass's copy went into (SHOWN_COPY_PENDING).
+            def emit_pages(asm, at, shown_apart)
               h = Console::PS1Hardware
               asm.label("rt_paint_screen")
               asm.lw(:t0, at.call(PAGED), :gp)
@@ -503,11 +600,11 @@ module VBlank
               asm.jal("rt_draw_list_finish")
               asm.lw(:ra, 0, :sp)
               asm.addiu(:sp, :sp, 4)
-              asm.jr(:ra) if by_number
+              asm.jr(:ra) if shown_apart
               # Show the page whose top line is in t0.
               asm.label("rt_paint_show_t0")
               asm.sll(:t1, :t0, 10)
-              if by_number
+              if shown_apart
                 asm.lw(:t2, at.call(PAGE_X), :gp)
                 asm.or(:t1, :t1, :t2)
               end
@@ -522,18 +619,18 @@ module VBlank
               asm.label("rt_paint_flip")
               asm.lw(:t0, at.call(FLIP_OWED), :gp)
               asm.sw(:zero, at.call(FLIP_OWED), :gp)
-              asm.beq(:t0, :zero, by_number ? "rt_paint_flip_numbers" : "rt_paint_screen_same")
+              asm.beq(:t0, :zero, shown_apart ? "rt_paint_flip_shown_apart" : "rt_paint_screen_same")
               asm.lw(:t0, at.call(PAGED), :gp)
-              asm.beq(:t0, :zero, by_number ? "rt_paint_flip_numbers" : "rt_paint_screen_same")
+              asm.beq(:t0, :zero, shown_apart ? "rt_paint_flip_shown_apart" : "rt_paint_screen_same")
               asm.lw(:t0, at.call(PAGE_Y), :gp)
               asm.xori(:t1, :t0, SECOND_PAGE_TOP_LINE)
-              return asm.b("rt_paint_show_t0") { asm.sw(:t1, at.call(PAGE_Y), :gp) } unless by_number
+              return asm.b("rt_paint_show_t0") { asm.sw(:t1, at.call(PAGE_Y), :gp) } unless shown_apart
 
               asm.sw(:t1, at.call(PAGE_Y), :gp)
-              asm.label("rt_paint_flip_numbers")
-              asm.lw(:t1, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.label("rt_paint_flip_shown_apart")
+              asm.lw(:t1, at.call(SHOWN_COPY_PENDING), :gp)
               asm.beq(:t1, :zero, "rt_paint_screen_same")
-              asm.sw(:zero, at.call(NUMBERS_COPY_PENDING), :gp)
+              asm.sw(:zero, at.call(SHOWN_COPY_PENDING), :gp)
               asm.lw(:t0, at.call(PASS_PAGE_Y), :gp)
               asm.b("rt_paint_show_t0")
             end

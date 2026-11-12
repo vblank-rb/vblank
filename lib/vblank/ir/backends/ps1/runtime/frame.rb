@@ -111,16 +111,16 @@ module VBlank
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
             # rt_sound_frame; +tiles+ for one whose screen is drawn from tiles, whose every pass ends with
-            # the whole picture drawn (Tiles' rt_tiles_draw), a pass that halts too; +by_number+ for one whose
-            # painted screen is drawn by number, whose every pass ends with its page copied in its colours onto
-            # the page shown (Paint's rt_paint_numbers_shown), a pass that stops too.
-            def emit(asm, memory, sound: false, tiles: false, by_number: false)
+            # the whole picture drawn (Tiles' rt_tiles_draw), a pass that halts too; +shown_by+ for one whose
+            # painted screen is shown from pages of its own (Paint.shown_by), whose every pass ends with its page
+            # copied onto the page shown by that routine of Paint's, a pass that stops too.
+            def emit(asm, memory, sound: false, tiles: false, shown_by: nil)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              emit_wait(asm, at, sound, tiles, by_number)
+              emit_wait(asm, at, sound, tiles, shown_by)
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
-              emit_stopping(asm, at, tiles, by_number)
+              emit_stopping(asm, at, tiles, shown_by)
             end
 
             # THE INTERRUPT. Every register the handler or the routines it calls may change is kept first,
@@ -172,7 +172,7 @@ module VBlank
             # and wait for the screen. What keeps time by the frame moves on here, before the game is marked
             # as waiting, because that is where the interpreter moves it on: at the frame boundary,
             # before anything is read of the frame (Reference#advance_frame).
-            def emit_wait(asm, at, sound, tiles, by_number)
+            def emit_wait(asm, at, sound, tiles, shown_by)
               asm.label("rt_wait_vblank")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
@@ -190,8 +190,8 @@ module VBlank
               # may trade places before the game stops waiting.
               asm.lw(:t0, at.call(Paint::PAGE_Y), :gp)
               asm.sw(:t0, at.call(Paint::PASS_PAGE_Y), :gp)
-              # ...and on a screen drawn by number, the page shown it was copied onto in its colours.
-              asm.jal("rt_paint_numbers_shown") { asm.move(:a0, :t0) } if by_number
+              # ...and on a screen shown from pages of its own, the page shown it was copied onto.
+              asm.jal(shown_by) { asm.move(:a0, :t0) } if shown_by
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(Paint::FLIP_OWED), :gp) # the page this pass drew is shown
               asm.sw(:t0, at.call(WAITING), :gp)
@@ -323,10 +323,11 @@ module VBlank
             # A screen drawn from tiles (+tiles+) is drawn whole as the halting pass's picture first, and
             # shown, as the interpreter places the halting pass's sprites (Reference#place_pass_end_before_halt).
             #
-            # A painted screen drawn by number (+by_number+) shows the page it shows by then copied again, in the
-            # colours of the fade in force as it stops: on one page the page the stopping pass drew on, and on a
-            # tear-free screen the other, which the stopping pass never trades for it.
-            def emit_stopping(asm, at, tiles, by_number)
+            # A painted screen shown from pages of its own (+shown_by+) shows the page it shows by then copied
+            # again, in the colours of the fade in force as it stops, with the sprites over it: on one page the
+            # page the stopping pass drew on, and on a tear-free screen the other, which the stopping pass never
+            # trades for it.
+            def emit_stopping(asm, at, tiles, shown_by)
               asm.label("rt_halt")
               if tiles
                 asm.jal("rt_tiles_draw")
@@ -337,7 +338,7 @@ module VBlank
               asm.label("rt_stop_with_state")
               asm.sw(:t0, at.call(STATE), :gp)
               asm.jal("rt_draw_list_finish") # what the stopping pass drew, drawn before it is shown
-              emit_stopping_page_by_number(asm, at) if by_number
+              emit_stopping_page_shown(asm, at, shown_by) if shown_by
               asm.sw(:zero, at.call(VBLANK), :gp)
               asm.jal("rt_show_pass")
               asm.li(:t0, END_SHOWN)
@@ -350,15 +351,15 @@ module VBlank
               asm.b("rt_stop_with_state") { asm.li(:t0, WENT_WRONG) }
             end
 
-            # The page a stopping game shows, copied again (Paint's rt_paint_numbers_shown): PAGE_Y, or on a
+            # The page a stopping game shows, copied again by Paint's routine +shown_by+: PAGE_Y, or on a
             # tear-free screen the page that is not it.
-            def emit_stopping_page_by_number(asm, at)
+            def emit_stopping_page_shown(asm, at, shown_by)
               asm.lw(:a0, at.call(Paint::PAGE_Y), :gp)
               asm.lw(:t0, at.call(Paint::PAGED), :gp)
-              asm.beq(:t0, :zero, "rt_stop_page_by_number")
+              asm.beq(:t0, :zero, "rt_stop_page_shown")
               asm.xori(:a0, :a0, Paint::SECOND_PAGE_TOP_LINE)
-              asm.label("rt_stop_page_by_number")
-              asm.jal("rt_paint_numbers_shown")
+              asm.label("rt_stop_page_shown")
+              asm.jal(shown_by)
             end
           end
         end

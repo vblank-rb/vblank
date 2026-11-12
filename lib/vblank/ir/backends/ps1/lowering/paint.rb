@@ -89,16 +89,27 @@ module VBlank
             # A PAINTED SCREEN DRAWN BY NUMBER: its numbers' colour table, and two pages to show it from, right of
             # the pages it is drawn in (Runtime::Paint::PAGE_X), each kept from power-on where the runtime reads it.
             # A place's faces are drawn in colours the graphics chip works out as it draws, which have no number.
+            # A painted screen with sprites over it is shown from two pages of its own too (Runtime::Paint's
+            # rt_paint_sprites_shown), with no table.
             def reserve_painted_numbers!
+              reserve_shown_pages! if Picture.over_picture?(@program)
               return unless Paint.by_number?(@program)
 
               if @program.walk.any? { |node| node.kind == :fill_face }
                 refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen that shows a place")
               end
+              if Picture.over_picture?(@program)
+                refuse_unmade!(FADES, "fades or tints a painted (bitmap) screen with sprites over it (`over_picture: true`)")
+              end
               @painted_numbers = PaintedNumbers.new
               @numbers_table = texture_memory.reserve_table(capacity: PaintedNumbers::TABLE_COLORS, entries: [])
-              @starts << [runtime_place(Runtime::Paint::PAGE_X), texture_memory.reserve_columns(Console::PS1Hardware::SCREEN_WIDTH)]
+              reserve_shown_pages!
               @starts << [runtime_place(Runtime::Paint::NUMBERS_TABLE), @numbers_table.field]
+            end
+
+            # The two pages a painted screen is shown from, right of the pages it is drawn in (Runtime::Paint::PAGE_X).
+            def reserve_shown_pages!
+              @starts << [runtime_place(Runtime::Paint::PAGE_X), texture_memory.reserve_columns(Console::PS1Hardware::SCREEN_WIDTH)]
             end
 
             # +color+ as the painted screen holds it: the colour, or on a screen drawn by number its number.

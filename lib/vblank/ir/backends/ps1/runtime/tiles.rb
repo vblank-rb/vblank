@@ -109,11 +109,18 @@ module VBlank
             def reserve(memory)
               memory.reserve(PLANES, MOST_PLANES * PLANE_BYTES)
               memory.reserve(BACKDROP, 4)
-              memory.reserve(DRAWN, 4 + (MOST_SPRITES * DRAWN_BYTES))
+              reserve_sprites(memory)
               memory.reserve(BAR_TOP, 4)
               memory.reserve(BAR_COVERS, 4)
               memory.reserve(SCENERY_ROWS, 4)
             end
+
+            # The sprites a pass placed alone (DRAWN), for a painted screen with sprites over it
+            # (Runtime::Paint's rt_paint_sprites_shown draws them).
+            def reserve_sprites(memory) = memory.reserve(DRAWN, 4 + (MOST_SPRITES * DRAWN_BYTES))
+
+            # The routines that place sprites alone (#emit_sprites), for a painted screen with sprites over it.
+            def emit_sprite_places(asm, memory) = emit_sprites(asm, ->(name) { Runtime.at(memory, name) }, levels: false)
 
             # +screen+ is what the game's tiled screen is drawn with (Screen); +faces+ whether the game also fills
             # the faces of a place, which leave the chip's texture window set; +colors+ whether its colours change
@@ -123,7 +130,7 @@ module VBlank
               emit_start(asm)
               emit_plane_routines(asm, at)
               emit_cell(asm)
-              emit_sprites(asm, at, screen)
+              emit_sprites(asm, at, levels: !screen.levels.nil?)
               emit_bar(asm, at) unless screen.bar_planes.empty?
               emit_draw(asm, at, screen, faces, colors)
               emit_sprites_at_level(asm, at) if screen.levels
@@ -294,9 +301,9 @@ module VBlank
             # rt_sprites_begin: no sprite placed yet this pass. rt_sprite_place: a0 = the table of the
             # sprite's pictures (how many, then for each its number and where it is in the painted art, a word
             # each: POSE_BYTES), a1 = which it shows, a2, a3 = where, t4 = whose it is, and on a screen drawn level
-            # by level (Screen#levels) t5 = how deep it sits. A number naming none of its pictures places nothing
-            # (Reference#object_pose_image).
-            def emit_sprites(asm, at, screen)
+            # by level (+levels+, Screen#levels) t5 = how deep it sits. A number naming none of its pictures places
+            # nothing (Reference#object_pose_image).
+            def emit_sprites(asm, at, levels:)
               drawn = at.call(DRAWN)
               asm.label("rt_sprites_begin")
               asm.jr(:ra) { asm.sw(:zero, drawn, :gp) }
@@ -315,7 +322,7 @@ module VBlank
               asm.sll(:t3, :t2, 5)
               asm.addu(:t3, :t3, :gp)
               asm.sw(:t4, drawn + 4 + DRAWN_WHOSE, :t3)
-              asm.sw(:t5, drawn + 4 + DRAWN_LEVEL, :t3) if screen.levels
+              asm.sw(:t5, drawn + 4 + DRAWN_LEVEL, :t3) if levels
               asm.sw(:t6, drawn + 4 + DRAWN_ART, :t3)
               asm.sw(:t1, drawn + 4 + DRAWN_PICTURE, :t3)
               asm.sw(:a2, drawn + 4 + DRAWN_X, :t3)

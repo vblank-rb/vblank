@@ -43,13 +43,15 @@ module VBlank
           # what its notes do as they play (+notes+, Music.reserve's wobbles:, steps_shapes:, swells:, slides:);
           # and Recordings' for one that plays recordings (+samples+); and Tiles' for one whose screen is
           # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
-          # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers).
+          # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers) or with sprites over
+          # it (+over_picture+), each shown from pages of its own.
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {}, samples: false,
-                      tiles: false, colors: false, by_number: false)
+                      tiles: false, colors: false, by_number: false, over_picture: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory)
-            Paint.reserve(memory, by_number: by_number)
+            Paint.reserve(memory, shown_apart: by_number || over_picture)
             Tiles.reserve(memory) if tiles
+            Tiles.reserve_sprites(memory) if over_picture
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
             Recordings.reserve(memory) if samples
@@ -67,20 +69,24 @@ module VBlank
           # from tiles, what Tiles draws it with (Tiles::Screen), and nil for any other, and +colors+ whether
           # its colours change as it runs, so carries Colors, which reads the game's tables of colours;
           # +collides+ whether it asks whether two sprites' pixels touch, so carries Collide; +by_number+ whether its
-          # painted screen is drawn by number (PS1::PaintedNumbers), so is copied onto the screen as each pass ends.
+          # painted screen is drawn by number (PS1::PaintedNumbers), so is copied onto the screen as each pass ends;
+          # +over_picture+ whether it shows sprites over its painted screen, so is copied onto the screen as each
+          # pass ends and has the pass's sprites drawn over the copy.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, tiled: nil, colors: false, collides: false, by_number: false)
+                       samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             DrawList.reserve_late(memory)
+            shown_by = Paint.shown_by(by_number: by_number, over_picture: over_picture)
             Boot.emit(asm, memory, main: main)
             DrawList.emit(asm, memory, faces: faces)
             Int32.emit(asm)
-            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, by_number: by_number)
+            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
-            Paint.emit(asm, memory, faces: faces, by_number: by_number)
+            Paint.emit(asm, memory, faces: faces, shown_by: shown_by)
             Tiles.emit(asm, memory, screen: tiled, faces: faces, colors: colors) if tiled
+            Tiles.emit_sprite_places(asm, memory) if over_picture
             Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors
             Collide.emit(asm) if collides
             Faces.emit(asm, memory) if faces

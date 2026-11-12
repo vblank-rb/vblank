@@ -263,9 +263,10 @@ module VBlank
             @lowering_scene = nil
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
+            over_picture = sprites_over_picture_section
             # The pictures are known once every routine is made, so their tables come last: a screen drawn
             # from tiles registers its sprites' pictures with the painted art first.
-            [data_section, *table_sections, *routines, *timers, main, *picture_sections, *paint_sections, *color_sections,
+            [data_section, *table_sections, *routines, *timers, main, *over_picture, *picture_sections, *paint_sections, *color_sections,
              *face_sections, *sound_sections, *collision_sections]
           end
 
