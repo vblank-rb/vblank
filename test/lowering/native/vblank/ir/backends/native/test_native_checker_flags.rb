@@ -17,7 +17,13 @@ class TestNativeCheckerFlags < Minitest::Test
   # has fetched SDL; every other file needs nothing but the runtime's own folder.
   WINDOW_FILE = "rg_sdl.c"
 
-  private def runtime_files = Dir.glob(File.join(Zig::RUNTIME_DIR, "*.c")).sort
+  # A file another one joins in with `#include "rg_spu.c"` is part of that one's translation unit
+  # and reads what it declares before the line, so it is checked as part of it, never alone.
+  private def runtime_files
+    files = Dir.glob(File.join(Zig::RUNTIME_DIR, "*.c")).sort
+    joined = files.flat_map { |file| File.read(file).scan(/^#include "(\w+\.c)"/).flatten }
+    files.reject { |file| joined.include?(File.basename(file)) }
+  end
 
   # What the compiler says about one file read with those flags and nothing else, or nil when it
   # has nothing to say. The file is compiled on its own into something thrown away, which is the
