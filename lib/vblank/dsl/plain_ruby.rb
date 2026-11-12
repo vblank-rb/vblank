@@ -49,7 +49,8 @@ module VBlank
       def rewrite(block, allow: [], checked: true)
         file, line = block.source_location
         rewriter = Rewriter.new(*source_and_block_of(block), outer_locals: block.binding.local_variables,
-                                                             source_label: "#{file}:#{line}")
+                                                             source_label: "#{file}:#{line}",
+                                                             follows_instance_variables: !library_file?(file))
         code = callable_source(rewriter, block)
         source = checked ? checked_source(rewriter, code, file, allow) : code
         eval(source, block.binding, file, line) # rubocop:disable Security/Eval
@@ -103,7 +104,14 @@ module VBlank
       end
 
       # What the block's source is rewritten into, for reading and for a test.
-      def rewritten_source(block) = Rewriter.new(*source_and_block_of(block)).rewritten_block
+      def rewritten_source(block)
+        follows = !library_file?(block.source_location.first)
+        Rewriter.new(*source_and_block_of(block), follows_instance_variables: follows).rewritten_block
+      end
+
+      # Is +path+ a file of VBlank's own library? Its objects keep the build's own workings in their
+      # instance variables, which are never the game's (InstanceVariables).
+      def library_file?(path) = File.expand_path(path).start_with?(BlockChecks.library_folder)
 
       # The block's file and its node. A file is read and parsed once, per Ractor since a tree is
       # not shared.
@@ -165,8 +173,10 @@ module VBlank
         # What stands before the first line of code stays: the magic comment that freezes the
         # file's strings is there, and so is every line the numbers after it count from.
         opening = source.byteslice(0, root.location.start_offset).force_encoding(Encoding::UTF_8)
-        rewritten = "#{opening}#{Rewriter.new(source, source_label: File.expand_path(path)).rewritten(root)}"
-        return rewritten if File.expand_path(path).start_with?(BlockChecks.library_folder)
+        library = library_file?(path)
+        rewriter = Rewriter.new(source, source_label: File.expand_path(path), follows_instance_variables: !library)
+        rewritten = "#{opening}#{rewriter.rewritten(root)}"
+        return rewritten if library
 
         checks = BlockChecks.new(root, file: path, allow: [])
         checks.refuse_outside_calls_in_file!
@@ -178,6 +188,7 @@ module VBlank
       class Rewriter
         STEPS = "::VBlank::DSL::PlainRuby::Steps"
         WRITES = "::VBlank::DSL::PlainRuby::Writes"
+        INSTANCE_VARIABLES = "::VBlank::DSL::PlainRuby::InstanceVariables"
         NEW_VALUE = "__plain_ruby_new"
         JUMPS = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
 
@@ -190,11 +201,17 @@ module VBlank
         # +source_label+ names the block or file, so a local of its own keeps a variable of its own
         # beside a local of the same name in another (Builder#plain_local_variable). Nil for a
         # rewrite only read, never run.
-        def initialize(source, block_node = nil, outer_locals: [], source_label: nil)
+        #
+        # +follows_instance_variables+ sends every instance variable read and written through
+        # InstanceVariables, which follows those the game names. VBlank's own files go without it.
+        def initialize(source, block_node = nil, outer_locals: [], source_label: nil, follows_instance_variables: false)
           @source = source
           @block_node = block_node
           @outer_locals = outer_locals
           @source_label = source_label
+          @follows_instance_variables = follows_instance_variables
+          @whole_statements = {}.compare_by_identity # Nodes that stand as statements of their own
+          @in_text = 0
           @answers = 0
           @open_tests = []
           @lone_joins = {}.compare_by_identity
@@ -275,8 +292,11 @@ module VBlank
           when Prism::LocalVariableReadNode then unknown_block_read_text(node)
           when Prism::MultiWriteNode then multi_write_text(node)
           when Prism::InstanceVariableOrWriteNode then instance_variable_or_text(node)
+          when Prism::InstanceVariableAndWriteNode then instance_variable_logic_text(node, "join_both")
           when Prism::LocalVariableOrWriteNode then logic_write_text(node, "join_either")
           when Prism::LocalVariableAndWriteNode then logic_write_text(node, "join_both")
+          when Prism::InstanceVariableReadNode then instance_variable_read_text(node)
+          when Prism::DefinedNode then defined_text(node)
           when Prism::InstanceVariableWriteNode then instance_variable_write_text(node)
           when Prism::InstanceVariableOperatorWriteNode then change_text(node)
           when Prism::IndexOperatorWriteNode then place_change_text(node, index_text(node))
@@ -292,6 +312,7 @@ module VBlank
         # needs no variable to keep its answer in.
         def statements_text(node)
           node.body[0...-1].each { |statement| @lone_joins[statement] = true }
+          node.body.each { |statement| @whole_statements[statement] = true }
           @open_statements.push([node, @open_tests.length])
           copied_text(node)
         ensure
@@ -394,8 +415,71 @@ module VBlank
           return equality_text(node) if equality?(node)
           return bits_text(node) if Steps::BIT_JOINS.include?(node.name) && node.receiver && node.arguments
           return "self.#{copied_text(node)}" if node.receiver.nil? && @outer_locals.include?(node.name)
+          return game_variables_text(node) if game_variables_call?(node)
+          if @follows_instance_variables && @whole_statements.key?(node)
+            return attribute_methods_text(node) if attribute_call?(node)
+            return visible_attribute_methods_text(node) if visibility_of_attribute_call?(node)
+          end
 
           copied_text(node)
+        end
+
+        # `game_variables :busy`, which no object answers: InstanceVariables keeps the names.
+        def game_variables_call?(node)
+          @follows_instance_variables && node.name == :game_variables && node.receiver.nil? && node.block.nil?
+        end
+
+        def game_variables_text(node)
+          names = node.arguments ? rewritten_text(node.arguments) : ""
+          "#{INSTANCE_VARIABLES}.name_game_variables(self, [#{names}])"
+        end
+
+        # What each of Ruby's attribute calls makes: a reader, a writer, or both.
+        ATTRIBUTE_METHODS_MADE = Ractor.make_shareable({ attr_reader: %i[reader], attr_writer: %i[writer],
+                                                         attr_accessor: %i[reader writer] })
+
+        VISIBILITY_CALLS = %i[private protected public].freeze # What `private attr_reader :busy` can start with
+
+        # `attr_reader :busy`, `attr_writer` or `attr_accessor`, on a line of its own. The methods
+        # Ruby makes reach the instance variable without this rewrite, so another part testing
+        # `tilt.busy` in game code would ask the number it was set up with, and `tilt.busy = 1`
+        # would change it unseen. So each is written out as a method that reads or writes it as a
+        # line here does, on the same line.
+        def attribute_call?(node)
+          ATTRIBUTE_METHODS_MADE.key?(node.name) && node.receiver.nil? && node.block.nil? &&
+            node.arguments&.arguments&.all?(Prism::SymbolNode) && !node.arguments.arguments.empty?
+        end
+
+        def attribute_methods_text(node)
+          made = ATTRIBUTE_METHODS_MADE.fetch(node.name)
+          methods = node.arguments.arguments.flat_map { |name| made.map { |kind| attribute_method_text(kind, name.unescaped) } }
+          methods.join("; ") + line_ends_between(node.location.start_offset, node.location.end_offset)
+        end
+
+        def attribute_method_text(kind, name)
+          place = :"@#{name}"
+          return "def #{name} = #{instance_variable_read_call(place)}" if kind == :reader
+
+          given = "__plain_ruby_written"
+          write = write_call(instance_variable_place_text(place), given, place, options: ", moves: true, owner: self")
+          "def #{name}=(#{given}); #{place} = #{write}; end"
+        end
+
+        # `private attr_reader :busy`.
+        def visibility_of_attribute_call?(node)
+          VISIBILITY_CALLS.include?(node.name) && node.receiver.nil? && node.block.nil? &&
+            node.arguments&.arguments&.one? && node.arguments.arguments.first.is_a?(Prism::CallNode) &&
+            attribute_call?(node.arguments.arguments.first)
+        end
+
+        # The methods written out, then each given the visibility the call asked for.
+        def visible_attribute_methods_text(node)
+          made = node.arguments.arguments.first
+          names = made.arguments.arguments.map(&:unescaped)
+          methods = ATTRIBUTE_METHODS_MADE.fetch(made.name).flat_map do |kind|
+            names.map { |name| kind == :reader ? name : "#{name}=" }
+          end
+          "#{attribute_methods_text(made)}; #{node.name} #{methods.map { |name| name.to_sym.inspect }.join(', ')}"
         end
 
         # A verb that reads a number off its block's last line takes a ternary there as the
@@ -564,15 +648,63 @@ module VBlank
           return "#{prefix}#{WRITES}.keep_as_own(#{value})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
-          "#{prefix}#{write_call(node.name, "(#{value})", node.name, options: ", moves: true#{copies}")}"
+          "#{prefix}#{write_call(instance_variable_place_text(node.name), "(#{value})", node.name,
+                                 options: ", moves: true#{copies}#{owner_option}")}"
         end
 
         # `@x ||= var :x, 0`, the same as `@x = var :x, 0` the first time.
         def instance_variable_or_text(node)
-          return copied_text(node) unless LocalNames.makes_variable?(node.value)
+          return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
 
           "#{node.name} ||= #{WRITES}.keep_as_own(#{value_text(node.value)})"
         end
+
+        # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,
+        # it is `@x = @x || value`, so a yes or no is set as the game plays. Anything else is Ruby's
+        # own, which leaves the instance variable alone where it holds something already.
+        def instance_variable_logic_text(node, step)
+          plain = copied_text(node)
+          return plain unless @follows_instance_variables
+
+          joined = "#{STEPS}.#{step}(#{instance_variable_read_call(node.name)}) { #{rewritten_text(node.value)} }"
+          current = instance_variable_place_text(node.name)
+          followed = "#{node.name} = #{write_call(current, joined, node.name, options: ", moves: true#{owner_option}")}"
+          "(#{INSTANCE_VARIABLES}.followed?(self, :#{node.name}) ? (#{followed}) : (#{plain}))"
+        end
+
+        # A read of an instance variable. InstanceVariables follows one the game names, and notes
+        # any other read in game code; one in a String or a Symbol is Ruby's by nature.
+        def instance_variable_read_text(node)
+          @follows_instance_variables ? instance_variable_read_call(node.name, in_text: @in_text.positive?) : copied_text(node)
+        end
+
+        # What a line writing an instance variable hands Writes as what it holds
+        # (InstanceVariables.value_before_write).
+        def instance_variable_place_text(name)
+          return name.to_s unless @follows_instance_variables
+
+          instance_variables_call("value_before_write", name)
+        end
+
+        def instance_variable_read_call(name, in_text: false)
+          instance_variables_call("read_value", name, in_text ? ", in_text: true" : "")
+        end
+
+        # A call to +step+ of InstanceVariables, with a block that keeps the game variable it makes.
+        def instance_variables_call(step, name, options = "")
+          given = "__plain_ruby_given"
+          "#{INSTANCE_VARIABLES}.#{step}(self, #{name}, :#{name}#{options}) { |#{given}| #{name} = #{given} }"
+        end
+
+        # `defined?(@x)` asks Ruby about the name itself, so it is left as written.
+        def defined_text(node)
+          return copied_text(node) unless node.value.is_a?(Prism::InstanceVariableReadNode)
+
+          source_between(node.location.start_offset, node.location.end_offset)
+        end
+
+        # The object a game's instance variable belongs to, for Writes (InstanceVariables).
+        def owner_option = @follows_instance_variables ? ", owner: self" : ""
 
         def write_text(node)
           prefix = between(node.location.start_offset, node.value.location.start_offset)
@@ -729,7 +861,8 @@ module VBlank
           case target
           when Prism::LocalVariableTargetNode then local_target_text(target, value)
           when Prism::InstanceVariableTargetNode
-            "#{target.name} = #{write_call(target.name, value, target.name, options: ", moves: true")}"
+            "#{target.name} = #{write_call(instance_variable_place_text(target.name), value, target.name,
+                                           options: ", moves: true#{owner_option}")}"
           when Prism::IndexTargetNode
             keys = target.arguments&.arguments.to_a.map { |key| argument(key) }
             slot_write_text(argument(target.receiver), keys, value, target.slice)
@@ -783,7 +916,9 @@ module VBlank
         def place_promotion_text(place, given)
           case place
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
-            "#{place.name} = #{WRITES}.promote_place(#{place.name}, #{given}, may_stay_nil: true); "
+            owner = @follows_instance_variables ? ", owner: self, label: :#{place.name}" : ""
+            "#{place.name} = #{WRITES}.promote_place(#{instance_variable_place_text(place.name)}, #{given}, " \
+              "may_stay_nil: true#{owner}); "
           when Prism::IndexOperatorWriteNode then slot_promotion_text(place, place.arguments.arguments, given)
           when Prism::CallOperatorWriteNode then attribute_promotion_text(place, place.read_name, given)
           else
@@ -823,7 +958,12 @@ module VBlank
         end
 
         def change_call(node, options = "")
-          "#{WRITES}.change(#{node.name}, :#{node.binary_operator}, #{argument(node.value)}, #{open_tests_text}, " \
+          current = node.name
+          if node.is_a?(Prism::InstanceVariableOperatorWriteNode)
+            current = instance_variable_place_text(node.name)
+            options += owner_option
+          end
+          "#{WRITES}.change(#{current}, :#{node.binary_operator}, #{argument(node.value)}, #{open_tests_text}, " \
             "#{node.name.to_sym.inspect}#{options}) { |#{NEW_VALUE}| #{NEW_VALUE} }"
         end
 
@@ -988,7 +1128,10 @@ module VBlank
         def embedded_text(node)
           return copied_text(node) if node.statements.nil?
 
+          @in_text += 1
           "\#{#{STEPS}.text_piece((#{rewritten_text(node.statements)}))}"
+        ensure
+          @in_text -= 1 unless node.statements.nil?
         end
 
         # `for x in list`. Ruby runs it while the game is built, as it runs `each`. A range with a

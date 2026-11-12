@@ -43,6 +43,32 @@ plays.
   whether the method is called from a game loop, from an unpacking routine or twice while setting up,
   and whatever number the line works out each time. `count, other = 0, 0` does the same for both
   names, and `target = nil` sets the name to nil, which reads as 0.
+- **An instance variable is a game variable only where it is named** (next section).
+
+## Instance variables
+
+A part of a game is a plain class (`Splitting a game into files`), and it keeps what it knows in
+instance variables.
+
+- **`game_variables :busy, :seed` names the instance variables that are the game's.** Write it in the
+  class's body, under `class`, once. Game code that reads or changes `@busy` then reads and changes a
+  game variable. It starts at power-on from the number `@busy` holds as Ruby (`@busy = 0` in
+  `initialize`), and `if @busy == 1` above the line that changes it asks the number the pass before
+  left. A sum works the same: `(@seed << 5) + @seed` in a routine reads the game's seed.
+- **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as
+  `tilt_busy`, and a second Tilt's as `tilt_busy_2`.
+- A subclass has its parent's names and can name more; a module the class includes can name its own.
+  `attr_reader`, `attr_writer` and `attr_accessor` reach the same variable, so another part can test
+  `tilt.busy` and write `tilt.busy = 1` in its game code.
+- **The game block names its own the same way**: `game_variables :score` in the block, then `@score =
+  0` above the game loop and `@score += 1` in it. Its variable is `score`.
+- **Any other instance variable is plain Ruby.** One that game code changes and also reads back is
+  refused at the line that changes it, since the game would never see the change: name it. One changed
+  only while setting up (a counter that makes names, a count a setting-up method works out and game
+  code uses as `repeat(@count)` or `@count.times`) is not refused. Nor is one that a routine gives a
+  number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
+  String, or one read while it holds nil (`return if @laid_out`). A number one routine gives and
+  another reads is refused: the game can run them in either order.
 
 ## Changing a variable
 
@@ -54,7 +80,8 @@ plays.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.
-- `@x = 2`, `h[:x] = 2` and `sprite.x = 2` follow game tests like any other write.
+- `@x = 2`, `h[:x] = 2` and `sprite.x = 2` follow game tests like any other write (`@x` once it is
+  named, see "Instance variables").
 - Numbers have `abs`, `clamp`, `approach` (new numbers) and `abs!`, `clamp!`, `approach!` (change
   the variable); `variables.md` has the arithmetic, division and fractions.
 
@@ -119,6 +146,9 @@ Each is a friendly error naming the line.
 | a plain number the build could not follow to a game test (a slot at a key worked out on the line, `counts[i + 1] += 1`) changed under that test | a game variable where it is first set: `var :counts, 0` |
 | a new Hash key given a number under a game test | give it a number before the test |
 | a misspelt key of a Hash of game variables | one of the keys it has |
+| an instance variable that game code changes and reads back, not named | `game_variables :busy` in the class's body (or the game block) |
+| an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
+| `game_variables` in two lines of one class, or in a method | one `game_variables` line in the class's body |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |
@@ -144,6 +174,9 @@ Each is a friendly error naming the line.
 - `/` on a negative game number truncates toward zero (`-7 / 2` is -3), where the same sum on a plain
   number while building is Ruby's -4. `%` follows Ruby in both (`variables.md`).
 - `puts` and any other harmless Ruby in a game block run once, while building.
+- An instance variable that is not named and that game code only changes stays the number Ruby gave
+  it: the change happens once, while building. Name it if anything reads it as the game plays.
+- An instance variable of a class itself (`@cache` in `def self.table`) is always plain Ruby.
 
 ## When plain Ruby is not enough
 

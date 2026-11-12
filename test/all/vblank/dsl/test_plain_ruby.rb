@@ -2671,4 +2671,34 @@ class TestPlainRuby < Minitest::Test
     assert_equal 3, played(frames: 1, &game)[:shown]
     assert_equal 2, played(frames: 2, &game)[:shown]
   end
+
+  # The game's own instance variables are named in its block, as a part's are in its class.
+  def test_the_games_own_named_instance_variable_counts_as_the_game_plays
+    player = played(frames: 4) do
+      game_variables :score
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
+      end
+    end
+
+    assert_equal 4, player[:seen]
+  end
+
+  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played do
+        @score = 0
+        seen = var :seen, 0
+        game_loop do
+          @score += 1
+          seen.store!(@score)
+        end
+      end
+    end
+
+    assert_match(/game_variables :score` to the game block/, error.message)
+  end
 end

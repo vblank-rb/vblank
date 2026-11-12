@@ -32,8 +32,12 @@ module VBlank
         #
         # +before_plain_start+ counts the outermost of +tests+ that opened before a line gave the name
         # a value outright (Rewriter#tests_open_before_plain_start). See #tests_followed.
+        #
+        # +owner+ is the object an instance variable belongs to, for a game's own instance variable
+        # (InstanceVariables.write_target): one the game names is its game variable by now.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
-                  before_plain_start: 0)
+                  before_plain_start: 0, owner: nil)
+          current = InstanceVariables.write_target(owner, current, value, label) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
           return yield(own_copy(label, value)) if copies && Steps.variable?(value) && !own_variable?(current)
@@ -82,7 +86,10 @@ module VBlank
         # The operator is the one the game wrote, which the rewritten line hands here as a Symbol, so it
         # is applied the way Ruby applies it, by public_send: that is Ruby itself, on purpose, and the
         # same goes for the verbs, attributes and setters below.
-        def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0)
+        #
+        # +owner+ is #write's.
+        def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil)
+          current = InstanceVariables.change_target(owner, current, label) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
           return change_variable(current, operator, amount) if Steps.variable?(current)
@@ -119,8 +126,9 @@ module VBlank
         end
 
         # #promote for a place any method can reach. A game variable there is the place's own, and
-        # the write changes it.
-        def promote_place(value, test, *outer, may_stay_nil: false)
+        # the write changes it. +owner+ and +label+ name a game's own instance variable, as #write's do.
+        def promote_place(value, test, *outer, may_stay_nil: false, owner: nil, label: nil)
+          value = InstanceVariables.promotion_target(owner, value, label, test) if owner
           Steps.variable?(value) ? value : promote(value, test, *outer, may_stay_nil: may_stay_nil)
         end
 

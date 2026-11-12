@@ -196,6 +196,7 @@ module VBlank
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
       @variables_with_no_var_line = []
+      @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
       Ractor.current[:vblank_builder_in_use] = self
       @boolean_variables = {}   # the variables started with `true` or `false`
       @timer_seq = 0           # counts every/after timers, to name each one's hidden counter var
@@ -1223,6 +1224,14 @@ module VBlank
 
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
+
+    # The outermost body of game code being recorded now: the routine, scene or loop it is in,
+    # nil while setting up. DSL::PlainRuby::InstanceVariables::Uses tells two routines apart by it.
+    def recorded_routine_body = @container_stack[1]
+
+    # The instance variables the game names as game variables, and what game code did to the
+    # others (DSL::PlainRuby::InstanceVariables::Uses).
+    attr_reader :instance_variable_uses
 
     private
 

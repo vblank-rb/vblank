@@ -16,14 +16,108 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal 18, TWO_PARTS_ACROSS
   end
 
-  private def played(part, *routines)
+  private def played(part, *routines, frames: 3)
     builder = Builder.new
     part.new(builder)
     builder.game_loop { routines.each { |routine| builder.call(routine) } }
     builder.finalize_program
     player = game_player
-    player.run(builder.program, frames: 3)
+    player.run(builder.program, frames: frames)
     player
+  end
+
+  # GAME VARIABLES A PART NAMES. Each part keeping its state in instance variables it names with
+  # `game_variables` (test/plain_ruby_game_parts.rb) has a twin keeping the same state in `var`,
+  # which is the answer key: both played the same, and the number the twin leaves is given too.
+
+  def test_a_named_instance_variable_tested_above_its_change_asks_the_pass_before
+    named = played(TiltPart, :tilt_handle, frames: 6)[:tilt_acted]
+
+    assert_equal played(TiltWithVarPart, :tilt_var_handle, frames: 6)[:tilt_var_acted], named
+    assert_equal 2, named
+  end
+
+  def test_named_instance_variables_shifted_and_summed_in_a_routine_draw_as_the_game_plays
+    named = (1..4).map { |frames| played(SeedPart, :seed_draw, frames: frames)[:seed_drawn] }
+    with_var = (1..4).map { |frames| played(SeedWithVarPart, :seed_var_draw, frames: frames)[:seed_var_drawn] }
+
+    assert_equal with_var, named
+    assert_equal 4, named.uniq.length, "a new number on every pass"
+  end
+
+  def test_two_of_one_part_each_keep_their_own_named_instance_variable
+    builder = Builder.new
+    TickerPart.new(builder, :first_ticker)
+    TickerPart.new(builder, :second_ticker)
+    builder.game_loop do
+      builder.call(:first_ticker)
+      builder.call(:first_ticker)
+      builder.call(:second_ticker)
+    end
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 2)
+
+    assert_equal [4, 2], [player[:ticker_part_ticks], player[:ticker_part_ticks_2]]
+  end
+
+  # FastTiltPart reads its parent's `@busy`, named by the parent, and changes `@nudges`, named by itself.
+  def test_a_subclass_follows_what_its_parent_names_and_what_it_names
+    player = played(FastTiltPart, :tilt_handle, :fast_tilt_nudge, frames: 6)
+
+    assert_equal [2, 2], [player[:tilt_acted], player[:fast_tilt_nudged]]
+  end
+
+  # Flipped on passes 1, 3 and 5, and brighter by one each time it goes on.
+  def test_another_part_reads_and_writes_named_instance_variables_through_attributes
+    builder = Builder.new
+    LampSwitchPart.new(builder, LampPart.new)
+    builder.game_loop { builder.call(:lamp_flip) }
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 5)
+
+    assert_equal [3, 5], [player[:lamp_ons], player[:lamp_glow]]
+  end
+
+  def test_an_unnamed_instance_variable_game_code_tests_then_changes_is_refused_at_the_change
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedTiltPart, :unnamed_tilt_handle) }
+
+    assert_match(/`@busy` is changed while the game plays.*\(changed at plain_ruby_game_parts\.rb:\d+\)/m, error.message)
+    assert_match(/game_variables :busy` to UnnamedTiltPart/, error.message)
+  end
+
+  def test_an_unnamed_instance_variable_game_code_counts_then_tests_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedCountPart, :unnamed_count_tick) }
+
+    assert_match(/`@frames` is changed while the game plays/, error.message)
+    assert_match(/game_variables :frames` to UnnamedCountPart/, error.message)
+  end
+
+  def test_an_unnamed_instance_variable_one_routine_sets_and_another_tests_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(UnnamedAcrossRoutinesPart, :across_routines_test, :across_routines_set)
+    end
+
+    assert_match(/game_variables :mode` to UnnamedAcrossRoutinesPart/, error.message)
+  end
+
+  def test_a_module_names_its_own_instance_variable_for_the_class_taking_it_in
+    assert_equal 3, played(HolderPart, :holder_hold)[:holder_held]
+  end
+
+  def test_a_named_instance_variable_read_while_it_holds_nil_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnsetNamedPart, :unset_named_tick) }
+
+    assert_match(/`@aim` is a game variable, and it holds `nil`/, error.message)
+  end
+
+  # A count three a setting-up method works out, counted by `repeat` and by `times` on every pass,
+  # and a count of two game code gives outright before it counts by it.
+  def test_instance_variables_changed_while_building_or_never_read_back_play_as_ruby
+    player = played(BuildTimeCountsPart, :build_counts_tick)
+
+    assert_equal [18, 6], [player[:build_counts_hits], player[:build_counts_rows]]
   end
 
   def test_a_part_changes_a_name_made_by_its_builders_var

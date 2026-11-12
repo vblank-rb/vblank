@@ -17,6 +17,7 @@ require_relative "dsl/plain_ruby_names"    # What each local name in that block 
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
+require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
 # A handle that does its work in game words is written in normal Ruby, as a game is, so it comes in
 # the way a part of a game does. Everything above this line is what that needs.
 VBlank.require_game_file "dsl/bounds"
