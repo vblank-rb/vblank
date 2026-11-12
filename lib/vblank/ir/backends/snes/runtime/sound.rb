@@ -79,6 +79,10 @@ module VBlank
             # note coming: ADSR1 and ADSR2, then GAIN.
             HOLD_ENVELOPE = 11
             HOLD_GAIN = 12
+            # ...and in a game that loads each scene's recordings (#emit_scene_load_commands): where
+            # the bytes go (mailboxes 2 and 3), and then how many turns of three bytes come.
+            LOAD_AT = 13
+            LOAD_TURNS = 14
             COMMAND_BITS = 0x0F
             VOICE_BITS = 0x70
 
@@ -102,6 +106,9 @@ module VBlank
             # ...and its envelope's bytes: ADSR1 and ADSR2, then GAIN.
             NEXT_ENVELOPE = 0x04
             NEXT_GAIN = 0x06
+            # ...and, loading a scene's recordings, where the next byte goes and how many turns are left.
+            LOAD_PLACE = 0x08
+            LOAD_LEFT = 0x0A
 
             # How many times rt_sound_write reads mailbox 0 for the answer to the write before.
             PATIENCE = 256
@@ -219,26 +226,103 @@ module VBlank
               memory.reserve(TICKS_LEFT, 2)
             end
 
-            # Everything sent across at power-on, from DRIVER_AT: the program, then from TABLE_AT the
-            # sample table and the recordings, the game's +waves+ and then its own +recordings+
-            # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
-            # same lists, since rt_sound_start sends as many bytes as it is given. What does not fit in the
-            # sound unit's memory, below the part its built-in program is kept in, is refused.
-            def image(waves, recordings: [], whole_notes: false, chip_envelopes: false, sides: false)
-              program = driver(whole_notes: whole_notes, chip_envelopes: chip_envelopes, sides: sides).assembled.bytes
-              room = TABLE_AT - DRIVER_AT
-              raise ArgumentError, "the sound program is #{program.size} bytes, more than #{room}" if program.size > room
+            # Raised when the game's recordings all together do not fit the sound unit's memory: a game
+            # whose scenes each play recordings of their own is built again loading them by scene
+            # (SNES#build), and any other is refused with these words.
+            class TooBig < LoweringError; end
 
-              table = Samples.image(TABLE_AT, waves, recordings)
-              if TABLE_AT + table.size > MEMORY_END
-                raise LoweringError, "This game's sounds take #{table.size} bytes of the Super Nintendo's sound memory. " \
-                                     "There is room for #{MEMORY_END - TABLE_AT} bytes. A recording that holds from a " \
-                                     "point keeps its held part up to 16 times over. To fix this, use shorter " \
-                                     "recordings, record them at a lower rate, or make each held part a multiple of " \
-                                     "16 samples long."
+            # EACH SCENE'S RECORDINGS. The sound unit's memory is all the recordings it can play from,
+            # and a game whose recordings together are more than that still fits when they take
+            # turns, as its scenes' tiles take turns in video memory (Picture's scene tiles). A
+            # recording only one scene plays, and nothing outside it (Lowering::Sound#scene_of_recording), is
+            # wanted in the sound unit only while that scene is up. So in a game built loading them by
+            # scene (+scenes+, a SceneLoad for each scene with recordings of its own, in the order
+            # their recordings come last in +recordings+), what every scene can play goes across at
+            # power-on as before, and the table has a row for every recording, each scene's pointing
+            # into one stretch after the rest, the scene area. A scene taking over sends its own into
+            # that area, over the scene before's (rt_sound_load_scene), and the scene up at power-on
+            # has its own sent then. One scene whose own do not fit beside the rest is refused.
+            #
+            # Sending is through the mailboxes, as at power-on but three bytes a turn, not one: the
+            # program the sound unit runs takes them (#emit_scene_load_commands). A voice still
+            # playing the scene before's recording would go on reading bytes that are changing under
+            # it, so the sound unit lets each such voice go first (KOFF). What the game believes of
+            # it does not change: its count runs on as the interpreter's does, the sound gone.
+            SceneLoad = Data.define(:scene, :label, :count)
+
+            # What goes across, and where (#image): the bytes sent at power-on from DRIVER_AT, the page
+            # the table starts on, where the scene area starts, and each scene's own recordings as the
+            # bytes that go there, a whole number of turns of three.
+            Image = Data.define(:bytes, :table_at, :scene_area, :scene_bytes)
+
+            # The most bytes of a scene's recordings one section of the cartridge holds: a whole number
+            # of turns, well inside a bank, so a scene's own are cut into several where they need it.
+            PIECE_BYTES = 3 * 4096
+            # About how many of those bytes go across in a frame of the screen's, three a turn of the
+            # mailboxes (#emit_scene_load_commands), as the emulator plays it: what a build tells the
+            # author a scene change costs (Lowering::Sound#scene_recording_findings).
+            BYTES_A_FRAME = 700
+
+            # Everything sent across at power-on, from DRIVER_AT: the program, then from TABLE_AT (or
+            # the page after the program, where a program that loads scenes needs more room) the sample
+            # table and the recordings, the game's +waves+ and then its own +recordings+
+            # (Samples.recording's pairs) last (Samples.image). #sections and #emit are each handed the
+            # same lists, since rt_sound_start sends as many bytes as it is given. What does not fit in
+            # the sound unit's memory, below the part its built-in program is kept in, is refused.
+            def image(waves, recordings: [], scenes: nil, whole_notes: false, chip_envelopes: false, sides: false)
+              first_own = (Samples::FIRST_WAVE + waves.size + recordings.size - scenes.sum(&:count) if scenes)
+              program = driver(whole_notes: whole_notes, chip_envelopes: chip_envelopes, sides: sides,
+                               scene_sources_from: first_own).assembled.bytes
+              table_at = [TABLE_AT, (DRIVER_AT + program.size + 0xFF) & ~0xFF].max
+              padding = Array.new(table_at - DRIVER_AT - program.size, 0)
+              unless scenes
+                table = Samples.image(table_at, waves, recordings)
+                refuse_sounds_too_big!(table_at, table.size) if table_at + table.size > MEMORY_END
+                return Image.new(bytes: program + padding + table, table_at: table_at, scene_area: nil, scene_bytes: [])
               end
-              program + Array.new(room - program.size, 0) + table
+
+              laid = Samples.image_with_scenes(table_at, waves, recordings, scenes.map(&:count))
+              refuse_shared_sounds_too_big!(table_at, laid.bytes.size) if table_at + laid.bytes.size > MEMORY_END
+              groups = laid.scene_bytes.map { |bytes| bytes + Array.new(-bytes.size % 3, 0) }
+              scenes.zip(groups).each do |scene, bytes|
+                next if laid.scene_area + bytes.size <= MEMORY_END
+
+                refuse_scene_sounds_too_big!(scene.scene, table_at, laid.scene_area + bytes.size - table_at)
+              end
+              Image.new(bytes: program + padding + laid.bytes, table_at: table_at, scene_area: laid.scene_area, scene_bytes: groups)
             end
+
+            def refuse_sounds_too_big!(table_at, size)
+              raise TooBig, "This game's sounds take #{size} bytes of the Super Nintendo's sound memory. " \
+                            "There is room for #{MEMORY_END - table_at} bytes. A recording that holds from a " \
+                            "point keeps its held part up to 16 times over. To fix this, use shorter " \
+                            "recordings, record them at a lower rate, or make each held part a multiple of " \
+                            "16 samples long."
+            end
+
+            # The recordings every scene can play, in a game loading the rest by scene, which do not fit
+            # even before any scene's own.
+            def refuse_shared_sounds_too_big!(table_at, size)
+              raise LoweringError, "The recordings that more than one scene plays, or that the game plays outside its " \
+                                   "scenes or in a song, take #{size} bytes of the Super Nintendo's sound memory. " \
+                                   "There is room for #{MEMORY_END - table_at} bytes. These recordings stay in the " \
+                                   "sound memory for all of the game. To fix this, use shorter recordings, record " \
+                                   "them at a lower rate, or play each one in one scene only."
+            end
+
+            # One scene whose own recordings, beside those every scene plays, do not fit.
+            def refuse_scene_sounds_too_big!(routine, table_at, size)
+              scene = scene_name(routine)
+              raise LoweringError, "The scene #{scene} plays recordings that take #{size} bytes of the Super " \
+                                   "Nintendo's sound memory. This count includes the recordings that every scene " \
+                                   "plays. There is room for #{MEMORY_END - table_at} bytes. A scene's recordings go " \
+                                   "into the sound memory when the scene starts, so the recordings of one scene must " \
+                                   "fit. To fix this, use shorter recordings in the scene #{scene}, record " \
+                                   "them at a lower rate, or play some of them in a different scene."
+            end
+
+            # The scene whose routine is +routine+, as the author wrote its name (`:cave`).
+            def scene_name(routine) = IR::Modes.strip_scene_prefix(routine).to_sym.inspect
 
             # A NOTE TOLD WHOLE. The two chips talk a byte at a time, and a note is nine registers, so
             # a chord of seven is sixty-three turns of the mailbox the game has to wait for, and in a
@@ -249,9 +333,12 @@ module VBlank
             # turns. A note's loudness, which changes every frame, is one turn and not two.
             #
             # The program the SPC700 runs once it has been sent. +whole_notes+ is one that takes them,
-            # and +chip_envelopes+ one that is told each note's envelope bytes first.
-            def driver(whole_notes: false, chip_envelopes: false, sides: false)
+            # and +chip_envelopes+ one that is told each note's envelope bytes first. +scene_sources_from+
+            # is the first source number of the recordings scenes load (#image), in a game that loads
+            # them, whose program then takes them (#emit_scene_load_commands).
+            def driver(whole_notes: false, chip_envelopes: false, sides: false, scene_sources_from: nil)
               ports = PORTS
+              past_key_off = whole_notes ? "whole" : "answer"
               spc = SPC700.new(origin: DRIVER_AT)
               spc.instance_eval do
                 mov :a, direct(ports[0]) # the number the console started it with
@@ -274,7 +361,7 @@ module VBlank
                 bra "set_bits"
                 label "key_off_bits"
                 cmp :a, imm(SET_KEY_OFF_BITS)
-                bne(whole_notes ? "whole" : "answer")
+                bne(scene_sources_from ? "scene_loads" : past_key_off)
                 mov direct(DSP_ADDRESS), imm(DSPWrites::KEY_OFF)
                 label "set_bits"
                 mov :a, direct(ports[2]) # which bits change
@@ -289,9 +376,104 @@ module VBlank
                 mov :a, direct(LAST_ANSWERED)
                 mov direct(ports[0]), :a
                 bra "wait"
+                if scene_sources_from
+                  label "scene_loads"
+                  cmp :a, imm(LOAD_AT)
+                  bne "scene_loads_turns"
+                  jmp "load_at"
+                  label "scene_loads_turns"
+                  cmp :a, imm(LOAD_TURNS)
+                  bne past_key_off
+                  jmp "load_turns"
+                end
               end
               emit_whole_note_commands(spc, chip_envelopes: chip_envelopes, sides: sides) if whole_notes
+              emit_scene_load_commands(spc, scene_sources_from) if scene_sources_from
               spc
+            end
+
+            # WHAT THE SOUND UNIT DOES WITH A SCENE'S RECORDINGS. LOAD_AT names where the bytes go
+            # (mailboxes 2 and 3), and lets go every voice reading a recording a scene loads (its
+            # source +sources_from+ or past), so none plays bytes that are about to change. LOAD_TURNS
+            # gives how many turns come (mailboxes 2 and 3), answers, and takes them: at each turn
+            # mailbox 0 changes, mailboxes 1 to 3 hold the next three bytes, and the answer is sent as
+            # soon as they are read, so the console fetches the next three while they are stored.
+            # The next byte's place is a word of the direct page and Y (stored through [place]+Y), and
+            # Y is folded into the word before it can go round. The last turn's answer is the
+            # command's, and the place is kept, so a scene cut into pieces goes on where it was.
+            #
+            # A turn is some seventy of the SPC700's cycles, and the SPC700 runs at about a million
+            # cycles a second, so a frame of the screen's takes a few hundred turns (BYTES_A_FRAME).
+            # The console's side of a turn is shorter, and mostly done while the SPC700 stores.
+            def emit_scene_load_commands(spc, sources_from)
+              ports = PORTS
+              dsp = DSPWrites
+              fold = lambda do
+                spc.instance_eval do
+                  mov :a, :y
+                  clrc
+                  adc :a, direct(LOAD_PLACE)
+                  mov direct(LOAD_PLACE), :a
+                  mov :a, direct(LOAD_PLACE + 1)
+                  adc :a, imm(0)
+                  mov direct(LOAD_PLACE + 1), :a
+                  mov :y, imm(0)
+                end
+              end
+              spc.instance_eval do
+                label "load_at"
+                movw :ya, direct(ports[2])
+                movw direct(LOAD_PLACE), :ya
+                mov direct(KEPT_BITS), imm(0)
+                mov :x, imm((7 << 4) | dsp::SOURCE) # voice 7's source register, then each voice down
+                label "load_at_voice"
+                mov direct(DSP_ADDRESS), :x
+                mov :a, direct(DSP_DATA)
+                cmp :a, imm(sources_from) # the carry set for a source a scene loads...
+                rol direct(KEPT_BITS)     # ...and that voice's bit
+                mov :a, :x
+                setc
+                sbc :a, imm(0x10)
+                mov :x, :a
+                bpl "load_at_voice"
+                mov direct(DSP_ADDRESS), imm(dsp::KEY_OFF)
+                mov :a, direct(KEPT_BITS)
+                or_ :a, direct(DSP_DATA)
+                mov direct(DSP_DATA), :a
+                jmp "answer"
+                label "load_turns"
+                movw :ya, direct(ports[2])
+                movw direct(LOAD_LEFT), :ya
+                mov :y, imm(0)
+                mov :a, direct(LAST_ANSWERED)
+                mov direct(ports[0]), :a
+                label "load_turn"
+                mov :a, direct(ports[0])
+                cmp :a, direct(LAST_ANSWERED)
+                beq "load_turn"
+                mov direct(LAST_ANSWERED), :a
+                mov :a, direct(ports[1])
+                mov direct_ind_y(LOAD_PLACE), :a
+                inc :y
+                mov :a, direct(ports[2])
+                mov direct_ind_y(LOAD_PLACE), :a
+                inc :y
+                mov :x, direct(ports[3])
+                mov :a, direct(LAST_ANSWERED) # answered: the console sends the next three
+                mov direct(ports[0]), :a
+                mov :a, :x
+                mov direct_ind_y(LOAD_PLACE), :a
+                inc :y
+                decw direct(LOAD_LEFT)
+                beq "load_turns_done"
+                cmp :y, imm(0xF0)
+                bcc "load_turn"
+              end
+              fold.call
+              spc.bra("load_turn")
+              spc.label("load_turns_done")
+              fold.call
+              spc.jmp("wait")
             end
 
             # What the sound unit does with a note told whole, a voice's number being the high half of
@@ -394,21 +576,150 @@ module VBlank
               end
             end
 
-            # What is sent across, in the cartridge, for rt_sound_start to send.
-            def sections(waves, recordings: [], whole_notes: false, chip_envelopes: false, sides: false)
+            # #image, the sound unit's program taking the commands the runtime's reservations ask for
+            # (#driver): the same for what is sent and for what sends it, since the program's length
+            # can move the table.
+            def image_for(memory, waves, recordings:, scenes:)
+              image(waves, recordings: recordings, scenes: scenes, whole_notes: memory.reserved?(AHEAD),
+                           chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES),
+                           sides: memory.reserved?(Recordings::SIDES))
+            end
+
+            # What is sent across, in the cartridge, for rt_sound_start to send; and in a game that
+            # loads each scene's recordings (+scenes+), each scene's: its own recordings in pieces of
+            # PIECE_BYTES or fewer, each a section, and its table (the scene's SceneLoad#label): how
+            # many pieces, then a row for each, where it is (three bytes and a nought) and how many
+            # turns of three it takes.
+            def sections(memory, waves, recordings: [], scenes: nil)
+              made = image_for(memory, waves, recordings: recordings, scenes: scenes)
               asm = W65816.new("sound driver")
               asm.label("sound driver")
-              asm.data_bytes(image(waves, recordings: recordings, whole_notes: whole_notes, chip_envelopes: chip_envelopes, sides: sides))
-              [asm.section]
+              asm.data_bytes(made.bytes)
+              [asm.section] + Array(scenes).zip(made.scene_bytes).flat_map { |scene, bytes| scene_load_sections(scene, bytes) }
+            end
+
+            def scene_load_sections(scene, bytes)
+              name = scene_name(scene.scene)
+              holds = W65816::Holding.new(what: "the recordings of the scene #{name}", fix: "use shorter recordings in the scene #{name}")
+              pieces = bytes.each_slice(PIECE_BYTES).each_with_index.map do |piece, number|
+                asm = W65816.new("#{scene.label} piece #{number}", holds: holds)
+                asm.label("#{scene.label} piece #{number}")
+                asm.data_bytes(piece)
+                asm.section
+              end
+              table = W65816.new(scene.label, holds: holds)
+              table.label(scene.label)
+              table.data_words(pieces.size)
+              pieces.each_with_index do |piece, number|
+                table.data_longs("#{scene.label} piece #{number}")
+                table.data_bytes(0)
+                table.data_words(piece.size / 3)
+              end
+              [table.section, *pieces]
             end
 
             # +songs+ for a game with songs, whose player (Music) runs where each wait ends, and
             # +samples+ for one that plays recordings (Recordings), whose count of each moves on there.
-            def emit(asm, memory, waves, recordings: [], songs: false, samples: false)
-              emit_start(asm, memory, image(waves, recordings: recordings).size)
+            def emit(asm, memory, waves, recordings: [], scenes: nil, songs: false, samples: false)
+              made = image_for(memory, waves, recordings: recordings, scenes: scenes)
+              emit_start(asm, memory, made)
               emit_write(asm, memory, samples)
               emit_log(asm, memory)
               emit_frame(asm, memory, songs, samples)
+              emit_scene_load(asm, memory, made.scene_area) if scenes
+            end
+
+            # rt_sound_load_scene: the recordings of a scene sent into the scene area, R0 (a long
+            # address) naming the scene's table (#scene_load_sections), however long it takes; the
+            # pass it is called in runs late by that long (#emit_scene_load_commands says how fast it
+            # goes). What the queue still holds goes first, so a note asked before the scene changed
+            # is not played from the new bytes, then the last command's answer is waited for, and then
+            # each piece is sent, three bytes a turn. Its waits have no limit: the sound unit's program
+            # is running, and it answers every command.
+            def emit_scene_load(asm, memory, area)
+              h = Console::SNESHardware
+              r3 = Memory.register(3)
+              r4 = Memory.register(4)
+              asm.label("rt_sound_load_scene")
+              if memory.reserved?(QUEUE)
+                asm.label("rt_sound_load_scene_drain")
+                asm.jsl(asm.long("rt_sound_send_queued"))
+                asm.lda(asm.abs(memory[QUEUE_HEAD]))
+                asm.cmp(asm.abs(memory[QUEUE_TAIL]))
+                asm.bne("rt_sound_load_scene_drain")
+                if memory.reserved?(AHEAD)
+                  asm.lda(asm.abs(memory[AHEAD_HEAD]))
+                  asm.cmp(asm.abs(memory[AHEAD_TAIL]))
+                  asm.bne("rt_sound_load_scene_drain")
+                end
+              end
+              asm.sep(0x20)
+              asm.label("rt_sound_load_scene_last")
+              asm.lda(asm.abs(h::APUIO0))
+              asm.cmp(asm.abs(memory[SENT]))
+              asm.bne("rt_sound_load_scene_last")
+              asm.rep(0x20)
+              asm.lda(area)
+              emit_load_command(asm, memory, LOAD_AT, "rt_sound_load_scene_at")
+              asm.lda(asm.ind_long(R0))
+              asm.sta(asm.direct(r3))
+              asm.ldy(2)
+              asm.sty(asm.direct(r4))
+              asm.label("rt_sound_load_scene_piece")
+              asm.ldy(asm.direct(r4))
+              asm.lda(asm.ind_long_y(R0))
+              asm.sta(asm.direct(R1))
+              asm.iny
+              asm.iny
+              asm.lda(asm.ind_long_y(R0))
+              asm.sta(asm.direct(R1 + 2))
+              asm.iny
+              asm.iny
+              asm.lda(asm.ind_long_y(R0))
+              asm.sta(asm.direct(R2))
+              asm.iny
+              asm.iny
+              asm.sty(asm.direct(r4))
+              emit_load_command(asm, memory, LOAD_TURNS, "rt_sound_load_scene_turns")
+              asm.ldy(0)
+              asm.label("rt_sound_load_scene_turn")
+              asm.sep(0x20)
+              asm.lda(asm.ind_long_y(R1))
+              asm.sta(asm.abs(h::APUIO1))
+              asm.rep(0x20)
+              asm.iny
+              asm.lda(asm.ind_long_y(R1))
+              asm.sta(asm.abs(h::APUIO2)) # mailboxes 2 and 3 at once
+              asm.iny
+              asm.iny
+              asm.sep(0x20)
+              asm.lda(asm.abs(memory[SENT]))
+              asm.inc
+              asm.sta(asm.abs(memory[SENT]))
+              asm.sta(asm.abs(h::APUIO0))
+              emit_await_echo(asm, "rt_sound_load_scene_answer")
+              asm.rep(0x20)
+              asm.dec(asm.direct(R2))
+              asm.bne("rt_sound_load_scene_turn")
+              asm.dec(asm.direct(r3))
+              asm.bne("rt_sound_load_scene_piece")
+              asm.rtl
+            end
+
+            # One of the program's load commands, +command+, with A (16 bits) in mailboxes 2 and 3,
+            # sent and its answer waited for.
+            def emit_load_command(asm, memory, command, echo)
+              h = Console::SNESHardware
+              asm.sta(asm.abs(h::APUIO2))
+              asm.sep(0x20)
+              asm.lda(command)
+              asm.sta(asm.abs(h::APUIO1))
+              asm.lda(asm.abs(memory[SENT]))
+              asm.inc
+              asm.sta(asm.abs(memory[SENT]))
+              asm.sta(asm.abs(h::APUIO0))
+              emit_await_echo(asm, echo)
+              asm.rep(0x20)
             end
 
             # rt_sound_frame, where a pass's wait ends: for every frame the pass took, the recordings'
@@ -454,10 +765,12 @@ module VBlank
               asm.rtl
             end
 
-            # rt_sound_start: the program sent, +length+ bytes a byte at a time, and started; then the
-            # DSP told where the sample table is, with every voice quiet (DSPWrites.at_power_on).
-            def emit_start(asm, memory, length)
+            # rt_sound_start: the program sent, the bytes of +made+ (an Image) a byte at a time, and
+            # started; then the DSP told where the sample table is, with every voice quiet
+            # (DSPWrites.at_power_on).
+            def emit_start(asm, memory, made)
               h = Console::SNESHardware
+              length = made.bytes.size
               kick = ((length + 2) & 0xFF) | 1 # past the last byte's number, and never nought
               asm.label("rt_sound_start")
               asm.php
@@ -485,7 +798,7 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.abs(memory[LIVE]))
               write = memory.reserved?(QUEUE) ? "rt_sound_write_at_once" : "rt_sound_write"
-              DSPWrites.at_power_on(TABLE_AT >> 8).each do |register, value|
+              DSPWrites.at_power_on(made.table_at >> 8).each do |register, value|
                 asm.lda(register)
                 asm.sta(asm.direct(R0))
                 asm.lda(value)

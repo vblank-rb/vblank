@@ -205,15 +205,36 @@ module VBlank
           # The table and the recordings after it, as bytes for +at+ in the sound unit's memory: a
           # row for each recording (its start and its loop point) and then the recordings themselves,
           # the game's +waves+ (each 32 steps) and then its own +recordings+ (#recording's pairs) last.
-          def image(at, waves = [], recordings = [])
+          def image(at, waves = [], recordings = []) = image_with_scenes(at, waves, recordings, []).bytes
+
+          # #image's bytes, where the scene area starts, and each scene's own recordings as the bytes
+          # that go there.
+          SceneImage = Data.define(:bytes, :scene_area, :scene_bytes)
+
+          # THE SAME, WITH THE LAST OF +recordings+ KEPT BY SCENES, each scene's in the chip only while
+          # it is up: +scene_counts+ is how many each scene keeps, in the order they come. The table
+          # has a row for every recording, and the bytes after it are the rest's alone; every scene's
+          # rows point into the one stretch after those, the scene area, where a scene's own go in as
+          # it takes over (Runtime::Sound, "Each scene's recordings"). A SceneImage.
+          def image_with_scenes(at, waves, recordings, scene_counts)
             all = self.recordings.map { |bytes| [bytes, 0] } + waves.map { |steps| [wave(steps), 0] } + recordings
-            start = at + (all.size * ROW)
-            rows = all.map do |bytes, loop_at|
+            own = all.pop(scene_counts.sum)
+            rows, area = table_rows(at + ((all.size + own.size) * ROW), all)
+            groups = scene_counts.map { |count| own.shift(count) }
+            groups.each { |group| rows.concat(table_rows(area, group).first) }
+            SceneImage.new(bytes: (rows + all.map(&:first)).flatten, scene_area: area,
+                           scene_bytes: groups.map { |group| group.flat_map(&:first) })
+          end
+
+          # A row of the table for each of +recordings+ (pairs of bytes and loop point), laid one after
+          # another from +start+, and where the last ends.
+          def table_rows(start, recordings)
+            rows = recordings.map do |bytes, loop_at|
               row = [start & 0xFF, start >> 8, (start + loop_at) & 0xFF, (start + loop_at) >> 8]
               start += bytes.size
               row
             end
-            (rows + all.map(&:first)).flatten
+            [rows, start]
           end
         end
       end

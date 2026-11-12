@@ -110,13 +110,11 @@ module VBlank
               Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
             end
             emit_sound_routines(asm, memory, c, lowered)
-            emit_start(asm, chip: c.chip?, sound: c.sound)
+            emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings])
             emit_frame_begins(asm, lowering.frame_begins)
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
             [vectors.section, asm.section, *chip_paint] +
-              (c.sound ? Sound.sections(lowered[:waves], recordings: lowered[:recordings], whole_notes: memory.reserved?(Sound::AHEAD),
-                                                         chip_envelopes: memory.reserved?(Recordings::CHIP_ENVELOPES),
-                                                         sides: memory.reserved?(Recordings::SIDES)) : []) +
+              (c.sound ? Sound.sections(memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings]) : []) +
               [lowered[:music], lowered[:plays]].compact
           end
 
@@ -125,7 +123,9 @@ module VBlank
           def lowered_facts(carries, lowering)
             { waves: lowering.sound_waves, music: (lowering.music_section if carries.songs),
               level_at: (lowering.variables.fetch(IR::Tunes::LEVEL) if carries.follows_level),
-              recordings: lowering.sound_recordings, plays: (lowering.recordings_section if carries.samples),
+              recordings: lowering.sound_recordings, scene_recordings: lowering.scene_recording_loads,
+              opening_recordings: lowering.opening_scene_recordings_label,
+              plays: (lowering.recordings_section if carries.samples),
               bent: lowering.bent_layers, banded: lowering.bends_by_bands?, see_through: lowering.see_through_layers,
               big_tiles: lowering.big_tile_layers, recorded_parts: carries.songs && lowering.recorded_parts?,
               colors_shown: lowering.colors_shown, sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
@@ -134,7 +134,8 @@ module VBlank
 
           def emit_sound_routines(asm, memory, carries, lowered)
             if carries.sound
-              Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?)
+              Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings],
+                                      songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?)
             end
             Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts]) if lowered[:music]
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
@@ -144,11 +145,14 @@ module VBlank
           # table "game_starts": each place as a word and its number as two, and a place of nought
           # after the last), its lists' headers, the picture's start, the screen's interrupt
           # switched on, and the buttons held from power-on. A game that makes sound sends the sound
-          # unit its program first, while the screen's interrupt is still off (Sound).
-          def emit_start(asm, chip: false, sound: false)
+          # unit its program first, while the screen's interrupt is still off (Sound), and then, in a
+          # game that loads each scene's recordings, those of the scene it opens on, whose table is
+          # +opening_recordings+: the game's first pass is then not the one that waits for them.
+          def emit_start(asm, chip: false, sound: false, opening_recordings: nil)
             asm.label("rt_start")
             asm.jsl(asm.long("rt_chip_start")) if chip
             asm.jsl(asm.long("rt_sound_start")) if sound
+            emit_opening_recordings(asm, opening_recordings) if opening_recordings
             asm.ldx(0)
             asm.label("rt_start_next")
             asm.lda(asm.long_x("game_starts"))
@@ -168,6 +172,16 @@ module VBlank
             asm.jsl(asm.long("rt_picture_start"))
             emit_interrupt_on(asm)
             asm.jml(asm.long("rt_buttons_from_power_on"))
+          end
+
+          # rt_sound_load_scene handed the table labelled +label+.
+          def emit_opening_recordings(asm, label)
+            asm.lda(asm.imm(label))
+            asm.sta(asm.direct(Sound::R0))
+            asm.lda(asm.bank_of(label))
+            asm.and_a(0x00FF)
+            asm.sta(asm.direct(Sound::R0 + 2))
+            asm.jsl(asm.long("rt_sound_load_scene"))
           end
 
           # The screen's interrupt switched on, once, as setting up ends (A 16 bits wide, and so

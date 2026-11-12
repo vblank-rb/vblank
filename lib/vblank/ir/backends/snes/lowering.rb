@@ -227,11 +227,13 @@ module VBlank
           # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
           # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
-          # pixels among it (Art::TileMemo).
+          # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
+          # into the sound unit (Runtime::Sound, "Each scene's recordings").
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         cache: BuildCache.for(SNES, program))
+                         scene_recordings: false, cache: BuildCache.for(SNES, program))
             @program = program
+            @scene_recordings = scene_recordings
             @cache = cache
             @tile_memo = cache.facts.tile_memo
             @one_sprite_tile_set = one_sprite_tile_set
@@ -298,6 +300,7 @@ module VBlank
             keep_background_color_choices
             keep_sprite_color_choices
             keep_scene_tiles_up
+            keep_scene_recordings_up
             keep_loop_running
             keep_column_numbers
             keep_order_tables
@@ -811,6 +814,7 @@ module VBlank
           def emit_scene_number(number)
             store_number(place_of(@scene), number)
             emit_scene_arrival(@scenes.key(number))
+            emit_scene_recordings(@scenes.key(number))
           end
 
           # A pass that halts ends as every pass does, with its sprites and scroll placed
