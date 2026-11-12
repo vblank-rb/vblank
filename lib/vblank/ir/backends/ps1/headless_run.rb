@@ -251,17 +251,7 @@ module VBlank
 
           # The sprites the pass placed, as the runtime keeps them (Runtime::Tiles::DRAWN): none on a painted
           # screen, which has no sprites of its own.
-          def read_sprites
-            return [] unless @places.runtime.key?(Runtime::Tiles::DRAWN)
-
-            tiles = Runtime::Tiles
-            at = runtime_place(tiles::DRAWN)
-            Array.new(read32(at)) do |i|
-              row = at + 4 + (i * tiles::DRAWN_BYTES)
-              @drawn_sprites.row(word(row + tiles::DRAWN_WHOSE), word(row + tiles::DRAWN_PICTURE), word(row + tiles::DRAWN_X),
-                                 word(row + tiles::DRAWN_Y))
-            end
-          end
+          def read_sprites = @places.drawn_sprite_rows(@drawn_sprites) { |address| read32(address) }
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
           # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS

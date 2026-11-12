@@ -71,6 +71,19 @@ module VBlank
                              :sound_voicing, :recording_names) do
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
+
+          # The sprites the last pass placed (Runtime::Tiles::DRAWN), as the interpreter's rows through
+          # +drawn+ (SpriteNames), each word read by the block from its address; none on a screen with no
+          # sprites of its own.
+          def drawn_sprite_rows(drawn)
+            at = runtime[Runtime::Tiles::DRAWN] or return []
+            word = ->(address) { Int32.wrap(yield(address)) }
+            Array.new(yield(at)) do |i|
+              row = at + 4 + (i * Runtime::Tiles::DRAWN_BYTES)
+              drawn.row(word.call(row + Runtime::Tiles::DRAWN_WHOSE), word.call(row + Runtime::Tiles::DRAWN_PICTURE),
+                        word.call(row + Runtime::Tiles::DRAWN_X), word.call(row + Runtime::Tiles::DRAWN_Y))
+            end
+          end
         end
 
         # One routine of the game's in RAM: the addresses its code takes, and what it is to the author.

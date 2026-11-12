@@ -17,10 +17,9 @@ class TestVerifierOnEachConsole < Minitest::Test
   end
 
   # The reader plays the two Game Boys' cartridges in libmgba and the Super Nintendo's in bsnes
-  # (SNESProbe); a Genesis cartridge is read back by Genesis::HeadlessRun, in Genesis Plus GX, until
-  # the reader can sit on that core too. The PlayStation's build makes no sprite on a tiled screen
-  # yet, so its program is left out until it does.
-  NOT_READ_HERE = %i[genesis ps1].freeze
+  # (SNESProbe) and the PlayStation's program in Beetle PSX (PS1Probe); a Genesis cartridge is read back
+  # by Genesis::HeadlessRun, in Genesis Plus GX, until the reader can sit on that core too.
+  NOT_READ_HERE = %i[genesis].freeze
 
   def test_one_reader_reads_sprites_and_pixels_off_every_consoles_cartridge
     VBlank::Console.kits.reject { |kit| NOT_READ_HERE.include?(kit.name) }.each do |kit|

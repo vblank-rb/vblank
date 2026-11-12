@@ -8,8 +8,7 @@ module VBlank
     # A PlayStation program plays in Beetle PSX (ruby-ps1-emulator), not in libmgba, and the one reader
     # (Verifier) plays it there through PS1Probe: its picture, its memory by address, and buttons held,
     # which is what a film asks, and the passes the game finished, from the runtime's own count
-    # (CountedPasses), as a profile reads them. Whose each sprite is it cannot answer yet; the lowering's
-    # own run (IR::Backends::PS1::HeadlessRun) reads that, and the question here says so.
+    # (CountedPasses), as a profile reads them, and where each sprite is, from the rows the runtime keeps.
     module PS1Reading
       include CountedPasses
 
@@ -20,7 +19,16 @@ module VBlank
       # Lowering::NOT_LOWERED_YET says).
       SAVE_FILE = Verifier::SaveFileLayout.new(whole: 0x20000, clock_bytes: 0)
 
-      def sprites(_name = nil) = refuse_ps1_reader!(:sprites)
+      # WHERE THE SPRITES ARE, by name (Reference#sprites): the rows the runtime keeps of the sprites the
+      # last pass placed (IR::Backends::PS1::Runtime::Tiles::DRAWN), read off the program's RAM. A painted
+      # screen's sprites are drawn into its picture, and none is kept.
+      def sprites(name = nil)
+        refuse_missing_build_record!("which of its sprites is which")
+        ensure_rendered!
+        @drawn ||= IR::Backends::SpriteNames.new(@rom.source_program)
+        rows = @rom.built.drawn_sprite_rows(@drawn) { |address| mem32(address) }
+        name ? @drawn.rows_named(rows, name) : rows
+      end
 
       # No song is ever playing: the PlayStation's build refuses a game that plays one, which
       # Lowering::NOT_LOWERED_YET says (Reference#music_playing).
@@ -38,11 +46,6 @@ module VBlank
         raise ArgumentError, "The emulator for a PlayStation program gives no sound samples yet, so this reader " \
                              "cannot say what the program put out. It counts the samples and does not keep them. " \
                              "Compare the sound of a cartridge for another console instead."
-      end
-
-      def refuse_ps1_reader!(question)
-        raise ArgumentError, "The Verifier cannot read this back from a PlayStation program yet, so it cannot say " \
-                             "#{question}. Play it with VBlank::IR::Backends::PS1::HeadlessRun instead."
       end
     end
   end
