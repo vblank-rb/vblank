@@ -13,10 +13,11 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # `built_for_computer?` is a Ruby true or false read while the game is built and makes nothing
   # of its own, so an example naming it would give the golden path nothing more to build.
   # data_pack reads the player's copy of a retail original, which no example can ship; its own
-  # tests make an original up.
+  # tests make an original up. shell_screen is the first screen of a shell, a port built with its
+  # data pack left out, so it needs one too.
   # colors_name_of gives the name of the list a picture is drawn from, which a game needs only
   # for a pose that takes its colours from a data pack's frame; elsewhere the game wrote the name.
-  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func data_pack colors_name_of add_var sub sub_var negate
+  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func data_pack shell_screen colors_name_of add_var sub sub_var negate
                           built_for_computer?].freeze
 
   def test_every_verb_appears_in_an_example
