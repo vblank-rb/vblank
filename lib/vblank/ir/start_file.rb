@@ -276,11 +276,7 @@ module VBlank
         # which plays from both.
         def takes_side? = !recorded
 
-        # Whether a record's noise clock is the note's pitch: on a part on the noise voice that is
-        # not transposed, since a transpose cannot move the voice's own setting.
-        def takes_clock?
-          Audio::Score::Checks.noise?(Audio::Music.resolve_plays(part.plays)) && part.transpose.to_i.zero?
-        end
+        def takes_clock? = StartFile.takes_clock?(part)
 
         # WHAT EACH NOISE CLOCK COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
         # each clock byte makes (Original::PackNote::CLOCK_BYTES of them, from 0), or none for a
@@ -317,6 +313,13 @@ module VBlank
           from = loop_from ? timing.at([StartFile.number_in(bytes, loop_from), 0].max) : written_loop
           [total, from < total ? from : 0]
         end
+      end
+
+      # Whether a record's noise clock is its note's pitch on +part+ (an Audio::Score::Part), built
+      # all-in-one or from the file: on a part on the noise voice that is not transposed, since a
+      # transpose cannot move the voice's own setting.
+      def self.takes_clock?(part)
+        Audio::Score::Checks.noise?(Audio::Music.resolve_plays(part.plays)) && part.transpose.to_i.zero?
       end
 
       # The highest key and the loudest volume a record names.

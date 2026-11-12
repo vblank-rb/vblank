@@ -158,7 +158,7 @@ module VBlank
         subject = "#{verb} reading notes from slot :#{handle.slot.layout.name}"
         refuse_slot_from_elsewhere!(handle.slot, subject)
         recorded = recorded_part?(part)
-        clocked = clocked_part?(part)
+        clocked = IR::StartFile.takes_clock?(part)
         handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
           refuse_unnamed_side_or_clock!(note, subject, side: !recorded, clock: clocked)
           key = note.key unless note.key == Original::PackNote::REST
@@ -171,12 +171,6 @@ module VBlank
       end
 
       def recorded_part?(part) = Audio::Score::Checks.recording?(Audio::Music.resolve_plays(part.plays))
-
-      # Whether a record's noise clock is its note's pitch on +part+: a part on the noise voice that
-      # is not transposed (IR::StartFile::Notes#takes_clock?).
-      def clocked_part?(part)
-        Audio::Score::Checks.noise?(Audio::Music.resolve_plays(part.plays)) && part.transpose.to_i.zero?
-      end
 
       # A record's speaker and noise clock each name one, or the part's own (Original::PackNote),
       # where the part takes them (+side+, +clock+); elsewhere they mean nothing.
