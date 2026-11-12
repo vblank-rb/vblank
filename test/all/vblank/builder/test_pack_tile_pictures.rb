@@ -17,7 +17,117 @@ module PackTilePictureGames
                    GENESIS_CELL.(2, bank: 1, upside_down: true)].freeze
   BELT_AT = TILES_AT + (PLACES.length * 32)
 
+  # A LAIR AFTER A TITLE, EACH SCENE IN COLOURS OF ITS OWN, as a Genesis game's scenes are: three lists
+  # the game changes take three of a Genesis's four palettes for good, so each scene's backgrounds
+  # have the fourth, and the two scenes' together need two. The lair's map draws from four banks,
+  # two of its cells naming tile 2 (in bank 0, and bank 1 upside down), which takes turns through
+  # the belt's pictures; its other cells are still tiles of banks 0, 2 and 3. The lair's tiles draw
+  # fourteen colours of its banks, and its belt's pictures no colour the still tile they stand for
+  # does not, so the lair fits its one palette with the belt as without it.
+  LAIR_MAP_AT = 0x20
+  TITLE_MAP_AT = 0x30
+  LAIR_COLORS_AT = 0x40
+  TITLE_COLORS_AT = 0xC0
+  LAIR_BANKS = 4
+  TITLE_BANKS = 2
+  LAIR_WORDS = [GENESIS_CELL.(1), GENESIS_CELL.(2), GENESIS_CELL.(3, bank: 2), GENESIS_CELL.(2, bank: 1, upside_down: true),
+                GENESIS_CELL.(1, bank: 3)].freeze
+  TITLE_WORDS = [GENESIS_CELL.(1), GENESIS_CELL.(3, bank: 1)].freeze
+  # The passes the title is up for, and the lair's pass that shows the belt's second picture.
+  TITLE_PASSES = 3
+  LAIR_BELT_TURNS = 4
+
+  # The blue level of each scene's colours, which keeps the lair's and the title's apart.
+  SCENE_BLUES = { lair: 1, title: 2 }.freeze
+
+  # The levels of place +place+ of bank +bank+ of +scene+'s colours slot: each its own red and
+  # green, the Genesis's three bits, and black at place 0.
+  def self.scene_bank_levels(scene, bank, place)
+    return [0, 0, 0] if place.zero?
+
+    number = (bank * 16) + place
+    [number % 8, (number / 8) % 8, SCENE_BLUES.fetch(scene)]
+  end
+
+  def self.widened(levels)
+    widen = MadeUpOriginalLayouts::WIDEN
+    red, green, blue = levels
+    widen.(red) | (widen.(green) << 5) | (widen.(blue) << 10)
+  end
+
+  def self.scene_color(scene, bank, place) = widened(scene_bank_levels(scene, bank, place))
+
+  # The three lists the game changes, each a sprite's, and the set each is told to hold on even passes.
+  CHANGING_LISTS = { sky: [5, 6], sea: [6, 6], sun: [7, 6] }.freeze
+
   constants(false).each { |name| Ractor.make_shareable(const_get(name)) }
+
+  # The made-up Genesis original of the lair and the title: their maps, their banks and the tiles.
+  private def lair_original(folder)
+    tiles = [*PLACES, *BELT].map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
+    copy = "\0".b * (TILES_AT + tiles.bytesize)
+    copy[LAIR_MAP_AT, LAIR_WORDS.length * 2] = LAIR_WORDS.pack("n*")
+    copy[TITLE_MAP_AT, TITLE_WORDS.length * 2] = TITLE_WORDS.pack("n*")
+    { lair: [LAIR_COLORS_AT, LAIR_BANKS], title: [TITLE_COLORS_AT, TITLE_BANKS] }.each do |scene, (at, banks)|
+      levels = (0...banks).flat_map { |bank| (0...16).map { |place| PackTilePictureGames.scene_bank_levels(scene, bank, place) } }
+      copy[at, banks * 32] = GENESIS_COLORS.(levels)
+    end
+    copy[TILES_AT, tiles.bytesize] = tiles
+    path = File.join(folder, "made_up.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :genesis,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The title, then the lair with its belt, which shows its second picture from the lair's
+  # LAIR_BELT_TURNS-th pass on.
+  private def lair_game_and_file(folder, options: VBlank::Cartridge::Options.new)
+    from = lair_original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length
+        slots.tiles :belt, at: BELT_AT, count: BELT.length
+        slots.numbers :lair_map, at: LAIR_MAP_AT, count: LAIR_WORDS.length, width: :half, signed: false
+        slots.numbers :title_map, at: TITLE_MAP_AT, count: TITLE_WORDS.length, width: :half, signed: false
+        slots.colors :lair_colors, at: LAIR_COLORS_AT, count: LAIR_BANKS * 16
+        slots.colors :title_colors, at: TITLE_COLORS_AT, count: TITLE_BANKS * 16
+      end
+      CHANGING_LISTS.each_with_index do |(list, (red, blue)), at|
+        colors list, [:black, PackTilePictureGames.widened([red, 1, blue]), PackTilePictureGames.widened([red, 3, blue])]
+        colors :"#{list}_dusk", [:black, PackTilePictureGames.widened([red, 5, blue]), PackTilePictureGames.widened([red, 7, blue])]
+        image list, width: 8, height: 8, data: Array.new(64) { |i| PackTilePictureGames.widened([red, (i % 8) < 4 ? 1 : 3, blue]) },
+                    colors: list
+        sprite(list, at: [100 + (at * 16), 40]).draw_with list
+      end
+      state = var :state, 0
+      pass = var :pass, 0
+      tick = var :tick, 0
+      # Before both scenes: the title draws from the slot :video too, and is declared first.
+      conveyor = tile_pictures :conveyor, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) }
+      scene(:title) do
+        background :sign, tiles: pack[:video], map: pack[:title_map], colors: pack[:title_colors], across: TITLE_WORDS.length
+      end
+      scene(:lair) do
+        background :machine, tiles: pack[:video], map: pack[:lair_map], colors: pack[:lair_colors], across: LAIR_WORDS.length
+        tick += 1
+        conveyor.show 1 if tick == LAIR_BELT_TURNS
+      end
+      game_loop do
+        pass += 1
+        CHANGING_LISTS.each_key { |list| recolor list, [:"#{list}_dusk"], showing: pass % 2 }
+        state = 1 if pass == TITLE_PASSES
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :lair
+        end
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
 
   # A game of the made-up original for +platform+ whose map is +words+, its tile 2 taking turns
   # through the slot :belt. +step+ is run every pass, handed the group and a count of passes. With
@@ -74,13 +184,15 @@ class TestPackTilePictures < Minitest::Test
   private def belt_game(...) = Dir.mktmpdir { |folder| belt_game_and_file(folder, ...).first }
 
   # Whether every drawn pixel of the cell at column +cell+ is +places+ in +bank+, turned as asked.
-  private def assert_cell_shows(screen, cell, places, bank, mirrored: false, upside_down: false, why: nil)
+  # +color_of+ is handed a bank and a place and answers the colour.
+  private def assert_cell_shows(screen, cell, places, bank, mirrored: false, upside_down: false, why: nil,
+                                color_of: ->(at_bank, place) { BANKS.fetch(at_bank).fetch(place) })
     8.times do |y|
       8.times do |x|
         place = places.fetch(((upside_down ? 7 - y : y) * 8) + (mirrored ? 7 - x : x))
         next if place.zero?
 
-        assert_equal BANKS.fetch(bank).fetch(place), screen.pixel((cell * 8) + x, y), "#{why}: the pixel (#{x}, #{y}) of cell #{cell}"
+        assert_equal color_of.(bank, place), screen.pixel((cell * 8) + x, y), "#{why}: the pixel (#{x}, #{y}) of cell #{cell}"
       end
     end
   end
@@ -160,6 +272,28 @@ class TestPackTilePictures < Minitest::Test
 
     assert_belt_shows(screen_after(program, 5), 0, "before")
     assert_belt_shows(screen_after(program, 10), 1, "after")
+  end
+
+  # The belt takes turns in the lair, a scene of its own colours after the title's, its still cells
+  # beside it showing their own banks: the belt's runs are drawn in the colours the lair already
+  # has, and take none of the palettes the title and the lists keep.
+  def test_a_belt_in_a_scene_of_its_own_colours_takes_turns
+    program = Dir.mktmpdir { |folder| lair_game_and_file(folder).first }
+    lair = ->(bank, place) { PackTilePictureGames.scene_color(:lair, bank, place) }
+    title = ->(bank, place) { PackTilePictureGames.scene_color(:title, bank, place) }
+
+    screen = screen_after(program, TITLE_PASSES - 1)
+    assert_cell_shows(screen, 0, PLACES[1], 0, why: "the title", color_of: title)
+    assert_cell_shows(screen, 1, PLACES[3], 1, why: "the title", color_of: title)
+    [[TITLE_PASSES + LAIR_BELT_TURNS - 2, 0], [TITLE_PASSES + LAIR_BELT_TURNS + 3, 1]].each do |frames, picture|
+      screen = screen_after(program, frames)
+      why = "after #{frames} frames"
+      assert_cell_shows(screen, 0, PLACES[1], 0, why: why, color_of: lair)
+      assert_cell_shows(screen, 1, BELT[picture], 0, why: why, color_of: lair)
+      assert_cell_shows(screen, 2, PLACES[3], 2, why: why, color_of: lair)
+      assert_cell_shows(screen, 3, BELT[picture], 1, upside_down: true, why: why, color_of: lair)
+      assert_cell_shows(screen, 4, PLACES[1], 3, why: why, color_of: lair)
+    end
   end
 
   private def refusal(&declares)

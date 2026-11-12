@@ -18,8 +18,10 @@ module VBlank
           # list as it was when the game asked, whatever the pass writes into it after.
           #
           # Each painted tile is a tile of its own in video memory (Art#run_cell), never shared with
-          # another however alike they look, drawn from the palette whose places are the run's list's.
-          # A list in the Genesis's own form (`console_format: true`) is copied as it stands.
+          # another however alike they look, drawn from the palette whose places are the run's list's;
+          # or, for a group of `tile_pictures` whose pictures are known as the game is built, from the
+          # palette holding the colours they draw (#run_places_drawn). A list in the Genesis's own form
+          # (`console_format: true`) is copied as it stands.
           module TileRuns
             STATEMENT_KINDS = %i[copy_tiles copy_owed_tiles].freeze
 
@@ -63,6 +65,7 @@ module VBlank
                 asm.label(past)
               end
               asm.rts
+              write_run_place_tables(asm)
               [asm.section]
             end
 
@@ -97,12 +100,96 @@ module VBlank
               @art.with_tiles_of(tiles_scene_of(bg)) do
                 @art.with_colors_of(colors_scene_of(bg)) do
                   # A run answers list_drawn_from as a picture does (Nodes::TileRun).
-                  if bg.recolors.empty? && bg.list_followed_by(run.list_drawn_from).nil?
-                    @art.run_cell(name, run.colors)
-                  else
+                  if !drawn_in_own_colors?(bg, run)
                     @art.run_cell(name, run.colors, palette: recolored_palette(bg, run))
+                  elsif (drawn = run_places_drawn(run))
+                    known_run_cell_of(name, run, drawn)
+                  else
+                    @art.run_cell(name, run.colors)
                   end
                 end
+              end
+            end
+
+            # Whether +bg+ draws +run+'s tiles in the run's own colours: not drawn with other lists,
+            # nor following a list the game changes.
+            def drawn_in_own_colors?(bg, run) = bg.recolors.empty? && bg.list_followed_by(run.list_drawn_from).nil?
+
+            # A RUN OF `tile_pictures` WHOSE PICTURES ARE ALL KNOWN AS THE GAME IS BUILT draws only the
+            # places of its list those pictures draw, since its list is only ever copied from them
+            # (Nodes::TileRun#held_in). A run of a data pack's tiles (Builder::PackTilePictures) is
+            # drawn from a bank of sixteen colours of which its pictures draw a few, and the still
+            # tiles of the same bank beside it are drawn from whichever palette holds their colours
+            # (Art#background_cell). Drawn from a palette of the whole bank in its order, the run
+            # would take a palette of its own for every bank, which a scene's backgrounds rarely have
+            # to spare. So it is drawn from the palette that holds the colours its pictures draw, as
+            # a drawn tile is, and the copy puts each place where its colour is in that palette
+            # (#emit_run_copy).
+            #
+            # These are the places, in order, or nil for a run drawn from its whole list: a list the
+            # game paints itself, pictures read from the file as the game starts, or a run some
+            # background draws in other colours or that backgrounds of two scenes' colours draw.
+            def run_places_drawn(run)
+              (@run_places_drawn ||= {}).fetch(run.name) do
+                @run_places_drawn[run.name] = places_drawn_by_held_pictures(run)
+              end
+            end
+
+            # The places +run+'s held pictures draw, or nil where it is drawn from its whole list: its
+            # list painted by the game, pictures read from the file, a background drawing it in other
+            # colours, or backgrounds in two scenes' colours (each would give it other palette places).
+            def places_drawn_by_held_pictures(run)
+              return nil if run.held_in.nil? || run.console_format
+
+              table = @tables.fetch(run.held_in) { raise LoweringError, "the table #{run.held_in.inspect} is painted from and never declared" }
+              return nil if table.read_from_file?
+
+              showing = backgrounds_showing(run)
+              return nil unless showing.map { |bg| colors_scene_of(bg) }.uniq.length == 1
+              return nil unless showing.all? { |bg| drawn_in_own_colors?(bg, run) }
+
+              table.values.flat_map { |byte| [byte & 0xF, (byte >> 4) & 0xF] }.uniq.reject(&:zero?).sort
+            end
+
+            def backgrounds_showing(run) = @backgrounds.select { |bg| bg.tiles.any? { |tile| run.tiles.include?(tile) } }
+
+            # The cell of painted tile +name+ of +run+, whose pictures draw the places +drawn+, and for
+            # each of those places its place in the cell's palette, kept for the run's copy. Every tile
+            # of a run shares one copy, so each must be drawn from the same palette places.
+            def known_run_cell_of(name, run, drawn)
+              known = @art.known_run_cell(name, drawn.map { |place| run.colors.fetch(place) & 0x7FFF })
+              palette_place_of = drawn.zip(known.places).to_h
+              @run_palette_places ||= {}
+              if @run_palette_places.fetch(run.name, palette_place_of) != palette_place_of
+                raise LoweringError, "the tiles of the run #{run.name.inspect} were drawn from different places of their palettes"
+              end
+
+              @run_palette_places[run.name] = palette_place_of
+              known.cell
+            end
+
+            # For a run drawn from known places (#run_places_drawn), each place's place in its palette:
+            # made with the run's first cell if no map of the game has made one yet, so the copy reads
+            # the table whenever the run's cells are drawn from it, whatever is lowered first.
+            def run_palette_places(run)
+              return @run_palette_places[run.name] if @run_palette_places&.key?(run.name)
+
+              bg = backgrounds_showing(run).first
+              cell_of(bg, bg.tiles.index { |tile| run.tiles.include?(tile) })
+              @run_palette_places.fetch(run.name) { raise LoweringError, "the run #{run.name.inspect} was given no palette places" }
+            end
+
+            def run_place_table_label(run) = "art run places #{run.name}"
+
+            # THE TABLE A COPY OF A RUN DRAWN FROM KNOWN PLACES READS (#run_places_drawn), one for each
+            # such run. Entry N is what the list's byte N becomes in the Genesis's tile: its two halves
+            # swapped, since the list keeps the left pixel in the low four bits and the Genesis in the
+            # high four, and each half's place changed to that colour's place in the palette. One read
+            # of it does what turning the byte's halves round does for any other run, in no more time.
+            def write_run_place_tables(asm)
+              (@run_palette_places || {}).each do |name, palette_place_of|
+                asm.label(run_place_table_label(tile_runs.fetch(name)))
+                asm.data_bytes((0...256).map { |byte| (palette_place_of.fetch(byte & 0xF, 0) << 4) | palette_place_of.fetch(byte >> 4, 0) })
               end
             end
 
@@ -134,17 +221,29 @@ module VBlank
 
             # The run's list, its bytes' halves turned round, into its stretch of work memory, and the
             # run marked as waiting for the blank.
+            # A run drawn from known places (#run_places_drawn) reads each byte's Genesis form from
+            # its table (#write_run_place_tables), A2 pointing at it and D0's high bits nought.
             def emit_run_copy(run)
               owed, staging = @run_places.fetch(run.name)
               list, = @lists.fetch(run.list) { raise LoweringError, "the list #{run.list.inspect} is painted from and never declared" }
+              moved = !run_places_drawn(run).nil?
+              run_palette_places(run) if moved # its table is written with the other runs' (#write_run_place_tables)
               byte = fresh("run_byte")
               @asm.lea(@asm.abs_l(list, Runtime::Lists::HEADER), @asm.a(0))
               @asm.lea(@asm.abs_l(staging), @asm.a(1))
+              if moved
+                @asm.lea(@asm.abs_l(run_place_table_label(run)), @asm.a(2))
+                @asm.moveq(0, @asm.d(0))
+              end
               @asm.move(:w, @asm.imm((run.tiles.length * Art::TILE_BYTES) - 1), @asm.d(1))
               @asm.label(byte)
               @asm.move(:b, @asm.post(0), @asm.d(0))
-              @asm.rol(:b, 4, @asm.d(0)) unless run.console_format
-              @asm.move(:b, @asm.d(0), @asm.post(1))
+              if moved
+                @asm.move(:b, @asm.idx(2, 0, 0, :w), @asm.post(1))
+              else
+                @asm.rol(:b, 4, @asm.d(0)) unless run.console_format
+                @asm.move(:b, @asm.d(0), @asm.post(1))
+              end
               @asm.dbra(@asm.d(1), byte)
               @asm.move(:w, @asm.imm(1), @asm.abs_l(owed))
             end

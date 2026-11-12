@@ -200,8 +200,23 @@ module VBlank
           # tile for each store that shows it: the tiles every screen shows, or a scene's own.
           # +palette+ is one a background drawn with other colours writes over (#reserve_held_palette).
           def run_cell(name, colors, palette: nil)
-            number = (@run_tiles[[@tiles.object_id, name]] ||= @tiles.own_tile("painted tiles :#{name}"))
-            [number, palette || ordered_palette(colors.drop(1).map { |color| color & 0x7FFF })]
+            [allot_run_tile(name), palette || ordered_palette(colors.drop(1).map { |color| color & 0x7FFF })]
+          end
+
+          # The cell of a painted tile whose pictures are all known as the game is built, as +cell+
+          # ([tile number, palette]), and for each colour of +drawn+ its place in that palette, as
+          # +places+.
+          KnownRunCell = Data.define(:cell, :places)
+
+          # THE CELL OF A PAINTED TILE WHOSE PICTURES ARE ALL KNOWN (Lowering::TileRuns#run_places_drawn),
+          # +name+, whose pictures draw the colours +drawn+ (15-bit) and no other: drawn from whichever
+          # palette holds those colours, adding them to one with room, as a background's drawn tile is,
+          # rather than from a palette of the whole list in its order. The copy puts each of the list's
+          # places at that colour's place in the palette (Lowering::TileRuns#emit_run_copy).
+          def known_run_cell(name, drawn)
+            words = drawn.map { |color| word_of(color) }
+            palette = palette_for(words.uniq, "backgrounds")
+            KnownRunCell.new(cell: [allot_run_tile(name), palette], places: words.map { |word| @palettes[palette].index(word) + 1 })
           end
 
           # Every number the painted tile +name+ has in video memory: one for each store that shows it.
@@ -479,6 +494,10 @@ module VBlank
           end
 
           private
+
+          # The painted tile +name+'s number in the store being added to: a tile of its own, made the
+          # first time it is asked for there.
+          def allot_run_tile(name) = @run_tiles[[@tiles.object_id, name]] ||= @tiles.own_tile("painted tiles :#{name}")
 
           # A tile of a background drawn with other colours, made of the places its pixels were drawn at.
           def placed_background_cell(image, palette, taker)

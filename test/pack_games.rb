@@ -1600,6 +1600,9 @@ module PackGames
       end,
       game(:tile_of_a_background_in_a_scene_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
         built(*belt_game_and_file(folder, options: options, in_scene: true) { |belt, tick| belt.show((tick / 2) % 3) })
+      end,
+      game(:tile_of_a_scene_in_colours_of_its_own_taking_turns_through_pack_pictures, passes: 10) do |folder, options|
+        built(*lair_game_and_file(folder, options: options))
       end
     ].freeze
   end
