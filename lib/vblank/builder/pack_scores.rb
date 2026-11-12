@@ -158,15 +158,39 @@ module VBlank
         subject = "#{verb} reading notes from slot :#{handle.slot.layout.name}"
         refuse_slot_from_elsewhere!(handle.slot, subject)
         recorded = recorded_part?(part)
+        clocked = clocked_part?(part)
         handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
-          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (note.key unless note.key == Original::PackNote::REST),
+          refuse_unnamed_side_or_clock!(note, subject, side: !recorded, clock: clocked)
+          key = note.key unless note.key == Original::PackNote::REST
+          clock = note.clock if key && clocked
+          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock),
                                  volume: pack_note_volume(note, recorded, subject),
-                                 instrument: pack_note_instrument(note, handle.instruments, subject))
+                                 instrument: pack_note_instrument(note, handle.instruments, subject),
+                                 pan: (note.side unless recorded), noise_clock: clock)
         end
       end
 
       def recorded_part?(part) = Audio::Score::Checks.recording?(Audio::Music.resolve_plays(part.plays))
+
+      # Whether a record's noise clock is its note's pitch on +part+: a part on the noise voice that
+      # is not transposed (IR::StartFile::Notes#takes_clock?).
+      def clocked_part?(part)
+        Audio::Score::Checks.noise?(Audio::Music.resolve_plays(part.plays)) && part.transpose.to_i.zero?
+      end
+
+      # A record's speaker and noise clock each name one, or the part's own (Original::PackNote),
+      # where the part takes them (+side+, +clock+); elsewhere they mean nothing.
+      def refuse_unnamed_side_or_clock!(note, subject, side:, clock:)
+        if side && !note.side_named?
+          raise ArgumentError, "#{subject}: the note at tick #{note.at} has the speaker #{note.pan}. A speaker is 0 for both, 1 " \
+                               "for the left or 2 for the right, or #{Original::PackNote::PART_OWN} for the part's own."
+        end
+        return if !clock || note.clock_named?
+
+        raise ArgumentError, "#{subject}: the note at tick #{note.at} has the noise clock #{note.noise_clock}. A noise clock " \
+                             "has its divider, 0 to 7, in the low three bits and its halvings, 0 to 13, in the high four. " \
+                             "Write #{Original::PackNote::PART_OWN} to play the note's key."
+      end
 
       # A note's volume: its loudness in 512ths as a volume with a fraction on a part that plays a
       # recording (Original::PackNote), else its volume, nil for the part's own.

@@ -1248,6 +1248,16 @@ module PackGames
         loud = LOUD_TUNE.map { |note| note[5] == 900 ? [*note.first(5), 400] : note }
         scores_game(folder, options, { loud: loud }) { |notes_of| test.declare_loud_scores(self, notes_of) }
       end,
+      # Each note's speaker on a square part and its noise clock on the noise voice, none of them
+      # one that is no speaker or no clock, which a build holding the records refuses.
+      game(:sided_and_clocked_pack_notes, passes: 150, presses: { 1 => [:a] }) do |folder, options|
+        sided = SIDED.reject { |note| note[6] == 9 }
+        clocked = CLOCKED.reject { |note| note[7] == 0xF2 }
+        scores_game(folder, options, { lead: sided, drum: clocked }) do |notes_of|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), pan: :right), Part.new(notes: notes_of.(:drum), plays: :noise)],
+                              tempo: 150, length: 84, loop_from: 20)] }
+        end
+      end,
       # A song whose length and loop are numbers of the pack, as a sound driver's song keeps them.
       game(:song_of_pack_notes_and_pack_length, passes: 200, presses: { 1 => [:a] }) do |folder, options|
         scores_game(folder, options, { lead: LEAD, low: LOW, drum: DRUM, wave: WAVE }) do |notes_of, _settings, timing|

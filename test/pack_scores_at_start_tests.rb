@@ -27,25 +27,31 @@ module PackScoresAtStartTests
 
   # A part's notes as the records a pack holds: [at, length, key, instrument, volume] each, a
   # length of 0 for until the next note, a key of REST for a rest, and a loudness in 512ths after
-  # the volume where a note gives one. Then a note that ends the part, and filler after it that no
-  # part may play.
+  # the volume where a note gives one, then its speaker and its noise clock where it gives them.
+  # Then a note that ends the part, and filler after it that no part may play.
   private def records(notes)
     ending = [PackNote::END_OF_PART, 0, 0, 0, 0]
-    filler = [[5, 7, 64, OWN, 15, 300]] * (MOST - notes.length - 1)
-    [*notes, ending, *filler].flat_map do |at, length, key, instrument, volume, loudness|
-      [at, length, key, instrument, volume, OWN, loudness || PackNote::NO_LOUDNESS, OWN, 0]
+    filler = [[5, 7, 64, OWN, 15, 300, 1, 0x21]] * (MOST - notes.length - 1)
+    [*notes, ending, *filler].flat_map do |at, length, key, instrument, volume, loudness, pan, clock|
+      [at, length, key, instrument, volume, pan || OWN, loudness || PackNote::NO_LOUDNESS, clock || OWN, 0]
     end.pack(PackNote::LAYOUT.delete(" ") * MOST)
   end
+
+  # The speaker a record's byte names, as a note gives it.
+  SIDE_OF_BYTE = { 0 => :center, 1 => :left, 2 => :right }.freeze
 
   # The notes a Score written by hand holds for the same records, as the game plays them: a key no
   # voice has is a rest, and an instrument the part does not name or a volume past 15 is the
   # part's own. A loudness on a part that plays a recording is its volume, all of the recording at
-  # most; elsewhere it means nothing. +instruments+ are the part's.
+  # most; elsewhere it means nothing. A speaker is the note's on a part of the console's voices, and
+  # means nothing on a recorded part; one that is no speaker is the part's own. A noise clock with
+  # its halvings 13 or fewer is the note's pitch, in place of its key. +instruments+ are the part's.
   private def written(notes, instruments = [], recorded: false)
-    notes.map do |at, length, key, instrument, volume, loudness|
+    notes.map do |at, length, key, instrument, volume, loudness, pan, clock|
       volume = Rational(15 * [loudness, 512].min, 512) if recorded && loudness
-      Note.new(at: at, length: (length unless length.zero?), key: (key if key <= 127), instrument: instruments[instrument],
-               volume: (volume if volume <= 15))
+      clock = ([clock & 7, clock >> 4] if clock && (clock >> 4) <= 13 && key <= 127)
+      Note.new(at: at, length: (length unless length.zero?), key: (key if key <= 127 && !clock), instrument: instruments[instrument],
+               volume: (volume if volume <= 15), pan: (SIDE_OF_BYTE[pan] unless recorded), noise_clock: clock)
     end
   end
 
@@ -173,6 +179,24 @@ module PackScoresAtStartTests
       { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low), volume: 9),
                                   Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
                           tempo: 150, length: 84, loop_from: 36)] }
+    end
+  end
+
+  # A NOTE'S SPEAKER AND ITS NOISE CLOCK, as a sound driver sets them for each note it strikes. A
+  # square part takes each record's speaker (0 both, 1 the left, 2 the right) over its own, and one
+  # that is no speaker is the part's; a part on the noise voice takes each record's clock (the
+  # divider in the low three bits, the halvings in the high four) in place of its key, and one
+  # whose halvings are past 13 plays its key. The lead holds a note on the left across the loop.
+  SIDED = [[0, 10, 72, OWN, OWN, nil, 1], [10, 20, 74, OWN, OWN, nil, 2], [30, 10, 76, OWN, OWN, nil, 0],
+           [40, 10, 77, OWN, OWN, nil, OWN], [50, 0, 79, OWN, OWN, nil, 9], [70, 0, 72, OWN, OWN, nil, 1]].freeze
+  CLOCKED = [[0, 6, 60, OWN, OWN, nil, nil, 0x13], [8, 6, 60, OWN, OWN, nil, 2, 0x37], [16, 6, 64, OWN, OWN, nil, nil, OWN],
+             [24, 6, 64, OWN, OWN, nil, nil, 0xD7], [32, 6, 64, OWN, OWN, nil, nil, 0xF2], [40, 6, PackNote::REST, OWN, OWN, nil, nil, 0x21],
+             [48, 6, 70, OWN, 9, nil, 1, 0x0D]].freeze
+
+  def test_a_notes_speaker_and_noise_clock_read_as_the_game_starts_play_as_written_by_hand
+    assert_plays_as_written({ lead: SIDED, drum: CLOCKED }, frames: 150) do |notes_of|
+      { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), pan: :right), Part.new(notes: notes_of.(:drum), plays: :noise)],
+                          tempo: 150, length: 84, loop_from: 20)] }
     end
   end
 
@@ -493,8 +517,8 @@ module PackScoresAtStartTests
 
   # A part that plays recordings: its notes name its own instrument, each of the instruments the
   # part names, the same one twice running across the loop, and one the part does not name,
-  # which is the part's own.
-  TUNE = [[0, 12, 60, OWN, OWN], [12, 12, 64, 0, 12], [24, 12, 67, 1, OWN], [36, 0, 72, 7, 9], [60, 0, 64, 1, OWN]].freeze
+  # which is the part's own. A speaker means nothing on a recorded part.
+  TUNE = [[0, 12, 60, OWN, OWN], [12, 12, 64, 0, 12, nil, 1], [24, 12, 67, 1, OWN], [36, 0, 72, 7, 9], [60, 0, 64, 1, OWN]].freeze
   PCM = (0...64).map { |at| ((at * 29) % 200) - 100 }.freeze
 
   def test_a_part_playing_recordings_read_as_the_game_starts_plays_as_written_by_hand
@@ -547,8 +571,9 @@ module PackScoresAtStartTests
     game.instrument :horn, pcm: PCM, rate: 8000, note: :C4, holds_from: settings.fetch(:holds_from)
     game.instrument :bass, pcm: PCM.reverse, rate: 8000, note: :C3, envelope: settings.fetch(:envelope)
     game.instrument :bell, pcm: PCM.rotate(9), rate: 8000, note: :C5
-    { songs: [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:tune), volume: 13)], tempo: 150, length: 72, loop_from: 48)],
-      effects: [Score.new(parts: [Part.new(plays: :bell, notes: notes_of.(:blip))], tempo: 150, length: 24)] }
+    { songs: [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:tune, recorded: true), volume: 13)], tempo: 150, length: 72,
+                        loop_from: 48)],
+      effects: [Score.new(parts: [Part.new(plays: :bell, notes: notes_of.(:blip, recorded: true))], tempo: 150, length: 24)] }
   end
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in

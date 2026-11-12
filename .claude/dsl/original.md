@@ -37,11 +37,18 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.notes :title_0, count: 200` — **notes of music, twelve bytes each in a record of VBlank's own**
     (`Original::PackNote`, whose `LAYOUT` and `bytes_of` a port's tests can use): the tick it starts on and
     how many it lasts (two bytes each, low byte first, 0 for until the next note), a MIDI key (255 a rest),
-    which of the part's instruments (255 the part's own), and a volume 0 to 15 (255 the part's own), then a
-    byte of 255, then **a loudness in 512ths** (two bytes, 65535 for none), then a byte of 255 and a byte of
-    0. On a part that plays a recording a loudness is played in place of the volume, as `volume: 15 *
-    loudness / 512r` (`sound.md`), which is the scale a cartridge's own sound engine mixes at; elsewhere it
-    means nothing. One past 512 is refused all-in-one and is all of the recording from the player's file.
+    which of the part's instruments (255 the part's own), and a volume 0 to 15 (255 the part's own), then
+    **the speaker** (0 both, 1 the left, 2 the right, 255 the part's own), then **a loudness in 512ths** (two
+    bytes, 65535 for none), then **a noise clock** (the divider 0 to 7 in the low three bits and the
+    halvings 0 to 13 in the high four, as the Advance's noise register keeps them; 255 for the key's
+    pitch), then a byte of 0. On a part that plays a recording a loudness is played in place of the
+    volume, as `volume: 15 * loudness / 512r` (`sound.md`), which is the scale a cartridge's own sound
+    engine mixes at; elsewhere it means nothing. One past 512 is refused all-in-one and is all of the
+    recording from the player's file. A speaker is a note's `pan:` on any part but one that plays a
+    recording, where it means nothing; a noise clock is a note's `noise_clock:` in place of its key on a
+    part on the noise voice that is not transposed, and means nothing elsewhere. Where they mean
+    something, one that is neither a speaker nor 255 is refused all-in-one and is the part's own from the
+    player's file, and a clock with halvings past 13 is refused all-in-one and plays the key from it.
     A note starting on tick 65535 ends the part, so the slot holds the most notes a part can have. A retail game keeps its music in its
     own sound driver's commands, so the unpacking routine runs those forward and writes the notes they
     play. A Score's part takes the slot as its notes: `Score::Part.new(plays: :horn, notes:

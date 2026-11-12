@@ -1151,7 +1151,10 @@ enum {
   RG_NOTES_SHAPES = 10,
   RG_NOTES_INSTRUMENTS = 11,
   RG_NOTES_RECORDED = 12, /* 1 for a part that plays a recording, which takes a record's loudness */
-  RG_NOTES_HEADER_NUMBERS = 13,
+  RG_NOTES_SIDE_FLAGS = 13, /* a note's fifth number for each speaker a record names: both, left, right */
+  RG_NOTES_CLOCKS = 16,     /* how many noise clocks the part takes, whose pitches and lasts end the rules */
+  RG_NOTES_HEADER_NUMBERS = 17,
+  RG_NOTE_SIDES = 3, /* and one more, the part's own */
   RG_NOTE_KEYS = 128,
   RG_NOTE_VOLUMES = 16, /* and one more, the part's own */
   RG_NOTE_RECORD_BYTES = 12,
@@ -1165,9 +1168,10 @@ enum {
  * instruments it plays (0 for the part's own), the first instrument that names the same recording
  * (-1 for the part's own), and its volume (RG_NOTE_VOLUMES for the part's own; a loudness of L
  * 512ths, past those, RG_NOTE_VOLUMES + 1 + L, so two events are as loud exactly when the numbers are
- * the same: see start_file_event_volume). */
+ * the same: see start_file_event_volume), the speaker it names (RG_NOTE_SIDES for the part's own),
+ * and the noise clock it plays in place of its key (-1 for its key). */
 typedef struct {
-  int32_t frame, key, instrument, recording, volume;
+  int32_t frame, key, instrument, recording, volume, side, clock;
 } start_file_event;
 
 static int32_t start_file_record_tick(int32_t records_at, int32_t record) {
@@ -1191,13 +1195,29 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
   const int32_t *heard = rules + RG_NOTES_HEADER_NUMBERS;
   const int32_t *pitches = heard + RG_NOTE_VOLUMES + 1 + rules[RG_NOTES_INSTRUMENTS];
   const int32_t *lasts = pitches + RG_NOTE_KEYS;
-  int32_t rest = event->key < 0;
+  const int32_t *clock_pitches = lasts + ((rules[RG_NOTES_RECORDED] ? rules[RG_NOTES_INSTRUMENTS] + 1 : 1) * RG_NOTE_KEYS);
+  const int32_t *clock_lasts = clock_pitches + rules[RG_NOTES_CLOCKS];
+  int32_t rest = event->key < 0, clocked = event->clock >= 0;
   into[0] = event->frame;
-  into[1] = rest ? 0 : pitches[event->key];
+  into[1] = rest ? 0 : clocked ? clock_pitches[event->clock] : pitches[event->key];
   into[2] = event->volume <= RG_NOTE_VOLUMES ? heard[event->volume] : event->volume - RG_NOTE_VOLUMES - 1;
-  into[3] = rest ? rules[RG_NOTES_REST_LAST] : lasts[(event->instrument * RG_NOTE_KEYS) + event->key];
-  into[4] = rest ? 0 : rules[RG_NOTES_FLAGS];
+  into[3] = rest      ? rules[RG_NOTES_REST_LAST]
+            : clocked ? clock_lasts[event->clock]
+                      : lasts[(event->instrument * RG_NOTE_KEYS) + event->key];
+  into[4] = rest ? 0 : event->side < RG_NOTE_SIDES ? rules[RG_NOTES_SIDE_FLAGS + event->side] : rules[RG_NOTES_FLAGS];
   into[5] = rest ? 0 : rules[RG_NOTES_SHAPES];
+}
+
+/* The speaker an event names from a record's pan byte: one of the three on a part that does not
+ * play a recording, else the part's own (Original::PackNote). */
+static int32_t start_file_event_side(int32_t pan, int32_t recorded) {
+  return !recorded && pan < RG_NOTE_SIDES ? pan : RG_NOTE_SIDES;
+}
+
+/* The noise clock an event plays from a record's byte: the byte where the part takes that many
+ * clocks and the note is no rest, else -1 for its key. */
+static int32_t start_file_event_clock(int32_t clock, int32_t key, int32_t clocks) {
+  return key >= 0 && clock < clocks ? clock : -1;
 }
 
 /* The volume of an event (start_file_event) from a record's +volume+ and +loudness+: a loudness on a
@@ -1217,7 +1237,7 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
   int32_t total_frames = music[rules[RG_NOTES_SONG_AT]], loop_frame = music[rules[RG_NOTES_SONG_AT] + 1];
   int32_t instruments = rules[RG_NOTES_INSTRUMENTS];
   const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
-  const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES};
+  const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1};
 
   /* The records before the one that ends the part, in the order of their ticks; those on one
    * tick stay in the file's order. */
@@ -1240,10 +1260,14 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
   for (int32_t n = 0; n < records; n++) {
     const uint8_t *record = rg_start_file_bytes() + records_at + (order[n] * RG_NOTE_RECORD_BYTES);
     int32_t tick = record[0] | (record[1] << 8), length = record[2] | (record[3] << 8);
-    int32_t named = record[5] < instruments;
-    start_file_event event = {tick < ticks ? tick_frames[tick] : total_frames, record[4] < RG_NOTE_KEYS ? record[4] : -1,
+    /* A note that plays a noise clock has no key, so its key is 0 whatever the record names: two
+     * such notes are the same pitch exactly when their clocks are. */
+    int32_t named = record[5] < instruments, key = record[4] < RG_NOTE_KEYS ? record[4] : -1;
+    int32_t clock = start_file_event_clock(record[10], key, rules[RG_NOTES_CLOCKS]);
+    start_file_event event = {tick < ticks ? tick_frames[tick] : total_frames, clock >= 0 ? 0 : key,
                               named ? record[5] + 1 : 0, named ? same_recording[record[5]] : -1,
-                              start_file_event_volume(record[6], record[8] | (record[9] << 8), rules[RG_NOTES_RECORDED])};
+                              start_file_event_volume(record[6], record[8] | (record[9] << 8), rules[RG_NOTES_RECORDED]),
+                              start_file_event_side(record[7], rules[RG_NOTES_RECORDED]), clock};
     made = start_file_keep_event(events, made, event, total_frames);
     int32_t ends = tick + length;
     if (length > 0 && !(n + 1 < records && start_file_record_tick(records_at, order[n + 1]) <= ends)) {
@@ -1264,7 +1288,8 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
       const start_file_event *held = split > 0 ? &events[split - 1] : NULL;
       const start_file_event *ending = made > 0 ? &events[made - 1] : NULL;
       if (!(held && held->key >= 0)) silence = ending && ending->key >= 0;
-      else strike = !(ending->key == held->key && ending->recording == held->recording && ending->volume == held->volume);
+      else strike = !(ending->key == held->key && ending->recording == held->recording && ending->volume == held->volume &&
+                      ending->side == held->side && ending->clock == held->clock);
     }
   }
 

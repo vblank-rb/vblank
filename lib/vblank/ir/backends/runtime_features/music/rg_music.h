@@ -56,10 +56,11 @@ void rg_music_follow_level(const int32_t *level);
  * unpacking writes (Original::PackNote), low byte first: the tick a note starts on and how many
  * ticks it lasts (two bytes each, 0 for until the next), its key (0 to 127, anything else a rest),
  * which of the part's instruments it plays and its volume (0 to 15), each the part's own where
- * it names none the part has, a byte of nothing, its loudness in 512ths on a part that plays a
- * recording (two bytes, 65535 for none, past 512 all of it), and two bytes of nothing. A record
- * starting on tick 65535 ends the
- * part. The game holds room for the notes in rg_game_music, each on frame -1, which
+ * it names none the part has, the speaker it plays from on a part that does not play a recording
+ * (0 both, 1 left, 2 right, anything else the part's own), its loudness in 512ths on a part that
+ * plays a recording (two bytes, 65535 for none, past 512 all of it), the noise clock it plays in
+ * place of its key on a part that takes one (a byte below the number of clocks the part takes),
+ * and a byte of nothing. A record starting on tick 65535 ends the part. The game holds room for the notes in rg_game_music, each on frame -1, which
  * the player never reaches, and this writes the notes the records make over the first of them.
  *
  * rg_music_fill_notes makes them by the one rule every backend keeps (Audio::Score::Events
@@ -73,10 +74,13 @@ void rg_music_follow_level(const int32_t *level);
  * holds, the room for notes the first time through and for every time after, where the records
  * are in the file and how many at most, where the song's length in frames is in +music+ (the
  * frame it comes round to is the number after), 1 if it comes round, a rest's fourth number, the
- * fifth and sixth numbers of a note that sounds, and how many instruments the part names. Then a
+ * fifth and sixth numbers of a note that sounds, how many instruments the part names, 1 if it
+ * plays a recording, the fifth number for a note that names each of the three speakers, and how
+ * many noise clocks the part takes. Then a
  * note's third number for each volume from 0 to 15 and for the part's own; for each instrument
- * the first that names the same recording; a note's second number for each of the 128 keys; and
- * its fourth for each key, on the part's own instrument and then on each it names. Every number
+ * the first that names the same recording; a note's second number for each of the 128 keys;
+ * its fourth for each key, on the part's own instrument and then on each it names; and its second
+ * and then its fourth for each noise clock the part takes. Every number
  * of a note is one the game worked out as it was built: nothing here tunes a key or times a tick. */
 void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 

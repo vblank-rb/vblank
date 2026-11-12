@@ -671,19 +671,35 @@ module VBlank
           # same recording, which is how two notes are known to play the same one; the second
           # number for each key; and the fourth for each key, on the part's own instrument and
           # then on each it names (a part on a voice of the console's has the one list).
+          #
+          # After the fifth number, the fifth for a note that names each speaker a record can
+          # (Original::PackNote::SIDES: both, the left, the right), which a recorded part does not
+          # take, and how many noise clocks the part takes (Original::PackNote::CLOCK_BYTES on the
+          # noise voice, else none); after the fourth for each key, the second and the fourth for
+          # each of those clocks (IR::StartFile::Notes#clock_events).
           def start_file_note_rules(part, kind, where)
             events = where.key_events
+            clocks = where.clock_events
             recorded = kind == :recorded
             sounding = encoded_note([0, events.first[1], nil, nil, nil], part, kind)
+            sides = Original::PackNote::SIDES.values.map { |side| recorded ? sounding[4] : encoded_note(sided_event(events.first[1], side), part, kind)[4] }
             heard = [*(0..StartFile::MOST_VOLUME), part.volume].map { |volume| recorded ? Tunes.mix_loudness(volume) : volume }
             lasts = if recorded
                       [nil, *where.instruments].map { |name| events.map { |event| note_sound_row([0, event[1], name, nil, nil], part) } }
                     else
                       [events.map { |event| note_ticks(kind, event[1]) }]
                     end
-            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *heard,
+            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *sides, clocks.size, *heard,
              *where.instruments.map { |name| where.instruments.index(name) },
-             *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten]
+             *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten,
+             *clocks.map { |event| @sound_log.pitch_number(event[1]) }, *clocks.map { |event| note_ticks(kind, event[1]) }]
+          end
+
+          # An event at +pitch+ that names +side+ (:left, :right or :center) for its speaker.
+          def sided_event(pitch, side)
+            event = [0, pitch, nil, nil, nil]
+            event[Audio::Music::Part::PAN_SLOT] = Audio::Pan::SIDES.fetch(side)
+            event
           end
 
           # The most ticks a record can name: where a note starts, and how long it lasts.

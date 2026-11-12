@@ -229,7 +229,7 @@ module VBlank
       RECORDING_STAND_IN_HOLD = 0
       def self.recording_stand_in_envelope = Audio::Envelope.new(attack: 0, decay: 0, sustain: 0, release: 0)
 
-      # A PART'S NOTES IN THE FILE (Audio::Music::Part#from_file): +count+ records of eight bytes
+      # A PART'S NOTES IN THE FILE (Audio::Music::Part#from_file): +count+ records of twelve bytes
       # from +at+ on, each an Original::PackNote, ended early by a note that ends its part.
       # +instruments+ are the recordings a note's instrument number picks from, in order. The
       # rest is what turns the records into the events a part plays, which is the Score's work:
@@ -248,7 +248,8 @@ module VBlank
       #
       # The file is the player's, so nothing in it stops the game, where the build that holds the
       # same records refuses them: a key past 127 is a rest, and an instrument the part does not
-      # name or a volume past 15 is the part's own.
+      # name, a volume past 15 or a speaker that is none is the part's own, and a noise clock that
+      # is none plays the key.
       #
       # +recorded+ is whether the part plays a recording, which alone takes a record's loudness in
       # 512ths; a part on a voice of the console's takes its volume, and a loudness in the file means
@@ -269,6 +270,28 @@ module VBlank
         def key_events
           notes = (0..MOST_KEY).map { |key| Audio::Score::Note.new(at: key, key: key) }
           part.with(notes: notes).to_voice(TicksAsFrames, MOST_KEY + 1, who).events
+        end
+
+        # Whether a record's speaker is the note's: on any part but one that plays a recording,
+        # which plays from both.
+        def takes_side? = !recorded
+
+        # Whether a record's noise clock is the note's pitch: on a part on the noise voice that is
+        # not transposed, since a transpose cannot move the voice's own setting.
+        def takes_clock?
+          Audio::Score::Checks.noise?(Audio::Music.resolve_plays(part.plays)) && part.transpose.to_i.zero?
+        end
+
+        # WHAT EACH NOISE CLOCK COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
+        # each clock byte makes (Original::PackNote::CLOCK_BYTES of them, from 0), or none for a
+        # part that does not take a clock. An event's frame is its byte.
+        def clock_events
+          return [] unless takes_clock?
+
+          notes = (0...Original::PackNote::CLOCK_BYTES).map do |byte|
+            Audio::Score::Note.new(at: byte, noise_clock: Original::PackNote.clock_of(byte))
+          end
+          part.with(notes: notes).to_voice(TicksAsFrames, Original::PackNote::CLOCK_BYTES, who).events
         end
       end
 
@@ -310,9 +333,12 @@ module VBlank
       def self.notes_in(bytes, where)
         records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * Original::PackNote::BYTES))
         records.map do |note|
+          key = note.key if note.key <= MOST_KEY
+          clock = note.clock if key && where.takes_clock?
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (note.key if note.key <= MOST_KEY), volume: volume_of(note, where.recorded),
-                                 instrument: where.instruments[note.instrument])
+                                 key: (key unless clock), volume: volume_of(note, where.recorded),
+                                 instrument: where.instruments[note.instrument], pan: (note.side if where.takes_side?),
+                                 noise_clock: clock)
         end
       end
 
