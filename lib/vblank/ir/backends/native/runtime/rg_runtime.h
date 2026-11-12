@@ -166,7 +166,8 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * and 0 for a place past the colours.
  *
  * rg_start_file_fill_background: the tiles of a background whose map, tiles and colours are all in
- * the file (IR::StartFile::Background), as the original's console keeps them. Which tiles the map
+ * the file (IR::StartFile::Background), its map in VBlank's own record or as the original's console
+ * keeps it, and its tiles and colours as that console keeps them. Which tiles the map
  * names is in the file, so the game holds a tile for every cell of the map, in the map's order, and
  * this fills each: the cell's tile, turned as the cell says, in the colours of the cell's bank.
  * +rules+ are RG_FILL_BACKGROUND_HEADER_NUMBERS numbers: how many tile pixels there are in all,
@@ -183,7 +184,8 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * tiles the game holds for the background before the map's in each set (a stand-in for each bank,
  * and the tiles of the cells it may be written later, which rg_start_file_fill_picture fills), so a
  * cell's tile is that many on from the set's first; and how many bytes a cell is, two, or one for
- * a map of bytes, each a tile's number, as a layer that turns keeps its map. Then the two
+ * a map of bytes, each a tile's number, as a layer that turns keeps its map, or four for a cell of
+ * VBlank's own record (Original::MapCell, lib/vblank/original/map_cell.rb). Then the two
  * layouts, as rg_start_file_fill_picture has them, and for each set each bank's colours: the bank
  * of the file they are, or -1, and then a colour for each place, which the game holds, where it
  * is -1. The tiles of one set follow those of the one before. Place 0 is RG_SEE_THROUGH. A cell

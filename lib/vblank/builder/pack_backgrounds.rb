@@ -15,8 +15,17 @@ module VBlank
     # A retail game decides nothing about a cell of a screen: it copies the screen's tiles into video
     # memory, its map into the console's map and its colours into colour memory, and the console
     # draws each cell from its number. So the background is given the same three, as the original
-    # keeps them. Each number of the map is a cell in the layout of the console the original is for
-    # (Console::MapWordFormat): which tile, mirrored or upside down, and which bank of colours.
+    # keeps them, all but the map: each cell of it is a record of VBlank's own (Original::MapCell:
+    # which tile, which bank of colours, mirrored or upside down), which the port's unpacking writes
+    # from the original's maps, so nothing here knows how any one console keeps a cell:
+    #
+    #   slots.map_cells :city_map, count: 1024    # written by `pack[:city_map].write_cell(at, tile:, ...)`
+    #
+    # A SHORTCUT FOR A CONSOLE VBLANK KNOWS: a map of numbers of two bytes is read as the original's
+    # console keeps a cell (Console::OriginalFormats#map_words, the Advance's, the Super Nintendo's
+    # and the Genesis's), as `slots.numbers :city_map, ..., width: :half` in the example at the top
+    # is. Both are read by one reader
+    # (Console::MapWordFormat), the record being a layout like any console's.
     #
     # A MAP OF ONE BYTE A CELL OVER TILES OF A BYTE A PIXEL is the other way a console keeps a
     # background: the layer it turns and resizes (the Advance's turning layer, the Super
@@ -69,6 +78,7 @@ module VBlank
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_cells!(name, map)
+        refuse_set_cells_of_map_cells!(name, map, set_cells)
         refuse_colors_not_whole_slot!(name, colors)
         words = pack_map_word_format!(name, map)
         refuse_table_tiles_under_banked_cells!(name, tiles, words)
@@ -123,7 +133,7 @@ module VBlank
       # The cells of +map+ (a slot of numbers, or a run of one), in order.
       def pack_map_cells(map, where)
         whole = map.with(first_pixel: 0, pixel_count: nil)
-        cells = pack_slot_values(whole, :numbers, where)
+        cells = pack_slot_values(whole, map.shape, where)
         map.run_of_numbers? ? cells.slice(map.first_pixel, map.pixel_count) : cells
       end
 
@@ -420,12 +430,24 @@ module VBlank
       # map: is a slot of numbers a cell each, or a run of one: two bytes wide in the layout of
       # the original's console, or one byte wide, each a tile's number (Console::BYTE_MAP_CELLS).
       def refuse_map_not_of_cells!(name, map)
+        return if map.is_a?(DSL::PackSlot) && map.shape == :map_cells
         return if map.is_a?(DSL::PackSlot) && map.shape == :numbers && %i[half byte].include?(map.layout.width)
 
-        raise ArgumentError, "background :#{name} needs map:, a slot of numbers, one a cell. A cell is two bytes wide, " \
-                             "like `slots.numbers :map, count: 512, width: :half, signed: false`, or one byte wide for " \
-                             "a map that holds only tile numbers, like `slots.numbers :map, count: 1024, width: :byte, " \
-                             "signed: false`."
+        raise ArgumentError, "background :#{name} needs map:, a slot of map cells that the unpacking writes, like " \
+                             "`slots.map_cells :map, count: 1024`. It can also be a slot of numbers, one a cell: two " \
+                             "bytes wide in the layout of the original's console, like `slots.numbers :map, count: 512, " \
+                             "width: :half, signed: false`, or one byte wide for a map that holds only tile numbers, " \
+                             "like `slots.numbers :map, count: 1024, width: :byte, signed: false`."
+      end
+
+      # A cell written later is one of the original's cell numbers, and a map of VBlank's own cells
+      # has none yet.
+      def refuse_set_cells_of_map_cells!(name, map, set_cells)
+        return if set_cells.nil? || map.shape != :map_cells
+
+        raise ArgumentError, "background :#{name} was given set_cells:, and its map: is a slot of map cells. A background " \
+                             "with a map of map cells cannot take set_cells: yet. To fix this, remove set_cells:, or " \
+                             "give map: a slot of numbers in the original's layout."
       end
 
       # A cell of two bytes names a bank of sixteen colours, and a tile of 256 colours has no banks.
@@ -434,9 +456,10 @@ module VBlank
       def refuse_table_tiles_under_banked_cells!(name, tiles, words)
         return unless drawn_from_whole_table?(tiles) && words.bank_bits.positive?
 
-        raise ArgumentError, "background :#{name} has tiles of #{tiles.layout.format.colors} colors and a map of cells two " \
-                             "bytes wide. A cell two bytes wide names a bank of colors, and such a tile has no banks. " \
-                             "To fix this, give map: a slot of numbers one byte wide, each the number of a tile."
+        cells = words.cell_bytes == 2 ? "cells two bytes wide" : "map cells"
+        raise ArgumentError, "background :#{name} has tiles of #{tiles.layout.format.colors} colors and a map of #{cells}. " \
+                             "Such a cell names a bank of colors, and such a tile has no banks. To fix this, give map: " \
+                             "a slot of numbers one byte wide, each the number of a tile."
       end
 
       # A tile of 256 colours can name any place of the table, so the slot holds all of it.
@@ -465,16 +488,20 @@ module VBlank
                              "names its bank of colors by counting from the slot's first color."
       end
 
-      # The layout of a cell of +map+: a byte that is a tile's number, in any original, or the
-      # two bytes the original's console keeps.
+      # The layout of a cell of +map+: VBlank's own record (Original::MapCell), which any original's
+      # unpacking can write; a byte that is a tile's number, in any original; or the two bytes the
+      # original's console keeps, a shortcut for a port of a console whose layout VBlank knows.
       def pack_map_word_format!(name, map)
+        return Original::MapCell::FORMAT if map.shape == :map_cells
         return Console::BYTE_MAP_CELLS if map.layout.width == :byte
 
         formats = Console.for(@data_pack_platform).original_formats if Console::KITS.key?(@data_pack_platform)
         formats&.map_words or
-          raise ArgumentError, "background :#{name} reads a map from the data pack, and VBlank does not know how a cell of " \
-                               "this original's maps is kept. A map from the pack is read in the layout of the Advance, " \
-                               "the Super Nintendo or the Genesis."
+          raise ArgumentError, "background :#{name} reads a map of numbers two bytes wide from the data pack, and VBlank " \
+                               "does not know how this original's console keeps a cell in two bytes. To fix this, give " \
+                               "map: a slot of map cells, like `slots.map_cells :map, count: 1024`, and write each cell " \
+                               "into it in the unpacking with `pack[:map].write_cell(at, tile:, bank:, mirrored:, " \
+                               "upside_down:)`."
       end
 
       def refuse_bad_pack_background_shape!(name, map, across, cell, words)
@@ -486,7 +513,8 @@ module VBlank
         end
         return if sides.include?(cell)
 
-        raise ArgumentError, "background :#{name} was given cell: #{cell.inspect}. A cell of this original's maps is " \
+        maps = words.cell_bytes == Original::MapCell::BYTES ? "a map of map cells" : "this original's maps"
+        raise ArgumentError, "background :#{name} was given cell: #{cell.inspect}. A cell of #{maps} is " \
                              "#{sides.join(' or ')} pixels square."
       end
     end

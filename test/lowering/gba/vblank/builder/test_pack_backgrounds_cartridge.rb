@@ -43,6 +43,16 @@ class TestPackBackgroundsCartridge < Minitest::Test
     end
   end
 
+  # A MAP OF CELLS OF VBLANK'S OWN, written by the unpacking from a Color original's two maps, on
+  # the Advance's cartridge, every bank walked up from black by its name.
+  def test_a_map_of_cells_walked_by_its_banks_names_shows_on_the_cartridge_as_on_the_interpreter
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder), walked: true)
+
+      assert_backends_agree(program, frames: [2, 4, COLOR_WALK_STEPS + 3])
+    end
+  end
+
   # A LAYER THAT TURNS, FROM THE PACK (PackTurningBackgroundGames): a map of bytes over tiles of a
   # byte a pixel. The cartridge shows what the interpreter shows as the game eases its size and
   # turns it about its map's middle, set down at a point of the screen.

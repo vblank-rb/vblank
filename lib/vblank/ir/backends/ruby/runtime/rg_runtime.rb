@@ -553,6 +553,16 @@ def rg_start_file_fill_pose(rules)
   end
 end
 
+# How String#unpack reads the cells of a map in the file: a byte each (a map of tile numbers), two
+# bytes (a console's own cell), or four (VBlank's own record, Original::MapCell, low byte first).
+def rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  case cell_bytes
+  when 1 then "C*"
+  when 4 then map_high_byte_first == 1 ? "N*" : "V*"
+  else map_high_byte_first == 1 ? "n*" : "v*"
+  end
+end
+
 # Which tiles of a background whose map is in the file are drawn from one list it follows
 # (rg_runtime.h, rg_start_file_fill_followed_tiles). The game writes +followed+ unfrozen.
 def rg_start_file_fill_followed_tiles(followed, rules, banks)
@@ -561,9 +571,7 @@ def rg_start_file_fill_followed_tiles(followed, rules, banks)
   bank_count = rules[16]
   held, cell_bytes = rules[19, 2]
   columns = across * side
-  kept_as = if cell_bytes == 1 then "C*"
-            else map_high_byte_first == 1 ? "n*" : "v*"
-            end
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   count = followed[2]
   @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
     bank = (word >> bank_at) & ((1 << bank_bits) - 1)
@@ -592,10 +600,7 @@ def rg_start_file_fill_background(rules)
   tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
   @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
   pixels = @rg_game_tile_pixels
-  # A cell is two bytes, or one: a map of bytes, each a tile's number.
-  kept_as = if cell_bytes == 1 then "C*"
-            else map_high_byte_first == 1 ? "n*" : "v*"
-            end
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   words = @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as)
   words.each_with_index do |word, cell|
     first_tile = word & ((1 << tile_bits) - 1)

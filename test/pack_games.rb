@@ -487,6 +487,13 @@ module PackGames
         tiles = video.map(&MadeUpOriginalLayouts::FOUR_PLANES).join
         built(*pack_game_and_file(original(folder, :snes, tiles, words), 19, words, across: 2, cell: 16, options: options))
       end,
+      # A Color original's two maps, joined by the port's unpacking into map cells of VBlank's own.
+      game(:background_of_map_cells_from_a_color_original, passes: 3) do |folder, options|
+        built(*color_cells_game_and_file(color_original(folder), options: options))
+      end,
+      game(:background_of_map_cells_walked_by_bank_names, passes: COLOR_WALK_STEPS + 3) do |folder, options|
+        built(*color_cells_game_and_file(color_original(folder), walked: true, options: options))
+      end,
       game(:background_of_a_genesis_original, passes: 3) do |folder, options|
         words = [GENESIS_CELL.(1), GENESIS_CELL.(1, mirrored: true), GENESIS_CELL.(2, bank: 1, upside_down: true),
                  GENESIS_CELL.(3, bank: 1, mirrored: true, upside_down: true)]

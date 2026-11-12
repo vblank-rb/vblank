@@ -67,6 +67,19 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `test/all/vblank/builder/test_pack_scores.rb`, `test/pack_scores_at_start_tests.rb`,
     `test/pack_sound_tests.rb` and `test/snes_envelope_tests.rb`.
 
+  - `slots.map_cells :title_map, count: 1024` — **cells of a background's map, four bytes each in a record
+    of VBlank's own** (`Original::MapCell`, `lib/vblank/original/map_cell.rb`, whose `bytes_of` a port's
+    tests can use): the tile in two bytes, low byte first, counted from the first tile of the background's
+    `tiles:` (0 to 65535; a second bank of video memory is more tiles of the same slot); the bank of
+    colours in one (0 to 255; a number past a field keeps its low bits, as a write of a byte does); and
+    the turns in one, 1 mirrored and 2 upside down, the other bits 0. No
+    bit a console keeps for itself (a priority) is in it: a background's layer says where it is drawn. A
+    cell is one tile of 8x8. The record is the same whatever console the original ran on, so the unpacking
+    routine writes the original's maps into it (`write_cell`, below), and `background ..., map:
+    pack[:title_map]` reads it on every console and build that draws a tiled background (`backgrounds.md`;
+    the PlayStation's build does not draw one yet). A map of numbers in the
+    Advance's, the Super Nintendo's or the Genesis's own layout can still be read as it is.
+
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
   (a whole number, 1 or more; 1 when not named). It changes only the shell's progress bar (below):
   a slot's share of the bar is its bytes times its cost, so a slot the routine renders slowly moves the
@@ -166,6 +179,16 @@ from that copy. The game's code says each piece's shape and size; it never depen
     pack names its `cost:`, the count must name the slot it went to,
     `copy.count_written 256, into: pack[:music]`; a count with no `into:` is then refused. Worked example:
     `test/all/vblank/builder/test_data_packs.rb` (`numbers_written`).
+  - `pack[:title_map].write_cell(at, tile:, bank: 0, mirrored: false, upside_down: false)` writes cell `at`
+    of a slot of map cells as its record. Each part may be a number or worked out as the routine runs, as
+    `at` may; `mirrored:` and `upside_down:` are true or false, or a number whose lowest bit is read, so a
+    Game Boy Color port writes `tile: number + (((attributes >> 3) & 1) * 384), bank: attributes & 7,
+    mirrored: attributes >> 5, upside_down: attributes >> 6`, with `attributes = copy.byte(attribute_map +
+    at)` and `number` the cell's tile counted from $8000: `copy.byte(map + at)` on a screen that counts
+    from $8000, and `((copy.byte(map + at) + 128) & 255) + 128` on one that counts from $8800 (LCDC bit 4
+    clear, where byte 0 is the tile at $9000). A cell past the slot is refused or stops the build as a
+    number's is, and `write_cell` on a slot that is not map cells is refused. Worked example:
+    `color_cells_game_and_file` in `test/pack_background_tests.rb`.
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
     verbs, each place counted from that file's start. A fixed place outside the file is refused.
 

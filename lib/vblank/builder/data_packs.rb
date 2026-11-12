@@ -944,7 +944,8 @@ module VBlank
 
       # What each way of reading a slot needs, in words, for the error.
       SLOT_READING_WORDS = { colors: "a slot of colors", tile: "one tile, like `pack[:walls].tile(0)`",
-                             numbers: "a slot of numbers", samples: "a slot of samples" }.freeze
+                             numbers: "a slot of numbers", samples: "a slot of samples",
+                             map_cells: "a slot of map cells" }.freeze
 
       def refuse_slot_read_wrongly!(handle, wanted, where)
         # A run of a slot of numbers is a background's map alone (PackBackgrounds#pack_map_cells).

@@ -52,8 +52,9 @@ module VBlank
       def flipped?(word) = !flip_bit.nil? && word[flip_bit] == 1
       def bank_of(word) = (word >> bank_at) & ((1 << bank_bits) - 1)
 
-      # How wide a slot of numbers that holds such cells is: :byte or :half.
-      def cell_width = cell_bytes == 1 ? :byte : :half
+      # How wide a number that holds such a cell is: :byte, :half, or :word for a record of four
+      # bytes (Original::MapCell).
+      def cell_width = { 1 => :byte, 2 => :half, 4 => :word }.fetch(cell_bytes)
 
       # The highest number a cell can be.
       def most_cell = (1 << (cell_bytes * 8)) - 1

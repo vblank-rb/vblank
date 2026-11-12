@@ -16,6 +16,7 @@ require_relative "original/facts_file"     # A facts file as text: values rewrit
 require_relative "original/facts"          # What the port measured from the original
 require_relative "original/decompilation"  # The decompilation, built and proven to be the copy
 require_relative "original/pack_note"      # One note of music in a data pack, a record of VBlank's own
+require_relative "original/map_cell"       # One cell of a background's map in a data pack, a record of VBlank's own
 require_relative "original/slot"           # One piece of the original's data: name, shape, size, place
 require_relative "original/frame_layout"   # How the original keeps one frame of a sprite, piece by piece
 require_relative "original/frame_reader"   # A piece read by a few lines of the game's own Ruby

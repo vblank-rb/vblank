@@ -374,6 +374,26 @@ module VBlank
         write_or_emit_fault(index, byte_size, index) { @list[place(index)] = value }
       end
 
+      # CELL +index+ OF A SLOT OF MAP CELLS written as a MapCell record: its +tile+, counted from the
+      # first tile of the background's `tiles:`, its +bank+ of colours, and whether it is +mirrored+
+      # and +upside_down+ (true or false, or a number whose lowest bit says). Each may be a number or
+      # a value the routine works out, as +index+ may:
+      #
+      #   pack[:title_map].write_cell(at, tile: number, bank: attributes & 7, mirrored: attributes >> 5,
+      #                                   upside_down: attributes >> 6)
+      def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false)
+        refuse_cell_of_another_shape!
+        bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
+        if index.is_a?(Integer)
+          refuse_item_outside_slot!(index, [@slot.count, "cell"])
+          return bytes.each_with_index { |byte, at| @list[@start + (index * MapCell::BYTES) + at] = byte }
+        end
+
+        write_or_emit_fault(index, @slot.count, index * MapCell::BYTES) do
+          bytes.each_with_index { |byte, at| @list[place((index * MapCell::BYTES) + at)] = byte }
+        end
+      end
+
       # Where byte +index+ of the slot is in the pack's list.
       def place(index) = index.is_a?(Integer) ? @start + index : DSL::Value.new(@builder, DSL::Value.node_for(index)) + @start
 
@@ -421,12 +441,22 @@ module VBlank
 
       # A place written in the program, past the slot: a number on a slot of halves or words, a byte
       # on any other.
-      def refuse_item_outside_slot!(index)
-        items, kind = wide_numbers? ? [@slot.count, "number"] : [byte_size, "byte"]
+      # +counted+ is how many items the slot holds and what one is called, where it is not its numbers
+      # or its bytes (a slot of map cells' cells).
+      def refuse_item_outside_slot!(index, counted = nil)
+        items, kind = counted || (wide_numbers? ? [@slot.count, "number"] : [byte_size, "byte"])
         return if index.between?(0, items - 1)
 
         raise ArgumentError, "Slot :#{@slot.name} holds #{kind}s 0 to #{items - 1}. There is no #{kind} #{index}. " \
                              "To fix this, use a #{kind} from 0 to #{items - 1}, or make the slot's count: bigger."
+      end
+
+      def refuse_cell_of_another_shape!
+        return if @slot.shape == :map_cells
+
+        raise ArgumentError, "The unpacking calls `write_cell` on slot :#{@slot.name}, which holds #{@slot.shape}. " \
+                             "`write_cell` writes a cell of a slot of map cells. To fix this, make the slot like " \
+                             "`slots.map_cells :#{@slot.name}, count: 1024`."
       end
 
       def write_fixed_place(index, value)

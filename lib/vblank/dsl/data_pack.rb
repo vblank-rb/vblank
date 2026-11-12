@@ -74,6 +74,11 @@ module VBlank
       # the original's songs, for a Score's part (`notes: pack[:theme].notes(instruments: %i[horn])`).
       def notes(name, count:, at: nil, cost: 1) = add(Original::Slot.notes(name, at: at, count: count, cost: cost))
 
+      # +count+ cells of a background's map, each an Original::MapCell, which the unpacking routine
+      # writes from the original's maps (`pack[:title_map].write_cell(at, tile:, bank:, ...)`), for a
+      # background's `map:`.
+      def map_cells(name, count:, at: nil, cost: 1) = add(Original::Slot.map_cells(name, at: at, count: count, cost: cost))
+
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
       # takes a third argument, the name of the release it unpacks, a plain String as the game is

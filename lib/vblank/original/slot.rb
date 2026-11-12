@@ -82,6 +82,9 @@ module VBlank
                            }),
         pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes }),
         notes: Shape.new(item_bytes: ->(_slot) { PackNote::BYTES }, decode: ->(_slot, bytes) { PackNote.list_in(bytes) }),
+        # Each cell read as one number, as a map of any console's cells is (MapCell::FORMAT).
+        map_cells: Shape.new(item_bytes: ->(_slot) { MapCell::BYTES },
+                             decode: ->(slot, bytes) { IR::FormatReading.numbers(bytes, slot.format, width: :word, signed: false) }),
         samples: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.unpack("c*") })
       })
 
@@ -115,6 +118,15 @@ module VBlank
       # writes the notes its original's sound driver plays into it.
       def self.notes(name, count:, at: nil, cost: 1)
         new(name: name.to_sym, shape: :notes, at: at, count: count, width: nil, signed: nil, format: nil, cost: cost)
+      end
+
+      # +count+ cells of a background's map, each a MapCell record, for a background's `map:`
+      # (`background :title, tiles: pack[:video], map: pack[:title_map], ...`). The record is
+      # VBlank's own, the same whatever the original, so the port's unpacking routine writes the
+      # cells of its original's maps into it.
+      def self.map_cells(name, count:, at: nil, cost: 1)
+        new(name: name.to_sym, shape: :map_cells, at: at, count: count, width: nil, signed: nil, format: MapCell::NUMBER_FORMAT,
+            cost: cost)
       end
 
       # A slot of one-byte items that no layout changes: pixels or samples.

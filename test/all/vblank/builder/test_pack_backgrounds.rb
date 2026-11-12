@@ -87,6 +87,100 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
+  # A MAP OF CELLS OF VBLANK'S OWN (Original::MapCell), which a port's unpacking writes from its
+  # original's maps: here a Color original's two maps, a tile number and an attribute byte a cell.
+  # The screen is the one the decoded cells written in the game show, tile, video bank, colour
+  # bank and both turns included.
+  def test_a_map_of_cells_written_by_the_unpacking_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder))
+
+      assert_equal game_player.run(color_cells_drawn_by_hand, frames: 3).screen.to_a, game_player.run(program, frames: 3).screen.to_a
+    end
+  end
+
+  # Every bank of such a background is a list named for its slot, so the game walks all eight up
+  # from black by name, as a Color game fades its screen in.
+  def test_a_map_of_cells_is_walked_by_its_banks_names
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder), walked: true)
+      by_hand = color_cells_drawn_by_hand(walked: true)
+
+      [2, COLOR_WALK_STEPS + 2].each do |frames|
+        assert_equal game_player.run(by_hand, frames: frames).screen.to_a, game_player.run(program, frames: frames).screen.to_a,
+                     "the screen after #{frames} frames"
+      end
+    end
+  end
+
+  # A game of the Color original whose data pack names a slot of map cells and whose block, run on
+  # the builder with the pack, declares the rest. +routine+ is the unpacking's, given the pack.
+  private def color_map_cells_refusal(folder, routine: ->(_pack) {}, &declares)
+    from = color_original(folder)
+    assert_raises(ArgumentError) do
+      b = Builder.new
+      b.instance_eval do
+        screen :tiled
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :video, at: TILES_AT, count: COLOR_VIDEO.length
+          slots.colors :palette, at: COLORS_AT, count: COLOR_PALETTE.length
+          slots.numbers :numbers, at: COLOR_TILE_MAP_AT, count: 8, width: :half, signed: false
+          slots.map_cells :map, count: 8
+          slots.fill_from_copy { |_copy, filled| routine.(filled) }
+        end
+        instance_exec(pack, &declares)
+      end
+    end
+  end
+
+  def test_a_two_byte_map_of_an_original_whose_cells_vblank_does_not_know_points_at_map_cells
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder) do |pack|
+        background :world, tiles: pack[:video], map: pack[:numbers], colors: pack[:palette], across: 4
+      end
+
+      assert_includes error.message, "slots.map_cells"
+      assert_includes error.message, "write_cell"
+    end
+  end
+
+  def test_write_cell_on_a_slot_that_is_not_map_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:numbers].write_cell(0, tile: 1) }) { |_pack| nil }
+
+      assert_includes error.message, "write_cell"
+      assert_includes error.message, ":numbers"
+    end
+  end
+
+  def test_write_cell_past_the_slot_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(8, tile: 1) }) { |_pack| nil }
+
+      assert_includes error.message, "no cell 8"
+    end
+  end
+
+  def test_a_map_of_cells_told_cells_written_later_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder) do |pack|
+        background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: [1]
+      end
+
+      assert_includes error.message, "set_cells:"
+    end
+  end
+
+  def test_a_big_cell_of_a_map_of_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder) do |pack|
+        background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, cell: 16
+      end
+
+      assert_includes error.message, "cell:"
+    end
+  end
+
   # Each bank is a list of colours named for its slot, so a game draws the background with other
   # colours by place as it would one of its own.
   def test_a_bank_is_a_list_of_colours_named_for_its_slot

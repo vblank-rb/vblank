@@ -39,9 +39,10 @@ module VBlank
     #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
     # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
     #   that a port's unpacking writes. The program holds no event for it.
-    # - a background (Nodes::Background#from_file, a Background): its map, one number of two bytes
-    #   a cell in the layout the original's console keeps a map in (Console::MapWordFormat), or
-    #   one byte a cell that is a tile's number (Console::BYTE_MAP_CELLS), and
+    # - a background (Nodes::Background#from_file, a Background): its map, a record of VBlank's own
+    #   a cell (Original::MapCell, four bytes), one number of two bytes a cell in the layout the
+    #   original's console keeps a map in, or one byte a cell that is a tile's number
+    #   (Console::BYTE_MAP_CELLS), each read by Console::MapWordFormat, and
     #   the tiles and the banks of colours those numbers pick from. Which tiles there are and what
     #   the map holds is known only once the file is read, so the program holds a tile for each
     #   bank and a map of the right size that names the first, and its lists of colours hold a
@@ -139,8 +140,9 @@ module VBlank
       # Where a background's map, tiles and colours are in the file, as the original keeps them.
       # The map is +cells+ numbers from +map_at+ on, kept as +number_format+ (a
       # Console::NumberFormat), +across+ of them to a row, each a cell in the layout +map_words+ (a
-      # Console::MapWordFormat, which sets how many bytes a cell is: two, or one for a map of
-      # tile numbers alone, as a layer that turns keeps it) and +cell_tiles+ tiles square. A cell's tile is counted from the
+      # Console::MapWordFormat, which sets how many bytes a cell is: two, one for a map of tile
+      # numbers alone, as a layer that turns keeps it, or four for Original::MapCell's record) and
+      # +cell_tiles+ tiles square. A cell's tile is counted from the
       # tile at +tiles_at+, of +tile_count+ tiles kept as +tile_format+ (a Console::TileFormat). Its
       # bank is counted from the colour at +colors_at+, of +bank_count+ banks of +bank_size+ colours
       # kept as +color_format+ (a Console::ColorFormat); +bank_names+ are the names the game knows
