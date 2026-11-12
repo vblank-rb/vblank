@@ -467,7 +467,7 @@ module VBlank
             @tile_pixel_count = tile_pixels.length # what the runtime copies them by, to fill a tile read from the start file
             [runtime_array("tile_pixels", "uint16_t", tile_pixels), runtime_array("backgrounds", "int32_t", fields),
              runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
-             runtime_array("painted_tiles", "int32_t", painted_tiles),
+             runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
              runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors))]
           end
 
@@ -484,6 +484,13 @@ module VBlank
             starts = [painted_tiles.length, run_colors.length]
             bg.tiles.zip(runs) do |tile, run|
               painted_tiles.concat(run ? [@run_numbers.fetch(run.name), run.tiles.index(tile)] : [NOT_PAINTED, 0])
+            end
+            # A background read from the start file whose tiles take turns through pictures has
+            # a tile for every cell after the ones the game holds, none painted until the routine
+            # reading the file points the cells naming such a tile at a run's (StartFileFills).
+            if bg.from_file && !bg.from_file.moving.empty?
+              record_start_file_moving_cells(bg, starts.first)
+              painted_tiles.concat(Array.new(bg.from_file.tiles_drawn * 2) { |at| at.even? ? NOT_PAINTED : 0 })
             end
             [nil, *steps].each do |swaps|
               @tile_runs.each_value do |run|

@@ -1664,8 +1664,9 @@ module VBlank
               run = run_painting(name)
               if run
                 swapped = swaps && swaps[run.list_drawn_from]
-                own = run.colors.drop(1).first(solid_run?(run) ? Art::PLACES : Art::OWN_COLORS)
-                shown = own.each_with_index.map { |color, i| swapped && swapped[i + 1] || color }
+                own = run_colors_shown(run).drop(1).first(solid_run?(run) ? Art::PLACES : Art::OWN_COLORS)
+                places = run_places_drawn(run) || (1..own.length).to_a
+                shown = own.each_with_index.map { |color, i| swapped && swapped[places[i]] || color }
                 return solid_run?(run) ? shown.map { |color| color & 0x7FFF } : padded_colors(shown)
               end
 

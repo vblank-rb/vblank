@@ -280,7 +280,8 @@ module VBlank
           def marked_numbers_in?(table) = @start_file_marked_numbers.any? { |noted| noted.table == table }
 
           def marked_table_defines
-            MARKED_TABLES.filter_map { |table, kept| Statements::Define.new(kept.define) if marked_numbers_in?(table) }
+            [*MARKED_TABLES.filter_map { |table, kept| Statements::Define.new(kept.define) if marked_numbers_in?(table) },
+             *(Statements::Define.new("RG_PAINTED_TILES_WRITABLE") if paints_moving_cells?)]
           end
 
           def build_start_file_marked_number_fills
@@ -340,8 +341,44 @@ module VBlank
             followed = @start_file_followed_tiles.map do |tiles|
               eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry), Statements::Int.new(tiles.banks))
             end
-            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed
+            moving = @start_file_moving_cells.map do |cells|
+              eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry), cells.rules)
+            end
+            rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving
           end
+
+          # THE CELLS OF A BACKGROUND READ FROM THE FILE THAT NAME A TILE TAKING TURNS THROUGH
+          # PICTURES (IR::StartFile::MovingTile). The game holds a tile of a run for each bank and
+          # turn of such a tile (Builder::PackTilePictures), and which cells name it, in which bank
+          # and turn, is in the file. So the background's painted tiles are written with a place
+          # for every cell, where the routine can write (Picture#painted_tiles_of), and the routine
+          # marks each such cell's tile as painted by the run's tile (rg_start_file_fill_moving_cells).
+          #
+          # Its rules: where the background's painted tiles start, how many moving tiles, and for
+          # each its tile as a cell names it and then, for each bank and each turn
+          # (MovingTile::TURNS), the run and which of the run's tiles.
+          StartFileMovingCells = Data.define(:entry, :rules)
+
+          def record_start_file_moving_cells(bg, painted_start)
+            from = bg.from_file
+            turns = IR::StartFile::MovingTile::TURNS
+            numbers = from.moving.flat_map do |moving|
+              shown = (0...from.bank_count).flat_map do |bank|
+                turns.flat_map do |ways|
+                  tile = bg.tiles.fetch(moving.tile_of(bank, ways.include?(:mirrored), ways.include?(:upside_down)))
+                  run = run_painting(tile)
+                  [@run_numbers.fetch(run.name), run.tiles.index(tile)]
+                end
+              end
+              [moving.tile, *shown]
+            end
+            rules = drawing_array("moving_tiles", "int32_t", [painted_start, from.moving.length, *numbers])
+            @start_file_moving_cells << StartFileMovingCells.new(entry: entry_of(bg), rules: rules)
+          end
+
+          # Whether the routine reading the file writes the painted tiles, which are then declared
+          # as written (RG_PAINTED_TILES_WRITABLE).
+          def paints_moving_cells? = !@start_file_moving_cells.empty?
 
           # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE DRAWN FROM ONE LIST IT FOLLOWS
           # (Picture#followed_tile_rules). When the game tells a list what to hold, the tiles drawn
@@ -414,7 +451,13 @@ module VBlank
           # Each table the game reads that is read from the file: as many entries as it holds, kept
           # the way the table is kept (TABLE_KEPT_AS), from where its first entry is.
           def build_start_file_table_fills
-            tables_read.select(&:from_file).map do |table|
+            painted = tables_read.select(&:painted_from_file).map do |table|
+              where = table.painted_from_file
+              turns = where.tiles.flat_map { |tile| [tile.at, TURN_BITS.sum { |way, bit| tile.turns.include?(way) ? bit : 0 }] }
+              eval_call("rg_start_file_fill_painted_tiles", @names.of(:table, table.name), Statements::Int.new(where.tiles.length),
+                        drawing_array("painted_tiles_read", "int32_t", [*tile_format_rules(where.tile_format), *turns]))
+            end
+            painted + tables_read.select(&:from_file).map do |table|
               eval_call("rg_start_file_fill_table", @names.of(:table, table.name),
                         Statements::Int.new(Lowering::TABLE_KEPT_AS.fetch(table_type(table))),
                         Statements::Int.new(table.entry_count), Statements::Int.new(table.from_file), Statements::Int.new(table.file_number_format.high_byte_first ? 1 : 0))

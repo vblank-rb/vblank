@@ -250,7 +250,8 @@ module VBlank
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each do |bg|
                 bg.tiles.uniq.each do |tile|
-                  image = @cache.image(picture_named(tile))
+                  run = run_painting(tile)
+                  image = run || @cache.image(picture_named(tile)) # a run answers list_drawn_from as a picture does
                   next if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
 
                   palette = list_palette_of(bg, image)
@@ -690,6 +691,9 @@ module VBlank
             def cell_of(bg, tile)
               return nil if tile.nil? || tile.negative?
 
+              run = run_painting(bg.tiles.fetch(tile))
+              return @cells_made[[bg.object_id, tile]] ||= run_cell_of(bg, bg.tiles.fetch(tile), run) if run
+
               @cells_made[[bg.object_id, tile]] ||= begin
                 image = @cache.image(picture_named(bg.tiles.fetch(tile)))
                 @art.with_tiles_of(tiles_scene_of(bg)) do
@@ -990,6 +994,9 @@ module VBlank
               arrival = @handover.arrival(scene)
               arrival.map_choices.each { |var| store_number(var, 0) }
               arrival.scenery.each { |bg| emit_put_up(bg, 0, reset_view: 1) }
+              # Tiles its scenery paints from a list show the list as it is now, changed or not, written
+              # in the blank after any tiles of its own (Reference#copy_run_tiles).
+              arrival.painted_tiles.each { |run| emit_run_copy(run) }
               unused = (0...@scene_layers).to_a - arrival.scenery.map { |bg| layer_of(bg) }
               return if unused.empty?
 

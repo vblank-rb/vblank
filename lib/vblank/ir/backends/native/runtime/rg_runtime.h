@@ -203,6 +203,20 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * +banks+ (bank 0 the lowest bit), and counts them in. +rules+ are the background's own, as
  * rg_start_file_fill_background has them. A cell naming a bank past the colours follows no list.
  *
+ * rg_start_file_fill_moving_cells: the cells of such a background that name a tile taking turns
+ * through pictures (IR::StartFile::MovingTile), each shown as a tile of a run of tiles the game
+ * paints, chosen by the cell's bank and turn. +painted+ is rg_game_painted_tiles, written where it
+ * can be. +rules+ are the background's own, as rg_start_file_fill_background has them. +moving+ is:
+ * where the background's painted tiles start in +painted+, how many moving tiles, and for each its
+ * tile as a cell names it and then, for each bank and each of the four turns (none, mirrored,
+ * upside down, both), the run and which of its tiles. A cell naming such a tile in a bank past the
+ * colours keeps its own tile.
+ *
+ * rg_start_file_fill_painted_tiles: +tiles+ tiles of the file into +table+, 32 bytes each, as a run
+ * of painted tiles keeps them: two places a byte, the left one in the low four bits.
+ * +rules+ are the layout the tiles are kept in, RG_TILE_FORMAT_NUMBERS numbers, then for each tile
+ * where it is in the file and how it is turned (RG_TURN_MIRRORED, RG_TURN_UPSIDE_DOWN).
+ *
  * rg_start_file_fill_pose: the pixels of a picture that is one frame of the original's sprites
  * (IR::StartFile::Pose): a list of pieces, each saying where it sits from the object's place,
  * which tile it starts at, how it is turned and how many tiles it is each way. The frame is in the
@@ -285,6 +299,8 @@ void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
+void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);

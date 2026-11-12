@@ -70,6 +70,7 @@ module VBlank
         file_shading: ->(v) { v.is_a?(StartFile::Shading) },          # ...and where a shading's colours and levels are
         file_recording_settings: ->(v) { v.is_a?(StartFile::RecordingSettings) }, # ...and where a recording's settings are
         file_song_length: ->(v) { v.is_a?(StartFile::SongLength) }, # ...and where a song's length is
+        file_painted_tiles: ->(v) { v.is_a?(StartFile::PaintedTiles) }, # ...and tiles a table holds as painted tiles
       })
 
       # Verify a whole program tree. Returns the node on success; raises

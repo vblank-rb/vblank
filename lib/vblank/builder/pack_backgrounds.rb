@@ -85,10 +85,13 @@ module VBlank
         refuse_bad_pack_background_shape!(name, map, across, cell, words)
         refuse_set_cells_of_table_tiles!(name, tiles, set_cells)
         tiles_a_side = cell / Original::Slot::TILE_SIDE
+        record_pack_background_slot(tiles)
+        moving = moving_pack_tiles_of(tiles)
+        refuse_moving_table_tiles!(name, tiles) unless moving.empty?
         if pack_left_out?
           return declare_pack_background_read_at_start(name, tiles: tiles, map: map, colors: colors, across: across,
                                                              tiles_a_side: tiles_a_side, words: words, set_cells: set_cells,
-                                                             **others)
+                                                             moving: moving, **others)
         end
 
         tile_places = pack_tile_places(tiles, subject)
@@ -97,16 +100,15 @@ module VBlank
                      else
                        declare_pack_color_banks(colors, tiles.layout.format.colors, "#{subject}'s colors:")
                      end
-        pictures = {}
-        rows = pack_map_cells(map, "#{subject}'s map:").each_slice(across).flat_map do |row|
+        cells = pack_map_cells(map, "#{subject}'s map:").each_slice(across).flat_map do |row|
           Array.new(tiles_a_side) do |down|
-            row.flat_map do |word|
-              Array.new(tiles_a_side) do |along|
-                tile = words.cell_tile(word, along, down, tiles_a_side)
-                pictures.fetch(tile) { pictures[tile] = pack_background_tile(name, tile, tile_places, bank_lists, pictures.length) }
-              end
-            end
+            row.flat_map { |word| Array.new(tiles_a_side) { |along| words.cell_tile(word, along, down, tiles_a_side) } }
           end
+        end
+        # The tiles that take turns through pictures are tiles of runs (PackTilePictures).
+        pictures = declare_moving_pack_tiles(name, cells.flatten.uniq.select { |tile| moving.key?(tile.tile) }, moving, bank_lists)
+        rows = cells.map do |row|
+          row.map { |tile| pictures.fetch(tile) { pictures[tile] = pack_background_tile(name, tile, tile_places, bank_lists, pictures.length) } }
         end
         cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, pictures, bank_lists) do |tile, number|
           pack_background_tile(name, tile, tile_places, bank_lists, number)
@@ -233,7 +235,8 @@ module VBlank
       # stand-ins, read from the file as any picture of a tile from the pack is
       # (#declare_told_tile_read_at_start), and `set_cell` writes it by its key as it does built
       # all-in-one. The tiles the map draws come after them, made as the game starts.
-      def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, set_cells: nil, **others)
+      def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells: nil,
+                                                **others)
         subject = "background :#{name}"
         [[tiles, "tiles:"], [map.with(first_pixel: 0, pixel_count: nil), "map:"], [colors, "colors:"]].each do |slot, what|
           refuse_slot_from_elsewhere!(slot, "#{subject}'s #{what}")
@@ -263,6 +266,11 @@ module VBlank
           declare_told_tile_read_at_start(name, tile, where, number)
         end
         held = [*stand_ins, *told.values]
+        # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
+        unless moving.empty?
+          runs, where = declare_pack_tile_runs_at_start(name, moving, where, held.length)
+          held.concat(runs)
+        end
         refuse_oversized_map_at_start!(name, where, held.length)
         tileset = :"background :#{name} tiles"
         tiles(tileset, held.to_h { |picture| [picture, picture] })

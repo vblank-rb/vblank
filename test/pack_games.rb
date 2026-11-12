@@ -18,6 +18,7 @@ require "pack_pose_of_shapes_games"
 require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
+require "all/vblank/builder/test_pack_tile_pictures"
 require "pack_place_games"
 require "m4a_answers"
 
@@ -1580,8 +1581,31 @@ module PackGames
     ].freeze
   end
 
+  # A TILE OF A BACKGROUND FROM THE PACK TAKING TURNS THROUGH PICTURES OF THE PACK
+  # (PackTilePictureGames): the map names it in two banks and three turns, and it steps through
+  # three pictures, in an Advance original and a Genesis one.
+  class TilePictures < Kit
+    include PackTilePictureGames
+
+    GAMES = [
+      game(:tile_of_a_background_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        built(*belt_game_and_file(folder, options: options) { |belt, tick| belt.show((tick / 2) % 3) })
+      end,
+      game(:tile_of_a_genesis_background_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        built(*belt_game_and_file(folder, platform: :genesis, words: GENESIS_WORDS, options: options) { |belt, tick| belt.show((tick / 2) % 3) })
+      end,
+      game(:two_tiles_of_a_background_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        words = [ADVANCE_CELL.(3), *WORDS.drop(1), ADVANCE_CELL.(3, bank: 1, mirrored: true)]
+        built(*belt_game_and_file(folder, words: words, second_key: true, options: options) { |belt, tick| belt.show((tick / 2) % 3) })
+      end,
+      game(:tile_of_a_background_in_a_scene_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        built(*belt_game_and_file(folder, options: options, in_scene: true) { |belt, tick| belt.show((tick / 2) % 3) })
+      end
+    ].freeze
+  end
+
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places].freeze
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

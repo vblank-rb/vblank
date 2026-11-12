@@ -38,6 +38,7 @@ module VBlank
             @words = { BLANK => 0 } # a tile's bytes => the number and turn that show it
             @places = { BLANK => [0] } # a tile's bytes => every number it is stored at
             @takers = Hash.new(0) # who asked first => how many tiles were added for it
+            @own = Set.new # the numbers of tiles a game paints, never shared (#own_tile)
           end
 
           # A store of its own that starts as this one is, for a scene's tiles after the shared ones.
@@ -47,6 +48,18 @@ module VBlank
             @words = @words.dup
             @places = @places.transform_values(&:dup)
             @takers = from.takers.dup
+            @own = @own.dup
+          end
+
+          # A TILE THE GAME PAINTS AS IT RUNS (Lowering::TileRuns): stored blank after the last, and
+          # never shown for any other tile, nor as part of a sprite's run, however alike they look
+          # now, since the game writes new pixels into it. Its number.
+          def own_tile(taker)
+            number = @tiles.length
+            @tiles << BLANK
+            @own << number
+            @takers[taker] += 1
+            number
           end
 
           def length = @tiles.length
@@ -106,13 +119,16 @@ module VBlank
           def place_of_run(run)
             last = @tiles.length - run.length
             @places.fetch(run.first, []).find do |at|
-              at <= last && run.each_with_index.all? { |bytes, along| @tiles[at + along] == bytes }
+              at <= last && run.each_with_index.all? { |bytes, along| @tiles[at + along] == bytes && !@own.include?(at + along) }
             end
           end
 
           # How many tiles at the start of +run+ are the tiles the store ends with.
           def tiles_shared_with_end(run)
-            (run.length - 1).downto(1).find { |count| count <= @tiles.length && @tiles.last(count) == run.first(count) } || 0
+            (run.length - 1).downto(1).find do |count|
+              count <= @tiles.length && @tiles.last(count) == run.first(count) &&
+                ((@tiles.length - count)...@tiles.length).none? { |at| @own.include?(at) }
+            end || 0
           end
         end
       end

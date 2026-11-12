@@ -314,7 +314,8 @@ module VBlank
         "a scene that says a backdrop of its own (`screen ... backdrop:`)",
         "background tiles that are not 8×8, or backgrounds of different sizes on one screen",
         "a map too big to hold",
-        "more lists of colours than the console's four"
+        "more lists of colours than the console's four",
+        "a sprite's picture painted from a list (`image ..., from: list`), and tiles of 16x16 painted from one"
       ].freeze
 
       # What the page says of the steps the Genesis's build does not make yet.

@@ -28,6 +28,7 @@ require_relative "genesis/lowering/paint"
 require_relative "genesis/lowering/collision"
 require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering/division"
+require_relative "genesis/lowering/tile_runs"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -143,7 +144,8 @@ module VBlank
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
-                                             scene_tiles: scene_tiles, scene_colors: scene_colors)
+                                             scene_tiles: scene_tiles, scene_colors: scene_colors,
+                                             runs: picture == :tiled && lowering.paints_tiles?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

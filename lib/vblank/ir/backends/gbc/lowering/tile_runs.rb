@@ -70,7 +70,29 @@ module VBlank
             def solid_run?(run) = !run.held_in.nil? && run.colors.length == Art::PLACES + 1
 
             def painted_tile(name, run, room = nil)
-              @art.run_tile(name, run.colors, solid: solid_run?(run), swaps: painted_tile_swaps(name), room: room)
+              @art.run_tile(name, run_colors_shown(run), solid: solid_run?(run), swaps: painted_tile_swaps(name), room: room)
+            end
+
+            # A RUN OF A DATA PACK'S TILES TAKING TURNS (Builder::PackTilePictures) is drawn from a bank
+            # of the original's colours, sixteen on most consoles, of which a Color tile shows three
+            # and the backdrop. Its pictures are all known as the cartridge is built, so where
+            # together they draw three places of the bank or fewer, the run is drawn from those
+            # alone, each place moved down to its place among them (#color_place). These are those
+            # places, in order, or nil for any other run, whose list is used as it is.
+            def run_places_drawn(run)
+              return nil unless run.held_in && run.colors.length > Art::PLACES + 1
+
+              (@run_places_drawn ||= {}).fetch(run.name) do
+                bytes = @tables.fetch(run.held_in).values
+                drawn = bytes.flat_map { |byte| [byte & 0xF, byte >> 4] }.uniq.reject(&:zero?).sort
+                @run_places_drawn[run.name] = (drawn if drawn.length <= Art::OWN_COLORS)
+              end
+            end
+
+            # The colours +run+'s tiles are drawn from, see-through first.
+            def run_colors_shown(run)
+              drawn = run_places_drawn(run)
+              drawn ? [run.colors.first, *drawn.map { |place| run.colors.fetch(place) }] : run.colors
             end
 
             # What painted tile +name+'s palette shows with the lists its background is drawn with.
@@ -136,6 +158,8 @@ module VBlank
             end
 
             def color_place(place, run)
+              drawn = run_places_drawn(run)
+              return place.zero? ? 0 : drawn.index(place) + 1 if drawn
               return place unless solid_run?(run)
               return place - 1 if place.positive?
 

@@ -42,6 +42,7 @@ module VBlank
           include Sound
           include Division
           include ControlFlow
+          include TileRuns
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Picture, Sound, Collision, and
@@ -53,6 +54,7 @@ module VBlank
             halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
             timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group screen
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
+            TileRuns::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
@@ -98,6 +100,7 @@ module VBlank
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
             when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
             when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
+            when *TileRuns::STATEMENT_KINDS then emit_tile_runs_statement(node)
             else emit_declaration_or_refuse(node)
             end
           end
@@ -148,7 +151,6 @@ module VBlank
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the status bar" => %i[place_bar],
                                                     "backgrounds bent row by row" => %i[scroll_rows],
-                                                    "tiles painted from a list" => %i[copy_tiles copy_owed_tiles],
                                                     "sprite tiles the game loads" => %i[load_sprite_tiles],
                                                     "layers see-through" => %i[see_through],
                                                     "the picture" => %i[draw_column_at],
@@ -270,6 +272,7 @@ module VBlank
             @plan.refuse_routines_that_call_themselves!
             @plan.refuse_what_console_lacks!
             refuse_unmade_picture!
+            refuse_unmade_tile_runs!
             assign_background_layers unless painted?
             make_sprite_art
             (Reach.variables(@program) | loop_variables).each do |name|
@@ -281,6 +284,7 @@ module VBlank
               @lists[node.name] = [place, node.capacity, width, node.name.to_s]
             end
             reserve_patches
+            keep_tile_runs
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
             keep_corner_notes
@@ -296,7 +300,7 @@ module VBlank
             @lowering_scene = nil
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             [data_section, video_registers_section, *table_sections, *routines, *timers, *main,
-             *paint_sections, *art_sections, *collision_sections]
+             *paint_sections, *art_sections, *tile_runs_section, *collision_sections]
           end
 
           # How many bytes +list+ comes to, made on copies of what the lowering holds and thrown away

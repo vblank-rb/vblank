@@ -735,6 +735,50 @@ void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, 
   followed[2] = count;
 }
 
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving) {
+  int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
+  int32_t tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10], bank_bits = rules[11];
+  int32_t row_tiles = rules[12], bank_count = rules[16], held = rules[19], cell_bytes = rules[20];
+  int32_t start = moving[0], count = moving[1], entry = 1 + (bank_count * 8), columns = across * side;
+  for (int32_t cell = 0; cell < cells; cell++) {
+    uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
+    int32_t first_tile = (int32_t)(word & ((1u << tile_bits) - 1u));
+    int32_t mirrored = (int32_t)((word >> mirror_bit) & 1u), upside_down = (int32_t)((word >> flip_bit) & 1u);
+    int32_t bank = (int32_t)((word >> bank_at) & ((1u << bank_bits) - 1u));
+    if (bank >= bank_count) continue;
+    for (int32_t down = 0; down < side; down++) {
+      for (int32_t along = 0; along < side; along++) {
+        int32_t tile = first_tile + ((upside_down ? side - 1 - down : down) * row_tiles) + (mirrored ? side - 1 - along : along);
+        int32_t number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along;
+        for (int32_t which = 0; which < count; which++) {
+          const int32_t *each = moving + 2 + (which * entry);
+          if (each[0] != tile) continue;
+          const int32_t *shown = each + 1 + ((((bank * 4) + mirrored + (2 * upside_down))) * 2);
+          painted[start + (2 * (held + number))] = shown[0];
+          painted[start + (2 * (held + number)) + 1] = shown[1];
+          break;
+        }
+      }
+    }
+  }
+}
+
+void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules) {
+  const int32_t *turns = rules + RG_TILE_FORMAT_NUMBERS;
+  for (int32_t tile = 0; tile < tiles; tile++) {
+    int32_t at = turns[2 * tile], turn = turns[(2 * tile) + 1];
+    for (int32_t row = 0; row < RG_FILL_TILE_SIDE; row++) {
+      for (int32_t column = 0; column < RG_FILL_TILE_SIDE; column += 2) {
+        int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? RG_FILL_TILE_SIDE - 1 - row : row;
+        int32_t near = (turn & RG_TURN_MIRRORED) ? RG_FILL_TILE_SIDE - 1 - column : column;
+        int32_t far = (turn & RG_TURN_MIRRORED) ? RG_FILL_TILE_SIDE - 2 - column : column + 1;
+        int32_t left = start_file_place(at, rules, 1, from_row, near) & 0xF, right = start_file_place(at, rules, 1, from_row, far) & 0xF;
+        table[(tile * 32) + (row * 4) + (column / 2)] = (uint8_t)(left | (right << 4));
+      }
+    }
+  }
+}
+
 void rg_start_file_fill_background(const int32_t *rules) {
   int32_t total = rules[0], start = rules[1], map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5];
   int32_t map_high_byte_first = rules[6], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9];

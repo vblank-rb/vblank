@@ -239,6 +239,7 @@ module VBlank
             @start_file_marked_pixels = [] # ...and the pixels written as markers, put in their colours then
             @start_file_marked_numbers = [] # ...and the numbers of a table of colours written as markers
             @start_file_followed_tiles = [] # ...and which tiles of such a background are drawn from each list it follows
+            @start_file_moving_cells = [] # ...and which of its cells show a tile taking turns through pictures
             @start_file_shading_fills = [] # ...and the colours and levels of each lit fill's shading read from it
             @start_file_colors = nil # the colours it reads that are no part of a picture, once asked (StartFileFills#start_file_colors)
             prepare_picture
@@ -392,7 +393,7 @@ module VBlank
           def constant_arrays
             tables_read.map do |table|
               name = @names.of(:table, table.name)
-              next Statements::StartFileArray.new(name: name, type: table_type(table), count: table.entry_count) if table.from_file
+              next Statements::StartFileArray.new(name: name, type: table_type(table), count: table.entry_count) if table.read_from_file?
 
               Statements::ConstArray.new(name: name, type: table_type(table), values: table_entries(table))
             end + @data.values.select { |data| arrays_read.include?(data.name) }.map do |data|

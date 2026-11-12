@@ -170,6 +170,7 @@ module VBlank
             @originals = {} # what a place holds (a colour word, or the colour itself when exact) => the 15-bit colour it was first made from
             @sprite_pictures = {}
             @grids = []
+            @run_tiles = {} # [a store's object_id, a painted tile's name] => its number there (#run_cell)
           end
 
           # --- backgrounds ---
@@ -192,6 +193,19 @@ module VBlank
             end
             [@tiles.word_of(TileBytes.of(places), taker), palette]
           end
+
+          # THE CELL OF A TILE THE GAME PAINTS (Lowering::TileRuns), +name+, from the list +colors+ (see-through
+          # first): a tile of its own in the store being added to, blank until the game's first copy, and
+          # the palette whose places are the list's, so the places the game paints are the palette's. One
+          # tile for each store that shows it: the tiles every screen shows, or a scene's own.
+          # +palette+ is one a background drawn with other colours writes over (#reserve_held_palette).
+          def run_cell(name, colors, palette: nil)
+            number = (@run_tiles[[@tiles.object_id, name]] ||= @tiles.own_tile("painted tiles :#{name}"))
+            [number, palette || ordered_palette(colors.drop(1).map { |color| color & 0x7FFF })]
+          end
+
+          # Every number the painted tile +name+ has in video memory: one for each store that shows it.
+          def run_tile_numbers(name) = @run_tiles.filter_map { |(_, tile), number| number if tile == name }
 
           # The map +cells+ ([tile, palette] or nil, by row and column) made into a grid of +columns+ ×
           # +rows+ cells, and its number.

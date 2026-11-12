@@ -53,6 +53,7 @@ require_relative "dsl/pack_cells"          # The cells a background from the dat
 VBlank.require_game_file "dsl/status_bar"
 require_relative "dsl/tile_run"            # Tiles whose pixels the game paints, in a list of its own
 require_relative "dsl/tile_picture_group"  # Tiles taking turns through pictures in the cartridge
+require_relative "dsl/pack_tile_picture_group" # A data pack's tiles taking turns through pictures of the pack
 require_relative "dsl/sprite_tile_set"     # Sprite tiles loaded from the cartridge, for poses drawn from them
 VBlank.require_game_file "dsl/canvas"      # A picture the game draws into with words
 VBlank.require_game_file "dsl/list_text"   # Words held in a list, drawn on a painted screen

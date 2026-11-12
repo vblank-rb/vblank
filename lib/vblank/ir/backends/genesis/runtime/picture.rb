@@ -29,10 +29,10 @@ module VBlank
             # +samples+ for a game that plays recordings, whose sound processor reads the cartridge while
             # the picture is copied (#emit_dma_started).
             def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false, sprites: false,
-                     scene_tiles: false, scene_colors: false, samples: false)
+                     scene_tiles: false, scene_colors: false, samples: false, runs: false)
               case picture
               when :painted then Paint.emit(asm, memory, camera: camera, colors: colors, sprites: sprites, samples: samples)
-              when :tiled then Tiles.emit(asm, memory, columns: columns, colors: colors, scene_tiles: scene_tiles, samples: samples)
+              when :tiled then Tiles.emit(asm, memory, columns: columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs)
               else
                 asm.label("rt_picture_start")
                 asm.rts

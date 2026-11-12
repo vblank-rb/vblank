@@ -175,7 +175,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the status bar: `place_bar`
 - backgrounds bent row by row: `scroll_rows`
-- tiles painted from a list: `copy_tiles`, `copy_owed_tiles`
 - sprite tiles the game loads: `load_sprite_tiles`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`
@@ -192,3 +191,4 @@ Parts of the picture are refused the same way, naming the part:
 - background tiles that are not 8×8, or backgrounds of different sizes on one screen
 - a map too big to hold
 - more lists of colours than the console's four
+- a sprite's picture painted from a list (`image ..., from: list`), and tiles of 16x16 painted from one

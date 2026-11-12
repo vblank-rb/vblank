@@ -130,7 +130,14 @@ enum {
 };
 extern const int32_t rg_game_backgrounds[];
 #define RG_NOT_PAINTED (-1)
+/* A game whose background read from the start file has tiles taking turns through pictures marks
+ * the cells naming them as it starts (rg_start_file_fill_moving_cells), and says so before this
+ * header (RG_PAINTED_TILES_WRITABLE). */
+#ifdef RG_PAINTED_TILES_WRITABLE
+extern int32_t rg_game_painted_tiles[];
+#else
 extern const int32_t rg_game_painted_tiles[];
+#endif
 /* A game that paints tiles in colours read from the start file writes those colours into this table
  * as it starts (rg_start_file_fill_marked_numbers), and says so before this header
  * (RG_RUN_COLORS_WRITABLE). */

@@ -587,6 +587,52 @@ def rg_start_file_fill_followed_tiles(followed, rules, banks)
   followed[2] = count
 end
 
+# The cells of such a background naming a tile that takes turns through pictures (rg_runtime.h,
+# rg_start_file_fill_moving_cells).
+def rg_start_file_fill_moving_cells(painted, rules, moving)
+  map_at, cells, across, side, map_high_byte_first, tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[2, 11]
+  bank_count = rules[16]
+  held, cell_bytes = rules[19, 2]
+  start, count = moving[0, 2]
+  entry = 1 + (bank_count * 8)
+  columns = across * side
+  kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
+  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
+    first_tile = word & ((1 << tile_bits) - 1)
+    mirrored = word[mirror_bit]
+    upside_down = word[flip_bit]
+    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+    next if bank >= bank_count
+
+    side.times do |down|
+      side.times do |along|
+        tile = first_tile + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) + (mirrored == 1 ? side - 1 - along : along)
+        number = ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
+        which = (0...count).find { |each| moving[2 + (each * entry)] == tile } or next
+        shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
+        painted[start + (2 * (held + number))] = moving[shown]
+        painted[start + (2 * (held + number)) + 1] = moving[shown + 1]
+      end
+    end
+  end
+end
+
+# Tiles of the file as a run of painted tiles keeps them (rg_runtime.h, rg_start_file_fill_painted_tiles).
+def rg_start_file_fill_painted_tiles(table, tiles, rules)
+  bytes = Array.new(tiles) do |tile|
+    at = rules[RG_TILE_FORMAT_NUMBERS + (2 * tile)]
+    turn = rules[RG_TILE_FORMAT_NUMBERS + (2 * tile) + 1]
+    Array.new(32) do |byte|
+      row = byte / 4
+      column = (byte % 4) * 2
+      from_row = turn.anybits?(RG_TURN_UPSIDE_DOWN) ? 7 - row : row
+      near, far = turn.anybits?(RG_TURN_MIRRORED) ? [7 - column, 6 - column] : [column, column + 1]
+      (rg_start_file_place(at, rules, 0, 1, from_row, near) & 0xF) | ((rg_start_file_place(at, rules, 0, 1, from_row, far) & 0xF) << 4)
+    end
+  end.flatten
+  table.is_a?(RgBytes) ? table.replace(bytes.pack("C*")) : table.replace(bytes)
+end
+
 # The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_background(rules)

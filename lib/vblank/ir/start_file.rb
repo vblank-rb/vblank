@@ -150,13 +150,57 @@ module VBlank
       #
       # The file is the player's, so nothing in it stops the game: a cell naming a tile past
       # +tile_count+ draws nothing, and one naming a bank past +bank_count+ is drawn in colour 0.
+      #
+      # +moving+ are the tiles that take turns through pictures (MovingTile, Builder::
+      # PackTilePictures): a cell naming one shows a tile the program holds, which the game
+      # repaints, in place of a tile of its own.
       Background = Data.define(:map_at, :cells, :across, :cell_tiles, :number_format, :map_words, :tiles_at, :tile_count,
-                               :tile_format, :colors_at, :bank_count, :bank_size, :color_format, :bank_names) do
+                               :tile_format, :colors_at, :bank_count, :bank_size, :color_format, :bank_names, :moving) do
+        def initialize(moving: [].freeze, **) = super
+
         # How many tiles across and down the map is, and how many that makes: a tile of its own
         # for each, since two cells are known to show one tile only once the file is read.
         def columns = across * cell_tiles
         def rows = (cells / across) * cell_tiles
         def tiles_drawn = columns * rows
+      end
+
+      # A TILE OF A BACKGROUND READ FROM THE FILE THAT TAKES TURNS THROUGH PICTURES: +tile+, counted
+      # from the background's first tile as a cell names it. The program holds it turned each of
+      # the four ways TURNS names, in that order, for each bank of the background's colours, a bank
+      # +bank_step+ tiles after the one before, from tile +first+ of the background's tiles. A cell
+      # naming it in a bank past the colours shows a tile of its own, as any cell does.
+      MovingTile = Data.define(:tile, :first, :bank_step) do
+        # The background's tile a cell naming it shows: the cell's +bank+, +mirrored+ and +upside_down+.
+        def tile_of(bank, mirrored, upside_down) = first + (bank * bank_step) + (mirrored ? 1 : 0) + (upside_down ? 2 : 0)
+      end
+
+      class MovingTile
+        # Its turns, each a list of the ways a picture is turned (Assets::Image#turned).
+        TURNS = Ractor.make_shareable([[], [:mirrored], [:upside_down], %i[mirrored upside_down]])
+      end
+
+      # ONE TILE OF THE FILE AS A RUN OF PAINTED TILES KEEPS IT (Builder::TileRuns: two places a
+      # byte, the left one in the low four bits): the tile at +at+, turned +turns+ (as
+      # MovingTile::TURNS names them).
+      PaintedTile = Data.define(:at, :turns)
+
+      # A TABLE OF BYTES READ FROM THE FILE AS PAINTED TILES (Nodes::Table#painted_from_file): each
+      # of +tiles+ (PaintedTile) one after another, 32 bytes each, from tiles kept as +tile_format+
+      # (a Console::TileFormat). A place past fifteen keeps its low four bits.
+      PaintedTiles = Data.define(:tile_format, :tiles)
+
+      # +tiles+'s bytes (a PaintedTiles), read from +bytes+, the file.
+      def self.painted_tiles_in(bytes, tiles)
+        tile_bytes = tiles.tile_format.tile_bytes
+        side = FormatReading::TILE_SIDE
+        tiles.tiles.flat_map do |tile|
+          places = FormatReading.tiles(bytes.byteslice(tile.at, tile_bytes), tiles.tile_format).first
+          rows = places.each_slice(side).to_a
+          rows = rows.map(&:reverse) if tile.turns.include?(:mirrored)
+          rows = rows.reverse if tile.turns.include?(:upside_down)
+          rows.flatten.each_slice(2).map { |near, far| (near & 0xF) | ((far & 0xF) << 4) }
+        end
       end
 
       # ONE COLOUR IN THE FILE: the two bytes from +at+ on, kept as +format+ (a Console::ColorFormat).
@@ -382,6 +426,7 @@ module VBlank
         when :screen then node.backdrop_from_file
         when :sample then node.from_file || node.settings_from_file
         when :song then node.length_from_file || node.voices.filter_map(&:from_file).first
+        when :table then node.from_file || node.painted_from_file
         else node.from_file
         end
       end
@@ -655,6 +700,12 @@ module VBlank
 
       # A table's entries, read from the place it names.
       def self.fill_table(node, bytes)
+        if node.painted_from_file
+          node.values = painted_tiles_in(bytes, node.painted_from_file)
+          node.painted_from_file = nil
+          return
+        end
+
         count = node.entries_in_file
         node.values = Build.elements_of(bytes.byteslice(node.from_file, count * Build::ELEMENT_BYTES.fetch(node.width)),
                                         width: node.width, signed: node.signed, high_byte_first: node.file_number_format.high_byte_first)
@@ -771,11 +822,15 @@ module VBlank
                                       width: cells.cell_width, signed: false)
         pictures = {}
         side = from.cell_tiles
+        moving = from.moving.to_h { |each| [each.tile, each] }
         drawn = words.each_slice(from.across).flat_map do |row|
           Array.new(side) do |down|
             row.flat_map do |word|
               Array.new(side) do |along|
                 tile = from.map_words.cell_tile(word, along, down, side)
+                # A tile taking turns shows the tile the program holds for its bank and turn, by number.
+                next moving[tile.tile].tile_of(tile.bank, tile.mirrored, tile.upside_down) if moving.key?(tile.tile) && tile.bank < from.bank_count
+
                 pictures.fetch(tile) { pictures[tile] = declare_background_tile(program, node, tile, banks, bytes, pictures.length) }
               end
             end
@@ -788,7 +843,7 @@ module VBlank
         held = node.tiles
         node.tiles = [*held, *pictures.values.compact]
         numbers = pictures.values.compact.each_with_index.to_h { |picture, at| [picture, held.length + at] }
-        node.map = drawn.map { |row| row.map { |picture| picture && numbers.fetch(picture) } }
+        node.map = drawn.map { |row| row.map { |picture| picture.is_a?(Integer) ? picture : picture && numbers.fetch(picture) } }
         node.from_file = nil
       end
 

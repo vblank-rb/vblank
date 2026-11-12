@@ -1909,16 +1909,22 @@ module VBlank
         declaration!
         category :data
         operands name: :name, values: :list, width: :option, signed: :flag, from_file: :int, entries_in_file: :int,
-                 file_number_format: :number_format
+                 file_number_format: :number_format, painted_from_file: :file_painted_tiles
 
         # +from_file+ is where its first entry is in the file the program is handed as it starts
         # (StartFile), for a table read from there, and +entries_in_file+ how many it has: its
         # +values+ are empty, since a program is written with none of them. Both are absent on
         # every other table. +file_number_format+ is the Console::NumberFormat the entries are
         # kept in in the file, and absent on every other table.
+        #
+        # +painted_from_file+ is a table of bytes read from the file as painted tiles
+        # (StartFile::PaintedTiles), which the program holds as zeros of their number until then.
 
         # How many entries the table has, wherever they are.
         def entry_count = from_file ? entries_in_file : values.length
+
+        # Whether its entries are read from the file the program is handed as it starts.
+        def read_from_file? = !(from_file.nil? && painted_from_file.nil?)
       end
 
       # An entry of table +name+. An index outside the table is held to it: wrapped for a table

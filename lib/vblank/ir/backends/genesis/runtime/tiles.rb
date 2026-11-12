@@ -100,13 +100,13 @@ module VBlank
             # +colors+ for a game that changes its colours as it runs (Tint).
             # +scene_tiles+ for a game whose scenes each bring their own tiles in (#emit_scene_tiles).
             # +samples+ for a game that plays recordings (Picture#emit_dma_started).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false)
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, colors: colors)
               emit_maps(asm, memory, at)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
-              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples)
+              emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs)
             end
 
             # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
@@ -549,10 +549,11 @@ module VBlank
             # In a game whose scenes each bring their own tiles in, an arriving scene's go first, with the
             # screen switched off (#emit_scene_tiles), and the screen comes back on in the blank after
             # everything else is in.
-            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false)
+            def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
+              asm.jsr(asm.abs_l("art runs uploaded")) if runs # Lowering::TileRuns#tile_runs_section, after a scene's own tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
               emit_cells_written(asm, memory, at)
