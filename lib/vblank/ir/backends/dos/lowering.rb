@@ -406,6 +406,12 @@ module VBlank
             when :screen then emit_tiled_screen(node) if scenery_used?
             when :background then emit_background(node)
             when :scroll_background then emit_scroll_background(node)
+            when :set_tile then emit_set_tile(node)
+            when :show_held_tiles then emit_show_held_tiles(node)
+            when :show_map then emit_show_map(node)
+            when :copy_tiles then emit_copy_tiles(node)
+            when :copy_owed_tiles then emit_copy_owed_tiles(node)
+            when :background_colors then emit_background_colors(node)
             when :clear_screen then emit_clear_screen(node)
             when :pixel then emit_pixel(node)
             when :camera then emit_camera(node)

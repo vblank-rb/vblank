@@ -7,7 +7,9 @@ require "test_helper"
 # test/all/vblank/builder/test_tiled_background.rb and its neighbours, which this run plays; these are what is
 # DOS's own: a grid narrower than the 320 pixels across, so the map comes round on the screen; tiles with
 # some, all and none of their pixels see-through, laid four at a time; a map too big for a grid, scrolled
-# past every edge; and a scrolled view built in less than a frame.
+# past every edge; a scrolled view built in less than a frame; cells changed at and past every edge of the
+# map, and more held at once than wait together; maps of different sizes; and tiles painted from a list
+# that holds fewer bytes than they take.
 class TestDOSScenery < Minitest::Test
   DOS = VBlank::IR::Backends::DOS
 
@@ -153,5 +155,85 @@ class TestDOSScenery < Minitest::Test
     end
 
     assert_equal run[:passes], run[:frames], "every pass took one frame"
+  end
+  # Cells changed past the map's right edge and below its last row, inside the grid it is kept in, at numbers
+  # below nought and too big for a word, to a tile they already have, and from a list of keys by a number that
+  # names a key, an empty cell or none.
+  def test_cells_change_only_inside_the_map
+    test = self
+    checked(frames: 12) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      field = background :field, tiles: :colors, map: test.stripes(30, 18)
+      step = var :step, 0
+      game_loop do
+        step += 1
+        field.scroll_to step * 5, 0
+        field.set_tile step + 26, 3, "W"
+        field.set_tile step, 17 + (step % 3), "B"
+        field.set_tile 0 - step, 2, "B"
+        field.set_tile 70_000 * step, 70_000, "B"
+        field.set_tile 2, 2, "R"
+        field.set_tile_picked step, 5, step, [nil, "G", "B"], from: 2
+      end
+    end
+  end
+
+  # More changes held in one pass than wait at once: the first ones go in when the next would not fit, and the
+  # rest at the frame's end, in the order they were made.
+  def test_more_held_changes_than_wait_at_once
+    test = self
+    checked(frames: 6) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      field = background :field, tiles: :colors, map: test.stripes(32, 32), held: true
+      step = var :step, 0
+      game_loop do
+        step += 1
+        repeat(1100) do |i|
+          field.set_tile_picked (i + step) % 40, i / 40, (step + i) % 2, %w[B R]
+        end
+      end
+    end
+  end
+
+  # Maps of different sizes, kept as big as the biggest, shown by a number that names one and by numbers that
+  # name none, and scrolled so the cells past the smaller one's edges show.
+  def test_maps_of_different_sizes_shown_by_any_number
+    test = self
+    checked(frames: 12) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      short = test.stripes(32, 32).map { |row| row[0, 10] }
+      field = background :field, tiles: :colors, map: { long: test.stripes(32, 32), short: short }
+      step = var :step, 0
+      which = var :which, 0
+      game_loop do
+        step += 1
+        which = (step % 5) - 2
+        field.show_map which
+        field.scroll_to step * 7, step * 3
+      end
+    end
+  end
+  # Tiles painted from a list of bytes that holds fewer than the tiles take, and grows: a byte past its last
+  # item read as nought, a place past the run's colours drawn black. Painted over and over, scrolled.
+  def test_tiles_painted_from_a_list_shorter_than_them
+    checked(frames: 10) do
+      screen :tiled, backdrop: :blue
+      colors :ink, %i[transparent white red green]
+      canvas = list :canvas, capacity: 96, width: :byte
+      repeat(60) { |i| canvas.push i * 37 }
+      box = tiles :box, from: canvas, count: 3, colors: :ink
+      field = background :field, tiles: :box, map: Array.new(4) { [1, 2, 3, 1, 2] }
+      step = var :step, 0
+      game_loop do
+        step += 1
+        canvas.push step * 91 + 0x1F0
+        canvas[step] = step * 13
+        box.changed
+        field.scroll_to 0 - step, step
+      end
+    end
   end
 end
