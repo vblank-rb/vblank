@@ -151,16 +151,38 @@ module VBlank
             @extra_uploads = []
           end
 
-          # PLANES: +count+ pictures of PLANE_SIDE × PLANE_SIDE halfwords of 15-bit colour, each a whole
-          # texture page, kept right of the screen's pages before any texture, two to a column of pages
-          # (lines 0 and 256). Returns each one's corner, [x, y], and moves the textures along past them.
-          # Called once, before #allocate!.
+          # PLANES: pictures of 15-bit colour each one or more whole texture pages, kept right of the screen's
+          # pages before any texture, in a grid of PLANE_UNITS_ACROSS × PLANE_UNITS_DOWN pages (lines 0 and
+          # 256): +sizes+ is each one's [width, height], 256 or 512 each way. The biggest are placed first, each
+          # at the first free pages it fits. Returns each one's place (Plane), in the order given, or nil when
+          # they do not all fit; and moves the textures along past the columns of pages they take. Called
+          # once, before #allocate!.
           PLANE_SIDE = PAGE_TEXELS
+          PLANE_UNITS_ACROSS = 2
+          PLANE_UNITS_DOWN = Console::PS1Hardware::VRAM_HEIGHT / PAGE_TEXELS
 
-          def reserve_planes(count)
-            columns = (count + 1) / 2
+          # A plane's corner in video RAM, and its size, in halfwords and lines.
+          Plane = Data.define(:x, :y, :width, :height)
+
+          def reserve_planes(sizes)
+            taken = {}
+            places = {}
+            sizes.each_with_index.sort_by { |(width, height), i| [-(width * height), i] }.each do |(width, height), i|
+              across = width / PLANE_SIDE
+              down = height / PLANE_SIDE
+              spot = (0...PLANE_UNITS_ACROSS).to_a.product((0...PLANE_UNITS_DOWN).to_a).find do |column, row|
+                units = (column...(column + across)).to_a.product((row...(row + down)).to_a)
+                column + across <= PLANE_UNITS_ACROSS && row + down <= PLANE_UNITS_DOWN && units.none? { |unit| taken[unit] }
+              end
+              return nil unless spot
+
+              column, row = spot
+              (column...(column + across)).to_a.product((row...(row + down)).to_a).each { |unit| taken[unit] = true }
+              places[i] = Plane.new(x: FIRST_TEXTURE_COLUMN + (column * PLANE_SIDE), y: row * PLANE_SIDE, width: width, height: height)
+            end
+            columns = taken.keys.map(&:first).max.to_i + (taken.empty? ? 0 : 1)
             @first_column = FIRST_TEXTURE_COLUMN + (columns * PLANE_SIDE)
-            Array.new(count) { |plane| [FIRST_TEXTURE_COLUMN + ((plane / 2) * PLANE_SIDE), (plane % 2) * PAGE_TEXELS] }
+            Array.new(sizes.length) { |i| places.fetch(i) }
           end
 
           # +halfwords+ columns of video RAM, its whole height, kept for something only ever copied from (a sheet

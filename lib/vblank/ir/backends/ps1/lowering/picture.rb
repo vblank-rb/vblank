@@ -39,9 +39,9 @@ module VBlank
               program.walk.any? { |node| %i[background object].include?(node.kind) || (node.kind == :screen && node.mode == :tiled) }
             end
 
-            # A plane's cells each way, and how big a tile is.
-            PLANE_CELLS = Runtime::Tiles::PLANE_CELLS
+            # How big a tile is, and a plane's cells each way where nothing goes up on it.
             TILE_SIDE = 8
+            PLANE_CELLS = Runtime::Tiles::PAGE_SIDE / TILE_SIDE
             # Tiles kept one above another in a column of the sheet: video RAM's whole height of them.
             TILES_A_COLUMN = Console::PS1Hardware::VRAM_HEIGHT / TILE_SIDE
 
@@ -98,8 +98,9 @@ module VBlank
                 refuse_unmade!(TILED_SCREEN, "shows a status bar") if bg.bar?
                 refuse_unmade!(TILED_SCREEN, "has background tiles of #{bg.tile_w}×#{bg.tile_h}") unless bg.tile_w == 8 && bg.tile_h == 8
                 refuse_unmade!(TILED_SCREEN, "has a background held above a row (`above_row:`)") if bg.above_row
-                if bg.streams? || bg.every_map.any? { |map| TileMap.grid(map) != [PLANE_CELLS, PLANE_CELLS] }
-                  refuse_unmade!(TILED_SCREEN, "has a background whose map is more than #{PLANE_CELLS} cells across or down")
+                if bg.streams?
+                  refuse_unmade!(TILED_SCREEN, "has a background whose map is more than #{TileMap.max_grid_size} cells across " \
+                                               "or down, or whose maps are of different sizes")
                 end
                 refuse_unmade!(TILED_SCREEN, "draws a background with other colors (`draw_with`)") unless bg.recolors.empty?
               end
@@ -144,8 +145,15 @@ module VBlank
               if count > Runtime::Tiles::MOST_PLANES
                 refuse_unmade!(TILED_SCREEN, "shows more than #{Runtime::Tiles::MOST_PLANES} backgrounds on its screens together")
               end
-              @plane_places = texture_memory.reserve_planes(count)
+              @plane_places = texture_memory.reserve_planes(Array.new(count) { |plane| plane_size(plane) }) or
+                refuse_unmade!(TILED_SCREEN, "has backgrounds whose maps together are bigger than the video memory kept for them")
               make_tile_sheet
+            end
+
+            # How big plane +plane+ is, [width, height] in pixels: the biggest grid of the maps that go up on it.
+            def plane_size(plane)
+              grids = @layers.select { |_, number| number == plane }.keys.flat_map { |bg| bg.every_map.map { |map| TileMap.grid(map) } }
+              [grids.map(&:first).max || PLANE_CELLS, grids.map(&:last).max || PLANE_CELLS].map { |cells| cells * TILE_SIDE }
             end
 
             # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
@@ -215,7 +223,9 @@ module VBlank
             end
 
             def emit_put_up(bg, which, reset_view:)
-              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view)])
+              columns, rows = TileMap.grid(bg.every_map.fetch(which))
+              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view),
+                                               Build.int(columns.bit_length - 1), Build.int(rows)])
               note = @put_up_this_pass&.fetch(plane_of(bg)) if reset_view.nonzero?
               statement(Build.set(note, 1)) if note
             end
@@ -482,11 +492,13 @@ module VBlank
               [asm.section]
             end
 
-            # The cells of +map+ as its table: PLANE_CELLS a row, PLANE_CELLS rows, each where its tile is.
+            # The cells of +map+ as its table: its grid's columns a row, its grid's rows (TileMap.grid), each
+            # where its tile is.
             def grid_words(bg, map)
-              Array.new(PLANE_CELLS * PLANE_CELLS) do |at|
-                row = map[at / PLANE_CELLS]
-                cell_place(bg, row && Array(row)[at % PLANE_CELLS])
+              columns, rows = TileMap.grid(map)
+              Array.new(columns * rows) do |at|
+                row = map[at / columns]
+                cell_place(bg, row && Array(row)[at % columns])
               end
             end
 
