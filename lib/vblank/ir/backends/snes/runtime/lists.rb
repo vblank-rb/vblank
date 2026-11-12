@@ -203,6 +203,9 @@ module VBlank
             # count of nought or less sets none; an index outside the list, first or last, stops the
             # game before anything is written.
             def emit_fill(asm, s)
+              # Before the routine, so a branch from its first lines reaches it.
+              asm.label("rt_list_fill_done")
+              asm.rtl
               asm.label("rt_list_fill")
               asm.jsr(asm.abs("rt_list_pointer"))
               asm.lda(asm.direct(R2 + 2))
@@ -229,23 +232,78 @@ module VBlank
               asm.label("rt_list_fill_last_low")
               asm.dec(asm.direct(R1))
               asm.jsr(asm.abs("rt_list_slot_of_index"))
-              # Then each item from the first: R4 counts them, and R2 holds the value.
+              # Then the slots from the first item's on, walked by Y with the value written as wide
+              # as a slot is: the slot found once and stepped along, rather than found again from
+              # the header for every item. Past the last slot the ring comes round to the first.
+              # s.table is where the slots end, and X counts the items.
+              asm.ldy(CAPACITY)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.jsr(asm.abs("rt_list_slot_at"))
+              asm.lda(asm.direct(s.slot))
+              asm.sta(asm.direct(s.table))
               asm.lda(asm.direct(s.count))
-              asm.sta(asm.direct(R1))
-              asm.stz(asm.direct(R1 + 2))
-              asm.lda(asm.direct(R2))
-              asm.sta(asm.direct(R4))
+              asm.jsr(asm.abs("rt_list_slot_of_a"))
+              asm.ldy(WIDTH)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.ldx(asm.direct(R2))
+              asm.ldy(asm.direct(s.slot))
+              asm.cmp(2)
+              asm.beq("rt_list_fill_half")
+              asm.bcs("rt_list_fill_word")
+              emit_fill_bytes(asm, s)
+              emit_fill_halves(asm, s)
+              emit_fill_words(asm, s)
+            end
+
+            # The value's low byte into each slot, the accumulator a byte wide while it does.
+            def emit_fill_bytes(asm, s)
+              asm.sep(0x20)
               asm.lda(asm.direct(R3))
-              asm.sta(asm.direct(R2))
+              asm.label("rt_list_fill_byte")
+              asm.sta(asm.ind_long_y(s.list))
+              asm.iny
+              asm.cpy(asm.direct(s.table))
+              asm.bne("rt_list_fill_byte_in_ring")
+              asm.ldy(HEADER)
+              asm.label("rt_list_fill_byte_in_ring")
+              asm.dex
+              asm.bne("rt_list_fill_byte")
+              asm.rep(0x20)
+              asm.rtl
+            end
+
+            def emit_fill_halves(asm, s)
+              asm.label("rt_list_fill_half")
+              asm.lda(asm.direct(R3))
+              asm.label("rt_list_fill_half_item")
+              asm.sta(asm.ind_long_y(s.list))
+              asm.iny
+              asm.iny
+              asm.cpy(asm.direct(s.table))
+              asm.bne("rt_list_fill_half_in_ring")
+              asm.ldy(HEADER)
+              asm.label("rt_list_fill_half_in_ring")
+              asm.dex
+              asm.bne("rt_list_fill_half_item")
+              asm.rtl
+            end
+
+            def emit_fill_words(asm, s)
+              asm.label("rt_list_fill_word")
+              asm.lda(asm.direct(R3))
+              asm.sta(asm.ind_long_y(s.list))
+              asm.iny
+              asm.iny
               asm.lda(asm.direct(R3 + 2))
-              asm.sta(asm.direct(R2 + 2))
-              asm.label("rt_list_fill_item")
-              asm.jsr(asm.abs("rt_list_slot_of_index"))
-              asm.jsr(asm.abs("rt_list_write_slot"))
-              asm.inc(asm.direct(R1))
-              asm.dec(asm.direct(R4))
-              asm.bne("rt_list_fill_item")
-              asm.label("rt_list_fill_done")
+              asm.sta(asm.ind_long_y(s.list))
+              asm.iny
+              asm.iny
+              asm.cpy(asm.direct(s.table))
+              asm.bne("rt_list_fill_word_in_ring")
+              asm.ldy(HEADER)
+              asm.label("rt_list_fill_word_in_ring")
+              asm.dex
+              asm.bne("rt_list_fill_word")
               asm.rtl
             end
 

@@ -102,8 +102,6 @@ module VBlank
             COPY_BYTES = TILES * TILE_BYTES
             MAP = 0x7000
             MAP_BYTES = TILES * 2
-            # Work RAM's first byte, where the work RAM port counts from.
-            WORK_RAM = 0x7E0000
 
             # THE CLEAR TILE is tile 963, at $7860, past the map, where no tile of the screen is. A
             # cell of the map is a word: the tile's number in its low ten bits, and above them its
@@ -341,8 +339,8 @@ module VBlank
               # clear colour's planes start all nought, as Boot leaves them.
               asm.jsl(asm.long("rt_paint_anywhere"))
               emit_no_generation_everywhere(asm, memory, "rt_paint_start")
-              emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
-              emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
+              Picture.emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
+              Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
               [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
                 asm.stz(asm.abs(memory[name]))
               end
@@ -375,12 +373,12 @@ module VBlank
             end
 
             # Every tile put in NO_GENERATION. In work RAM the copying engine does it
-            # (#emit_fill_work_ram); in a Super FX's RAM (ChipPaint), which the engine's work RAM port
+            # (Picture.emit_fill_work_ram); in a Super FX's RAM (ChipPaint), which the engine's work RAM port
             # cannot reach, a loop of 16-bit stores does, two tiles a store. +prefix+ makes its labels
             # its own. A changes; X is left at the end.
             def emit_no_generation_everywhere(asm, memory, prefix)
               address = memory[GENERATIONS]
-              return emit_fill_work_ram(asm, address, TILES, "rt_paint_no_generation") if address >= WORK_RAM
+              return Picture.emit_fill_work_ram(asm, address, TILES, "rt_paint_no_generation") if address >= Picture::WORK_RAM
 
               asm.ldx(0)
               asm.lda((NO_GENERATION << 8) | NO_GENERATION)
@@ -390,24 +388,6 @@ module VBlank
               asm.inx
               asm.cpx(TILES)
               asm.bne("#{prefix}_no_generation")
-            end
-
-            # +bytes+ of work RAM from +address+ (24 bits) all the byte at +label+, by the copying
-            # engine's channel 0 sending that one byte (DMA_FIXED_SOURCE) to the work RAM port,
-            # which moves on by itself. The port counts work RAM's 128K from nought, $7E:0000, in 17
-            # bits. The engine moves a byte in one of the processor's slow cycles, where a loop of
-            # 16-bit stores takes eight of them a byte.
-            def emit_fill_work_ram(asm, address, bytes, label)
-              h = Console::SNESHardware
-              offset = address - WORK_RAM
-              asm.lda(offset & 0xFFFF)
-              asm.sta(asm.abs(h::WMADDL))
-              asm.sep(0x20)
-              asm.lda(offset >> 16)
-              asm.sta(asm.abs(h::WMADDL + 2))
-              asm.rep(0x20)
-              Picture.emit_dma(asm, h::DMA_TO_ONE_PORT | h::DMA_FIXED_SOURCE, h::WMDATA, asm.imm(label),
-                               asm.bank_of(label), bytes)
             end
 
             # --- the area ---
@@ -827,7 +807,7 @@ module VBlank
               else
                 emit_next_generation(asm, memory, logged)
                 # Every cell shows the clear tile, and nothing painted before is to be sent.
-                emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
+                Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
                 asm.lda(1)
                 asm.sta(asm.abs(memory[MAP_CHANGED]))
               end
@@ -865,7 +845,7 @@ module VBlank
               asm.cmp(NO_GENERATION)
               asm.bcc("rt_paint_clear_generation")
               emit_no_generation_everywhere(asm, memory, "rt_paint_clear")
-              emit_fill_work_ram(asm, memory[PaintLog::PAINTED_IN], TILES, "rt_paint_no_generation") if logged
+              Picture.emit_fill_work_ram(asm, memory[PaintLog::PAINTED_IN], TILES, "rt_paint_no_generation") if logged
               asm.stz(asm.abs(memory[PaintTurns::OTHER_VALID])) if turns
               asm.lda(0)
               asm.label("rt_paint_clear_generation")

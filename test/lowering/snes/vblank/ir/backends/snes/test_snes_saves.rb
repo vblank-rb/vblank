@@ -181,6 +181,10 @@ class TestSNESSaves < Minitest::Test
     build = VBlank::IR::Build
     sums = build.program(build.save_write(build.int(0x7FFC), build.int(0x0102_03FF)),
                          build.set(:whole, build.save_sum(build.int(0x7FFC), build.int(4))),
+                         # An odd count, and the last byte alone: the loop sums two a time round.
+                         build.set(:odd, build.save_sum(build.int(0x7FFC), build.int(3))),
+                         build.set(:last, build.save_sum(build.int(0x7FFF), build.int(1))),
+                         build.set(:empty, build.save_sum(build.int(0x7FFC), build.int(0))),
                          build.set(:none, build.save_sum(build.int(0x7FFC), build.int(-5))),
                          # From far past the 32K, back to its end: no bytes, so nothing to stop for.
                          build.set(:from_far, build.save_sum(build.int(0x10000), build.int(-0x8000))), build.halt)
@@ -188,6 +192,9 @@ class TestSNESSaves < Minitest::Test
     run = SNES::CheckedRun.new.run(sums, frames: 1)
 
     assert_equal VBlank::IR::SaveLayout.checksum([0xFF, 0x03, 0x02, 0x01]), run[:whole]
+    assert_equal VBlank::IR::SaveLayout.checksum([0xFF, 0x03, 0x02]), run[:odd]
+    assert_equal VBlank::IR::SaveLayout.checksum([0x01]), run[:last]
+    assert_equal 0, run[:empty]
     assert_equal 0, run[:none]
     assert_equal 0, run[:from_far]
   end

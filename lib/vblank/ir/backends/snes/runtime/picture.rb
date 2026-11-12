@@ -195,6 +195,9 @@ module VBlank
             # A sprite hidden: below the screen, where none of its eight rows shows.
             HIDDEN_Y = 224
 
+            # Work RAM's first byte, where the work RAM port counts from.
+            WORK_RAM = 0x7E0000
+
             module_function
 
             # +bar+ for a game with a status bar, +bends+ for one with a background bent row by row,
@@ -545,6 +548,24 @@ module VBlank
               asm.lda(1)
               asm.sta(asm.abs(h::MDMAEN))
               asm.rep(0x20)
+            end
+
+            # +bytes+ of work RAM from +address+ (24 bits) all the byte at +label+, by the copying
+            # engine's channel 0 sending that one byte (DMA_FIXED_SOURCE) to the work RAM port,
+            # which moves on by itself. The port counts work RAM's 128K from nought, $7E:0000, in 17
+            # bits. The engine moves a byte in one of the processor's slow cycles, where a loop of
+            # 16-bit stores takes eight of them a byte. Painting clears its maps this way, and a list
+            # declared full of nought its slots (Lowering#emit_list_new).
+            def emit_fill_work_ram(asm, address, bytes, label)
+              h = Console::SNESHardware
+              offset = address - WORK_RAM
+              asm.lda(offset & 0xFFFF)
+              asm.sta(asm.abs(h::WMADDL))
+              asm.sep(0x20)
+              asm.lda(offset >> 16)
+              asm.sta(asm.abs(h::WMADDL + 2))
+              asm.rep(0x20)
+              emit_dma(asm, h::DMA_TO_ONE_PORT | h::DMA_FIXED_SOURCE, h::WMDATA, asm.imm(label), asm.bank_of(label), bytes)
             end
 
             # SPRITES. rt_sprites_begin hides every row of the sprite table and forgets the sprites

@@ -892,8 +892,25 @@ module VBlank
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
+            return emit_slots_zeroed(node) if slots_zeroed_by_copying_engine?(node)
+
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
           end
+
+          # A LIST FULL OF NOUGHT in work RAM has its slots cleared by the copying engine, a byte in
+          # one slow cycle, rather than by the runtime's fill, which finds and writes each slot in
+          # turn. A save record's table and buffers are declared so, and are made at power-on before
+          # the game's first pass. A list in a Super FX's RAM is out of the work RAM port's reach.
+          def slots_zeroed_by_copying_engine?(node)
+            place, capacity, width, = list_placed(node)
+            node.full_of.zero? && place >= Runtime::Picture::WORK_RAM && (capacity * width).between?(1, 0xFFFF)
+          end
+
+          def emit_slots_zeroed(node)
+            place, capacity, width, = list_placed(node)
+            Runtime::Picture.emit_fill_work_ram(@asm, place + Runtime::Lists::HEADER, capacity * width, "rt_zero")
+          end
+
           def emit_list_push(node) = list_call("rt_list_push", node, node.value)
           def emit_list_drop(node) = list_call("rt_list_drop", node, Build.int(node.from == :front ? 1 : 0))
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)

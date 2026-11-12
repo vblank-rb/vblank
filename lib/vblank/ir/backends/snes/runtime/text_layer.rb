@@ -163,7 +163,7 @@ module VBlank
               asm.sta(asm.abs(h::VMADDL))
               Picture.emit_dma(asm, h::DMA_TO_TWO_PORTS | h::DMA_FIXED_SOURCE, h::VMDATAL, asm.imm("rt_paint_layer_empty_byte"),
                                asm.bank_of("rt_paint_layer_empty_byte"), Paint::COLUMNS * 32 * 2)
-              Paint.emit_fill_work_ram(asm, memory[CELLS], ROWS * ROW_BYTES, "rt_paint_layer_empty_byte")
+              Picture.emit_fill_work_ram(asm, memory[CELLS], ROWS * ROW_BYTES, "rt_paint_layer_empty_byte")
               asm.ldx(0)
               asm.label("rt_paint_layer_start_row")
               asm.stz(asm.abs_x(memory[ROWS_USED]))
