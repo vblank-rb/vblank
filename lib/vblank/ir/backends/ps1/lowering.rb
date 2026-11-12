@@ -220,6 +220,7 @@ module VBlank
             @lists_of_fixed_length = lists_of_fixed_length(program)
             @variables = {}
             @locals = {}
+            @call_numbers = Hash.new { |numbers, label| numbers[label] = [] } # ControlFlow::CALL_NUMBERS, by routine label
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @section_routines = {}
@@ -395,6 +396,7 @@ module VBlank
             name = DerivedNames.local_number_name(@routine, what, @locals.length + 1)
             @locals[name] = @memory.reserve_scratchpad("the game's number #{name}", 4)
             @starts << [@locals[name], start] unless start.zero?
+            @call_numbers[@routine] << name if ControlFlow::CALL_NUMBERS.include?(what)
             name
           end
 
@@ -909,17 +911,42 @@ module VBlank
             each_timer = @timers.map { |name, _| timer_section(name) }
             @frame_begins = "timers frame"
             in_order = routine_section(@frame_begins, [], routine: "the timers") do
-              (1..@timers.size).each do |place_in_order|
-                @timers.each_key do |name|
-                  skip = fresh_label("not_this_one")
-                  jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
-                  jump_unless(Build.var_ref(timer_number(name, :running)), skip)
-                  call_routine(timer_label(name))
-                  @asm.label(skip)
+              with_call_numbers_kept do
+                (1..@timers.size).each do |place_in_order|
+                  @timers.each_key do |name|
+                    skip = fresh_label("not_this_one")
+                    jump_unless(Build.binop(:==, Build.var_ref(timer_number(name, :order)), Build.int(place_in_order)), skip)
+                    jump_unless(Build.var_ref(timer_number(name, :running)), skip)
+                    call_routine(timer_label(name))
+                    @asm.label(skip)
+                  end
                 end
               end
             end
             [*each_timer, in_order]
+          end
+
+          # The block's code with the numbers each call of a routine keeps of its own (ControlFlow::CALL_NUMBERS)
+          # kept on the stack around it, for every routine the handlers can call while a call of it is waiting
+          # at this frame boundary (LoweringPlan#routines_reentered_at_frame_boundary): the call that waits goes
+          # on from its own loop's turn, as the interpreter's does, whatever the handler's call left there. A bend's
+          # steps run at the boundary too, but the PlayStation build does not make bends yet (NOT_LOWERED_YET), so the
+          # timers are all that run there.
+          def with_call_numbers_kept
+            kept = @plan.routines_reentered_at_frame_boundary.flat_map { |name| @call_numbers[self.class.routine_label(name)] }
+            return yield if kept.empty?
+
+            @asm.addiu(:sp, :sp, -4 * kept.length)
+            kept.each_with_index do |name, i|
+              emit_load_word(:t0, place_of(name))
+              @asm.sw(:t0, i * 4, :sp)
+            end
+            yield
+            kept.each_with_index do |name, i|
+              @asm.lw(:t0, i * 4, :sp)
+              emit_store_word(:t0, place_of(name))
+            end
+            @asm.addiu(:sp, :sp, 4 * kept.length)
           end
 
           def timer_label(name) = "timer #{name} frame"

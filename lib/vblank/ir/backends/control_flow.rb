@@ -42,6 +42,12 @@ module VBlank
         # The statements written here (Lowering#statements_written_by), each by its own method.
         STATEMENT_KINDS = %i[if loop repeat every after case].freeze
 
+        # The numbers a routine keeps of its own for ONE CALL of it, asked for by these names through
+        # keep_local: a loop's turns and its count (#emit_repeat), and the scene a `case` read
+        # (#emit_case). Where a second call can come while the first is going
+        # (LoweringPlan#routines_reentered_at_frame_boundary), a lowering puts them back after it.
+        CALL_NUMBERS = %i[index count state].freeze
+
         # EVERY METHOD OF THIS MODULE A LOWERING WRITES ITS OWN WAY, by the method and then the
         # console, with why its way is cheaper there. A lowering takes the walk as it is unless it is
         # named here (.claude/rules/adding-a-backend.md); test_control_flow.rb holds the four

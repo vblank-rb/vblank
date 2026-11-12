@@ -82,7 +82,7 @@ module VBlank
             DrawList.emit(asm, memory, faces: faces)
             Int32.emit(asm)
             Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by, ticks_paint_ahead: !frame_begins.nil?,
-                                    crosses: tiled&.crosses ? true : false)
+                                    crosses: tiled ? tiled.crosses : false)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             Paint.emit(asm, memory, faces: faces, shown_by: shown_by)

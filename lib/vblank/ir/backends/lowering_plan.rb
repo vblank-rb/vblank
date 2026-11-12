@@ -116,10 +116,10 @@ module VBlank
           end.uniq.each_with_index.to_h
           # A bend's steps run at every frame boundary, wherever it is declared, so a routine they
           # call is reached as a timer's handler's is.
-          bend_roots = program.walk.select { |node| node.kind == :scroll_rows }
-          @called = Reach.routines(program, also: @tick_handlers.values + bend_roots)
+          @bend_roots = program.walk.select { |node| node.kind == :scroll_rows }
+          @called = Reach.routines(program, also: @tick_handlers.values + @bend_roots)
           @reachable = Reach.statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@tick_handlers.values,
-                                             *bend_roots)
+                                             *@bend_roots)
           @declared_lists = @reachable.reverse.select { |node| node.kind == :list_new }.to_h { |node| [node.name, node] }
           @tables = program.walk.select { |node| node.kind == :table }.to_h { |node| [node.name, node] }
           @handover = SceneHandover.of(program)
@@ -190,7 +190,36 @@ module VBlank
         end
 
         # Which shape each `repeat` of the program can take (LoopForm).
-        def loop_form = @loop_form ||= LoopForm.new(@program)
+        def loop_form = @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) })
+
+        # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
+        # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
+        # own wait, or inside a routine it called that waits. A routine they call that can be waiting
+        # there runs again from its start while the call that waits is part way through, and the
+        # interpreter keeps each call's own numbers (a loop's count, the scene a `case` read) to itself
+        # (Reference#exec_repeat, #exec_case). A cartridge keeps them at fixed places, which the second
+        # call writes over: so it keeps them apart from the game's variables and puts them back after the
+        # boundary's routines have run.
+        def routines_reentered_at_frame_boundary
+          @routines_reentered_at_frame_boundary ||=
+            Reach.routines_called_from(@program, @tick_handlers.values + @bend_roots).select { |name| waits?(name) }
+        end
+
+        # The statements a frame boundary can come inside: a wait, and a game loop, whose every pass ends in
+        # one. The interpreter ends a frame only in #exec_wait_vblank.
+        FRAME_ENDING_KINDS = %i[wait_vblank loop].freeze
+
+        # Whether the routine +name+ can reach a frame boundary of the game's own: a wait, or a game loop,
+        # in it or in a routine it calls. A routine is taken as not waiting while its own calls are asked
+        # about, so one that calls itself (refused elsewhere, #refuse_routines_that_call_themselves!) ends.
+        def waits?(name)
+          (@waits ||= {}).fetch(name) do
+            @waits[name] = false
+            statements = Reach.statements_under(@funcs.fetch(name))
+            @waits[name] = statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
+                           Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+          end
+        end
 
         # Every game loop of the program.
         def game_loops = @game_loops ||= @program.walk.select { |node| node.kind == :loop }
