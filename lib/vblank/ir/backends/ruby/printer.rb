@@ -137,6 +137,13 @@ module VBlank
 
           # One method: the routine itself, or a +part+ of it (#print_part_call), which hands back
           # nil when it runs to its end (a step's part never does: a step ends by leaving).
+          #
+          # A routine printed in parts hands back nil at its end, where printed whole it hands back
+          # the value of its last line, and that is left so: nothing reads it. A routine gives
+          # nothing back (Statements::Function) but a resumable one, whose 1 or 0 is always handed
+          # back by a `return` (Pause, Finish, or a Resume passing one on), since its steps are a
+          # loop that is only ever left that way. A call whose answer is kept (Resume, RunToEnd,
+          # and the runtime's `rg_game_main == 1`) is only ever of a resumable routine.
           def print_method(name, body, part:)
             @in_part = part
             @loops_open = 0
