@@ -90,6 +90,58 @@ class TestPS1FacePieces < Minitest::Test
     end
   end
 
+  # A picture of 32 by 32 pixels, each its own colour: red counts across and green counts down, so a pixel
+  # on the screen says which texel landed there.
+  SWIM_SIZE = 32
+  SWIM_PICTURE = (0...SWIM_SIZE).flat_map { |down| (0...SWIM_SIZE).map { |across| across | (down << 5) | (1 << 10) } }.freeze
+
+  # A wall down the viewer's left, from just ahead of them to three wholes ahead, turning a little left
+  # each pass: the wall the chip's straight stepping bends most, near and at a slant.
+  def self.wall_turning(perspective)
+    VBlank.game("WALL SWIM", consoles: %i[ps1]) do
+      screen :bitmap, tear_free: true
+      image :texels, width: SWIM_SIZE, height: SWIM_SIZE, data: SWIM_PICTURE
+      place :wall do
+        face point(-1.0, 1.5, 0.4), point(-1.0, 1.5, 3.0), point(-1.0, -1.5, 3.0), point(-1.0, -1.5, 0.4),
+             picture: :texels, on_picture: [[0, 0], [64, 0], [64, 72], [0, 72]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        eye.turn :left, by: 0.7
+        clear_screen :black
+        draw_place :wall, seen_by: eye, perspective: perspective
+      end
+    end.program(console: :ps1)
+  end
+
+  # Each pass's picture of the wall as the chip draws it, set beside the interpreter's exact perspective
+  # (worked out at every pixel), texel for texel: at every turn of the view the chip's place on the
+  # picture is off by no more than the whole texels it is sent at each corner leave it, two, so the
+  # picture does not swim across the wall as the view turns.
+  def test_a_near_wall_at_a_slant_keeps_its_picture_within_two_texels_as_the_view_turns
+    exact = passes_of(self.class.wall_turning(:every_pixel), nil)
+    chip = passes_of(self.class.wall_turning(:every_8_pixels), PS1::CheckedRun::FacesByChip.new(PS1::PolygonFill.new))
+    worst = chip.zip(exact).map do |drawn, wanted|
+      drawn.zip(wanted).filter_map do |got, want|
+        next unless got >> 10 == 1 && want >> 10 == 1
+
+        [got & 31, (got >> 5) & 31].zip([want & 31, (want >> 5) & 31]).map { |a, b| [(a - b) % SWIM_SIZE, (b - a) % SWIM_SIZE].min }.max
+      end.max
+    end
+
+    assert(worst.drop(1).all? { |texels| texels <= 2 }, "texels off at each pass: #{worst.inspect}")
+  end
+
+  # The wall's pixels at each pass of +program+, filled by +filler+ (the interpreter's own fill when nil).
+  private def passes_of(program, filler)
+    passes = []
+    player = VBlank::IR::Backends::Reference.new
+    player.fill_faces_with(filler) if filler
+    player.each_vblank { passes << (0...240).flat_map { |y| (0...320).map { |x| player.screen.pixel(x, y) } } }
+    player.run(program, frames: 8)
+    passes
+  end
+
   # ModTexel: each channel times the colour over 80h, held to 1Fh; 80h is the texel as it is.
   def test_the_chip_multiplies_each_channel_by_the_colour
     color = 0x1F | (0x10 << 5) | (0x02 << 10)

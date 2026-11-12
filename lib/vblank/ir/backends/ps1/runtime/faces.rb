@@ -62,7 +62,8 @@ module VBlank
             # and a face of many squares is hundreds of such calls; on the stack in main RAM each register
             # taken back waits for the bus. rt_fill_face moves the stack here for as long as it runs, and
             # back as it returns. The deepest it goes is FILL_STACK_FRAMES routines' worth: rt_fill_face,
-            # rt_face_sweep down the rows, rt_face_sweep along a row, rt_face_send_piece, and the cut or
+            # rt_face_sweep down the rows, rt_face_row along each (or rt_face_sweep in its place, never
+            # both), rt_face_send_piece (or rt_face_quad, which hands on to it in its place), and the cut or
             # the fan it calls. Every other routine those call keeps nothing on the stack. The interrupt can
             # come at the deepest, and the pad routines it calls keep their return addresses on the stack
             # too: INTERRUPT_STACK_BYTES more.
@@ -90,6 +91,13 @@ module VBlank
             # that order (rt_face_extents).
             EXTENTS_OFFSET_BYTES = 36
             EXTENT_NUMBERS = [FacePieces::TEXEL_U, FacePieces::TEXEL_V].freeze
+            # Words of those rt_face_row borrows between the pieces it sends, since nothing else reads them
+            # until rt_face_send_piece sends one: how many corners the strip's run going back round passed
+            # before a line, where in the strip it reached the line, and the crossing a square of four
+            # corners made first (#emit_four_corner_square).
+            BACK_PASSED_OFFSET_BYTES = EXTENTS_OFFSET_BYTES
+            BACK_REACHED_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + 4
+            CROSSING_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + 8
             POOL_NEXT_OFFSET_BYTES = EXTENTS_OFFSET_BYTES + (EXTENT_NUMBERS.length * 8) # The pool's next free corner
             # The pool's next free corner as each piece waiting was put there, a word each.
             WAITING_MARKS_OFFSET_BYTES = POOL_NEXT_OFFSET_BYTES + 4
@@ -126,27 +134,20 @@ module VBlank
             # cutting a row into squares, a square, two for cutting on the picture, then those waiting.
             POLYGONS = %i[face rows_a rows_b row squares_a squares_b square part_a part_b].freeze
             WAITING_OFFSET_BYTES = POLYGONS.length * POLYGON_BYTES
-            # ...and the corners of the piece being sent: x, y, u and v as a word, and y << 16 | x as the
-            # chip takes it, and on a lit face its colour as the chip takes it (red, green and blue alike), a
-            # word each.
-            SENT_CORNER_BYTES = 20
-            SENT_OFFSET_BYTES = WAITING_OFFSET_BYTES + (FacePieces::MOST_WAITING * POLYGON_BYTES)
             # ...the corners rt_face_compact is moving, on their way down.
-            COMPACT_OFFSET_BYTES = SENT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * SENT_CORNER_BYTES)
+            COMPACT_OFFSET_BYTES = WAITING_OFFSET_BYTES + (FacePieces::MOST_WAITING * POLYGON_BYTES)
             POOL_OFFSET_BYTES = COMPACT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * CORNER_BYTES)
 
             # HOW MANY CORNERS THE POOL HOLDS: the most that can be in use at once. A cut makes at most a
             # corner for each edge of the piece it cuts, so MOST_CORNERS. In use at once are the face's own,
             # the four cuts that hold it to its edges, every cut of rt_face_sweep's rest across the screen
-            # one way and the other (its parts are handed back, the rest is not), and on the picture and
+            # one way and the other (its parts are handed back, the rest is not) or the two crossings
+            # rt_face_row makes on each line along a strip in place of a cut, and on the picture and
             # between levels, for each piece waiting and for the part being sent, the corners it came off
             # the stack with and the cuts made since: three at the most before a part is sent, since a part
             # cut once across the picture, once down it and once between levels lies inside all three. The
             # smallest square is the one most cut.
-            unless FacePieces::CELL_PIXELS >= FacePieces::EVERY_PIXEL_CELL_PIXELS
-              raise "the pool is sized for squares of #{FacePieces::EVERY_PIXEL_CELL_PIXELS} pixels or more"
-            end
-            SWEEP_LINES = Console::PLAYSTATION.screen_size.sum { |side| (side / FacePieces::EVERY_PIXEL_CELL_PIXELS) + 1 }
+            SWEEP_LINES = Console::PLAYSTATION.screen_size.sum { |side| (side >> FacePieces::LEAST_CELL_SHIFT) + 1 }
             POOL_CORNERS = Nodes::FillFace::MOST_CORNERS +
                            (FacePieces::MOST_CORNERS * (4 + SWEEP_LINES + ((FacePieces::MOST_WAITING + 1) * (1 + 3))))
             PIECES_BYTES = POOL_OFFSET_BYTES + (POOL_CORNERS * CORNER_BYTES)
@@ -210,7 +211,7 @@ module VBlank
               emit_fill_face_routine(asm, at, memory, polygon, pieces + POOL_OFFSET_BYTES)
               emit_sweep_routine(asm, at)
               emit_send_piece_routine(asm, at, polygon, pieces + WAITING_OFFSET_BYTES)
-              emit_fan_routine(asm, at, memory, pieces + SENT_OFFSET_BYTES)
+              emit_fan_routine(asm, at, memory)
               emit_cut_routine(asm, at)
               emit_extent_routine(asm)
               emit_extents_routine(asm, at)
@@ -218,6 +219,10 @@ module VBlank
               emit_compact_routine(asm, at, pieces + COMPACT_OFFSET_BYTES)
               emit_texel_routine(asm, at)
               emit_chip_put_back_routine(asm, at)
+              emit_cell_side_routine(asm)
+              emit_row_routine(asm, at, polygon)
+              emit_column_corner_routine(asm, at)
+              emit_quad_routine(asm, at, memory, polygon)
             end
 
             # The reciprocal table, a section of its own.
@@ -457,23 +462,35 @@ module VBlank
               asm.jal("rt_face_send_piece")
               asm.b("rt_fill_face_done")
               asm.label("rt_fill_face_squares")
-              emit_square_side(asm, :t1, :t0, "rt_fill_face")
-              asm.sw(:t1, at + SIDE_OFFSET_BYTES, FACE_BASE)
-              # The squares start at the face's least x and least y. A face reaching no further than a square's
-              # side either way crosses no line strictly inside it (FacePieces.each_strip's first line is a
-              # side past its least), so it is one square, sent as it is without a sweep down it and along
-              # each row: most of a place's faces, a few pixels big. s6 is 1 once it reaches further.
-              asm.move(:s6, :zero)
-              [x, y].each do |number|
+              # The squares start at the face's least x and least y, and their side is the face's own
+              # (FacePieces.cell_side_shift), from its reach each way, s4 across and s5 down, and its
+              # nearness.
+              [[x, :s4], [y, :s5]].each do |number, reach|
                 asm.li(:a0, face)
                 asm.jal("rt_face_extent") { asm.li(:a1, number) }
                 asm.sw(:v0, at + CELL_START_OFFSET_BYTES + number, FACE_BASE)
-                asm.lw(:t0, at + SIDE_OFFSET_BYTES, FACE_BASE)
-                asm.subu(:t1, :v1, :v0)
-                asm.slt(:t1, :t0, :t1)
-                asm.or(:s6, :s6, :t1)
+                asm.subu(reach, :v1, :v0)
               end
-              asm.beq(:s6, :zero, "rt_fill_face_one_piece")
+              asm.li(:a0, face)
+              asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(FacePieces::NEARNESS)) }
+              asm.move(:a1, :v0)
+              asm.move(:a2, :v1)
+              asm.lw(:a3, at + SPANS_OFFSET_BYTES, FACE_BASE)
+              asm.move(:a0, :s4)
+              asm.slt(:t0, :s5, :s4)
+              asm.beq(:t0, :zero, "rt_fill_face_lesser_reach")
+              asm.label("rt_fill_face_down_lesser")
+              asm.move(:a0, :s5)
+              asm.label("rt_fill_face_lesser_reach")
+              asm.jal("rt_face_cell_side")
+              asm.sw(:v0, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              # A face reaching no further than a square's side either way crosses no line strictly inside
+              # it (FacePieces.each_strip's first line is a side past its least), so it is one square, sent
+              # as it is without a sweep down it and along each row.
+              asm.slt(:t0, :v0, :s4)
+              asm.slt(:t1, :v0, :s5)
+              asm.or(:t0, :t0, :t1)
+              asm.beq(:t0, :zero, "rt_fill_face_one_piece")
               asm.li(:a0, face)
               asm.li(:a1, y)
               asm.li(:a2, polygon.call(:row))
@@ -487,15 +504,6 @@ module VBlank
               KEPT_REGISTERS.each_with_index { |register, i| asm.lw(register, i * 4, :sp) }
               asm.lw(:sp, at + CALLER_STACK_OFFSET_BYTES, FACE_BASE)
               asm.jr(:ra)
-
-              # rt_face_row: a0 = a row of the face, cut into squares along the columns (rt_face_sweep), each
-              # square sent.
-              asm.label("rt_face_row")
-              asm.li(:a1, x)
-              asm.li(:a2, polygon.call(:square))
-              asm.li(:a3, polygon.call(:squares_a))
-              asm.la(:t4, "rt_face_send_piece")
-              asm.j("rt_face_sweep")
             end
 
             # The chip word in a0 (+which+ of CHIP_WORDS) sent unless the last face sent the same. Changes t0 to t3.
@@ -556,7 +564,7 @@ module VBlank
             # (FacePieces.each_cell), and its place on the picture reaches no further than PICTURE_REACH
             # (FacePieces.find_picture_cut). Its triangles are then FacePieces.send_fan's of its own corners,
             # and are sent from the corners rt_face_corners read, with no piece made in the pool, no extent
-            # found twice and no fan routine to copy them again: most faces of a place far off, a few pixels
+            # found twice and no fan routine to read them again: most faces of a place far off, a few pixels
             # big, cost little more than the words the chip is sent.
             #
             # Falls through with each corner's record made in FILL_STACK (STRAIGHT_ fields) and s7 free, or goes
@@ -702,8 +710,9 @@ module VBlank
 
             # The first part of #emit_straight_face_records: on to rt_fill_face_pieces for a face of more than
             # STRAIGHT_CORNERS corners, one FacePieces.sent_unclipped? would clip, or one in perspective
-            # reaching further than a square's side either way (FacePieces.each_strip would cut it). t1 to t4
-            # are the least and most a corner may be across and down, in sixteenths; t7 to v1 the face's own.
+            # reaching further than its squares' side either way (rt_face_cell_side; FacePieces.each_cell
+            # would cut it). t1 to t4 are the least and most a corner may be across and down, in
+            # sixteenths; t7 to v1 the face's own.
             def emit_straight_face_bounds(asm, at)
               asm.lw(:t5, at + COUNT_OFFSET_BYTES, FACE_BASE)
               asm.slti(:t0, :t5, STRAIGHT_CORNERS + 1)
@@ -736,13 +745,46 @@ module VBlank
               asm.addiu(:t5, :t5, -1)
               asm.bne(:t5, :zero, "rt_face_straight_reach") { asm.addiu(:t6, :t6, LIST_CORNER_BYTES) }
               asm.beq(:t0, :zero, "rt_face_straight_square")
-              emit_square_side(asm, :a0, :t0, "rt_face_straight")
-              [[:t7, :t8], [:t9, :v1]].each do |least, most|
-                asm.subu(:a1, most, least)
-                asm.slt(:a1, :a0, :a1)
-                asm.bne(:a1, :zero, "rt_fill_face_pieces")
-              end
+              # In perspective, its reach each way, t1 across and t2 down, no further than its squares' side
+              # (rt_face_cell_side). A face reaching no further than the least side either way, most of a
+              # place's faces, a few pixels big, is within its squares whatever their side, and needs none.
+              asm.subu(:t1, :t8, :t7)
+              asm.subu(:t2, :v1, :t9)
+              least_side = 16 << FacePieces::LEAST_CELL_SHIFT
+              asm.slti(:a0, :t1, least_side + 1)
+              asm.slti(:a1, :t2, least_side + 1)
+              asm.and(:a0, :a0, :a1)
+              asm.bne(:a0, :zero, "rt_face_straight_square")
+              emit_straight_face_nearness(asm, at)
+              asm.move(:a0, :t1)
+              asm.slt(:a3, :t2, :t1)
+              asm.beq(:a3, :zero, "rt_face_straight_lesser_reach")
+              asm.label("rt_face_straight_down_lesser")
+              asm.move(:a0, :t2)
+              asm.label("rt_face_straight_lesser_reach")
+              asm.jal("rt_face_cell_side") { asm.move(:a3, :t0) }
+              asm.slt(:t3, :v0, :t1)
+              asm.slt(:t4, :v0, :t2)
+              asm.or(:t3, :t3, :t4)
+              asm.bne(:t3, :zero, "rt_fill_face_pieces")
               asm.label("rt_face_straight_square")
+            end
+
+            # a1 and a2, the least and the most nearness of the straight face's corners as the list holds
+            # them (rt_face_corners). Changes t3 to t5.
+            def emit_straight_face_nearness(asm, at)
+              asm.addiu(:t3, FACE_BASE, at + CORNERS_OFFSET_BYTES)
+              asm.lw(:a1, 16, :t3)
+              asm.move(:a2, :a1)
+              asm.lw(:t4, at + COUNT_OFFSET_BYTES, FACE_BASE)
+              asm.label("rt_face_straight_nearness")
+              asm.addiu(:t4, :t4, -1)
+              asm.beq(:t4, :zero, "rt_face_straight_nearness_done")
+              asm.addiu(:t3, :t3, LIST_CORNER_BYTES)
+              asm.lw(:t5, 16, :t3)
+              emit_keep_least_and_most(asm, :t5, :a1, :a2, "rt_face_straight_w")
+              asm.b("rt_face_straight_nearness")
+              asm.label("rt_face_straight_nearness_done")
             end
 
             # +number+ kept in +least+ when it is less and in +most+ when it is more; +label+ names the places
@@ -890,15 +932,68 @@ module VBlank
               asm.label(label)
             end
 
-            # +into+ = the side of a square a face in perspective +spans+ (a register, not nought) is cut into,
-            # in sixteenths (FacePieces.cell_side); +label+ names the places between. Changes a3.
-            def emit_square_side(asm, into, spans, label)
-              asm.li(into, FacePieces::CELL_PIXELS * 16)
-              asm.addiu(:a3, spans, -1)
-              asm.bne(:a3, :zero, "#{label}_side")
-              asm.label("#{label}_every_pixel")
-              asm.li(into, FacePieces::EVERY_PIXEL_CELL_PIXELS * 16)
-              asm.label("#{label}_side")
+            # rt_face_cell_side: a0 = a face's lesser reach, across or down, in sixteenths; a1 and a2 the least
+            # and the most nearness of its corners; a3 its perspective (not nought). v0 = the side of the
+            # squares it is cut into, in sixteenths (FacePieces.cell_side_shift). Changes t3 to t6 and a0;
+            # keeps t0 to t2, so a caller's extents live through it.
+            #
+            # A leaf: it calls nothing. Its one divide is for the nearness change, and only faces wider than
+            # the least square get here.
+            def emit_cell_side_routine(asm)
+              bits = FacePieces::NEARNESS_CHANGE_BITS
+              asm.label("rt_face_cell_side")
+              # The change: the most less the least, over the least moved down (one at the least), held to
+              # the most.
+              asm.sra(:t3, :a1, bits)
+              asm.slti(:t4, :t3, 1)
+              asm.beq(:t4, :zero, "rt_face_cell_side_over")
+              asm.label("rt_face_cell_side_over_one")
+              asm.li(:t3, 1)
+              asm.label("rt_face_cell_side_over")
+              asm.subu(:t4, :a2, :a1)
+              asm.divu(:t4, :t3)
+              # While the divide works: t5, how far the reach is moved up to make the bound, by the pixels
+              # allowed.
+              asm.li(:t5, bits + 2 - 4 + FacePieces::OFF_PIXELS_SHIFT)
+              asm.addiu(:t6, :a3, -1)
+              asm.bne(:t6, :zero, "rt_face_cell_side_allowed")
+              asm.label("rt_face_cell_side_every_pixel")
+              asm.li(:t5, bits + 2 - 4 + FacePieces::EVERY_PIXEL_OFF_PIXELS_SHIFT)
+              asm.label("rt_face_cell_side_allowed")
+              asm.mflo(:t3)
+              asm.slti(:t4, :t3, FacePieces::MOST_NEARNESS_CHANGE + 1)
+              asm.bne(:t4, :zero, "rt_face_cell_side_held")
+              asm.label("rt_face_cell_side_most")
+              asm.li(:t3, FacePieces::MOST_NEARNESS_CHANGE)
+              asm.label("rt_face_cell_side_held")
+              # A face off by no more than allowed whole, the change times the reach no more than one moved
+              # up eight places further than the reach is (the bound below moves it up by 2 - 4 + the pixels
+              # allowed, and cell_side_shift's test of the whole face by 2 + 4 + them), is not cut.
+              asm.mult(:t3, :a0)
+              asm.li(:v0, FacePieces::MOST_CELL_SHIFT)
+              asm.addiu(:t6, :t5, 8)
+              asm.li(:t4, 1)
+              asm.sllv(:t6, :t4, :t6)
+              asm.mflo(:t4)
+              asm.slt(:t4, :t6, :t4)
+              asm.beq(:t4, :zero, "rt_face_cell_side_found")
+              # The side halved, from the most, while the change times its square passes the bound, the reach
+              # moved up: v0 the shift, t5 twice it.
+              asm.label("rt_face_cell_side_cut")
+              asm.sllv(:a0, :a0, :t5)
+              asm.label("rt_face_cell_side_try")
+              asm.slti(:t4, :v0, FacePieces::LEAST_CELL_SHIFT + 1)
+              asm.bne(:t4, :zero, "rt_face_cell_side_found")
+              asm.sll(:t5, :v0, 1)
+              asm.sllv(:t5, :t3, :t5)
+              asm.slt(:t4, :a0, :t5)
+              asm.beq(:t4, :zero, "rt_face_cell_side_found")
+              asm.label("rt_face_cell_side_finer")
+              asm.b("rt_face_cell_side_try") { asm.addiu(:v0, :v0, -1) }
+              asm.label("rt_face_cell_side_found")
+              asm.addiu(:v0, :v0, 4)
+              asm.li(:t4, 1)
+              asm.jr(:ra) { asm.sllv(:v0, :t4, :v0) }
             end
 
             # The face's corners as pieces' corners, into +face+ (FacePieces.corner_from_list): x and y, then
@@ -1023,6 +1118,536 @@ module VBlank
               emit_return_with_registers(asm)
             end
 
+            # rt_face_row: a0 = a strip of the face, between two of its rows' lines, cut into squares along the
+            # columns' lines and each square sent (FacePieces.each_square_in_strip): the strip's two runs from
+            # its least x to its most walked across it (#emit_strip_runs), and each square made from the
+            # corners each run passes and the crossings it makes. A square of four corners, most of them, is
+            # sent by rt_face_quad (#emit_four_corner_square); any other is put together in `square` and
+            # handed to rt_face_send_piece. A strip no line crosses is sent as it is, and one without the two
+            # runs is handed to rt_face_sweep.
+            #
+            # s0 is the strip, s7 where its corners end, s5 the line and s6 its most x. s1 is where the next
+            # corner of the run going on round is in the strip and s2 that run's last crossing (or first
+            # corner); s3 and s4 the same for the run going back round. a3 is `square` while it is put together.
+            def emit_row_routine(asm, at, polygon)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              square = polygon.call(:square)
+              asm.label("rt_face_row")
+              emit_keep_registers(asm)
+              asm.move(:s0, :a0)
+              emit_strip_runs(asm, at)
+              # Each run from its first corner.
+              asm.lw(:s2, 0, :s1)
+              emit_next_slot(asm, :s1, "rt_face_row_ahead_first")
+              asm.lw(:s4, 0, :s3)
+              emit_previous_slot(asm, :s3, "rt_face_row_behind_first")
+              asm.label("rt_face_row_line")
+              asm.slt(:t0, :s5, :s6)
+              asm.beq(:t0, :zero, "rt_face_row_last")
+              emit_four_corner_square(asm, at, x)
+              # Any other square: put together in `square`, and sent as any piece is.
+              asm.label("rt_face_row_any")
+              asm.jal("rt_face_row_left")
+              emit_run_ahead(asm)
+              emit_run_behind(asm, at)
+              emit_send_square(asm, "rt_face_row_sent")
+              asm.label("rt_face_row_next")
+              asm.lw(:t0, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              asm.b("rt_face_row_line") { asm.addu(:s5, :s5, :t0) }
+              # rt_face_row_left: `square` (a3) started with a square's left side, each run's last crossing
+              # (or first corner), the run going back's first. Changes t0 and t1.
+              asm.label("rt_face_row_left")
+              asm.li(:a3, square)
+              asm.sw(:zero, 0, :a3)
+              emit_append(asm, :a3, :s4, "rt_face_row_left_behind")
+              emit_append(asm, :a3, :s2, "rt_face_row_left_ahead")
+              asm.jr(:ra)
+              emit_last_square(asm, x)
+              emit_send_square(asm, "rt_face_row_done")
+              emit_return_with_registers(asm)
+              # A strip no line crosses, sent as it is.
+              asm.label("rt_face_row_whole")
+              asm.b("rt_face_row_done_send") { asm.move(:a3, :s0) }
+              # A strip without the two runs, cut along every line by rt_face_sweep in place of this routine,
+              # so that the stack goes no deeper.
+              asm.label("rt_face_row_cut")
+              asm.move(:a0, :s0)
+              asm.li(:a1, x)
+              asm.li(:a2, square)
+              asm.li(:a3, polygon.call(:squares_a))
+              asm.la(:t4, "rt_face_send_piece")
+              KEPT_REGISTERS.each_with_index { |register, i| asm.lw(register, i * 4, :sp) }
+              asm.j("rt_face_sweep") { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
+            end
+
+            # THE LAST SQUARE, past the last line: each run's corners to the most, and those at the most; sent
+            # by rt_face_quad where it is the two last crossings and two corners at the most, and otherwise put
+            # together in `square` (a3) and falling through to be sent.
+            def emit_last_square(asm, x)
+              asm.label("rt_face_row_last")
+              emit_x_at_slot(asm, :t0, :s1)
+              asm.bne(:t0, :s6, "rt_face_row_last_any")
+              emit_x_at_slot(asm, :t0, :s3)
+              asm.bne(:t0, :s6, "rt_face_row_last_any")
+              asm.move(:t1, :s1)
+              emit_next_slot(asm, :t1, "rt_face_row_most_second")
+              asm.bne(:t1, :s3, "rt_face_row_last_any")
+              asm.label("rt_face_row_last_four")
+              asm.move(:a0, :s4)
+              asm.move(:a1, :s2)
+              asm.lw(:a2, 0, :s1)
+              asm.lw(:a3, 0, :s3)
+              asm.jal("rt_face_quad")
+              asm.b("rt_face_row_done")
+              asm.label("rt_face_row_last_any")
+              asm.jal("rt_face_row_left")
+              # The run going on round's corners short of the most; then s1 is the first at the most.
+              asm.label("rt_face_row_ahead_rest")
+              asm.lw(:a1, 0, :s1)
+              asm.lw(:t2, x, :a1)
+              asm.beq(:t2, :s6, "rt_face_row_ahead_rested")
+              asm.label("rt_face_row_ahead_rest_corner")
+              emit_append(asm, :a3, :a1, "rt_face_row_ahead_rest_kept")
+              emit_next_slot(asm, :s1, "rt_face_row_ahead_rest_next")
+              asm.b("rt_face_row_ahead_rest")
+              asm.label("rt_face_row_ahead_rested")
+              # Those at the most, from s1 on round (FacePieces.end_of_run): t2 the last of them.
+              asm.move(:t2, :s1)
+              emit_end_of_run(asm, :s6, "rt_face_row_most_run")
+              asm.move(:t2, :s1)
+              emit_append_run(asm, "rt_face_row_most")
+              # The run going back's corners not passed, short of the last at the most, in the strip's order:
+              # from the one after the last at the most (t3, kept by #emit_append_run) on round to s3.
+              emit_x_at_slot(asm, :t0, :s3)
+              asm.beq(:t0, :s6, "rt_face_row_behind_rested")
+              asm.label("rt_face_row_behind_rest")
+              asm.move(:t2, :t3)
+              emit_next_slot(asm, :t2, "rt_face_row_behind_rest_first")
+              asm.move(:t3, :s3)
+              emit_append_run(asm, "rt_face_row_behind_rest_run")
+              asm.label("rt_face_row_behind_rested")
+            end
+
+            # THE SQUARE OF FOUR CORNERS, most of a big face's: neither run passes a corner of the strip before
+            # the line s5 or meets one on it. It is then each run's last crossing (or first corner) and the
+            # crossing each makes on this line, sent by rt_face_quad without being put together in `square`;
+            # then on to rt_face_row_next. Any other square goes on to rt_face_row_any.
+            def emit_four_corner_square(asm, at, x)
+              asm.lw(:a1, 0, :s1)
+              asm.lw(:t1, x, :a1)
+              asm.slt(:t0, :s5, :t1)
+              asm.beq(:t0, :zero, "rt_face_row_any")
+              asm.label("rt_face_row_four_behind")
+              emit_x_at_slot(asm, :t1, :s3)
+              asm.slt(:t0, :s5, :t1)
+              asm.beq(:t0, :zero, "rt_face_row_any")
+              asm.label("rt_face_row_four")
+              asm.move(:a0, :s2)
+              asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
+              asm.sw(:v0, at + CROSSING_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:a1, 0, :s3)
+              asm.move(:a0, :s4)
+              asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
+              # [the run going back's last crossing, the other run's, this line's on the other run, and on
+              # the run going back], each run's last crossing then this line's.
+              asm.move(:a0, :s4)
+              asm.move(:a1, :s2)
+              asm.lw(:a2, at + CROSSING_OFFSET_BYTES, FACE_BASE)
+              asm.move(:a3, :v0)
+              asm.move(:s4, :v0)
+              asm.jal("rt_face_quad") { asm.move(:s2, :a2) }
+              asm.b("rt_face_row_next")
+            end
+
+            # THE STRIP'S TWO RUNS (FacePieces.strip_chains), for the strip in s0: falls through with s5 the
+            # first line, s6 its most x, s7 where its corners end, s1 where the last of its corners at its least
+            # is in it and s3 the first; or goes to rt_face_row_whole where no line crosses it, and to
+            # rt_face_row_cut where it has more than two corners at its least or x does not rise along both
+            # runs. Changes t0 to t9, a0 to a3, v0 and v1.
+            def emit_strip_runs(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.jal("rt_face_extent") { asm.li(:a1, x) }
+              # s5, the first line past the least (FacePieces.first_line); a strip it does not cross is one
+              # square, sent as it is.
+              asm.lw(:t1, at + CELL_START_OFFSET_BYTES + x, FACE_BASE)
+              asm.lw(:t2, at + SIDE_OFFSET_BYTES, FACE_BASE)
+              asm.subu(:t0, :v0, :t1)
+              asm.subu(:t3, :zero, :t2)
+              asm.and(:t0, :t0, :t3)
+              asm.addu(:t0, :t0, :t1)
+              asm.addu(:s5, :t0, :t2)
+              asm.slt(:t0, :s5, :v1)
+              asm.beq(:t0, :zero, "rt_face_row_whole")
+              asm.label("rt_face_row_wide")
+              asm.move(:s6, :v1)
+              asm.lw(:t0, 0, :s0)
+              asm.sll(:t0, :t0, 2)
+              asm.addu(:s7, :s0, :t0)
+              asm.addiu(:s7, :s7, 4)
+              # The first corner at the least (v0) whose corner before is not: t2 where it is, t3 where the one
+              # before is.
+              asm.addiu(:t2, :s0, 4)
+              asm.addiu(:t3, :s7, -4)
+              asm.label("rt_face_row_first_least")
+              emit_x_at_slot(asm, :t4, :t2)
+              asm.bne(:t4, :v0, "rt_face_row_first_least_next")
+              asm.label("rt_face_row_first_least_at")
+              emit_x_at_slot(asm, :t4, :t3)
+              asm.bne(:t4, :v0, "rt_face_row_first_least_found")
+              asm.label("rt_face_row_first_least_next")
+              asm.move(:t3, :t2)
+              asm.b("rt_face_row_first_least") { asm.addiu(:t2, :t2, 4) }
+              asm.label("rt_face_row_first_least_found")
+              asm.move(:s3, :t2)
+              emit_end_of_run(asm, :v0, "rt_face_row_least_run")
+              asm.move(:s1, :t3)
+              # No more than two at the least.
+              asm.beq(:s3, :s1, "rt_face_row_least_one")
+              emit_next_slot(asm, :t2, "rt_face_row_least_second")
+              asm.bne(:t2, :s1, "rt_face_row_cut")
+              asm.label("rt_face_row_least_one")
+              # Round from the last at the least, x rising, to the first at the most; then t3 the last at it.
+              asm.move(:t2, :s1)
+              emit_rising_run(asm, :forward, "rt_face_row_rising_ahead")
+              emit_end_of_run(asm, :s6, "rt_face_row_at_most")
+              # Back round from the first at the least, x rising, to the last at the most.
+              asm.move(:t2, :s3)
+              emit_rising_run(asm, :back, "rt_face_row_rising_behind")
+              asm.bne(:t2, :t3, "rt_face_row_cut")
+              asm.label("rt_face_row_runs")
+            end
+
+            # +into+ = the x of the corner whose address is at +slot+. Changes a0.
+            def emit_x_at_slot(asm, into, slot)
+              asm.lw(:a0, 0, slot)
+              asm.lw(into, NUMBER_OFFSETS.fetch(FacePieces::X), :a0)
+            end
+
+            # t3 = where the run of corners at the x +value+ that starts at t2 ends, going on round
+            # (FacePieces.end_of_run). Changes t4, t5 and a0.
+            def emit_end_of_run(asm, value, label)
+              asm.move(:t3, :t2)
+              asm.label(label)
+              asm.move(:t5, :t3)
+              emit_next_slot(asm, :t5, "#{label}_next")
+              asm.beq(:t5, :t2, "#{label}_end")
+              emit_x_at_slot(asm, :t4, :t5)
+              asm.bne(:t4, value, "#{label}_end")
+              asm.label("#{label}_on")
+              asm.b(label) { asm.move(:t3, :t5) }
+              asm.label("#{label}_end")
+            end
+
+            # From the corner at t2, round +way+ (:forward or :back) while x rises, to the first at the most
+            # (s6): t2 then where that one is (FacePieces.rising_run); to rt_face_row_cut where x stops rising
+            # first. Changes t4, t5, t6 and a0.
+            def emit_rising_run(asm, way, label)
+              emit_x_at_slot(asm, :t4, :t2)
+              asm.label(label)
+              asm.beq(:t4, :s6, "#{label}_most")
+              asm.move(:t5, :t2)
+              way == :forward ? emit_next_slot(asm, :t5, "#{label}_step") : emit_previous_slot(asm, :t5, "#{label}_step")
+              emit_x_at_slot(asm, :t6, :t5)
+              asm.slt(:a0, :t4, :t6)
+              asm.beq(:a0, :zero, "rt_face_row_cut")
+              asm.label("#{label}_rises")
+              asm.move(:t2, :t5)
+              asm.b(label) { asm.move(:t4, :t6) }
+              asm.label("#{label}_most")
+            end
+
+            # +slot+ moved on to the next corner of the strip in s0, round from its last to its first (s7 is
+            # where its corners end).
+            def emit_next_slot(asm, slot, label)
+              asm.addiu(slot, slot, 4)
+              asm.bne(slot, :s7, "#{label}_kept")
+              asm.label("#{label}_round")
+              asm.addiu(slot, :s0, 4)
+              asm.label("#{label}_kept")
+            end
+
+            # +slot+ moved back to the corner before in the strip in s0, round from its first to its last.
+            # Changes t9.
+            def emit_previous_slot(asm, slot, label)
+              asm.addiu(:t9, :s0, 4)
+              asm.bne(slot, :t9, "#{label}_kept")
+              asm.label("#{label}_round")
+              asm.move(slot, :s7)
+              asm.label("#{label}_kept")
+              asm.addiu(slot, slot, -4)
+            end
+
+            # The corners of the strip in s0 from t2 on round to t3 put on the end of `square` (a3). Changes t0,
+            # t1, t2 and a1.
+            def emit_append_run(asm, label)
+              asm.label(label)
+              asm.lw(:a1, 0, :t2)
+              emit_append(asm, :a3, :a1, "#{label}_kept")
+              asm.beq(:t2, :t3, "#{label}_done")
+              emit_next_slot(asm, :t2, "#{label}_next")
+              asm.b(label)
+              asm.label("#{label}_done")
+            end
+
+            # The run going on round across the line s5 (FacePieces::ChainWalk#cross): each corner it passes
+            # put on the end of `square` and made its last, then its crossing, the corner on the line or one
+            # made there (rt_face_column_corner), put on too.
+            def emit_run_ahead(asm)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.label("rt_face_row_ahead")
+              asm.lw(:a1, 0, :s1)
+              asm.lw(:t2, x, :a1)
+              asm.slt(:t0, :t2, :s5)
+              asm.beq(:t0, :zero, "rt_face_row_ahead_reached")
+              asm.label("rt_face_row_ahead_passed")
+              asm.move(:s2, :a1)
+              emit_append(asm, :a3, :a1, "rt_face_row_ahead_kept")
+              emit_next_slot(asm, :s1, "rt_face_row_ahead_next")
+              asm.b("rt_face_row_ahead")
+              asm.label("rt_face_row_ahead_reached")
+              asm.bne(:t2, :s5, "rt_face_row_ahead_cross")
+              asm.label("rt_face_row_ahead_on_line")
+              asm.move(:s2, :a1)
+              emit_next_slot(asm, :s1, "rt_face_row_ahead_past_line")
+              asm.b("rt_face_row_ahead_crossed")
+              asm.label("rt_face_row_ahead_cross")
+              asm.move(:a0, :s2)
+              asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
+              asm.move(:s2, :v0)
+              asm.label("rt_face_row_ahead_crossed")
+              emit_append(asm, :a3, :s2, "rt_face_row_ahead_crossing")
+            end
+
+            # The run going back round across the line s5, as #emit_run_ahead: its crossing put on the end of
+            # `square`, then the corners it passed, in the strip's order, which is the way back along the run
+            # (BACK_PASSED_OFFSET_BYTES counts them, and BACK_REACHED_OFFSET_BYTES is where it reached the line).
+            def emit_run_behind(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.sw(:zero, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
+              asm.label("rt_face_row_behind")
+              asm.lw(:a1, 0, :s3)
+              asm.lw(:t2, x, :a1)
+              asm.slt(:t0, :t2, :s5)
+              asm.beq(:t0, :zero, "rt_face_row_behind_reached")
+              asm.label("rt_face_row_behind_passed")
+              asm.move(:s4, :a1)
+              asm.lw(:t0, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
+              asm.addiu(:t0, :t0, 1)
+              asm.sw(:t0, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
+              emit_previous_slot(asm, :s3, "rt_face_row_behind_next")
+              asm.b("rt_face_row_behind")
+              asm.label("rt_face_row_behind_reached")
+              asm.sw(:s3, at + BACK_REACHED_OFFSET_BYTES, FACE_BASE)
+              asm.bne(:t2, :s5, "rt_face_row_behind_cross")
+              asm.label("rt_face_row_behind_on_line")
+              asm.move(:s4, :a1)
+              emit_previous_slot(asm, :s3, "rt_face_row_behind_past_line")
+              asm.b("rt_face_row_behind_crossed")
+              asm.label("rt_face_row_behind_cross")
+              asm.move(:a0, :s4)
+              asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
+              asm.move(:s4, :v0)
+              asm.label("rt_face_row_behind_crossed")
+              emit_append(asm, :a3, :s4, "rt_face_row_behind_crossing")
+              asm.lw(:t2, at + BACK_REACHED_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t3, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
+              asm.label("rt_face_row_behind_passed_back")
+              asm.beq(:t3, :zero, "rt_face_row_behind_done")
+              emit_next_slot(asm, :t2, "rt_face_row_behind_passed_slot")
+              asm.lw(:a1, 0, :t2)
+              emit_append(asm, :a3, :a1, "rt_face_row_behind_passed_kept")
+              asm.b("rt_face_row_behind_passed_back") { asm.addiu(:t3, :t3, -1) }
+              asm.label("rt_face_row_behind_done")
+            end
+
+            # `square` (a3) handed to rt_face_send_piece when it has three corners or more; then on to +done+.
+            def emit_send_square(asm, done)
+              asm.lw(:t0, 0, :a3)
+              asm.slti(:t0, :t0, 3)
+              asm.bne(:t0, :zero, done)
+              asm.label("#{done}_send")
+              asm.jal("rt_face_send_piece") { asm.move(:a0, :a3) }
+              asm.label(done)
+            end
+
+            # rt_face_column_corner: a0 = a corner of a strip before the line a2 across, a1 = the corner its
+            # edge reaches past the line at. v0 = the corner made where the edge crosses the line, in the
+            # pool's next free place: the corner rt_face_cut makes there (FacePieces.corner_between, a line
+            # across). Changes t0 to t9, a0, a1 and v1.
+            def emit_column_corner_routine(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.label("rt_face_column_corner")
+              asm.move(:t0, :a0)
+              asm.move(:t1, :a1)
+              asm.lw(:t2, x, :t0)
+              asm.lw(:t3, x, :t1)
+              asm.subu(:t3, :t3, :t2)
+              asm.subu(:t2, :a2, :t2)
+              asm.sll(:t2, :t2, FacePieces::SHARE_BITS)
+              asm.div(:t2, :t3)
+              # While the divide works, as rt_face_cut does: the corner's place in the pool, and its x.
+              asm.lw(:v0, at + POOL_NEXT_OFFSET_BYTES, FACE_BASE)
+              asm.addiu(:a1, :v0, CORNER_BYTES)
+              asm.sw(:a1, at + POOL_NEXT_OFFSET_BYTES, FACE_BASE)
+              asm.sw(:a2, x, :v0)
+              emit_step_number(asm, FacePieces::Y, share_from_divide: true)
+              emit_step_number(asm, FacePieces::U_SOURCE)
+              emit_step_number(asm, FacePieces::V_SOURCE)
+              emit_step_number(asm, FacePieces::NEARNESS)
+              # The shade on a lit face; on one not lit it is nought at both ends.
+              asm.lw(:t2, at + LIGHT_FLOOR_OFFSET_BYTES, FACE_BASE)
+              asm.beq(:t2, :zero, "rt_face_column_corner_unlit")
+              emit_step_number(asm, FacePieces::SHADE)
+              asm.b("rt_face_column_corner_shaded")
+              asm.label("rt_face_column_corner_unlit")
+              asm.sw(:zero, NUMBER_OFFSETS.fetch(FacePieces::SHADE), :v0)
+              asm.label("rt_face_column_corner_shaded")
+              asm.move(:v1, :ra)
+              asm.jal("rt_face_texel") { asm.move(:a0, :v0) }
+              asm.jr(:v1)
+            end
+
+            # rt_face_quad: a0 to a3 = the corners of a square of four (#emit_four_corner_square), in order round it,
+            # sent as FacePieces.send_cut_on_picture sends that piece. Most need no cut on the picture, and
+            # are sent here as rt_face_fan would send them, its two triangles from the first corner, with no
+            # piece made: s0 to s3 hold each corner's place as the chip takes it once worked out, s4 to s7
+            # its place on the picture (s4 with the colour table), t4 to t7 its colour on a lit face, v0 the
+            # picture's page and v1 not nought on a lit face. One that does need a cut is made the piece
+            # `square` and handed to rt_face_send_piece.
+            def emit_quad_routine(asm, at, memory, polygon)
+              h = Console::PS1Hardware
+              corners = %i[s0 s1 s2 s3]
+              texels = %i[s4 s5 s6 s7]
+              colors = %i[t4 t5 t6 t7]
+              offset = ->(number) { NUMBER_OFFSETS.fetch(number) }
+              asm.label("rt_face_quad")
+              emit_keep_registers(asm)
+              %i[a0 a1 a2 a3].zip(corners).each { |from, into| asm.move(into, from) }
+              # Each corner's texel, t0 to t3 across and t4 to t7 down, and the picture's place each way moved
+              # down to a whole picture, a1 and a2, the square's reach from there no further than PICTURE_REACH
+              # (FacePieces.find_picture_cut).
+              corners.each_with_index do |corner, i|
+                asm.lw(:"t#{i}", offset.call(FacePieces::TEXEL_U), corner)
+                asm.lw(:"t#{i + 4}", offset.call(FacePieces::TEXEL_V), corner)
+              end
+              asm.lw(:v0, at + PICTURE_OFFSET_BYTES, FACE_BASE)
+              [[%i[t0 t1 t2 t3], RECORD_ACROSS_MASK_OFFSET_BYTES, :a1, "u"],
+               [%i[t4 t5 t6 t7], RECORD_DOWN_MASK_OFFSET_BYTES, :a2, "v"]].each do |(first, *others), mask, base, name|
+                asm.move(:t8, first)
+                asm.move(:t9, first)
+                others.each_with_index { |texel, i| emit_keep_least_and_most(asm, texel, :t8, :t9, "rt_face_quad_#{name}#{i}") }
+                asm.lw(base, mask, :v0)
+                asm.and(base, :t8, base)
+                asm.subu(:t9, :t9, base)
+                asm.slti(:t9, :t9, FacePieces::PICTURE_REACH + 1)
+                asm.beq(:t9, :zero, "rt_face_quad_cut")
+                asm.label("rt_face_quad_fits_#{name}")
+              end
+              # Each corner's place on the picture as it is sent: moved by the whole pictures, each held to a
+              # byte, u | v << 8.
+              texels.each_with_index do |texel, i|
+                [[:"t#{i}", :a1, "u"], [:"t#{i + 4}", :a2, "v"]].each do |number, base, name|
+                  held = "rt_face_quad_held_#{name}#{i}"
+                  asm.subu(number, number, base)
+                  asm.slti(:t8, number, 256)
+                  asm.bne(:t8, :zero, held)
+                  asm.label("rt_face_quad_most_#{name}#{i}")
+                  asm.li(number, 255)
+                  asm.label(held)
+                end
+                asm.sll(:t9, :"t#{i + 4}", 8)
+                asm.or(texel, :"t#{i}", :t9)
+              end
+              asm.lw(:t0, RECORD_TABLE_OFFSET_BYTES, :v0)
+              asm.lw(:v0, RECORD_PAGE_OFFSET_BYTES, :v0)
+              asm.or(:s4, :s4, :t0)
+              # On a lit face, each corner's colour (FacePieces.corner_color): the shade's whole part, held to
+              # FULL_COLOR, in each of the word's three bytes.
+              asm.lw(:v1, at + LIGHT_FLOOR_OFFSET_BYTES, FACE_BASE)
+              asm.beq(:v1, :zero, "rt_face_quad_colored")
+              corners.zip(colors).each_with_index do |(corner, color), i|
+                held = "rt_face_quad_color_held#{i}"
+                asm.lw(color, offset.call(FacePieces::SHADE), corner)
+                asm.srl(color, color, 16)
+                asm.sltiu(:t8, color, FacePieces::FULL_COLOR + 1)
+                asm.bne(:t8, :zero, held)
+                asm.label("rt_face_quad_color_full#{i}")
+                asm.li(color, FacePieces::FULL_COLOR)
+                asm.label(held)
+                asm.sll(:t8, color, 8)
+                asm.or(:t8, :t8, color)
+                asm.sll(color, color, 16)
+                asm.or(color, color, :t8)
+              end
+              asm.label("rt_face_quad_colored")
+              # Each corner's place as the chip takes it (FacePieces.send_fan): rounded to whole pixels, and
+              # down from the top of the page drawn into, (y + the page's top) << 16 | x.
+              asm.lw(:a3, Runtime.at(memory, Paint::PAGE_Y), :gp)
+              corners.each do |corner|
+                asm.lw(:t0, offset.call(FacePieces::X), corner)
+                asm.lw(:t1, offset.call(FacePieces::Y), corner)
+                asm.addiu(:t0, :t0, 8)
+                asm.sra(:t0, :t0, 4)
+                asm.addiu(:t1, :t1, 8)
+                asm.sra(:t1, :t1, 4)
+                asm.addu(:t1, :t1, :a3)
+                asm.sll(:t1, :t1, 16)
+                asm.andi(:t0, :t0, 0xFFFF)
+                asm.or(corner, :t1, :t0)
+              end
+              # The two triangles, (first, second, third) and (first, third, fourth), each sent if it has an
+              # area (rt_face_fan's test).
+              [[1, 2], [2, 3]].each_with_index do |(second, third), triangle|
+                emit_quad_triangle(asm, h, corners, texels, colors, second, third, "rt_face_quad_triangle#{triangle}")
+              end
+              emit_return_with_registers(asm)
+              # A square to cut on the picture: the piece `square`, and rt_face_send_piece in place of the rest.
+              asm.label("rt_face_quad_cut")
+              square = polygon.call(:square)
+              asm.li(:a0, square)
+              asm.li(:t0, 4)
+              asm.sw(:t0, 0, :a0)
+              corners.each_with_index { |corner, i| asm.sw(corner, 4 + (i * 4), :a0) }
+              KEPT_REGISTERS.each_with_index { |register, i| asm.lw(register, i * 4, :sp) }
+              asm.j("rt_face_send_piece") { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
+            end
+
+            # One triangle of rt_face_quad, its first corner the square's and the others +second+ and
+            # +third+ of +corners+, sent when it has an area; +label+ names the places between. Changes a0 to
+            # a2, t0 to t3, t8 and t9.
+            def emit_quad_triangle(asm, h, corners, texels, colors, second, third, label)
+              # Twice its area, signed, from the places sent: the page's top is in every y, and drops out.
+              asm.sll(:a0, corners[0], 16)
+              asm.sra(:a0, :a0, 16)
+              asm.sra(:a1, corners[0], 16)
+              [[corners[second], :a2, :t0], [corners[third], :t8, :t9]].each do |corner, across, down|
+                asm.sll(across, corner, 16)
+                asm.sra(across, across, 16)
+                asm.subu(across, across, :a0)
+                asm.sra(down, corner, 16)
+                asm.subu(down, down, :a1)
+              end
+              asm.mult(:a2, :t9)
+              asm.mflo(:a2)
+              asm.mult(:t8, :t0)
+              asm.mflo(:t8)
+              asm.beq(:a2, :t8, "#{label}_done")
+              asm.label("#{label}_send")
+              # The second corner's place on the picture with the picture's page.
+              asm.or(:t9, texels[second], :v0)
+              asm.bne(:v1, :zero, "#{label}_shaded")
+              asm.label("#{label}_raw")
+              emit_port_command(asm) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              emit_words_stored(asm, [corners[0], texels[0], corners[second], :t9, corners[third], texels[third]])
+              asm.b("#{label}_done")
+              asm.label("#{label}_shaded")
+              asm.lui(:t0, h::GP0_SHADED_TEXTURED_TRIANGLE >> 16)
+              emit_port_command(asm) { asm.or(:a0, colors[0], :t0) }
+              emit_words_stored(asm, [corners[0], texels[0], colors[second], corners[second], :t9, colors[third],
+                                      corners[third], texels[third]])
+              asm.label("#{label}_done")
+            end
+
             # rt_face_send_piece: a0 = a piece, cut on the picture until each part's places run no more than
             # FacePieces::PICTURE_REACH each way, and each part sent (FacePieces.send_cut_on_picture). s0 is
             # the part, s1 how many wait, s2 the picture's record, s3 where the part before a cut goes, s4 1
@@ -1129,137 +1754,125 @@ module VBlank
             # (FacePieces.send_fan): its places moved by whole pictures to start between nought and the
             # picture's size, each held to a byte, its corners rounded to whole pixels on the page drawn
             # into; a triangle with no area is left out.
-            def emit_fan_routine(asm, at, memory, sent)
+            #
+            # EACH CORNER IS READ ONCE AND SENT FROM REGISTERS. The pieces and their corners are in main RAM,
+            # which has no cache, so every load waits for the bus; writing each corner as it is sent into a
+            # list there and reading it back for every triangle it is in cost more than working it out. The
+            # first corner, which every triangle has, is kept in s6 (its place as the chip takes it), s7 (its
+            # place on the picture with the colour table) and a3 (its colour on a lit face); the triangle's
+            # second corner in t4, t5 and t6, and its third, the corner just read, in v0, a1 and a2. s0 is
+            # where the next corner is in the piece and s1 how many are left; s3 and s4 the picture's place
+            # moved down to a whole picture each way, s5 the top of the page drawn into, s2 the picture's
+            # page, and v1 not nought on a lit face.
+            def emit_fan_routine(asm, at, memory)
               h = Console::PS1Hardware
-              offset = ->(number) { NUMBER_OFFSETS.fetch(number) }
               asm.label("rt_face_fan")
               emit_keep_registers(asm)
-              asm.move(:s0, :a0)
-              asm.lw(:s1, 0, :s0) # how many corners
-              asm.lw(:s2, at + PICTURE_OFFSET_BYTES, FACE_BASE)
+              asm.addiu(:s0, :a0, 4)
+              asm.lw(:s1, 0, :a0) # how many corners, three or more
+              asm.lw(:t0, at + PICTURE_OFFSET_BYTES, FACE_BASE)
               asm.lw(:v0, at + least_offset_bytes(FacePieces::TEXEL_U), FACE_BASE)
-              asm.lw(:t0, RECORD_ACROSS_MASK_OFFSET_BYTES, :s2)
-              asm.and(:s3, :v0, :t0)
+              asm.lw(:t1, RECORD_ACROSS_MASK_OFFSET_BYTES, :t0)
+              asm.and(:s3, :v0, :t1)
               asm.lw(:v0, at + least_offset_bytes(FacePieces::TEXEL_V), FACE_BASE)
-              asm.lw(:t0, RECORD_DOWN_MASK_OFFSET_BYTES, :s2)
-              asm.and(:s4, :v0, :t0)
+              asm.lw(:t1, RECORD_DOWN_MASK_OFFSET_BYTES, :t0)
+              asm.and(:s4, :v0, :t1)
               asm.lw(:s5, Runtime.at(memory, Paint::PAGE_Y), :gp)
-              asm.lw(:v1, at + LIGHT_FLOOR_OFFSET_BYTES, FACE_BASE) # not nought for a lit face
-              # Each corner as it is sent: x, y, u | v << 8, and (y + the page's top) << 16 | x.
-              asm.addiu(:t0, :s0, 4)
-              asm.li(:t1, sent)
-              asm.move(:t2, :s1)
-              asm.label("rt_face_fan_corner")
-              asm.lw(:t8, 0, :t0) # the corner
-              asm.lw(:t3, offset.call(FacePieces::X), :t8)
-              asm.addiu(:t3, :t3, 8)
-              asm.sra(:t3, :t3, 4)
-              asm.sw(:t3, 0, :t1)
-              asm.lw(:t4, offset.call(FacePieces::Y), :t8)
-              asm.addiu(:t4, :t4, 8)
-              asm.sra(:t4, :t4, 4)
-              asm.sw(:t4, 4, :t1)
-              asm.addu(:t5, :t4, :s5)
-              asm.sll(:t5, :t5, 16)
-              asm.andi(:t6, :t3, 0xFFFF)
-              asm.or(:t5, :t5, :t6)
-              asm.sw(:t5, 12, :t1)
-              [[FacePieces::TEXEL_U, :s3, :t5], [FacePieces::TEXEL_V, :s4, :t6]].each do |number, base, into|
-                held = "rt_face_fan_held_#{number}"
-                asm.lw(into, offset.call(number), :t8)
-                asm.subu(into, into, base)
-                asm.slti(:t7, into, 256)
-                asm.bne(:t7, :zero, held)
-                asm.label("rt_face_fan_most_#{number}")
-                asm.li(into, 255)
-                asm.label(held)
-              end
-              asm.sll(:t6, :t6, 8)
-              asm.or(:t5, :t5, :t6)
-              asm.sw(:t5, 8, :t1)
-              # On a lit face (v1 not nought), the colour (FacePieces.corner_color): the shade's whole part,
-              # held to FULL_COLOR, in each of the word's three bytes. A face not lit sends none.
-              asm.beq(:v1, :zero, "rt_face_fan_colored")
-              asm.lw(:t5, offset.call(FacePieces::SHADE), :t8)
-              asm.srl(:t5, :t5, 16)
-              asm.sltiu(:t6, :t5, FacePieces::FULL_COLOR + 1)
-              asm.bne(:t6, :zero, "rt_face_fan_color_held")
-              asm.label("rt_face_fan_color_full")
-              asm.li(:t5, FacePieces::FULL_COLOR)
-              asm.label("rt_face_fan_color_held")
-              asm.sll(:t6, :t5, 8)
-              asm.or(:t6, :t6, :t5)
-              asm.sll(:t5, :t5, 16)
-              asm.or(:t5, :t5, :t6)
-              asm.sw(:t5, 16, :t1)
-              asm.label("rt_face_fan_colored")
-              asm.addiu(:t0, :t0, 4)
-              asm.addiu(:t2, :t2, -1)
-              asm.bne(:t2, :zero, "rt_face_fan_corner") { asm.addiu(:t1, :t1, SENT_CORNER_BYTES) }
-              # The triangles: the first corner, then each next two. s6 is the second's place in the corners
-              # sent, s7 where the last ends.
-              asm.li(:s6, sent + SENT_CORNER_BYTES)
-              asm.addiu(:t0, :s1, -1)
-              asm.sll(:t1, :t0, 4)
-              asm.sll(:t0, :t0, 2)
-              asm.addu(:t0, :t0, :t1) # times SENT_CORNER_BYTES, twenty
-              asm.li(:s7, sent)
-              asm.addu(:s7, :s7, :t0)
-              # THE FIRST CORNER IS IN EVERY TRIANGLE, and the corners sent are in main RAM, which has no
-              # cache: every load from it waits for the bus. So its words are read once, into registers the
-              # corners above no longer need, and so are the picture's colour table and page, which its
-              # record in main RAM holds: s0 and s1 its x and y, s3 its place as the chip takes it, s4 its u
-              # and v with the colour table, a3 its colour on a lit face, and s5 the page.
-              asm.li(:t5, sent)
-              asm.lw(:s0, 0, :t5)
-              asm.lw(:s1, 4, :t5)
-              asm.lw(:s3, 12, :t5)
-              asm.lw(:s4, 8, :t5)
-              asm.lw(:t0, RECORD_TABLE_OFFSET_BYTES, :s2)
-              asm.lw(:a3, 16, :t5)
-              asm.or(:s4, :s4, :t0)
-              asm.lw(:s5, RECORD_PAGE_OFFSET_BYTES, :s2)
+              asm.lw(:v1, at + LIGHT_FLOOR_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:s2, RECORD_PAGE_OFFSET_BYTES, :t0)
+              asm.lw(:t1, RECORD_TABLE_OFFSET_BYTES, :t0)
+              emit_fan_corner(asm, %i[s6 s7 a3], "rt_face_fan_first")
+              asm.or(:s7, :s7, :t1)
+              emit_fan_corner(asm, %i[t4 t5 t6], "rt_face_fan_second")
+              asm.addiu(:s1, :s1, -2)
               asm.label("rt_face_fan_triangle")
-              asm.slt(:t0, :s6, :s7)
-              asm.beq(:t0, :zero, "rt_face_fan_done")
-              # Twice its area, signed: (bx - ax)(cy - ay) - (cx - ax)(by - ay).
-              asm.lw(:t2, 0, :s6)
-              asm.lw(:t3, 4, :s6)
-              asm.lw(:t4, SENT_CORNER_BYTES, :s6)
-              asm.lw(:t6, SENT_CORNER_BYTES + 4, :s6)
-              asm.subu(:t2, :t2, :s0)
-              asm.subu(:t3, :t3, :s1)
-              asm.subu(:t4, :t4, :s0)
-              asm.subu(:t6, :t6, :s1)
-              asm.mult(:t2, :t6)
-              asm.mflo(:t7)
-              asm.mult(:t4, :t3)
+              emit_fan_corner(asm, %i[v0 a1 a2], "rt_face_fan_third")
+              # Twice its area, signed: (bx - ax)(cy - ay) - (cx - ax)(by - ay), from the places sent, the
+              # page's top in every y, where it drops out.
+              asm.sll(:t0, :s6, 16)
+              asm.sra(:t0, :t0, 16)
+              asm.sra(:t1, :s6, 16)
+              [[:t4, :t2, :t3], [:v0, :t8, :t9]].each do |corner, across, down|
+                asm.sll(across, corner, 16)
+                asm.sra(across, across, 16)
+                asm.subu(across, across, :t0)
+                asm.sra(down, corner, 16)
+                asm.subu(down, down, :t1)
+              end
+              asm.mult(:t2, :t9)
+              asm.mflo(:t2)
+              asm.mult(:t8, :t3)
               asm.mflo(:t8)
-              asm.beq(:t7, :t8, "rt_face_fan_next")
+              asm.beq(:t2, :t8, "rt_face_fan_next")
               asm.label("rt_face_fan_send")
-              # The words after the command, ready before it goes, as rt_gp0_port_word changes only t1 to t3.
-              asm.lw(:t6, 12, :s6) # the second
-              asm.lw(:t7, 8, :s6)
-              asm.lw(:t8, SENT_CORNER_BYTES + 12, :s6) # the third
-              asm.or(:t7, :t7, :s5)
-              asm.lw(:t9, SENT_CORNER_BYTES + 8, :s6)
+              asm.or(:t9, :t5, :s2) # the second corner's place on the picture, with the page
               asm.bne(:v1, :zero, "rt_face_fan_shaded")
               asm.label("rt_face_fan_raw")
               emit_port_command(asm) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              emit_words_stored(asm, %i[s3 s4 t6 t7 t8 t9])
+              emit_words_stored(asm, %i[s6 s7 t4 t9 v0 a1])
               asm.b("rt_face_fan_next")
               # A lit face's: GP0 34h with the first corner's colour, then each corner's place and texel,
               # and the next corner's colour before its place.
               asm.label("rt_face_fan_shaded")
-              asm.lw(:a1, 16, :s6) # the second's colour
-              asm.lw(:a2, SENT_CORNER_BYTES + 16, :s6) # the third's colour
               asm.lui(:t0, h::GP0_SHADED_TEXTURED_TRIANGLE >> 16)
               emit_port_command(asm) { asm.or(:a0, :a3, :t0) }
-              emit_words_stored(asm, %i[s3 s4 a1 t6 t7 a2 t8 t9])
+              emit_words_stored(asm, %i[s6 s7 t6 t4 t9 a2 v0 a1])
+              # The third corner is the next triangle's second.
               asm.label("rt_face_fan_next")
-              asm.b("rt_face_fan_triangle") { asm.addiu(:s6, :s6, SENT_CORNER_BYTES) }
+              asm.move(:t4, :v0)
+              asm.move(:t5, :a1)
+              asm.move(:t6, :a2)
+              asm.addiu(:s1, :s1, -1)
+              asm.bne(:s1, :zero, "rt_face_fan_triangle")
               asm.label("rt_face_fan_done")
               emit_return_with_registers(asm)
+            end
+
+            # The corner at s0 in the piece, as rt_face_fan sends it, into +into+ (its place as the chip takes
+            # it, (y + the page's top) << 16 | x; its place on the picture, u | v << 8, moved by the whole
+            # pictures s3 and s4 and each held to a byte; and on a lit face its colour, the shade's whole part
+            # held to FULL_COLOR in each of the word's three bytes), and s0 moved on to the next. Changes t0,
+            # t8, t9 and a0.
+            def emit_fan_corner(asm, into, label)
+              place, texel, color = into
+              offset = ->(number) { NUMBER_OFFSETS.fetch(number) }
+              asm.lw(:t8, 0, :s0)
+              asm.addiu(:s0, :s0, 4)
+              asm.lw(:t0, offset.call(FacePieces::X), :t8)
+              asm.lw(place, offset.call(FacePieces::Y), :t8)
+              asm.addiu(:t0, :t0, 8)
+              asm.sra(:t0, :t0, 4)
+              asm.andi(:t0, :t0, 0xFFFF)
+              asm.addiu(place, place, 8)
+              asm.sra(place, place, 4)
+              asm.addu(place, place, :s5)
+              asm.sll(place, place, 16)
+              asm.or(place, place, :t0)
+              [[FacePieces::TEXEL_U, :s3, :t9], [FacePieces::TEXEL_V, :s4, texel]].each do |number, base, number_into|
+                held = "#{label}_held_#{number}"
+                asm.lw(number_into, offset.call(number), :t8)
+                asm.subu(number_into, number_into, base)
+                asm.slti(:a0, number_into, 256)
+                asm.bne(:a0, :zero, held)
+                asm.label("#{label}_most_#{number}")
+                asm.li(number_into, 255)
+                asm.label(held)
+              end
+              asm.sll(texel, texel, 8)
+              asm.or(texel, texel, :t9)
+              asm.beq(:v1, :zero, "#{label}_colored")
+              asm.lw(color, offset.call(FacePieces::SHADE), :t8)
+              asm.srl(color, color, 16)
+              asm.sltiu(:a0, color, FacePieces::FULL_COLOR + 1)
+              asm.bne(:a0, :zero, "#{label}_color_held")
+              asm.label("#{label}_color_full")
+              asm.li(color, FacePieces::FULL_COLOR)
+              asm.label("#{label}_color_held")
+              asm.sll(:a0, color, 8)
+              asm.or(:a0, :a0, color)
+              asm.sll(color, color, 16)
+              asm.or(color, color, :a0)
+              asm.label("#{label}_colored")
             end
 
             # rt_face_cut: a0 = a piece, a1 = where the part at or before the line goes, a2 = where the part
