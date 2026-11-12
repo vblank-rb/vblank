@@ -96,10 +96,28 @@ module PackParityTests
   # How long an unpacking may play: the largest registered copy's tiles take a few dozen frames.
   UNPACKING_FRAMES = 400
 
+  # PLAYED AS A SHELL PLAYS IT: as the game's console, and not held to that console's memory.
+  #
+  # A real shell builds the unpacking for the console the game is built for, with
+  # `for_computer: true` (Builder::DataPacks#unpacking_options), so its screen, clock and frame are
+  # that console's. But no shell runs the build's guardrails on it. Original::Shell.build checks
+  # only the game, through Cartridge::Game#checked_program; each unpacking comes straight from
+  # DSL::DataPack#unpacking. Then each shell lowers it unchecked: the Ruby one plays it in
+  # Live::BackgroundUnpacking from Backends::Ruby#live_source, the C one compiles it as a part of
+  # its own (Backends::Native#build_desktop_shell), and the web page runs only
+  # JS#refuse_console_only_steps! on it, which asks for no memory. An all-in-one build plays it as
+  # Ruby (Original::Unpacking#run_as_ruby), unchecked too. So a Color port whose pack is bigger than
+  # the Color's work memory unpacks for a player: the unpacking runs only on a computer, never in a
+  # cartridge's memory.
+  #
+  # A checked run's player holds each program it plays to the build's guardrails for the run's
+  # console (Testing::BuildChecks), which is right for a game and wrong for an unpacking: no build
+  # checks one. So it plays without them here.
   private def unpacked_pack_file(game, data_pack)
     copy = data_pack.original.copy
     unpacking = data_pack.unpacking(release: data_pack.original.releases.with_sha1(copy.sha1))
-    played = game_player.hand_file(File.binread(copy.path)).run(unpacking.program, frames: UNPACKING_FRAMES)
+    player = game_player.hand_file(File.binread(copy.path))
+    played = VBlank::Testing::BuildChecks.without_checks { player.run(unpacking.program, frames: UNPACKING_FRAMES) }
     assert unpacking.finished_in?(played), "#{game.name}: its pack's unpacking did not finish in #{UNPACKING_FRAMES} frames"
     assert_nil unpacking.fault_in(played), "#{game.name}: its pack's unpacking went wrong"
     unpacking.pack_file_in(played, sha1: copy.sha1, build_version: data_pack.build_version)

@@ -65,6 +65,41 @@ class TestShellCheck < Minitest::Test
     end
   end
 
+  # A pack bigger than the Color's 8K of work memory: the unpacking keeps the whole pack in one list
+  # as it writes it, so a cartridge could never hold it. The unpacking runs only on a computer.
+  BIG_PACK_BYTES = 9_000
+  BIG_PACK_PIECE = 500
+
+  private def color_port_of_big_pack(from)
+    VBlank.game("MADE UP", consoles: %i[gbc]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :big, count: BIG_PACK_BYTES, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          (BIG_PACK_BYTES / BIG_PACK_PIECE).times do |n|
+            copy.copy_bytes at: 0, count: BIG_PACK_PIECE, into: into[:big], start: n * BIG_PACK_PIECE
+          end
+        end
+      end
+      big = table :big, pack[:big]
+      step = var :step, 0
+      game_loop do
+        draw_rect_at big[step] & 127, 40, 4, 4, :white
+        step = (step + 1) & 63
+      end
+    end
+  end
+
+  def test_a_color_port_whose_pack_is_more_than_the_colors_work_memory_passes_every_step
+    Dir.mktmpdir do |folder|
+      said = []
+      check(color_port_of_big_pack(original(folder)), said)
+
+      assert_match "plays as its all-in-one build does", said.last
+    end
+  end
+
   def test_the_check_plays_the_presses_of_a_tape
     Dir.mktmpdir do |folder|
       tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: MADE UP 0x00000000\nstarts from: power-on\n\n" \
