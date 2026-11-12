@@ -101,6 +101,35 @@ class LoopCountPart
     @build.each_pass(name) { |_job| steps += 1 }.start
     steps
   end
+
+  # Once, two frames in: 1 on the pass that runs it, and 0 on the others.
+  def counted_by_after
+    count = 0
+    @build.after(2) { count += 1 }
+    count
+  end
+
+  # A row picked with A: 1 on the pass the press picks it, and 0 on the others.
+  def picks_by_menu(name)
+    picks = 0
+    @build.menu(name, at: [40, 40], press: :a) { |rows| rows.item("GO") { picks += 1 } }
+    picks
+  end
+
+  # A step taken once a frame, from power-on wherever it is written, so a game calls this while
+  # setting up.
+  def steps_once_a_frame
+    steps = 0
+    @build.once_a_frame { steps += 1 }
+    steps
+  end
+
+  # A step taken on every tick of a timer the method makes, also while setting up.
+  def steps_on_tick(name)
+    steps = 0
+    @build.timer(name, per_second: 120).on_tick { steps += 1 }
+    steps
+  end
 end
 
 # The beat and the job again, as methods of the game file's own with the verbs called bare: what
@@ -129,4 +158,38 @@ def loop_count_by_repeat_on(build, rounds)
   count = 0
   build.repeat(rounds) { count += 1 }
   count
+end
+
+# A local whose name no other local of this file uses, and which test/plain_ruby_game_parts.rb
+# and a test's game block use too: each is its own variable, whichever runs first.
+def steps_taken_by_bare_repeat(rounds)
+  steps_taken = 0
+  repeat(rounds) { steps_taken += 1 }
+  steps_taken
+end
+
+# The verbs LoopCountPart's last methods call on the builder it holds, called bare: what those
+# methods are held to.
+def loop_count_by_bare_after
+  count = 0
+  after(2) { count += 1 }
+  count
+end
+
+def loop_picks_by_bare_menu(name)
+  picks = 0
+  menu(name, at: [40, 40], press: :a) { |rows| rows.item("GO") { picks += 1 } }
+  picks
+end
+
+def loop_steps_once_a_frame_bare
+  steps = 0
+  once_a_frame { steps += 1 }
+  steps
+end
+
+def loop_steps_on_tick_bare(name)
+  steps = 0
+  timer(name, per_second: 120).on_tick { steps += 1 }
+  steps
 end

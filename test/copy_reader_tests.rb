@@ -385,9 +385,13 @@ module CopyReaderTests
   # AN ARCHIVE SEARCHED FOR ONE FILE BY ITS NAME, as an original keeps its pictures and levels:
   # NameSearchPart (test/fixtures/name_search) says the layout. The file looked for is the third,
   # after one whose name differs in every letter and one that differs in a single letter, so a
-  # count of differing letters that is not set back to 0 each round never finds it.
+  # count of differing letters that is not set back to 0 each round never finds it. The archive
+  # ends with the header of a file longer than what is left, which ends every search: one that
+  # never finds the name answers 0, and the bytes copied from there are the wrong ones, where a
+  # search walking on would read past the end of the copy.
   ARCHIVE_FILES = Ractor.make_shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
-  ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ("\0".b * 8)).freeze
+  ARCHIVE_END = ("tail".b + [0xFFFF].pack("V")).freeze
+  ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ARCHIVE_END).freeze
   ARCHIVE_NAME = "door"
 
   # The slot a routine fills from where +search+ says the named file starts. +search+ is called on

@@ -123,14 +123,21 @@ module VBlank
 
       # A name given nothing yet starts as nil, and that start is one statement. If what it is
       # given turns out to be something made while building, no number is kept and it goes.
-      def start_truth_as_nil!
+      # +zero_number+ sets the number to 0 as well, for a line that runs after the number may have
+      # changed; at power-on it is 0 already.
+      def start_truth_as_nil!(zero_number: false)
         keep_truth!
+        @truth_start_places = []
+        if zero_number
+          store!(0)
+          @truth_start_places << @builder.last_statement_place
+        end
         @truth.store!(NIL_HELD)
-        @truth_start = @builder.last_statement_place
+        @truth_start_places << @builder.last_statement_place
       end
 
       def forget_truth!
-        @builder.take_back_statement(*@truth_start) if @truth_start
+        @truth_start_places&.each { |place| @builder.take_back_statement(*place) }
         @builder.forget_hidden_variable(@truth.name) if @truth
         @builder.forget_hidden_variable(@name)
         @truth = nil

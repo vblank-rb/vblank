@@ -157,11 +157,12 @@ module VBlank
           end
         end
 
-        # The same, on a name that keeps what it holds (see Value#truth).
+        # The same, on a name that keeps what it holds (see Value#truth). Its number is read as it
+        # stands, so nil and false set it to 0, which is what each reads as.
         def store_with_truth(target, value)
           case value
-          when nil then target.truth.store!(Value::NIL_HELD)
-          when false then target.truth.store!(Value::FALSE_HELD)
+          when nil then store_falsy(target, Value::NIL_HELD)
+          when false then store_falsy(target, Value::FALSE_HELD)
           when true then store_truthy(target, 1)
           when Condition then store_truth_of_test(target, value)
           when Value then store_value_with_truth(target, value)
@@ -172,6 +173,11 @@ module VBlank
         def store_truthy(target, number)
           target.store!(number)
           target.truth.store!(Value::TRUTHY_HELD)
+        end
+
+        def store_falsy(target, held)
+          target.store!(0)
+          target.truth.store!(held)
         end
 
         def store_truth_of_test(target, condition)
@@ -191,10 +197,12 @@ module VBlank
           target.truth.store!(value.truth)
         end
 
-        # The first line of a name that can hold nil or false as well as a number.
-        def start_with_truth(value)
+        # The first line of a name that can hold nil or false as well as a number. +reached+ is a
+        # line that runs after power-on (#reached_after_power_on?), where nil sets the number to 0
+        # too, since the name may hold another by then.
+        def start_with_truth(value, reached: false)
           own = yield(0)
-          return own.tap(&:start_truth_as_nil!) if value.nil?
+          return own.tap { |variable| variable.start_truth_as_nil!(zero_number: reached) } if value.nil?
 
           own.keep_truth!
           store_with_truth(own, value)
@@ -327,18 +335,18 @@ module VBlank
         # while building, and the game would never see it, so it becomes a game variable that starts
         # at power-on with the number the name holds. While setting up, it is returned unchanged.
         # See Rewriter#guarded_write_text.
-        def variable_while_recording(owner, current, name, recording)
+        def variable_while_recording(owner, current, name, recording, source: nil)
           return current unless recording && whole_or_fraction?(current)
 
-          variable_with_no_var_line(owner, name, current)
+          variable_with_no_var_line(owner, name, current, source: source)
         end
 
         # The first line of such a name. Run while game code is recorded (in a method a game loop
         # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
-        def start_variable_while_recording(owner, value, name, recording)
+        def start_variable_while_recording(owner, value, name, recording, source: nil)
           return value unless recording && whole_or_fraction?(value)
 
-          give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0), value)
+          give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0, source: source), value)
         end
 
         # A Ruby whole number or fraction, unlike #number_kept?, which takes anything a game keeps.
@@ -351,8 +359,15 @@ module VBlank
         # taken: two parts, or two of one part, each have a local of their own, as in Ruby. The owner is
         # whatever the game's block ran on, whose own `var` may be private, as a method the block called
         # bare would be: __send__ calls it as the block would have.
-        def variable_with_no_var_line(owner, name, start)
-          variable = owner.respond_to?(:var, true) ? owner.__send__(:var, name, start) : variable_for_part(name, start)
+        #
+        # +source+ names the rewritten game block or game file the line is in. On the builder, the
+        # variable is that source's own (Builder#plain_local_variable), so a local of another file
+        # with the same name keeps another variable, as Ruby's locals are each their own.
+        def variable_with_no_var_line(owner, name, start, source: nil)
+          variable = if source && owner.is_a?(Builder) then owner.plain_local_variable(source, name, start)
+                     elsif owner.respond_to?(:var, true) then owner.__send__(:var, name, start)
+                     else variable_for_part(name, start)
+                     end
           variable.note_made_with_no_var_line
           variable
         end
@@ -363,21 +378,24 @@ module VBlank
         # game code is recorded (the method called from a game loop, the line in the body of a loop
         # the game makes) or reached a second time, it runs after the variable has changed, so it
         # also sets the variable there, as Ruby's line would. +sets+ false leaves that to the caller.
-        def variable_set_where_reached(owner, name, start, sets: true)
-          sets &&= reached_after_power_on?(name, shared_by_name: owner.respond_to?(:var, true))
-          variable = variable_with_no_var_line(owner, name, start)
+        def variable_set_where_reached(owner, name, start, sets: true, source: nil)
+          sets &&= reached_after_power_on?(owner, name, source)
+          variable = variable_with_no_var_line(owner, name, start, source: source)
           give_variable(variable, start) if sets
           variable
         end
 
         # Does the line that makes the variable +name+ run somewhere other than once at power-on?
-        # +shared_by_name+ is a line whose every run makes the one variable of that name. A part's
-        # line makes a new variable each time it runs, which nothing has changed yet.
-        def reached_after_power_on?(name, shared_by_name:)
+        # Asked before the line makes it. A line on the builder makes the one variable of its local
+        # each time it runs, so a second run finds it made. A part's line makes a new variable each
+        # time it runs, which nothing has changed yet.
+        def reached_after_power_on?(owner, name, source)
           builder = Builder.in_use
           return false if builder.nil?
+          return true if builder.recording_game_code?
+          return builder.plain_local_made?(source, name) if source && owner.is_a?(Builder)
 
-          builder.recording_game_code? || (shared_by_name && builder.variable_declared?(name))
+          owner.respond_to?(:var, true) && builder.variable_declared?(name)
         end
 
         def variable_for_part(name, start)

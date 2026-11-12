@@ -58,7 +58,8 @@ class TestPlainRubyParts < Minitest::Test
   # (test/plain_ruby_loop_parts.rb) starts a count at 0 and counts in a block or a loop. The game
   # keeps the answer of each pass, so a count that carried on from the pass before shows as a
   # bigger number on a later one. +count+ is handed the part and three, a number the game keeps.
-  private def counts_each_pass(passes: 3, &count)
+  # +holding+ is a button held from the start.
+  private def counts_each_pass(passes: 3, holding: nil, &count)
     builder = Builder.new
     part = LoopCountPart.new(builder)
     three = builder.var(:three, 3)
@@ -70,6 +71,7 @@ class TestPlainRubyParts < Minitest::Test
     end
     builder.finalize_program
     player = game_player
+    player.hold(holding) if holding
     player.run(builder.program, frames: passes + 1)
     player.list(:answers).first(passes)
   end
@@ -109,6 +111,34 @@ class TestPlainRubyParts < Minitest::Test
     assert_operator bare, :>, 1
   end
 
+  def test_a_count_by_after_in_a_parts_method_counts_as_the_bare_verb_does
+    bare = counts_each_pass(passes: 4) { |_part, _three| loop_count_by_bare_after }
+
+    assert_equal bare, counts_each_pass(passes: 4) { |part, _three| part.counted_by_after }
+    assert_equal [0, 1], bare.uniq.sort, "one on the pass it runs, none on the others"
+  end
+
+  def test_a_menu_row_picked_in_a_parts_method_counts_as_the_bare_verb_does
+    bare = counts_each_pass(holding: :a) { |_part, _three| loop_picks_by_bare_menu(:bare_menu) }
+
+    assert_equal bare, counts_each_pass(holding: :a) { |part, _three| part.picks_by_menu(:part_menu) }
+    assert_equal [0, 1], bare.uniq.sort, "one on the pass the press picks the row, none on the others"
+  end
+
+  def test_a_step_once_a_frame_in_a_parts_method_steps_as_the_bare_verb_does
+    bare = steps_after_passes { |_part, build| build.instance_exec { loop_steps_once_a_frame_bare } }
+
+    assert_equal bare, steps_after_passes { |part, _build| part.steps_once_a_frame }
+    assert_operator bare, :>, 1
+  end
+
+  def test_a_step_on_a_timers_tick_in_a_parts_method_steps_as_the_bare_verb_does
+    bare = steps_after_passes { |_part, build| build.instance_exec { loop_steps_on_tick_bare(:bare_timer) } }
+
+    assert_equal bare, steps_after_passes { |part, _build| part.steps_on_tick(:part_timer) }
+    assert_operator bare, :>, 1
+  end
+
   def test_a_count_started_in_a_game_files_method_starts_afresh_on_every_pass
     assert_equal [3, 3, 3], counts_each_pass { |_part, three| loop_count_by_bare_repeat(three) }, "repeat"
     assert_equal [3, 3, 3], counts_each_pass { |_part, three| loop_count_by_repeat_on(self, three) }, "build.repeat"
@@ -140,6 +170,114 @@ class TestPlainRubyParts < Minitest::Test
     player.run(builder.program, frames: 2)
 
     assert_equal [3, 3], [player[:first], player[:second]]
+  end
+
+  # Plays +block+, rewritten as a game's block is, and hands back the player.
+  private def played_game(frames: 4, &block)
+    builder = Builder.new
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: frames)
+    player
+  end
+
+  # The answer key is the same lines written in the game loop: nil, read as a number, is 0.
+  def test_a_name_set_to_nil_in_a_method_called_every_pass_reads_as_0_on_every_pass
+    in_method = played_game do
+      numbered = var(:numbered, 3)
+      answers = list(:answers, capacity: 8, full_of: -1)
+      pass = var(:pass, 0)
+      game_loop do
+        nil_read_before_numbered(numbered, answers, pass)
+        pass += 1
+      end
+    end
+    in_block = played_game do
+      numbered = var(:numbered, 3)
+      answers = list(:answers, capacity: 8, full_of: -1)
+      pass = var(:pass, 0)
+      game_loop do
+        held = nil
+        answers[pass] = held
+        repeat(1) { held = numbered }
+        pass += 1
+      end
+    end
+
+    assert_equal [0, 0, 0], in_block.list(:answers).first(3), "written in the game loop"
+    assert_equal [0, 0, 0], in_method.list(:answers).first(3), "in a method"
+  end
+
+  # The method's first line runs twice while setting up, starting its total at 2 and then at 12.
+  def test_a_method_whose_first_line_starts_differently_on_each_call_starts_each_call_afresh
+    in_method = played_game(frames: 2) do
+      first = var(:first, 0)
+      second = var(:second, 0)
+      first.store!(total_from_double(1))
+      second.store!(total_from_double(6))
+      game_loop { wait_vblank }
+    end
+    in_block = played_game(frames: 2) do
+      first = var(:first, 0)
+      second = var(:second, 0)
+      total = 1 * 2
+      repeat(2) { total += 1 }
+      first.store!(total)
+      total = 6 * 2
+      repeat(2) { total += 1 }
+      second.store!(total)
+      game_loop { wait_vblank }
+    end
+
+    assert_equal [4, 14], [in_block[:first], in_block[:second]], "written in the game's block"
+    assert_equal [4, 14], [in_method[:first], in_method[:second]], "in a method"
+  end
+
+  # Two files each have a local `steps_taken`. As in Ruby, each is its own: the other file's
+  # method, called between this one's count and its read, leaves this one's as it was.
+  def test_a_local_of_one_file_keeps_its_own_variable_beside_another_files_of_the_same_name
+    player = played_game(frames: 2) do
+      counted = var(:counted, 0)
+      counted.store!(steps_taken_beside_other_files(3))
+      game_loop { counted.store!(steps_taken_beside_other_files(5)) }
+    end
+
+    assert_equal 5, player[:counted]
+  end
+
+  # The game's own local of that name, counted before a wait and read after it, with the other
+  # file's method counting in its own in between.
+  def test_a_local_kept_across_a_wait_is_not_changed_by_another_files_local_of_the_same_name
+    player = played_game(frames: 6) do
+      counted = var(:counted, 0)
+      game_loop do
+        steps_taken = 0
+        repeat(3) { steps_taken += 1 }
+        wait_vblank
+        steps_taken_by_bare_repeat(2)
+        counted.store!(steps_taken)
+      end
+    end
+
+    assert_equal 3, player[:counted]
+  end
+
+  # On the first pass the second round reads the copy the first round changed; the caller's
+  # total stays 10 throughout.
+  def test_an_argument_changed_in_a_ruby_loop_is_the_methods_own_copy
+    player = played_game(frames: 1) do
+      total = var(:total, 10)
+      seen = var(:seen, 0)
+      after = var(:after, 0)
+      pass = var(:pass, 0)
+      game_loop do
+        after.store!(argument_counted_in_ruby_loop(total, pass, seen))
+        pass += 1
+      end
+    end
+
+    assert_equal [10, 11, 11], [player[:total], player[:seen], player[:after]]
   end
 
   def test_a_part_changes_names_unpacked_from_its_builders_var

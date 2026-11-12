@@ -58,6 +58,47 @@ class SeveralOfOnePart
   end
 end
 
+# Methods of the game file's own, called bare from a game block, so their verbs are the builder's.
+
+# A name set to nil on every call and given a number in a block after it is read: each call reads
+# nil, which as a number is 0.
+def nil_read_before_numbered(numbered, answers, pass)
+  held = nil
+  answers[pass] = held
+  repeat(1) { held = numbered }
+end
+
+# A total worked out from what the method is handed, so the line that starts it starts it at a
+# different number on each call.
+def total_from_double(start)
+  total = start * 2
+  repeat(2) { total += 1 }
+  total
+end
+
+# A count of this file's, with a method of another file (steps_taken_by_bare_repeat, in
+# test/plain_ruby_loop_parts.rb) called before it is read. That method's local of the same name is
+# its own, so this one still holds +rounds+.
+def steps_taken_beside_other_files(rounds)
+  steps_taken = 0
+  repeat(rounds) { steps_taken += 1 }
+  steps_taken_by_bare_repeat(2)
+  steps_taken
+end
+
+# A method's argument, a game variable the caller hands it, read and then changed under a test the
+# game makes, in a loop of Ruby's written out twice. As in Ruby, the argument is the method's own
+# copy: the caller's variable is left as it was, and the copy counts the rounds whose test held.
+def argument_counted_in_ruby_loop(counter, pass, seen)
+  round = 0
+  while round < 2
+    seen.store!(counter)
+    counter += 1 if pass == round
+    round += 1
+  end
+  counter
+end
+
 class TwoNamesPart
   def initialize(builder)
     @builder = builder

@@ -979,6 +979,27 @@ class TestPlainRuby < Minitest::Test
     assert_equal 1, player[:still]
   end
 
+  # Read as a number, nil is 0, whatever number the name held before.
+  def test_nil_read_as_a_number_is_0_after_the_name_held_a_number
+    player = played(frames: 3) do
+      target = nil
+      numbered = var(:numbered, 3)
+      answers = list(:answers, capacity: 8, full_of: -1)
+      pass = 0
+      game_loop do
+        target = numbered
+        target = nil
+        answers[pass] = target
+        started = nil
+        answers[pass + 4] = started
+        started = numbered
+        pass += 1
+      end
+    end
+
+    assert_equal [0, 0, 0, 0, 0, 0], player.list(:answers).values_at(0, 1, 2, 4, 5, 6)
+  end
+
   def test_or_on_a_name_that_may_hold_nil_picks_the_number_or_the_other_side
     player = played(frames: 2) do
       target = nil

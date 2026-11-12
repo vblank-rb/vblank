@@ -48,7 +48,8 @@ module VBlank
       # than a game does: a test's, which names its own helpers.
       def rewrite(block, allow: [], checked: true)
         file, line = block.source_location
-        rewriter = Rewriter.new(*source_and_block_of(block), outer_locals: block.binding.local_variables)
+        rewriter = Rewriter.new(*source_and_block_of(block), outer_locals: block.binding.local_variables,
+                                                             source_label: "#{file}:#{line}")
         code = callable_source(rewriter, block)
         source = checked ? checked_source(rewriter, code, file, allow) : code
         eval(source, block.binding, file, line) # rubocop:disable Security/Eval
@@ -164,7 +165,7 @@ module VBlank
         # What stands before the first line of code stays: the magic comment that freezes the
         # file's strings is there, and so is every line the numbers after it count from.
         opening = source.byteslice(0, root.location.start_offset).force_encoding(Encoding::UTF_8)
-        rewritten = "#{opening}#{Rewriter.new(source).rewritten(root)}"
+        rewritten = "#{opening}#{Rewriter.new(source, source_label: File.expand_path(path)).rewritten(root)}"
         return rewritten if File.expand_path(path).start_with?(BlockChecks.library_folder)
 
         checks = BlockChecks.new(root, file: path, allow: [])
@@ -185,10 +186,15 @@ module VBlank
         # +outer_locals+ are the names the block's scope holds. Written further down the method a
         # block sits in, one is no local to the block as Ruby first read it, and yet it is to
         # `eval`: `screen :tiled` would stop being a call. Those calls are written with `self.`.
-        def initialize(source, block_node = nil, outer_locals: [])
+        #
+        # +source_label+ names the block or file, so a local of its own keeps a variable of its own
+        # beside a local of the same name in another (Builder#plain_local_variable). Nil for a
+        # rewrite only read, never run.
+        def initialize(source, block_node = nil, outer_locals: [], source_label: nil)
           @source = source
           @block_node = block_node
           @outer_locals = outer_locals
+          @source_label = source_label
           @answers = 0
           @open_tests = []
           @lone_joins = {}.compare_by_identity
@@ -520,7 +526,7 @@ module VBlank
           if @names.first_write?(node)
             prefix = between(node.location.start_offset, node.value.location.start_offset)
             return "#{prefix}#{WRITES}.start_variable_while_recording(self, (#{value_text(node.value)}), " \
-                   ":#{@names.variable_name_of(node)}, #{RECORDING_TEST_SOURCE})"
+                   ":#{@names.variable_name_of(node)}, #{RECORDING_TEST_SOURCE}#{source_option_text})"
           end
 
           tests = promoted_in_block?(node) ? @block_tests : []
@@ -530,7 +536,7 @@ module VBlank
         # The name made the game variable it is to be, if game code is being recorded as this runs.
         def variable_while_recording_text(node)
           "#{node.name} = #{WRITES}.variable_while_recording(self, #{node.name}, :#{@names.variable_name_of(node)}, " \
-            "#{RECORDING_TEST_SOURCE})"
+            "#{RECORDING_TEST_SOURCE}#{source_option_text})"
         end
 
         # The Ruby a rewritten line asks with: true where the builder records game code as the line
@@ -610,7 +616,9 @@ module VBlank
         def declaration(node, sets_where_reached: false)
           name = @names.variable_name_of(node)
           if @names.keeps_truth?(node)
-            return "#{WRITES}.start_with_truth(#{value_text(node.value)}) { |start| #{made_variable_text(name, 'start')} }"
+            reached = "#{WRITES}.reached_after_power_on?(self, :#{name}, #{@source_label.inspect})"
+            return "#{WRITES}.start_with_truth(#{value_text(node.value)}, reached: #{reached}) " \
+                   "{ |start| #{made_variable_text(name, 'start')} }"
           end
           return declared_variable_text(name, "false", sets_where_reached) if node.value.is_a?(Prism::NilNode)
           return declared_variable_text(name, rewritten_text(node.value), sets_where_reached) if LocalNames.number?(node)
@@ -624,7 +632,7 @@ module VBlank
         def declared_variable_text(name, start, sets_where_reached, sets = nil)
           return made_variable_text(name, start) unless sets_where_reached
 
-          "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets})"
+          "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets}#{source_option_text})"
         end
 
         def kept_value_text(value, write = nil)
@@ -746,7 +754,10 @@ module VBlank
           end
         end
 
-        def made_variable_text(name, start) = "#{WRITES}.variable_with_no_var_line(self, :#{name}, #{start})"
+        def made_variable_text(name, start) = "#{WRITES}.variable_with_no_var_line(self, :#{name}, #{start}#{source_option_text})"
+
+        # Which source a made variable's local belongs to (Writes.variable_with_no_var_line).
+        def source_option_text = @source_label ? ", source: #{@source_label.inspect}" : ""
 
         def assign_text(name, value) = write_call(name, value, name)
 

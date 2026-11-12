@@ -35,13 +35,14 @@ plays.
 - **A symbol is a game state**: `mode = :title`, then `mode = :playing` in game code, `mode ==
   :playing` to test it, and `call mode` runs the routine or scene of that name (`scenes.md`).
 - **Each name is its own variable.** Two names given one number are two variables, and the same name in
-  two routines is two.
+  two routines is two, as it is in two files of one game.
 - **A name first set inside a game block is set again every time the block runs**, so it starts afresh
   each pass. State that lasts is set up above the game loop.
 - **A method's own names are set each time the method runs**, as in Ruby: `count = 0` on a method's
   first line, or at the top of a loop's body in it, sets `count` again on every call and every round,
-  whether the method is called from a game loop, from an unpacking routine or twice while setting up.
-  `count, other = 0, 0` does the same for both names.
+  whether the method is called from a game loop, from an unpacking routine or twice while setting up,
+  and whatever number the line works out each time. `count, other = 0, 0` does the same for both
+  names, and `target = nil` sets the name to nil, which reads as 0.
 
 ## Changing a variable
 

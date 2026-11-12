@@ -168,6 +168,7 @@ module VBlank
       @fraction_lists = {}     # ...and the same for lists, from what `holds:` showed
       @name_vars = {}          # name → the NameSet, for variables that hold one of a set of names
       @var_declarations = {}   # name → what its first `var` started it at, and where (see Variables#var)
+      @plain_locals = {}       # [source, local's name] → its PlainLocal (see #plain_local_variable)
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
@@ -1175,6 +1176,24 @@ module VBlank
     # Has a `var` line made +name+ already? PlainRuby::Writes asks, for a line that makes a variable
     # and is reached a second time.
     def variable_declared?(name) = @var_declarations.key?(name)
+
+    # A local of plain Ruby that a game variable keeps: the variable's name, and the number the
+    # local's first line started it at, which is the variable's start at power-on.
+    PlainLocal = Data.define(:variable_name, :start)
+
+    # The game variable for the local +name+ of +source+, one rewritten game block or game file
+    # (PlainRuby::Writes.variable_with_no_var_line). As in Ruby, a local is its own whatever other
+    # sources call theirs: the first source to use a name gets it, and each other takes name_2 and
+    # on. The line that makes the variable can run again, in a method called twice or a loop
+    # written out, with another start. The variable keeps the first as its power-on number, and
+    # the line sets it to the other where it runs.
+    def plain_local_variable(source, name, start)
+      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: free_variable_name(name), start: start))
+      var(local.variable_name, local.start)
+    end
+
+    # Has the line of +source+ that makes the local +name+'s variable run already?
+    def plain_local_made?(source, name) = @plain_locals.key?([source, name])
 
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
