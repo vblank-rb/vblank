@@ -1322,7 +1322,7 @@ module VBlank
         include Node
         kind :pixelate
         category :draw
-        operands size: :value, under: :name
+        operands size: :value, under: :name, keeps_sprites: :flag
       end
 
       class PixelsOverlap

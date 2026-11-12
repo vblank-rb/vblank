@@ -33,13 +33,14 @@ module VBlank
           # recorded note that carries on the one sounding at a new pitch (Recordings). +text_layer+
           # shows text at places known when it is built on a layer over the painted one (TextLayer).
           # +paint_turns+ keeps a second painted picture to swap with (PaintTurns). +chip_envelopes+
-          # has a recording shaped by the sound chip's own envelope bytes (Recordings).
+          # has a recording shaped by the sound chip's own envelope bytes (Recordings). +mosaic+ shows
+          # its backgrounds in blocks (Mosaic).
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
-                                :paint_turns, :third_layer, :chip_envelopes) do
+                                :paint_turns, :third_layer, :chip_envelopes, :mosaic) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -70,7 +71,7 @@ module VBlank
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
                   third_layer: picture.status_bar_on_third_layer?(program),
-                  chip_envelopes: Lowering::Sound.chip_envelopes?(program))
+                  chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program))
             end
 
             # A Super FX on the board (Chip).

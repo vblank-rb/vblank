@@ -249,6 +249,7 @@ module VBlank
           @names_at_or_above = {}  # layer -> the names of everything in it and in front of it
           @block = 1               # how many pixels a block of the picture is each way (see #exec_pixelate)
           @block_kept = []         # ...and the names of what is left as drawn all the same (see #place_blocks)
+          @sprites_kept_from_blocks = false # ...and whether every sprite is too (see #place_blocks)
           @lists = {}              # name -> ListValue (a bounded, run-time-sized collection)
           @layer_stack = []        # the layers the program declared, backmost first
           @see_through = nil       # ...and which of them you can see through, and by how much
@@ -2624,10 +2625,16 @@ module VBlank
           raise ProgramError, Blocks.several_places_message(places) if places.size > 1
 
           @block_kept = places.first ? names_at_or_above(places.first) : []
+          @sprites_kept_from_blocks = Blocks.keeps_sprites?(program, ProgramError)
         end
 
         # Is the thing called +name+ shown in blocks right now?
         def in_blocks?(name) = @block > 1 && !@block_kept.include?(name)
+
+        # ...and the sprite called +name+, which a program can leave as drawn whatever the
+        # size (`pixelate size, sprites: false`), as a display whose blocks reach only its
+        # backgrounds shows them.
+        def sprite_in_blocks?(name) = !@sprites_kept_from_blocks && in_blocks?(name)
 
         # Is the screen that is up one the program paints? To the display that is a single
         # background, whatever was painted on it, so it goes into blocks whole, as it is
@@ -2868,7 +2875,7 @@ module VBlank
 
         # Draw one snapshotted object from the layer captured this frame.
         def paint_snapshot_object(obj)
-          return paint_object_in_blocks(obj) if in_blocks?(obj[:name])
+          return paint_object_in_blocks(obj) if sprite_in_blocks?(obj[:name])
 
           recolor = recolor_of_picture(obj[:image], obj[:color_list])
           if obj[:transform]

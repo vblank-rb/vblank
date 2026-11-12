@@ -20,6 +20,7 @@ module VBlank
             STATEMENT_KINDS = %i[
               screen background scroll_background set_tile show_map present_objects hide_sprites fade tint
               place_bar scroll_rows copy_tiles copy_owed_tiles background_colors color_list_holds see_through
+              pixelate
             ].freeze
 
             def emit_picture_statement(node)
@@ -40,6 +41,7 @@ module VBlank
               when :background_colors then emit_background_colors(node)
               when :color_list_holds then emit_color_list_holds(node)
               when :see_through then emit_see_through_amount(node)
+              when :pixelate then emit_pixelate(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -967,6 +969,34 @@ module VBlank
             end
 
             BIG_TILE_BIT = 0x10
+
+            # MOSAIC'S LOW FOUR BITS for a game that pixelates (Runtime::Mosaic): the layers whose
+            # backgrounds are put in blocks, BG1's the lowest. A painted screen is one picture, the
+            # text over it included, so every layer it shows is in blocks, as the interpreter shows
+            # the whole of a painted picture in blocks. On a tiled screen a background is in blocks
+            # unless it is a status bar or the game's place leaves it as drawn (`under:`), as
+            # Reference#paint_scenery and #place_blocks decide; a layer whose scenes differ in that
+            # is not made yet.
+            def mosaic_backgrounds
+              return ALL_MOSAIC_LAYERS if painted?
+
+              places = Blocks.places(@program)
+              kept = places.first ? Stacking.at_or_above(Stacking.picture(@program), places.first).map(&:name) : []
+              @layers.group_by { |_, layer| layer }.sum do |layer, held|
+                blocky = held.map { |bg, _| !bg.bar? && !kept.include?(bg.name) }.uniq
+                refuse_unmade!("a layer whose backgrounds are in blocks in one scene and not in another") if blocky.length > 1
+                blocky == [true] ? 1 << layer : 0
+              end
+            end
+
+            ALL_MOSAIC_LAYERS = 0x0F
+
+            # Reference#exec_pixelate: blocks of this size from the next picture on (Runtime::Mosaic).
+            # Which backgrounds are in them is settled as the cartridge is built (#mosaic_backgrounds).
+            def emit_pixelate(node) = runtime_call("rt_mosaic", [node.size])
+
+            # Whether +program+ pixelates, which the runtime then carries the mosaic for.
+            def self.pixelates?(program) = program.walk.any? { |node| node.kind == :pixelate }
 
             private
 

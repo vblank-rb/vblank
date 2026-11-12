@@ -214,11 +214,14 @@ module VBlank
           end
 
           # For every sprite, where the boxes it is put into blocks by start, or NOT_IN_BLOCKS for
-          # one the game leaves as drawn; and the boxes themselves (see rg_screen.h for the layout).
+          # one the game leaves as drawn, every one of them in a game that pixelates its
+          # backgrounds alone (Reference#sprite_in_blocks?); and the boxes themselves (see
+          # rg_screen.h for the layout).
           def sprite_block_arrays
             boxes = []
+            keeps_sprites = Blocks.keeps_sprites?(@program, LoweringError)
             starts = @objects.each_value.map do |obj|
-              next NOT_IN_BLOCKS unless shown_in_blocks?(obj)
+              next NOT_IN_BLOCKS if keeps_sprites || !shown_in_blocks?(obj)
 
               boxes.length.tap { boxes.concat(boxes_by_picture(obj)) }
             end

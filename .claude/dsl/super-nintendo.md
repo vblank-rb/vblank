@@ -57,9 +57,9 @@ and a test fails when the two differ. The Advance's answers are in
 - `flash_screen` — works: the same as on the Advance.
 - `fade_level` — works: the same as on the Advance.
 - `shake_screen` — works: the same as on the Advance.
-- `pixelate` — **refused**: a Super Nintendo's mosaic shows the backgrounds in blocks but not the sprites. Use `fade_out` and `fade_in` to go from one screen to the next.
-- `pixelate_in` — **refused**: see `pixelate`.
-- `pixelate_out` — **refused**: see `pixelate`.
+- `pixelate` — works: the mosaic of a Super Nintendo puts the backgrounds in blocks, but it cannot put the sprites in blocks. If a game pixelates, it must write `sprites: false` (`pixelate 8, sprites: false`). Then the sprites stay as drawn. Without it, the build refuses the game. A status bar also stays as drawn. Each block starts at the top left of the screen and shows the colour of its first pixel.
+- `pixelate_in` — works: see `pixelate`.
+- `pixelate_out` — works: see `pixelate`.
 - `pixelate_size` — works: the same as on the Advance.
 - `spotlight` — **refused**: a light darkens everything outside a circle by degrees, and a Super Nintendo's colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen.
 - `iris_in` — **refused**: the iris is the game's light closing (see `spotlight`). Use `fade_out` and `fade_in`.

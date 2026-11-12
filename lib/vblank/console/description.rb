@@ -142,7 +142,7 @@ module VBlank
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
-                              :pose_lists) do
+                              :pose_lists, :sprites_in_blocks) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -176,8 +176,13 @@ module VBlank
       # pose is shown in its own list's colours. :followed where such a sprite can also follow its
       # lists, each pose shown in what its list holds now (IR::Nodes::Object#follows_each); under :own
       # that is refused, naming the console. Checks::PosesWithDifferentColors makes both refusals.
+      #
+      # +sprites_in_blocks+ marks whether the display can show its sprites in blocks when the game
+      # pixelates (`pixelate`), as well as its backgrounds. False where its blocks reach the
+      # backgrounds alone (the Super Nintendo's mosaic), and nil where it has no blocks at all,
+      # which its answers refuse whole.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
-                     pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, **rest) = super
+                     pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -350,7 +355,9 @@ module VBlank
                             # A cartridge with a motor, for a game that rumbles (Runtime::Rumble).
                             rumbles: true,
                             # Its own start-up is not played: the game starts at once.
-                            plays_bios_start_up: false, whole_screen_size: nil, extension: ".gbc")
+                            plays_bios_start_up: false, whole_screen_size: nil, extension: ".gbc",
+                            # It has no mosaic.
+                            sprites_in_blocks: nil)
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
@@ -417,6 +424,9 @@ module VBlank
                                      sprites_placed_before_wait: true,
                                      # No cartridge with a motor is made for it.
                                      rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                                     # Its mosaic (MOSAIC, $2106) has a switch for each background
+                                     # and none for the sprites.
+                                     sprites_in_blocks: false,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
@@ -473,6 +483,8 @@ module VBlank
                               sprites_placed_before_wait: true,
                               # No cartridge with a motor is made for it.
                               rumbles: false, plays_bios_start_up: false, whole_screen_size: nil,
+                              # It has no mosaic.
+                              sprites_in_blocks: nil,
                               extension: ".gen")
 
     # The PlayStation: a 320×240 screen, a pad whose buttons a game names by the shared names (Cross is

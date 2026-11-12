@@ -109,6 +109,24 @@ class TestPixelate < Minitest::Test
     assert_match(/:ui/, error.message)
   end
 
+  # ...and whether the sprites are among them is one choice too.
+  def test_a_game_that_chooses_both_ways_for_its_sprites_is_refused
+    error = assert_raises(ArgumentError) do
+      stacked do
+        pixelate 6, sprites: false
+        pixelate 3
+      end
+    end
+
+    assert_match(/same `sprites:`/, error.message)
+  end
+
+  def test_sprites_takes_true_or_false
+    error = assert_raises(ArgumentError) { tiled_room { pixelate 4, sprites: :no } }
+
+    assert_match(/true or false/, error.message)
+  end
+
   # --- beside the other things a display does to a picture ---
 
   # A layer holds things, and blocks are something done to the picture from a place in it.

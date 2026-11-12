@@ -30,6 +30,7 @@ module VBlank
 
             @pixelates = !places.empty?
             @kept = places.first ? IR::Stacking.at_or_above(picture, places.first).map(&:name) : []
+            @keeps_sprites = Blocks.keeps_sprites?(program, LoweringError)
           end
 
           # Does the program pixelate at all?
@@ -38,8 +39,9 @@ module VBlank
           # The bit that goes into the control register of the background +name+.
           def background_bit(name) = in_blocks?(name) ? BG_MOSAIC : 0
 
-          # ...and the one that goes into the first word of the sprite +name+'s table entry.
-          def sprite_bit(name) = in_blocks?(name) ? OBJ_MOSAIC : 0
+          # ...and the one that goes into the first word of the sprite +name+'s table entry: never
+          # set in a game that leaves its sprites as drawn (`sprites: false`).
+          def sprite_bit(name) = !@keeps_sprites && in_blocks?(name) ? OBJ_MOSAIC : 0
 
           private
 

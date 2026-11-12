@@ -663,14 +663,23 @@ module VBlank
       #
       # A game names one place, and every `pixelate` in it names the same one.
       #
+      # `sprites: false` puts the backgrounds alone in blocks and leaves every sprite as
+      # drawn, which is all a Super Nintendo's display can do, so a game for one says it:
+      #
+      #   pixelate 16 - brightness, sprites: false
+      #
+      # It is one choice for the whole game too, like the place.
+      #
       # @param size [Symbol, Integer, Value] how many pixels a block is each way, 1 to 16
       # @param under [Symbol, nil] a layer left as drawn with everything in front of it, or nil for the whole screen
-      def pixelate(size, under: nil)
+      # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
+      def pixelate(size, under: nil, sprites: true)
         refuse_unusable_block_size!(size)
         check_effect_layer!(:pixelate, under) if under
         refuse_second_pixelate_place!(under)
+        refuse_second_pixelate_sprites!(sprites)
 
-        record(Build.pixelate(size: DSL::Value.node_for(size), under: under))
+        record(Build.pixelate(size: DSL::Value.node_for(size), under: under, keeps_sprites: !sprites))
         ensure_var(size)
       end
 
@@ -932,6 +941,21 @@ module VBlank
               "#{said.call(under)}. A game pixelates from one place in the stack, because which " \
               "things are drawn in blocks is settled once, before it runs. To fix this, give " \
               "every `pixelate` the same `under:`."
+      end
+
+      # ...and so is whether the sprites are among them: one choice for the whole game.
+      def refuse_second_pixelate_sprites!(sprites)
+        unless [true, false].include?(sprites)
+          raise ArgumentError, "The `sprites:` setting of `pixelate` must be true or false. You gave #{sprites.inspect}."
+        end
+
+        @pixelate_sprites = sprites unless defined?(@pixelate_sprites)
+        return if @pixelate_sprites == sprites
+
+        raise ArgumentError,
+              "This game pixelates with `sprites: false` in one place and with the sprites in blocks " \
+              "in another. The build sets which things are in blocks one time, before the game runs. " \
+              "To fix this, give every `pixelate` the same `sprites:`."
       end
 
       # SWITCH THE LIGHT OFF IN THE SCENES IT IS OFF IN: those that see through a layer, or

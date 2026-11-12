@@ -12,6 +12,7 @@ require_relative "runtime/paint_log"
 require_relative "runtime/paint_turns"
 require_relative "runtime/text_layer"
 require_relative "runtime/tint"
+require_relative "runtime/mosaic"
 require_relative "runtime/collide"
 require_relative "runtime/chip"
 require_relative "runtime/chip_paint"
@@ -60,6 +61,7 @@ module VBlank
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes) if c.samples
+            Mosaic.reserve(memory) if c.mosaic
           end
 
           def reserve_music(memory, carries)
@@ -99,6 +101,7 @@ module VBlank
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
+            Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
             Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places) if c.letterboxes?
             if c.saves

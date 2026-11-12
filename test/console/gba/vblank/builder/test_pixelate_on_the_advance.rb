@@ -438,6 +438,26 @@ class TestPixelateOnTheAdvance < Minitest::Test
     [2, 3, 8].each { |size| assert_backends_agree(lettered.call(size), frames: 3, name: "TEXT#{size}") }
   end
 
+  # `sprites: false` leaves every sprite and every letter as drawn, and the floor in blocks.
+  def test_sprites_and_text_left_as_drawn_with_the_backgrounds_in_blocks
+    cast = lambda do |size, sprites|
+      cast_on_floor do
+        sprite :patch, at: [37, 21], facing: { right: :patch }
+        draw_text "SCORE", 13, 9, :white
+        pixelate size, sprites: sprites
+        game_loop {}
+      end
+    end
+    sharp = picture_of(cast.call(1, true))
+    kept = picture_of(cast.call(6, false))
+    blocky = picture_of(cast.call(6, true))
+
+    assert_equal sharp[21..36].map { |row| row[37..52] }, kept[21..36].map { |row| row[37..52] }, "the sprite is as drawn"
+    assert_equal sharp[9..16].map { |row| row[13..52] }, kept[9..16].map { |row| row[13..52] }, "and so is the text"
+    refute_equal blocky[21..36].map { |row| row[37..52] }, kept[21..36].map { |row| row[37..52] }
+    assert_backends_agree(cast.call(6, false), frames: 3, name: "KEPT6")
+  end
+
   # --- a place in the stack ---
 
   # A room, two sprites on it and a score over them, each in a layer of its own.

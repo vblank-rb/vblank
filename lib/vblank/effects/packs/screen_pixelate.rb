@@ -63,9 +63,14 @@ module VBlank
         #
         # @param frames [Integer, nil] how long the walk takes, in frames
         # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
+        # `sprites: false` puts the backgrounds alone in blocks, as it does for `pixelate`, and
+        # holds for the whole game the same way.
+        #
         # @param under [Symbol, nil] a layer left as drawn with everything in front of it
-        def pixelate_out(frames: nil, duration: nil, under: nil)
+        # @param sprites [Boolean] whether the sprites are put in blocks with the backgrounds
+        def pixelate_out(frames: nil, duration: nil, under: nil, sprites: true)
           note_verb_written(:pixelate_out)
+          @screen_pixelate_sprites = sprites unless sprites
           start_pixelate_walk(FULL, frames, duration, under: under)
         end
 
@@ -207,7 +212,7 @@ module VBlank
             once_a_frame(ROUTINE) do
               if active == 1
                 shown = broken.to_i + 1
-                pixelate shown, under: @screen_pixelate_place
+                pixelate shown, under: @screen_pixelate_place, sprites: @screen_pixelate_sprites != false
                 if broken == target
                   active = 0
                 else

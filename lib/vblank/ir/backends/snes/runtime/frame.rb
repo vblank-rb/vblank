@@ -243,6 +243,7 @@ module VBlank
                 asm.sta(asm.abs(h::INIDISP))
                 asm.rep(0x20)
               end
+              Mosaic.emit_write(asm, memory) if Mosaic.kept?(memory)
               asm.lda(1)
               asm.sta(at.call(DISPLAY_ON))
               asm.bra("rt_show_pass_shown")
@@ -265,6 +266,8 @@ module VBlank
                 asm.sta(asm.abs(h::INIDISP))
                 asm.rep(0x20)
               end
+              # ...and the size of the blocks the same way (Mosaic).
+              Mosaic.emit_write(asm, memory) if Mosaic.kept?(memory)
               asm.label("rt_show_pass_shown")
               asm.jsr(asm.abs("rt_letterbox_shown")) if Letterbox.kept?(memory)
               asm.lda(at.call(PASSES))
