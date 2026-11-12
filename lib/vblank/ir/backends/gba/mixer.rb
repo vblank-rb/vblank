@@ -564,10 +564,13 @@ module VBlank
           #
           # So it is watched. The DMA was told to raise its flag each time it moves a lot; this
           # waits for the flag, reads the sample count at once, and stops at the first two lots
-          # exactly sixteen samples apart, which is the grid settled. Interrupts are not armed
-          # yet, so nothing else clears the flag, and the count is read long before the next
+          # exactly sixteen samples apart, which is the grid settled. The DMA's interrupt is not
+          # armed, so nothing else clears the flag, and the count is read long before the next
           # sample: a turn of the loop is a few instructions, and a sample is CALIBRATION_PERIOD
-          # cycles.
+          # cycles. In a game that reads frames since power-on the screen's interrupt is armed
+          # already (GBA#emit_arm_frame_counting); its handler clears only the screen's flag, and
+          # a frame landing between the flag and the read delays the read by the BIOS's way in and
+          # out of an interrupt and that handler's few instructions, still well inside the sample.
           #
           # If the flag never comes — which it always does, but a boot that hangs is the one
           # failure nobody can see the cause of — it gives up after a while and takes 0. The sound

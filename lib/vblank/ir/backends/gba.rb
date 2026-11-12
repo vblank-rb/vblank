@@ -1007,6 +1007,13 @@ module VBlank
           # worked out a line at a time calls routines, and so needs room under the interrupt
           # stack (see TopOfQuickMemory).
           emit(ASM.load_immediate(STACK, @top.stack_starts_at)) if @top.stack_moved?
+          # A game that reads frames since power-on has them counted from here, before the setting
+          # up below, which can take longer than the first frame (see #emit_arm_frame_counting).
+          if counts_from_power_on
+            @frames.emit_clear_frame_count
+            @bookkeeping&.emit_at_power_on # it clears the count too, so it goes first
+            emit_arm_frame_counting
+          end
           # A flash chip is told so before anything else touches save memory (see Save).
           @save.emit_wake_chip if @uses_save
           emit_copy_divide_routines_to_iwram # a no-op when neither routine was reserved
@@ -1028,8 +1035,10 @@ module VBlank
           # is where the sound buffers are silenced, so how long it takes depends on the sample
           # rate, and the machine hung above one rate and ran below it with nothing else changed.
           emit_mixer_boot if @mixer.plays_samples? # start the sound DMA + clock; voices added by `play`
-          @frames.emit_clear_frame_count if counts_from_power_on # ...before the interrupt that counts
-          @bookkeeping&.emit_at_power_on # a checked build's own counts, the frames' among them
+          # A checked build's own counts, the frames' among them: here, where they always were, in a
+          # game that does not read the count, so its cartridge is the bytes it was; at the top of
+          # setting up in one that does (above).
+          @bookkeeping&.emit_at_power_on unless counts_from_power_on
           emit_irq_setup if uses_irq? # arm the interrupts the program needs (VBlank and/or timers)
           emit_input_init if @uses_pressed
           @clock_chip.emit_call_at_power_on # whether the cartridge has a clock, and its first reading
@@ -1070,6 +1079,8 @@ module VBlank
           # The interrupt dispatcher itself, reached only via the vector. When it was worth
           # keeping in the quick memory it has already been emitted inside the moved block.
           while_emitting_interrupt { emit_irq_handler } if uses_irq? && !irq_runs_fast?
+          # The handler that counts the frames until the game's own is armed, always in the cartridge.
+          while_emitting_interrupt { emit_frame_counting_handler } if counts_from_power_on
           # What the interrupt's effects player hands an effect with something to do this frame,
           # always in the cartridge (see Audio#emit_sound_effect_step_routine).
           @audio.emit_sound_effect_step_routine if uses_irq? && @audio.plays_sound_effects?
@@ -1338,6 +1349,40 @@ module VBlank
           end
           emit(ASM.str(ACC, TMP))
           write_io_halfword(REG_IME, 1)                          # interrupts on
+        end
+
+        # THE FRAMES SHOWN WHILE THE GAME SETS UP ARE COUNTED, for a game that reads frames since
+        # power-on. The screen's own interrupt (#emit_irq_setup) is armed late in setting up, after
+        # what it reaches has been put in place: the sound mixer started, the routines it runs
+        # copied to the quick memory. That setting up can outlast the first frame. A cartridge
+        # starts part way down the picture, so the first frame ends soon after power-on, and the
+        # mixer alone takes most of a frame to find where the sound hardware's requests fall
+        # (Mixer#emit_find_lot_grid). Every frame that ended before the interrupt was armed was
+        # missed, and the game read one frame fewer than had been shown.
+        #
+        # So the count is started here, at the top of setting up, with an interrupt of its own that
+        # only counts: the screen announces each frame from now on, and this handler, which sits in
+        # the cartridge and needs nothing set up, adds one. #emit_irq_setup later turns the
+        # interrupts off, points the vector at the game's own routine, which counts the same way,
+        # and turns them on again, so no frame is counted twice or missed.
+        FRAME_COUNTING_HANDLER_LABEL = :__irq_counting_frames_setting_up
+
+        def emit_arm_frame_counting
+          write_io_halfword(REG_IME, 0)
+          write_io_halfword(REG_DISPSTAT, DISPSTAT_VBLANK_IRQ)
+          write_io_halfword(REG_IE, IRQ_VBLANK)
+          emit(ASM.load_immediate(TMP, REG_INTR_VECTOR))
+          emit_load_label_address(ACC, FRAME_COUNTING_HANDLER_LABEL)
+          emit(ASM.str(ACC, TMP))
+          write_io_halfword(REG_IME, 1)
+        end
+
+        # Reached through the vector, from the BIOS, which has saved r0-r3, r12 and lr: the count
+        # and the frame's acknowledgement use only those.
+        def emit_frame_counting_handler
+          place_label(FRAME_COUNTING_HANDLER_LABEL)
+          emit_irq_source(IRQ_VBLANK, bios_ack: true) { emit_frame_count }
+          emit(ASM.return)
         end
 
         # The interrupt dispatcher, reached only through the vector. The BIOS enters it in
