@@ -60,8 +60,14 @@ module VBlank
     # at once. `keeps_voices: true` on an effect's Score holds each voice it has taken through such a
     # silence until the effect ends, the way a cartridge's own sound engine can, so a song note
     # falling in that silence is lost. It means nothing for a song.
+    #
+    # A SONG WHOSE LENGTH IS IN THE PLAYER'S DATA PACK. A port reading its original's songs as the
+    # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
+    # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
+    # is then the most ticks the song can last, the one number such a build must know: it holds room
+    # for that many. Any other Score leaves it out, and one that gives it plays as without it.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
-                        :low_notes_intended, :keeps_voices)
+                        :low_notes_intended, :keeps_voices, :longest)
 
     class Score
       # FRAMES A SECOND, the rate the music is played at — the same round figure a song block's
@@ -77,7 +83,7 @@ module VBlank
       # it comes round TO; left out, that is its start. A song that +plays_once+ does not come
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
-                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false)
+                     priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil)
         super
       end
 
@@ -312,6 +318,10 @@ module VBlank
                                  "Give `group:` a name, or remove it."
           end
           true_or_false!(:low_notes_intended, score.low_notes_intended)
+          unless score.longest.nil? || (score.longest.is_a?(Integer) && score.longest.positive?)
+            raise ArgumentError, "A Score has `longest: #{score.longest.inspect}`. It is the most ticks the song can " \
+                                 "last, a whole number more than 0."
+          end
           plays_once!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
         end

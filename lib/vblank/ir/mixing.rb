@@ -30,8 +30,12 @@ module VBlank
 
       # The rate the mix is asked to run at: the rate most of the program's recordings were made
       # at, so a game that records at one rate plays at its own pitch. What it really runs at is
-      # the nearest a backend's clock can keep.
+      # the nearest a backend's clock can keep. A game that names a rate (`enable_sound mix_rate:`)
+      # asks for that one, which is how a game whose recordings' rates are read from its data pack
+      # as it starts asks for the same mix whichever way it is built.
       def requested_rate(program)
+        return program.mix_rate if program.kind == :program && program.mix_rate
+
         rates = program.walk.select { |n| n.kind == :sample }.map(&:rate)
         return VBlank::Builder::SampledAudio::DEFAULT_SAMPLE_RATE if rates.empty?
 

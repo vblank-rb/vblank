@@ -1426,10 +1426,14 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 start_file: :start_file
+                 start_file: :start_file, mix_rate: :int
 
         # +start_file+ is the file the program is handed as it starts, which some of its tables and
         # pictures are read from (a StartFile), or absent for a program that reads none.
+        #
+        # +mix_rate+ is the rate the game asked its recordings to be mixed at, in samples a second
+        # (`enable_sound mix_rate: 13379`), or absent where the mix runs at the rate most of its
+        # recordings were made at (IR::Mixing.requested_rate).
 
         # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last
@@ -1801,7 +1805,13 @@ module VBlank
         declaration!
         category :sound
         operands name: :name, voices: :score, total_frames: :int, loop_frame: :int, priority: :int,
-                 group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag
+                 group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag,
+                 length_from_file: :file_song_length
+
+        # +length_from_file+ is where the song's length and the tick it comes round to are in the
+        # file the program is handed as it starts (a StartFile::SongLength), or absent for a song
+        # whose length the program holds. Until the file is read +total_frames+ is the most the
+        # song can last.
       end
 
       # A named list of songs that each play ONCE, over the tune playing now, when the program

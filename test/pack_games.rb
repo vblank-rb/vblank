@@ -1123,6 +1123,13 @@ module PackGames
                                            refused: Refusal.new(phrase: "rate", by: :computer_build_mixing_at_recording_rates)) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[rate holds_from envelope], options: options), settings_pack_file)
       end,
+      # ...unless the game names the rate its sound is mixed at, as a port of a game whose sound
+      # driver mixed at one rate does.
+      game(:instrument_rate_from_the_pack_mixed_at_a_named_rate, passes: 80,
+                                                                 presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
+        built(settings_at_start_game(folder, from_pack: %i[rate holds_from envelope], options: options, mix_rate: 13_379),
+              settings_pack_file)
+      end,
       game(:instrument_chip_envelope_from_the_pack, passes: 20, presses: { 1 => [:a] },
                                                     refused: refused_by_builder("chip envelope")) do |folder, options|
         from = original(folder)
@@ -1160,6 +1167,7 @@ module PackGames
       copy = "\0".b * COPY_SIZE
       parts.each_value.with_index { |notes, place| copy[place * MOST * PackNote::BYTES, MOST * PackNote::BYTES] = records(notes) }
       copy[SETTINGS_AT, SHAPE.length + 1] = [*SHAPE, HOLDS_FROM].pack("C*")
+      copy[TIMING_AT, TIMING.length * 2] = TIMING.pack("v*")
       path = File.join(folder, "made_up_songs.bin")
       File.binwrite(path, copy)
       VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -1178,11 +1186,13 @@ module PackGames
         pack = data_pack(from: from, version: "1") do |slots|
           parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
           slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
+          slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
         end
         # A part takes the slot's handle itself too, where its notes name no instrument.
         notes_of = ->(name, whole_slot: false) { whole_slot ? pack[name] : pack[name].notes(instruments: instruments.fetch(name, [])) }
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
-        made = instance_exec(notes_of, settings, &scores)
+        timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
+        made = instance_exec(notes_of, settings, timing, &scores)
         music = songs :music, made.fetch(:songs)
         effects = (sound_effects :sfx, made[:effects] if made[:effects])
         game_loop do
@@ -1215,6 +1225,20 @@ module PackGames
         test = self
         scores_game(folder, options, { tune: NAMED_TUNE, blip: BLIP }, instruments: { tune: %i[bell bass], blip: %i[horn] }) do |notes_of, settings|
           test.declare_recorded_scores(self, notes_of, settings)
+        end
+      end,
+      # A song whose length and loop are numbers of the pack, as a sound driver's song keeps them.
+      game(:song_of_pack_notes_and_pack_length, passes: 200, presses: { 1 => [:a] }) do |folder, options|
+        scores_game(folder, options, { lead: LEAD, low: LOW, drum: DRUM, wave: WAVE }) do |notes_of, _settings, timing|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low)),
+                                      Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
+                              tempo: 150, longest: 300, **timing)] }
+        end
+      end,
+      # A length from the pack with no most it can be leaves the build no room to make.
+      game(:song_of_pack_length_naming_no_longest, passes: 90, presses: { 1 => [:a] }, refused: refused_by_builder("longest:")) do |folder, options|
+        scores_game(folder, options, { melody: MELODY }) do |notes_of, _settings, timing|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, length: timing.fetch(:length), plays_once: true)] }
         end
       end,
       # With the notes in the file, the build cannot work out how long the song is.

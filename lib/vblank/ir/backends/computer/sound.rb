@@ -59,6 +59,7 @@ module VBlank
             @start_file_sound_numbers = [] # a play's numbers known once the start file is read (#start_file_sound_number)
             @start_file_note_rows = [] # the note rows that take a number from it (#note_sound_row)
             @start_file_note_fills = [] # the parts whose notes are made from it (#encoded_part_read_at_start)
+            @start_file_length_fills = [] # the songs whose length is read from it (#music_table)
             refuse_unknown_rate_setting_mix!
           end
 
@@ -269,15 +270,17 @@ module VBlank
           # A game whose mix runs at the rate most of its recordings were made at
           # (IR::Mixing.requested_rate) lays its sound out from that rate, so a rate the build does
           # not know cannot be one of them. A console whose voices read at one rate whatever the
-          # recordings' are needs no rate to lay its sound out.
+          # recordings' are needs no rate to lay its sound out, and nor does a game that names the
+          # rate its sound is mixed at.
           def refuse_unknown_rate_setting_mix!
             console = @program.described_console
-            return if console.recording_voice_hz
+            return if console.recording_voice_hz || @program.mix_rate
 
             sample = @sound_log.recordings.find { |recording| recording.settings_from_file&.rate } or return
             raise LoweringError, "The recording #{sample.name.inspect} reads its rate from the #{@program.start_file.called} as the game " \
                                  "starts. On the #{console.title}, the sound is mixed at the rate that most recordings have, so " \
-                                 "the build must know each rate. To fix this, give `rate:` a number, or build the game all-in-one."
+                                 "the build must know each rate. To fix this, name the rate the sound is mixed at, like " \
+                                 "`enable_sound mix_rate: 13379`. Or give `rate:` a number, or build the game all-in-one."
           end
 
           # ...and its `stop`, of one recording or, with no name, of every one the game plays.
@@ -531,7 +534,11 @@ module VBlank
               @note_fills_of_entry = []
               numbers = encoded_song(song, passes, comes_round: comes_round)
               starts << at
-              @note_fills_of_entry.each { |fill| @start_file_note_fills << fill.with(notes_at: at + fill.notes_at) }
+              if song.length_from_file
+                @start_file_length_fills << StartFileLengthFill.new(song_at: at, where: song.length_from_file,
+                                                                    longest: song.total_frames)
+              end
+              @note_fills_of_entry.each { |fill| @start_file_note_fills << fill.with(notes_at: at + fill.notes_at, song_at: at) }
               at += numbers.size
               numbers
             end
@@ -595,7 +602,17 @@ module VBlank
           # What fills one part's room: where its first note is in the music table, the rules, and
           # what the array of the frame each tick falls on is made from (#tick_frames_array), which
           # is declared only by a game that makes the call.
-          StartFileNotesFill = Data.define(:notes_at, :rules, :where, :total_frames)
+          # +room+ is the room for the notes the first time through and every time after, and where
+          # the records are in the file and how many at most. +song_at+ is where the part's song
+          # starts in the music table, its length first and its loop frame next, which the runtime
+          # reads (a song's length from the file is written there first, #build_start_file_note_fills).
+          # +rules+ are the rest.
+          StartFileNotesFill = Data.define(:notes_at, :song_at, :room, :rules, :where, :total_frames)
+
+          # What writes a song's length and loop frame from the file over the music table's
+          # (IR::StartFile::SongLength): where the song starts in the table, where its numbers are in
+          # the file, and the most frames it can last, which the table holds until then.
+          StartFileLengthFill = Data.define(:song_at, :where, :longest)
 
           # A frame no song and no sound effect is ever on.
           NEVER_PLAYED = -1
@@ -610,10 +627,10 @@ module VBlank
             # a part is put right with at its loop frame (IR::Tunes.loop_passes).
             first = where.most_events + (comes_round ? 1 : 0)
             again = comes_round ? where.most_events + 1 : 0
-            rules = [first, again, where.at, where.count, song.total_frames, Tunes.loop_frame(song), comes_round ? 1 : 0,
-                     *start_file_note_rules(part, kind, where)]
-            @note_fills_of_entry << StartFileNotesFill.new(notes_at: part_at + NUMBERS_PER_PART, rules: rules, where: where,
-                                                           total_frames: song.total_frames)
+            @note_fills_of_entry << StartFileNotesFill.new(notes_at: part_at + NUMBERS_PER_PART, song_at: nil,
+                                                           room: [first, again, where.at, where.count],
+                                                           rules: [comes_round ? 1 : 0, *start_file_note_rules(part, kind, where)],
+                                                           where: where, total_frames: song.total_frames)
             [PART_KINDS.fetch(kind), number, *part_tone(kind, part, lane), first, again,
              *([NEVER_PLAYED, 0, 0, 0, 0, 0] * (first + again))]
           end
@@ -659,19 +676,32 @@ module VBlank
             end
           end
 
-          # A call for each part that reads its notes from the file: the rules begin with where the
-          # part's room is in the music table, and how many ticks the array of frames holds.
+          # A call for each song whose length is in the file, and then one for each part that reads
+          # its notes from it, which reads that length: the rules begin with where the part's room
+          # is in the music table, and how many ticks the array of frames holds.
           # None for a game with no music feature, which declares songs and plays none: it has no
           # player to walk the notes, and no rg_music_fill_notes to make them.
           def build_start_file_note_fills
             return [] unless takes_runtime_feature?(:music)
 
-            @start_file_note_fills.map do |fill|
+            lengths = @start_file_length_fills.map do |fill|
+              frames, ticks = tick_frames_array(fill.where, fill.longest)
+              eval_call("rg_music_fill_song_length", @names.own("music"),
+                        drawing_array("start_file_song_length", "int32_t",
+                                      [fill.song_at, ticks, fill.longest, *start_file_tick_rules(fill.where.length),
+                                       *start_file_tick_rules(fill.where.loop_from)]), frames)
+            end
+            lengths + @start_file_note_fills.map do |fill|
               frames, ticks = tick_frames_array(fill.where, fill.total_frames)
               eval_call("rg_music_fill_notes", @names.own("music"),
-                        drawing_array("start_file_notes", "int32_t", [fill.notes_at, ticks, *fill.rules]), frames)
+                        drawing_array("start_file_notes", "int32_t", [fill.notes_at, ticks, *fill.room, fill.song_at, *fill.rules]),
+                        frames)
             end
           end
+
+          # 1 and where a tick is in the file (#start_file_number_rules), or 0 and nothing there
+          # for one the game wrote.
+          def start_file_tick_rules(where) = where ? [1, *start_file_number_rules(where)] : [0, 0, 0, 0, 0]
 
           # What a part's voice sounds like, as two numbers. A square part: how many eighths of
           # its wave are high. A wave part: which waveform. A noise part: how many bits its hiss

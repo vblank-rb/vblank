@@ -57,9 +57,16 @@ module PackScoresAtStartTests
   HOLDS_FROM = 16
   SETTINGS_AT = 2048
 
+  # A song's length and the tick it comes round to, two numbers of two bytes after the settings,
+  # which a song can read in place of numbers of its own (`length: pack[:timing].number(0)`).
+  TIMING = [84, 36].freeze
+  TIMING_AT = 2064
+
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
-  private def pack_file(parts)
-    slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"))
+  # +timing+ is what its song's length and loop hold.
+  private def pack_file(parts, timing: TIMING)
+    slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"),
+                                                                    timing: timing.pack("v*"))
     VBlank::Original::Pack.holding(slots, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
   end
 
@@ -77,6 +84,7 @@ module PackScoresAtStartTests
       pack = from && data_pack(from: from, version: "1") do |slots|
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
+        slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
       end
       notes_of = lambda do |name|
         named = instruments.fetch(name, [])
@@ -88,7 +96,9 @@ module PackScoresAtStartTests
                  else
                    { envelope: VBlank::Audio::Envelope.new(**%i[attack decay sustain release].zip(SHAPE).to_h), holds_from: HOLDS_FROM }
                  end
-      made = instance_exec(notes_of, settings, &scores)
+      # A song's length and loop from the pack, or the same numbers written by hand.
+      timing = pack ? { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) } : { length: TIMING[0], loop_from: TIMING[1] }
+      made = instance_exec(notes_of, settings, timing, &scores)
       music = songs :music, made.fetch(:songs)
       effects = (sound_effects :sfx, made[:effects] if made[:effects])
       game_loop do
@@ -160,6 +170,165 @@ module PackScoresAtStartTests
     end
   end
 
+  # A SONG WHOSE LENGTH AND LOOP ARE IN THE PACK TOO, as a sound driver's song is: where it ends and
+  # where it comes round are commands in its data, which the unpacking runs and writes as numbers.
+  # The build knows only the most it can last (`longest:`).
+  def test_a_songs_length_and_loop_read_as_the_game_starts_play_as_the_same_numbers_written_by_hand
+    assert_plays_as_written({ lead: LEAD, low: LOW, drum: DRUM, wave: WAVE }, frames: 200) do |notes_of, _settings, timing|
+      { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low), volume: 9),
+                                  Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
+                          tempo: 150, longest: 300, **timing)] }
+    end
+  end
+
+  # A song that plays once ends where the pack says, and a sound effect's length can be read too.
+  def test_a_song_that_plays_once_ends_where_the_pack_says
+    assert_plays_as_written({ melody: MELODY, blip: BLIP }, frames: 120, buttons: %i[a b]) do |notes_of, _settings, timing|
+      { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, length: timing.fetch(:length), longest: 200,
+                          plays_once: true)],
+        effects: [Score.new(parts: [Part.new(notes: notes_of.(:blip))], tempo: 150, length: timing.fetch(:loop_from), longest: 50)] }
+    end
+  end
+
+  # The file is the player's: a length past the most the build made room for is that most, and a
+  # loop on or past the end comes round to the start.
+  def test_a_length_past_the_longest_and_a_loop_past_the_end_do_not_stop_the_game
+    Dir.mktmpdir do |folder|
+      by_hand = scored_game({ melody: MELODY }) do |notes_of|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, length: 60)] }
+      end
+      left_out = scored_game({ melody: MELODY }, folder: folder) do |notes_of, _settings, timing|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, longest: 60, **timing)] }
+      end
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 150)
+      played = game_player.hand_file(pack_file({ melody: MELODY }, timing: [500, 70])).input_each_frame(&once).run(left_out, frames: 150)
+
+      assert_equal wanted.audio, played.audio
+    end
+  end
+
+  def test_a_length_from_the_pack_names_the_longest_the_song_can_be
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        scored_game({ melody: MELODY }, folder: folder) do |notes_of, _settings, timing|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, **timing)] }
+        end
+      end
+      assert_match(/longest:/, error.message)
+    end
+  end
+
+  def test_a_length_from_the_pack_beside_a_part_written_in_the_game_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        scored_game({ melody: MELODY }, folder: folder) do |notes_of, _settings, timing|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody)), Part.new(notes: [Note.new(at: 0, key: 60)])],
+                              tempo: 150, longest: 200, **timing)] }
+        end
+      end
+      assert_match(/every part/, error.message)
+    end
+  end
+
+  # A PORT WITH A SOUND DRIVER OF ITS OWN, which VBlank knows nothing of, plays its song through the
+  # pack alone: its unpacking runs the driver's commands forward and writes the notes they play
+  # and the song's length, a tick a frame, as a driver that runs once a frame plays them. The
+  # made-up driver's commands: OWN_NOTE, a key and how many frames; OWN_REST and how many frames;
+  # OWN_FINE, the end.
+  OWN_NOTE = 1
+  OWN_REST = 2
+  OWN_FINE = 0xFF
+  OWN_TUNE = [[72, 10], [nil, 6], [76, 8], [79, 12], [nil, 4], [67, 20]].freeze
+  OWN_STREAM_AT = 0x100
+  # A Score whose tick is a frame: a beat of one tick, 3600 beats a minute (Audio::Score::FRAME_RATE).
+  A_TICK_A_FRAME = { tempo: 3600, ticks_per_beat: 1 }.freeze
+
+  private def own_driver_copy
+    copy = "\0".b * 4096
+    stream = OWN_TUNE.flat_map { |key, frames| key ? [OWN_NOTE, key, frames] : [OWN_REST, frames] } + [OWN_FINE]
+    copy[OWN_STREAM_AT, stream.length] = stream.pack("C*")
+    copy
+  end
+
+  # The game reading the driver's song from its pack as it starts, and its pack's unpacking.
+  private def own_driver_game(folder)
+    from = original_nowhere(folder)
+    b = VBlank::Builder.new(options: PACK_AT_START)
+    made = nil
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      made = data_pack(from: from, version: "1") do |slots|
+        slots.notes :tune, count: MOST
+        slots.numbers :tune_length, count: 1, width: :half, signed: false
+        slots.fill_from_copy do |copy, pack|
+          at = OWN_STREAM_AT
+          tick = 0
+          record = 0
+          command = copy.byte(at)
+          while command != OWN_FINE
+            if command == OWN_NOTE
+              frames = copy.byte(at + 2)
+              pack[:tune][record] = tick
+              pack[:tune][record + 1] = tick / 256
+              pack[:tune][record + 2] = frames
+              pack[:tune][record + 3] = 0
+              pack[:tune][record + 4] = copy.byte(at + 1)
+              pack[:tune][record + 5] = OWN
+              pack[:tune][record + 6] = OWN
+              pack[:tune][record + 7] = 0
+              record += PackNote::BYTES
+              tick += frames
+              at += 3
+            else
+              tick += copy.byte(at + 1)
+              at += 2
+            end
+            command = copy.byte(at)
+          end
+          pack[:tune][record] = 0xFF
+          pack[:tune][record + 1] = 0xFF
+          pack[:tune_length][0] = tick
+        end
+      end
+      music = songs :music, [Score.new(parts: [Part.new(notes: made[:tune].notes)], length: made[:tune_length].number(0),
+                                       longest: 600, plays_once: true, **A_TICK_A_FRAME)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    [b.program, made]
+  end
+
+  def test_a_port_with_a_sound_driver_of_its_own_plays_its_song_through_the_pack
+    Dir.mktmpdir do |folder|
+      program, made = own_driver_game(folder)
+      unpacking = made.unpacking(release: made.original.releases.with_sha1(Digest::SHA1.hexdigest("made up")))
+      unpacked = game_player.hand_file(own_driver_copy).run(unpacking.program, frames: 60)
+      assert unpacking.finished_in?(unpacked), "the unpacking runs the driver's song to its end"
+      file = unpacking.pack_file_in(unpacked, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1")
+
+      tick = 0
+      notes = OWN_TUNE.filter_map do |key, frames|
+        note = Note.new(at: tick, key: key, length: frames) if key
+        tick += frames
+        note
+      end
+      by_hand = scored_game({}) do
+        { songs: [Score.new(parts: [Part.new(notes: notes)], length: tick, plays_once: true, **A_TICK_A_FRAME)] }
+      end
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 80)
+      played = game_player.hand_file(file).input_each_frame(&once).run(program, frames: 80)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }
+      assert_equal wanted.audio, played.audio
+    end
+  end
+
   # What a build holding the same records refuses does not stop a game reading its player's file:
   # a key no voice has is a rest, and a volume past 15 is the part's own.
   ODD = [[0, 12, 72, OWN, OWN], [12, 12, 200, OWN, 9], [24, 12, 76, OWN, 99], [36, 12, 128, OWN, OWN], [48, 12, 79, OWN, OWN]].freeze
@@ -190,7 +359,7 @@ module PackScoresAtStartTests
     parts = { tune: TUNE, blip: BLIP }
     named = { tune: %i[bell bass], blip: %i[horn] }
     test = self
-    scores = ->(notes_of, settings) { test.declare_recorded_scores(self, notes_of, settings) }
+    scores = ->(notes_of, settings, _timing) { test.declare_recorded_scores(self, notes_of, settings) }
     unless VBlank::Console.described(game_console).mixes_recordings
       return Dir.mktmpdir do |folder|
         left_out = scored_game(parts, folder: folder, instruments: named, &scores)

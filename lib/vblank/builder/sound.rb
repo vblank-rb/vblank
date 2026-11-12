@@ -9,11 +9,26 @@ module VBlank
     # A concern of {Builder}, mixed in so enable_sound/define_sound/beep are flat
     # DSL verbs.
     module Sound
+      # The rates `enable_sound mix_rate:` takes, in samples a second.
+      MIX_RATES_HZ = (1000..65_536)
+
       # Enable the GBA sound hardware. Call once at the top of your build block.
       # Without this, all beep calls are silent.
-      def enable_sound
+      #
+      # +mix_rate+ is how many samples a second the recordings are mixed at, where the game wants
+      # to name it: a port whose recordings' rates come from its data pack names the rate its
+      # original mixed at (most Advance games set one in their sound driver), since a build that
+      # reads the pack as the game starts cannot work one out from rates it does not know. Left
+      # out, the mix runs at the rate most recordings were made at. Either way it runs at the
+      # nearest rate the console's clock keeps (IR::Mixing.requested_rate).
+      def enable_sound(mix_rate: nil)
         raise ArgumentError, "enable_sound is already on. Call enable_sound one time only." if @sound_enabled && !@sound_on_by_itself
+        unless mix_rate.nil? || (mix_rate.is_a?(Integer) && mix_rate.between?(MIX_RATES_HZ.first, MIX_RATES_HZ.last))
+          raise ArgumentError, "`enable_sound mix_rate: #{mix_rate.inspect}` is not a rate the sound can be mixed at. " \
+                               "Give a whole number of samples a second from #{MIX_RATES_HZ.first} to #{MIX_RATES_HZ.last}."
+        end
 
+        @program.mix_rate = mix_rate if mix_rate
         @sound_on_by_itself = false
         return if @sound_enabled
 

@@ -158,7 +158,8 @@ module PackSoundTests
   # numbers the copy holds there. It sounds it four ways: a note the game plays (A), the recording
   # going round (B), a song's long note, which takes the recording's own shape (up), and a sound
   # effect's note with a shape of its part's (down).
-  private def settings_at_start_game(folder, from_pack:, options: VBlank::Cartridge::Options.new)
+  # +mix_rate+ is the rate the game names for its mix, or nil for none.
+  private def settings_at_start_game(folder, from_pack:, options: VBlank::Cartridge::Options.new, mix_rate: nil)
     from = options.pack_at_start ? original_nowhere(folder) : original(folder)
     held_rate = COPY.byteslice(SETTINGS_AT, 2).unpack1("v")
     held_from = COPY.getbyte(HOLDS_AT)
@@ -172,7 +173,7 @@ module PackSoundTests
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :bitmap
-      enable_sound
+      enable_sound(mix_rate: mix_rate)
       pack = data_pack(from: from, version: "1") do |slots|
         slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT
         slots.numbers :tuning, at: SETTINGS_AT, count: 1, width: :half, signed: false

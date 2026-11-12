@@ -916,14 +916,13 @@ RG_NOTES_TICKS = 1
 RG_NOTES_FIRST_ROOM = 2
 RG_NOTES_RECORDS_AT = 4
 RG_NOTES_RECORDS = 5
-RG_NOTES_TOTAL_FRAMES = 6
-RG_NOTES_LOOP_FRAME = 7
-RG_NOTES_COMES_ROUND = 8
-RG_NOTES_REST_LAST = 9
-RG_NOTES_FLAGS = 10
-RG_NOTES_SHAPES = 11
-RG_NOTES_INSTRUMENTS = 12
-RG_NOTES_HEADER_NUMBERS = 13
+RG_NOTES_SONG_AT = 6
+RG_NOTES_COMES_ROUND = 7
+RG_NOTES_REST_LAST = 8
+RG_NOTES_FLAGS = 9
+RG_NOTES_SHAPES = 10
+RG_NOTES_INSTRUMENTS = 11
+RG_NOTES_HEADER_NUMBERS = 12
 RG_NOTE_KEYS = 128
 RG_NOTE_VOLUMES = 16
 RG_NOTE_RECORD_BYTES = 8
@@ -960,8 +959,8 @@ end
 
 def rg_music_fill_notes(music, rules, tick_frames)
   ticks = rules[RG_NOTES_TICKS]
-  total_frames = rules[RG_NOTES_TOTAL_FRAMES]
-  loop_frame = rules[RG_NOTES_LOOP_FRAME]
+  total_frames = music[rules[RG_NOTES_SONG_AT]]
+  loop_frame = music[rules[RG_NOTES_SONG_AT] + 1]
   instruments = rules[RG_NOTES_INSTRUMENTS]
   same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
   frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : total_frames }
@@ -1011,4 +1010,35 @@ def rg_music_fill_notes(music, rules, tick_frames)
   again_at = rules[RG_NOTES_AT] + (rules[RG_NOTES_FIRST_ROOM] * RG_NOTE_NUMBERS)
   first.each_with_index { |event, n| rg_start_file_write_note(music, rules[RG_NOTES_AT] + (n * RG_NOTE_NUMBERS), event, rules) }
   again.each_with_index { |event, n| rg_start_file_write_note(music, again_at + (n * RG_NOTE_NUMBERS), event, rules) }
+end
+
+# --- a song's length in the file (rg_music.h, rg_music_fill_song_length; rg_music.c says each step) ---
+
+RG_LENGTH_SONG_AT = 0
+RG_LENGTH_TICKS = 1
+RG_LENGTH_LONGEST = 2
+RG_LENGTH_LENGTH = 3
+RG_LENGTH_LOOP = 8
+RG_LENGTH_NUMBER_READS = Ractor.make_shareable({ 1 => %w[C C], 2 => %w[v n], 4 => %w[V N] })
+
+# rg_music.c's start_file_tick: the tick the four numbers of +rules+ from +where+ on name.
+def rg_start_file_tick(rules, where)
+  width = rules[where + 1]
+  number = @rg_start_file.byteslice(rules[where], width).unpack1(RG_LENGTH_NUMBER_READS.fetch(width)[rules[where + 2]])
+  top = 1 << ((width * 8) - 1)
+  tick = rules[where + 3] == 1 && number >= top ? number - (top * 2) : number
+  tick.clamp(0, 0x7FFFFFFF)
+end
+
+def rg_music_fill_song_length(music, rules, tick_frames)
+  song = rules[RG_LENGTH_SONG_AT]
+  ticks = rules[RG_LENGTH_TICKS]
+  longest = rules[RG_LENGTH_LONGEST]
+  frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : longest }
+  total = music[song]
+  loop_frame = music[song + 1]
+  total = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LENGTH + 1)).clamp(1, longest) if rules[RG_LENGTH_LENGTH] != 0
+  loop_frame = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LOOP + 1)) if rules[RG_LENGTH_LOOP] != 0
+  music[song] = total
+  music[song + 1] = loop_frame < total ? loop_frame : 0
 end

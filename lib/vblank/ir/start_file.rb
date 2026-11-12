@@ -260,6 +260,30 @@ module VBlank
         end
       end
 
+      # A SONG'S LENGTH IN THE FILE (Nodes::Song#length_from_file): +length+, the tick it comes
+      # round at or ends on, and +loop_from+, the tick it comes round to, each a Number or nil
+      # where the game wrote it. +tempo+ and +ticks_per_beat+ are the Score's, which turn a tick
+      # into a frame as for any Score (an Audio::Score::Timing).
+      #
+      # WHAT IS KNOWN AS THE GAME IS BUILT is the most frames the song can last (its Score's
+      # `longest:`), which the song holds as its length until the file is read, so every room a
+      # build makes for the song is room enough.
+      #
+      # The file is the player's, so nothing in it stops the game, where the build that holds the
+      # same numbers refuses them (#frames_in).
+      SongLength = Data.define(:length, :loop_from, :tempo, :ticks_per_beat) do
+        def timing = Audio::Score::Timing.new(self)
+
+        # [total frames, loop frame] the numbers in +bytes+ come to in a song +longest+ frames at
+        # most: a length below a frame is one frame, and one past +longest+ is +longest+; a loop
+        # tick on or past the end is the song's start. A number the game wrote is +written+'s.
+        def frames_in(bytes, longest, written_total:, written_loop:)
+          total = length ? timing.at([StartFile.number_in(bytes, length), 0].max).clamp(1, longest) : written_total
+          from = loop_from ? timing.at([StartFile.number_in(bytes, loop_from), 0].max) : written_loop
+          [total, from < total ? from : 0]
+        end
+      end
+
       # The highest key and the loudest volume a record names.
       MOST_KEY = 127
       MOST_VOLUME = 15
@@ -292,7 +316,7 @@ module VBlank
         case node.kind
         when :screen then node.backdrop_from_file
         when :sample then node.from_file || node.settings_from_file
-        when :song then node.voices.filter_map(&:from_file).first
+        when :song then node.length_from_file || node.voices.filter_map(&:from_file).first
         else node.from_file
         end
       end
@@ -503,6 +527,13 @@ module VBlank
       # A song's parts that keep their notes in the file, each the part a Score makes of those
       # notes when the game is built holding them.
       def self.fill_song(node, bytes)
+        if (length = node.length_from_file)
+          total, from = length.frames_in(bytes, node.total_frames, written_total: node.total_frames,
+                                                                   written_loop: Tunes.loop_frame(node))
+          node.total_frames = total
+          node.loop_frame = (from if from.positive?)
+          node.length_from_file = nil
+        end
         node.voices = node.voices.map do |part|
           where = part.from_file
           where ? where.voice_playing(notes_in(bytes, where), node.total_frames) : part

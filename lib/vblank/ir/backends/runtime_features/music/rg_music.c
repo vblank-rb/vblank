@@ -1144,14 +1144,13 @@ enum {
   RG_NOTES_FIRST_ROOM = 2,
   RG_NOTES_RECORDS_AT = 4,
   RG_NOTES_RECORDS = 5,
-  RG_NOTES_TOTAL_FRAMES = 6,
-  RG_NOTES_LOOP_FRAME = 7,
-  RG_NOTES_COMES_ROUND = 8,
-  RG_NOTES_REST_LAST = 9,
-  RG_NOTES_FLAGS = 10,
-  RG_NOTES_SHAPES = 11,
-  RG_NOTES_INSTRUMENTS = 12,
-  RG_NOTES_HEADER_NUMBERS = 13,
+  RG_NOTES_SONG_AT = 6, /* where the song's length is in the music table, its loop frame next */
+  RG_NOTES_COMES_ROUND = 7,
+  RG_NOTES_REST_LAST = 8,
+  RG_NOTES_FLAGS = 9,
+  RG_NOTES_SHAPES = 10,
+  RG_NOTES_INSTRUMENTS = 11,
+  RG_NOTES_HEADER_NUMBERS = 12,
   RG_NOTE_KEYS = 128,
   RG_NOTE_VOLUMES = 16, /* and one more, the part's own */
   RG_NOTE_RECORD_BYTES = 8,
@@ -1197,8 +1196,9 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
 }
 
 void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
-  int32_t ticks = rules[RG_NOTES_TICKS], records_at = rules[RG_NOTES_RECORDS_AT], total_frames = rules[RG_NOTES_TOTAL_FRAMES];
-  int32_t loop_frame = rules[RG_NOTES_LOOP_FRAME], instruments = rules[RG_NOTES_INSTRUMENTS];
+  int32_t ticks = rules[RG_NOTES_TICKS], records_at = rules[RG_NOTES_RECORDS_AT];
+  int32_t total_frames = music[rules[RG_NOTES_SONG_AT]], loop_frame = music[rules[RG_NOTES_SONG_AT] + 1];
+  int32_t instruments = rules[RG_NOTES_INSTRUMENTS];
   const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
   const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES};
 
@@ -1273,4 +1273,41 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
   }
   free(order);
   free(events);
+}
+
+/* --- a song's length in the file (rg_music.h, rg_music_fill_song_length) --- */
+
+enum {
+  RG_LENGTH_SONG_AT = 0,
+  RG_LENGTH_TICKS = 1,
+  RG_LENGTH_LONGEST = 2,
+  RG_LENGTH_LENGTH = 3, /* 1 where the length is in the file, then its four numbers */
+  RG_LENGTH_LOOP = 8,   /* 1 where the loop tick is in the file, then its four numbers */
+};
+
+/* The tick a number of the file names: +where+ is where it is, how many bytes, 1 for the high
+ * byte first, and 1 where it can be below zero, which is tick 0. */
+static int32_t start_file_tick(const int32_t *where) {
+  uint32_t number = rg_start_file_number(where[0], where[1], where[2]);
+  int64_t tick = (int64_t)number;
+  if (where[3]) tick = where[1] == 1 ? (int8_t)number : where[1] == 2 ? (int16_t)number : (int32_t)number;
+  return tick < 0 ? 0 : tick > INT32_MAX ? INT32_MAX : (int32_t)tick;
+}
+
+void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
+  int32_t *song = music + rules[RG_LENGTH_SONG_AT];
+  int32_t ticks = rules[RG_LENGTH_TICKS], longest = rules[RG_LENGTH_LONGEST];
+  int32_t total = song[0], loop = song[1];
+  if (rules[RG_LENGTH_LENGTH]) {
+    int32_t tick = start_file_tick(rules + RG_LENGTH_LENGTH + 1);
+    total = tick < ticks ? tick_frames[tick] : longest;
+    if (total < 1) total = 1;
+    if (total > longest) total = longest;
+  }
+  if (rules[RG_LENGTH_LOOP]) {
+    int32_t tick = start_file_tick(rules + RG_LENGTH_LOOP + 1);
+    loop = tick < ticks ? tick_frames[tick] : longest;
+  }
+  song[0] = total;
+  song[1] = loop < total ? loop : 0;
 }

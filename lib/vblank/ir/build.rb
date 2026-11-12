@@ -332,8 +332,11 @@ module VBlank
       # the lowest it can, as the music's source played it (see Audio::Score).
       #
       # +keeps_voices:+ means a sound effect holds each voice it has taken until it ends.
+      #
+      # +length_from_file:+ is where the song's length is in the file the program is handed as it
+      # starts (a StartFile::SongLength); +total_frames+ is then the most it can last.
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
-               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false)
+               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -341,6 +344,7 @@ module VBlank
         said[:low_notes_intended] = true if low_notes_intended
         said[:plays_once] = true if plays_once
         said[:keeps_voices] = true if keeps_voices
+        said[:length_from_file] = length_from_file if length_from_file
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 

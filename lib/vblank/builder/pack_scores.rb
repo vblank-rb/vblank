@@ -30,7 +30,9 @@ module VBlank
     # from and its envelope of four bytes are then read as the game starts: the recording keeps
     # where each is in the start file (#recording_settings_in_start_file) and a stand-in for the
     # number. A part's notes are read then too: the part keeps where its records are and what
-    # turns them into events (#song_reading_notes_at_start), and its Score must give its length.
+    # turns them into events (#song_reading_notes_at_start), and its Score must give its length:
+    # a number of its own, or one of the pack with the most it can be (`longest:`), which is then
+    # read as the game starts too, with the tick it comes round to.
     # A chip envelope is not made that way yet, and the build says so.
     module PackScores
       private
@@ -43,19 +45,30 @@ module VBlank
       end
 
       def score_with_pack_notes(score, verb)
-        return score unless score.parts.any? { |part| pack_notes?(part.notes) }
+        return score unless score.parts.any? { |part| pack_notes?(part.notes) } || pack_timing?(score)
         return score_reading_notes_at_start(score, verb) if pack_left_out?
 
-        score.with(parts: score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part.notes, verb)) : part })
+        score.with(parts: score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part.notes, verb)) : part },
+                   length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
+                   loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
       end
 
       def pack_notes?(notes) = notes.is_a?(DSL::PackNotes) || (notes.is_a?(DSL::PackSlot) && notes.shape == :notes)
 
+      # Whether +score+ reads its length or the tick it comes round to from the pack.
+      def pack_timing?(score) = [score.length, score.loop_from].any?(DSL::PackNumber)
+
       # WITH THE PACK LEFT OUT a part keeps its handle (a DSL::PackNotes) until the song is
       # recorded (#song_reading_notes_at_start), and the Score is held to what such a build needs:
-      # its length, since where the last note ends is in the pack.
+      # its length, since where the last note ends is in the pack. A length read from the pack
+      # comes with the most it can be (`longest:`).
       def score_reading_notes_at_start(score, verb)
         refuse_pack_score_without_length!(score, verb)
+        refuse_pack_timing_beside_written_parts!(score, verb)
+        Audio::Score::Checks.plays_once!(score)
+        [score.length, score.loop_from].grep(DSL::PackNumber).each do |number|
+          refuse_slot_from_elsewhere!(number.slot, "#{verb} reading a song's length from slot :#{number.slot.layout.name}")
+        end
         parts = score.parts.map do |part|
           next part unless pack_notes?(part.notes)
 
@@ -67,11 +80,28 @@ module VBlank
       end
 
       def refuse_pack_score_without_length!(score, verb)
-        return if score.length
+        unless score.length
+          raise ArgumentError, "#{verb} has a Score that reads notes from the data pack, and this build reads its pack " \
+                               "as the game starts. The build cannot know where the last note ends. To fix this, give " \
+                               "the Score its length in ticks, like `length: 864`, or a number of the pack with the most " \
+                               "it can be, like `length: pack[:song].number(0), longest: 2000`. Or build the game all-in-one."
+        end
+        return unless score.length.is_a?(DSL::PackNumber) && score.longest.nil?
 
-        raise ArgumentError, "#{verb} has a Score that reads notes from the data pack, and this build reads its pack as " \
-                             "the game starts. The build cannot know where the last note ends. To fix this, give the " \
-                             "Score its length in ticks, like `length: 864`. Or build the game all-in-one."
+        raise ArgumentError, "#{verb} has a Score that reads its length from the data pack, and this build reads its pack " \
+                             "as the game starts. The build must know the most ticks the song can last. To fix this, " \
+                             "give the Score `longest:`, like `longest: 2000`. Or build the game all-in-one."
+      end
+
+      # A part written in the game has its notes worked out as the game is built, which takes the
+      # song's length and where it comes round. Read from the pack, those are known only as it starts.
+      def refuse_pack_timing_beside_written_parts!(score, verb)
+        return unless pack_timing?(score) && !score.parts.all? { |part| pack_notes?(part.notes) }
+
+        raise ArgumentError, "#{verb} has a Score that reads its length or its loop from the data pack, and a part whose " \
+                             "notes are written in the game. The build cannot work that part's notes out without the " \
+                             "song's length. To fix this, read every part's notes from the pack, or give the length " \
+                             "and the loop as numbers."
       end
 
       # THE SONG A SCORE MAKES (Audio::Score#to_song), where some of its parts read their notes
@@ -79,8 +109,13 @@ module VBlank
       # about it is worked out as for any part, and then keeps where its notes are in the start
       # file and what turns them into events (an IR::StartFile::Notes). Every backend that plays
       # the program makes the part's events from the file by that one rule.
+      #
+      # A song whose length or loop is a number of the pack is made as one +longest+ ticks long that
+      # comes round to its start, and keeps where those numbers are (an IR::StartFile::SongLength).
       def song_reading_notes_at_start(score)
-        emptied = score.with(parts: score.parts.map { |part| part.notes.is_a?(DSL::PackNotes) ? part.with(notes: []) : part })
+        emptied = score.with(parts: score.parts.map { |part| part.notes.is_a?(DSL::PackNotes) ? part.with(notes: []) : part },
+                             length: score.length.is_a?(DSL::PackNumber) ? score.longest : score.length,
+                             loop_from: (score.loop_from unless score.loop_from.is_a?(DSL::PackNumber)))
         song = emptied.to_song
         voices = song.fetch(:voices).each_with_index.map do |voice, number|
           handle = score.parts[number].notes
@@ -88,7 +123,12 @@ module VBlank
 
           voice.with(from_file: pack_notes_in_start_file(handle, emptied, number, recorded: !voice.instrument.nil?))
         end
-        song.merge(voices: voices)
+        song = song.merge(voices: voices)
+        return song unless pack_timing?(score)
+
+        song.merge(length_from_file: IR::StartFile::SongLength.new(length: pack_number_in_start_file(score.length),
+                                                                    loop_from: pack_number_in_start_file(score.loop_from),
+                                                                    tempo: score.tempo, ticks_per_beat: score.ticks_per_beat))
       end
 
       # Where part +number+ of +score+ reads its notes in the start file. Only a part that plays

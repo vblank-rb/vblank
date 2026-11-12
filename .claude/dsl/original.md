@@ -41,7 +41,16 @@ from that copy. The game's code says each piece's shape and size; it never depen
     ends the part, so the slot holds the most notes a part can have. A retail game keeps its music in its
     own sound driver's commands, so the unpacking routine runs those forward and writes the notes they
     play. A Score's part takes the slot as its notes: `Score::Part.new(plays: :horn, notes:
-    pack[:title_0].notes(instruments: %i[horn bass]))` (`sound.md`). An instrument's numbers can come
+    pack[:title_0].notes(instruments: %i[horn bass]))` (`sound.md`). **The song's length and the tick it
+    comes round to can be numbers of the pack too**, which the driver's commands say (where its track
+    ends, where it jumps back to): `Score.new(..., length: pack[:song].number(0), loop_from:
+    pack[:song].number(1), longest: 2000)`, `longest:` being the most ticks the song can last, which a
+    build that reads its pack as the game starts makes room for. **A driver that runs once a frame**
+    writes its notes a tick a frame, and its Score says `tempo: 3600, ticks_per_beat: 1`, which puts
+    each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
+    with a driver of its own writes these in its unpacking routine and needs nothing more (worked
+    example: `test_a_port_with_a_sound_driver_of_its_own_plays_its_song_through_the_pack` in
+    `test/pack_scores_at_start_tests.rb`). An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
     **An envelope kept as a Super Nintendo's sound chip keeps it** is `envelope:
@@ -340,14 +349,21 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
   all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
   where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
-  still, and a hold outside the recording is its first sample or its last. **`rate:` from the pack needs a console
-  whose recordings play at one rate** (the Super Nintendo, the PlayStation): on the Advance the sound is mixed at
-  the rate most recordings have, which the build must know, so that build is refused naming the recording, and
-  `holds_from:` and `envelope:` work there. `envelope: pack[:adsr].snes_envelope(3)` is refused at the line for
+  still, and a hold outside the recording is its first sample or its last. **`rate:` from the pack on the Advance
+  needs the game to name the rate its sound is mixed at**, `enable_sound mix_rate: 13379` (`sound.md`): there the
+  sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
+  rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose
+  recordings play at one rate (the Super Nintendo, the PlayStation) needs nothing. `holds_from:` and `envelope:`
+  work everywhere. `envelope: pack[:adsr].snes_envelope(3)` is refused at the line for
   now. Worked example: `test/pack_sound_tests.rb`.
 - `Score::Part.new(notes: pack[:title_0].notes(instruments: %i[horn bass]), ...)` in `songs` and `sound_effects` — a
   part's notes. **The Score must give `length:`**, in ticks, since where the last note ends is in the pack; one
-  without it is refused at the line. The build knows how many notes the slot holds and none of them, so the
+  without it is refused at the line. **A `length:` (and a `loop_from:`) that is a number of the pack** comes with
+  `longest:`, the most ticks the song can last: the program holds that as the song's length and the runtime
+  writes the song's own over it at power-on (`IR::StartFile::SongLength`, `rg_music_fill_song_length`), before
+  its parts' notes are made. Then every part of the Score reads its notes from the pack, since a part written in
+  the game is worked out as it is built; each is refused at the line otherwise. A length past `longest:` in the
+  player's file plays as `longest:`, and a loop tick on or past the end comes round to the start. The build knows how many notes the slot holds and none of them, so the
   program holds room for the most events they can make (two for each note, a note and the rest it ends in) and
   the runtime makes the part's events from the file at power-on (`IR::StartFile::Notes`,
   the music feature's `rg_music_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest
