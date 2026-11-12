@@ -133,8 +133,9 @@ module PackBackgroundGames
   # them. With +walked+, every bank of colours is walked up from black by its name, as a Color game
   # fades its screen in by walking all eight of its background palettes. Hands back the program and
   # the pack file the build made (nil for a build that leaves its pack out).
-  private def color_cells_game_and_file(from, walked: false, options: VBlank::Cartridge::Options.new)
+  private def color_cells_game_and_file(from, walked: false, set_cells: nil, options: VBlank::Cartridge::Options.new)
     cells = COLOR_CELLS.length
+    told = set_cells ? { set_cells: set_cells } : {}
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :tiled
@@ -150,7 +151,7 @@ module PackBackgroundGames
           end
         end
       end
-      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: COLOR_ACROSS
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: COLOR_ACROSS, **told
       PackBackgroundGames.emit_color_game_loop(self, world, walked)
     end
     b.finalize_program

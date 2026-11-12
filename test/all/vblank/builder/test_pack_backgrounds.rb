@@ -161,13 +161,33 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  def test_a_map_of_cells_told_cells_written_later_is_refused
+  # A tile or a bank too big for the record's field would keep only its low bits, and draw another
+  # cell than the one written.
+  def test_write_cell_of_a_tile_past_the_records_field_is_refused
     Dir.mktmpdir do |folder|
-      error = color_map_cells_refusal(folder) do |pack|
-        background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: [1]
-      end
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(0, tile: 65_536) }) { |_pack| nil }
 
-      assert_includes error.message, "set_cells:"
+      assert_includes error.message, "65536"
+      assert_includes error.message, "65535"
+    end
+  end
+
+  def test_write_cell_of_a_bank_past_the_records_field_is_refused
+    Dir.mktmpdir do |folder|
+      error = color_map_cells_refusal(folder, routine: ->(pack) { pack[:map].write_cell(0, tile: 1, bank: 256) }) { |_pack| nil }
+
+      assert_includes error.message, "256"
+      assert_includes error.message, "255"
+    end
+  end
+
+  # Told cells written later (`set_cells:`) change nothing until the game writes one: the screen
+  # is the decoded cells'. That a written cell shows is test_pack_background_set_cell.rb's.
+  def test_a_map_of_cells_told_cells_written_later_shows_the_decoded_cells
+    Dir.mktmpdir do |folder|
+      program, = color_cells_game_and_file(color_original(folder), set_cells: [VBlank::Original::MapCell::Cell.new(tile: 3, bank: 2)])
+
+      assert_equal game_player.run(color_cells_drawn_by_hand, frames: 3).screen.to_a, game_player.run(program, frames: 3).screen.to_a
     end
   end
 

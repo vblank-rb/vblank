@@ -724,6 +724,17 @@ module PackGames
         built(*numbered_game(folder, [other_bank, plain, turned], [turned, other_bank, plain + 0x400, plain], options: options))
       end,
       game(:cells_written_on_a_scenes_background, passes: 6) { |folder, options| built(*scene_text_game(folder, options: options)) },
+      # A map of map cells (Original::MapCell) that a Color original's unpacking writes, and a
+      # computer original's kept in the Color's layout, written in the record's terms.
+      game(:font_cells_written_on_a_color_originals_map_cells, passes: 8) do |folder, options|
+        built(*map_cells_text_game(folder, :gbc, blank_at: 6, options: options))
+      end,
+      game(:font_cells_written_on_a_computer_originals_map_cells, passes: 5) do |folder, options|
+        built(*map_cells_text_game(folder, :pc, options: options))
+      end,
+      game(:map_cell_records_written_on_map_cells, passes: 8) do |folder, options|
+        built(*map_cells_text_game(folder, :gbc, records: true, blank_at: 6, options: options))
+      end,
       # A written cell is drawn with the list the background is told to draw its bank with.
       game(:written_cell_drawn_with_other_lists, passes: 7) do |folder, options|
         lists = [3, 5].map(&TURNED_LIST)

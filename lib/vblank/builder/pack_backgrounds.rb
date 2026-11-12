@@ -78,7 +78,6 @@ module VBlank
         subject = "background :#{name}"
         refuse_tiles_not_from_slot!(tiles, subject)
         refuse_map_not_of_cells!(name, map)
-        refuse_set_cells_of_map_cells!(name, map, set_cells)
         refuse_colors_not_whole_slot!(name, colors)
         words = pack_map_word_format!(name, map)
         refuse_table_tiles_under_banked_cells!(name, tiles, words)
@@ -141,9 +140,10 @@ module VBlank
       # themselves: what a tile drawn from the whole table picks from, by bank.
       def pack_color_tables(colors, size, where) = pack_slot_values(colors, :colors, where).each_slice(size).to_a
 
-      # THE CELLS THE BACKGROUND MAY BE WRITTEN LATER (`set_cells:`), each the original's own cell
-      # number: a list of them, a Range (a run of tiles in one bank, turned one way), or a list of
-      # both. The original writes words onto a screen by storing font cells in its map, and no
+      # THE CELLS THE BACKGROUND MAY BE WRITTEN LATER (`set_cells:`), each a cell number in the
+      # map's layout: a list of them, a Range (a run of tiles in one bank, turned one way), or a
+      # list of both. On a map of map cells a number is the record's (Original::MapCell.number),
+      # and a told cell may be given as the record itself, an Original::MapCell::Cell. The original writes words onto a screen by storing font cells in its map, and no
       # cell of the map names a font tile until then, so the pictures the map needs do not hold
       # them. Each told cell's tiles are made pictures here as the map's were and kept in +pictures+
       # with them, by tile as drawn, so a tile the map also draws is one picture. The block makes
@@ -161,7 +161,7 @@ module VBlank
 
         tiles_by_word = {}
         cells = DSL::PackCells.new(format: words, side: tiles_a_side, tiles_by_word: tiles_by_word)
-        pack_cell_words!(name, set_cells).each do |word|
+        pack_cell_words!(name, set_cells, cells).each do |word|
           tiles_by_word[cells.read_part(word)] ||= Array.new(tiles_a_side * tiles_a_side) do |at|
             tile = words.cell_tile(word, at % tiles_a_side, at / tiles_a_side, tiles_a_side)
             pictures[tile] = yield(tile, pictures.length) unless pictures.key?(tile)
@@ -171,20 +171,32 @@ module VBlank
         cells
       end
 
-      # The cell numbers +set_cells+ names, in the order given.
-      def pack_cell_words!(name, set_cells)
+      # The cell numbers +set_cells+ names, in the order given, each in the layout of +cells+ (a
+      # DSL::PackCells): a number, or on a map of map cells an Original::MapCell::Cell too.
+      def pack_cell_words!(name, set_cells, cells)
         parts = set_cells.is_a?(Array) ? set_cells : [set_cells]
-        told = parts.flat_map { |part| pack_cell_run?(part) ? part.to_a : [part] }
-        return told if !told.empty? && told.all? { |word| word.is_a?(Integer) && word.between?(0, 0xFFFF) }
+        told = parts.flat_map { |part| pack_cell_run?(part, cells.most_number) ? part.to_a : [cells.number_of!(part, name)] }
+        return told if !told.empty? && told.all? { |word| word.is_a?(Integer) && word.between?(0, cells.most_number) }
 
-        raise ArgumentError, "background :#{name} was given set_cells: #{set_cells.inspect}. It takes the cell numbers that " \
-                             "set_cell can write later, each a number of two bytes as the original's map holds them: a " \
-                             "list like `[0xE500, 0xE501]`, or a range like `0xE500..0xE553`."
+        raise ArgumentError, pack_cell_words_message(name, set_cells, cells)
       end
 
-      # Is +part+ of a `set_cells:` a run of cell numbers, written as a Range of them?
-      def pack_cell_run?(part)
-        part.is_a?(Range) && part.begin.is_a?(Integer) && part.end.is_a?(Integer) && part.begin >= 0 && part.end <= 0xFFFF
+      def pack_cell_words_message(name, set_cells, cells)
+        unless cells.map_cells?
+          return "background :#{name} was given set_cells: #{set_cells.inspect}. It takes the cell numbers that set_cell can " \
+                 "write later, each a number of two bytes as the original's map holds them: a list like `[0xE500, 0xE501]`, " \
+                 "or a range like `0xE500..0xE553`."
+        end
+
+        "background :#{name} was given set_cells: #{set_cells.inspect}. It takes the map cells that set_cell can write " \
+          "later. Each is a map cell like `VBlank::Original::MapCell::Cell.new(tile: 256, bank: 1)`, or that cell as one " \
+          "number from 0 to #{Kernel.format('0x%X', cells.most_number)}, like `VBlank::Original::MapCell.number(tile: 256, " \
+          "bank: 1)`. Give a list of them, or a range of numbers."
+      end
+
+      # Is +part+ of a `set_cells:` a run of cell numbers, written as a Range of them, none above +most+?
+      def pack_cell_run?(part, most)
+        part.is_a?(Range) && part.begin.is_a?(Integer) && part.end.is_a?(Integer) && part.begin >= 0 && part.end <= most
       end
 
       # A picture that draws nothing, for a told cell whose tile is see-through all over. It is
@@ -438,16 +450,6 @@ module VBlank
                              "bytes wide in the layout of the original's console, like `slots.numbers :map, count: 512, " \
                              "width: :half, signed: false`, or one byte wide for a map that holds only tile numbers, " \
                              "like `slots.numbers :map, count: 1024, width: :byte, signed: false`."
-      end
-
-      # A cell written later is one of the original's cell numbers, and a map of VBlank's own cells
-      # has none yet.
-      def refuse_set_cells_of_map_cells!(name, map, set_cells)
-        return if set_cells.nil? || map.shape != :map_cells
-
-        raise ArgumentError, "background :#{name} was given set_cells:, and its map: is a slot of map cells. A background " \
-                             "with a map of map cells cannot take set_cells: yet. To fix this, remove set_cells:, or " \
-                             "give map: a slot of numbers in the original's layout."
       end
 
       # A cell of two bytes names a bank of sixteen colours, and a tile of 256 colours has no banks.

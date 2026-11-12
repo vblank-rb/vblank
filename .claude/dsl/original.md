@@ -78,13 +78,17 @@ from that copy. The game's code says each piece's shape and size; it never depen
     of VBlank's own** (`Original::MapCell`, `lib/vblank/original/map_cell.rb`, whose `bytes_of` a port's
     tests can use): the tile in two bytes, low byte first, counted from the first tile of the background's
     `tiles:` (0 to 65535; a second bank of video memory is more tiles of the same slot); the bank of
-    colours in one (0 to 255; a number past a field keeps its low bits, as a write of a byte does); and
-    the turns in one, 1 mirrored and 2 upside down, the other bits 0. No
+    colours in one (0 to 255; `write_cell` refuses a number past either written in the routine, and one
+    worked out as it runs keeps its low bits, as a write of a byte does); and
+    the turns in one, 1 mirrored and 2 upside down, the other bits 0. Read as one number, low byte first,
+    the record is `tile | bank << 16 | turns << 24` (`Original::MapCell.number(tile:, bank:, mirrored:,
+    upside_down:)`, or `MapCell::Cell.new(...).number`), which fits a game's number: it is how
+    `set_cells:` and `set_cell` take a cell of such a map (`backgrounds.md`). No
     bit a console keeps for itself (a priority) is in it: a background's layer says where it is drawn. A
     cell is one tile of 8x8. The record is the same whatever console the original ran on, so the unpacking
     routine writes the original's maps into it (`write_cell`, below), and `background ..., map:
-    pack[:title_map]` reads it on every console and build that draws a tiled background (`backgrounds.md`;
-    the PlayStation's build does not draw one yet). A map of numbers in the
+    pack[:title_map]` reads it on every console and build that draws a tiled background
+    (`backgrounds.md`). A map of numbers in the
     Advance's, the Super Nintendo's or the Genesis's own layout can still be read as it is.
 
   Any slot may name `cost: 4`: how many times the work of a plain copy one byte of it takes to unpack
@@ -209,7 +213,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
     at)` and `number` the cell's tile counted from $8000: `copy.byte(map + at)` on a screen that counts
     from $8000, and `((copy.byte(map + at) + 128) & 255) + 128` on one that counts from $8800 (LCDC bit 4
     clear, where byte 0 is the tile at $9000). A cell past the slot is refused or stops the build as a
-    number's is, and `write_cell` on a slot that is not map cells is refused. Worked example:
+    number's is, `write_cell` on a slot that is not map cells is refused, and so is a tile past 65535 or a
+    bank past 255 written as a number, since the record would keep only its low bits. Worked example:
     `color_cells_game_and_file` in `test/pack_background_tests.rb`.
   - `copy.file("MAPHEAD.#{release}")` — one file of a copy that is several files (below), with the same
     verbs, each place counted from that file's start. A fixed place outside the file is refused.
@@ -445,8 +450,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   to hold, only the tiles of its own bank change, and which cells are of which bank is in the file, so the runtime
   works that out at power-on from each cell's bank (`rg_start_file_fill_followed_tiles`) for the copy a list's
   write makes (`rg_background_follow`).
-  **The cells it is told it may be written later (`set_cells:`) work as built all-in-one**: a told number names
-  its tile, turn and bank, so the build knows everything of a told tile but its pixels. Each is a picture of the
+  **The cells it is told it may be written later (`set_cells:`) work as built all-in-one**, on a map of map
+  cells as on one in a console's layout: a told number (or map cell) names its tile, turn and bank, so the build knows everything of a told tile but its pixels. Each is a picture of the
   background's own, read from the file at power-on as any picture of a tile from the pack is
   (`rg_start_file_fill_picture`) and drawn in its bank's list, and `set_cell` writes it. A told tile that draws
   nothing is a picture that is see-through all over. The program's tiles for such a background are a stand-in

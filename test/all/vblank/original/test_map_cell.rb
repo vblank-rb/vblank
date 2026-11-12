@@ -25,4 +25,19 @@ class TestMapCell < Minitest::Test
 
     assert_equal [700, 6, false, true], [tile.tile, tile.bank, tile.mirrored, tile.upside_down]
   end
+
+  # The record as one number is its four bytes read low byte first, and fits a game's number.
+  def test_the_record_as_one_number_is_its_bytes_read_low_byte_first
+    cell = MapCell::Cell.new(tile: 0xFFFF, bank: 0xFF, mirrored: true, upside_down: true)
+
+    assert_equal MapCell.bytes_of([cell]).unpack1("V"), cell.number
+    assert_operator cell.number, :<=, 0x7FFF_FFFF
+  end
+
+  # A tile past two bytes would run into the bank, and name another cell.
+  def test_a_number_of_a_tile_past_its_part_is_refused
+    error = assert_raises(ArgumentError) { MapCell.number(tile: 70_000) }
+
+    assert_includes error.message, "70000"
+  end
 end

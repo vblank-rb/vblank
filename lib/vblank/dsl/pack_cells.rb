@@ -2,8 +2,9 @@
 
 module VBlank
   module DSL
-    # THE CELLS A BACKGROUND FROM THE DATA PACK MAY BE WRITTEN LATER, each as the original's own
-    # cell number (`background ..., set_cells:`, then Background#set_cell).
+    # THE CELLS A BACKGROUND FROM THE DATA PACK MAY BE WRITTEN LATER, each as a cell number in the
+    # map's layout (`background ..., set_cells:`, then Background#set_cell): the original's own on
+    # a map in its console's layout, or the record's (Original::MapCell) on a map of map cells.
     #
     # A retail game puts words on a screen by storing font cells in the map its picture is in: the
     # font's tiles sit in video memory beside the picture's, and no cell of the map names one until
@@ -23,12 +24,39 @@ module VBlank
       # The tileset keys of the cell +word+ stands for, or nil for a number not told.
       def tiles_of(word) = tiles_by_word[read_part(word)]
 
-      # WRITE THE CELL at +col+ and +row+ of +background+ as +word+. A cell is +side+ tiles each
+      # Is the layout VBlank's own record (Original::MapCell), a map of map cells?
+      def map_cells? = format == Original::MapCell::FORMAT
+
+      # The highest number a told cell can be: the record's on a map of map cells, and two bytes on
+      # a map in the layout of the original's console.
+      def most_number = map_cells? ? Original::MapCell::MOST_NUMBER : 0xFFFF
+
+      # +cell+ as a number in the layout: a number as given, and an Original::MapCell::Cell as the
+      # record's number, which only a map of map cells reads. A Cell's tile may be a value the game
+      # works out, and the number is then one too. +name+ is the background's.
+      def number_of!(cell, name)
+        return cell unless cell.is_a?(Original::MapCell::Cell)
+
+        unless map_cells?
+          raise ArgumentError, "background :#{name} was given a map cell (#{cell.inspect}), and its map: is a slot of " \
+                               "numbers in the layout of the original's console. Only a map of map cells takes a map " \
+                               "cell. To fix this, give the cell as a number in that layout, or give map: a slot of map " \
+                               "cells."
+        end
+        Original::MapCell.refuse_oversized_part!("background :#{name} was given a map cell with", tile: cell.tile, bank: cell.bank)
+        cell.number
+      end
+
+      # WRITE THE CELL at +col+ and +row+ of +background+ as +word+, a number in the layout or an
+      # Original::MapCell::Cell on a map of map cells (#number_of!). A cell is +side+ tiles each
       # way of the map the build made, so it is that many `set_tile`s: a changed cell as any other.
       def write(background, col, row, word)
+        word = number_of!(word, background.name)
         return write_picked_by(background, col, row, word) if word.is_a?(Value)
 
-        tiles = tiles_of(word) or raise ArgumentError, untold_cell_message(background, word)
+        # A number past the layout's would be read without its high bits, as another cell.
+        tiles = word.is_a?(Integer) && word.between?(0, most_number) && tiles_of(word)
+        tiles or raise ArgumentError, untold_cell_message(background, word)
         write_tiles(background, col, row, tiles)
       end
 
@@ -112,8 +140,18 @@ module VBlank
       end
 
       def untold_cell_message(background, word)
-        "background :#{background.name} was not told it may be written the cell #{Kernel.format('0x%04X', word)}, so no picture " \
-          "was made for it. To fix this, add the cell to the background's `set_cells:`."
+        "background :#{background.name} was not told that set_cell can write #{cell_description(word)}. So the build made " \
+          "no picture for it. To fix this, add the cell to the background's `set_cells:`."
+      end
+
+      # +word+ as a person reads it: a number of the original's in hexadecimal, or a map cell's parts.
+      def cell_description(word)
+        return "the cell #{word.inspect}" unless word.is_a?(Integer)
+        return Kernel.format("the cell 0x%04X", word) unless map_cells? && word.between?(0, most_number)
+
+        tile = format.cell_tile(word, 0, 0, 1)
+        turns = tile.turns.map { |turn| ", #{turn.to_s.tr('_', ' ')}" }.join
+        "the map cell with tile #{tile.tile}, bank #{tile.bank}#{turns}"
       end
     end
   end

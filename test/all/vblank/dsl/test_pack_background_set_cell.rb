@@ -64,7 +64,85 @@ module PackBackgroundSetCellGames
     video[19] = FONT_A
   end.freeze
 
+  # A MADE-UP ORIGINAL KEEPING ITS SCREEN AS THE GAME BOY COLOR DOES, two maps of a byte a cell: the
+  # tile in its bank of video memory, and the attributes, written here from the Color's hardware
+  # (the bank of four colours in bits 0 to 2, the bank of video memory in bit 3). Video bank 0
+  # holds the picture's tiles and bank 1 the font, so a font tile is a tile past 255 of the slot.
+  # Its colours are each of BANKS's first four, so the screen is the Advance's, pixel for pixel.
+  MAP_CELLS_BANK_TILES = 256
+  MAP_CELLS_VIDEO = [*PLACES.first(FIRST_FONT_TILE), *Array.new(MAP_CELLS_BANK_TILES - FIRST_FONT_TILE, BLANK),
+                     *PLACES.drop(FIRST_FONT_TILE)].freeze
+  # The font's first letter in the record's terms: video bank 1's first tile, in bank 1 of colours.
+  MAP_CELLS_FONT = VBlank::Original::MapCell.number(tile: MAP_CELLS_BANK_TILES, bank: 1)
+  MAP_CELLS_TILE_MAP_AT = 0x20
+  MAP_CELLS_ATTRIBUTES_AT = 0x30
+  MAP_CELLS_PALETTE = BANKS.flat_map { |bank| bank.first(4) }.freeze
+
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
+  # The made-up Color-layout original, for +platform+ (:gbc, or :pc for a computer game kept in
+  # the Color's layout).
+  private def map_cells_original(folder, platform)
+    copy = "\0".b * (TILES_AT + (MAP_CELLS_VIDEO.length * 16))
+    cells = MAP_TILES.flatten
+    copy[MAP_CELLS_TILE_MAP_AT, cells.length] = cells.pack("C*")
+    copy[COLORS_AT, MAP_CELLS_PALETTE.length * 2] = MAP_CELLS_PALETTE.pack("v*")
+    copy[TILES_AT, MAP_CELLS_VIDEO.length * 16] = MAP_CELLS_VIDEO.map(&MadeUpOriginalLayouts::TWO_PLANES).join
+    path = File.join(folder, "made_up_cells.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: platform,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # A game showing the Color-layout original through a map of map cells, which its unpacking
+  # writes from the two maps as a port does, told +set_cells+, and whatever the block does with it.
+  private def map_cells_game_and_file(folder, platform, set_cells:, options: nil, &more)
+    from = map_cells_original(folder, platform)
+    layout = platform == :pc ? { layout: :gbc } : {}
+    cells = MAP_TILES.flatten.length
+    b = options ? VBlank::Builder.new(options: options) : VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: MAP_CELLS_VIDEO.length, **layout
+        slots.colors :palette, at: COLORS_AT, count: MAP_CELLS_PALETTE.length, **layout
+        slots.map_cells :map, count: cells
+        slots.fill_from_copy do |copy, filled|
+          repeat(cells) do |at|
+            attributes = copy.byte(MAP_CELLS_ATTRIBUTES_AT + at)
+            filled[:map].write_cell(at, tile: copy.byte(MAP_CELLS_TILE_MAP_AT + at) + (((attributes >> 3) & 1) * MAP_CELLS_BANK_TILES),
+                                        bank: attributes & 7, mirrored: attributes >> 5, upside_down: attributes >> 6)
+          end
+        end
+      end
+      world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: set_cells
+      instance_exec(world, &more) if more
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # THE GAME OF THE TESTS on the Color-layout original, its cells in the record's terms: the font's
+  # three cells told as a range of record numbers, or with +records+ as a list of
+  # Original::MapCell::Cell, the cells written in the game given as Cells too, a worked-out
+  # letter's Cell holding the tile the game works out.
+  private def map_cells_text_game(folder, platform, records: false, blank_at: 99, options: nil)
+    cell = ->(at) { VBlank::Original::MapCell::Cell.new(tile: at + MAP_CELLS_BANK_TILES, bank: 1) }
+    told = records ? Array.new(3, &cell) : MAP_CELLS_FONT..(MAP_CELLS_FONT + 2)
+    written = records ? { letter: cell.(0), space: cell.(2), worked: cell } : {}
+    map_cells_game_and_file(folder, platform, set_cells: told, options: options) do |world|
+      PackBackgroundSetCellGames.emit_text_loop(self, world, MAP_CELLS_FONT, blank_at, **written)
+    end
+  end
+
+  # The game of the tests on the Advance original: the same screen, in the Advance's layout.
+  private def advance_text_game(folder, **settings)
+    words = MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }
+    base = ADVANCE_CELL.(FIRST_FONT_TILE, bank: 1)
+    from = original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words)
+    text_game(from, PLACES.length, words, base, base..(base + 2), **settings)
+  end
 
   # A made-up original for +platform+: +tiles+ (bytes) at TILES_AT, the two banks at COLORS_AT and
   # +words+, the map, at MAP_AT.
@@ -109,19 +187,29 @@ module PackBackgroundSetCellGames
   # space into both. The cell at (0, 0) is written a number the background was not told.
   private def text_game(from, tiles, words, base, set_cells, blank_at: 99, options: nil)
     pack_game_and_file(from, tiles, words, across: 4, set_cells: set_cells, options: options) do |world|
+      PackBackgroundSetCellGames.emit_text_loop(self, world, base, blank_at)
+    end
+  end
+
+  # The loop of the game of the tests, on +builder+: +letter+ and +space+ are the cells written in
+  # the game, the font's first letter and its space, and +base+ the font's first cell as a number,
+  # to which the letters worked out from the table are added.
+  # +worked+ makes the cell of a letter the game works out, given the letter's number.
+  def self.emit_text_loop(builder, world, base, blank_at, letter: base, space: base + 2, worked: ->(at) { base + at })
+    builder.instance_eval do
       letters = table :letters, [0, 1, 2, 9]
       pass = var :pass, 0
       game_loop do
         wait_vblank
         pass += 1
         if pass == 2
-          world.set_cell 1, 1, base
-          world.set_cell 2, 1, base + letters[1]
-          world.set_cell 0, 0, base + letters[3]
+          world.set_cell 1, 1, letter
+          world.set_cell 2, 1, worked.(letters[1])
+          world.set_cell 0, 0, worked.(letters[3])
         end
         if pass == blank_at
-          world.set_cell 1, 1, base + 2
-          world.set_cell 2, 1, base + letters[2]
+          world.set_cell 1, 1, space
+          world.set_cell 2, 1, worked.(letters[2])
         end
       end
     end
@@ -407,6 +495,97 @@ class TestPackBackgroundSetCell < Minitest::Test
       assert_cell(screen, FONT_A, 8, 8, 1)
       assert_cell(screen, FONT_B, 16, 8, 1)
       assert_picture_unchanged(screen)
+    end
+  end
+
+  # A MAP OF MAP CELLS (Original::MapCell), which a port of a Color game or a computer game writes
+  # from its original's maps, is written in the record's terms: the same text on the same picture
+  # shows cell for cell as the Advance original's, whose cells are its console's own numbers.
+  def test_text_written_on_a_map_of_map_cells_of_a_color_original_shows_as_the_advances
+    assert_map_cells_text_shows_as_the_advances(:gbc)
+  end
+
+  def test_text_written_on_a_map_of_map_cells_of_a_computer_original_shows_as_the_advances
+    assert_map_cells_text_shows_as_the_advances(:pc)
+  end
+
+  private def assert_map_cells_text_shows_as_the_advances(platform)
+    Dir.mktmpdir do |folder|
+      expected = game_player.run(advance_text_game(folder).first, frames: 5).screen.to_a
+
+      assert_equal expected, game_player.run(map_cells_text_game(folder, platform).first, frames: 5).screen.to_a
+    end
+  end
+
+  def test_text_blanked_on_a_map_of_map_cells_shows_as_the_advances
+    Dir.mktmpdir do |folder|
+      expected = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 8).screen.to_a
+
+      assert_equal expected, game_player.run(map_cells_text_game(folder, :gbc, blank_at: 4).first, frames: 8).screen.to_a
+    end
+  end
+
+  # The cells told and written as Original::MapCell::Cell records, not numbers.
+  def test_cells_given_as_map_cell_records_show_as_the_advances
+    Dir.mktmpdir do |folder|
+      expected = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 3).screen.to_a
+      blanked = game_player.run(advance_text_game(folder, blank_at: 4).first, frames: 8).screen.to_a
+      program, = map_cells_text_game(folder, :gbc, records: true, blank_at: 4)
+
+      assert_equal expected, game_player.run(program, frames: 3).screen.to_a
+      assert_equal blanked, game_player.run(program, frames: 8).screen.to_a
+    end
+  end
+
+  def test_a_map_cell_record_on_a_background_of_the_consoles_own_cells_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        advance_game(folder, set_cells: [VBlank::Original::MapCell::Cell.new(tile: 3)])
+      end
+
+      assert_includes error.message, "map cell"
+    end
+  end
+
+  def test_a_number_past_a_map_cell_record_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { map_cells_game_and_file(folder, :gbc, set_cells: [0x0400_0000]) }
+
+      assert_includes error.message, "set_cells:"
+    end
+  end
+
+  def test_a_map_cell_record_with_a_tile_past_its_field_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        map_cells_game_and_file(folder, :gbc, set_cells: [VBlank::Original::MapCell::Cell.new(tile: 70_000)])
+      end
+
+      assert_includes error.message, "70000"
+    end
+  end
+
+  def test_a_map_cell_record_the_background_was_not_told_is_refused_where_it_is_written
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        map_cells_game_and_file(folder, :gbc, set_cells: MAP_CELLS_FONT..(MAP_CELLS_FONT + 1)) do |world|
+          world.set_cell 0, 0, VBlank::Original::MapCell::Cell.new(tile: 1, bank: 1)
+        end
+      end
+
+      assert_includes error.message, "set_cells:"
+      assert_includes error.message, "tile 1"
+    end
+  end
+
+  # Read without its high bits, the number would be a told cell: it is refused, not written as one.
+  def test_a_number_past_the_record_written_in_the_game_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        map_cells_game_and_file(folder, :gbc, set_cells: [MAP_CELLS_FONT]) { |world| world.set_cell 0, 0, MAP_CELLS_FONT | 0x0400_0000 }
+      end
+
+      assert_includes error.message, "set_cells:"
     end
   end
 

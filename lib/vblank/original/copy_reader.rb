@@ -385,8 +385,13 @@ module VBlank
       #
       #   pack[:title_map].write_cell(at, tile: number, bank: attributes & 7, mirrored: attributes >> 5,
       #                                   upside_down: attributes >> 6)
+      #
+      # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
+      # keep only its low bits. One the routine works out keeps them.
       def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false)
         refuse_cell_of_another_shape!
+        cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
+        MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
         bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "cell"])
