@@ -180,9 +180,19 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
     that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
-    fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes. A
-    recorded part's instrument numbers are the voices' numbers in the song's voice group, or the keys of
-    a drum kit. Its Score plays a tick a frame: `Score.new(parts:, tempo: 3600, ticks_per_beat: 1,
+    fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
+    in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
+    voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is
+    `split_from:` + e, both 128 unless the track's line sets them. So a track that changes between plain
+    voices and one kit (or one split) cannot give two voices one number. A track that plays a kit and a
+    split, or two kits, sets one of them apart. The part's `instruments:` list names an instrument for
+    every number up to the highest it plays, with no gaps, so set them low to keep it short: a track of
+    the group's voices 0 and 7 and a kit's keys 0 and 1 is `copy.unpack_m4a_track at: SONG, into:
+    pack[:drums], track: 2, kind: 0, kit_from: 1` with `notes(instruments: %i[piano kick snare piano
+    piano piano piano bell])`. A track that plays only a kit can set `kit_from: 0` and name its
+    instruments by key. A number past 254 or under 0 is written 255, the part's own instrument.
+    Its Score plays a tick a frame: `Score.new(parts:, tempo: 3600, ticks_per_beat: 1,
     length: pack[:timing].number(0), loop_from: pack[:timing].number(1), longest: 2000)`. Worked
     example: the `MusicPlayer2000Songs` kit in `test/pack_games.rb`; the answer key is
     `test/m4a_answers.rb`, written from the driver's source. A Genesis

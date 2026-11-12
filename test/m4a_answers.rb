@@ -33,7 +33,8 @@ module M4AAnswers
   GROUP_AT = 0x060              # eight voices
   SPLIT_GROUP_AT = 0x0C0        # two voices a key split picks from
   SPLIT_TABLE_AT = 0x0E0        # 128 bytes
-  KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 36 and 38 written
+  KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 0, 1, 36 and 38 written
+  MIXED_SONG_AT = 0x5C0         # a song whose tracks switch between plain voices, the kit and the split
   WAVE_AT = 0x600               # a recording that loops
   ONE_SHOT_AT = 0x660           # one that does not
   TRACKS_AT = 0x700
@@ -46,8 +47,11 @@ module M4AAnswers
             [0x08, 60, 0, 0, ROM + ONE_SHOT_AT, [255, 40, 200, 10]]].freeze
   SPLIT_VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [200, 10, 180, 100]], [0x02, 60, 0, 0, 3, [0, 0, 10, 0]]].freeze
   # The kit's key 36 is the recording, panned to the left side's half (rhythm pan), at key 64; key
-  # 38 is the noise voice at key 50.
-  KIT_VOICES = { 36 => [0x00, 64, 0, 0xA0, ROM + WAVE_AT, [255, 0, 255, 0]], 38 => [0x04, 50, 0, 0, 0, [0, 1, 0, 0]] }.freeze
+  # 38 is the noise voice at key 50. Keys 0 and 1 share their numbers with voices of the group: key
+  # 0 is the recording that does not loop, at a fixed rate and shaped its own way, and key 1 the
+  # one that loops, panned right a little, at key 72.
+  KIT_VOICES = { 0 => [0x08, 60, 0, 0, ROM + ONE_SHOT_AT, [255, 0, 128, 0]], 1 => [0x00, 72, 0, 0xD0, ROM + WAVE_AT, [255, 0, 200, 50]],
+                 36 => [0x00, 64, 0, 0xA0, ROM + WAVE_AT, [255, 0, 255, 0]], 38 => [0x04, 50, 0, 0, 0, [0, 1, 0, 0]] }.freeze
   WAVE_SAMPLES = (0...32).map { |at| ((at * 23) % 200) - 100 }.freeze
   ONE_SHOT_SAMPLES = (0...24).map { |at| ((at * 41) % 180) - 90 }.freeze
   WAVE_RATE = 13_379
@@ -85,6 +89,31 @@ module M4AAnswers
                    [[:voice, 2], [:vol, 64], [:wait, 6], [:goto, :ahead], [:note, 12, 50, 90], [:label, :ahead],
                     [:note, 24, 60, 90], [:wait, 24], [:fine]],
                    [[:vol, 100], [:note, 6, 66, 100], [:wait, 6], [:fine]]].freeze
+  # A song whose tracks switch voices, so a voice of the group, a key of the kit and a voice of the
+  # split each have the number 0 in their own table: the first track plays the group's recording,
+  # the kit's keys 0 and 1, the group's voice 7 and the recording again; the second the recording,
+  # the kit's key 0, the split's recording (key 48) and its square (key 64), and the recording again.
+  MIXED_TRACKS = [[[:voice, 0], [:vol, 100], [:note, 6, 60, 100], [:wait, 6], [:voice, 6], [:note, 6, 0, 110], [:wait, 6],
+                   [:note, 6, 1], [:wait, 6], [:voice, 7], [:note, 6, 50], [:wait, 6], [:voice, 0], [:note, 6, 62], [:wait, 6], [:fine]],
+                  [[:voice, 0], [:vol, 100], [:note, 6, 60, 100], [:wait, 6], [:voice, 6], [:note, 6, 0], [:wait, 6], [:voice, 5],
+                   [:note, 6, 48], [:wait, 6], [:note, 6, 64], [:wait, 6], [:voice, 0], [:note, 6, 62], [:wait, 6], [:fine]]].freeze
+  # The number a kit's or a split's first voice is given, past the 128 a VOICE names (Packing::M4A).
+  KIT_AND_SPLIT_NUMBERS_FROM = 128
+  # The recorded voices the mixed song plays, each where its twelve bytes are, as a port names them.
+  MIXED_VOICES = { looped: GROUP_AT, one_shot: GROUP_AT + (12 * 7), kit_one_shot: KIT_AT, kit_wave: KIT_AT + 12,
+                   split_wave: SPLIT_GROUP_AT }.freeze
+  # The numbers a kit's and a split's first voice are given: the reader's kit_from: and
+  # split_from:, which `to_h` hands it.
+  Numbering = Data.define(:kit_from, :split_from) do
+    def initialize(kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM) = super
+  end
+  # The mixed song's tracks as a port reads them, each a recorded part: the track, the reader's
+  # numbering, and the instruments: list the part names, by those numbers.
+  MixedPart = Data.define(:track, :numbering, :instruments)
+  MIXED_PARTS = [MixedPart.new(track: 0, numbering: Numbering.new(kit_from: 1),
+                               instruments: %i[looped kit_one_shot kit_wave looped looped looped looped one_shot]),
+                 MixedPart.new(track: 1, numbering: Numbering.new(kit_from: 1, split_from: 2),
+                               instruments: %i[looped kit_one_shot split_wave])].freeze
 
   def self.address_bytes(place) = [ROM + place].pack("V").bytes
 
@@ -148,7 +177,7 @@ module M4AAnswers
     end
   end
 
-  COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS }).freeze
+  COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS }).freeze
 
   # --- the player --------------------------------------------------------------------------------
 
@@ -160,15 +189,19 @@ module M4AAnswers
 
   # MPlayMain over the song at +song_at+ in +copy+: each tick of every track, the records of
   # +walked+'s notes on voices of +kind+ (255 any), until the song ends. +watch+ is [track, place]
-  # to stop at, the frame of which is #found.
+  # to stop at, the frame of which is #found. A note on a kit's or a split's voice is numbered from
+  # +kit_from+ or +split_from+; #voices is where the voice each record played is, record by record.
   class Player
-    attr_reader :records, :end_frame, :found, :jump
+    attr_reader :records, :voices, :end_frame, :found, :jump
 
-    def initialize(copy, song_at, walked: nil, kind: 255, watch: nil)
+    def initialize(copy, song_at, walked: nil, kind: 255, watch: nil, kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM)
       @copy = copy.bytes
       @walked = walked
       @kind = kind
       @watch = watch
+      @kit_from = kit_from
+      @split_from = split_from
+      @voices = []
       count = [@copy[song_at], 16].min
       @group = word(song_at + 4) & 0x1FF_FFFF
       @tracks = (0...count).map do |n|
@@ -352,9 +385,12 @@ module M4AAnswers
       instrument = track.voice_number
       rhythm_pan = 0
       if kind.anybits?(0xC0)
-        instrument = kind.anybits?(0x40) ? @copy[(word(voice + 8) & 0x1FF_FFFF) + track.key] : track.key
+        split = kind.anybits?(0x40)
+        picked = split ? @copy[(word(voice + 8) & 0x1FF_FFFF) + track.key] : track.key
+        numbered = (split ? @split_from : @kit_from) + picked
+        instrument = numbered.between?(0, OWN - 1) ? numbered : OWN
         drum = kind.anybits?(0x80)
-        voice = (word(voice + 4) & 0x1FF_FFFF) + (12 * instrument)
+        voice = (word(voice + 4) & 0x1FF_FFFF) + (12 * picked)
         kind = @copy[voice]
         return if kind.anybits?(0xC0)
 
@@ -382,6 +418,7 @@ module M4AAnswers
                  [@frame, 0, [key, 127].min, OWN, [(right + left) >> 4, 15].min, nil, side, clock || OWN]
                end
       @records << record
+      @voices << voice
       @sounding << Sounding.new(record, @frame, gate, track.key) if @sounding.length < 16
     end
 
@@ -391,13 +428,23 @@ module M4AAnswers
     end
   end
 
-  # Track +walked+'s notes of +kind+ in the song at +song_at+, as PackNote tuples.
-  def self.records(song_at, walked, kind: 255) = Player.new(COPY, song_at, walked: walked, kind: kind).play.records
+  # Track +walked+'s notes of +kind+ in the song at +song_at+, as PackNote tuples, numbered as
+  # +numbering+ (a Numbering) says.
+  def self.records(song_at, walked, kind: 255, numbering: Numbering.new) = played_song(song_at, walked, kind, numbering).records
+
+  # Where the voice each of those records played is, record by record.
+  def self.voices_played(song_at, walked, kind: 255, numbering: Numbering.new) = played_song(song_at, walked, kind, numbering).voices
 
   # The bytes a slot of +count+ notes holds for them.
-  def self.track_bytes(song_at, walked, count:, kind: 255)
-    VBlank::Original::PackNote.bytes_of(records(song_at, walked, kind: kind), count: count)
+  def self.track_bytes(song_at, walked, count:, kind: 255, numbering: Numbering.new)
+    VBlank::Original::PackNote.bytes_of(records(song_at, walked, kind: kind, numbering: numbering), count: count)
   end
+
+  # The Player that has played the song at +song_at+, walking track +walked+.
+  def self.played_song(song_at, walked, kind, numbering)
+    Player.new(COPY, song_at, walked: walked, kind: kind, **numbering.to_h).play
+  end
+  private_class_method :played_song
 
   # [length, loop frame] of the song at +song_at+, 65535 for none.
   def self.length(song_at)

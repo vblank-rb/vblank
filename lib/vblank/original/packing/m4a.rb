@@ -11,6 +11,7 @@ module VBlank
       #
       #   copy.unpack_m4a_track at: SONG, into: pack[:title_0], track: 0           # one track's notes
       #   copy.unpack_m4a_track at: SONG, into: pack[:drums], track: 6, kind: 4    # ...on one voice only
+      #   copy.unpack_m4a_track at: SONG, into: pack[:beat], track: 5, kit_from: 8 # ...a kit's keys from 8
       #   copy.unpack_m4a_length at: SONG, into: pack[:title_length]               # length, loop frame
       #   copy.unpack_m4a_recording at: VOICE, into: pack[:piano]                  # a recording's samples
       #   copy.unpack_m4a_voice at: VOICE, into: pack[:piano_settings]             # its rate, hold (or none), length, envelope
@@ -48,12 +49,10 @@ module VBlank
       # loudness is the note's velocity and the track's VOL and PAN, as ChnVolSetAsm works out its
       # two sides:
       #
-      # - On a recording (DirectSound): the instrument byte is the voice's number in the song's
-      #   voice group, or for a drum kit the note's key and for a key split the voice its table
-      #   names (so a part that plays a kit names its instruments by key); a voice whose recording
-      #   is played at a fixed rate is key 60; the loudness is the two sides added, in 512ths, as the
-      #   mixer adds them. A recording plays from both speakers, so PAN moves nothing here (the song
-      #   model has no pan on a recorded part).
+      # - On a recording (DirectSound): the instrument byte is a number for the voice (THE
+      #   INSTRUMENT BYTE, below); a voice whose recording is played at a fixed rate is key 60; the
+      #   loudness is the two sides added, in 512ths, as the mixer adds them. A recording plays from
+      #   both speakers, so PAN moves nothing here (the song model has no pan on a recorded part).
       # - On the console's voices: the volume is the two sides added over 16, at most 15 (CgbModVol),
       #   and the speaker is the side that is twice the other or more, else both (CgbPan). A square or
       #   wave note under key 36 is key 36 (MidiKeyToCgbFreq); a noise note's clock is the driver's
@@ -62,6 +61,22 @@ module VBlank
       # `kind:` keeps only the notes of one kind of voice: KIND_RECORDING, 1 or 2 for the squares, 3
       # for the wave, 4 for the noise, ANY_KIND (the default) for all. A track that drums on recordings
       # and on the noise voice at once is two parts, one each.
+      #
+      # THE INSTRUMENT BYTE names which of the part's instruments a recorded note plays, so one track
+      # that changes VOICE must give each voice it plays a number of its own. A voice the track
+      # names itself is its number in the song's voice group, VOICE's byte, 0 to 127. A drum kit
+      # numbers its voices by key and a key split by its own table's entry, each from 0 as the group
+      # does, so each is moved to a range of its own: a kit's voice for key k is `kit_from:` + k, and
+      # a split's entry e is `split_from:` + e, both 128 (KIT_AND_SPLIT_NUMBERS_FROM) unless the port sets
+      # them. So by default a track of plain voices and one kit, or plain voices and one split,
+      # cannot give two voices one number; a track that plays a kit and a split, or two kits, sets
+      # one of them apart. A port sets them lower to keep a part's list short: its instruments: list
+      # has an entry for every number up to the highest it plays, with no gaps, so a track of
+      # the group's voices 0 to 7 and a kit's keys 36 to 40 reads best with `kit_from: 8 - 36`, the
+      # kit's keys then 8 to 12. A number past 254 or under 0 is written 255, the part's own
+      # instrument. A key split's or a kit's voice is the same twelve bytes as the group's, so
+      # unpack_m4a_recording and unpack_m4a_voice read it where the kit's or split's voices are (the
+      # second word of its entry in the group) plus 12 a key, or 12 an entry.
       #
       # WHAT IS NOT KEPT, since the song model has no place for it: a VOL, PAN, BEND or TUNE while a
       # note sounds (each note keeps what it was struck with); LFOS, LFODL, MOD and MODT (vibrato);
@@ -151,6 +166,9 @@ module VBlank
         # The key a recording at a fixed rate is written at, which an instrument names as its own.
         OWN_KEY = 60
         MOST_KEY = 127
+        # The instrument number a drum kit's or a key split's first voice is given where the port
+        # sets no kit_from: or split_from:, past the 128 voices a VOICE names (0 to 127).
+        KIT_AND_SPLIT_NUMBERS_FROM = 128
 
         # gClockTable: the ticks of each wait and each note length.
         CLOCKS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 28, 30, 32, 36, 40,
@@ -165,16 +183,19 @@ module VBlank
         # into an unpacking routine. +block+ is the format's BlockKit. +lists+ keeps the lists the walk
         # reads, one set for each routine, made the first time a walk asks.
         #
-        # +track+ (a setting) is the track whose notes are written, with +kind+ the kind of voice kept,
-        # or nil for a walk that writes none. +watch+ is a walk that finds where the song comes round:
-        # it stops on the tick the track +watch_track+ first reaches the place +watch_place+, keeping
-        # that frame in +found_frame+.
+        # +track+ (a setting) is the track whose notes are written, with +kind+ the kind of voice kept
+        # and +kit_from+ and +split_from+ the instrument numbers a kit's and a split's first voice
+        # are given; all four are nil for a walk that writes no notes. +watch+ is a walk that finds
+        # where the song comes round: it stops on the tick the track +watch_track+ first reaches the
+        # place +watch_place+, keeping that frame in +found_frame+.
         class Walk
-          def initialize(block, lists, track: nil, kind: nil, watch: false)
+          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, watch: false)
             @block = block
             @lists = lists
             @track = track
             @kind = kind
+            @kit_from = kit_from
+            @split_from = split_from
             @watch = watch
           end
 
@@ -612,19 +633,22 @@ module VBlank
             end
           end
 
-          # A key split's or a drum kit's voice for the note's key +raw+: its own kind, and a kit's
-          # voice its own key and pan. A split or kit inside one plays nothing.
+          # A key split's or a drum kit's voice for the note's key +raw+: its instrument number, from
+          # the split's or the kit's own first number, its own kind, and a kit's voice its own key
+          # and pan. A split or kit inside one plays nothing.
           def emit_picked_voice(raw)
             voice = var(:sounding_voice)
             kind = var(:voice_kind)
             picked = var(:picked)
             panned = var(:panned)
+            instrument = var(:instrument)
             if (kind & KEY_SPLIT) != 0
               picked.store!(@block.byte(address_at(voice + 8) + raw))
+              instrument.store!(@split_from + picked)
             else
               picked.store!(raw)
+              instrument.store!(@kit_from + picked)
             end
-            var(:instrument).store!(picked)
             panned.store!(kind & DRUM_KIT)
             voice.store!(address_at(voice + 4) + (picked * VOICE_BYTES))
             kind.store!(@block.byte(voice))
@@ -689,14 +713,17 @@ module VBlank
             left.store!(255) if left > 255
           end
 
-          # A recording's note: its key (60 for one at a fixed rate), its instrument, no volume or
-          # speaker of its own, its loudness in 512ths, no noise clock.
+          # A recording's note: its key (60 for one at a fixed rate), its instrument (one no byte
+          # under PackNote::PART_OWN holds is the part's own), no volume or speaker of its own, its
+          # loudness in 512ths, no noise clock.
           def emit_recorded_fields(key, loudness)
             kind = var(:voice_kind)
+            instrument = var(:instrument)
             key.store!(MOST_KEY) if key > MOST_KEY
             key.store!(OWN_KEY) if (kind & FIXED_RATE) != 0
+            instrument.store!(PackNote::PART_OWN) if instrument < 0 || instrument > PackNote::PART_OWN
             @block.write(key)
-            @block.write(var(:instrument))
+            @block.write(instrument)
             @block.write(PackNote::PART_OWN)
             @block.write(PackNote::PART_OWN)
             @block.write(loudness)
@@ -774,14 +801,16 @@ module VBlank
 
         # One track's notes as Original::PackNote records, from the song whose header is at at:, then
         # the record that ends the part where the slot has room for it. `track:` counts from 0;
-        # `kind:` keeps one kind of voice's notes (M4A).
+        # `kind:` keeps one kind of voice's notes; `kit_from:` and `split_from:` are the instrument
+        # numbers a drum kit's and a key split's first voice are given (M4A).
         module Track
           extend Format
-          unpacks :m4a_track, track: 0, kind: ANY_KIND
+          unpacks :m4a_track, track: 0, kind: ANY_KIND, kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM
           called "MusicPlayer2000 track"
 
           def self.routine(block)
-            Walk.new(block, {}, track: block.setting(:track), kind: block.setting(:kind)).emit
+            Walk.new(block, {}, track: block.setting(:track), kind: block.setting(:kind), kit_from: block.setting(:kit_from),
+                                split_from: block.setting(:split_from)).emit
             if block.room >= PackNote::BYTES
               block.write(PackNote::END_OF_PART)
               block.write(PackNote::END_OF_PART >> 8)

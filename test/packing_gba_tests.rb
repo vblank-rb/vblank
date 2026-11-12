@@ -96,6 +96,37 @@ module PackingGBATests
     end
   end
 
+  # Tracks that switch between voices of the group, a drum kit and a key split. By default each
+  # number the voice-and-kit track's records name is one voice the driver played; with the kit's and
+  # the split's numbers set as a port sets them (M4AAnswers::MIXED_PARTS), each note's number picks,
+  # from the part's instruments, the voice the driver played (Packing::M4A, "THE INSTRUMENT BYTE").
+  def test_a_track_switching_between_voices_a_kit_and_a_split_numbers_each_voice_apart
+    song = M4AAnswers::MIXED_SONG_AT
+    parts = M4AAnswers::MIXED_PARTS
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        copy.unpack_m4a_track at: song, into: pack[:track_0], track: 0, kind: 0
+        parts.each_with_index do |part, n|
+          copy.unpack_m4a_track at: song, into: pack[:"track_#{n + 1}"], track: part.track, kind: 0, **part.numbering.to_h
+        end
+      end
+
+      assert_equal M4AAnswers.track_bytes(song, 0, count: M4A_NOTES, kind: 0), slots.fetch(:track_0)
+      numbers = M4AAnswers.records(song, 0, kind: 0).map { |record| record[3] }
+      voices = M4AAnswers.voices_played(song, 0, kind: 0)
+      assert_equal voices.uniq.length, numbers.uniq.length, "by default, one number for each voice played"
+      assert_equal voices.uniq.length, voices.zip(numbers).uniq.length, "by default, one voice for each number"
+
+      named = M4AAnswers::MIXED_VOICES.invert
+      parts.each_with_index do |part, n|
+        assert_equal M4AAnswers.track_bytes(song, part.track, count: M4A_NOTES, kind: 0, numbering: part.numbering), slots.fetch(:"track_#{n + 1}")
+        played = M4AAnswers.voices_played(song, part.track, kind: 0, numbering: part.numbering).map { |voice| named.fetch(voice) }
+        numbers = M4AAnswers.records(song, part.track, kind: 0, numbering: part.numbering).map { |record| record[3] }
+        assert_equal played, numbers.map { |number| part.instruments.fetch(number) }, "track #{part.track}"
+      end
+    end
+  end
+
   def test_a_music_player_2000_songs_length_and_loop_are_the_frames_the_driver_plays_them_on
     Dir.mktmpdir do |folder|
       slots = m4a_slots(folder) do |copy, pack|

@@ -1300,7 +1300,8 @@ module PackGames
   # A SONG OF THE ADVANCE'S COMMON SOUND DRIVER (Packing::M4A), read from the made-up copy of
   # M4AAnswers by the pack's unpacking: its first track on the recording its voice names, every
   # setting of that from the voice, its second track's notes on the first square, its third's on
-  # the noise voice, and the song's length and loop, played a tick a frame.
+  # the noise voice, and the song's length and loop, played a tick a frame; and tracks that switch
+  # between the group's voices, a drum kit and a key split, each note on its own recording.
   class MusicPlayer2000Songs < Kit
     NOTES = 16
 
@@ -1345,6 +1346,54 @@ module PackGames
                    VBlank::Audio::Score::Part.new(plays: :noise, notes: pack[:noise].notes)]
           music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
                                                           loop_from: pack[:timing].number(1), longest: 600)]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end,
+      # The tracks that switch between the group's voices, the kit and the split, each a recorded
+      # part naming an instrument for every number its notes play (M4AAnswers::MIXED_PARTS).
+      game(:music_player_2000_tracks_of_voices_kits_and_splits, passes: 90, presses: { 1 => [:a] }) do |folder, options|
+        from = m4a_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound mix_rate: 13_379
+          song = M4AAnswers::MIXED_SONG_AT
+          voices = M4AAnswers::MIXED_VOICES
+          mixed = M4AAnswers::MIXED_PARTS
+          pack = data_pack(from: from, version: "1") do |slots|
+            mixed.each_index { |n| slots.notes :"part_#{n}", count: NOTES }
+            slots.numbers :timing, count: 2, width: :half, signed: false
+            voices.each_key do |name|
+              slots.samples name, count: 32
+              slots.numbers :"#{name}_voice", count: 4, width: :word, signed: false
+            end
+            slots.fill_from_copy do |copy, unpacked|
+              mixed.each_with_index do |part, n|
+                copy.unpack_m4a_track at: song, into: unpacked[:"part_#{n}"], track: part.track, kind: 0, **part.numbering.to_h
+              end
+              copy.unpack_m4a_length at: song, into: unpacked[:timing]
+              voices.each do |name, at|
+                copy.unpack_m4a_recording at: at, into: unpacked[name]
+                copy.unpack_m4a_voice at: at, into: unpacked[:"#{name}_voice"], mix_rate: 13_379
+              end
+            end
+          end
+          voices.each_key do |name|
+            voice = pack[:"#{name}_voice"]
+            instrument name, pcm: pack[name], note: :C4, rate: voice.number(0), holds_from: voice.number(1), length: voice.number(2),
+                             envelope: voice.as_numbers(at: 12, count: 4, width: :byte, signed: false).envelope(0)
+          end
+          parts = mixed.each_with_index.map do |part, n|
+            VBlank::Audio::Score::Part.new(plays: :looped, notes: pack[:"part_#{n}"].notes(instruments: part.instruments))
+          end
+          # The song ends, so it plays once rather than coming round to the pack's NO_LOOP.
+          music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
+                                                          plays_once: true, longest: 600)]
           game_loop do
             wait_vblank
             music.play 0 if pressed(:a)
