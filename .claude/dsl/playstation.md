@@ -162,8 +162,8 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `fade_music_out` — works: the same as on the Advance.
 - `songs` — works: the same as on the Advance.
 - `sound_effects` — works: see `song`.
-- `sample` — works: the sound chip plays recordings itself, 24 voices of them, each with its own loudness.
-- `instrument` — works: see `sample`.
+- `sample` — works: the sound chip plays recordings itself, each on a voice of its own with its own loudness. The build does not make a recording with a shape (`envelope:`) yet: it refuses one and says so.
+- `instrument` — works: a song's or a sound effect's part that plays a recording is not made yet: the build refuses it and says so.
 
 ## Not made yet
 
