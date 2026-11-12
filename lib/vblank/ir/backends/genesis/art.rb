@@ -73,10 +73,30 @@ module VBlank
           # scenes each keep their own, the tiles of one scene with those every screen shows.
           class TooManyTiles < TooMuch; end
 
+          # Raised when the pictures need more palettes than there are: in a game whose scenes each keep
+          # their own colours (+scene_colors+), the palettes of one scene with those every screen keeps.
+          class TooManyColors < TooMuch; end
+
           # Raised when the lists of colours the sprites are drawn with need more palettes than there are: the
           # build keeps a palette for each list for good, which a build that lent them while a sprite wore
-          # them would not.
-          class TooManyLists < TooMuch; end
+          # them would not. +scene+ is the scene whose own lists did not fit beside those every screen keeps,
+          # or nil for the game's.
+          class TooManyLists < TooManyColors
+            attr_reader :scene
+
+            def initialize(message = nil, scene: nil)
+              super(message)
+              @scene = scene
+            end
+          end
+
+          # What a scene writes over a palette as it takes over (#scene_palette_writes): the palette's
+          # number, how many of its places hold a colour, and those colours, 15-bit, filled out to fifteen.
+          PaletteWrite = Data.define(:palette, :used, :colors)
+
+          # A scene's copy of the palettes (#with_colors_of): the four, and which palette each list in its own
+          # order is (#ordered_palette).
+          PaletteSet = Data.define(:palettes, :ordered)
 
           attr_reader :grids, :sprite_pictures
 
@@ -115,10 +135,20 @@ module VBlank
           # tiles are numbered from the same place, the first past the shared ones, and share one room
           # of video memory that the arriving scene fills (#scene_tile_data). What has to fit is one
           # scene's tiles with the shared ones, never two scenes'.
-          def initialize(backdrop: nil, exact: false, beside_painting: false, scene_tiles: false)
+          #
+          # EACH SCREEN'S COLOURS (+scene_colors+) go the same way, for a game whose pictures together
+          # need more than the four palettes (Genesis#build): the console's own games write a screen's
+          # palettes as the screen comes up. The palettes every screen keeps are allotted first: a list
+          # the game changes, whose palette is written over whichever scene is up, and the colours of
+          # the pictures every screen shows. Each scene then starts from a copy of them and allots its
+          # own pictures' colours in what is left, even adding to a palette of theirs that has room
+          # (#with_colors_of), and as it takes over it writes each palette its copy holds differently
+          # (#scene_palette_writes). What has to fit is one scene's colours with the shared ones.
+          def initialize(backdrop: nil, exact: false, beside_painting: false, scene_tiles: false, scene_colors: false)
             @exact = exact
             @beside_painting = beside_painting
             @scene_tiles = scene_tiles
+            @scene_colors = scene_colors
             @scene_stores = {} # a scene => its copy of the tiles every screen shows, with its own after them (#with_tiles_of)
             @most_tiles = beside_painting ? Runtime::Paint.most_sprite_tiles : MOST_TILES
             @backdrop_color = (backdrop || BACKDROP) & 0x7FFF
@@ -133,6 +163,10 @@ module VBlank
               @held[:painted_screen] = PAINTED_PALETTE
             end
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
+            @shared_palettes = @palettes # the palettes every screen keeps; @palettes is those, or a scene's copy
+            @shared_ordered = @ordered
+            @scene_palette_sets = {} # a scene => its copies of @palettes and @ordered (#with_colors_of)
+            @colors_scene = nil # the scene whose copy is being added to, for a refusal's words
             @originals = {} # what a place holds (a colour word, or the colour itself when exact) => the 15-bit colour it was first made from
             @sprite_pictures = {}
             @grids = []
@@ -244,10 +278,14 @@ module VBlank
               end
 
               line = (0...PALETTES).find { |p| @palettes[p] && !@held.value?(p) && @palettes[p].first(words.length) == words } ||
-                     (0...PALETTES).find { |p| @palettes[p].nil? } or
+                     (0...PALETTES).find { |p| @palettes[p].nil? }
+              unless line
+                raise TooManyLists.new(scene_lists_full_message, scene: @colors_scene) if @colors_scene
+
                 raise TooManyLists, "The lists of colours the sprites are drawn with, and the pictures, need more lists " \
                                     "than a Genesis holds (#{PALETTES}, shared with every other picture).#{painted_palette_words} " \
                                     "To fix this, draw the sprites with fewer lists of colours."
+              end
 
               @palettes[line] ||= words
               @ordered[words] = line
@@ -258,8 +296,14 @@ module VBlank
           # of its places: changing it is writing other colours over that palette, so every pixel of a picture
           # drawn from it is the place it was drawn at, and nothing else's colours can share it. +key+ names
           # whose list it is, and +colors+ (15-bit, see-through left out) are the colours it starts with.
+          #
+          # In a game of +scene_colors+ the list's palette is one every screen keeps, since the game can change
+          # the list whichever scene is up: so every list is given its palette before any scene takes its copy.
           def reserve_held_palette(key, colors)
             @held.fetch(key) do
+              unless @scene_palette_sets.empty?
+                raise LoweringError, "the list #{key.inspect} was given a palette after a scene took its copy of the palettes"
+              end
               if colors.length > OWN_COLORS
                 raise TooMuch, "A list of colours the game changes holds #{colors.length} colours, and a Genesis " \
                                "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
@@ -285,11 +329,12 @@ module VBlank
           # --- the colour memory ---
 
           # All 64 colours, as the console's colour memory holds them: a word each, the four palettes in
-          # turn. Colour 0 is the backdrop.
+          # turn. Colour 0 is the backdrop. In a game of +scene_colors+, the palettes every screen keeps,
+          # which each scene writes its own over as it takes over.
           def color_memory
             colors = Array.new(PALETTES * PLACES, 0)
             colors[0] = @backdrop
-            @palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = word_shown(c) } }
+            @shared_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = word_shown(c) } }
             colors
           end
 
@@ -300,14 +345,55 @@ module VBlank
           def colors15
             colors = Array.new(PALETTES * PLACES, 0)
             colors[0] = @backdrop_color
-            @palettes.each_with_index do |list, p|
-              list&.each_with_index { |word, i| colors[(p * PLACES) + i + 1] = @originals.fetch(word, 0) }
-            end
+            @shared_palettes.each_with_index { |list, p| list&.each_with_index { |word, i| colors[(p * PLACES) + i + 1] = original_of(word) } }
             colors
           end
 
           # How many places of each palette hold a colour, for the runtime to write again when they change.
-          def colors_used = @palettes.map { |list| list ? list.length : 0 }
+          def colors_used = @shared_palettes.map { |list| list ? list.length : 0 }
+
+          # --- each screen's colours ---
+
+          # The block, with the colours it allots kept in +scene+'s copy of the palettes, taken the first
+          # time it is asked for. For nil, or in a game not built that way, in the palettes every screen
+          # keeps. Every palette every screen keeps has to be allotted before the first copy is taken
+          # (#scene_palette_writes checks).
+          def with_colors_of(scene)
+            return yield unless @scene_colors && scene
+
+            set = @scene_palette_sets[scene] ||= PaletteSet.new(palettes: @shared_palettes.map { |list| list&.dup },
+                                                                ordered: @shared_ordered.dup)
+            @palettes = set.palettes
+            @ordered = set.ordered
+            @colors_scene = scene
+            begin
+              yield
+            ensure
+              @palettes = @shared_palettes
+              @ordered = @shared_ordered
+              @colors_scene = nil
+            end
+          end
+
+          # The palettes +scene+ writes as it takes over: each its copy holds differently from the palettes
+          # every screen keeps. Empty for a scene with no colours of its own. A palette the scene does not
+          # write may hold what the last scene wrote, past the places every screen keeps, where none of
+          # this scene's pictures draw.
+          def scene_palette_writes(scene)
+            palettes = @scene_palette_sets[scene]&.palettes
+            return [] unless palettes
+
+            (0...PALETTES).filter_map do |p|
+              shared = @shared_palettes[p]
+              if shared && palettes[p]&.first(shared.length) != shared
+                raise LoweringError, "a palette every screen keeps was given colours after the scene #{scene.inspect} took its copy"
+              end
+              next if palettes[p].nil? || palettes[p] == shared
+
+              PaletteWrite.new(palette: p, used: palettes[p].length,
+                               colors: palette_colors(palettes[p].map { |word| original_of(word) }))
+            end
+          end
 
           # The tiles' pixels, tile 1 first (tile 0, the blank one, is in video RAM already): in a game of
           # +scene_tiles+, the ones every screen shows.
@@ -486,6 +572,30 @@ module VBlank
           # The word of the colour memory a place's contents are.
           def word_shown(held) = @exact ? Console::GenesisHardware.color_word(held) : held
 
+          # The 15-bit colour of the game's a place's contents were first made from.
+          def original_of(held) = @originals.fetch(held, 0)
+
+          # The refusal for a scene whose own pictures need more palettes than the ones every screen keeps
+          # leave it.
+          def scene_palettes_full_message
+            scene = Modes.strip_scene_prefix(@colors_scene)
+            kept = @shared_palettes.count(&:itself)
+            "The pictures of the scene :#{scene} use more colours than a Genesis can show. A Genesis holds " \
+              "#{PALETTES} sets of #{OWN_COLORS} colours for the backgrounds and sprites together. The pictures " \
+              "and lists of colours that every scene shows use #{kept} of the sets, and the scene :#{scene} gets " \
+              "the other #{PALETTES - kept}. To fix this, use fewer colours in the pictures of the scene :#{scene}."
+          end
+
+          # The same for the lists of colours a scene's own pictures are drawn with: what happened, for the
+          # lowering to add why and what to do (Lowering::Picture#too_many_lists_message).
+          def scene_lists_full_message
+            scene = Modes.strip_scene_prefix(@colors_scene)
+            kept = @shared_palettes.count(&:itself)
+            "The scene :#{scene} draws its pictures with more lists of colours than a Genesis has for that scene. " \
+              "A Genesis holds #{PALETTES} sets of #{OWN_COLORS} colours. The pictures and lists of colours that every " \
+              "scene shows use #{kept} of the sets, and the scene :#{scene} gets the other #{PALETTES - kept}."
+          end
+
           # What a refusal says of the lists of colours the pictures have, beside a painted screen.
           def painted_palette_words
             @beside_painting ? " On a painted screen, the picture uses one of them, and the sprites have the other #{PALETTES - 1}." : ""
@@ -511,9 +621,11 @@ module VBlank
             end
             unused = (0...PALETTES).find { |p| @palettes[p].nil? }
             unless unused
-              raise TooMuch, "The pictures use more colours than a Genesis can show. It holds #{PALETTES} sets of " \
-                             "#{OWN_COLORS} colours for the backgrounds and sprites together.#{painted_palette_words} " \
-                             "To fix this, use fewer colours in the pictures."
+              raise TooManyColors, scene_palettes_full_message if @colors_scene
+
+              raise TooManyColors, "The pictures use more colours than a Genesis can show. It holds #{PALETTES} sets of " \
+                                   "#{OWN_COLORS} colours for the backgrounds and sprites together.#{painted_palette_words} " \
+                                   "To fix this, use fewer colours in the pictures."
             end
 
             @palettes[unused] = colors.dup

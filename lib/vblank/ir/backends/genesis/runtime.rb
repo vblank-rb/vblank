@@ -56,7 +56,8 @@ module VBlank
           # copied from a list it recolours (Lowering::Picture#backdrop_copied?).
           # +camera+ for a painted screen whose game moves the window over its picture (Paint), and
           # +sprites_over_picture+ for one that shows sprites over it. +scene_tiles+ for a tiled game whose
-          # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles).
+          # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles), and
+          # +scene_colors+ for one whose scenes each write their own palettes (Tint#emit_scene_colors).
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
@@ -69,7 +70,7 @@ module VBlank
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false, sprites_over_picture: false, scene_tiles: false)
+                         backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -78,7 +79,8 @@ module VBlank
             Frame.emit(asm, memory, sound: sound)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
-                                      sprites: sprites_over_picture, scene_tiles: scene_tiles, samples: !plays.nil?)
+                                      sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
+                                      samples: !plays.nil?)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music

@@ -115,9 +115,12 @@ module VBlank
         rgb: works("see `color`."),
         rgb8: works("see `color`."),
         colors: works("a list of colours holds sixteen places on a Genesis, the first see-through. The console " \
-                      "holds four lists, for the sprites and the backgrounds together. A list that the game does " \
-                      "not change takes one of the four, however many things draw with it: the sprites and a " \
-                      "background told `draw_with` that list use the same one."),
+                      "holds four lists on each screen, for the sprites and the backgrounds together. A list that " \
+                      "the game does not change takes one of the four, however many things draw with it: the " \
+                      "sprites and a background told `draw_with` that list use the same one. If the pictures of " \
+                      "all the scenes need more than four lists, each scene gets the lists that every scene does " \
+                      "not use, and writes its own colours into them when it starts. A list that the game changes " \
+                      "keeps the same one of the four in every scene."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
                        "game, written over in the blank. The sprites and the backgrounds drawn with it are drawn " \
                        "from that one list, however many sets it holds in turn. A background with tiles from other " \

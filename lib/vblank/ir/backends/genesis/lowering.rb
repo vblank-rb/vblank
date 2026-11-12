@@ -190,13 +190,16 @@ module VBlank
 
           # +scene_tiles+ keeps each scene's own tiles in video memory only while it is up (Art), for a
           # game whose tiles together do not fit (Genesis#build): :backgrounds for its backgrounds'
-          # tiles alone, :sprites for its sprite pictures' too. +cache+ is what the build works out
-          # from the program once for all its tries (BuildCache).
-          def initialize(program, memory:, scene_tiles: false, cache: BuildCache.for(Genesis, program))
+          # tiles alone, :sprites for its sprite pictures' too. +scene_colors+ the same for its colours,
+          # each scene's own written into the palettes as it takes over (Art), for a game whose colours
+          # together do not fit. +cache+ is what the build works out from the program once for all its
+          # tries (BuildCache).
+          def initialize(program, memory:, scene_tiles: false, scene_colors: false, cache: BuildCache.for(Genesis, program))
             @program = program
             @cache = cache
             @memory = memory
             @scene_tiles = scene_tiles
+            @scene_colors = scene_colors
             # What the program is before any instruction is made, worked out as the Color's and the
             # Super Nintendo's are (LoweringPlan), once a build, and kept here under the names the
             # rest of the lowering reads.
@@ -798,7 +801,7 @@ module VBlank
 
           # The note of the scene running now, set to +number+.
           def emit_scene_number(number)
-            return store_number(@scene, number) if painted? || (@scene_layers.zero? && !@scene_tiles)
+            return store_number(@scene, number) if painted? || (@scene_layers.zero? && !@scene_tiles && !@scene_colors)
 
             before = keep_local(:scene_before)
             statement(Build.set(before, Build.var_ref(@scene)))

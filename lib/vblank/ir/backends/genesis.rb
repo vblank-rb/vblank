@@ -93,12 +93,20 @@ module VBlank
         # biggest scene's backgrounds is built once more with :sprites too, each scene's sprite
         # pictures taking turns with its backgrounds.
         #
+        # A game whose pictures need more than the console's four palettes is built again the same way
+        # with each scene's own colours written into the palettes as it takes over (+scene_colors+,
+        # Art), so what has to fit is one scene's with what every screen keeps: :backgrounds first,
+        # every sprite picture's colours kept for the whole game, then :sprites, a scene's own sprite
+        # pictures' colours taking turns too (Lowering::Picture#scene_colors_after). Those palettes are
+        # written through the game's own colours in work RAM (Runtime::Tint), so such a game carries
+        # that part of the runtime even if it never fades.
+        #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.
-        def build(program, title: "VBLANK", scene_tiles: false, cache: BuildCache.for(Genesis, program))
+        def build(program, title: "VBLANK", scene_tiles: false, scene_colors: false, cache: BuildCache.for(Genesis, program))
           memory = Memory.new
           picture = Lowering.picture_of(program)
-          colors = Lowering.changing_colors?(program)
+          colors = scene_colors ? true : Lowering.changing_colors?(program)
           sound = Lowering::Sound.sounds?(program)
           songs = Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
@@ -111,14 +119,19 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
-          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, cache: cache)
+          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors, cache: cache)
           begin
             game = lowering.sections
           rescue Art::TooManyTiles
             later = scene_tiles_after(scene_tiles, lowering)
             raise unless later
 
-            return build(program, title: title, scene_tiles: later, cache: cache)
+            return build(program, title: title, scene_tiles: later, scene_colors: scene_colors, cache: cache)
+          rescue Art::TooManyColors
+            later = lowering.scene_colors_after(scene_colors)
+            raise unless later
+
+            return build(program, title: title, scene_tiles: scene_tiles, scene_colors: later, cache: cache)
           end
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
@@ -130,7 +143,7 @@ module VBlank
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
-                                             scene_tiles: scene_tiles)
+                                             scene_tiles: scene_tiles, scene_colors: scene_colors)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

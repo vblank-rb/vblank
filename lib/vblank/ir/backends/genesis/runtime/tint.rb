@@ -35,6 +35,7 @@ module VBlank
           #   rt_tint_to(mode, steps, color)         D0 = 0 black, 1 white, 2 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
           #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
+          #   rt_scene_colors(table)                 a scene taking over: its own palettes
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to hold it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
           module Tint
@@ -68,16 +69,47 @@ module VBlank
             end
 
             # +backdrop+ for a game whose backdrop is copied from a list it recolours, which then carries
-            # rt_backdrop_hold.
-            def emit(asm, memory, backdrop: false)
+            # rt_backdrop_hold; +scene_colors+ for one whose scenes each write their own palettes, which
+            # carries rt_scene_colors.
+            def emit(asm, memory, backdrop: false, scene_colors: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, memory)
               emit_tint_to(asm, at)
               emit_tinted(asm, at)
               emit_hold(asm, memory, at)
               emit_backdrop_hold(asm, at) if backdrop
+              emit_scene_colors(asm, memory, at) if scene_colors
               emit_prepared(asm, memory, at)
               emit_written(asm, memory, at)
+            end
+
+            # rt_scene_colors(table): a scene taking over writes its own palettes into the game's colours
+            # (Lowering::Picture#emit_scene_colors). The table is a word, how many palettes, then for each its
+            # number, how many of its places hold a colour, and its fifteen colours, a word each. DIRTY is set,
+            # so the colour memory is worked out again as the pass ends, through the fade or tint in force.
+            def emit_scene_colors(asm, memory, at)
+              asm.label("rt_scene_colors")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.move(:w, asm.post(0), asm.d(1))
+              asm.branch(:eq, "rt_scene_colors_done")
+              asm.subq(:w, 1, asm.d(1))
+              asm.label("rt_scene_colors_palette")
+              asm.moveq(0, asm.d(2))
+              asm.move(:w, asm.post(0), asm.d(2))
+              asm.add(:l, asm.d(2), asm.d(2)) # a palette's count of places is a word
+              asm.lea(asm.abs_l(memory[USED]), asm.a(1))
+              asm.move(:w, asm.post(0), asm.idx(1, 0, 2))
+              asm.lsl(:l, 4, asm.d(2)) # two bytes a palette became thirty-two: a palette's places in the colours
+              asm.lea(asm.abs_l(memory[COLORS], 2), asm.a(1))
+              asm.add(:l, asm.d(2), asm.a(1))
+              asm.moveq(Art::OWN_COLORS - 1, asm.d(3))
+              asm.label("rt_scene_colors_place")
+              asm.move(:w, asm.post(0), asm.post(1))
+              asm.dbra(asm.d(3), "rt_scene_colors_place")
+              asm.dbra(asm.d(1), "rt_scene_colors_palette")
+              asm.move(:w, asm.imm(1), at.call(DIRTY))
+              asm.label("rt_scene_colors_done")
+              asm.rts
             end
 
             # rt_backdrop_hold(table, which): the backdrop follows a list of colours, and is the colour the

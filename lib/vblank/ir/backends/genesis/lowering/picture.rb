@@ -47,7 +47,7 @@ module VBlank
 
             def prepare_picture
               @art = Art.new(backdrop: @cache.handover.game_backdrop, exact: self.class.fading?(@program),
-                             beside_painting: painted?, scene_tiles: @scene_tiles)
+                             beside_painting: painted?, scene_tiles: @scene_tiles, scene_colors: @scene_colors)
               @objects = by_kind(:object)
               @backgrounds = @program.walk.select { |node| node.kind == :background }
               @sprite_names = SpriteNames.new(@program)
@@ -180,18 +180,33 @@ module VBlank
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
+              refuse_hand_over_inside_test!(:colors) if @scene_colors == :sprites
+              allot_shared_colors(poses) if @scene_colors
               return make_art_by_scene(poses) if @scene_tiles
 
               make_sprite_pictures(poses)
               @objects.each_value { |obj| recolor_palettes(obj) }
               @backgrounds.each { |bg| bg.every_map.each_index { |which| grid_of(bg, which) } }
-            rescue Art::TooManyLists
-              raise NotMadeYet.new("The lists of colours this game draws with need more than the four a Genesis holds at " \
-                                   "once. The Genesis build keeps each list for the whole game. It does not swap lists " \
-                                   "as the game runs yet. To fix this, draw with fewer lists of colours. To step through " \
-                                   "many sets of colours, draw the sprites and the background with one list, and change " \
-                                   "what it holds with `recolor`: that list keeps one of the four, whatever the sets. Or " \
-                                   "build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`).", part: "the picture")
+            rescue Art::TooManyLists => e
+              raise if scene_colors_after(@scene_colors)
+
+              raise NotMadeYet.new(too_many_lists_message(e), part: "the picture")
+            end
+
+            # The words for lists of colours that did not fit, the game's (+error+ names no scene) or one scene's.
+            def too_many_lists_message(error)
+              advance = "Or build the game for the Game Boy Advance alone for now (`consoles: %i[gba]`)."
+              if error.scene
+                return "#{error.message} The Genesis build keeps each list for the whole time its scene is up. It does not " \
+                       "swap lists as the game runs yet. To fix this, draw the pictures of that scene with fewer lists of " \
+                       "colours. #{advance}"
+              end
+
+              "The lists of colours this game draws with need more than the four a Genesis holds at once. The Genesis " \
+                "build keeps each list for the whole game. It does not swap lists as the game runs yet. To fix this, draw " \
+                "with fewer lists of colours. To step through many sets of colours, draw the sprites and the background " \
+                "with one list, and change what it holds with `recolor`: that list keeps one of the four, whatever the " \
+                "sets. #{advance}"
             end
 
             # The sprite pictures +names+, made into pieces, each from the tiles of the scene that alone shows
@@ -207,15 +222,63 @@ module VBlank
               names.each { |name| @art.with_tiles_of(tiles_scene_of_picture(name)) { @art.sprite_picture(name) } }
             end
 
-            # The sprite picture +name+ cut into pieces (Art#cut_sprite_picture), from the palette it is drawn from.
+            # The sprite picture +name+ cut into pieces (Art#cut_sprite_picture), from the palette it is drawn from:
+            # one of its scene's own, in a game whose sprite colours take turns (#colors_scene_of_picture).
             def cut_sprite_picture(name)
               image = @cache.image(picture_named(name))
-              if (list = followed_list_of(name))
-                @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
-              elsif recolored?(name) || follows_unchanging_list?(name)
-                @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
-              else
-                @art.cut_sprite_picture(name, image)
+              @art.with_colors_of(colors_scene_of_picture(name)) do
+                if (list = followed_list_of(name))
+                  @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
+                elsif recolored?(name) || follows_unchanging_list?(name)
+                  @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                else
+                  @art.cut_sprite_picture(name, image)
+                end
+              end
+            end
+
+            # THE COLOURS EVERY SCREEN KEEPS, in a game whose scenes each keep their own colours (Art's
+            # +scene_colors+): allotted before any scene takes its copy of the palettes. First the palette of
+            # every list the game changes, which is written over whichever scene is up, and the lists the
+            # sprites are drawn with; then the colours of the sprite pictures and the backgrounds every screen
+            # shows. A scene's own pictures are made after, each from its scene's copy.
+            def allot_shared_colors(poses)
+              poses.each do |name|
+                list = followed_list_of(name)
+                @art.reserve_held_palette([:sprites, list], own_colors(@cache.image(picture_named(name)))) if list
+              end
+              @objects.each_value { |obj| recolor_palettes(obj) }
+              @backgrounds.each do |bg|
+                bg.tiles.uniq.each do |tile|
+                  image = @cache.image(picture_named(tile))
+                  next if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+
+                  palette = list_palette_of(bg, image)
+                  @art.reserve_held_palette(palette.key, palette.colors) if palette.key
+                end
+              end
+              poses.each { |name| cut_sprite_picture(name) unless colors_scene_of_picture(name) }
+              @backgrounds.each { |bg| make_background_art(bg) unless colors_scene_of(bg) }
+            end
+
+            # THE SCENE WHOSE OWN COLOURS +bg+ IS DRAWN IN, in a game of +scene_colors+: the scene it is declared
+            # in, which puts it up as it takes over; nil for scenery every screen shows.
+            def colors_scene_of(bg) = @scene_colors ? scene_owning_background(bg) : nil
+
+            # The same for the sprite picture +name+, when sprite colours take turns too (+scene_colors+ of
+            # :sprites).
+            def colors_scene_of_picture(name) = @scene_colors == :sprites ? scene_owning_picture(name) : nil
+
+            # THE +scene_colors+ TO BUILD WITH after a build with +tried+ ran out of palettes (Genesis#build),
+            # or nil when nothing is left to try: :backgrounds, each scene's own backgrounds in palettes of its
+            # own while it is up, every sprite picture's colours kept for the whole game; then :sprites, a
+            # scene's own sprite pictures' colours taking turns too. Only in a game of one dispatch, as
+            # tiles are (#art_of_one_scene?), and a step that would change nothing is passed over.
+            public def scene_colors_after(tried)
+              backgrounds = one_dispatch? && @backgrounds.any? { |bg| scene_owning_background(bg) }
+              case tried
+              when false then (:backgrounds if backgrounds) || (:sprites if sprites_of_one_scene?)
+              when :backgrounds then :sprites if sprites_of_one_scene?
               end
             end
 
@@ -235,7 +298,7 @@ module VBlank
             # the one way of writing the loop that shows such a frame is refused
             # (#refuse_hand_over_inside_test!).
             def make_art_by_scene(poses)
-              refuse_hand_over_inside_test! if @scene_tiles == :sprites
+              refuse_hand_over_inside_test!(:pictures) if @scene_tiles == :sprites
               shared_poses, own_poses = poses.partition { |name| tiles_scene_of_picture(name).nil? }
               shared_backgrounds, own_backgrounds = @backgrounds.partition { |bg| tiles_scene_of(bg).nil? }
               make_sprite_pictures(shared_poses)
@@ -251,23 +314,36 @@ module VBlank
             # where those sprites' tiles were. A scene picked at the top of the loop is shown with the
             # number it was picked by, and a variable changed after the pick takes effect on the next
             # pass, so either is right.
-            def refuse_hand_over_inside_test!
+            #
+            # The same is so of a game whose scenes write their own sprite colours as they take over
+            # (+scene_colors+ of :sprites): the leaving scene's sprites would be drawn in the arriving
+            # scene's palettes. +shared+ names what the scenes take turns with, a key of TAKING_TURNS.
+            def refuse_hand_over_inside_test!(shared)
               @program.walk.select { |node| node.kind == :loop }.each do |loop_node|
                 loop_node.children.reject { |node| Frames.scene_dispatch?(node) }.flat_map { |node| Frames.dispatches_inside(node) }.each do |dispatch|
                   change = statements_run_before(loop_node, dispatch).find { |node| LightScenes.written_var(node) == dispatch.var && node.kind != :case }
                   next unless change
 
-                  raise LoweringError, hand_over_inside_test_message(dispatch, change)
+                  raise LoweringError, hand_over_inside_test_message(dispatch, change, shared)
                 end
               end
             end
 
-            def hand_over_inside_test_message(dispatch, change)
+            # What the scenes of a game take turns with, as a refusal words it: what they share, and what the
+            # leaving scene's sprites would show wrong.
+            TakingTurns = Data.define(:shared, :shown_wrong)
+            TAKING_TURNS = {
+              pictures: TakingTurns.new(shared: "one area of video memory for their sprite pictures", shown_wrong: "pictures"),
+              colors: TakingTurns.new(shared: "the same sets of colours for their sprites", shown_wrong: "colours")
+            }.freeze
+
+            def hand_over_inside_test_message(dispatch, change, shared)
               name = dispatch.var
-              "The scenes of this game share one area of video memory for their sprite pictures. " \
+              turns = TAKING_TURNS.fetch(shared)
+              "The scenes of this game share #{turns.shared}. " \
                 "The game changes `#{name}`#{line_words(change)}. Then, in the same pass, it uses `#{name}` " \
                 "to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the sprites of the " \
-                "last scene show with the wrong pictures. To fix this, move `case_var(:#{name})` to the top " \
+                "last scene show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` to the top " \
                 "of the game loop, outside the `if`. Or change `#{name}` after the `case_var`."
             end
 
@@ -552,7 +628,8 @@ module VBlank
               end
               write_held_colors(data)
               write_backdrop_colors(data)
-              write_colors15(data) if self.class.changing_colors?(@program) && !painted? # a painted screen's is Paint#paint_sections'
+              write_scene_colors(data)
+              write_colors15(data) if (self.class.changing_colors?(@program) || @scene_colors) && !painted? # a painted screen's is Paint#paint_sections'
               data.label("art grids")
               @art.grids.each do |grid|
                 data.data_longs(grid_label(grid.number))
@@ -616,10 +693,12 @@ module VBlank
               @cells_made[[bg.object_id, tile]] ||= begin
                 image = @cache.image(picture_named(bg.tiles.fetch(tile)))
                 @art.with_tiles_of(tiles_scene_of(bg)) do
-                  if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
-                    @art.background_cell(image, of: bg.name)
-                  else
-                    @art.background_cell(image, of: bg.name, palette: recolored_palette(bg, image))
+                  @art.with_colors_of(colors_scene_of(bg)) do
+                    if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+                      @art.background_cell(image, of: bg.name)
+                    else
+                      @art.background_cell(image, of: bg.name, palette: recolored_palette(bg, image))
+                    end
                   end
                 end
               end
@@ -646,15 +725,24 @@ module VBlank
             # same list shares, rather than one kept to itself. Only place 0 may differ between the sets, since
             # it is see-through and no palette keeps it.
             def recolored_palette(bg, image)
+              palette = list_palette_of(bg, image)
+              palette.key ? @art.reserve_held_palette(palette.key, palette.colors) : @art.ordered_palette(palette.colors)
+            end
+
+            # The palette a tile of +bg+ drawn with other colours is drawn from (#recolored_palette), before it is
+            # allotted: +key+ is whose list keeps it to itself (Art#reserve_held_palette), or nil for a list in its
+            # own order (Art#ordered_palette), and +colors+ the colours it starts with (15-bit, see-through left out).
+            ListPalette = Data.define(:key, :colors)
+
+            def list_palette_of(bg, image)
               list = bg.recolored_list_of(image.list_drawn_from) or
                 raise LoweringError, "a tile of the background #{bg.name.inspect} is drawn from a list of colours it was not given"
               index = bg.drawn_lists.index(list)
               colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
               followed = bg.follows_several? ? bg.follows_each.fetch(index) : (bg.follows if index == bg.followed_list_index)
-              return @art.ordered_palette(colors) if !followed && unchanging_colors?(bg, index, colors)
+              return ListPalette.new(key: nil, colors: colors) if !followed && unchanging_colors?(bg, index, colors)
 
-              key = followed ? [:sprites, followed] : [:background, bg.object_id, index]
-              @art.reserve_held_palette(key, colors)
+              ListPalette.new(key: followed ? [:sprites, followed] : [:background, bg.object_id, index], colors: colors)
             end
 
             # Whether every set +bg+'s list number +index+ can be drawn with holds +colors+ (its own, place 0
@@ -896,6 +984,7 @@ module VBlank
               return if painted?
 
               emit_scene_tiles(scene)
+              emit_scene_colors(scene)
               return if @scene_layers.zero?
 
               arrival = @handover.arrival(scene)
@@ -919,6 +1008,32 @@ module VBlank
               return unless @scene_tiles
 
               runtime_call("rt_scene_tiles", [LabelAddress.new(scene_tiles_table_label(scene))])
+            end
+
+            # A SCENE TAKING OVER, in a game of +scene_colors+: the palettes its own pictures are drawn from are
+            # written into the game's colours (Runtime::Tint's rt_scene_colors), and the colour memory is worked
+            # out from them as this pass ends, through the fade or tint in force, as any change of colour is.
+            # So a scene that comes in under a screen faded to black shows black, and its own colours as the
+            # fade lifts. A scene with no colours of its own writes nothing.
+            def emit_scene_colors(scene)
+              return unless @scene_colors
+
+              runtime_call("rt_scene_colors", [LabelAddress.new(scene_colors_label(scene))])
+            end
+
+            def scene_colors_label(scene) = "art scene colors #{scene}"
+
+            # For each scene, the table rt_scene_colors reads (Runtime::Tint): how many palettes it writes, then
+            # for each its number, how many of its places hold a colour, and its fifteen colours (Art#scene_palette_writes).
+            def write_scene_colors(data)
+              return unless @scene_colors
+
+              @scenes.each_key do |scene|
+                writes = @art.scene_palette_writes(scene)
+                data.label(scene_colors_label(scene))
+                data.data_words(writes.length)
+                writes.each { |write| data.data_words(write.palette, write.used, *write.colors) }
+              end
             end
 
             def scene_tiles_table_label(scene) = "art scene tiles table #{scene}"

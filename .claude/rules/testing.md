@@ -162,7 +162,9 @@ records first),
 `many_tiles.rb` (backgrounds of many different tiles, for what a console does when they are too many to
 hold at once), `scene_sprite_pictures.rb` (scenes whose sprite pictures together are more than a console
 holds at once), `scene_color_lists.rb` (lists of fifteen colours, for a Super Nintendo screen's own
-eight sets), and the
+eight sets), `scene_color_games.rb` (two scenes whose backgrounds from a data pack and sprites need
+more than a Genesis's four palettes together, beside a list every scene uses, the second scene coming
+in under a fade to black), and the
 helpers a test file shares with its `_on_the_advance.rb` twin (`fade_watch.rb`,
 `tinted_handover.rb`) — and are loaded by bare name (`require "differential"`), never
 `require_relative`.
