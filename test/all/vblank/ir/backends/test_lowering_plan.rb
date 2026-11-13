@@ -42,6 +42,40 @@ class TestLoweringPlan < Minitest::Test
     end
   end
 
+  # A crowd of sprites one more than +console+ keeps places for: a pool of all but one, and two
+  # sprites ordered with it, one of them moving, so the order is worked out on every pass.
+  private def crowded_game(console)
+    crowd = VBlank::Console.described(console).sprite_places - 1
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval do
+      screen :tiled
+      image(:speck, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      image(:hero, "#" => :green) { (["#" * 16] * 16).join("\n") }
+      specks = pool :crowd, x: 0, y: 0, capacity: crowd, image: :speck
+      enemy = sprite :hero, at: [60, 60]
+      hero = sprite :hero, at: [68, 54]
+      draw_in_order(specks, enemy, hero)
+      game_loop { hero.move(0, 1) }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The interpreter refuses a game with more sprites than its console keeps places for
+  # (Reference#refuse_too_many_sprites!), so each console's build refuses it in the same words
+  # before it lowers anything.
+  def test_more_sprites_than_the_console_keeps_are_refused_in_the_interpreters_words
+    BACKENDS.each do |console, backend|
+      program = crowded_game(console)
+      interpreter_message = assert_raises(VBlank::IR::ProgramError) { Backends::Reference.new.run(program, frames: 1) }.message
+      error = assert_raises(backend::LoweringError, console.to_s) { backend.new.build(program) }
+
+      assert_match(/A game can keep places for #{VBlank::Console.described(console).sprite_places} sprites/,
+                   error.message, console.to_s)
+      assert_equal interpreter_message, error.message, "#{console}: the interpreter's words"
+    end
+  end
+
   # The whole order on the plan, every console alike: each fault is refused only once every fault
   # before it in the order is gone. The first is a file handed to the game as it starts, which no
   # cartridge is; the rest are steps.
