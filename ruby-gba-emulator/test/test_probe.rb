@@ -132,7 +132,7 @@ class TestRubyGBAEmulatorProbe < Minitest::Test
     end
     with_probe(rom) do |probe|
       probe.step(8)
-      assert_equal VBlank::Audio::Sound::Registers.wave_rate(440), probe.wave_rate
+      assert_equal VBlank::IR::Backends::GameBoySound.wave_rate(440), probe.wave_rate
       assert_equal 0, probe.read16(VBlank::Cartridge::Constants::REG_SOUND3CNT_X) & 0x07FF,
                    "the register itself reads back no pitch"
     end
