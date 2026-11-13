@@ -128,8 +128,25 @@ instance variables.
   `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
   `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
   out as the game plays: it holds the item read before, in a game block, a game file and a method a
-  routine calls alike. A change made inside another method, or a `func` called between, is not
-  seen: there, read `packed[at]` into a `var` with `store!`.
+  routine calls alike. A call of game code between the two lines counts as a change of what that
+  code can write, so `flags` keeps the item it read there too, and so does `high` in
+  `high = next_byte(c); (high << 8) | next_byte(c)` and `f` in `(f = t[at]) + bump(at) + f`.
+  A method the same file defines changes the instance variables it writes and what it is handed
+  when it writes through an argument; `call :step_on` changes what that `func`'s block writes; a
+  method of the game's own object from another file (`reader.next_byte(0)`) changes that object and
+  what it is handed. A method of another file called on nothing, a `func` made elsewhere,
+  `case_var` and `start_over` change everything. A call on one side of an `if` changes nothing
+  read on its other side. A write through a worked-out place (`state.fetch(:at)[c] = at + 1`)
+  changes everything read from `state`. A call that cannot reach what the name was read from
+  costs nothing. Calls count only for a name set in game code or a method: one set while setting
+  up and read by game code follows what it was read from, so `frame = frames_since_power_on` reads
+  the count live. A name set from a method's answer reads what that method reads: `at = get(:at, c)`
+  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`. A game variable
+  a method hands back (`floors = routine_var(:floors)`) is that variable, as the object a Ruby
+  method hands back is, and counts itself up with `floors.increase!(1)` across any call.
+  One limit: an object of the game's that shares a variable with the code calling
+  it (handed it when the object was made) can change that variable unseen; read it into a `var`
+  with `store!` there.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

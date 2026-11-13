@@ -22,3 +22,45 @@ class PlainRubyHelperPart
     end
   end
 end
+
+# A method of the game's defined in a file of its own, so a game block calling it cannot see what
+# it does: it changes nothing.
+def plain_ruby_helper_pass_over(value) = value
+
+# An object of the game's whose method moves a place it is handed on by one, defined in a file of
+# its own so a game block calling it through the object cannot see the method.
+class PlainRubyPlaceMover
+  def move_place_on(place) = place.increase!(1)
+end
+
+# A song reader in the shape a port writes the original's: each channel's state in lists reached
+# through a Hash by field name, read and written only through private methods of the object.
+# #next_byte hands back the byte at a channel's place before it moves the place on, and
+# #read_pitch_offset joins two such bytes, high byte first.
+class PlainRubySongReader
+  FIELDS = %i[at pitch_offset].freeze
+
+  def initialize(builder, bytes)
+    @bytes = bytes
+    @state = FIELDS.to_h { |field| [field, builder.list(:"song_#{field}", capacity: 2, full_of: 0)] }
+  end
+
+  def read_pitch_offset(channel)
+    high = next_byte(channel)
+    set(:pitch_offset, channel, (high << 8) | next_byte(channel))
+  end
+
+  private
+
+  def get(field, channel) = @state.fetch(field)[channel]
+
+  def set(field, channel, value)
+    @state.fetch(field)[channel] = value
+  end
+
+  def next_byte(channel)
+    at = get(:at, channel)
+    set(:at, channel, at + 1)
+    @bytes[at]
+  end
+end

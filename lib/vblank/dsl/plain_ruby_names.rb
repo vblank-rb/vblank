@@ -10,6 +10,8 @@ module VBlank
       # made directly by `var`. Everything else is left as Ruby: a number nothing changes
       # stays a plain number and costs nothing, and `target = hero_x` is a second name.
       class LocalNames
+        include CallChanges
+
         # The verbs whose blocks hold code the game runs as it plays. A plain Ruby block, like
         # the one given to `8.times`, runs while building however it is nested. `fill_from_copy` is
         # a data pack's unpacking routine (`slots.fill_from_copy`), game code of a program of its own.
@@ -44,6 +46,11 @@ module VBlank
         # What stands for every slot of a name, and for its slots at keys worked out as the game
         # plays, among the places a change is recorded under (#names_read_by).
         SLOT_KEYS = Ractor.make_shareable({ any: :any_slot, worked_out: :slot_at_worked_out_key })
+
+        # The verbs that run game code written somewhere else, where they are called: the routine
+        # `func` made (`call`), the scene `case_var` picks, and `start_over`, which sets a part's
+        # variables back to their starts.
+        VERBS_RUNNING_GAME_CODE = %i[call case_var start_over].freeze
 
         # Writes by game code to a local of the scope the block sits in.
         attr_reader :outside_writes
@@ -191,7 +198,11 @@ module VBlank
           end
         end
 
-        def initialize(block_node)
+        # +library_file+: the block is VBlank's own (PlainRuby.library_file?), where a method called
+        # on nothing is one of VBlank's, never the game's (#game_call?).
+        def initialize(block_node, library_file: false)
+          @library_file = library_file
+          @methods_defined = methods_defined_in(block_node)
           @locals_by_node = {}.compare_by_identity
           @outside_writes = []
           @promoted_writes = {}.compare_by_identity
@@ -199,6 +210,19 @@ module VBlank
           @reads_in_game_code = {}.compare_by_identity
           @reads_from_unknown_block = {}.compare_by_identity
           @changes_by_name = {}
+          # What calls of game code change (CallChanges): the calls as read, the routines `func`
+          # makes here, what each method or routine body writes, and, once resolved, the offsets
+          # at which each whole name changes and those at which everything does.
+          @game_calls = []
+          @writes_in_methods = {}.compare_by_identity
+          @in_method = false
+          @sides_apart = []
+          @region_start = 0
+          @func_blocks = {}
+          @body_changes = {}.compare_by_identity
+          @body_reads = {}.compare_by_identity
+          @whole_name_changes = {}
+          @calls_into_game_code = []
           @names_used = Hash.new(0)
           @iterating_in_game_code = false
           @scopes_placed = {}.compare_by_identity
@@ -263,15 +287,39 @@ module VBlank
         # That matters only if something it reads changes and the name is read after. In game
         # code the line runs again each pass, so the read has to follow the change. In setting up
         # it runs once, and game code reading the name comes round again after any change.
+        #
+        # A call of game code (#game_call?) changes what that code can write (CallChanges): the
+        # whole of each name it writes, or every name where the code is not in this source. It
+        # counts from the start of the statement it sits in, since a working-out is read only once
+        # its whole statement is recorded: in `(high << 8) | next_byte(c)`, `high` is read after
+        # the call moved its place. The local's value may read no name at all (`high = next_byte(c)`
+        # with no argument): keeping an answer that is a plain number costs nothing
+        # (Steps.kept_answer).
+        #
+        # A call that can change anything counts only for a local set in game code (#changes_by_calls).
+        # One set while setting up is read by game code as the game's own working-out, and a game
+        # sets one from what VBlank keeps up to date each frame (`frame = frames_since_power_on`)
+        # to read it live: copied where a call might change it, it would hold the frame the game
+        # was set up on, and nothing would ever move.
         def read_after_it_changes?(write)
           local = @locals_by_node[write]
           return false unless local&.plain_name? && write.is_a?(Prism::LocalVariableWriteNode)
 
-          from = write.location.end_offset
-          changes = names_read_by(write.value).flat_map { |name| @changes_by_name.fetch(name, []) }
-                                              .select { |offset, _in_game| offset > from }
+          read_after_any?(local, write, named_changes(write) + changes_by_calls(write) + changes_read_through_calls(write))
+        end
+
+        # Is the local +write+ sets kept (#read_after_it_changes?) for a change the source writes
+        # to a name its line reads, and not only for a call? Kept for a call, a game variable the
+        # line hands back stays that variable (Steps.kept_answer).
+        def kept_for_named_change?(write)
+          read_after_it_changes?(write) && read_after_any?(@locals_by_node[write], write, named_changes(write))
+        end
+
+        # Is +local+, which +write+ sets, read after any of +changes+ comes after its line?
+        def read_after_any?(local, write, changes)
+          changes = changes.select { |change| change.after?(write) }
           return false if changes.empty?
-          return true if local.read_from?(changes.map(&:first).min)
+          return true if local.reads.any? { |read| changes.any? { |change| change.reaches?(read, write) } }
 
           !@first_writes_in_game_code[write] && local.reads.any? { |read| @reads_in_game_code[read] }
         end
@@ -394,19 +442,71 @@ module VBlank
             (node.name == :[] || node.arguments.nil?)
         end
 
-        # Remembers where +name+ changes.
-        def record_change(name, node, in_game_code)
-          (@changes_by_name[name] ||= []) << [node.location.start_offset, in_game_code]
+        # Where +name+, a key of #names_read_by, changes: as itself, or as the whole name it is a
+        # place of, by a call of game code.
+        def changes_of_name(name) = @changes_by_name.fetch(name, []).map { |offset| Change.new(offset: offset, apart: []) }
+
+        # The changes calls of game code make to what the value +write+ gives its local reads
+        # (#read_after_it_changes?): the names a call this source shows can write, for any local;
+        # and a call that can change anything, only for a local set in game code or in a method
+        # (which runs where it is called) whose value reads a name or calls game code. A constant
+        # or a verb's answer no name of the source holds stays as it is.
+        def changes_by_calls(write)
+          resolve_game_calls
+          names = names_read_by(write.value)
+          named = names.flat_map { |name| @whole_name_changes.fetch(whole_name(name), []) }
+          return named unless @first_writes_in_game_code[write] || @writes_in_methods.key?(write)
+          return named if names.empty? && !calls_game_code?(write.value)
+
+          named + @calls_into_game_code
+        end
+
+        # The changes to what the value +write+ gives its local reads through the calls in it
+        # (CallChanges#names_read_through_calls), for a local set in game code or in a method:
+        # `at = get(:at, c)` reads `@state` inside `get`, which `set(:at, c, at + 1)` writes.
+        def changes_read_through_calls(write)
+          return [] unless @first_writes_in_game_code[write] || @writes_in_methods.key?(write)
+
+          names = names_read_through_calls(write.value)
+          return [] if names.empty?
+
+          resolve_game_calls
+          names = (@changes_by_name.keys.map { |key| whole_name(key) } + @whole_name_changes.keys).uniq if names.include?(EVERY_NAME)
+          names.flat_map { |name| changes_of_whole_name(name) + @whole_name_changes.fetch(name, []) }
+        end
+
+        # The changes the source writes to the names the value +write+ gives its local reads.
+        def named_changes(write) = names_read_by(write.value).flat_map { |name| changes_of_name(name) }
+
+        # Every change of +name+ or of a slot or attribute of it.
+        def changes_of_whole_name(name)
+          @changes_by_name.select { |key, _| whole_name(key) == name }.values.flatten.map { |offset| Change.new(offset: offset, apart: []) }
+        end
+
+        # Does +node+, or anything under it, call game code (#game_call?)?
+        def calls_game_code?(node)
+          (node.is_a?(Prism::CallNode) && game_call?(node)) || node.compact_child_nodes.any? { |child| calls_game_code?(child) }
+        end
+
+        # Remembers where +name+ changes, as the offset in the source.
+        def record_change(name, node)
+          (@changes_by_name[name] ||= []) << node.location.start_offset
         end
 
         # `hero.x = 1`, `ball[:hp] = 1` and their `+=`, recorded as the place a read of it writes.
-        def read_place_change(node, in_game_code)
-          return unless NAMES.any? { |kind| node.receiver.is_a?(kind) }
+        #
+        # A write through a receiver worked out (`state.fetch(:at)[c] = at + 1`) names no place a
+        # read could match, so it is recorded as a change of every name the receiver reads.
+        def read_place_change(node)
+          unless NAMES.any? { |kind| node.receiver.is_a?(kind) }
+            names_read_by(node.receiver).each { |name| record_change(name, node) } if node.receiver
+            return
+          end
 
           receiver = name_key(node.receiver)
-          record_change([receiver, place_written(node)], node, in_game_code)
+          record_change([receiver, place_written(node)], node)
           keys = slot_keys_written(node)
-          slots_written_alike(receiver, keys).each { |place| record_change(place, node, in_game_code) } if keys
+          slots_written_alike(receiver, keys).each { |place| record_change(place, node) } if keys
         end
 
         # The keys of a slot +node+ writes, or nil for an attribute it writes.
@@ -420,10 +520,44 @@ module VBlank
         # `at.increase!(1)`, a verb ending in `!` called on a name, which changes the variable the
         # name holds as `at += 1` does: recorded as a change of the name. `!at` asks, and changes nothing.
         # Any other `!` verb (`list.sort!`) counts too; at worst a local keeps its line's answer.
-        def record_bang_call_change(node, in_game_code)
-          return unless node.name != :! && node.name.end_with?("!") && NAMES.any? { |kind| node.receiver.is_a?(kind) }
+        def record_bang_call_change(node)
+          return unless CallChanges.bang_call?(node) && NAMES.any? { |kind| node.receiver.is_a?(kind) }
 
-          record_change(name_key(node.receiver), node, in_game_code)
+          record_change(name_key(node.receiver), node)
+        end
+
+        # Does +node+ run game code, which can change what a local was read from? A verb of
+        # VERBS_RUNNING_GAME_CODE does, and so does a method of the game: it can change a name it is
+        # handed (`def bump(v) = v.increase!(1)`), an instance variable, or whatever a routine it
+        # calls changes. A method this source defines is the game's, whatever it is called on and
+        # whatever else answers to its name. Otherwise, called on nothing, a method is the game's
+        # unless VBlank or Ruby answers to it (#game_method?); called on something
+        # (`reader.next_byte(0)`), what the receiver is shows only as the game runs, so it is the
+        # game's unless a handle of VBlank's or a Ruby value has a method of that name
+        # (CallChanges.known_method?). A verb of VBlank's own (`draw_rect_at`) and a method of a
+        # value (`packed.length`) are not. What each changes is worked out in CallChanges.
+        #
+        # In VBlank's own files only those verbs do, called on nothing: a method there is one of
+        # VBlank's, and those files are read before Builder is loaded, so it could not be told
+        # from the game's. `Build.call(...)` there makes a node and runs nothing.
+        def game_call?(node)
+          return VERBS_RUNNING_GAME_CODE.include?(node.name) && !called_on_something?(node) if @library_file
+          return true if VERBS_RUNNING_GAME_CODE.include?(node.name)
+          return true if @methods_defined.key?(node.name)
+          return !known_method?(node.name) if called_on_something?(node)
+
+          game_method?(node.name)
+        end
+
+        def called_on_something?(node) = !(node.receiver.nil? || node.receiver.is_a?(Prism::SelfNode))
+
+        # A method the game wrote: defined at the top of a game file (Object's), on the builder
+        # alone (in its block, or by `uses`), or nowhere yet. Anything else Builder answers to is
+        # VBlank's or Ruby's own.
+        def game_method?(name)
+          return true unless Builder.method_defined?(name) || Builder.private_method_defined?(name)
+
+          Builder.instance_method(name).owner == Object
         end
 
         def place_written(node)
@@ -486,13 +620,18 @@ module VBlank
         def read_names(node, scopes, in_game_code)
           case node
           when Prism::BlockNode then read_block(node, scopes, in_game_code)
-          when Prism::LambdaNode then inside_loops([]) { read_block(node, scopes, in_game_code) }
-          when Prism::DefNode then inside_loops([]) { read_block(node, [], false) }
+          when Prism::LambdaNode then inside_loops([]) { inside_method { read_block(node, scopes, in_game_code) } }
+          when Prism::DefNode then inside_loops([]) { inside_method { read_block(node, [], false) } }
           when Prism::CallNode then read_call(node, scopes, in_game_code)
+          when Prism::StatementsNode then read_statements(node, scopes, in_game_code)
           when Prism::WhileNode, Prism::UntilNode
-            inside_loops(@open_loops + [node]) { read_children(node, scopes, in_game_code || @iterating_in_game_code) }
+            inside_loops(@open_loops + [node]) do
+              inside_region(node) do
+                with_start_after_modifier_test(node) { read_children(node, scopes, in_game_code || @iterating_in_game_code) }
+              end
+            end
           when Prism::IfNode, Prism::UnlessNode
-            read_children(node, scopes, in_game_code || @iterating_in_game_code)
+            with_start_after_modifier_test(node) { read_branches(node, scopes, in_game_code || @iterating_in_game_code) }
           when Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode,
                Prism::LocalVariableOrWriteNode, Prism::LocalVariableAndWriteNode,
                Prism::LocalVariableTargetNode then
@@ -502,12 +641,12 @@ module VBlank
             read_children(node, scopes, in_game_code)
             note_unpacked_variables(node)
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
-            record_change(node.name, node, in_game_code)
+            record_change(node.name, node)
             @names_moved_in_game_code[node.name] = true if in_game_code && name_given?(node)
             read_children(node, scopes, in_game_code)
           when Prism::IndexOperatorWriteNode, Prism::CallOperatorWriteNode
             read_children(node, scopes, in_game_code)
-            read_place_change(node, in_game_code)
+            read_place_change(node)
           when Prism::LocalVariableReadNode then
             local = scopes[-1 - node.depth]&.[](node.name)
             local&.reads&.push(node)
@@ -516,6 +655,15 @@ module VBlank
             @locals_by_node[node] = local if local
           else read_children(node, scopes, in_game_code)
           end
+        end
+
+        # A method or a lambda, whose lines run where it is called, which may be game code.
+        def inside_method
+          outer = @in_method
+          @in_method = true
+          yield
+        ensure
+          @in_method = outer
         end
 
         def inside_loops(loops)
@@ -544,6 +692,87 @@ module VBlank
           node.compact_child_nodes.each { |child| read_names(child, scopes, in_game_code) }
         end
 
+        # An `if`'s test, then each of its sides with the other noted as a side apart
+        # (@sides_apart): a call on one side never runs before a read on the other in the same
+        # round (CallChanges::Change#reaches?).
+        def read_branches(node, scopes, in_game_code)
+          read_names(node.predicate, scopes, in_game_code)
+          sides = [node.statements, node.is_a?(Prism::IfNode) ? node.subsequent : node.else_clause]
+          sides.each_with_index do |side, index|
+            next unless side
+
+            other = sides[1 - index]
+            apart = other ? [SideApart.new(other.location.start_offset, other.location.end_offset, @region_start)] : []
+            with_sides_apart(@sides_apart + apart) { read_names(side, scopes, in_game_code) }
+          end
+        end
+
+        def with_sides_apart(sides)
+          outer = @sides_apart
+          @sides_apart = sides
+          yield
+        ensure
+          @sides_apart = outer
+        end
+
+        # Code that may run again (a block, a method, a loop) starts a region of its own: a side
+        # apart holds only for a local set inside the region the `if` sits in, which is set
+        # again before the `if` each time round.
+        def inside_region(node)
+          outer = @region_start
+          @region_start = node.location.start_offset
+          yield
+        ensure
+          @region_start = outer
+        end
+
+        # Each statement read with @statement_start at its start, the offset a call in it is
+        # recorded at. Under a test written after what it guards, it stays where that test ends
+        # (#with_start_after_modifier_test).
+        def read_statements(node, scopes, in_game_code)
+          outer = @statement_start
+          node.body.each do |statement|
+            @statement_start = [statement.location.start_offset, outer].compact.max
+            read_names(statement, scopes, in_game_code)
+          end
+        ensure
+          @statement_start = outer
+        end
+
+        # `call :open_the_sign if near` asks `near` before the call runs, though the call is written
+        # first: a call that test guards is recorded where the test ends. `begin ... end while x`
+        # runs its body before the test, so it keeps the body's place.
+        def with_start_after_modifier_test(node)
+          outer = @statement_start
+          @statement_start = node.predicate.location.end_offset if modifier_test?(node)
+          yield
+        ensure
+          @statement_start = outer
+        end
+
+        # Where a call into game code is recorded: the start of its statement, since a working-out
+        # read anywhere in that statement is read once the whole of it is recorded. A call that is
+        # its whole statement (`helper(x)`) reads its arguments before it runs, so it is recorded
+        # where it ends, and `x` keeps no copy for being handed to it.
+        def call_offset(node)
+          start = @statement_start || node.location.start_offset
+          start == node.location.start_offset ? node.location.end_offset : start
+        end
+
+        def record_game_call(node)
+          whole = Change.new(offset: call_offset(node), apart: @sides_apart)
+          in_line = Change.new(offset: node.location.start_offset, apart: @sides_apart, statement: @statement_start || 0)
+          @game_calls << GameCall.new(node, whole, in_line)
+        end
+
+        # Is +node+ a test written after the statements it guards, and asked before them?
+        def modifier_test?(node)
+          guarded = node.statements
+          return false unless guarded && guarded.location.start_offset < node.predicate.location.start_offset
+
+          !(LOOPS.any? { |kind| node.is_a?(kind) } && node.begin_modifier?)
+        end
+
         def read_call(node, scopes, in_game_code)
           node.compact_child_nodes.each do |child|
             next read_ruby_iteration(child, scopes, in_game_code) if child.is_a?(Prism::BlockNode) && ruby_iteration?(node)
@@ -552,8 +781,10 @@ module VBlank
             @next_block_placed = true if game_block
             read_names(child, scopes, in_game_code || game_block)
           end
-          read_place_change(node, in_game_code) if node.name == :[]= || node.attribute_write?
-          record_bang_call_change(node, in_game_code)
+          read_place_change(node) if node.name == :[]= || node.attribute_write?
+          record_bang_call_change(node)
+          note_func_block(node) if node.name == :func
+          record_game_call(node) if game_call?(node)
           @locals_by_node[node.receiver]&.asked_nil = true if node.name == :nil?
           @locals_by_node[LocalNames.side_not_nil(node)]&.asked_nil = true if LocalNames.nil_comparison?(node)
         end
@@ -590,7 +821,9 @@ module VBlank
           @scopes_placed[scope] = true if @next_block_placed
           @next_block_placed = false
           parameter_names(node.parameters).each { |name| scope[name] = Local.new(name, parameter: true) }
-          read_children(node, scopes + [scope], in_game_code)
+          # A method or a lambda runs where it is called, not on the side of an `if` it is written in.
+          sides = [Prism::DefNode, Prism::LambdaNode].any? { |kind| node.is_a?(kind) } ? [] : @sides_apart
+          with_sides_apart(sides) { inside_region(node) { read_children(node, scopes + [scope], in_game_code) } }
         end
 
         def parameter_names(node)
@@ -619,8 +852,9 @@ module VBlank
           return unless scope
 
           local = (scope[node.name] ||= Local.new(node.name, parameter: false))
-          record_change(local, node, in_game_code)
+          record_change(local, node)
           @first_writes_in_game_code[node] = true if in_game_code
+          @writes_in_methods[node] = true if @in_method
           local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes))
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
           @locals_by_node[node] = local
