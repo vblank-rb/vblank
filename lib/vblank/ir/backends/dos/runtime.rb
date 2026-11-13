@@ -174,7 +174,7 @@ module VBlank
           # +sprites+ and +view+ are whether the game has sprites over its picture and whether it moves the
           # view over it or shows it in blocks: with either, the player is shown a second picture made from the game's.
           def emit(asm, memory, palette:, starts:, pictures:, saves:, clock:, area:, sprites:, regions:, walks:, view: false,
-                   columns: false, fractions: false, frame_begins: nil, lists: false, sorts: false, overlaps: false, scenery: nil)
+                   columns: false, fractions: false, frame_begins: nil, bends: nil, lists: false, sorts: false, overlaps: false, scenery: nil)
             second = sprites || view
             starts += whole_screen_area(memory) if area
             starts += [[memory[Frame::CHANGED_TOP], memory.screen.height]]
@@ -183,7 +183,7 @@ module VBlank
             emit_start(asm, memory, palette, starts, saves, clock, second)
             Saving.emit(asm, memory) if saves
             Clock.emit(asm, memory) if clock
-            emit_frame(asm, memory, saves, second, walks, frame_begins, scenery: !scenery.nil?)
+            emit_frame(asm, memory, saves, second, walks, frame_begins, scenery: !scenery.nil?, bends: bends)
             Fades.emit(asm, memory, palette) if walks
             emit_picture_shown(asm, memory, sprites: sprites, view: view) if second
             emit_keyboard(asm, memory)
@@ -193,6 +193,7 @@ module VBlank
             Lists.emit(asm, memory, sorts: sorts) if lists
             Overlap.emit(asm, memory) if overlaps
             Scenery.emit(asm, memory, **scenery) if scenery
+            Turning.emit_matrix(asm) if (sprites && Sprites.turned?(memory)) || scenery&.fetch(:turned, nil)&.any?
             emit_drawing_routines(asm, memory, edges(memory, area))
             emit_blit_routine(asm, memory, edges(memory, area, seg: :ss)) if pictures
             emit_column_routine(asm, memory, edges(memory, area, seg: :ss)) if columns
@@ -311,7 +312,8 @@ module VBlank
           # The end of a pass, stopping, and the wait for a retrace they share.
           # +frame_begins+ is the game's routine run at each frame boundary (its timers, TimerSteps), or nil.
           # +scenery+ is whether the game shows a screen of tiles, whose view is built as each pass ends where it is owed.
-          def emit_frame(asm, memory, saves, second, walks, frame_begins = nil, scenery: false)
+          # +bends+ is the game's routine that works out each bent background's rows (Lowering::Scenery#emit_bend_routine).
+          def emit_frame(asm, memory, saves, second, walks, frame_begins = nil, scenery: false, bends: nil)
             at = ->(name) { X86.mem(nil, memory[name], size: 32) }
             retrace = Console::DOSHardware::RETRACE_BIT
 
@@ -334,6 +336,9 @@ module VBlank
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.inc(:eax)
             asm.mov(at.call(Frame::PASSES), :eax)
+            # The bends first, as the interpreter works them out at a console that places its scroll before the
+            # wait (Reference#advance_frame): before the corners of the pass that put anything up expire.
+            asm.call(bends) if bends
             asm.call("rt_scenery_frame_ended") if scenery
             if frame_begins
               # What keeps time by the frame moves on, unless a reader has taken the last pass it compares,

@@ -86,7 +86,7 @@ module VBlank
 
           # The label of the routine the runtime runs at each frame boundary (TimerSteps), or nil for a game
           # with no timers.
-          attr_reader :frame_begins
+          attr_reader :frame_begins, :bends_routine
 
           def pictures? = !@art_places.empty?
 
@@ -150,6 +150,8 @@ module VBlank
             @asm.ret
             emit_routines
             @frame_begins = emit_timer_routines
+            @bends_routine = emit_bend_routine
+            emit_live_bend_routine
             emit_clock_routines
           end
 
@@ -399,6 +401,8 @@ module VBlank
             when :background then emit_background(node)
             when :scroll_background then emit_scroll_background(node)
             when :place_bar then emit_place_bar(node)
+            when :scroll_rows then emit_scroll_rows
+            when :affine_background then emit_affine_background(node)
             when :box_background then emit_box_background(node)
             when :set_tile then emit_set_tile(node)
             when :show_held_tiles then emit_show_held_tiles(node)
@@ -525,7 +529,12 @@ module VBlank
           #
           # The handler's own numbers are not known until its statements are written, so the keeping is
           # written after them and jumped to first.
-          def with_interrupted_numbers_kept(handler)
+          def with_interrupted_numbers_kept(handler, &) = with_numbers_kept([handler], [@timer_crossed], &)
+
+          # The statements the block writes, run at a frame boundary from +roots+ (a timer's handler, a bend), with
+          # the numbers of every routine they can call, the routine's own and +also+ kept on the stack round them
+          # (#with_interrupted_numbers_kept says why).
+          def with_numbers_kept(roots, also = [])
             keep = fresh_label("keep_numbers")
             run = fresh_label("run_handler")
             put_back = fresh_label("put_numbers_back")
@@ -534,8 +543,9 @@ module VBlank
             yield
             @asm.jmp(put_back)
             @asm.label(keep)
-            called = routines_called_from(handler).flat_map { |name| @locals_of_routine.fetch(Lowering.routine_label(name), []) }
-            kept = called + @locals_of_routine.fetch(@routine, []) + [@timer_crossed]
+            called = roots.flat_map { |root| routines_called_from(root) }.uniq
+                          .flat_map { |name| @locals_of_routine.fetch(Lowering.routine_label(name), []) }
+            kept = (called + @locals_of_routine.fetch(@routine, []) + also).uniq
             kept.each do |name|
               @asm.mov(:eax, number_at(name))
               @asm.push(:eax)

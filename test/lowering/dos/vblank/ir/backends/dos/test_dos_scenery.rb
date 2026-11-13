@@ -135,6 +135,34 @@ class TestDOSScenery < Minitest::Test
     assert_equal VBlank::Graphics::Color.resolve(:yellow), run.screen.pixel(0, 0)
   end
 
+  # A background put up while another is shown alone above its row is built into the view, below that row, and
+  # never stamped over the rows the other has alone (Reference#stamp_background).
+  def test_a_background_put_up_under_one_shown_alone_stays_below_its_row
+    test = self
+    run = checked(frames: 3) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      background :top, tiles: :over, map: Array.new(4, "CN" * 4), above_row: 16, alone: true
+      background :field, tiles: :colors, map: test.stripes(40, 25)
+      game_loop {}
+    end
+
+    assert_equal VBlank::Graphics::Color.resolve(:black), run.screen.pixel(1, 0), "a see-through pixel of the top shows the backdrop"
+  end
+
+  # A background held above a row that turns is drawn on every row, as the interpreter draws a turned background
+  # (Reference#paint_affine_background_window reads the rows the backgrounds are seen in, not its own row).
+  def test_a_turned_background_held_above_a_row_is_drawn_on_every_row
+    test = self
+    checked(frames: 3) do
+      screen :rotozoom, backdrop: :black
+      test.tilesets(self)
+      background :under, tiles: :colors, map: test.stripes(20, 20)
+      top = background :top, tiles: :colors, map: test.stripes(32, 8), above_row: 40
+      game_loop { top.rotate 20 }
+    end
+  end
+
   # One background scrolled every pass is built again every pass, and in less than a frame, so the game's
   # passes keep to the screen's frames on either screen.
   def test_a_scrolled_view_is_built_within_a_frame

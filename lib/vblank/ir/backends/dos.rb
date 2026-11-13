@@ -148,7 +148,7 @@ module VBlank
                                     saves: lowering.saves?, clock: lowering.clock?, area: lowering.area?,
                                     sprites: sprites.positive?, regions: lowering.regions?,
                                     walks: walks, view: view, columns: Lowering.draws_columns?(program),
-                                    fractions: Lowering.divides_fractions?(program), frame_begins: lowering.frame_begins,
+                                    fractions: Lowering.divides_fractions?(program), frame_begins: lowering.frame_begins, bends: lowering.bends_routine,
                                     lists: Lowering::Lists.used_in?(program), sorts: Lowering::Lists.sorted_in?(program),
                                     overlaps: Lowering.overlaps_in?(program), scenery: lowering.scenery_plan)
           refuse_too_much_code!(asm.here)

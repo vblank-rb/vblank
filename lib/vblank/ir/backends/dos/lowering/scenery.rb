@@ -16,18 +16,19 @@ module VBlank
           # stack's order with the sprites at their levels; their cells changed one at a time, held to the frame's
           # end, or a whole other map at once; tiles the game paints from a list; a background drawn from another
           # list of colours; a status bar, a background held above a row or to a box (Runtime::Scenery's clip);
-          # and text. A background or a stack that needs more is refused by name (PART), until the slice that
-          # makes it.
+          # text; backgrounds bent row by row (worked out at each wait, #emit_bend_routine) and turned and resized
+          # (Runtime::Scenery#emit_turned_window). A background or a stack that needs more is refused by name
+          # (PART), until the slice that makes it.
           module Scenery
             STATEMENT_KINDS = %i[background scroll_background set_tile show_held_tiles show_map copy_tiles copy_owed_tiles
-                                 background_colors place_bar box_background].freeze
+                                 background_colors place_bar box_background scroll_rows affine_background].freeze
 
             # The kinds that move a background or change its cells, which the interpreter answers by building the view
             # again every pass (Reference#collect_definitions, @repaints), as it does for a scroll.
-            REBUILT_EACH_PASS = %i[scroll_background place_bar box_background set_tile show_map tile_run background_colors].freeze
+            REBUILT_EACH_PASS = %i[scroll_background place_bar box_background scroll_rows affine_background set_tile show_map tile_run background_colors].freeze
 
             # The part of the build a game with such a screen waits for, for a test run to count skips by.
-            PART = "a screen of tiles with bends, turns, other colours, or a scene's own scenery; " \
+            PART = "a screen of tiles with blocks, other colours, or a scene's own scenery; " \
                    "sprites painted from a list"
 
             # Whether +program+ shows a screen made of tiles.
@@ -45,8 +46,23 @@ module VBlank
             def self.reserve(memory, program)
               return unless used_in?(program)
 
-              Runtime::Scenery.reserve(memory, backgrounds_in(program).size, held: holds_cells?(program), runs: paints_tiles?(program))
+              backgrounds = backgrounds_in(program)
+              Runtime::Scenery.reserve(memory, backgrounds.size, held: holds_cells?(program), runs: paints_tiles?(program))
+              bends_in(program).each_key { |name| memory.reserve(bend_rows_place(name), memory.screen.height * 4) }
             end
+
+            # The game's bends (`scroll_rows`), by the name of the background each bends: the last it is given, in
+            # the order the backgrounds were first bent, and only for a background the game has (Reference
+            # #collect_definitions, #work_out_bends).
+            def self.bends_in(program)
+              named = program.walk.select { |node| node.kind == :background }.to_set(&:name)
+              program.walk.select { |node| node.kind == :scroll_rows && named.include?(node.name) }
+                     .group_by(&:name).transform_values(&:last)
+            end
+
+            # Where a bent background's rows are kept in the data segment: how far along each row of the screen sits,
+            # a double word a row, as the last wait worked them out.
+            def self.bend_rows_place(name) = [:bend_rows, name]
 
             # Whether +program+ paints tiles of a background from a list.
             def self.paints_tiles?(program) = program.walk.any? { |node| node.kind == :tile_run && node.picture.nil? }
@@ -81,6 +97,7 @@ module VBlank
               return unless scenery_used?
 
               { levels: scenery_levels, backgrounds: scenery_backgrounds.size, bars: scenery_bars, alone: scenery_alone,
+                live_bends: Scenery.bends_in(@program).empty? ? nil : "game bends live", turned: scenery_turned,
                 cells: scenery_kinds.include?(:set_tile), held: Scenery.holds_cells?(@program), maps: scenery_kinds.include?(:show_map),
                 runs: Scenery.paints_tiles?(@program) }
             end
@@ -115,7 +132,6 @@ module VBlank
             # What about the game's screen of tiles the build does not make yet, in words, or nil.
             def unmade_in_scenery
               screens = @program.walk.select { |node| node.kind == :screen }
-              return "a screen that turns" if screens.any? { |node| node.mode == :rotozoom }
               return "a painted screen as well" if screens.map { |node| Scenery.tiles_mode?(node.mode) }.uniq.size > 1
               return "a screen of its own in a scene" unless @plan.handover.scene_screens.empty?
               return "a backdrop that follows a list of colours" if @plan.handover.backdrop_follows_list?
@@ -145,6 +161,45 @@ module VBlank
 
             def sprites_stacked? = @sprites_stacked.nil? ? (@sprites_stacked = Scenery.stacks_sprites?(@program)) : @sprites_stacked
 
+            # Whether +bg+ can turn: declared on a screen that turns, or named by a turn.
+            def turns?(bg) = bg.affine || turned_names.include?(bg.name)
+
+            def turned_names = (@turned_names ||= @program.walk.select { |node| node.kind == :affine_background }.to_set(&:name))
+
+            # Whether a tile of +bg+ is a power of two across and down, which a turned background's drawing masks by.
+            def square_tiles?(bg) = [bg.tile_w, bg.tile_h].all? { |side| side.positive? && (side & (side - 1)).zero? }
+
+            # Each background that can turn, as its drawing is written (Runtime::Scenery::Turned).
+            def scenery_turned
+              scenery_backgrounds.each_index.select { |number| turns?(scenery_backgrounds[number]) }.map do |number|
+                bg = scenery_backgrounds[number]
+                record = @scenery_records.fetch(number)
+                field = ->(name) { record.fetch(Runtime::Scenery::RECORD.index(name)) }
+                Runtime::Scenery::Turned.new(record: @art_places.fetch([:background, number]), tile_w: bg.tile_w, tile_h: bg.tile_h,
+                                             cols: field.call(:cols), rows: field.call(:rows), cells: field.call(:cells),
+                                             mixed: field.call(:mixed), mask_delta: field.call(:mask_delta))
+              end
+            end
+
+            # Reference#exec_affine_background: the angle and the size worked out, kept with the point it turns about,
+            # and the map moved from the screen's corner where the game named a point of the map; the background then
+            # turns from now on, and the view is built again.
+            def emit_affine_background(node)
+              state = Runtime::Scenery.state_at(@memory, background_named(node.name))
+              part = ->(at) { X86.mem(nil, state + at, size: 32) }
+              emit_values_into(%i[eax ecx], [value_node(node.angle), value_node(node.scale)])
+              @asm.mov(part.call(Runtime::Scenery::ANGLE), :eax)
+              @asm.mov(part.call(Runtime::Scenery::SIZE), :ecx)
+              @asm.mov(part.call(Runtime::Scenery::PIVOT_X), node.around_x)
+              @asm.mov(part.call(Runtime::Scenery::PIVOT_Y), node.around_y)
+              @asm.mov(part.call(Runtime::Scenery::TURNED), 1)
+              unless node.map_shift == [0, 0]
+                @asm.mov(part.call(Runtime::Scenery::SCROLL_X), node.map_shift[0] & 0xFFFF_FFFF)
+                @asm.mov(part.call(Runtime::Scenery::SCROLL_Y), node.map_shift[1] & 0xFFFF_FFFF)
+              end
+              @asm.call("rt_scenery_rebuild")
+            end
+
             # The records of the status bars, which the view is built over first (Runtime::Scenery#emit_view_bar).
             def scenery_bars
               scenery_backgrounds.each_index.select { |number| scenery_backgrounds[number].bar? }
@@ -160,7 +215,8 @@ module VBlank
             end
 
             def unmade_in_background(bg)
-              return "a background that turns" if bg.affine
+              return "a background that turns with a map too big for a grid" if turns?(bg) && !TileMap.fits?(bg.map)
+              return "a background that turns with tiles not a power of two across or down" if turns?(bg) && !square_tiles?(bg)
               return "a background drawn from several lists of colours the game changes" if bg.follows_several?
               return "a background drawn in other colours with tiles the game paints" if recolored?(bg) && bg.tiles.any? { |name| painted_tiles.key?(name) }
               return "a background whose tiles come in sets" if bg.several_sets?
@@ -190,6 +246,7 @@ module VBlank
 
               @scenery_tile_places = []
               records = scenery_backgrounds.each_with_index.map { |bg, number| scenery_record(bg, number) }
+              @scenery_records = records
               records.each_with_index do |fields, number|
                 @art_places[[:background, number]] = @art.bytesize
                 @art << fields.pack("v*").ljust(Runtime::Scenery::RECORD_BYTES, "\0")
@@ -229,7 +286,7 @@ module VBlank
               [cells, cols, rows, bg.tile_w, bg.tile_h, wrap_w, wrap_h, wraps ? 1 : 0, across, down, step_x, step_y,
                maps.map(&:length).max * bg.tile_h, Runtime::Scenery.state_at(@memory, number), mixed, mask_delta,
                copies.first.last, table, copies.size, 0, bg.bar? ? -bg.bar_top.clamp(0, @memory.screen.height) & 0xFFFF : 0,
-               bg.above_row || 0]
+               bg.above_row || 0, Scenery.bends_in(@program).key?(bg.name) ? @memory[Scenery.bend_rows_place(bg.name)] : 0]
             end
 
             # +map+'s cells, +cols+ across and +rows+ down, into the art segment: a word a cell, where its tile's pixels
@@ -445,6 +502,83 @@ module VBlank
             def emit_built_put_up(node)
               @asm.call("rt_scenery_put_up_built")
               @asm.mov(runtime_at(Runtime::Scenery::BAR_SHOWN), 1) if node.bar?
+              @asm.mov(runtime_at(Runtime::Scenery::ALONE_SHOWN), 1) if node.alone
+            end
+
+            # Reference#work_out_bends, as a routine the wait calls before the picture is shown (Runtime#emit_frame):
+            # each bend's top row, then the rest of each in turn, its row's number in the bend's variable, the bend's
+            # own steps, and where the row sits kept in its rows; the variable left at the screen's height. The view is
+            # built again, but not at the game's first wait, as the interpreter has nothing up to build then. Nil for a
+            # game that bends nothing.
+            def emit_bend_routine
+              bends = Scenery.bends_in(@program)
+              return if bends.empty?
+
+              height = @memory.screen.height
+              label = "game bends"
+              emit_own_routine(label) do
+                # The game can be waiting inside a routine a bend calls (LoweringPlan#routines_reentered_at_frame_boundary).
+                with_numbers_kept(bends.values) do
+                  bends.each_value { |bend| emit_bend_row(bend, 0) }
+                  bends.each_value do |bend|
+                    emit_bend_rows(bend, height)
+                    @asm.mov(number_at(bend.row), height)
+                  end
+                end
+                @asm.cmp(runtime_at(Runtime::Frame::PASSES), 1)
+                @asm.je("game_bends_first_wait")
+                @asm.call("rt_scenery_rebuild")
+                @asm.label("game_bends_first_wait")
+              end
+              label
+            end
+
+            # Reference#exec_scroll_rows: a standing declaration, its rows worked out at each wait (#emit_bend_routine);
+            # reached, it owes the view, so a game that never waits still shows the bend.
+            def emit_scroll_rows = @asm.call("rt_scenery_rebuild")
+
+            # Reference#bend_offset_at before the game's first wait, where nothing is worked out yet: each bend's rows
+            # worked out as the view is built, every row of one bend and then the next, the variable left at the last
+            # row (Runtime::Scenery#emit_view calls it). Nil for a game that bends nothing.
+            def emit_live_bend_routine
+              bends = Scenery.bends_in(@program)
+              return if bends.empty?
+
+              label = "game bends live"
+              emit_own_routine(label) do
+                bends.each_value do |bend|
+                  emit_bend_row(bend, 0)
+                  emit_bend_rows(bend, @memory.screen.height)
+                  @asm.mov(number_at(bend.row), @memory.screen.height - 1)
+                end
+              end
+              label
+            end
+
+            # Row +row+ of +bend+: its number in the bend's variable, the steps, and the answer kept.
+            def emit_bend_row(bend, row)
+              @asm.mov(number_at(bend.row), row)
+              bend.children.each { |child| emit_statement(child) }
+              emit_value(bend.offset)
+              @asm.mov(X86.mem(nil, @memory[Scenery.bend_rows_place(bend.name)] + (row * 4), size: 32), :eax)
+            end
+
+            # Rows 1 to +height+ of +bend+, counted in a place of their own, since the steps can change the variable.
+            def emit_bend_rows(bend, height)
+              counter = runtime_at(Runtime::Scenery::BEND_ROW)
+              again = fresh_label("bend_row")
+              @asm.mov(counter, 1)
+              @asm.label(again)
+              @asm.mov(:eax, counter)
+              @asm.mov(number_at(bend.row), :eax)
+              bend.children.each { |child| emit_statement(child) }
+              emit_value(bend.offset)
+              @asm.mov(:ebx, counter)
+              @asm.shl(:ebx, 2)
+              @asm.mov(X86.mem(:bx, @memory[Scenery.bend_rows_place(bend.name)], size: 32), :eax)
+              @asm.inc(counter)
+              @asm.cmp(counter, height)
+              @asm.jl(again)
             end
 
             # Reference#exec_place_bar: the status bar's top worked out and kept to the screen, and whether it covers
@@ -549,7 +683,8 @@ module VBlank
                 @asm.cmp(X86.mem(nil, state + Runtime::Scenery::SHOWN, size: 32), 0)
                 @asm.je(down)
                 @asm.mov(:si, @art_places.fetch([:background, number]))
-                @asm.call("rt_scenery_stamp")
+                @asm.mov(:bx, state)
+                @asm.call(scenery_backgrounds[number].above_row ? "rt_scenery_request" : "rt_scenery_restamp")
                 @asm.label(down)
               end
             end

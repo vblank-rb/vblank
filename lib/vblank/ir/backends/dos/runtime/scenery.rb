@@ -59,10 +59,11 @@ module VBlank
             #
             # +corner_y+ is the row of the map the screen's top shows while the background shows from its corner: nought,
             # or for a status bar the row it was declared at, less than nought (a word with a sign). +above_row+ is the
-            # row a background held above a row stops at (`above_row:`), or nought.
+            # row a background held above a row stops at (`above_row:`), or nought. +bends+ is where a bent background's
+            # rows are kept in the data segment (Lowering::Scenery.bend_rows_place), or nought for one not bent.
             RECORD = %i[cells cols rows tile_w tile_h wrap_w wrap_h wraps across down step_x step_y map_h state mixed
-                        mask_delta lengths maps map_count colors_offset corner_y above_row].freeze
-            RECORD_BYTES = 44
+                        mask_delta lengths maps map_count colors_offset corner_y above_row bends].freeze
+            RECORD_BYTES = 48
             NO_TILE = 0xFFFF
 
             # THE CELL CHANGES HELD FOR THE FRAME'S END (`set_tile ..., held: true`, Reference#exec_set_tile), in the
@@ -103,7 +104,7 @@ module VBlank
             # A STATUS BAR'S TOP is kept as its scroll: it is shown from the map's top-left corner, that many rows down
             # the screen, so its scroll is nought across and its top less than nought down (`place_bar`), and it is
             # placed, shown from its corner and built into the view as a scroll is.
-            STATE_BYTES = 48
+            STATE_BYTES = 68
             SCROLL_X = 0
             SCROLL_Y = 4
             FROM_CORNER = 8
@@ -116,6 +117,14 @@ module VBlank
             BOX_TOP = 36
             BOX_RIGHT = 40
             BOX_BOTTOM = 44
+            # A BACKGROUND THAT TURNS OR RESIZES (`affine_background`, Reference @bg_affine): whether it has ever been
+            # turned, which it stays, its angle and size as the game last gave them, and the point of the screen it
+            # turns about. Its scroll is where its map is moved from the screen's corner, which its turn sets.
+            TURNED = 48
+            ANGLE = 52
+            SIZE = 56
+            PIVOT_X = 60
+            PIVOT_Y = 64
             STATES = "rt scenery states"
 
             OWED = "rt scenery owed" # the view must be built again before it is next shown
@@ -160,14 +169,26 @@ module VBlank
             BAR_RECORD = "rt scenery bar record"
             ALONE_ROW = "rt scenery alone row"
             ALONE_RECORD = "rt scenery alone record"
-            # A status bar has been put up, so a background put up is built into the view and never stamped, which
-            # would paint over the bar's rows (Reference#put_up_background).
+            # A status bar has been put up, or a background shown alone above its row, so a background put up is built
+            # into the view and never stamped, which would paint over the bar's rows or the other's (Reference
+            # #put_up_background, #stamp_background).
             BAR_SHOWN = "rt scenery bar shown"
+            ALONE_SHOWN = "rt scenery alone shown"
+            # Which row a bend is being worked out for (Lowering::Scenery#emit_bend_rows).
+            BEND_ROW = "rt scenery bend row"
+            # What a turned background's drawing keeps while it works (#emit_turned_window): the first and third numbers
+            # of its turn, how far each pixel moves along the map across and down, and the point of the map at the
+            # pivot, across and down.
+            TURN_ACROSS = "rt scenery turn across"
+            TURN_DOWN = "rt scenery turn down"
+            TURN_ORIGIN_X = "rt scenery turn origin x"
+            TURN_ORIGIN_Y = "rt scenery turn origin y"
 
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
                      PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y, CLIP_LEFT, CLIP_TOP, CLIP_RIGHT, CLIP_BOTTOM,
-                     SCENERY_ROWS, BAR_RECORD, ALONE_ROW, ALONE_RECORD, BAR_SHOWN].freeze
+                     SCENERY_ROWS, BAR_RECORD, ALONE_ROW, ALONE_RECORD, BAR_SHOWN, ALONE_SHOWN, BEND_ROW,
+                     TURN_ACROSS, TURN_DOWN, TURN_ORIGIN_X, TURN_ORIGIN_Y].freeze
 
             module_function
 
@@ -191,18 +212,22 @@ module VBlank
             # can be at that level and is drawn into the view (Sprites::LEVELS). +backgrounds+ is how many there are.
             # +cells+, +held+ and +maps+ say whether the game changes a cell, holds a change for the frame's end, or
             # shows another map. +bars+ is the record of each status bar, and +alone+ each background shown alone above
-            # its row, as [its record, its row, whether it keeps the sprites out too].
-            def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false, bars: [], alone: [])
+            # its row, as [its record, its row, whether it keeps the sprites out too]. +live_bends+ is the game's routine
+            # that works its bends out as the view is built before its first wait, or nil. +turned+ is each background that
+            # can turn, as a Turned.
+            def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false, bars: [], alone: [],
+                     live_bends: nil, turned: [])
               emit_requests(asm, memory, backgrounds, held: held)
               emit_paint_run(asm, memory) if runs
               emit_set_cell(asm, memory) if cells
               emit_held(asm, memory) if held
               emit_show_map(asm, memory) if maps
               emit_backdrop(asm, memory)
-              emit_view(asm, memory, levels, backgrounds, bars, alone)
+              emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends)
               emit_clipped_window(asm, memory)
+              turned.each { |background| emit_turned_window(asm, memory, background) }
               emit_fill_rows(asm, memory)
-              emit_window(asm, memory)
+              emit_window(asm, memory, turned)
               emit_stamp(asm, memory)
               emit_map_row(asm, memory)
             end
@@ -256,9 +281,16 @@ module VBlank
               asm.jmp("rt_scenery_request")
               asm.label("rt_scenery_put_up")
               asm.call("rt_scenery_mark_up")
+              # rt_scenery_restamp, with SI at a background's record and BX at its STATE: stamped, or built into the
+              # view where a stamp would paint outside the part of the screen it is seen in (Reference#stamp_background).
+              asm.label("rt_scenery_restamp")
               asm.cmp(word.call(BAR_SHOWN), 0)
               asm.jne("rt_scenery_request")
+              asm.cmp(word.call(ALONE_SHOWN), 0)
+              asm.jne("rt_scenery_request")
               asm.cmp(X86.mem(:bx, BOXED, size: 32), 0)
+              asm.jne("rt_scenery_request")
+              asm.cmp(X86.mem(:bx, TURNED, size: 32), 0) # a stamp would put it back as drawn and lose its turn
               asm.jne("rt_scenery_request")
               asm.jmp("rt_scenery_stamp")
               asm.label("rt_scenery_mark_up")
@@ -582,7 +614,7 @@ module VBlank
             # backdrop and where each background shows from, so where the picture is still the view last built
             # (BUILT) and none of those has changed, building it again would make the same picture, and is left.
             # Placing sprites that are drawn into the view builds it again (rt_scenery_rebuild).
-            def emit_view(asm, memory, levels, backgrounds, bars, alone)
+            def emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends)
               asm.label("rt_scenery_view")
               asm.cmp(at(memory, BUILT), 0)
               asm.je("rt_scenery_view_build")
@@ -608,6 +640,14 @@ module VBlank
               end
               asm.ret
               asm.label("rt_scenery_view_build")
+              if live_bends
+                # Before the first wait the bends have not been worked out, and the interpreter asks each row as it
+                # builds the view (Reference#bend_offset_at).
+                asm.cmp(X86.mem(nil, memory[Frame::PASSES], size: 32), 0)
+                asm.jne("rt_scenery_view_bends_kept")
+                asm.call(live_bends)
+                asm.label("rt_scenery_view_bends_kept")
+              end
               asm.mov(at(memory, BUILT), 1)
               asm.mov(:al, at(memory, BACKDROP, 8))
               asm.mov(at(memory, BUILT_BACKDROP, 8), :al)
@@ -761,6 +801,10 @@ module VBlank
               asm.movzx(:eax, X86.mem(:si, field(:above_row), seg: :gs, size: 16))
               asm.test(:eax, :eax)
               asm.je("rt_scenery_clipped_no_row")
+              # A background that has turned is drawn on every row the backgrounds are seen in, its own row or not,
+              # as the interpreter draws it (Reference#paint_affine_background_window).
+              asm.cmp(X86.mem(:bx, TURNED, size: 32), 0)
+              asm.jne("rt_scenery_clipped_no_row")
               asm.cmp(:eax, clip.call(CLIP_BOTTOM))
               asm.jge("rt_scenery_clipped_no_row")
               asm.mov(clip.call(CLIP_BOTTOM), :eax)
@@ -801,11 +845,18 @@ module VBlank
 
             # rt_scenery_window, with SI at a background's record and GS at the art: its window painted where it is
             # scrolled to, or from its corner (Reference#paint_background_window, #paint_streamed_background_window).
-            def emit_window(asm, memory)
+            def emit_window(asm, memory, turned = [])
               word = ->(name) { at(memory, name) }
               record = ->(name) { X86.mem(:si, field(name), seg: :gs, size: 16) }
               asm.label("rt_scenery_window")
               asm.mov(:bx, record.call(:state))
+              turned.each do |background|
+                asm.cmp(:si, background.record)
+                asm.jne("rt_scenery_window_not_#{background.record}")
+                asm.cmp(X86.mem(:bx, TURNED, size: 32), 0)
+                asm.jne(turned_label(background))
+                asm.label("rt_scenery_window_not_#{background.record}")
+              end
               asm.xor(:eax, :eax)
               asm.movsx(:ecx, record.call(:corner_y))
               asm.cmp(X86.mem(:bx, FROM_CORNER, size: 32), 0)
@@ -835,6 +886,15 @@ module VBlank
               asm.cmp(:eax, :ebx)
               asm.jge("rt_scenery_window_row_done")
               asm.mov(:ecx, word.call(SCROLL_SHOWN_X))
+              asm.movzx(:ebx, record.call(:bends))
+              asm.test(:ebx, :ebx)
+              asm.je("rt_scenery_window_row_flat")
+              asm.mov(:edx, word.call(PY))
+              asm.shl(:edx, 2)
+              asm.add(:bx, :dx)
+              asm.add(:ecx, X86.mem(:bx, 0, size: 32)) # the row moved along by its bend (Reference#bend_offset_at)
+              asm.jo("rt_scenery_window_row_done") # so far along that none of the map is on the row
+              asm.label("rt_scenery_window_row_flat")
               asm.xor(:edx, :edx)
               emit_map_row_call(asm, memory)
               asm.label("rt_scenery_window_row_done")
@@ -866,10 +926,171 @@ module VBlank
               asm.label("rt_scenery_window_brought_round")
               asm.mov(:ecx, word.call(SCROLL_SHOWN_X))
               asm.movzx(:edx, record.call(:wrap_w))
+              emit_wrapped_bend(asm, memory, record)
               emit_map_row_call(asm, memory)
               emit_next_py(asm, memory, "rt_scenery_window_wrapped_row")
               asm.label("rt_scenery_window_no_rows")
               asm.ret
+            end
+
+            # A background that can turn, as the drawing of it is written: its record's place, and its tiles' width and
+            # height, its grid's columns and rows (each a power of two, so a place on the map comes round by a mask),
+            # where its cells are, where its tiles with see-through pixels start and how far past them a mask is.
+            Turned = Data.define(:record, :tile_w, :tile_h, :cols, :rows, :cells, :mixed, :mask_delta)
+
+            def turned_label(background) = "rt_scenery_turned_#{background.record}"
+
+            # The window of a background that has turned, with SI at its record and BX at its STATE: each pixel of the
+            # rows and columns of the clip worked back through its turn to the pixel of the map it shows, the map
+            # coming round at its grid's edge, and a see-through pixel or a cell with no tile leaving what is there
+            # (Reference#paint_affine_background_window).
+            #
+            # Along a row a pixel's place on the map moves by the turn's first number across and its third down, in
+            # 256ths, so a pixel costs two additions and the masks: the sum before the shift is kept whole, so the
+            # 256th dropped is the one the interpreter drops for that pixel. While the row is drawn DS is the art.
+            def emit_turned_window(asm, memory, background)
+              tag = turned_label(background)
+              kept = ->(name) { X86.mem(nil, memory[name], seg: :ss, size: 32) }
+              state = ->(part) { X86.mem(:bx, part, size: 32) }
+              tile_shift = background.tile_w.bit_length - 1
+              row_shift = background.tile_h.bit_length - 1
+              col_shift = background.cols.bit_length - 1
+              asm.label(tag)
+              asm.mov(:eax, state.call(ANGLE))
+              asm.mov(:ecx, state.call(SIZE))
+              asm.push(:si)
+              asm.push(:bx)
+              asm.call("rt_turn_matrix")
+              asm.pop(:bx)
+              asm.pop(:si)
+              asm.mov(at(memory, TURN_ACROSS), :eax) # the first number: across the map for a pixel across
+              asm.neg(:edx)
+              asm.mov(at(memory, TURN_DOWN), :edx) # the third: down the map for a pixel across
+              # The point of the map at the pivot: the scroll the turn set, plus the pivot, brought inside the map, which
+              # comes round by a power of two, and in 256ths, so a row's sums start from it and a pixel adds nothing.
+              { x: background.cols * background.tile_w, y: background.rows * background.tile_h }.each do |axis, side|
+                asm.mov(:eax, state.call(axis == :x ? SCROLL_X : SCROLL_Y))
+                asm.add(:eax, state.call(axis == :x ? PIVOT_X : PIVOT_Y))
+                asm.and(:eax, side - 1)
+                asm.shl(:eax, 8)
+                asm.mov(at(memory, axis == :x ? TURN_ORIGIN_X : TURN_ORIGIN_Y), :eax)
+              end
+              asm.mov(:ax, X86.mem(:si, field(:colors_offset), seg: :gs, size: 16))
+              asm.mov(at(memory, COLORS_OFFSET, 16), :ax)
+              asm.mov(:eax, at(memory, CLIP_TOP))
+              asm.mov(at(memory, PY), :eax)
+              asm.cmp(:eax, at(memory, CLIP_BOTTOM))
+              asm.jge("#{tag}_done")
+              asm.label("#{tag}_row")
+              # The row's first pixel's place on the map, in 256ths from the pivot's (Affine.matrix's four numbers are
+              # the first, less than nought the third, the third and the first): across, the first times how far it is
+              # across from the pivot and the second times how far down; down, the third and the fourth the same.
+              asm.mov(:ebp, at(memory, PY))
+              asm.sub(:ebp, state.call(PIVOT_Y)) # down from the pivot
+              asm.mov(:ecx, at(memory, CLIP_LEFT))
+              asm.sub(:ecx, state.call(PIVOT_X)) # across from it
+              asm.mov(:eax, at(memory, TURN_ACROSS))
+              asm.imul(:eax, :ecx)
+              asm.mov(:edx, at(memory, TURN_DOWN))
+              asm.imul(:edx, :ebp)
+              asm.sub(:eax, :edx)
+              asm.add(:eax, at(memory, TURN_ORIGIN_X))
+              asm.mov(at(memory, ROW_BEGIN), :eax) # across the map, before the shift
+              asm.mov(:eax, at(memory, TURN_DOWN))
+              asm.imul(:eax, :ecx)
+              asm.mov(:edx, at(memory, TURN_ACROSS))
+              asm.imul(:edx, :ebp)
+              asm.add(:eax, :edx)
+              asm.add(:eax, at(memory, TURN_ORIGIN_Y))
+              asm.mov(at(memory, ROW_END), :eax) # down the map, before the shift
+              asm.push(:bx)
+              asm.push(:si)
+              asm.mov(:ebp, at(memory, PY))
+              Rows.emit_row_start(asm, memory.screen, :ebp)
+              asm.mov(:ax, :di)
+              asm.add(:di, at(memory, CLIP_LEFT, 16))
+              asm.add(:ax, at(memory, CLIP_RIGHT, 16))
+              asm.mov(at(memory, OFF_X, 16), :ax) # where the row's last pixel is passed
+              asm.mov(:ebp, at(memory, ROW_BEGIN))
+              asm.mov(:edx, at(memory, ROW_END))
+              asm.push(:ds)
+              asm.push(:gs)
+              asm.pop(:ds)
+              asm.label("#{tag}_pixel")
+              asm.mov(:eax, :ebp)
+              asm.sar(:eax, 8)
+              asm.and(:eax, (background.cols * background.tile_w) - 1) # across the map, come round
+              asm.mov(:ebx, :edx)
+              asm.sar(:ebx, 8)
+              asm.and(:ebx, (background.rows * background.tile_h) - 1) # and down
+              asm.mov(:esi, :ebx)
+              asm.shr(:esi, row_shift)
+              asm.shl(:esi, col_shift + 1)
+              asm.mov(:ecx, :eax)
+              asm.shr(:ecx, tile_shift)
+              asm.add(:esi, :ecx)
+              asm.add(:esi, :ecx) # a word a cell
+              asm.mov(:si, X86.mem(:si, background.cells, size: 16)) # the cell: where its tile's pixels are
+              asm.cmp(:si, NO_TILE)
+              asm.je("#{tag}_empty")
+              asm.and(:ebx, background.tile_h - 1)
+              asm.shl(:ebx, tile_shift)
+              asm.and(:eax, background.tile_w - 1)
+              asm.add(:ebx, :eax)
+              asm.add(:bx, :si)
+              asm.add(:bx, X86.mem(nil, memory[COLORS_OFFSET], seg: :ss, size: 16))
+              asm.cmp(:si, background.mixed)
+              asm.jb("#{tag}_solid")
+              asm.cmp(X86.mem(:bx, background.mask_delta, size: 8), 0xFF)
+              asm.je("#{tag}_empty")
+              asm.label("#{tag}_solid")
+              asm.mov(:al, X86.mem(:bx, 0, size: 8))
+              asm.mov(X86.mem(:di, 0, seg: :es, size: 8), :al)
+              asm.label("#{tag}_empty")
+              asm.inc(:di)
+              asm.add(:ebp, kept.call(TURN_ACROSS))
+              asm.add(:edx, kept.call(TURN_DOWN))
+              asm.cmp(:di, X86.mem(nil, memory[OFF_X], seg: :ss, size: 16))
+              asm.jne("#{tag}_pixel")
+              asm.pop(:ds)
+              asm.pop(:si)
+              asm.pop(:bx)
+              asm.mov(:eax, at(memory, PY))
+              asm.inc(:eax)
+              asm.mov(at(memory, PY), :eax)
+              asm.cmp(:eax, at(memory, CLIP_BOTTOM))
+              asm.jl("#{tag}_row")
+              asm.label("#{tag}_done")
+              asm.ret
+            end
+
+            # On a map that comes round, ECX (the window's column, inside the grid) moved along by the row's bend and
+            # brought round inside the grid again (Reference#paint_background_window); EDX the grid's width before and
+            # after. Keeps EAX.
+            def emit_wrapped_bend(asm, memory, record)
+              asm.movzx(:ebx, record.call(:bends))
+              asm.test(:ebx, :ebx)
+              asm.je("rt_scenery_window_wrapped_flat")
+              asm.push(:eax)
+              asm.mov(:eax, at(memory, PY))
+              asm.shl(:eax, 2)
+              asm.add(:bx, :ax)
+              asm.mov(:eax, X86.mem(:bx, 0, size: 32))
+              asm.mov(:ebx, :edx)
+              asm.cdq
+              asm.idiv(:ebx)
+              asm.test(:edx, :edx)
+              asm.jns("rt_scenery_window_bend_kept")
+              asm.add(:edx, :ebx)
+              asm.label("rt_scenery_window_bend_kept")
+              asm.add(:ecx, :edx)
+              asm.cmp(:ecx, :ebx)
+              asm.jb("rt_scenery_window_bend_inside")
+              asm.sub(:ecx, :ebx)
+              asm.label("rt_scenery_window_bend_inside")
+              asm.mov(:edx, :ebx)
+              asm.pop(:eax)
+              asm.label("rt_scenery_window_wrapped_flat")
             end
 
             # rt_scenery_map_row called for the row PY of the screen.

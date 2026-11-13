@@ -36,6 +36,59 @@ module VBlank
             def emit(asm, memory)
               emit_turned(asm, memory)
               emit_blit(asm, memory)
+            end
+
+            # rt_turn_matrix: the four numbers of a turn (IR::Affine.matrix) for the angle in EAX, whichever way round
+            # the game counted it, and the size in ECX: the cosine times one over the size into EAX, which is the first
+            # and the last, and the sine times it into EDX, the second; the third is less than nought by as much.
+            # Each is a 256th of the product, rounded down as the interpreter's division rounds. Changes EBX, ECX and
+            # SI. A sprite that turns and a background that turns (Scenery) both ask it, with the sines beside it.
+            def emit_matrix(asm)
+              asm.label("rt_turn_matrix")
+              asm.push(:ecx)
+              asm.cdq
+              asm.mov(:ecx, 360)
+              asm.idiv(:ecx)
+              asm.pop(:ecx)
+              asm.test(:edx, :edx)
+              asm.jns("rt_turn_matrix_degrees")
+              asm.add(:edx, 360)
+              asm.label("rt_turn_matrix_degrees")
+              asm.mov(:bx, :dx)
+              # One over the size, in 256ths (Affine.reciprocal), into ECX.
+              asm.cmp(:ecx, Affine::MIN_SCALE)
+              asm.jge("rt_turn_matrix_size")
+              asm.mov(:ecx, Affine::MIN_SCALE)
+              asm.label("rt_turn_matrix_size")
+              asm.mov(:eax, Build::SCALE_ONE * Affine::ONE_TH)
+              asm.xor(:edx, :edx)
+              asm.div(:ecx)
+              asm.cmp(:eax, Affine::MAX)
+              asm.jbe("rt_turn_matrix_size_held")
+              asm.mov(:eax, Affine::MAX)
+              asm.label("rt_turn_matrix_size_held")
+              asm.mov(:ecx, :eax)
+              asm.mov_offset(:si, "rt_sines")
+              asm.push(:bx)
+              asm.shl(:bx, 1)
+              asm.add(:bx, :si)
+              asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
+              asm.imul(:eax, :ecx)
+              asm.sar(:eax, 8)
+              asm.pop(:bx)
+              asm.push(:eax) # the sine's
+              asm.add(:bx, 90) # the cosine is the sine a quarter turn on
+              asm.cmp(:bx, 360)
+              asm.jb("rt_turn_matrix_cosine")
+              asm.sub(:bx, 360)
+              asm.label("rt_turn_matrix_cosine")
+              asm.shl(:bx, 1)
+              asm.add(:bx, :si)
+              asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
+              asm.imul(:eax, :ecx)
+              asm.sar(:eax, 8)
+              asm.pop(:edx)
+              asm.ret
               asm.label("rt_sines")
               asm.bytes(SINES.pack("s<*"))
             end
@@ -102,56 +155,15 @@ module VBlank
               asm.mov(:ax, entry.call(Sprites::ART, 16))
               asm.add(:ax, 4)
               asm.mov(frame.call(:pixels, 16), :ax)
-              # The angle as degrees from 0 to 359, whichever way round the game counted it.
+              # The turn's numbers (rt_turn_matrix): the sine and the cosine, each times one over the size.
               asm.mov(:eax, entry.call(Sprites::ANGLE, 32))
-              asm.cdq
-              asm.mov(:ecx, 360)
-              asm.idiv(:ecx)
-              asm.test(:edx, :edx)
-              asm.jns("rt_sprite_turned_degrees")
-              asm.add(:edx, 360)
-              asm.label("rt_sprite_turned_degrees")
-              asm.push(:dx)
-              # One over the size, in 256ths (Affine.reciprocal), into ECX.
               asm.mov(:ecx, entry.call(Sprites::SCALE, 32))
-              asm.cmp(:ecx, Affine::MIN_SCALE)
-              asm.jge("rt_sprite_turned_size")
-              asm.mov(:ecx, Affine::MIN_SCALE)
-              asm.label("rt_sprite_turned_size")
-              asm.mov(:eax, Build::SCALE_ONE * Affine::ONE_TH)
-              asm.xor(:edx, :edx)
-              asm.div(:ecx)
-              asm.cmp(:eax, Affine::MAX)
-              asm.jbe("rt_sprite_turned_size_held")
-              asm.mov(:eax, Affine::MAX)
-              asm.label("rt_sprite_turned_size_held")
-              asm.mov(:ecx, :eax)
-              asm.pop(:bx) # the degrees: the sprite's row of the table is read no more
-              # The sine and the cosine, each times that, a 256th of it kept, rounded down as the interpreter's
-              # division rounds (Affine.matrix).
-              asm.mov_offset(:si, "rt_sines")
-              asm.push(:bx)
-              asm.shl(:bx, 1)
-              asm.add(:bx, :si)
-              asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
-              asm.imul(:eax, :ecx)
-              asm.sar(:eax, 8)
-              asm.mov(frame.call(:across_by_row), :eax)
-              asm.neg(:eax)
-              asm.mov(frame.call(:down_by_column), :eax)
-              asm.pop(:bx)
-              asm.add(:bx, 90) # the cosine is the sine a quarter turn on
-              asm.cmp(:bx, 360)
-              asm.jb("rt_sprite_turned_cosine")
-              asm.sub(:bx, 360)
-              asm.label("rt_sprite_turned_cosine")
-              asm.shl(:bx, 1)
-              asm.add(:bx, :si)
-              asm.movsx(:eax, X86.mem(:bx, 0, seg: :cs, size: 16))
-              asm.imul(:eax, :ecx)
-              asm.sar(:eax, 8)
+              asm.call("rt_turn_matrix") # the sprite's row of the table is read no more
               asm.mov(frame.call(:across_by_column), :eax)
               asm.mov(frame.call(:down_by_row), :eax)
+              asm.mov(frame.call(:across_by_row), :edx)
+              asm.neg(:edx)
+              asm.mov(frame.call(:down_by_column), :edx)
               # Where in the picture the patch's first pixel is, in 256ths from the picture's middle: a picture's
               # width to the left of it and a height above.
               starts = [[:row_across, :across_by_column, :across_by_row], [:row_down, :down_by_column, :down_by_row]]
