@@ -165,7 +165,7 @@ module VBlank
         def free_name_for(owner, label, name)
           builder = Builder.in_use
           uses = builder.instance_variable_uses
-          free = builder.free_variable_name(name)
+          free = builder.reserve_free_variable_name(name)
           if free != name && uses.chosen_name(owner, label) && !uses.made_for?(name, owner, label)
             refuse_chosen_name_taken!(label, name)
           end

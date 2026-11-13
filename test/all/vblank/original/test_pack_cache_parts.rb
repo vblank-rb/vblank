@@ -3,6 +3,7 @@
 require "test_helper"
 require "tmpdir"
 require "made_up_original"
+VBlank.require_game_file "../../../plain_ruby_game_parts"
 
 # A ROUTINE IN PARTS IS CACHED A PART AT A TIME. A port's unpacking given as named parts
 # (`slots.fill_from_copy :music do ... end`) keeps each part's slots apart in the pack cache, so a
@@ -164,6 +165,52 @@ class TestPackCacheParts < Minitest::Test
       assert_equal %i[first], parts.inputs_of(:third)
       assert_empty parts.inputs_of(:second)
     end
+  end
+
+  # NAMES VBLANK MAKES FOR A PART carry nothing between parts: the console the build is for, named
+  # by every part's program, and the names the build makes unique, each part built alone making
+  # the same ones: the hidden copy of a value picked between two, and the game variable of an
+  # object's instance variable (TickerPart, test/plain_ruby_game_parts.rb), which the whole routine
+  # names apart (`ticker_part_ticks_2`). Parts sharing only those need nothing of each other, while
+  # a part reading a variable an earlier part set still needs that part.
+  private def parts_with_locals(folder)
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gba))
+    builder.data_pack(from: original(folder), version: "1") do |slots|
+      slots.numbers :first, count: 2, width: :byte, signed: false
+      slots.numbers :second, count: 2, width: :byte, signed: false
+      slots.numbers :third, count: 1, width: :byte, signed: false
+      slots.fill_from_copy(:first) do |copy, into|
+        low = copy.byte(0)
+        high = low > 3 ? copy.byte(1) : copy.byte(2)
+        into[:first][0] = low
+        into[:first][1] = high
+        var(:carried, 0).store!(copy.byte(3))
+        TickerPart.new(self, :first_tick)
+        call :first_tick
+      end
+      slots.fill_from_copy(:second) do |copy, into|
+        low = copy.byte(4)
+        high = low > 3 ? copy.byte(5) : copy.byte(6)
+        into[:second][0] = low
+        into[:second][1] = high
+        TickerPart.new(self, :second_tick)
+        call :second_tick
+      end
+      slots.fill_from_copy(:third) { |copy, into| into[:third][0] = copy.byte(7) + var(:carried, 0) }
+    end.unpacking_parts
+  end
+
+  def test_parts_sharing_only_names_vblank_made_need_nothing_of_each_other
+    Dir.mktmpdir do |folder|
+      parts = parts_with_locals(folder)
+
+      assert_empty parts.inputs_of(:second)
+      assert_equal %i[second], parts.played_for(%i[second])
+    end
+  end
+
+  def test_a_part_reading_a_variable_an_earlier_part_set_still_needs_it
+    Dir.mktmpdir { |folder| assert_equal %i[first], parts_with_locals(folder).inputs_of(:third) }
   end
 
   # Built all-in-one with a cache, the routine in parts makes the pack the build with no cache makes.

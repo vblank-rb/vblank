@@ -185,7 +185,10 @@ module VBlank
       # step that stands for a loop is handed (IR save_load_list, save_store_list).
       private def declare_loop_counter
         @repeat_seq += 1
-        :"__repeat_#{@repeat_seq}".tap { |index| ensure_var(index) }
+        :"__repeat_#{@repeat_seq}".tap do |index|
+          ensure_var(index)
+          @unique_names << index
+        end
       end
 
       # The console refreshes the screen ~59.73 times a second; like every game, we

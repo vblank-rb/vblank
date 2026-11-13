@@ -505,7 +505,9 @@ module VBlank
       # (DSL::PackSlots::Routine) run one after another as game code on a builder of its own. A
       # pack with no routine has one too, which only copies: it is what a shell runs for any pack.
       # The program holds none of the copy however it is built. +slot_uses+, by part name, records
-      # which slots each part reads and writes as it is built (#unpacking_parts).
+      # which slots each part reads and writes as it is built (#unpacking_parts), and
+      # +unique_names+, a Set where given, is handed the variable names the build made unique
+      # (Builder#unique_names).
       #
       # Built all-in-one, +bytes+ is the copy the build read: the program is built for a copy of
       # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
@@ -518,7 +520,7 @@ module VBlank
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
-                            slot_uses: {})
+                            slot_uses: {}, unique_names: nil)
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
@@ -561,6 +563,7 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
+          unique_names&.merge(maker.unique_names)
           maker.program.for_unpacking = true
           # Written, so a lowering's many questions of a long routine read one walk of it rather
           # than walking it again for each (IR::Node#mark_written!).
@@ -666,7 +669,8 @@ module VBlank
 
       # THE ROUTINE'S PARTS (Original::UnpackingParts), for the pack cache: each part of
       # +routines+ built alone after the slots copied as they are, to record which slots it reads
-      # and writes and which names it holds, and a way to build the program of any of the parts.
+      # and writes, which names it holds and which of those the build made unique, and a way to
+      # build the program of any of the parts.
       # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
       # cannot be built alone: one that calls a routine another part defines, say. The whole
       # routine is then cached as one, as a routine of one part is. +whole+ is the routine's
@@ -674,9 +678,12 @@ module VBlank
       def unpacking_parts(bytes, slots, routines, reading, release, whole)
         parts = routines.map do |routine|
           uses = Original::SlotUses.new
-          alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses })
+          unique_names = Set.new
+          alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses },
+                                                                      unique_names: unique_names)
           Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
                                              names: Original::UnpackingParts.names_in(alone.program),
+                                             unique_names: unique_names,
                                              program_digest: Original::UnpackingParts.program_digest(alone.program))
         end
         make = lambda do |played|

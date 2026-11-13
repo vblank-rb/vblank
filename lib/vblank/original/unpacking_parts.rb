@@ -30,10 +30,17 @@ module VBlank
     # that part writes a slot it reads or writes too (SlotUses), or names a variable, list, table
     # or routine it names too (+names+). The second is conservative: two parts that each set a
     # variable of the same name before reading it need nothing of each other, and are played
-    # together all the same. What the routine's building blocks name for themselves
-    # (`__unpacking__`, the copy's verbs and formats, whose state each call sets before it reads)
-    # and the counter of a `repeat` (set as the loop starts) are left out, or every part would
-    # need every other.
+    # together all the same.
+    #
+    # A NAME MEANS ONE THING TO TWO PARTS only where the whole routine would mean one variable by
+    # it. Each part is built alone, so names the build makes unique, by a counter or by taking a
+    # free name (Builder#unique_names: a `repeat`'s index, the hidden copy of a picked value, the
+    # variable of a plain-Ruby local or of an object's instance variable), start again in each
+    # part. Two parts that each made one are not sharing it: the whole routine, built together,
+    # names the second another way (`ticks_2`). A name one part made unique and another spelled
+    # still counts, as the whole routine may mean one variable by it. The console the program is
+    # built for, and the building blocks' own names (BUILDING_BLOCK_NAME), are left out too, or
+    # every part would need every other.
     #
     # A part is played with all it needs, so the slots it writes are those the whole routine
     # writes, byte for byte. The cost is that a part changed alone plays again what it reads from
@@ -54,13 +61,15 @@ module VBlank
     # many parts that cost more than playing it.
     class UnpackingParts
       # A part: its name, the slot names it reads and writes (Sets), the names of variables, lists,
-      # tables and routines it names besides the building blocks' (#names_in), and a digest of its
-      # program built alone (#key_source).
-      Part = Data.define(:name, :read, :written, :names, :program_digest)
+      # tables and routines it names besides the building blocks' (#names_in), which of those its
+      # build made unique (Builder#unique_names), and a digest of its program built alone
+      # (#key_source).
+      Part = Data.define(:name, :read, :written, :names, :unique_names, :program_digest)
 
-      # Names a part's program holds that carry nothing from one part to the next: the building
-      # blocks' own (Messages::MadeNames' :unpacking_part), and a `repeat`'s counter.
-      UNSHARED_NAME_PATTERN = /\A__(unpacking__|repeat_\d+\z)/
+      # The building blocks' own names (Messages::MadeNames' :unpacking_part): the same in every
+      # part, and carrying nothing from one to the next, since each call sets their state before it
+      # reads it.
+      BUILDING_BLOCK_NAME = Messages::MadeNames::PATTERNS.fetch(:unpacking_part)
 
       # +parts+ (each a Part) in the order they run; +make_unpacking+ makes the Unpacking of a
       # list of part names, playing those parts in the order they run and no others. +whole+ is the
@@ -74,12 +83,16 @@ module VBlank
       # The digest of a part's program built alone (+program+): what its Part keeps for #key_source.
       def self.program_digest(program) = Digest::SHA256.hexdigest(PackCache.program_source(program))
 
-      # Every name +program+ holds of a variable, list, table or routine, but UNSHARED_NAME_PATTERN: the
-      # operands its kinds declare as names (IR::Node#named_operands).
+      # Every name +program+ holds of a variable, list, table or routine, but the building blocks'
+      # (BUILDING_BLOCK_NAME): the operands its kinds declare as names (IR::Node#named_operands). The
+      # program's root is left out: its names are the console and variant the build is for, the
+      # same in every part and no state of the game's.
       def self.names_in(program)
         program.walk.each_with_object(Set.new) do |node, names|
+          next if node.category == :root
+
           node.named_operands.each do |field, value|
-            next unless node.class.tags[field] == :name && value.is_a?(Symbol) && !value.match?(UNSHARED_NAME_PATTERN)
+            next unless node.class.tags[field] == :name && value.is_a?(Symbol) && !value.match?(BUILDING_BLOCK_NAME)
 
             names << value
           end
@@ -136,8 +149,12 @@ module VBlank
       def earlier_parts(part) = @parts.take(@parts.index(part))
 
       def needs?(part, earlier)
-        earlier.written.intersect?(part.read | part.written) || earlier.names.intersect?(part.names)
+        earlier.written.intersect?(part.read | part.written) || !shared_names(part, earlier).empty?
       end
+
+      # The names +part+ and +earlier+ mean one thing by: those both name, but those each one's build
+      # made unique, which built together would have been two names.
+      def shared_names(part, earlier) = (earlier.names & part.names) - (earlier.unique_names & part.unique_names)
     end
   end
 end

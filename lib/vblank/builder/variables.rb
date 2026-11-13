@@ -418,7 +418,7 @@ module VBlank
       # variable every frame rather than allocating forever.
       def next_approach_var
         @approach_seq += 1
-        :"__approach_#{@approach_seq}"
+        :"__approach_#{@approach_seq}".tap { |name| @unique_names << name }
       end
 
       # How far one approach call may move, in each direction — the pair of bounds its

@@ -460,7 +460,7 @@ module VBlank
           Steps.refuse_game_code!("`#{name}` is changed by game code, but no game is being built. To fix this, " \
                             "make this part while a game is being built.") if builder.nil?
 
-          builder.var(builder.free_variable_name(name), start)
+          builder.var(builder.reserve_free_variable_name(name), start)
         end
 
         # Is this something a game can keep, as opposed to an object only Ruby can hold? The one

@@ -199,6 +199,7 @@ module VBlank
       @repeat_seq = 0          # counts repeat loops, to name each one's hidden index var
       @game_whiles = 0         # how many game `while` loops are open now
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
+      @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
@@ -1141,6 +1142,7 @@ module VBlank
       @repeat_seq += 1
       index = :"__repeat_#{@repeat_seq}"
       ensure_var(index)
+      @unique_names << index
       return open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements) unless test_statements.empty?
 
       push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: inline_held_expressions(stop_node)))
@@ -1162,6 +1164,7 @@ module VBlank
       @hidden_variables += 1
       name = :"#{Build::KEPT_VARIABLE_PREFIX}#{@hidden_variables}"
       ensure_var(name)
+      @unique_names << name
       bits = like.is_a?(Float) ? DSL::Fraction.bits_of(like) : (like.fraction_bits if like&.fraction?)
       @fraction_vars[name] = bits if bits
       @hidden_variable_notes << HiddenVariableNote.new(name:, source: Messages::AuthorSource.author_source, why:)
@@ -1184,6 +1187,18 @@ module VBlank
       (2..).lazy.map { |number| :"#{name}_#{number}" }.find { |each_name| !@variables.include?(each_name) }
     end
 
+    # #free_variable_name, for a variable about to be made under it: the name is one of
+    # #unique_names from now on.
+    def reserve_free_variable_name(name) = free_variable_name(name).tap { |free| @unique_names << free }
+
+    # THE VARIABLE NAMES THIS BUILD MADE UNIQUE, by a counter (a `repeat`'s index, a hidden copy, an
+    # approach's step) or by taking a free name (#reserve_free_variable_name: a plain-Ruby local's
+    # variable, an object's instance variable's). Another build of other code makes the same names
+    # for variables of its own, so two builds that each made a name never mean one variable by it:
+    # built together, the second would have been given another. Original::UnpackingParts asks, for
+    # a part of an unpacking built alone.
+    attr_reader :unique_names
+
     # Has a `var` line made +name+ already? PlainRuby::Writes asks, for a line that makes a variable
     # and is reached a second time.
     def variable_declared?(name) = @var_declarations.key?(name)
@@ -1199,7 +1214,7 @@ module VBlank
     # written out, with another start. The variable keeps the first as its power-on number, and
     # the line sets it to the other where it runs.
     def plain_local_variable(source, name, start)
-      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: free_variable_name(name), start: start))
+      local = (@plain_locals[[source, name]] ||= PlainLocal.new(variable_name: reserve_free_variable_name(name), start: start))
       var(local.variable_name, local.start)
     end
 
@@ -1283,6 +1298,7 @@ module VBlank
     def open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements)
       stopped = :"#{index}_stopped"
       ensure_var(stopped)
+      @unique_names << stopped
       record(Build.set(stopped, 0))
       push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
       test_statements.each { |statement| attach(statement) }
