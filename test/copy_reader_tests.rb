@@ -6,6 +6,7 @@ require "folder_original"
 
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
 VBlank.require_game_file "fixtures/name_search/name_search_part"
+VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 
 # A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
@@ -436,6 +437,23 @@ module CopyReaderTests
   # changes them only under a test the routine makes: they are the routine's to keep from there.
   def test_a_loop_whose_names_change_only_under_a_test_of_the_routines_is_the_routines_loop
     assert_archive_file_found { |part, _copy, letters| part.start_moved_on_in_else(letters) }
+  end
+
+  # A ROUTINE WRITTEN IN A GAME FILE (test/plain_ruby_flagged_bytes_part.rb) sets `flags` and
+  # `byte` from the slot it reads, then moves `at` on before it uses them: each holds the byte read
+  # before the move, in the routine's own lines and in a method of the file it calls. The answer
+  # is FlaggedBytes.unpacked, in Ruby.
+  def test_a_name_set_from_a_byte_a_game_files_routine_reads_holds_that_byte
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, FlaggedBytes::PACKED.pack("C*"))
+      wanted = FlaggedBytes.unpacked(FlaggedBytes::PACKED).pack("C*")
+      [false, true].each do |by_method|
+        unpacking = flagged_bytes_pack(VBlank::Builder.new, from, by_method: by_method).unpacking
+        played = unpacking.run_on(game_player, frames: 4)
+
+        assert_equal wanted, unpacking.slot_bytes_in(played)[:unpacked], by_method ? "in a method" : "in the routine's lines"
+      end
+    end
   end
 
   # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:

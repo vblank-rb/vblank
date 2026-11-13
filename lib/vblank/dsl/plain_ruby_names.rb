@@ -41,6 +41,10 @@ module VBlank
         # What gives a name a value outright, one name of `a, b = 1, 2` among them.
         WHOLE_WRITES = [Prism::LocalVariableWriteNode, Prism::LocalVariableTargetNode].freeze
 
+        # What stands for every slot of a name, and for its slots at keys worked out as the game
+        # plays, among the places a change is recorded under (#names_read_by).
+        SLOT_KEYS = Ractor.make_shareable({ any: :any_slot, worked_out: :slot_at_worked_out_key })
+
         # Writes by game code to a local of the scope the block sits in.
         attr_reader :outside_writes
 
@@ -344,11 +348,41 @@ module VBlank
 
         # The places +node+ reads: a local, an instance variable, or one slot or attribute of one,
         # `ball[:hp]` or `hero.x`, as written. A change to `ball[:x]` is no change to `ball[:hp]`.
+        #
+        # A slot's key is read too: `packed[at]` reads `at`, so `flags = packed[at]` followed by
+        # `at += 1` changes what the slot's working-out would read where `flags` is used.
+        #
+        # Two keys written differently can be one slot: `out[i]` is changed by `out[j] = 99` when j
+        # is i, which nothing here can tell. So a slot read at a key worked out as the game plays
+        # is changed by a write to any slot of that name, and a slot read at a key written out
+        # (`ball[:hp]`) by a write at a worked-out key (SLOT_KEYS).
         def names_read_by(node)
           return [name_key(node)] if NAMES.any? { |kind| node.is_a?(kind) }
-          return [[name_key(node.receiver), node.slice]] if place_read?(node)
+          return [[name_key(node.receiver), node.slice], *slots_read_alike(node), *names_read_by_keys(node)] if place_read?(node)
 
           node.compact_child_nodes.flat_map { |child| names_read_by(child) }
+        end
+
+        def names_read_by_keys(node) = node.arguments&.arguments.to_a.flat_map { |key| names_read_by(key) }
+
+        # The keys of SLOT_KEYS a read of +node+ is changed under, besides its own place.
+        def slots_read_alike(node)
+          return [] unless node.name == :[]
+
+          kinds = keys_written_out?(node.arguments) ? %i[worked_out] : %i[worked_out any]
+          kinds.map { |kind| [name_key(node.receiver), SLOT_KEYS.fetch(kind)] }
+        end
+
+        # The keys of SLOT_KEYS a write of a slot at +keys+ is recorded under, besides its own place.
+        def slots_written_alike(receiver, keys)
+          kinds = keys_written_out?(keys) ? %i[any] : %i[any worked_out]
+          kinds.map { |kind| [receiver, SLOT_KEYS.fetch(kind)] }
+        end
+
+        # Is every key a number, a symbol or a string written out?
+        def keys_written_out?(arguments)
+          keys = arguments.respond_to?(:arguments) ? arguments.arguments : Array(arguments)
+          keys.all? { |key| [Prism::IntegerNode, Prism::SymbolNode, Prism::StringNode].any? { |kind| key.is_a?(kind) } }
         end
 
         # What a name is known by here. Two methods can each have a local called `step`, and those
@@ -369,7 +403,27 @@ module VBlank
         def read_place_change(node, in_game_code)
           return unless NAMES.any? { |kind| node.receiver.is_a?(kind) }
 
-          record_change([name_key(node.receiver), place_written(node)], node, in_game_code)
+          receiver = name_key(node.receiver)
+          record_change([receiver, place_written(node)], node, in_game_code)
+          keys = slot_keys_written(node)
+          slots_written_alike(receiver, keys).each { |place| record_change(place, node, in_game_code) } if keys
+        end
+
+        # The keys of a slot +node+ writes, or nil for an attribute it writes.
+        def slot_keys_written(node)
+          case node
+          when Prism::IndexOperatorWriteNode then node.arguments&.arguments.to_a
+          when Prism::CallNode then node.arguments.arguments[0...-1] if node.name == :[]=
+          end
+        end
+
+        # `at.increase!(1)`, a verb ending in `!` called on a name, which changes the variable the
+        # name holds as `at += 1` does: recorded as a change of the name. `!at` asks, and changes nothing.
+        # Any other `!` verb (`list.sort!`) counts too; at worst a local keeps its line's answer.
+        def record_bang_call_change(node, in_game_code)
+          return unless node.name != :! && node.name.end_with?("!") && NAMES.any? { |kind| node.receiver.is_a?(kind) }
+
+          record_change(name_key(node.receiver), node, in_game_code)
         end
 
         def place_written(node)
@@ -499,6 +553,7 @@ module VBlank
             read_names(child, scopes, in_game_code || game_block)
           end
           read_place_change(node, in_game_code) if node.name == :[]= || node.attribute_write?
+          record_bang_call_change(node, in_game_code)
           @locals_by_node[node.receiver]&.asked_nil = true if node.name == :nil?
           @locals_by_node[LocalNames.side_not_nil(node)]&.asked_nil = true if LocalNames.nil_comparison?(node)
         end

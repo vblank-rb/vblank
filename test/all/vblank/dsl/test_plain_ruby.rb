@@ -1443,6 +1443,69 @@ class TestPlainRuby < Minitest::Test
     assert_equal 5, player[:seen]
   end
 
+  # A name set from an item of a table at a place the game moves on before the name is used: read
+  # again where it is used, `flags` and `byte` would be the next item. Each read here is the one
+  # before `at` moved: a flag of 0b0101 picks 10 and 30, where the next byte, 10, would pick 20.
+  # A place moved by `spot.increase!(1)` is moved as `+=` moves one.
+  def test_a_name_set_from_an_item_at_a_place_that_moves_on_keeps_that_item
+    player = played(frames: 2) do
+      packed = table :packed, [0b0101, 10, 20, 30, 40], width: :byte
+      @kept = table :kept, [7, 8], width: :byte
+      out = list :unpacked, capacity: 4, full_of: 0
+      first = var :first, 0
+      second = var :second, 0
+      spot = var :spot, 0
+      game_loop do
+        at = 0
+        flags = packed[at]
+        at += 1
+        4.times do |bit|
+          byte = packed[at]
+          at += 1
+          out[bit] = byte if flags & (1 << bit) != 0
+        end
+        place = 0
+        held = @kept[place]
+        place += 1
+        first = held
+        spot.store!(0)
+        spotted = packed[spot]
+        spot.increase!(1)
+        second = spotted
+        halt
+      end
+    end
+
+    assert_equal [10, 0, 30, 0], player.list(:unpacked)
+    assert_equal [7, 5], [player[:first], player[:second]]
+  end
+
+  # `out[j] = 99` writes the slot `held` was read from, since j is i: `held` keeps the 5 it read.
+  # A slot read at a key written out is changed by a write at a key worked out the same way.
+  def test_a_name_set_from_a_slot_keeps_it_when_the_slot_is_written_at_another_key
+    player = played(frames: 2) do
+      out = list :out, capacity: 2, full_of: 5
+      first = var :first, 0
+      second = var :second, 0
+      game_loop do
+        i = 0
+        j = 0
+        i += 0
+        j += 0
+        held = out[i]
+        out[j] = 99
+        first = held
+        out[1] = 5
+        fixed = out[1]
+        out[j + 1] = 77
+        second = fixed
+        halt
+      end
+    end
+
+    assert_equal [5, 5], [player[:first], player[:second]]
+  end
+
   def test_an_ivar_made_by_var_copies_another_variable
     player = played do
       @a = var :a, 5

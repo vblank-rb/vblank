@@ -23,6 +23,8 @@ require "pack_place_games"
 require "m4a_answers"
 require "brr_recordings"
 
+VBlank.require_game_file "plain_ruby_flagged_bytes_part"
+
 # EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
 # (`pack_at_start: true`), the pack handed as a file as the game starts, which is what a shell
@@ -1641,8 +1643,42 @@ module PackGames
     ].freeze
   end
 
+  # BYTES UNPACKED BY A ROUTINE WRITTEN IN A GAME FILE (FlaggedBytes, test/plain_ruby_flagged_bytes_part.rb),
+  # whose locals hold the bytes read before the place moves on, drawn as a row of marks a pass.
+  class FlaggedBytesUnpacked < Kit
+    private def flagged_original(folder)
+      copy = FlaggedBytes::PACKED.pack("C*")
+      path = File.join(folder, "made_up_flagged.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    end
+
+    GAMES = [
+      game(:bytes_unpacked_by_a_routine_in_a_game_file, passes: FlaggedBytes::UNPACKED_COUNT + 2) do |folder, options|
+        from = flagged_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          clear_screen :black
+          pack = flagged_bytes_pack(self, from, by_method: true)
+          unpacked = table :unpacked_bytes, pack[:unpacked]
+          step = var :step, 0
+          game_loop do
+            draw_rect_at unpacked[step] * 2, step * 8, 4, 4, :white if step < FlaggedBytes::UNPACKED_COUNT
+            step += 1
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end
+    ].freeze
+  end
+
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures].freeze
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
+          FlaggedBytesUnpacked].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

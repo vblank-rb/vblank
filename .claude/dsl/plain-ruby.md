@@ -115,7 +115,11 @@ instance variables.
   only `false` or `nil`: a number is truthy, so `x ||= 2` leaves `x = 0` alone, as in Ruby.
 - `a, b = b, a` and splats work, on every pass.
 - **A name holds a value, as in Ruby.** `old = hp` in game code keeps hp's number from that line;
-  `d = hp + 1` keeps its line's answer.
+  `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
+  `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
+  out as the game plays: it holds the item read before, in a game block, a game file and a method a
+  routine calls alike. A change made inside another method, or a `func` called between, is not
+  seen: there, read `packed[at]` into a `var` with `store!`.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

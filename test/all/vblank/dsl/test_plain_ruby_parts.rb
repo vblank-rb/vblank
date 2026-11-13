@@ -6,6 +6,7 @@ VBlank.require_game_file "../../../fixtures/game_with_two_parts/first"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 VBlank.require_game_file "../../../plain_ruby_loop_parts"
 VBlank.require_game_file "../../../plain_ruby_named_parts"
+VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -599,5 +600,20 @@ class TestPlainRubyParts < Minitest::Test
     player = played(TwoNamesPart, :unpacked_tick)
 
     assert_equal [4, 4], [player[:unpacked_first], player[:unpacked_second]]
+  end
+
+  # A NAME SET FROM A BYTE READ AT A PLACE HOLDS THAT BYTE once the place moves on, in a game file
+  # (test/plain_ruby_flagged_bytes_part.rb) as in a game block: `flags = packed[at]`, then
+  # `at += 1`, then `flags` used. Read again where it is used, it would be the next byte.
+  def test_a_name_set_from_a_byte_read_in_a_game_files_routine_holds_that_byte
+    player = played_game(frames: 2) { flagged_bytes_game(self) }
+
+    assert_equal FlaggedBytes.unpacked(FlaggedBytes::PACKED), player.list(:unpacked)
+  end
+
+  def test_a_name_set_from_a_byte_read_in_a_game_files_method_holds_that_byte
+    player = played_game(frames: 2) { flagged_bytes_game_by_method(self) }
+
+    assert_equal FlaggedBytes.unpacked(FlaggedBytes::PACKED), player.list(:unpacked)
   end
 end
