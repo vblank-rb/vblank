@@ -19,6 +19,7 @@ require_relative "diagnostics/verifier"          # Real pixels and real sound re
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
 require_relative "diagnostics/film_cartridge"    # One side of a film, brought to its first frame with a save folder of its own
 require_relative "diagnostics/film_script"       # A film written as a small file
+require_relative "diagnostics/film_shell"        # A port's shell filmed from its first start, as a side of a film
 # Its rake task, film_tasks.rb, is a Rakefile's and is not required here: a Rakefile requires it alone,
 # and it loads the library when it runs.
 require_relative "diagnostics/sound_recording"   # What a game sounds like on the cartridge, the desktop build or as Ruby
