@@ -217,8 +217,8 @@ class DitherPart
   end
 end
 
-# A column a routine shows: `col` is set straight from @col, so it is that variable, and the
-# routine's block reads @col as it is when the routine runs, after #nudge moves it on.
+# A column a routine shows: `col` is set straight from @col, so it holds @col's number from that
+# line, and the routine's block reads that number after #nudge moves @col on.
 class ColumnPart
   game_variables :col, :seen
 
@@ -239,6 +239,89 @@ class ColumnPart
       nudge
       @seen = col
     end
+  end
+end
+
+# `x` is set straight from @hero_x in a method, and #nudge moves @hero_x on before `x` is read:
+# `x` keeps the 3 of its line, as Ruby's does.
+class NudgedHeroPart
+  game_variables :hero_x, :seen
+
+  def initialize
+    @hero_x = 3
+    @seen = 0
+  end
+
+  def nudge
+    @hero_x += 1
+  end
+
+  def step
+    x = @hero_x
+    nudge
+    @seen = x
+  end
+end
+
+# A sound chip's mixer, cut down, in the shape a port writes it. MixerChip#step changes an operator and answers a sum of its
+# locals; MixerPart#step_channel keeps the first answer in `out` across the second call, and gives
+# `bend` the first answer and then 0. Setting `bend` never changes `out`: the carrier's step adds
+# nothing, its answer is 30, and with `out` the channel mixes 40.
+MixerOp = Struct.new(:phase, :wave) do
+  game_variables :phase, :wave
+end
+
+MixerChannel = Struct.new(:last, :additive) do
+  game_variables :last, :additive
+end
+
+class MixerChip
+  def initialize(build)
+    @gain = build.table(:mixer_gain, [1, 2, 3, 4, 5, 6, 7, 8], width: :byte)
+  end
+
+  def step(op, bend)
+    op.phase = (op.phase + 1) & 7
+    loss = op.phase
+    loss = 7 if loss > 7
+    wave = 0
+    wave = 10 + bend if op.wave == 0
+    (wave * @gain[loss]) >> 1
+  end
+end
+
+class MixerPart
+  game_variables :mixed, :last_seen
+
+  def initialize(chip, modulator, carrier, channel)
+    @chip = chip
+    @modulator = modulator
+    @carrier = carrier
+    @channel = channel
+    @mixed = 0
+    @last_seen = 0
+  end
+
+  def step_channel
+    out = 0
+    if @modulator.wave == 0
+      bend = 0
+      out = @chip.step(@modulator, bend)
+      @channel.last = out
+    end
+    heard = 0
+    if @carrier.wave == 0
+      bend = out
+      bend = 0 if @channel.additive == 1
+      heard = @chip.step(@carrier, bend)
+    end
+    heard += out if @channel.additive == 1
+    heard
+  end
+
+  def run
+    @mixed = step_channel
+    @last_seen = @channel.last
   end
 end
 

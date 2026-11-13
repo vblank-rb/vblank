@@ -112,15 +112,35 @@ module VBlank
       def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name)
 
       # Was this variable made by normal Ruby with no `var` line: a name given a number (`hp = 10`,
-      # `@seed = 5` named by `game_variables`)? Such a variable is that name's number, which Ruby
-      # hands on as a number, where one `var` made is a handle a game passes about to change.
+      # `@seed = 5` named by `game_variables`)?
       def made_with_no_var_line? = @builder.variable_with_no_var_line?(@name)
+
+      # Is this variable a number in Ruby's eyes, which a local given it copies
+      # (PlainRuby::Steps.kept_answer)? One made with no `var` line is, and so is a hidden one
+      # the build made for a number. One a `var` line or a verb made is a handle the game holds.
+      def number_in_ruby? = made_with_no_var_line? || hidden?
+
+      # Is this a hidden variable, one the build made for a number the author never named
+      # (Builder#hidden_variable)?
+      def hidden? = @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX)
+
+      # The kinds of node whose number no line of the game can change: a number written out, a
+      # cartridge table's item, and arithmetic on them.
+      FIXED_KINDS = %i[int table_get binop neg absolute clamped].freeze
+
+      # Can the number this stands for change as the game plays? Only a working-out of fixed
+      # numbers cannot, and a local given one needs no copy.
+      def changes_as_game_plays? = @node.walk.any? { |each_node| !FIXED_KINDS.include?(each_node.kind) }
 
       # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
       def note_unsaved = @builder.note_unsaved_variable(@name)
 
       # Was this variable made for the instance variable holding it (see PlainRuby::Steps.reassign)?
       attr_accessor :own_to_its_name
+
+      # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or
+      # PlainRuby::Steps.kept_answer, or nil.
+      attr_accessor :owner_name
 
       # A game has no nil, and a number variable has no false. A name that can hold those as well
       # as a number keeps which it holds in a hidden variable beside it: NIL_HELD, FALSE_HELD or
@@ -176,12 +196,6 @@ module VBlank
       # difference the orphaned-expression guardrail turns on.
       def handle?
         !@name.nil?
-      end
-
-      # This variable's number kept as it is now, for `old = hp` in normal Ruby (see
-      # PlainRuby::Steps.copy_of_variable). In setting up there is nothing to keep yet, so a second name will do.
-      def kept_copy
-        @builder.recording_game_code? ? hidden_copy : self
       end
 
       # A hidden variable holding this number as it is now, whatever changes it later.

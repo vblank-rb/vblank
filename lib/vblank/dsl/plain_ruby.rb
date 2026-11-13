@@ -174,6 +174,7 @@ module VBlank
         # file's strings is there, and so is every line the numbers after it count from.
         opening = source.byteslice(0, root.location.start_offset).force_encoding(Encoding::UTF_8)
         library = library_file?(path)
+        CallChanges.record_game_method_names(root) unless library
         rewriter = Rewriter.new(source, source_label: File.expand_path(path), follows_instance_variables: !library)
         rewritten = "#{opening}#{rewriter.rewritten(root)}"
         return rewritten if library
@@ -754,7 +755,7 @@ module VBlank
           prefix = between(node.location.start_offset, node.value.location.start_offset)
           # A name kept for a read past its `if` can stay a plain name under a test further out, so
           # it keeps its answer the way any plain name does.
-          return "#{prefix}#{second_name_write(node.name, "(#{promoted_value_text(node)})", node)}" if promoted?(node)
+          return "#{prefix}#{second_name_write(node.name, "(#{kept_value_text(node.value, node)})", node)}" if promoted?(node)
           return picked_into_text(node) if picks_into_variable?(node)
           return joined_into_text(node, prefix) if joins_into_variable?(node)
 
@@ -768,8 +769,6 @@ module VBlank
           else "#{prefix}#{noted_if_handed(node, kept_value_text(node.value, node))}"
           end
         end
-
-        def promoted_value_text(node) = @names.read_after_it_changes?(node) ? kept_value_text(node.value, node) : value_text(node.value)
 
         # A write to a plain name that already holds something, which may turn out to be a game
         # variable it was handed (Writes.note_handed_name_written). The name's first line holds
@@ -811,39 +810,11 @@ module VBlank
           "#{WRITES}.variable_set_where_reached(self, :#{name}, #{start}#{", sets: #{sets}" if sets}#{source_option_text})"
         end
 
-        def kept_value_text(value, write = nil)
-          if write && @names.read_after_it_changes?(write)
-            "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept_answer_copy(value, write)})"
-          else
-            copied_local_read_text(value)
-          end
-        end
-
-        # Steps.kept_answer's +copy:+ setting: how it treats a game variable the line hands back,
-        # kept for a change:
-        #
-        # - for a change the source writes to a name the line reads, copied, as `old = hp` keeps
-        #   hp's number;
-        # - kept only for a call, a method's answer is copied when it is a name's number
-        #   (`noise = advance`, `advance` answering `@seed`), as Ruby hands on a number, while a
-        #   variable a `var` line made (`floors = routine_var(:floors)`) stays that variable and
-        #   follows its own `floors.increase!(1)`;
-        # - kept only for a call, a variable the line reads itself (`setting = @sound_setting`,
-        #   `col_x = @col_x`) stays that variable: a game hands it to the objects that move it, or
-        #   reads it in a routine's block, where it is read as the game plays.
-        def kept_answer_copy(value, write)
-          return :always if @names.kept_for_named_change?(write)
-          return :never unless value.is_a?(Prism::CallNode)
-
-          :numbers
-        end
-
-        # `b = a`, where `a` is a local holding a game variable: a copy of a's number, as Ruby
-        # hands on a number.
-        def copied_local_read_text(value)
-          return value_text(value) unless value.is_a?(Prism::LocalVariableReadNode) && @names.variable_read?(value)
-
-          "#{STEPS}.copy_of_variable(#{rewritten_text(value)})"
+        # What a plain local is given: its value, kept as Ruby keeps it where LocalNames#copy_kept
+        # cannot prove that nothing changes it before it is read.
+        def kept_value_text(value, write)
+          kept = @names.copy_kept(write)
+          kept ? "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name})" : value_text(value)
         end
 
         def value_text(value)
@@ -977,7 +948,7 @@ module VBlank
           given = [answer, *outer].join(", ")
           names = @names.names_to_promote(node, sides).map do |name|
             stays = @names.written_on_every_side?(name, sides) ? "" : ", may_stay_nil: true"
-            "#{name} = #{WRITES}.promote(#{name}, #{given}#{stays}); "
+            "#{name} = #{WRITES}.promote(#{name}, #{given}#{stays}, name: :#{name}); "
           end
           (names + @names.places_changed_in(sides).filter_map { |place| place_promotion_text(place, given) }).uniq.join
         end

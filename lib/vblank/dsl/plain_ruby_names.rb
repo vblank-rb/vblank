@@ -206,7 +206,7 @@ module VBlank
           @locals_by_node = {}.compare_by_identity
           @outside_writes = []
           @promoted_writes = {}.compare_by_identity
-          @first_writes_in_game_code = {}.compare_by_identity
+          @writes_in_game_code = {}.compare_by_identity
           @reads_in_game_code = {}.compare_by_identity
           @reads_from_unknown_block = {}.compare_by_identity
           @changes_by_name = {}
@@ -232,6 +232,16 @@ module VBlank
           # runs in it; a method or a lambda runs where it is called, so it starts with none.
           @loops_around = {}.compare_by_identity
           @open_loops = []
+          # The tests and loops each write sits under (#side_apart_holds?), and the
+          # reads of a local handed whole to an object being made (#handed_whole_in_setup?).
+          @tests_around = {}.compare_by_identity
+          @open_tests = []
+          @whole_arguments = {}.compare_by_identity
+          @calls_on_something = []
+          @unpacked_values = {}.compare_by_identity
+          # Every method, lambda and game block: code that runs when it is called, or as the game
+          # plays, after the lines around it (#run_later?).
+          @bodies_run_later = []
           read_names(block_node, [], false)
         end
 
@@ -282,46 +292,123 @@ module VBlank
           kept.map(&:name).uniq
         end
 
-        # A name given a working-out holds no number: the game works it out at each read, so it
-        # follows whatever it was made from, where a Ruby name keeps the answer from its line.
-        # That matters only if something it reads changes and the name is read after. In game
-        # code the line runs again each pass, so the read has to follow the change. In setting up
-        # it runs once, and game code reading the name comes round again after any change.
+        # What a plain local given a game value keeps (Steps.kept_answer), for the line +write+:
+        # nil, :numbers or :every_variable.
         #
-        # A call of game code (#game_call?) changes what that code can write (CallChanges): the
-        # whole of each name it writes, or every name where the code is not in this source. It
-        # counts from the start of the statement it sits in, since a working-out is read only once
-        # its whole statement is recorded: in `(high << 8) | next_byte(c)`, `high` is read after
-        # the call moved its place. The local's value may read no name at all (`high = next_byte(c)`
-        # with no argument): keeping an answer that is a plain number costs nothing
-        # (Steps.kept_answer).
+        # A Ruby local holds the number its line worked out. Here a local given a game value holds
+        # a working-out, which the game works out again at each read, so it reads the number of
+        # that read, not of its line. The two agree only where nothing the value reads can change
+        # between the line and every read. So the local keeps its number in a copy (:numbers),
+        # and the copy is left out (nil) only where this proves that nothing can change it: a
+        # missed proof costs a hidden variable, never a wrong number. :every_variable is the same
+        # for a local read whole from another this source keeps as a game variable
+        # (#local_variable_read?).
         #
-        # A call that can change anything counts only for a local set in game code (#changes_by_calls).
-        # One set while setting up is read by game code as the game's own working-out, and a game
-        # sets one from what VBlank keeps up to date each frame (`frame = frames_since_power_on`)
-        # to read it live: copied where a call might change it, it would hold the frame the game
-        # was set up on, and nothing would ever move.
-        def read_after_it_changes?(write)
+        # What can change it: a write the source shows to a name the value reads; a call of game
+        # code that can write it (CallChanges), which counts from the start of the statement it
+        # sits in, its own arguments included, since a method reads what it is handed where it
+        # uses it; the same for the names the value reads through the calls in it and through
+        # the plain locals it uses. A local set while setting up, or in a method, and read by game
+        # code is read later than any line of the source, so there every change counts, wherever
+        # it is written. A read in a loop above the line comes round after the line too.
+        #
+        # One thing is left out without a proof (#handed_whole_in_setup?): a game variable
+        # set up in a local that only hands it on, whole, to the parts it builds.
+        def copy_kept(write)
           local = @locals_by_node[write]
-          return false unless local&.plain_name? && write.is_a?(Prism::LocalVariableWriteNode)
+          return unless local&.plain_name? && write.is_a?(Prism::LocalVariableWriteNode)
+          return if handed_whole_in_setup?(local, write)
+          return unless changed_before_a_read?(local, write)
+
+          local_variable_read?(write.value) ? :every_variable : :numbers
+        end
+
+        # `first = hp`, where `hp` is a local this source keeps as a game variable, made by `var`
+        # too: `hp -= 1` gives the name a new number, as Ruby's `hp` would, so `first` keeps the
+        # old one whatever made the variable.
+        private def local_variable_read?(value) = value.is_a?(Prism::LocalVariableReadNode) && (@locals_by_node[value]&.variable? || false)
+
+        # Could anything change what the value +write+ gives +local+ before one of its reads?
+        private def changed_before_a_read?(local, write)
+          return false if local.reads.empty?
 
           read_after_any?(local, write, changes_of_value(write) + changes_read_through_locals(write))
         end
 
-        # Is the local +write+ sets kept (#read_after_it_changes?) for a change the source writes
-        # to a name its line reads, and not only for a call? Kept for a call, a game variable the
-        # line hands back stays that variable (Steps.kept_answer).
-        def kept_for_named_change?(write)
-          read_after_it_changes?(write) && read_after_any?(@locals_by_node[write], write, named_changes(write))
+        # Is +local+, which +write+ sets, read after any of +changes+? A local set outside game
+        # code (setting up, or in a method) and read in game code is read after every change that
+        # can run after its line: one below it, and one in a method or a game block anywhere,
+        # which runs when it is called. A read in a loop that holds the line, above it, comes
+        # after the changes in that loop.
+        private def read_after_any?(local, write, changes)
+          after = changes.select { |change| change.after?(write) }
+          return true if read_later_in_game_code?(local, write) && (!after.empty? || changes.any? { |change| run_later?(change, write) })
+
+          reached = local.reads.any? do |read|
+            after.any? { |change| change.reaches?(read) { |side| side_apart_holds?(write, side) } }
+          end
+          reached || local.reads.any? { |read| read_next_time_round?(read, write, changes) }
         end
 
-        # Is +local+, which +write+ sets, read after any of +changes+ comes after its line?
-        def read_after_any?(local, write, changes)
-          changes = changes.select { |change| change.after?(write) }
-          return false if changes.empty?
-          return true if local.reads.any? { |read| changes.any? { |change| change.reaches?(read, write) } }
+        # A change on one side of an `if` never comes before a read on its other side in the same
+        # round. That keeps the local's number only where +write+ sets it on every round before
+        # the `if`: inside the region the `if` sits in, above it, and under no test the `if` is
+        # not under. A local set on some rounds only is read on later ones.
+        private def side_apart_holds?(write, side)
+          return false unless write.location.start_offset > side.region_start && write.location.end_offset <= side.test_start
 
-          !@first_writes_in_game_code[write] && local.reads.any? { |read| @reads_in_game_code[read] }
+          @tests_around.fetch(write, []).all? { |test| test.location.start_offset <= side.test_start && test.location.end_offset >= side.to }
+        end
+
+        # Is +change+ in a method, a lambda or a game block that does not hold +write+?
+        private def run_later?(change, write)
+          @bodies_run_later.any? { |body| change.offset.between?(body.location.start_offset, body.location.end_offset) && !inside?(write, body) }
+        end
+
+        # Is every line giving +local+ a value one set outside game code and read by it, whose copy
+        # counts every change that can run after the line (#read_after_any?)?
+        private def copy_counts_later_changes?(local)
+          writes = local.writes.map(&:node)
+          writes.all? do |each_write|
+            each_write.is_a?(Prism::LocalVariableWriteNode) && read_later_in_game_code?(local, each_write) &&
+              !handed_whole_in_setup?(local, each_write)
+          end
+        end
+
+        private def read_later_in_game_code?(local, write)
+          !@writes_in_game_code[write] && local.reads.any? { |read| @reads_in_game_code[read] }
+        end
+
+        # Is +read+ above +write+ in a loop that holds both, with one of +changes+ in that loop?
+        private def read_next_time_round?(read, write, changes)
+          return false unless read.location.start_offset < write.location.start_offset
+
+          @loops_around.fetch(write, []).any? do |each_loop|
+            inside?(read, each_loop) && changes.any? { |change| change.offset.between?(each_loop.location.start_offset, each_loop.location.end_offset) }
+          end
+        end
+
+        private def inside?(node, outer) = node.location.start_offset >= outer.location.start_offset && node.location.end_offset <= outer.location.end_offset
+
+        # `sound_setting = menu_art && @sound_setting`, set while setting up and read only as a
+        # whole argument (`Menus.new(sound_setting: sound_setting)`). Handing a game variable to a
+        # part as it is made hands it the variable itself (`Ball.new(selection: menu.selection)`),
+        # and a local in between does not change that: the parts it is handed to share it.
+        private def handed_whole_in_setup?(local, write)
+          return false if @writes_in_game_code[write] || @writes_in_methods.key?(write) || local.reads.empty?
+          return false unless names_read_straight?(write.value)
+
+          local.reads.all? { |read| @whole_arguments.key?(read) }
+        end
+
+        # Is +value+ a name read as it is (`@setting`), or one picked by `&&` or `||` from such?
+        private def names_read_straight?(value)
+          case value
+          when *NAMES then true
+          when Prism::AndNode, Prism::OrNode then names_read_straight?(value.right)
+          when Prism::ParenthesesNode then value.body.body.one? && names_read_straight?(value.body.body.first)
+          else false
+          end
         end
 
         def loop?(node) = LOOPS.any? { |kind| node.is_a?(kind) }
@@ -389,9 +476,6 @@ module VBlank
         # Is this write's name a game variable?
         def variable_write?(write) = @locals_by_node[write]&.variable? || false
 
-        # Is this read of a local a read of a game variable?
-        def variable_read?(read) = @locals_by_node[read]&.variable? || false
-
         private
 
         # What can change what the value +write+ gives its local reads directly: a name, a place or
@@ -401,6 +485,10 @@ module VBlank
         # What can change what the value +write+ gives its local reads through the plain names it
         # uses: `envelope = @copy.byte(at + 1)` reads what `at = get(:drum, c)` reads, the list
         # behind `get`, since `at` is a working-out too and is worked out where `envelope` is read.
+        #
+        # A local whose own copy is decided for every read after its line (#copy_counts_later_changes?)
+        # needs no following: either it keeps its number, or nothing changes what it reads after
+        # its line, a later line's read included.
         def changes_read_through_locals(write)
           locals_worked_out_in(write.value).flat_map do |local|
             value_writes(local).flat_map { |each_write| changes_of_value(each_write) }
@@ -412,7 +500,7 @@ module VBlank
         def locals_worked_out_in(node, found = {}.compare_by_identity)
           if node.is_a?(Prism::LocalVariableReadNode)
             local = @locals_by_node[node]
-            if local&.plain_name? && !local.parameter? && !found.key?(local)
+            if local&.plain_name? && !local.parameter? && !found.key?(local) && !copy_counts_later_changes?(local)
               found[local] = true
               value_writes(local).each { |each_write| locals_worked_out_in(each_write.value, found) }
             end
@@ -421,8 +509,18 @@ module VBlank
           found.keys
         end
 
-        # The lines that give +local+ a value outright (`at = get(:drum, c)`).
-        def value_writes(local) = local.writes.map(&:node).grep(Prism::LocalVariableWriteNode)
+        # The lines that give +local+ a value it works out (`at = get(:drum, c)`, `at += 1`). One
+        # name of `a, b = get(0), get(1)` is taken to read the whole right side.
+        def value_writes(local)
+          local.writes.map(&:node).filter_map do |node|
+            next node if node.respond_to?(:value)
+
+            UnpackedWrite.new(value: @unpacked_values[node]) if @unpacked_values.key?(node)
+          end
+        end
+
+        # One name's part of `a, b = ...`, for #value_writes.
+        UnpackedWrite = Data.define(:value)
 
         # The places +node+ reads: a local, an instance variable, or one slot or attribute of one,
         # `ball[:hp]` or `hero.x`, as written. A change to `ball[:x]` is no change to `ball[:hp]`.
@@ -477,26 +575,23 @@ module VBlank
         def changes_of_name(name) = @changes_by_name.fetch(name, []).map { |offset| Change.new(offset: offset, apart: []) }
 
         # The changes calls of game code make to what the value +write+ gives its local reads
-        # (#read_after_it_changes?): the names a call this source shows can write, for any local;
-        # and a call that can change anything, only for a local set in game code or in a method
-        # (which runs where it is called) whose value reads a name or calls game code. A constant
-        # or a verb's answer no name of the source holds stays as it is.
+        # (#copy_kept): the names a call this source shows can write, and, where the value reads
+        # a name or calls game code, every call that can change anything. A constant or a verb's
+        # answer no name of the source holds stays as it is, and so does a variable a verb hands
+        # back (`frames_since_power_on`), which Steps.kept_answer never copies.
         def changes_by_calls(write)
           resolve_game_calls
           names = names_read_by(write.value)
           named = names.flat_map { |name| @whole_name_changes.fetch(whole_name(name), []) }
-          return named unless @first_writes_in_game_code[write] || @writes_in_methods.key?(write)
           return named if names.empty? && !calls_game_code?(write.value)
 
           named + @calls_into_game_code
         end
 
         # The changes to what the value +write+ gives its local reads through the calls in it
-        # (CallChanges#names_read_through_calls), for a local set in game code or in a method:
-        # `at = get(:at, c)` reads `@state` inside `get`, which `set(:at, c, at + 1)` writes.
+        # (CallChanges#names_read_through_calls): `at = get(:at, c)` reads `@state` inside `get`,
+        # which `set(:at, c, at + 1)` writes.
         def changes_read_through_calls(write)
-          return [] unless @first_writes_in_game_code[write] || @writes_in_methods.key?(write)
-
           names = names_read_through_calls(write.value)
           return [] if names.empty?
 
@@ -505,8 +600,15 @@ module VBlank
           names.flat_map { |name| changes_of_whole_name(name) + @whole_name_changes.fetch(name, []) }
         end
 
-        # The changes the source writes to the names the value +write+ gives its local reads.
-        def named_changes(write) = names_read_by(write.value).flat_map { |name| changes_of_name(name) }
+        # The changes the source writes to the names the value +write+ gives its local reads. A slot
+        # or an attribute (`queue[0]`, `queue.length`) is changed by a change of the whole name too
+        # (`queue.shift`, #record_bang_call_change).
+        def named_changes(write)
+          names_read_by(write.value).flat_map do |name|
+            whole = name.is_a?(Array) ? changes_of_name(name.first) : []
+            changes_of_name(name) + whole
+          end
+        end
 
         # Every change of +name+ or of a slot or attribute of it.
         def changes_of_whole_name(name)
@@ -551,7 +653,7 @@ module VBlank
         # name holds as `at += 1` does: recorded as a change of the name. `!at` asks, and changes nothing.
         # Any other `!` verb (`list.sort!`) counts too; at worst a local keeps its line's answer.
         def record_bang_call_change(node)
-          return unless CallChanges.bang_call?(node) && NAMES.any? { |kind| node.receiver.is_a?(kind) }
+          return unless CallChanges.changes_receiver?(node) && NAMES.any? { |kind| node.receiver.is_a?(kind) }
 
           record_change(name_key(node.receiver), node)
         end
@@ -650,24 +752,35 @@ module VBlank
         def read_names(node, scopes, in_game_code)
           case node
           when Prism::BlockNode then read_block(node, scopes, in_game_code)
-          when Prism::LambdaNode then inside_loops([]) { inside_method { read_block(node, scopes, in_game_code) } }
-          when Prism::DefNode then inside_loops([]) { inside_method { read_block(node, [], false) } }
+          when Prism::LambdaNode
+            @bodies_run_later << node
+            inside_loops([]) { inside_method { read_block(node, scopes, in_game_code) } }
+          when Prism::DefNode
+            @bodies_run_later << node
+            inside_loops([]) { inside_method { read_block(node, [], false) } }
           when Prism::CallNode then read_call(node, scopes, in_game_code)
           when Prism::StatementsNode then read_statements(node, scopes, in_game_code)
           when Prism::WhileNode, Prism::UntilNode
             inside_loops(@open_loops + [node]) do
               inside_region(node) do
-                with_start_after_modifier_test(node) { read_children(node, scopes, in_game_code || @iterating_in_game_code) }
+                under_test(node) do
+                  with_start_after_modifier_test(node) { read_children(node, scopes, in_game_code || @iterating_in_game_code) }
+                end
               end
             end
           when Prism::IfNode, Prism::UnlessNode
-            with_start_after_modifier_test(node) { read_branches(node, scopes, in_game_code || @iterating_in_game_code) }
+            under_test(node) do
+              with_start_after_modifier_test(node) { read_branches(node, scopes, in_game_code || @iterating_in_game_code) }
+            end
+          when Prism::CaseNode, Prism::CaseMatchNode, Prism::AndNode, Prism::OrNode
+            under_test(node) { read_children(node, scopes, in_game_code) }
           when Prism::LocalVariableWriteNode, Prism::LocalVariableOperatorWriteNode,
                Prism::LocalVariableOrWriteNode, Prism::LocalVariableAndWriteNode,
                Prism::LocalVariableTargetNode then
             record_write(node, scopes, in_game_code)
             read_children(node, scopes, in_game_code)
           when Prism::MultiWriteNode
+            note_unpacked_values(node, node.value)
             read_children(node, scopes, in_game_code)
             note_unpacked_variables(node)
           when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOperatorWriteNode
@@ -696,6 +809,13 @@ module VBlank
           @in_method = outer
         end
 
+        def under_test(node)
+          @open_tests.push(node)
+          yield
+        ensure
+          @open_tests.pop
+        end
+
         def inside_loops(loops)
           outer = @open_loops
           @open_loops = loops
@@ -705,6 +825,15 @@ module VBlank
         end
 
         def name_given?(write) = write.is_a?(Prism::InstanceVariableWriteNode) && NAMES.any? { |kind| write.value.is_a?(kind) }
+
+        # Each name +targets+ unpacks (`a, (b, c) = ...`), with the whole right side it is given.
+        def note_unpacked_values(targets, value)
+          [*targets.lefts, targets.rest, *targets.rights].compact.each do |target|
+            target = target.expression if target.is_a?(Prism::SplatNode)
+            @unpacked_values[target] = value if target.is_a?(Prism::LocalVariableTargetNode)
+            note_unpacked_values(target, value) if target.is_a?(Prism::MultiTargetNode)
+          end
+        end
 
         def note_unpacked_variables(node)
           return unless node.value.is_a?(Prism::ArrayNode)
@@ -732,7 +861,7 @@ module VBlank
             next unless side
 
             other = sides[1 - index]
-            apart = other ? [SideApart.new(other.location.start_offset, other.location.end_offset, @region_start)] : []
+            apart = other ? [SideApart.new(other.location.start_offset, other.location.end_offset, node.location.start_offset, @region_start)] : []
             with_sides_apart(@sides_apart + apart) { read_names(side, scopes, in_game_code) }
           end
         end
@@ -781,13 +910,10 @@ module VBlank
         end
 
         # Where a call into game code is recorded: the start of its statement, since a working-out
-        # read anywhere in that statement is read once the whole of it is recorded. A call that is
-        # its whole statement (`helper(x)`) reads its arguments before it runs, so it is recorded
-        # where it ends, and `x` keeps no copy for being handed to it.
-        def call_offset(node)
-          start = @statement_start || node.location.start_offset
-          start == node.location.start_offset ? node.location.end_offset : start
-        end
+        # read anywhere in that statement is read once the whole of it is recorded. That holds for
+        # its own arguments too: a method reads what it is handed where it uses it, which may be
+        # after the method has changed what that was worked out from.
+        def call_offset(node) = @statement_start || node.location.start_offset
 
         def record_game_call(node)
           whole = Change.new(offset: call_offset(node), apart: @sides_apart)
@@ -804,9 +930,13 @@ module VBlank
         end
 
         def read_call(node, scopes, in_game_code)
+          note_whole_arguments(node)
+          @calls_on_something << node if node.receiver && node.arguments
           node.compact_child_nodes.each do |child|
             next read_ruby_iteration(child, scopes, in_game_code) if child.is_a?(Prism::BlockNode) && ruby_iteration?(node)
 
+            # Any other block may be kept and run later: a game verb's, a pool's `each`, a part's.
+            @bodies_run_later << child if child.is_a?(Prism::BlockNode)
             game_block = child.is_a?(Prism::BlockNode) && GAME_VERBS.include?(node.name)
             @next_block_placed = true if game_block
             read_names(child, scopes, in_game_code || game_block)
@@ -883,12 +1013,25 @@ module VBlank
 
           local = (scope[node.name] ||= Local.new(node.name, parameter: false))
           record_change(local, node)
-          @first_writes_in_game_code[node] = true if in_game_code
+          @writes_in_game_code[node] = true if in_game_code || @iterating_in_game_code
           @writes_in_methods[node] = true if @in_method
           local.writes << Write.new(node, in_game_code || looped_from_outside?(local), from_unknown_block?(node, scopes))
           local.reads << node unless WHOLE_WRITES.any? { |kind| node.is_a?(kind) }
           @locals_by_node[node] = local
           @loops_around[node] = @open_loops unless @open_loops.empty?
+          @tests_around[node] = @open_tests.dup unless @open_tests.empty?
+        end
+
+        # Notes each argument of +call+, an object being made (`Menus.new(...)`), that is a local
+        # read whole, by position or by keyword: the object may keep it. A verb or a method takes
+        # its number.
+        def note_whole_arguments(call)
+          return unless call.name == :new
+
+          call.arguments&.arguments.to_a.each do |argument|
+            values = argument.is_a?(Prism::KeywordHashNode) ? argument.elements.grep(Prism::AssocNode).map(&:value) : [argument]
+            values.grep(Prism::LocalVariableReadNode).each { |read| @whole_arguments[read] = true }
+          end
         end
       end
     end

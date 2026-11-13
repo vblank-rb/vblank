@@ -13,7 +13,7 @@ class TestPlainRubyNames < Minitest::Test
     loop_block = Prism.parse(source).value.statements.body.first.block
     loop_lines = loop_block.body.body.last.block.body.body
     names = VBlank::DSL::PlainRuby::LocalNames.new(loop_block, library_file: true)
-    names.read_after_it_changes?(loop_lines.first)
+    !names.copy_kept(loop_lines.first).nil?
   end
 
   def test_a_call_of_a_routine_in_vblanks_own_file_keeps_a_local_read_before_it

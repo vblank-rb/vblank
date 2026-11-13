@@ -124,36 +124,27 @@ instance variables.
 - `x = 5`, `x += n`, `x -= n`, `x *= 2`, `flags |= 4`, `flags &= ~4` all change it. `x ||= 2` changes
   only `false` or `nil`: a number is truthy, so `x ||= 2` leaves `x = 0` alone, as in Ruby.
 - `a, b = b, a` and splats work, on every pass.
-- **A name holds a value, as in Ruby.** `old = hp` in game code keeps hp's number from that line;
-  `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
-  `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
-  out as the game plays: it holds the item read before, in a game block, a game file and a method a
-  routine calls alike. A call of game code between the two lines counts as a change of what that
-  code can write, so `flags` keeps the item it read there too, and so does `high` in
-  `high = next_byte(c); (high << 8) | next_byte(c)` and `f` in `(f = t[at]) + bump(at) + f`.
-  A method the same file defines changes the instance variables it writes and what it is handed
-  when it writes through an argument; `call :step_on` changes what that `func`'s block writes; a
-  method of the game's own object from another file (`reader.next_byte(0)`) changes that object and
-  what it is handed. A method of another file called on nothing, a `func` made elsewhere,
-  `case_var` and `start_over` change everything. A call on one side of an `if` changes nothing
-  read on its other side. A write through a worked-out place (`state.fetch(:at)[c] = at + 1`)
-  changes everything read from `state`. A call that cannot reach what the name was read from
-  costs nothing. Calls count only for a name set in game code or a method: one set while setting
-  up and read by game code follows what it was read from, so `frame = frames_since_power_on` reads
-  the count live. A name set from a method's answer reads what that method reads: `at = get(:at, c)`
-  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`; and a name set
-  from another name reads what that one reads, so `envelope = @copy.byte(at + 1)` keeps its byte
-  too. A game variable a method hands back (`floors = routine_var(:floors)`) is that variable, as
-  the object a Ruby method hands back is, and counts itself up with `floors.increase!(1)` across
-  any call. A method that answers a name's number (`@seed` named by `game_variables`, or `hp`
-  after `hp = 10`) hands on that number, so `noise = advance; noise -= advance` takes two
-  different draws, as in Ruby, and so does `noise = advance; repeat(2) { total += noise - advance }`.
-  A name set straight from an instance variable (`setting = @sound_setting`) is that variable
-  across a call, so the objects it is handed to move it, and a routine's block that reads it
-  (`col_x = @col_x` read in a `func`) reads it as the game plays; where the old number is wanted,
-  `store!` it into a `var`. One limit: an object of the game's that
-  shares a variable with the code calling it (handed it when the object was made) can change that
-  variable unseen; read it into a `var` with `store!` there.
+- **A name holds a value, as in Ruby.** A name given a game number keeps the number of its line,
+  however the code around it calls, branches or hands things on: `old = hp` keeps hp's number,
+  `d = hp + 1` its line's answer, `flags = packed[at]` the item it read, `noise = advance` the
+  draw it took, and `x = @hero_x` the number @hero_x had then, in a game block, a game file, a
+  method and a routine's block alike. Giving one name a new number never changes another: `bend =
+  out; bend = 0` leaves `out` alone.
+- **What stays the thing itself, as in Ruby: an object the game holds.** A list, a pool, a part, and
+  a game variable a verb or a `var` line hands back (`floors = routine_var(:floors)`, `frame =
+  frames_since_power_on`) are objects, so a name given one is that object: `floors.increase!(1)`
+  counts it up, and `frame` reads the count live. So is a game variable a name set up hands on,
+  whole, to the parts it builds (`setting = @sound_setting`, then `Menus.new(sound_setting:
+  setting)`), as `Ball.new(selection: menu.selection)` hands the variable itself.
+- **What a name's number costs.** Where the game can change the number before the name is read (a
+  line that writes it, a call of game code that can, a later pass), the name keeps it in a hidden
+  variable of its own, a word of memory. Where nothing can change it, the name costs nothing. The
+  build counts a call as changing what its code can write: the instance variables a method writes
+  and what it is handed, the names a `func`'s block writes, the object a method of another file is
+  called on, what it is handed and what any object was handed as it was made; code the build cannot
+  see changes everything. `rom.profile` lists each line that keeps a copy and what it costs, and a
+  game that runs out of memory is told the same lines. To need no copy, read the name before the
+  line that changes the number, or read the number again after the call that changes it.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

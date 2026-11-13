@@ -582,10 +582,10 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [49, -33], [player[:dither_part_seed], player[:dither_part_got]]
   end
 
-  # A name set straight from an instance variable (ColumnPart#make_shower) is that variable across
-  # a call, so the routine's block reads it as it is when the routine runs: @col is 5 when the
-  # routine is made, and 6 once #nudge has run.
-  def test_a_name_set_from_an_instance_variable_is_that_variable_in_a_routines_block
+  # A name set straight from an instance variable (ColumnPart#make_shower) holds its number from
+  # that line, as Ruby's does, in the routine's block too: @col is 5 when the routine is made, and
+  # 6 once #nudge has run, while `col` keeps the 5.
+  def test_a_name_set_from_an_instance_variable_keeps_its_number_in_a_routines_block
     player = played_game(frames: 3, allow: %w[ColumnPart]) do
       ColumnPart.new(self)
       done = var(:done, 0)
@@ -597,7 +597,41 @@ class TestPlainRubyParts < Minitest::Test
       end
     end
 
-    assert_equal [6, 6], [player[:column_part_col], player[:column_part_seen]]
+    assert_equal [6, 5], [player[:column_part_col], player[:column_part_seen]]
+  end
+
+  # `x = @hero_x` in a method, then a method that moves @hero_x (NudgedHeroPart#step): `x` keeps
+  # the 3 of its line, as Ruby's does.
+  def test_a_name_set_from_an_instance_variable_keeps_its_number_across_a_method_that_moves_it
+    player = played_game(frames: 3, allow: %w[NudgedHeroPart]) do
+      hero = NudgedHeroPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          hero.step
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [4, 3], [player[:nudged_hero_part_hero_x], player[:nudged_hero_part_seen]]
+  end
+
+  # A sound chip's mixer (MixerPart, test/plain_ruby_game_parts.rb): `bend = out; bend = 0 if
+  # additive` leaves `out` alone, so the channel mixes 30 and 10, as Ruby's does.
+  def test_a_name_given_another_names_number_and_then_0_leaves_the_other_alone
+    player = played_game(frames: 3, allow: %w[MixerPart MixerChip MixerOp MixerChannel]) do
+      mixer = MixerPart.new(MixerChip.new(self), MixerOp.new(0, 0), MixerOp.new(4, 0), MixerChannel.new(0, 1))
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          mixer.run
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [40, 10], [player[:mixer_part_mixed], player[:mixer_part_last_seen]]
   end
 
   # The answer key is the same lines written in the game loop: nil, read as a number, is 0.

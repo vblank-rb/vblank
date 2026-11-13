@@ -3,20 +3,19 @@
 module VBlank
   module DSL
     module PlainRuby
-      # WHAT A CALL OF GAME CODE CAN CHANGE, for LocalNames#read_after_it_changes?, as a second file
-      # of LocalNames: it reads the names LocalNames found. A local set from a game value is a
-      # working-out, read where it is used, so a call between its line and that use that changes
-      # what it was read from makes it read the new value. Copying every such local costs a
-      # variable each, which a game of any size cannot afford, so a call counts only as a change of
-      # what the code it runs can write, where this source shows that code:
+      # WHAT A CALL OF GAME CODE CAN CHANGE, for LocalNames#copy_kept, as a second file of
+      # LocalNames: it reads the names LocalNames found. A local set from a game value keeps its
+      # number in a copy unless nothing can change it before it is read. Each copy costs a
+      # variable, so the proof is worth making narrow: a call counts only as a change of what the
+      # code it runs can write, where this source shows that code:
       #
       # - a method this source defines (`def next_byte`), on whatever it is called: the instance
       #   variables it writes, and what it is handed when it writes through an argument
       #   (`place.increase!(1)`), followed into the methods and routines it calls;
       # - `call :step_on`, of a routine this source makes with `func(:step_on) { ... }`: the names
       #   its block writes;
-      # - a method of the game's own object from another file (`reader.next_byte(0)`): that object
-      #   and what it is handed.
+      # - a method of the game's own object from another file (`reader.next_byte(0)`): that object,
+      #   what it is handed, and whatever an object was handed as it was made.
       #
       # Code this source does not show (a method of another file called on nothing, `call` of a
       # routine made elsewhere, `case_var`, `start_over`) can change anything, so it counts as a
@@ -44,9 +43,17 @@ module VBlank
         # does not show.
         EVERY_NAME = Ractor.make_shareable(Object.new)
 
-        # The other side of an `if` a change sits on, from +from+ to +to+ in the source, and where
-        # the region the `if` sits in starts (LocalNames#inside_region).
-        SideApart = Data.define(:from, :to, :region_start)
+        # A method named with a word (`step`, `set_tile`, `done?`), not an operator or a slot (`[]`),
+        # which are read as places (LocalNames#names_read_by).
+        WORD_NAMED = /\A[a-z_]\w*[?!]?\z/
+
+        # Stands, among the names a call changes, for every name an object was handed
+        # (#names_handed_to_objects), worked out once the whole source is read.
+        HANDED_TO_OBJECTS = Ractor.make_shareable(Object.new)
+
+        # The other side of an `if` a change sits on, from +from+ to +to+ in the source, where the
+        # `if` starts, and where the region the `if` sits in starts (LocalNames#inside_region).
+        SideApart = Data.define(:from, :to, :test_start, :region_start)
 
         # Where a name changes: from +offset+ in the source on, but not on the +apart+ sides of the
         # `if`s it sits in. With +statement+, the change is a call later in a statement than a
@@ -57,11 +64,11 @@ module VBlank
           # Does this change come after the line +write+, so it can matter to the local it sets?
           def after?(write) = offset > write.location.end_offset && (statement.nil? || write.location.start_offset >= statement)
 
-          # Does it come before +read+ of the local +write+ sets? A side apart counts only for a
-          # local set inside the region of its `if`, set again before the `if` each time round.
-          def reaches?(read, write)
+          # Does it come before +read+? A side apart counts only where the block says it does for
+          # the local read (LocalNames#side_apart_holds?).
+          def reaches?(read)
             at = read.location.start_offset
-            at >= offset && apart.none? { |side| at.between?(side.from, side.to) && write.location.start_offset > side.region_start }
+            at >= offset && apart.none? { |side| at.between?(side.from, side.to) && yield(side) }
           end
         end
 
@@ -84,6 +91,24 @@ module VBlank
             names.concat(vblank_modules.flat_map { |mod| mod.instance_methods(false) + mod.private_instance_methods(false) })
             names.to_set
           end
+        end
+
+        # The name of every method a game file defines (PlainRuby.rewritten_file), so a call on an
+        # object of the game's named like a method of a Ruby value or a handle of VBlank's
+        # (`stepper.step`, beside Integer#step) is still taken to be the game's. Files are loaded
+        # in the main Ractor, before any game is built, and every Ractor reads the same names.
+        def self.game_method_names = @game_method_names || Set.new.freeze
+
+        def self.record_game_method_names(root)
+          return unless Ractor.current == Ractor.main
+
+          names = []
+          finder = lambda do |node|
+            names << node.name if node.is_a?(Prism::DefNode) && node.name.match?(WORD_NAMED)
+            node.compact_child_nodes.each(&finder)
+          end
+          finder.call(root)
+          @game_method_names = Ractor.make_shareable(game_method_names | names)
         end
 
         # VBlank and every module and class under it.
@@ -116,11 +141,19 @@ module VBlank
         # `x.increase!(1)`: a verb ending in `!` on something, which changes it. `!x` asks.
         def self.bang_call?(node) = node.name != :! && node.name.end_with?("!") && !node.receiver.nil?
 
+        # The verbs of a list, a pool and a Ruby Array or Hash that change it, with no `!` to say so.
+        # Not `<<`, which on a number shifts it.
+        CHANGING_VERBS = %i[push shift pop unshift append prepend insert concat fill copy_from clear delete
+                            delete_at spawn remove store].freeze
+
+        # Does +node+ change what it is called on: `x.increase!(1)`, `queue.push(9)`, `queue.shift`?
+        def self.changes_receiver?(node) = bang_call?(node) || (!node.receiver.nil? && CHANGING_VERBS.include?(node.name))
+
         private
 
         # Does a handle of VBlank's or a Ruby value have a method called +name+? Called on
         # something, such a method is taken to be that, and not the game's.
-        def known_method?(name) = CallChanges.known_method_names.include?(name)
+        def known_method?(name) = CallChanges.known_method_names.include?(name) && !CallChanges.game_method_names.include?(name)
 
         # Each routine `func` makes in this source, by name, and the blocks that make it.
         def note_func_block(node)
@@ -146,7 +179,8 @@ module VBlank
             changes = changes_of_call(call.node)
             next @calls_into_game_code.concat(call.changes) if changes.everything
 
-            changes.names.each { |name| (@whole_name_changes[name] ||= []).concat(call.changes) }
+            names = changes.names.flat_map { |name| name.equal?(HANDED_TO_OBJECTS) ? names_handed_to_objects : [name] }
+            names.uniq.each { |name| (@whole_name_changes[name] ||= []).concat(call.changes) }
           end
         end
 
@@ -173,8 +207,19 @@ module VBlank
         end
 
         # A method of an object of the game's, defined in another file (`reader.next_byte(0)`): it
-        # can write the object it is called on and what it is handed, and only those.
-        def changes_of_object_call(node) = Changes.of_names(names_read_by(node.receiver).map { |key| whole_name(key) } + names_handed(node))
+        # can write the object it is called on, what it is handed, and whatever any object was
+        # handed before (#names_handed_to_objects): `Reader.new(state)` keeps `state`, and
+        # `reader.advance` can write it.
+        def changes_of_object_call(node)
+          Changes.of_names(names_read_by(node.receiver).map { |key| whole_name(key) } + names_handed(node) + [HANDED_TO_OBJECTS])
+        end
+
+        # Every name this source hands to an object as it is made (`Reader.new(state)`) or to a
+        # method of game code called on one: each object may keep it, and change it later.
+        def names_handed_to_objects
+          @names_handed_to_objects ||= @calls_on_something.select { |call| call.name == :new || game_call?(call) }
+                                                          .flat_map { |call| names_handed(call) }.uniq
+        end
 
         def changes_of_func_call(node)
           blocks = @func_blocks[CallChanges.routine_named(node)]
@@ -184,25 +229,48 @@ module VBlank
         end
 
         # The names the arguments of +node+ read that a method can write through, each a whole
-        # name, since it may write any slot of it. A plain name started as a number holds one,
-        # which nothing changes in place, and so is taken to hold a method's argument
-        # (`still_there(piece)`); any other name may hold a list, a Hash or a game variable.
+        # name, since it may write any slot of it. A plain name started as a number written out
+        # holds one, which nothing changes in place; any other name, a method's own argument
+        # among them, may hold a list, a Hash or a game variable.
         def names_handed(node)
           names = node.arguments&.arguments.to_a.flat_map { |argument| names_read_by(argument) }.map { |key| whole_name(key) }
           names.reject { |name| name.is_a?(LocalNames::Local) && holds_number?(name) }
         end
 
-        def holds_number?(local) = local.plain_name? && (local.parameter? || local.starts_as_number?)
+        def holds_number?(local) = local.plain_name? && !local.parameter? && local.starts_as_number?
 
         def whole_name(key) = key.is_a?(Array) ? key.first : key
 
         # What a method's or a routine's +body+ can write. A body that calls back into itself
         # adds nothing the first time round has not.
         def changes_inside_body(body)
-          return @body_changes[body] if @body_changes.key?(body)
+          cached_with_cycle_guard(@body_changes, body, NOTHING) do
+            Changes.union_of(changes_written_under(body, body, body.is_a?(Prism::DefNode)))
+          end
+        end
 
-          @body_changes[body] = NOTHING
-          @body_changes[body] = Changes.union_of(changes_written_under(body, body, body.is_a?(Prism::DefNode)))
+        # +cache+'s answer for +body+, worked out by the block. Asked again while it is being
+        # worked out, a body calls back into itself and answers +so_far+. Two bodies that call
+        # each other: the inner one was worked out with the outer one's answer still missing, so
+        # only the outermost of them keeps its answer, and the inner one is worked out again
+        # when it is asked on its own.
+        def cached_with_cycle_guard(cache, body, so_far)
+          return cache[body] if cache.key?(body)
+
+          @bodies_open ||= []
+          @bodies_reentered ||= {}.compare_by_identity
+          if @bodies_open.include?(body)
+            @bodies_reentered[body] = true
+            return so_far
+          end
+
+          @bodies_open.push(body)
+          answer = yield
+          @bodies_open.pop
+          reentered_open_body = @bodies_reentered.keys.any? { |each_body| @bodies_open.include?(each_body) }
+          @bodies_reentered.delete(body)
+          cache[body] = answer unless reentered_open_body
+          answer
         end
 
         # What +node+ and everything under it write, leaving out a method defined inside +body+.
@@ -229,7 +297,7 @@ module VBlank
         end
 
         def change_by_inner_call(node, in_method)
-          writes = node.name == :[]= || node.attribute_write? || CallChanges.bang_call?(node)
+          writes = node.name == :[]= || node.attribute_write? || CallChanges.changes_receiver?(node)
           through = writes ? change_through(node.receiver, in_method) : NOTHING
           return through unless game_call?(node)
 
@@ -286,10 +354,7 @@ module VBlank
         # instance variables, a routine's names around it, and what the calls in it read. A
         # method's own locals and arguments are its own, its caller's handed in (#reads_of_call).
         def names_read_inside_body(body)
-          return @body_reads[body] if @body_reads.key?(body)
-
-          @body_reads[body] = []
-          @body_reads[body] = names_read_under(body, body, body.is_a?(Prism::DefNode)).uniq
+          cached_with_cycle_guard(@body_reads, body, []) { names_read_under(body, body, body.is_a?(Prism::DefNode)).uniq }
         end
 
         def names_read_under(node, body, in_method)

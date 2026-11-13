@@ -279,15 +279,32 @@ module VBlank
         # A right side of `a, b = b, a`, kept before the writes reach what it reads.
         def number_now(value) = value.is_a?(Value) ? value.hidden_copy(:swap) : value
 
-        # What a name was given, kept as it is on this line, since something it was worked out from
-        # changes before it is read. A number needs no keeping.
-        # +copy+ chooses whether +value+, when it is a game variable, gets a copy
-        # (Rewriter#kept_answer_copy): :always, :never, or :numbers to copy only one normal Ruby
-        # made for a name's number (`@seed`, named by `game_variables`), leaving one a `var` line
-        # made, which the game passes around to change.
-        def kept_answer(value, copy: :always)
-          return value if variable?(value) && !copies_variable?(value, copy)
-          return value.hidden_copy if value.is_a?(Value)
+        # What a plain local holds, as Ruby holds it, for a line LocalNames#copy_kept could not
+        # prove safe to leave as a working-out: a number in a hidden variable of its own, holding
+        # the number of this line.
+        #
+        # +copy+ :numbers keeps every number: a working-out (`d = hp + 1`, `flags = packed[at]`),
+        # a test's answer, and a game variable that is a name's number in Ruby (`hp = 10`, `@seed`
+        # named by `game_variables`, a hidden one). :every_variable, for `first = hp` with `hp` a
+        # local the game changes, keeps hp's number whatever made its variable.
+        #
+        # What stays as it is, as in Ruby: a plain Ruby value; a handle the game holds as an
+        # object, a variable a `var` line or a verb made (`routine_var(:floors)`,
+        # `frames_since_power_on`), which the game hands about to change and to read live; and a
+        # working-out of numbers the cartridge holds fixed, which no line can change.
+        #
+        # +name+ is the local's: a copy is that name's own (Writes.promote), so another name given
+        # it later and then a number never writes it.
+        def kept_answer(value, copy: :numbers, name: nil)
+          copied = copy_for_local(value, copy)
+          copied.owner_name = name unless copied.equal?(value)
+          copied
+        end
+
+        def copy_for_local(value, copy)
+          return value.hidden_copy if copy == :every_variable && variable?(value)
+          return number_of_variable(value) if variable?(value)
+          return (value.changes_as_game_plays? ? value.hidden_copy : value) if value.is_a?(Value)
           return value unless value.is_a?(Condition)
 
           kept = value.hidden_variable(:copy)
@@ -296,17 +313,7 @@ module VBlank
           kept
         end
 
-        def copies_variable?(variable, copy)
-          case copy
-          in :always then true
-          in :never then false
-          in :numbers then variable.made_with_no_var_line?
-          end
-        end
-
-        # `old = hp`. While the game plays that must keep hp's number as it is now, where a plain
-        # second name would follow hp when it changes.
-        def copy_of_variable(value) = variable?(value) ? value.kept_copy : value
+        def number_of_variable(variable) = variable.number_in_ruby? ? variable.hidden_copy : variable
 
         def refuse_game_code!(message)
           raise Refused, "#{message}#{Messages::AuthorSource.at_author_line}"

@@ -54,7 +54,8 @@ module VBlank
           return write_plain_place(current, value, game, label, needs_slot) { |given| yield given } unless Steps.variable?(current)
           return current if value.equal?(current)
 
-          if moves && Steps.variable?(value) && !current.own_to_its_name
+          # A hidden variable is a number the build kept (a copy, a pick), never a handle to move.
+          if moves && Steps.variable?(value) && !value.hidden? && !current.own_to_its_name
             refuse_move_in_game_code!(label, current, value, owner)
             return yield(value)
           end
@@ -268,19 +269,26 @@ module VBlank
         # only inside them, and still holding a variable it was handed, gets its own here: the sides
         # would otherwise write the variable it came from, which is somebody else's. So does one given
         # a plain number since (`differing = 0` at the top of a loop's body): the variable an outer
-        # test gave the name is no longer what it holds.
-        def promote(value, test, *outer, may_stay_nil: false)
+        # test gave the name is no longer what it holds. +name+ is the name promoted: a hidden
+        # variable made for another name is that name's (`bend = out`, `out` promoted or keeping
+        # a copy), and `bend = 0` under this test must not write it.
+        def promote(value, test, *outer, may_stay_nil: false, name: nil)
           return value unless test.game?
-          return value if outer.any?(&:game?) && Steps.variable?(value) && !handed?(value)
+          return value if outer.any?(&:game?) && Steps.variable?(value) && !handed?(value) && owned_by?(value, name)
           return value unless number_kept?(value)
 
           own = test.hidden_variable(:promoted, like: value.is_a?(Value) || value.is_a?(Float) ? value : nil)
+          own.owner_name = name
           own.mark_boolean! if [true, false].include?(value) || value.is_a?(Condition) || (value.is_a?(Value) && value.boolean?)
           own.unwritten = value.nil?
           own.start_truth_as_nil! if may_stay_nil && value.nil?
           store_in_variable(own, value) unless value.nil?
           own
         end
+
+        # Is +variable+ a hidden one made for +name+ (#promote, Steps.kept_answer), or one made for
+        # no name in particular (a pick, a join)?
+        def owned_by?(variable, name) = name.nil? || variable.owner_name.nil? || variable.owner_name == name
 
         def own_variable?(current) = Steps.variable?(current) && current.own_to_its_name
 

@@ -1750,6 +1750,252 @@ class TestPlainRuby < Minitest::Test
     assert_equal [1, 0x0203], [player[:first], player[:pair]]
   end
 
+  # The answer key for the tests below is Ruby: the same lines run as plain Ruby on Integers, a `var`
+  # an object that answers `increase!`. A local keeps the number of its line however the code
+  # around it calls, branches or hands things on.
+
+  # `stepper.step` is a method of an object of another file (PlainRubyStepper) named like Ruby's
+  # Integer#step, which moves on the place the object was made with: `flags` keeps the 10.
+  def test_a_name_keeps_its_number_across_a_game_method_named_like_one_of_rubys
+    player = played(frames: 2, allow: %w[PlainRubyStepper]) do
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      stepper = PlainRubyStepper.new(at)
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        flags = packed[at]
+        stepper.step
+        seen = flags
+        halt
+      end
+    end
+
+    assert_equal [10, 1], [player[:seen], player[:at]]
+  end
+
+  # An object of another file kept the Hash it was made with (PlainRubySharedPlace), and moves on
+  # the place kept in it: `place` keeps the 0 it read.
+  def test_a_name_keeps_its_number_when_an_object_moves_what_it_was_handed_as_it_was_made
+    player = played(frames: 2, allow: %w[PlainRubySharedPlace]) do
+      state = { at: list(:places, capacity: 1, full_of: 0) }
+      mover = PlainRubySharedPlace.new(state)
+      seen = var :seen, 9
+      game_loop do
+        place = state.fetch(:at)[0]
+        mover.advance
+        seen = place
+        halt
+      end
+    end
+
+    assert_equal [0, [1]], [player[:seen], player.list(:places)]
+  end
+
+  # `item` is handed to a method that moves the place on before it reads its argument: the
+  # method reads the 10 `item` was set to.
+  def test_a_name_handed_to_a_method_keeps_its_number_when_the_method_moves_its_source_first
+    player = played(frames: 2) do
+      def bump_then_give(place, item)
+        place.increase!(1)
+        item
+      end
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        item = packed[at]
+        seen = bump_then_give(at, item)
+        halt
+      end
+    end
+
+    assert_equal [10, 1], [player[:seen], player[:at]]
+  end
+
+  # `held` is set on the first round of a loop, on one side of an `if`, before a call moves its
+  # place on; the second round reads it on the other side, and gets the 10.
+  def test_a_name_set_on_one_round_keeps_its_number_on_the_other_side_of_an_if_next_round
+    player = played(frames: 2) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      round = var :round, 0
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        round.store!(0)
+        held = 0
+        while round < 2
+          if round == 0
+            held = packed[at]
+            bump(at)
+          else
+            seen = held
+          end
+          round += 1
+        end
+        halt
+      end
+    end
+
+    assert_equal 10, player[:seen]
+  end
+
+  # `start` and `answer` are set while setting up, and a method of another file moves their place
+  # on in the game loop before they are read: each keeps the 10 of its line.
+  def test_a_name_set_up_keeps_its_number_across_a_call_of_another_files_method
+    player = played(frames: 2) do
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      start = packed[at]
+      answer = plain_ruby_helper_pass_over(packed[at])
+      seen = var :seen, 0
+      seen_answer = var :seen_answer, 0
+      game_loop do
+        plain_ruby_helper_move_on(at)
+        seen = start
+        seen_answer = answer
+        halt
+      end
+    end
+
+    assert_equal [10, 10, 1], [player[:seen], player[:seen_answer], player[:at]]
+  end
+
+  # A list handed through a method's argument to a method that changes it: `first` keeps the 5.
+  def test_a_name_keeps_its_number_when_a_list_handed_on_through_an_argument_changes
+    player = played(frames: 2) do
+      def bump_first(list)
+        list[0] += 1
+      end
+
+      def first_then_bump(list)
+        first = list[0]
+        bump_first(list)
+        first
+      end
+      counts = list :counts, capacity: 1, full_of: 5
+      seen = var :seen, 0
+      game_loop do
+        seen = first_then_bump(counts)
+        halt
+      end
+    end
+
+    assert_equal [5, [6]], [player[:seen], player.list(:counts)]
+  end
+
+  # `x` is read through two methods that call each other, and changed through two more: it keeps
+  # the 5.
+  def test_a_name_keeps_its_number_across_methods_that_call_each_other
+    player = played(frames: 2) do
+      def pick(list, depth) = depth.zero? ? list[0] : pock(list, depth - 1)
+      def pock(list, depth) = pick(list, depth)
+      def push(list, depth) = depth.zero? ? (list[0] += 1) : pash(list, depth - 1)
+      def pash(list, depth) = push(list, depth)
+      counts = list :counts, capacity: 1, full_of: 5
+      seen = var :seen, 0
+      game_loop do
+        x = pick(counts, 1)
+        push(counts, 1)
+        seen = x
+        halt
+      end
+    end
+
+    assert_equal [5, [6]], [player[:seen], player.list(:counts)]
+  end
+
+  # `place` is changed by `+=` and read by the line that sets `item`, and a call moves `at`, which
+  # `place` was worked out from: `item` keeps the 20 at place 1.
+  def test_a_name_read_through_a_name_changed_by_add_keeps_its_number
+    player = played(frames: 2) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        place = at + 0
+        place += 1
+        item = packed[place]
+        bump(at)
+        seen = item
+        halt
+      end
+    end
+
+    assert_equal 20, player[:seen]
+  end
+
+  # `out` keeps the 10 it read in a copy of its own, since a method moves its place on; `bend` is
+  # given `out` and then 0 under a test the game makes, inside another: `out` keeps its 10.
+  def test_a_name_given_another_names_copy_and_then_0_leaves_the_other_alone
+    player = played(frames: 2) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      flag = var :flag, 0
+      seen = var :seen, 9
+      kept = var :kept, 0
+      game_loop do
+        at.store!(0)
+        out = packed[at]
+        bump(at)
+        if flag == 0
+          bend = out
+          bend = 0 if flag == 0
+          seen = bend
+        end
+        kept = out
+        halt
+      end
+    end
+
+    assert_equal [0, 10], [player[:seen], player[:kept]]
+  end
+
+  # `n` and `first` are read from a list before `push` and `shift` change it: each keeps its number.
+  def test_a_name_keeps_its_number_across_a_change_a_lists_own_method_makes
+    player = played(frames: 2) do
+      queue = list :queue, capacity: 4
+      seen_length = var :seen_length, 0
+      seen_first = var :seen_first, 0
+      game_loop do
+        queue.push(7)
+        queue.push(8)
+        n = queue.length
+        first = queue[0]
+        queue.push(9)
+        queue.shift
+        seen_length = n
+        seen_first = first
+        halt
+      end
+    end
+
+    assert_equal [2, 7], [player[:seen_length], player[:seen_first]]
+  end
+
+  # `score_at_start` is set up from @score and handed to a verb that reads the number, not to a
+  # part that keeps it: it keeps the 5 of its line while the game counts @score on.
+  def test_a_name_set_up_and_handed_to_a_verb_keeps_its_number
+    player = played(frames: 3) do
+      game_variables :score
+      @score = 5
+      score_at_start = @score
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen = plain_ruby_helper_pass_over(score_at_start)
+      end
+    end
+
+    assert_equal 5, player[:seen]
+  end
+
   def test_an_ivar_made_by_var_copies_another_variable
     player = played do
       @a = var :a, 5
