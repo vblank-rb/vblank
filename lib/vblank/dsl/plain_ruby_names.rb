@@ -59,6 +59,9 @@ module VBlank
         # as a handle and reads live (Steps.kept_answer).
         CONSOLE_STATE_VERBS = %i[held pressed players_connected].freeze
 
+        # The verbs that read a button, which a game means to read where it uses the answer.
+        BUTTON_VERBS = %i[held pressed].freeze
+
         # What a `clock` and a `timer` read, which move on between passes too (`clock.hour`,
         # `countdown.ticks`).
         CONSOLE_STATE_READINGS = %i[hour minute second year month day weekday present? set? ticks].freeze
@@ -334,6 +337,16 @@ module VBlank
           local_variable_read?(write.value) ? :every_variable : :numbers
         end
 
+        # Is +write+ a line outside game code that sets its local from a button (`held`, `pressed`),
+        # with the local read in game code? Its copy keeps the buttons as the game started, which
+        # never changes (Guardrails::Checks::PressKeptFromSettingUp).
+        def button_read_later?(write)
+          local = @locals_by_node[write]
+          return false unless local && write.is_a?(Prism::LocalVariableWriteNode) && read_later_in_game_code?(local, write)
+
+          values_worked_out_from(write).any? { |value| reads_console_state?(value, verbs: BUTTON_VERBS) }
+        end
+
         # `first = hp`, where `hp` is a local this source keeps as a game variable, made by `var`
         # too: `hp -= 1` gives the name a new number, as Ruby's `hp` would, so `first` keeps the
         # old one whatever made the variable.
@@ -353,18 +366,28 @@ module VBlank
         # gone by then: `advance = pressed(:a)` while setting up keeps the press as the game
         # started, as Ruby's local does.
         private def reads_console_state_through_locals?(write)
-          values = [write.value] + locals_worked_out_in(write.value).flat_map { |local| value_writes(local).map(&:value) }
-          values.compact.any? { |value| reads_console_state?(value) }
+          values_worked_out_from(write).any? { |value| reads_console_state?(value) }
         end
 
-        private def reads_console_state?(node)
-          return true if node.is_a?(Prism::CallNode) && console_state_call?(node)
-
-          node.compact_child_nodes.any? { |child| reads_console_state?(child) }
+        # The value +write+ gives its local, and the values of the plain locals it works out from.
+        private def values_worked_out_from(write)
+          ([write.value] + locals_worked_out_in(write.value).flat_map { |local| value_writes(local).map(&:value) }).compact
         end
 
-        private def console_state_call?(call)
-          return CONSOLE_STATE_VERBS.include?(call.name) unless called_on_something?(call)
+        # Does +node+ call one of +verbs+, or read a clock or a timer where +verbs+ are every verb
+        # the console changes?
+        private def reads_console_state?(node, verbs: CONSOLE_STATE_VERBS)
+          return true if node.is_a?(Prism::CallNode) && console_state_call?(node, verbs)
+
+          node.compact_child_nodes.any? { |child| reads_console_state?(child, verbs: verbs) }
+        end
+
+        # A button verb counts on anything too, for a game that asks its own button objects
+        # (`ADVANCE.map { |button| button.pressed(self) }`).
+        private def console_state_call?(call, verbs)
+          return true if BUTTON_VERBS.include?(call.name)
+          return verbs.include?(call.name) unless called_on_something?(call)
+          return false if verbs.equal?(BUTTON_VERBS)
 
           CONSOLE_STATE_READINGS.include?(call.name) && (call.name == :ticks || clock_call?(call.receiver))
         end

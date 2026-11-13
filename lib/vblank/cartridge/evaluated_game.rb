@@ -83,6 +83,9 @@ module VBlank
       def estimate_lines = @builder.estimate_lines
       def handed_name_writes = @builder.handed_name_writes
 
+      # The lines outside game code that keep a button for game code to read.
+      def kept_buttons = @builder.kept_buttons
+
       # The variables normal Ruby needed that nobody declared (see Diagnostics::HiddenVariables).
       def hidden_variable_notes = @builder.hidden_variable_notes
 

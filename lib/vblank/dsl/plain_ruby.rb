@@ -812,9 +812,15 @@ module VBlank
 
         # What a plain local is given: its value, kept as Ruby keeps it where LocalNames#copy_kept
         # cannot prove that nothing changes it before it is read.
+        #
+        # A button read while setting up and kept for game code is noted for the build's warning
+        # (Steps.kept_answer's +button_kept+).
         def kept_value_text(value, write)
           kept = @names.copy_kept(write)
-          kept ? "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name})" : value_text(value)
+          return value_text(value) unless kept
+
+          button = ", button_kept: true" if @names.button_read_later?(write)
+          "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept}, name: :#{write.name}#{button})"
         end
 
         def value_text(value)

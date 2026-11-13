@@ -147,6 +147,10 @@ module VBlank
         @owner_name = name
       end
 
+      # This copy keeps a button read while setting up, for game code to read
+      # (PlainRuby::Steps.kept_answer): noted for Guardrails::Checks::PressKeptFromSettingUp.
+      def record_kept_button = @builder.record_kept_button(@owner_name)
+
       # A game has no nil, and a number variable has no false. A name that can hold those as well
       # as a number keeps which it holds in a hidden variable beside it: NIL_HELD, FALSE_HELD or
       # TRUTHY_HELD. The number is read as it stands, so a nil reads as 0.

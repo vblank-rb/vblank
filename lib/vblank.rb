@@ -206,6 +206,7 @@ module VBlank
                 IR::Guardrails::Checks::DroppedFrameSync.new(evaluated.dropped_syncs),
                 IR::Guardrails::Checks::EstimateDoesNothing.new(evaluated.estimate_lines),
                 IR::Guardrails::Checks::HandedNameWritten.new(evaluated.handed_name_writes),
+                IR::Guardrails::Checks::PressKeptFromSettingUp.new(evaluated.kept_buttons),
                 IR::Guardrails::Checks::LayerHoldsNothing.new(evaluated.sprites),
                 IR::Guardrails::Checks::StackNotHonored.new(evaluated.sprites)]
       findings = IR::ProgramChecks.findings_for!(program, checks: checks, progress: progress)

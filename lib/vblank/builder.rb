@@ -153,6 +153,9 @@ module VBlank
     # A line of game code that gave a name a new number while it held a game variable.
     HandedNameWrite = Data.define(:name, :variable, :source)
 
+    # A line outside game code that keeps a button's answer in +local+ for game code to read.
+    KeptButton = Data.define(:local, :source)
+
     # @param options [Cartridge::Options] how the game is built; the Builder reads its frame
     #   pacing and the save memory it named
     # @param progress [VBlank::Messages::Progress] what a build says it is doing (see {#progress})
@@ -200,6 +203,7 @@ module VBlank
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
+      @kept_buttons = []
       @variables_with_no_var_line = []
       @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
@@ -1224,6 +1228,18 @@ module VBlank
 
     # The lines #record_handed_name_write kept, for the warning.
     attr_reader :handed_name_writes
+
+    # A line outside game code kept a button's answer in +local+ for game code to read
+    # (DSL::Value#record_kept_button). One warning for each line.
+    def record_kept_button(local)
+      source = Messages::AuthorSource.author_source
+      return if @kept_buttons.any? { |kept| kept.source == source && kept.local == local }
+
+      @kept_buttons << KeptButton.new(local:, source:)
+    end
+
+    # The lines #record_kept_button kept, for the warning.
+    attr_reader :kept_buttons
 
     # The names normal Ruby made variables of with no `var` line.
     attr_reader :variables_with_no_var_line

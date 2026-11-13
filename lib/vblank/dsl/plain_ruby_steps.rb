@@ -302,9 +302,15 @@ module VBlank
         #
         # +name+ is the local's: a copy is that name's own (Writes.promote), so another name given
         # it later and then a number never writes it.
-        def kept_answer(value, copy: :numbers, name: nil)
+        #
+        # +button_kept+ marks a line outside game code that keeps a button for game code to read
+        # (LocalNames#button_read_later?), which the build warns of.
+        def kept_answer(value, copy: :numbers, name: nil, button_kept: false)
           copied = copy_for_local(value, copy)
-          copied.owner_name = name unless copied.equal?(value)
+          return copied if copied.equal?(value)
+
+          copied.owner_name = name
+          copied.record_kept_button if button_kept
           copied
         end
 
