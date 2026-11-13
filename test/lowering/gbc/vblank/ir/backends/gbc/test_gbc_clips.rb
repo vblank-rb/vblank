@@ -143,8 +143,8 @@ class TestGBCClips < Minitest::Test
   def test_a_recording_over_a_wave_part_keeps_its_own_pitch
     heard = console_voice(clip_over_a_wave_part, :wave, frames: 80)
 
-    assert_in_delta 256, heard.held_note(40).pitch, 4, "the recording, through the part's next note"
-    assert_in_delta 440, heard.held_note(70).pitch, 6, "the part's own note once the recording is over"
+    assert_in_delta 256, pitch_held_through(heard, 34..46), 4, "the recording, through the part's next note"
+    assert_in_delta 440, pitch_held_through(heard, 62..76), 6, "the part's own note once the recording is over"
   end
 
   # A WAVE NOTE HELD ACROSS A RECORDING: one A440 held four seconds, and a recording of a little under

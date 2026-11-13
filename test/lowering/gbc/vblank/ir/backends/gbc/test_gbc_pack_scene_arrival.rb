@@ -2,19 +2,27 @@
 
 require "test_helper"
 require "made_up_original_layouts"
+require "stringio"
 
 # A SCENE WHOSE BACKGROUND COMES FROM THE DATA PACK ARRIVES IN ONE FRAME, however many other scenes
 # draw theirs from the pack, as the same screens drawn by hand do. A Color original's screen is a map
 # of 20 by 18 cells over a few hundred tiles of its own, and its game brings a screen in within the
 # frame it takes over. Two such screens whose tiles fit in the Color together are put up with the
-# display on, in the blank, and the 18 rows of a screen's map fit in one, where a whole grid of 32
-# rows does not.
+# display on, in the blank, as many rows as it holds.
+#
+# A game that fades (+fading+) changes its colours on every pass, as a screen fading in or held
+# white has them drawn every pass, so the blank a screen arrives in sends its colours too. Beside
+# them and the sprites the blank holds fewer than a screen's 18 rows; the rows it cannot hold go in
+# with the display off for the end of that blank, as a screen bringing its own tiles does, and the
+# screen is shown on the frame it takes over.
 class TestGBCPackSceneArrival < Minitest::Test
   GBC = VBlank::IR::Backends::GBC
 
   # The passes each screen takes over on.
   FIRST_PASS = 10
   SECOND_PASS = 30
+  # The frames profiled: from before the first takes over to after the second has.
+  PROFILED_FRAMES = FIRST_PASS..(SECOND_PASS + 15)
   ACROSS = 20
   # Each screen's rows: the second is shorter, so the rows of the first past it must go.
   SCREEN_ROWS = [18, 12].freeze
@@ -38,12 +46,45 @@ class TestGBCPackSceneArrival < Minitest::Test
     Array.new(ACROSS * rows) { |at| [(screen * SCREEN_TILES) + ((at * 7) % SCREEN_TILES), (at / ACROSS) % BANKS] }
   end
   PALETTE = Array.new(BANKS * BANK_SIZE) { |at| ((at * 997) + 0x0421) & 0x7FFF }.freeze
+  NOTHING_PRESSED = VBlank::Playthroughs::Tape.parse(<<~TAPE)
+    vblank tape 1
+    recorded on: ARRIVAL 0x00000000
+    starts from: power-on
+  TAPE
 
   constants.each { |name| Ractor.make_shareable(const_get(name)) }
+
+  # The profile of each frame says whether a new picture went up in it, and none from the first
+  # scene taking over to the second is held, though the colours change as each arrives.
+  def test_no_frame_holds_the_picture_as_each_fading_scene_from_the_pack_takes_over
+    Dir.mktmpdir do |folder|
+      game = scene_game(%i[pack pack], folder, fading: true)
+      rom = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+      result = rom.profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: PROFILED_FRAMES)
+
+      assert_empty result.held.map { |reading| [reading.frame, reading.picture_held_by] }
+    end
+  end
 
   def test_each_scene_from_the_pack_arrives_in_one_frame_beside_another
     Dir.mktmpdir do |folder|
       run = arrival_run(scene_game(%i[pack pack], folder))
+
+      assert_equal [1, 1], [run.frames_took(FIRST_PASS + 1), run.frames_took(SECOND_PASS + 1)]
+    end
+  end
+
+  def test_each_fading_scene_from_the_pack_arrives_in_one_frame
+    Dir.mktmpdir do |folder|
+      run = arrival_run(scene_game(%i[pack pack], folder, fading: true))
+
+      assert_equal [1, 1], [run.frames_took(FIRST_PASS + 1), run.frames_took(SECOND_PASS + 1)]
+    end
+  end
+
+  def test_the_same_fading_scenes_drawn_by_hand_arrive_in_one_frame_each
+    Dir.mktmpdir do |folder|
+      run = arrival_run(scene_game(%i[by_hand by_hand], folder, fading: true))
 
       assert_equal [1, 1], [run.frames_took(FIRST_PASS + 1), run.frames_took(SECOND_PASS + 1)]
     end
@@ -73,6 +114,14 @@ class TestGBCPackSceneArrival < Minitest::Test
     pass
   end
 
+  # ...and put up with the display off for the rows the blank cannot hold.
+  def test_fading_scenes_from_the_pack_arriving_agree_with_the_interpreter
+    Dir.mktmpdir do |folder|
+      GBC::CheckedRun.new.run(scene_game(%i[pack pack], folder, fading: true).program(console: :gbc), frames: SECOND_PASS + 4)
+    end
+    pass
+  end
+
   private def arrival_run(game) = GBC::HeadlessRun.new.run(game.program(console: :gbc), frames: SECOND_PASS + 4)
 
   # A made-up Color original: its colours, its tiles, and each screen's map, a cell three bytes:
@@ -93,8 +142,9 @@ class TestGBCPackSceneArrival < Minitest::Test
 
   # A blank scene, then from FIRST_PASS the first screen and from SECOND_PASS the second. +hows+
   # says how each screen is drawn: :pack, from the data pack; :by_hand, its cells as pictures the
-  # game declares; :none, an empty scene.
-  private def scene_game(hows, folder)
+  # game declares; :none, an empty scene. With +fading+ the screen is faded half way to white on
+  # every other pass, so its colours change on every pass.
+  private def scene_game(hows, folder, fading: false)
     from = arrival_original(folder)
     VBlank.game("ARRIVAL", consoles: %i[gbc]) do
       screen :tiled
@@ -140,6 +190,7 @@ class TestGBCPackSceneArrival < Minitest::Test
       end
       game_loop do
         pass += 1
+        fade :white, (pass % 2) * 50 if fading
         state = 1 if pass == FIRST_PASS
         state = 2 if pass == SECOND_PASS
         case_var(:state) do
