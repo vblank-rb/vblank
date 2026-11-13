@@ -681,8 +681,9 @@ module VBlank
           # After the fifth number, the fifth for a note that names each speaker a record can
           # (Original::PackNote::SIDES: both, the left, the right), which a recorded part does not
           # take, and how many noise clocks the part takes (Original::PackNote::CLOCK_BYTES on the
-          # noise voice, else none); after the fourth for each key, the second and the fourth for
-          # each of those clocks (IR::StartFile::Notes#clock_events).
+          # noise voice, else none), and how many bytes a record is; after the fourth for each key,
+          # the second and the fourth for each of those clocks (IR::StartFile::Notes#clock_events),
+          # and for a voiced part #voiced_note_rules.
           def start_file_note_rules(part, kind, where)
             events = where.key_events
             clocks = where.clock_events
@@ -695,10 +696,26 @@ module VBlank
                     else
                       [events.map { |event| note_ticks(kind, event[1]) }]
                     end
-            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *sides, clocks.size, *heard,
+            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *sides, clocks.size,
+             where.record_bytes, *heard,
              *where.instruments.map { |name| where.instruments.index(name) },
              *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten,
-             *clocks.map { |event| @sound_log.pitch_number(event[1]) }, *clocks.map { |event| note_ticks(kind, event[1]) }]
+             *clocks.map { |event| @sound_log.pitch_number(event[1]) }, *clocks.map { |event| note_ticks(kind, event[1]) },
+             *voiced_note_rules(where, kind)]
+          end
+
+          # WHAT A VOICED RECORD'S SETTINGS COME TO ON THIS PART (IR::StartFile::Notes#takes), after the
+          # rest, for a part whose records are voiced: the bits of Original::PackNote::NAMES the part
+          # takes, how many pitch numbers it takes (all of them on a square or the wave, else none), and
+          # the second and the fourth number of a note for each (Notes#pitch_number_events). How each
+          # setting comes to a note's fifth and sixth numbers is the bits #encoded_note writes, so the
+          # runtime puts the record's own bits in their places.
+          def voiced_note_rules(where, kind)
+            return [] unless where.voiced
+
+            numbers = where.pitch_number_events
+            [where.takes.sum { |setting| Original::PackNote::NAMES.fetch(setting) }, numbers.size,
+             *numbers.map { |event| @sound_log.pitch_number(event[1]) }, *numbers.map { |event| note_ticks(kind, event[1]) }]
           end
 
           # An event at +pitch+ that names +side+ (:left, :right or :center) for its speaker.

@@ -311,9 +311,48 @@ module VBlank
       # +recorded+ is whether the part plays a recording, which alone takes a record's loudness in
       # 512ths; a part on a voice of the console's takes its volume, and a loudness in the file means
       # nothing there.
-      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded) do
+      #
+      # +voiced+ is a part whose records carry their voice's settings (Original::PackNote's voiced
+      # record), each the note's where the part's voice has that setting: a pitch number on a square
+      # or the wave, a fade on a square or the noise, a duty on a square, vibrato on a square or the
+      # wave, a slide on the song's first square part (+takes_slide+), and a shade between the
+      # speakers on any part. A note given a slide that moves and vibrato that moves, by itself or
+      # its part, holds its pitch still for the vibrato (`vibrato: :none`), where a build holding
+      # the record refuses it.
+      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded, :voiced, :takes_slide) do
+        def initialize(voiced: false, takes_slide: false, **) = super
+
         # The frame each tick falls on (an Audio::Score::Timing).
         def timing = Audio::Score::Timing.new(self)
+
+        # How many bytes each record is.
+        def record_bytes = voiced ? Original::PackNote::VOICED_BYTES : Original::PackNote::BYTES
+
+        # The kind of voice the part plays (Audio::Music.kind_played).
+        def kind = Audio::Music.kind_played(Audio::Music.resolve_plays(part.plays))
+
+        # WHICH OF A VOICED RECORD'S SETTINGS THE PART TAKES, by Original::PackNote::NAMES' names.
+        def takes
+          return [] unless voiced
+
+          taken = [:shade]
+          taken.push(:pitch_number, :vibrato) if %i[square wave].include?(kind)
+          taken.push(:fade) if %i[square noise].include?(kind)
+          taken.push(:duty) if kind == :square
+          taken.push(:slide) if kind == :square && takes_slide
+          taken
+        end
+
+        # WHAT EACH PITCH NUMBER COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
+        # each from 0 to Original::PackNote::MOST_PITCH_NUMBER makes, or none for a part that takes
+        # none. An event's frame is its number.
+        def pitch_number_events
+          return [] unless takes.include?(:pitch_number)
+
+          most = Original::PackNote::MOST_PITCH_NUMBER
+          notes = (0..most).map { |number| Audio::Score::Note.new(at: number, pitch_number: number) }
+          part.with(notes: notes).to_voice(TicksAsFrames, most + 1, who).events
+        end
 
         # The most events the records can make: a note and the rest it ends in, for each.
         def most_events = count * 2
@@ -391,16 +430,44 @@ module VBlank
       # The notes +where+ (a Notes) names in +bytes+, the file, in the records' order, with what
       # no part can play held as Notes says.
       def self.notes_in(bytes, where)
-        records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * Original::PackNote::BYTES))
+        records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * where.record_bytes), voiced: where.voiced)
+        takes = where.takes
         records.map do |note|
           key = note.key if note.key <= MOST_KEY
           clock = note.clock if key && where.takes_clock?
+          settings = key ? voice_settings_of(note, takes, where.part) : {}
+          pitch = settings.delete(:pitch_number)
+          pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side if where.takes_side?)
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (key unless clock), volume: volume_of(note, where.recorded),
-                                 instrument: where.instruments[note.instrument], pan: (note.side if where.takes_side?),
-                                 noise_clock: clock)
+                                 key: (key unless clock || pitch), volume: volume_of(note, where.recorded),
+                                 instrument: where.instruments[note.instrument], pan: pan,
+                                 noise_clock: clock, pitch_number: pitch, **settings)
         end
       end
+
+      # The settings of a voiced +note+ (an Original::PackNote) the part takes (+takes+, Notes#takes),
+      # in the words a Score::Note is given them: one past its range is the part's own, and vibrato
+      # that would move with a slide that moves is `:none` (Notes says why).
+      def self.voice_settings_of(note, takes, part)
+        out = note.settings_out_of_range
+        settings = note.score_settings.select do |word, _|
+          setting = SETTING_OF_WORD.fetch(word)
+          takes.include?(setting) && !out.include?(setting)
+        end
+        own_slide = settings.slice(:slide_up, :slide_down)
+        slide = if own_slide.empty?
+                  Audio::PitchSlide.said(up: part.slide_up, down: part.slide_down, where: "A part")
+                else
+                  Audio::PitchSlide.said(up: own_slide[:slide_up], down: own_slide[:slide_down], where: "A note")
+                end
+        wobble = Audio::Vibrato.said(settings.fetch(:vibrato, part.vibrato), where: "A part")
+        settings[:vibrato] = :none if Audio::PitchSlide.moves?(slide) && Audio::Vibrato.moves?(wobble)
+        settings
+      end
+
+      # Which of Original::PackNote::NAMES each word of Original::PackNote#score_settings is.
+      SETTING_OF_WORD = { pitch_number: :pitch_number, decay: :fade, swell: :fade, duty: :duty, vibrato: :vibrato,
+                          slide_up: :slide, slide_down: :slide, pan: :shade }.freeze
 
       # The volume of +note+ (an Original::PackNote) on a part that plays a recording or not: its
       # loudness as a volume with a fraction where it gives one on a recorded part, held to the

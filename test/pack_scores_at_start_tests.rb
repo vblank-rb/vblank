@@ -576,6 +576,100 @@ module PackScoresAtStartTests
       effects: [Score.new(parts: [Part.new(plays: :bell, notes: notes_of.(:blip, recorded: true))], tempo: 150, length: 24)] }
   end
 
+  # NOTES WITH THEIR VOICE'S SETTINGS (`slots.voiced_notes`), as a Game Boy sound driver sets them
+  # for each note it strikes: a pitch number in place of a key, a fade, a duty, vibrato, a slide on
+  # the first square, a shade between the speakers. Each record is [at, length, key, volume, its
+  # settings by Original::PackNote::NAMES' names, each the number its byte keeps], and beside it
+  # the note written by hand for it. A setting a part's voice does not have, or one out of its
+  # range, is the part's own; a note whose slide and vibrato would both move holds its vibrato.
+  EIGHTHS = %i[eighth eighth eighth eighth].freeze
+  VOICED_LEAD = [
+    [[0, 10, 0, OWN, { pitch_number: 1750, fade: 3, duty: 0 }], { pitch_number: 1750, decay: 3, duty: EIGHTHS }],
+    [[12, 10, 72, 9, { vibrato: 4 | (2 << 4) | (2 << 8) }], { key: 72, volume: 9, vibrato: { depth: 4, speed: 3, after: 2 } }],
+    [[24, 10, 0, OWN, { pitch_number: 1800, slide: 0x23 }], { pitch_number: 1800, slide_up: { every: 2, shift: 3 } }],
+    [[36, 10, 74, OWN, { slide: 0x1A, vibrato: 3, carries: true }], { key: 74, slide_down: { every: 1, shift: 2 }, vibrato: :none }],
+    [[48, 10, 76, 4, { fade: 0x0A, duty: 0x88 }], { key: 76, volume: 4, swell: 2, duty: %i[eighth half eighth half] }],
+    [[60, 0, 77, OWN, { pitch_number: 3000, fade: 20, slide: 0x05 }], { key: 77 }],
+    [[72, 12, 79, OWN, { vibrato: 0x30, shade: -32 }], { key: 79, vibrato: :none, pan: Rational(-1, 2) }]
+  ].freeze
+  VOICED_LOW = [
+    [[0, 20, 48, OWN, { shade: 40 }], { key: 48, pan: Rational(40, 64) }],
+    [[24, 20, 50, OWN, { shade: -64 }], { key: 50, pan: -1 }],
+    [[48, 20, 52, OWN, { slide: 0x23 }], { key: 52 }],
+    [[72, 0, 53, OWN, { duty: 0xFF, shade: 100 }], { key: 53, duty: %i[three_quarter] * 4 }]
+  ].freeze
+  VOICED_WAVE = [
+    [[0, 30, 0, OWN, { pitch_number: 1500, vibrato: 2 }], { pitch_number: 1500, vibrato: { depth: 2, speed: 1, after: 0 } }],
+    [[36, 30, 60, 8, { fade: 3, duty: 0x55, shade: 20 }], { key: 60, volume: 8, pan: Rational(20, 64) }],
+    [[72, 0, 0, OWN, { pitch_number: 1700 }], { pitch_number: 1700 }]
+  ].freeze
+  VOICED_DRUM = [
+    [[0, 6, 60, OWN, { fade: 9 }], { key: 60, swell: 1 }],
+    [[12, 6, 64, OWN, { fade: 2, shade: 64 }], { key: 64, decay: 2, pan: 1 }],
+    [[24, 6, 64, OWN, { pitch_number: 1000, vibrato: 2 }], { key: 64 }],
+    [[36, 6, PackNote::REST, OWN, { fade: 2 }], {}]
+  ].freeze
+
+  # A part's voiced records as a slot's bytes, ended, with filler after that no part may play.
+  private def voiced_records(notes)
+    tuples = notes.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
+    filler = [5, 7, 64, OWN, 15, nil, 1, nil, { pitch_number: 1000, fade: 4 }]
+    ending = [[PackNote::END_OF_PART, 0, 0, 0, 0, nil, nil, nil, {}]]
+    PackNote.bytes_of([*tuples, *ending, *([filler] * (MOST - tuples.length - 1))], count: MOST, voiced: true)
+  end
+
+  # The notes written by hand beside +notes+' records.
+  private def voiced_written(notes)
+    notes.map { |(at, length, *), words| Note.new(at: at, length: (length unless length.zero?), **words) }
+  end
+
+  # A game of a song of those four parts, its notes read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand.
+  private def voiced_game(parts, folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        parts.each_key.with_index { |name, place| slots.voiced_notes name, at: place * MOST * PackNote::VOICED_BYTES, count: MOST }
+      end
+      notes_of = ->(name) { pack ? pack[name].notes : test.voiced_notes_by_hand(parts.fetch(name)) }
+      music = songs :music, [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter),
+                                               Part.new(notes: notes_of.(:low), volume: 10),
+                                               Part.new(notes: notes_of.(:wave), plays: :wave),
+                                               Part.new(notes: notes_of.(:drum), plays: :noise)],
+                                       tempo: 150, length: 96, loop_from: 30)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Called back from the game's block, so it is public.
+  def voiced_notes_by_hand(notes) = voiced_written(notes)
+
+  def test_notes_with_their_voices_settings_read_as_the_game_starts_play_as_written_by_hand
+    parts = { lead: VOICED_LEAD, low: VOICED_LOW, wave: VOICED_WAVE, drum: VOICED_DRUM }
+    Dir.mktmpdir do |folder|
+      by_hand = voiced_game(parts)
+      left_out = voiced_game(parts, folder: folder)
+      file = VBlank::Original::Pack.holding(parts.transform_values { |notes| voiced_records(notes) },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 150)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 150)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
+    end
+  end
+
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
   constants.each { |name| Ractor.make_shareable(const_get(name)) }

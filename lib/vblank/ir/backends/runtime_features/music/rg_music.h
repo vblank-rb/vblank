@@ -76,11 +76,15 @@ void rg_music_follow_level(const int32_t *level);
  * frame it comes round to is the number after), 1 if it comes round, a rest's fourth number, the
  * fifth and sixth numbers of a note that sounds, how many instruments the part names, 1 if it
  * plays a recording, the fifth number for a note that names each of the three speakers, and how
- * many noise clocks the part takes. Then a
+ * many noise clocks the part takes, and how many bytes a record is (12, or 32 for a record with its
+ * voice's settings, Original::PackNote's voiced record). Then a
  * note's third number for each volume from 0 to 15 and for the part's own; for each instrument
  * the first that names the same recording; a note's second number for each of the 128 keys;
  * its fourth for each key, on the part's own instrument and then on each it names; and its second
- * and then its fourth for each noise clock the part takes. Every number
+ * and then its fourth for each noise clock the part takes. For voiced records: the bits of the
+ * record's names the part takes, how many pitch numbers it takes, and a note's second and then
+ * its fourth for each; a record's fade, duty, vibrato and slide go into a note's fifth and sixth
+ * numbers in the bits the game writes them in. Every number
  * of a note is one the game worked out as it was built: nothing here tunes a key or times a tick. */
 void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 

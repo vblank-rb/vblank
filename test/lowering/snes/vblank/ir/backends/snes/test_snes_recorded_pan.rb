@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "digest"
+require "tmpdir"
 
 # A RECORDED PART THAT SITS BETWEEN THE SPEAKERS, on the Super Nintendo. Each voice of its sound chip
 # has a volume for the left speaker and one for the right (VOL L and VOL R), so a part's shade is
@@ -103,6 +105,46 @@ class TestSNESRecordedPan < Minitest::Test
     assert_equal 0, dsp.getbyte(0), "the square voice has nothing on the left"
     assert_operator dsp.getbyte(1), :>, 0, "and is heard on the right"
     assert_equal [whole, (whole * 19 / 64.0).round], volumes(b.program)
+  end
+
+  # A NOTE READ FROM THE DATA PACK at a shade (a voiced Original::PackNote's shade, in 64ths), as
+  # a port reads a driver's panned tune: the chip's two volumes read its shares.
+  private def pack_tune_game(folder, shade)
+    record = VBlank::Original::PackNote
+    copy = record.bytes_of([[0, 0, 60, record::PART_OWN, 15, nil, nil, nil, { shade: shade }]], count: 2, voiced: true)
+    path = File.join(folder, "made_up_shaded.bin")
+    File.binwrite(path, copy)
+    from = VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
+                                      settings_file: File.join(folder, "made_up.yml"),
+                                      releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      enable_sound
+      pack = data_pack(from: from, version: "1") { |slots| slots.voiced_notes :tune, at: 0, count: 2 }
+      instrument :tone, pcm: [60, -60] * (RATE / 2), rate: RATE, note: :C4
+      songs(:music, [VBlank::Audio::Score.new(parts: [VBlank::Audio::Score::Part.new(plays: :tone, notes: pack[:tune].notes,
+                                                                                      volume: 15)],
+                                              tempo: 150, length: 96)]).play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The [left, right] volume of the voice sounding the recording near its own pitch: key 60 is a
+  # hair below the pitch :C4 names, so a few steps under $1000.
+  private def pack_volumes(program)
+    dsp = SNES::CheckedRun.new.run(program, frames: 20).dsp_registers
+    voice = (0...VOICES).find { |v| ((dsp.getbyte((v << 4) + 2) | (dsp.getbyte((v << 4) + 3) << 8)) - PITCH).abs <= 8 }
+    assert voice, "no voice sounds the recording"
+    [dsp.getbyte(voice << 4), dsp.getbyte((voice << 4) + 1)]
+  end
+
+  def test_a_note_from_the_pack_sits_at_its_shade
+    Dir.mktmpdir do |folder|
+      assert_equal [whole, (whole * 20 / 64.0).round], pack_volumes(pack_tune_game(folder, -44))
+      assert_equal [(whole * 18 / 64.0).round, whole], pack_volumes(pack_tune_game(folder, 46))
+    end
   end
 
   # A note with a shape has its loudness worked out every frame as it climbs and falls, and each

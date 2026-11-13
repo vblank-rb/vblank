@@ -26,9 +26,10 @@ module VBlank
             @hits = program.walk.select { |node| node.kind == :noise }.map { |node| hit_of(node) }.uniq
             # A part that reads its notes from the start file may play any key, so every key's pitch
             # on its voice is one of the songs' (IR::StartFile::Notes#key_events).
-            # So is every noise clock's, on a part that takes one (#clock_events).
+            # So is every noise clock's, on a part that takes one (#clock_events), and every pitch
+            # number's, on a part whose records name them (#pitch_number_events).
             read_at_start = @songs.flat_map { |song| song.voices.filter_map(&:from_file) }
-                                  .flat_map { |where| where.key_events + where.clock_events }
+                                  .flat_map { |where| where.key_events + where.clock_events + where.pitch_number_events }
             @pitches = [0, *@songs.flat_map { |song| song.voices.flat_map { |part| part.events.map { |event| event[1] } } },
                         *read_at_start.map { |event| event[1] }].uniq
             # A name declared twice is the last declaration's, as the interpreter gathers them.

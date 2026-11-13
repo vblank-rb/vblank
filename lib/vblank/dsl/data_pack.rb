@@ -76,6 +76,11 @@ module VBlank
       # the original's songs, for a Score's part (`notes: pack[:theme].notes(instruments: %i[horn])`).
       def notes(name, count:, at: nil, cost: 1) = add(Original::Slot.notes(name, at: at, count: count, cost: cost))
 
+      # +count+ notes of music each with its voice's settings (a voiced Original::PackNote): a
+      # note's pitch number, fade, duty, vibrato, slide and shade between the speakers, which the
+      # unpacking routine writes as the original's sound driver sets them, for a Score's part.
+      def voiced_notes(name, count:, at: nil, cost: 1) = add(Original::Slot.voiced_notes(name, at: at, count: count, cost: cost))
+
       # +count+ cells of a background's map, each an Original::MapCell, which the unpacking routine
       # writes from the original's maps (`pack[:title_map].write_cell(at, tile:, bank:, ...)`), for a
       # background's `map:`.
@@ -311,7 +316,7 @@ module VBlank
       # A handle on a slot of notes as a part of a Score plays them (`Score::Part.new(notes: ...)`):
       # +instruments+ names the recordings a note's instrument number counts through, 0 first.
       def notes(instruments: [])
-        unless shape == :notes
+        unless Original::Slot::NOTE_SHAPES.include?(shape)
           raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `notes` reads a slot of notes. To fix this, call " \
                                "it on a slot like `slots.notes :theme, count: 400`."
         end

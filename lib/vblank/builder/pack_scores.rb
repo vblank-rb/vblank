@@ -48,12 +48,14 @@ module VBlank
         return score unless score.parts.any? { |part| pack_notes?(part.notes) } || pack_timing?(score)
         return score_reading_notes_at_start(score, verb) if pack_left_out?
 
-        score.with(parts: score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part },
-                   length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
+        parts = score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part }
+        score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
                    loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
       end
 
-      def pack_notes?(notes) = notes.is_a?(DSL::PackNotes) || (notes.is_a?(DSL::PackSlot) && notes.shape == :notes)
+      def pack_notes?(notes)
+        notes.is_a?(DSL::PackNotes) || (notes.is_a?(DSL::PackSlot) && Original::Slot::NOTE_SHAPES.include?(notes.shape))
+      end
 
       # Whether +score+ reads its length or the tick it comes round to from the pack.
       def pack_timing?(score) = [score.length, score.loop_from].any?(DSL::PackNumber)
@@ -117,11 +119,14 @@ module VBlank
                              length: score.length.is_a?(DSL::PackNumber) ? score.longest : score.length,
                              loop_from: (score.loop_from unless score.loop_from.is_a?(DSL::PackNumber)))
         song = emptied.to_song
+        # Only the song's first square part slides (Guardrails::Checks::SlideOffFirstSquare).
+        sliding = song.fetch(:voices).index { |voice| IR::Tunes.part_kind(voice) == :square }
         voices = song.fetch(:voices).each_with_index.map do |voice, number|
           handle = score.parts[number].notes
           next voice unless handle.is_a?(DSL::PackNotes)
 
-          voice.with(from_file: pack_notes_in_start_file(handle, emptied, number, recorded: !voice.instrument.nil?))
+          voice.with(from_file: pack_notes_in_start_file(handle, emptied, number, recorded: !voice.instrument.nil?,
+                                                                                  takes_slide: number == sliding))
         end
         song = song.merge(voices: voices)
         return song unless pack_timing?(score)
@@ -133,12 +138,13 @@ module VBlank
 
       # Where part +number+ of +score+ reads its notes in the start file. Only a part that plays
       # a recording picks an instrument for a note, so any other part names none.
-      def pack_notes_in_start_file(handle, score, number, recorded:)
+      def pack_notes_in_start_file(handle, score, number, recorded:, takes_slide:)
         slot = handle.slot.layout
         instruments = recorded ? handle.instruments.map { |named| named.is_a?(Symbol) ? named : named.name } : []
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
                                          part: score.parts[number], tempo: score.tempo, ticks_per_beat: score.ticks_per_beat,
-                                         who: "Part #{number} of a Score", recorded: recorded)
+                                         who: "Part #{number} of a Score", recorded: recorded,
+                                         voiced: slot.shape == :voiced_notes, takes_slide: takes_slide)
         refuse_keys_part_cannot_play!(notes, slot)
         notes
       end
@@ -147,12 +153,15 @@ module VBlank
       # in the pack. A part that moves its pitch can move a key past what its voice plays.
       def refuse_keys_part_cannot_play!(notes, slot)
         notes.key_events
+        notes.pitch_number_events
       rescue ArgumentError => e
         raise ArgumentError, "#{notes.who} reads its notes from slot :#{slot.name} as the game starts, so it must be able " \
                              "to play every key from 0 to #{IR::StartFile::MOST_KEY}. It cannot: #{e.message}"
       end
 
-      # The Score::Note list the slot of notes +part+ (a Score::Part) names holds.
+      # The Score::Note list the slot of notes +part+ (a Score::Part) names holds. A voiced record's
+      # settings (Original::PackNote#score_settings) are the note's own words, so the part's voice
+      # refuses what it cannot play as it refuses a note written by hand.
       def notes_read_from_pack(part, verb)
         handle = part.notes.is_a?(DSL::PackSlot) ? part.notes.notes : part.notes
         subject = "#{verb} reading notes from slot :#{handle.slot.layout.name}"
@@ -160,14 +169,28 @@ module VBlank
         recorded = recorded_part?(part)
         clocked = IR::StartFile.takes_clock?(part)
         handle.slot.layout.decode(@data_pack_contents.bytes_of(handle.slot.layout.name)).map do |note|
-          refuse_unnamed_side_or_clock!(note, subject, side: !recorded, clock: clocked)
+          refuse_unnamed_side_or_clock!(note, subject, side: !recorded && note.shade.nil?, clock: clocked)
+          refuse_voice_settings_out_of_range!(note, subject)
           key = note.key unless note.key == Original::PackNote::REST
           clock = note.clock if key && clocked
-          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock),
+          settings = key ? note.score_settings : {}
+          pitch = settings.delete(:pitch_number)
+          # A voiced record's shade is the note's in place of its speaker, on a recorded part too.
+          pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side unless recorded)
+          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch),
                                  volume: pack_note_volume(note, recorded, subject),
                                  instrument: pack_note_instrument(note, handle.instruments, subject),
-                                 pan: (note.side unless recorded), noise_clock: clock)
+                                 pan: pan, noise_clock: clock, pitch_number: pitch, **settings)
         end
+      end
+
+      def refuse_voice_settings_out_of_range!(note, subject)
+        out = note.settings_out_of_range
+        return if out.empty?
+
+        raise ArgumentError, "#{subject}: the note at tick #{note.at} names a #{out.first.to_s.tr('_', ' ')} out of its range " \
+                             "(Original::PackNote says each range). To fix this, correct the record, or leave the setting " \
+                             "out of the record's names to play the part's own."
       end
 
       def recorded_part?(part) = Audio::Score::Checks.recording?(Audio::Music.resolve_plays(part.plays))

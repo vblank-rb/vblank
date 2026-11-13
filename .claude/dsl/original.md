@@ -66,6 +66,25 @@ from that copy. The game's code says each piece's shape and size; it never depen
     each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
     with a driver of its own writes these in its unpacking routine and needs nothing more (worked
     example: `test_a_port_with_a_sound_driver_of_its_own_plays_its_song_through_the_pack` in
+    `test/pack_scores_at_start_tests.rb`).
+  - `slots.voiced_notes :title_0, count: 200` — **notes with their voice's settings, thirty-two bytes
+    each**: the twelve above, then what a `Score::Note` can say of its voice, each the note's only where
+    the names (bytes 20 and 21, a bit each, `Original::PackNote::NAMES`) name it: **a pitch number**
+    0 to 2047 in place of the key (bytes 12-13, `pitch_number:`, the Color's period; the key byte must
+    still be 127 or less), **a fade** (byte 14, the envelope register's four bits, 8 for a swell:
+    `decay:`/`swell:`), **a duty** (byte 15, two bits a frame for four frames: `duty:`), **vibrato**
+    (bytes 16-17, depth, speed less one and wait as `Audio::Vibrato#bits`; depth 0 is `:none`; the
+    names' CARRIES bit is `carries: true`), **a slide** (byte 18, the sweep register: `slide_up:` or
+    `slide_down:`, 0 for `:none`), and **a shade between the speakers** (byte 19, a signed byte in 64ths
+    from the middle, -64 the left alone to 64 the right: `pan: shade / 64r`, so `pan: -0.6875` is -44),
+    which is the note's in place of the speaker byte on any part, a recorded part too. A setting the
+    part's voice lacks (a duty off the squares, a fade on the wave, a slide off the song's first square,
+    a pitch number off the squares and the wave), or one past its range, is refused all-in-one as a note
+    written by hand is, and from the player's file is the part's own; a note whose slide and vibrato
+    would both move holds its vibrato still (`vibrato: :none`) from the file. `PackNote.bytes_of(notes,
+    count:, voiced: true)` writes them for a test, each note's ninth a Hash of its settings by name
+    (worked examples: `test_notes_with_their_voices_settings_from_the_pack_play_as_written_by_hand` in
+    `test/all/vblank/builder/test_pack_scores.rb`, and its twin read as the game starts in
     `test/pack_scores_at_start_tests.rb`). An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.

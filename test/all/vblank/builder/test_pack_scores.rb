@@ -113,6 +113,142 @@ class TestPackScores < Minitest::Test
     end
   end
 
+  # A COLOR SOUND DRIVER'S NOTES, with their voices' settings (`slots.voiced_notes`): a square
+  # part whose notes give the voice's period, an envelope, a duty, vibrato and a slide, and a wave
+  # part whose notes give periods, vibrato and a shade between the speakers. Each record is [at,
+  # length, key, volume, its settings as Original::PackNote keeps them], beside the note written by
+  # hand. Played to frame 80, short of the song's end.
+  OWN = VBlank::Original::PackNote::PART_OWN
+  VOICED_LEAD = [
+    [[0, 10, 0, OWN, { pitch_number: 1750, fade: 3, duty: 0 }], { pitch_number: 1750, decay: 3, duty: %i[eighth] * 4 }],
+    [[12, 10, 72, 9, { vibrato: 4 | (2 << 4) | (2 << 8) }], { key: 72, volume: 9, vibrato: { depth: 4, speed: 3, after: 2 } }],
+    [[24, 10, 0, OWN, { pitch_number: 1800, slide: 0x23 }], { pitch_number: 1800, slide_up: { every: 2, shift: 3 } }],
+    [[36, 10, 74, OWN, { slide: 0x1A }], { key: 74, slide_down: { every: 1, shift: 2 } }],
+    [[48, 10, 76, 4, { fade: 0x0A, duty: 0x88 }], { key: 76, volume: 4, swell: 2, duty: %i[eighth half eighth half] }],
+    [[72, 12, 79, OWN, { shade: -32 }], { key: 79, pan: Rational(-1, 2) }]
+  ].freeze
+  VOICED_WAVE = [
+    [[0, 30, 0, OWN, { pitch_number: 1500, vibrato: 2 }], { pitch_number: 1500, vibrato: { depth: 2, speed: 1, after: 0 } }],
+    [[36, 30, 60, 8, { shade: 20 }], { key: 60, volume: 8, pan: Rational(20, 64) }]
+  ].freeze
+  VOICED_AT = 0x300
+
+  private def voiced_original(folder)
+    record = VBlank::Original::PackNote
+    copy = "\0".b * (VOICED_AT + (2 * MOST * record::VOICED_BYTES))
+    [VOICED_LEAD, VOICED_WAVE].each_with_index do |notes, place|
+      tuples = notes.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
+      copy[VOICED_AT + (place * MOST * record::VOICED_BYTES), MOST * record::VOICED_BYTES] = record.bytes_of(tuples, count: MOST, voiced: true)
+    end
+    path = File.join(folder, "made_up_voiced.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gbc,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The song of those two parts: from the pack when +from+ is given, by hand otherwise.
+  private def voiced_song_game(from = nil)
+    hand = ->(notes) { notes.map { |(at, length, *), words| Note.new(at: at, length: (length unless length.zero?), **words) } }
+    b = Builder.new
+    b.instance_eval do
+      pack = if from
+               data_pack from: from, version: "1" do |slots|
+                 slots.voiced_notes :lead, at: VOICED_AT, count: MOST
+                 slots.voiced_notes :wave, at: VOICED_AT + (MOST * VBlank::Original::PackNote::VOICED_BYTES), count: MOST
+               end
+             end
+      lead = pack ? pack[:lead].notes : hand.(VOICED_LEAD)
+      pad = pack ? pack[:wave] : hand.(VOICED_WAVE)
+      music = songs :music, [Score.new(parts: [Part.new(notes: lead, duty: :quarter), Part.new(notes: pad, plays: :triangle)],
+                                       tempo: 150, plays_once: true, length: 90)]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_notes_with_their_voices_settings_from_the_pack_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(voiced_song_game, frames: 80).audio
+      played = game_player.run(voiced_song_game(voiced_original(folder)), frames: 80).audio
+
+      refute_empty wanted.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted, played
+    end
+  end
+
+  # A RECORDED PART BETWEEN THE SPEAKERS, as a Super Nintendo driver pans each note: shades read
+  # from the pack's voiced records, heard where they sit on a console whose chip pans each voice,
+  # and from both speakers where every recording is mixed into one sound.
+  SHADED_TUNE = [
+    [[0, 12, 60, OWN, { shade: -44 }], { key: 60, pan: -0.6875 }],
+    [[12, 12, 64, 9, { shade: 46 }], { key: 64, volume: 9, pan: 0.71875 }],
+    [[24, 12, 67, OWN, { shade: 0 }], { key: 67, pan: 0 }],
+    [[36, 12, 72, OWN, {}], { key: 72 }]
+  ].freeze
+  PCM = (0...64).map { |at| ((at * 29) % 200) - 100 }.freeze
+
+  private def shaded_original(folder)
+    record = VBlank::Original::PackNote
+    tuples = SHADED_TUNE.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
+    copy = record.bytes_of(tuples, count: MOST, voiced: true)
+    path = File.join(folder, "made_up_shaded.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  private def shaded_game(from = nil)
+    hand = SHADED_TUNE.map { |(at, length, *), words| Note.new(at: at, length: length, **words) }
+    b = Builder.new
+    b.instance_eval do
+      pack = (data_pack(from: from, version: "1") { |slots| slots.voiced_notes :tune, at: 0, count: MOST } if from)
+      instrument :horn, pcm: PCM, rate: 8000, note: :C4
+      music = songs :music, [Score.new(parts: [Part.new(plays: :horn, notes: pack ? pack[:tune].notes : hand, volume: 13)],
+                                       tempo: 150, plays_once: true, length: 60)]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_recorded_part_shaded_between_the_speakers_from_the_pack_plays_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      # The Color, which has no instruments, refuses the song.
+      unless VBlank::Console.for(game_console).answers.answer(:instrument).works?
+        next assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(shaded_game(shaded_original(folder)), frames: 1) }
+      end
+
+      wanted = game_player.run(shaded_game, frames: 50)
+      played = game_player.run(shaded_game(shaded_original(folder)), frames: 50)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted.audio, played.audio
+    end
+  end
+
+  def test_a_voiced_note_naming_a_setting_out_of_its_range_is_refused
+    Dir.mktmpdir do |folder|
+      path = File.join(folder, "made_up_voiced.bin")
+      voiced_original(folder)
+      copy = File.binread(path)
+      # The first note's pitch number made 4095, past 2047.
+      copy.setbyte(VOICED_AT + 12, 0xFF)
+      copy.setbyte(VOICED_AT + 13, 0x0F)
+      File.binwrite(path, copy)
+      from = VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gbc,
+                                        settings_file: File.join(folder, "made_up.yml"),
+                                        releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+      error = assert_raises(ArgumentError) { voiced_song_game(from) }
+
+      assert_includes error.message, "pitch number"
+    end
+  end
+
   # A build that reads its pack as the game starts plays the song too (test/pack_scores_at_start_tests.rb),
   # given the one thing it cannot work out without the notes.
   def test_a_build_reading_its_pack_as_it_starts_needs_the_scores_length

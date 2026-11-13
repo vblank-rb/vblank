@@ -38,10 +38,55 @@ module VBlank
     # A speaker means nothing on a part that plays a recording, which plays from both, and a noise
     # clock means nothing off the noise voice or on a part that is transposed (a transpose cannot
     # move the voice's own setting): there each is left as the part's own.
-    PackNote = Data.define(:at, :length, :key, :instrument, :volume, :pan, :loudness, :noise_clock)
+    #
+    # A NOTE WITH ITS VOICE'S SETTINGS (`slots.voiced_notes`) is thirty-two bytes: the twelve above,
+    # then what else a Score::Note can say of its voice, as a sound driver sets them for each note
+    # it strikes. Each is the note's only where bytes 20 and 21 name it (a bit of NAMES), and else
+    # the part's own:
+    #
+    #   12-13 pitch number the voice's own tuning, 0 to 2047, in place of the key's pitch (a
+    #                      Score::Note's `pitch_number:`, the Color's period). The key byte must
+    #                      still be 127 or less: past that the note is a rest.
+    #   14    fade         how the voice counts the note's volume, as its envelope register keeps it
+    #                      (Audio::NoteFade#bits): the step, 0 to 7, in the low three bits, and 8
+    #                      for a swell (`swell:`) where it is not set for a fade (`decay:`)
+    #   15    duty         the square's shape on each of four frames, two bits each, the first
+    #                      frame's lowest (Audio::Duty#bits; `duty:`): 0 an eighth, 1 a quarter,
+    #                      2 half, 3 three quarters, so one shape is that number four times
+    #   16-17 vibrato      the depth in the low four bits, the speed less one in the next four,
+    #                      the frames it waits in the high byte (Audio::Vibrato#bits); a depth of 0
+    #                      is `vibrato: :none`. CARRIES in the names is `carries: true`
+    #   18    slide        the first square's sweep register (Audio::PitchSlide#bits): the 128ths
+    #                      each step waits in bits 4 to 6, 8 to slide down, the shift in the low
+    #                      three; 0 is `slide_up: :none`
+    #   19    shade        where the note sits between the speakers, in 64ths from the middle, a
+    #                      signed byte from -64 (the left alone) to 64 (the right alone): `pan:`
+    #                      of the shade over 64. It is the note's in place of byte 7's speaker,
+    #                      on any part: a recorded part too
+    #   20-21 names        which of those the note names, a bit each (NAMES), and CARRIES
+    #   22-31 (nothing yet: write 0)
+    #
+    # A voice that has no such setting leaves it as the part's own (a duty off the squares, a fade
+    # on the wave voice, a slide off the song's first square), as does a number past the setting's
+    # range, where a build holding the record refuses both.
+    PackNote = Data.define(:at, :length, :key, :instrument, :volume, :pan, :loudness, :noise_clock,
+                           :pitch_number, :fade, :duty, :vibrato, :slide, :shade, :carries)
 
     class PackNote
+      def initialize(pitch_number: nil, fade: nil, duty: nil, vibrato: nil, slide: nil, shade: nil, carries: false, **) = super
+
       BYTES = 12
+      VOICED_BYTES = 32
+      # Bytes 12 to 21 of a voiced record: the settings and the names.
+      VOICED_LAYOUT = "v C C v C c v"
+      # The bits of the names, and the one that says a vibrato carries.
+      NAMES = { pitch_number: 1, fade: 2, duty: 4, vibrato: 8, slide: 16, shade: 32 }.freeze
+      CARRIES = 64
+      # The highest pitch number, fade, slide and shade a record can name.
+      MOST_PITCH_NUMBER = 2047
+      MOST_FADE = 15
+      MOST_SLIDE = 127
+      MOST_SHADE = 64
       REST = 255
       PART_OWN = 255
       NO_LOUDNESS = 0xFFFF
@@ -61,23 +106,50 @@ module VBlank
       # Every byte that names a noise clock, from 0 up: the halvings 13 or fewer.
       CLOCK_BYTES = (MOST_CLOCK_HALVINGS + 1) << CLOCK_HALVINGS_AT
 
-      # The notes in +bytes+, up to the first that ends its part.
-      def self.list_in(bytes)
-        bytes.unpack(LAYOUT.tr(" ", "") * (bytes.bytesize / BYTES)).each_slice(9).map do |at, length, key, instrument, volume, pan, loudness, clock, _|
-          new(at: at, length: length, key: key, instrument: instrument, volume: volume, pan: pan, loudness: loudness, noise_clock: clock)
-        end.take_while { |note| note.at != END_OF_PART }
+      # The notes in +bytes+, up to the first that ends its part: records of twelve bytes, or of
+      # VOICED_BYTES where +voiced+.
+      def self.list_in(bytes, voiced: false)
+        size = voiced ? VOICED_BYTES : BYTES
+        (0...(bytes.bytesize / size)).lazy.map { |record| read(bytes.byteslice(record * size, size), voiced) }
+                                       .take_while { |note| note.at != END_OF_PART }.to_a
+      end
+
+      def self.read(record, voiced)
+        at, length, key, instrument, volume, pan, loudness, clock = record.unpack(LAYOUT.delete(" "))
+        plain = { at: at, length: length, key: key, instrument: instrument, volume: volume, pan: pan, loudness: loudness,
+                  noise_clock: clock }
+        return new(**plain) unless voiced
+
+        pitch, fade, duty, vibrato, slide, shade, names = record.byteslice(BYTES, VOICED_BYTES - BYTES).unpack(VOICED_LAYOUT.delete(" "))
+        named = ->(field, value) { value if names.anybits?(NAMES.fetch(field)) }
+        new(**plain, pitch_number: named.(:pitch_number, pitch), fade: named.(:fade, fade), duty: named.(:duty, duty),
+                     vibrato: named.(:vibrato, vibrato), slide: named.(:slide, slide), shade: named.(:shade, shade),
+                     carries: names.anybits?(CARRIES))
+      end
+      private_class_method :read
+
+      # The bytes after a record's first twelve for +settings+, a Hash of what of NAMES a note
+      # names (each the number its bytes keep) and `carries: true`. For a port's tests, and a
+      # routine of Ruby that writes a slot whole.
+      def self.voiced_bytes_of(settings)
+        names = settings.sum { |field, _| NAMES.fetch(field, 0) } | (settings[:carries] ? CARRIES : 0)
+        [settings[:pitch_number] || 0, settings[:fade] || 0, settings[:duty] || 0, settings[:vibrato] || 0, settings[:slide] || 0,
+         settings[:shade] || 0, names].pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
       end
 
       # +notes+ as the bytes of a slot +count+ notes long: each [at, length, key, instrument,
       # volume], then the loudness, the pan and the noise clock where a note gives them (nil for
       # none), then a note that ends the part, then zeros. For a port's tests, and a routine of
-      # Ruby that writes a slot whole.
-      def self.bytes_of(notes, count:)
-        records = notes.map do |at, length, key, instrument, volume, loudness, pan, clock|
-          [at, length, key, instrument, volume, pan || PART_OWN, loudness || NO_LOUDNESS, clock || PART_OWN, 0]
+      # Ruby that writes a slot whole. Where +voiced+, each note's ninth is the Hash of its voice's
+      # settings (.voiced_bytes_of), nil for none.
+      def self.bytes_of(notes, count:, voiced: false)
+        records = notes.map do |at, length, key, instrument, volume, loudness, pan, clock, settings|
+          plain = [at, length, key, instrument, volume, pan || PART_OWN, loudness || NO_LOUDNESS, clock || PART_OWN, 0]
+          plain.pack(LAYOUT.delete(" ")) + (voiced ? voiced_bytes_of(settings || {}) : "".b)
         end
-        records << [END_OF_PART, 0, 0, 0, 0, 0, 0, 0, 0] if records.length < count
-        records.flatten.pack(LAYOUT.tr(" ", "") * records.length).ljust(count * BYTES, "\0")
+        size = voiced ? VOICED_BYTES : BYTES
+        records << [END_OF_PART, 0, 0, 0, 0, 0, 0, 0, 0].pack(LAYOUT.delete(" ")).ljust(size, "\0") if records.length < count
+        records.join.ljust(count * size, "\0")
       end
 
       # The [divider, halvings] a noise clock byte names, or nil for one that names none.
@@ -99,6 +171,60 @@ module VBlank
 
       # Whether the noise clock byte names a clock or the key's pitch.
       def clock_named? = noise_clock == PART_OWN || noise_clock < CLOCK_BYTES
+
+      # WHAT A VOICED RECORD'S SETTINGS ARE, AS A SCORE::NOTE IS GIVEN THEM: a Hash of the words of
+      # those it names (`pitch_number:`, `decay:` or `swell:`, `duty:`, `vibrato:`, `slide_up:` or
+      # `slide_down:`, `pan:`), each nil where it names none. A number past its range is left out
+      # by the file's reading (IR::StartFile) and refused by a build holding the record, which
+      # asks .settings_out_of_range first.
+      def score_settings
+        settings = {}
+        settings[:pitch_number] = pitch_number if pitch_number
+        settings.merge!(fade_words) if fade
+        settings[:duty] = Audio::Duty.from_bits(duty).shapes if duty
+        settings[:vibrato] = vibrato_words if vibrato
+        settings.merge!(slide_words) if slide
+        settings[:pan] = Rational(shade, MOST_SHADE) if shade
+        settings
+      end
+
+      # The names of the settings this record names past their range (MOST_PITCH_NUMBER and its
+      # kin, and a slide whose wait or shift alone is 0).
+      def settings_out_of_range
+        out = []
+        out << :pitch_number if pitch_number && pitch_number > MOST_PITCH_NUMBER
+        out << :fade if fade && fade > MOST_FADE
+        out << :slide if slide && !PackNote.slide_in_range?(slide)
+        out << :shade if shade && shade.abs > MOST_SHADE
+        out
+      end
+
+      # Whether a slide byte names a slide: 0 for none, or a wait and a shift of 1 or more each.
+      def self.slide_in_range?(byte)
+        return true if byte.zero?
+
+        byte <= MOST_SLIDE && (byte >> Audio::PitchSlide::EVERY_AT).positive? && (byte & Audio::PitchSlide::THREE_BITS).positive?
+      end
+
+      def fade_words
+        said = Audio::NoteFade.from_bits(fade)
+        said.swells? ? { swell: said.step } : { decay: said.step }
+      end
+
+      def vibrato_words
+        wobble = Audio::Vibrato.from_bits(vibrato)
+        return :none unless wobble.moves?
+
+        { depth: wobble.depth, speed: wobble.speed, after: wobble.after, carries: carries }
+      end
+
+      def slide_words
+        return { slide_up: :none } if slide.zero?
+
+        moved = Audio::PitchSlide.from_bits(slide)
+        { :"slide_#{moved.direction}" => { every: moved.every, shift: moved.shift } }
+      end
+      private :fade_words, :vibrato_words, :slide_words
     end
   end
 end
