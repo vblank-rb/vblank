@@ -152,17 +152,6 @@ class TestGenesisScenery < Minitest::Test
     assert Genesis.new.build(TestSceneTilesOnTheGenesis.sprite_heavy_scenes)
   end
 
-  def test_more_changed_tiles_in_a_pass_than_the_queue_holds_stops_the_game_in_words
-    program = program_of do
-      screen :tiled
-      field = background :field, tiles: :red_set, map: Array.new(20) { "#" * 30 }
-      game_loop { repeat(Genesis::Runtime::Tiles::MOST_CELLS + 1) { field.set_tile(0, 0, "#") } }
-    end
-    error = assert_raises(VBlank::IR::Backends::RunComparison::CannotAnswer) { Genesis::HeadlessRun.new.run(program, frames: 3) }
-
-    assert_match(/changed more than 64 cells of its backgrounds in one pass/, error.message)
-  end
-
   private
 
   def shown(color) = VBlank::Testing.shown(color)

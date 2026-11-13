@@ -320,8 +320,6 @@ module VBlank
           FAULT_WORDS = Ractor.make_shareable({
             CartridgeFaults::CPU_EXCEPTION => "the processor met something it cannot do (an odd address, a division " \
                                               "it cannot make, or an instruction it does not know)",
-            CartridgeFaults::CELLS_FULL => "the game changed more than #{Runtime::Tiles::MOST_CELLS} cells of its " \
-                                           "backgrounds in one pass, more than its queue for the blank holds",
             CartridgeFaults::CAMERA_TOO_FAR => "the game moved the camera past #{Runtime::Paint::CAMERA_ACROSS} pixels " \
                                                "across or #{Runtime::Paint::CAMERA_DOWN} down, further than a painted " \
                                                "screen can show on a Genesis"

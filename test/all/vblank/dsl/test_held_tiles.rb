@@ -8,8 +8,8 @@ require "test_helper"
 module HeldTilesGames
   COLS = 30      # a message box across the screen...
   ROWS = 8       # ...and eight cells down: 240 cells, which the Advance's cartridge is held to
-  # ...and two rows of it, 60 cells, on every run: a Genesis changes at most 64 cells in a pass
-  # (Console::GenesisAnswers, `background`), and the Color writes about 60 in the gap.
+  # ...and two rows of it, 60 cells, on every run: the Color writes about 60 in the gap. (A
+  # Genesis writes 256 there, Console::GenesisAnswers, `background`.)
   ALL_RUNS_ROWS = 2
   OPEN_AT = 3 # the pass that opens the one cell
 

@@ -43,9 +43,11 @@ module VBlank
             TILES_AT = Art::TILE_BYTES
 
             MOST_SPRITES = Console::GENESIS.sprites
-            # The cells a game may change in one pass, each noted as the first word of the command
-            # that points the chip at it (#cell_command), which has its plane in it, and its tile.
-            MOST_CELLS = 64
+            # The cells the queue holds, each noted as the first word of the command that points the
+            # chip at it (#cell_command), which has its plane in it, and its tile. A message box of
+            # 30 by 8 cells opening in one pass fits, and the blank writes that many with time to
+            # spare. A pass that changes more writes the queue early (#emit_queue_written_early).
+            MOST_CELLS = 256
             CELL_BYTES = 4
             # A sprite piece's note, which is its row of the sprite table: how far down it is as the chip
             # counts (128 past the screen's corner), its size (Art::Piece#size_bits) and its link, the
@@ -205,7 +207,7 @@ module VBlank
             # in the blank, and every cell the game changed on that plane before is let go, since the
             # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
             # (plane, x, y): where the view of the plane is. rt_note_cell: one cell noted to change, the
-            # game stopped when it changes more than a queue holds. It takes the note as it is kept,
+            # queue written early when it is full. It takes the note as it is kept,
             # the command's first word in D1 and the cell's word in D3, and uses D4 and A0: where the
             # cell is was worked out by the game's line, which knows its plane and often its row
             # (Lowering::Picture#emit_cell_noted), so this is ten instructions.
@@ -237,8 +239,7 @@ module VBlank
               asm.move(:w, at.call(CELL_COUNT), asm.d(4))
               asm.cmp(:w, asm.imm(MOST_CELLS), asm.d(4))
               asm.branch(:cs, "rt_note_cell_room")
-              asm.moveq(Frame::CELLS_FULL, asm.d(0))
-              asm.jmp(asm.abs_l("rt_fault"))
+              emit_queue_written_early(asm)
               asm.label("rt_note_cell_room")
               asm.addq(:w, 1, at.call(CELL_COUNT))
               asm.add(:w, asm.d(4), asm.d(4)) # four bytes a note
@@ -247,6 +248,22 @@ module VBlank
               asm.move(:w, asm.d(1), asm.idx(0, 0, 4, :w))
               asm.move(:w, asm.d(3), asm.idx(0, 2, 4, :w))
               asm.rts
+            end
+
+            # A FULL QUEUE IS WRITTEN EARLY, and the cell that found it full is noted after, in a queue
+            # empty again. Everything noted before it reaches video memory before it does, so the
+            # order the game changed its cells in holds: the maps waiting to go up first, as the blank
+            # puts them (a cell changed after a put-up lands on the new map), then the cells.
+            #
+            # The video chip takes writes while it draws, so this is safe on any line; what it costs is
+            # that a frame drawn meanwhile can show part of the pass's change, as on the Advance. The
+            # registers the game's line keeps are put back, and D1 and D3, the note, with them.
+            def emit_queue_written_early(asm)
+              kept = %i[d0 d1 d2 d3 d5 d6 d7 a1 a2 a3]
+              asm.movem_push(:l, *kept)
+              asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
+              asm.movem_pop(:l, *kept)
+              asm.moveq(0, asm.d(4))
             end
 
             # THE COMMAND THAT POINTS THE CHIP AT A CELL is two words: the first holds the low fourteen
@@ -555,11 +572,17 @@ module VBlank
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
               asm.jsr(asm.abs_l("art runs uploaded")) if runs # Lowering::TileRuns#tile_runs_section, after a scene's own tiles
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
-              [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
-              emit_cells_written(asm, memory, at)
+              asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
               emit_sprite_table_written(asm, memory, at, samples: samples)
               emit_scroll_written(asm, memory)
               emit_screen_back_on(asm, at) if scene_tiles
+              asm.rts
+
+              # The maps noted and the cells changed after them, the part of the blank a full queue
+              # of cells also writes (#emit_queue_written_early). D0 to D7 and A0 to A3 are used.
+              asm.label("rt_maps_and_cells_written")
+              [[0, PLANE_A_AT], [1, PLANE_B_AT]].each { |plane, base| emit_plane_map_copied(asm, memory, plane, base, columns) }
+              emit_cells_written(asm, memory, at)
               asm.rts
             end
 

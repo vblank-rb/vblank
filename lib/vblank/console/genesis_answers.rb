@@ -179,10 +179,11 @@ module VBlank
                           "ordinary background. A background is " \
                           "at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are " \
                           "refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for " \
-                          "all 224 rows each pass. A game can change 64 tiles with `set_tile` in one pass. " \
-                          "If it changes more, the game stops and says so. `held: true` changes nothing: a " \
-                          "Genesis writes its video memory only between frames, so the cells a pass changes " \
-                          "already show together."),
+                          "all 224 rows each pass. A Genesis writes the tiles that `set_tile` changes " \
+                          "between frames, 256 at most for one pass. If a pass changes more, each 256 are " \
+                          "written while the pass runs, in the order the game changed them, and a frame can " \
+                          "show part of the change. `held: true` changes nothing: up to 256 cells that a pass " \
+                          "changes already show together."),
         status_bar: works("the bar is the window, a layer the console keeps beside its two backgrounds. " \
                           "`set_tile` with `now: true` is refused: a Genesis writes its video memory only " \
                           "between frames, so a change shows on the frame after the pass."),
