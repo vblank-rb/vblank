@@ -84,9 +84,12 @@ void rg_music_follow_level(const int32_t *level);
  * and then its fourth for each noise clock the part takes. For voiced records: the bits of the
  * record's names the part takes, how many pitch numbers it takes, and a note's second and then
  * its fourth for each; a record's fade, duty, vibrato and slide go into a note's fifth and sixth
- * numbers in the bits the game writes them in. Every number
+ * numbers in the bits the game writes them in; then how a pitch between keys is worked out
+ * (Computer::Sound#hz_note_rules): a recorded one is a row of +note_sounds+ written here, a copy
+ * of its instrument's with a step of its own by IR::Mixing.step's sum, and a hit on the noise
+ * voice is the nearest rung of its ladder. Every other number
  * of a note is one the game worked out as it was built: nothing here tunes a key or times a tick. */
-void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
+void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *rules, const int32_t *tick_frames);
 
 /* A SONG'S LENGTH IN THE FILE (IR::StartFile::SongLength): the tick it ends or comes round on,
  * and the tick it comes round to, each a number a port's unpacking wrote. The game holds the most

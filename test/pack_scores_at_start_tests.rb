@@ -670,6 +670,103 @@ module PackScoresAtStartTests
     end
   end
 
+  # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
+  # name hz in 16ths and glides, one naming an instrument and a volume as it glides (the part's
+  # own, from the file), one out of range (its key), and a noise part whose hits name hz, one
+  # beside a noise clock (the clock). The horn's rate is read from the file too.
+  GLIDING = [
+    [[0, 0, 60, OWN, { hz: 4186 }], { hz: Rational(4186, 16) }],
+    [[4, 0, 60, OWN, { hz: 4410, glides: true }], { hz: Rational(4410, 16), glides: true }],
+    [[8, 0, 60, 7, { hz: 4700, glides: true }], { hz: Rational(4700, 16), glides: true }],
+    [[14, 0, 0, 9, { hz: 3333 }], { hz: Rational(3333, 16), volume: 9 }],
+    [[20, 10, 64, OWN, { hz: 0 }], { key: 64 }],
+    [[34, 0, 62, OWN, { hz: 5000, glides: true }], { hz: Rational(5000, 16), glides: true }]
+  ].freeze
+  HISSED = [
+    [[0, 6, 60, OWN, { hz: 120_000 * 16 }], { hz: 120_000 }],
+    [[10, 6, 60, OWN, { hz: 7777 }], { hz: Rational(7777, 16) }],
+    [[20, 6, 60, OWN, { hz: 7777 }, 0x21], { noise_clock: [1, 2] }]
+  ].freeze
+  HORN_RATE_AT = 2080
+
+  # +notes+ (GLIDING or HISSED) for this run's console: a console whose recorded notes cannot
+  # glide (Console::Description#glides_recordings) strikes each instead, in the records and by hand.
+  private def for_console(notes)
+    return notes if VBlank::Console.described(game_console).glides_recordings
+
+    notes.map do |(record, words)|
+      # A note that named an instrument and a volume as it glided strikes with them.
+      struck = record[4][:glides] && record[3] != OWN ? { volume: record[3], instrument: :bell } : {}
+      [[*record.first(4), record[4].except(:glides), *record.drop(5)], words.except(:glides).merge(struck)]
+    end
+  end
+
+  private def gliding_records(notes)
+    tuples = notes.map do |(at, length, key, volume, settings, clock), _|
+      kept = VBlank::Console.described(game_console).glides_recordings ? settings : settings.except(:glides)
+      [at, length, key, (settings[:glides] && volume != OWN ? 0 : OWN), volume, nil, nil, clock, kept]
+    end
+    ending = [[PackNote::END_OF_PART, 0, 0, 0, 0, nil, nil, nil, {}]]
+    PackNote.bytes_of([*tuples, *ending], count: MOST, voiced: true)
+  end
+
+  # A game of a sound effect of those two parts, read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand, played on A.
+  private def gliding_game(folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound mix_rate: 13_379
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        slots.voiced_notes :glide, at: 0, count: MOST
+        slots.voiced_notes :hiss, at: MOST * PackNote::VOICED_BYTES, count: MOST
+        slots.numbers :horn_rate, at: HORN_RATE_AT, count: 1, width: :half, signed: false
+      end
+      instrument :horn, pcm: PCM, note: :C4, rate: pack ? pack[:horn_rate].number(0) : 9000
+      instrument :bell, pcm: PCM.rotate(9), rate: 8000, note: :C5
+      notes_of = ->(name) { pack ? pack[name].notes(instruments: %i[bell]) : test.gliding_notes_by_hand(name) }
+      effects = sound_effects :sfx, [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:glide), volume: 13),
+                                                       Part.new(plays: :noise, notes: notes_of.(:hiss))],
+                                               tempo: 150, length: 48)]
+      game_loop do
+        wait_vblank
+        effects.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  GLIDING_PARTS = { glide: GLIDING, hiss: HISSED }.freeze
+
+  # Called back from the game's block, so it is public.
+  def gliding_notes_by_hand(name) = voiced_written(for_console(GLIDING_PARTS.fetch(name)))
+
+  def test_pitches_between_keys_that_glide_read_as_the_game_starts_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      # The Color, which has no instruments, refuses the effect.
+      unless VBlank::Console.for(game_console).answers.answer(:instrument).works?
+        left_out = gliding_game(folder: folder)
+        next assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(left_out, frames: 1) }
+      end
+
+      by_hand = gliding_game
+      left_out = gliding_game(folder: folder)
+      file = VBlank::Original::Pack.holding({ glide: gliding_records(GLIDING), hiss: gliding_records(HISSED),
+                                              horn_rate: [9000].pack("v") },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 60)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 60)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }, "the effect written by hand plays notes"
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
+    end
+  end
+
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
   constants.each { |name| Ractor.make_shareable(const_get(name)) }

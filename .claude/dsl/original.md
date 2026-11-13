@@ -77,7 +77,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
     names' CARRIES bit is `carries: true`), **a slide** (byte 18, the sweep register: `slide_up:` or
     `slide_down:`, 0 for `:none`), and **a shade between the speakers** (byte 19, a signed byte in 64ths
     from the middle, -64 the left alone to 64 the right: `pan: shade / 64r`, so `pan: -0.6875` is -44),
-    which is the note's in place of the speaker byte on any part, a recorded part too. A setting the
+    which is the note's in place of the speaker byte on any part, a recorded part too; and **a pitch
+    between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
+    the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
+    `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
+    where the console glides at all: the Super Nintendo and the PlayStation). A setting the
     part's voice lacks (a duty off the squares, a fade on the wave, a slide off the song's first square,
     a pitch number off the squares and the wave), or one past its range, is refused all-in-one as a note
     written by hand is, and from the player's file is the part's own; a note whose slide and vibrato

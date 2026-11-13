@@ -1177,6 +1177,15 @@ enum {
   RG_NAMES_SLIDE = 16,
   RG_NAMES_SHADE = 32,
   RG_NAMES_CARRIES = 64,
+  RG_NAMES_HZ = 128,
+  RG_NAMES_GLIDES = 256,
+  RG_NOTE_MOST_HZ = 524288 * 16, /* in 16ths of a hertz */
+  RG_HZ_NONE = 0,                /* how a part works a pitch between keys out (Computer::Sound#hz_note_rules) */
+  RG_HZ_NOISE = 1,
+  RG_HZ_RECORDED = 2,
+  RG_NOISE_RUNGS = 8 * 14,
+  RG_NOTE_SOUND_NUMBERS = 8, /* a row of note_sounds, its step second */
+  RG_HZ_LIST_NUMBERS = 8,    /* an instrument list's: its row, the rate (five numbers), the recording's hz (two) */
   RG_NOTE_MOST_PITCH = 2047,
   RG_NOTE_MOST_FADE = 15,
   RG_NOTE_MOST_SLIDE = 127,
@@ -1202,10 +1211,64 @@ enum {
  * or a shade's code past it), and the noise clock it plays in place of its key (-1 for its key).
  * Then a voiced record's own settings, each -1 for the part's own: the pitch number it plays in
  * place of its key, its fade's bits, its duty's, its vibrato's (with Vibrato::CARRIES_BIT) and its
- * slide's. */
+ * slide's; its pitch between keys in 16ths of a hertz, and the row of note_sounds a recorded one
+ * is written into; and 1 where it glides. */
 typedef struct {
-  int32_t frame, key, instrument, recording, volume, side, clock, pitch, fade, duty, vibrato, slide;
+  int32_t frame, key, instrument, recording, volume, side, clock, pitch, fade, duty, vibrato, slide, hz, row, glides;
 } start_file_event;
+
+/* The number with a fraction that two of the game's numbers hold, the high half first (IEEE 754),
+ * as rg_mix.c's number_of_halves. */
+static double start_file_double(int32_t high, int32_t low) {
+  uint64_t bits = ((uint64_t)(uint32_t)high << 32) | (uint64_t)(uint32_t)low;
+  double number;
+  memcpy(&number, &bits, sizeof number);
+  return number;
+}
+
+/* Where a voiced part's rules for a pitch between keys start (Computer::Sound#hz_note_rules). */
+static const int32_t *start_file_hz_rules(const int32_t *rules) {
+  const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
+  int32_t instruments = rules[RG_NOTES_INSTRUMENTS];
+  const int32_t *clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED] ? instruments + 1 : 1) * RG_NOTE_KEYS);
+  const int32_t *voiced = clock_pitches + (2 * rules[RG_NOTES_CLOCKS]);
+  return voiced + 2 + (2 * voiced[1]);
+}
+
+/* The fourth number of a hit on the noise voice at +hz+ 16ths of a hertz: the rung of its ladder
+ * nearest, the first of two as near (Audio::Sound.noise_rung). */
+static int32_t start_file_noise_hz_ticks(const int32_t *hz_rules, int32_t hz) {
+  const int32_t *rungs = hz_rules + 1;
+  double wanted = hz / 16.0, nearest = 0;
+  int32_t ticks = 0;
+  for (int32_t r = 0; r < RG_NOISE_RUNGS; r++) {
+    double away = start_file_double(rungs[r * 3], rungs[(r * 3) + 1]) - wanted;
+    if (away < 0) away = -away;
+    if (r == 0 || away < nearest) nearest = away, ticks = rungs[(r * 3) + 2];
+  }
+  return ticks;
+}
+
+/* A recorded note at +hz+ 16ths of a hertz on instrument list +list+, written into row +row+ of
+ * +note_sounds+: the list's row at key 60 with a step of its own, IR::Mixing.step's sum in its
+ * order with the recording's rate, from the file where it is read there (at least 1). */
+static void start_file_hz_row(int32_t *note_sounds, int32_t row, const int32_t *hz_rules, int32_t list, int32_t hz) {
+  const int32_t *entry = hz_rules + 5 + (list * RG_HZ_LIST_NUMBERS);
+  double mix_rate = start_file_double(hz_rules[1], hz_rules[2]), rate;
+  if (entry[1]) {
+    uint32_t number = rg_start_file_number(entry[2], entry[3], entry[4]);
+    int64_t read = !entry[5] ? (int64_t)number : entry[3] == 1 ? (int64_t)(int8_t)number
+                 : entry[3] == 2 ? (int64_t)(int16_t)number : (int64_t)(int32_t)number;
+    rate = (double)(read < 1 ? 1 : read);
+  } else {
+    rate = start_file_double(entry[2], entry[3]);
+  }
+  double ratio = (hz / 16.0) / start_file_double(entry[6], entry[7]);
+  double step = ((rate / mix_rate) * ratio) * 65536.0;
+  int32_t *into = note_sounds + 1 + (row * RG_NOTE_SOUND_NUMBERS);
+  memcpy(into, note_sounds + 1 + (entry[0] * RG_NOTE_SOUND_NUMBERS), sizeof *into * RG_NOTE_SOUND_NUMBERS);
+  into[1] = step >= 2147483647.0 ? INT32_MAX : step < 1.0 ? 1 : (int32_t)(step + 0.5);
+}
 
 static int32_t start_file_record_tick(int32_t records_at, int32_t record_bytes, int32_t record) {
   return (int32_t)rg_start_file_number(records_at + (record * record_bytes), 2, 0);
@@ -1247,6 +1310,13 @@ static void start_file_event_voice(start_file_event *event, const uint8_t *recor
   if (names & RG_NAMES_VIBRATO) event->vibrato = (vibrato & 0xF) == 0 ? 0 : vibrato | ((all_names & RG_NAMES_CARRIES) ? 1 << 16 : 0);
   if ((names & RG_NAMES_SLIDE) && start_file_slide_named(record[18])) event->slide = record[18];
   if ((names & RG_NAMES_SHADE) && shade >= -RG_NOTE_SHADE_WHOLE && shade <= RG_NOTE_SHADE_WHOLE) event->side = start_file_shade_code(shade);
+  int32_t hz = record[22] | (record[23] << 8) | (record[24] << 16);
+  /* A noise clock is played in place of a pitch between keys. */
+  if ((names & RG_NAMES_HZ) && event->clock < 0 && hz >= 1 && hz <= RG_NOTE_MOST_HZ) event->hz = hz, event->key = 0;
+  if (names & RG_NAMES_GLIDES) {
+    /* It carries on the note sounding, with that note's instrument and volume. */
+    event->glides = 1, event->instrument = 0, event->recording = -1, event->volume = RG_NOTE_VOLUMES;
+  }
 }
 
 /* A note's fifth and sixth numbers with +event+'s own settings in their places, and a note whose
@@ -1291,19 +1361,25 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
   /* A voiced part's rules: the settings it takes, how many pitch numbers, their pitches and lasts. */
   const int32_t *voiced = clock_lasts + rules[RG_NOTES_CLOCKS];
   const int32_t *number_pitches = voiced + 2, *number_lasts = number_pitches + voiced[1];
-  int32_t rest = event->key < 0, clocked = event->clock >= 0, numbered = event->pitch >= 0;
+  int32_t rest = event->key < 0, clocked = event->clock >= 0, numbered = event->pitch >= 0, between = event->hz >= 0;
   into[0] = event->frame;
-  into[1] = rest ? 0 : clocked ? clock_pitches[event->clock] : numbered ? number_pitches[event->pitch] : pitches[event->key];
+  into[1] = rest      ? 0
+            : clocked  ? clock_pitches[event->clock]
+            : numbered ? number_pitches[event->pitch]
+            : between  ? -event->hz - 1 /* SoundLog#pitch_of */
+                       : pitches[event->key];
   into[2] = event->volume <= RG_NOTE_VOLUMES ? heard[event->volume] : event->volume - RG_NOTE_VOLUMES - 1;
   into[3] = rest       ? rules[RG_NOTES_REST_LAST]
             : clocked  ? clock_lasts[event->clock]
             : numbered ? number_lasts[event->pitch]
+            : between  ? (rules[RG_NOTES_RECORDED] ? event->row : start_file_noise_hz_ticks(start_file_hz_rules(rules), event->hz))
                        : lasts[(event->instrument * RG_NOTE_KEYS) + event->key];
   int32_t side = event->side >= RG_NOTE_SHADE_CODES - RG_NOTE_SHADE_WHOLE ? start_file_shade_side(event->side - RG_NOTE_SHADE_CODES)
                                                                          : event->side;
   into[4] = rest ? 0 : side < RG_NOTE_SIDES ? rules[RG_NOTES_SIDE_FLAGS + side] : rules[RG_NOTES_FLAGS];
   into[5] = rest ? 0 : rules[RG_NOTES_SHAPES];
   if (!rest && rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES) start_file_voice_numbers(&into[4], &into[5], event);
+  if (!rest && event->glides) into[5] |= GLIDES;
 }
 
 /* The speaker an event names from a record's pan byte: one of the three on a part that does not
@@ -1330,14 +1406,15 @@ static int32_t start_file_event_volume(int32_t volume, int32_t loudness, int32_t
   return volume < RG_NOTE_VOLUMES ? volume : RG_NOTE_VOLUMES;
 }
 
-void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
+void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *rules, const int32_t *tick_frames) {
   int32_t ticks = rules[RG_NOTES_TICKS], records_at = rules[RG_NOTES_RECORDS_AT];
   int32_t total_frames = music[rules[RG_NOTES_SONG_AT]], loop_frame = music[rules[RG_NOTES_SONG_AT] + 1];
   int32_t instruments = rules[RG_NOTES_INSTRUMENTS], record_bytes = rules[RG_NOTES_RECORD_BYTES];
   const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
   const int32_t *clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED] ? instruments + 1 : 1) * RG_NOTE_KEYS);
   int32_t takes = record_bytes == RG_NOTE_VOICED_BYTES ? clock_pitches[2 * rules[RG_NOTES_CLOCKS]] : 0;
-  const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1};
+  const start_file_event rest_of_part = {0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1, -1, -1, 0};
+  const int32_t *hz_rules = takes ? start_file_hz_rules(rules) : NULL;
 
   /* The records before the one that ends the part, in the order of their ticks; those on one
    * tick stay in the file's order. */
@@ -1367,8 +1444,13 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
     start_file_event event = {tick < ticks ? tick_frames[tick] : total_frames, clock >= 0 ? 0 : key,
                               named ? record[5] + 1 : 0, named ? same_recording[record[5]] : -1,
                               start_file_event_volume(record[6], record[8] | (record[9] << 8), rules[RG_NOTES_RECORDED]),
-                              start_file_event_side(record[7], rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1};
+                              start_file_event_side(record[7], rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0};
     if (takes && key >= 0) start_file_event_voice(&event, record, takes);
+    /* A recorded note between keys has a row of its own, one for each record. */
+    if (event.hz >= 0 && hz_rules[0] == RG_HZ_RECORDED) {
+      event.row = hz_rules[3] + order[n];
+      start_file_hz_row(note_sounds, event.row, hz_rules, event.instrument, event.hz);
+    }
     made = start_file_keep_event(events, made, event, total_frames);
     int32_t ends = tick + length;
     if (length > 0 && !(n + 1 < records && start_file_record_tick(records_at, record_bytes, order[n + 1]) <= ends)) {
@@ -1392,7 +1474,7 @@ void rg_music_fill_notes(int32_t *music, const int32_t *rules, const int32_t *ti
       else strike = !(ending->key == held->key && ending->recording == held->recording && ending->volume == held->volume &&
                       ending->side == held->side && ending->clock == held->clock && ending->pitch == held->pitch &&
                       ending->fade == held->fade && ending->duty == held->duty && ending->vibrato == held->vibrato &&
-                      ending->slide == held->slide);
+                      ending->slide == held->slide && ending->hz == held->hz && ending->glides == held->glides);
     }
   }
 

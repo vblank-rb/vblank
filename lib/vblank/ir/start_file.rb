@@ -316,9 +316,13 @@ module VBlank
       # record), each the note's where the part's voice has that setting: a pitch number on a square
       # or the wave, a fade on a square or the noise, a duty on a square, vibrato on a square or the
       # wave, a slide on the song's first square part (+takes_slide+), and a shade between the
-      # speakers on any part. A note given a slide that moves and vibrato that moves, by itself or
-      # its part, holds its pitch still for the vibrato (`vibrato: :none`), where a build holding
-      # the record refuses it.
+      # speakers on any part; a pitch between keys (`hz:`) on a part that plays a recording or the
+      # noise voice and is not moved in pitch (a transpose or an offset of the part's could not move
+      # it), and a glide on a part that plays a recording. A note given a slide that moves and
+      # vibrato that moves, by itself or its part, holds its pitch still for the vibrato (`vibrato:
+      # :none`), where a build holding the record refuses it; a gliding note's instrument and volume
+      # are the part's own, as it carries on the note sounding; and a noise clock is played in
+      # place of a pitch between keys.
       Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded, :voiced, :takes_slide) do
         def initialize(voiced: false, takes_slide: false, **) = super
 
@@ -340,6 +344,8 @@ module VBlank
           taken.push(:fade) if %i[square noise].include?(kind)
           taken.push(:duty) if kind == :square
           taken.push(:slide) if kind == :square && takes_slide
+          taken.push(:hz) if %i[recorded noise].include?(kind) && part.transpose.to_i.zero? && part.pitch_offset.to_i.zero?
+          taken.push(:glides) if kind == :recorded
           taken
         end
 
@@ -436,11 +442,14 @@ module VBlank
           key = note.key if note.key <= MOST_KEY
           clock = note.clock if key && where.takes_clock?
           settings = key ? voice_settings_of(note, takes, where.part) : {}
+          settings.delete(:hz) if clock
           pitch = settings.delete(:pitch_number)
           pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side if where.takes_side?)
+          glides = settings[:glides]
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (key unless clock || pitch), volume: volume_of(note, where.recorded),
-                                 instrument: where.instruments[note.instrument], pan: pan,
+                                 key: (key unless clock || pitch || settings[:hz]),
+                                 volume: (volume_of(note, where.recorded) unless glides),
+                                 instrument: (where.instruments[note.instrument] unless glides), pan: pan,
                                  noise_clock: clock, pitch_number: pitch, **settings)
         end
       end
@@ -467,7 +476,7 @@ module VBlank
 
       # Which of Original::PackNote::NAMES each word of Original::PackNote#score_settings is.
       SETTING_OF_WORD = { pitch_number: :pitch_number, decay: :fade, swell: :fade, duty: :duty, vibrato: :vibrato,
-                          slide_up: :slide, slide_down: :slide, pan: :shade }.freeze
+                          slide_up: :slide, slide_down: :slide, pan: :shade, hz: :hz, glides: :glides }.freeze
 
       # The volume of +note+ (an Original::PackNote) on a part that plays a recording or not: its
       # loudness as a volume with a fraction where it gives one on a recorded part, held to the

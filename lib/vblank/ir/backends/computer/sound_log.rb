@@ -51,6 +51,15 @@ module VBlank
             @pitches.index(pitch) or raise LoweringError, "a note's pitch #{pitch.inspect} is not among the songs' pitches"
           end
 
+          # The pitch a printed pitch number names: one of the songs' pitches, or for a note read as
+          # the game starts at a pitch between keys (Original::PackNote's hz), minus one less its hz
+          # in 16ths (Computer::Sound#hz_note_rules), which no list made as the game is built holds.
+          def pitch_of(number)
+            return @pitches.fetch(number) unless number.negative?
+
+            Rational(-number - 1, Original::PackNote::HZ_SIXTEENTHS)
+          end
+
           # Every song the game has, and every different beep it makes (an Audio::Sound::Effect
           # each), in the order the C numbers them.
           attr_reader :songs, :effects
@@ -83,14 +92,14 @@ module VBlank
             case kind
             when "enabled" then [:enabled]
             when "beep" then [:beep, @effects.fetch(numbers[0])]
-            when "note" then [:note, @songs.fetch(numbers[0]).name, @pitches.fetch(numbers[1])]
+            when "note" then [:note, @songs.fetch(numbers[0]).name, pitch_of(numbers[1])]
             when "voice"
               # A fade, a slide or a wobble of -1 is none, set before one that came after it. The
               # speaker is its bits (Audio::Pan.bits_of), and a note on both prints none.
               fade = Audio::NoteFade.from_bits(numbers[4]) if numbers[4] && numbers[4] >= 0
               slide = Audio::PitchSlide.from_bits(numbers[5]) if numbers[5] && numbers[5] >= 0
               vibrato = Audio::Vibrato.from_bits(numbers[6]) if numbers[6] && numbers[6] >= 0
-              Tunes.voice_entry(numbers[0], @songs.fetch(numbers[1]).name, @pitches.fetch(numbers[2]), numbers[3],
+              Tunes.voice_entry(numbers[0], @songs.fetch(numbers[1]).name, pitch_of(numbers[2]), numbers[3],
                                 fade: fade, slide: slide, vibrato: vibrato, side: Audio::Pan.side_from_bits(numbers[7]),
                                 duty: (Audio::Duty.from_bits(numbers[8]) if numbers[8]))
             when "wobble" then [:wobble, numbers[0], numbers[1]]
@@ -105,8 +114,8 @@ module VBlank
             when "stop_wave" then [:stop_wave]
             when "noise" then [:noise, @hits.fetch(numbers[0])]
             when "noise_rest" then [:noise, nil]
-            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), @pitches.fetch(numbers[2]))]
-            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), @pitches.fetch(numbers[2]))]
+            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
+            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
             when "sample" then [:sample, @recordings.fetch(numbers[0]).name]
             when "stop_sample" then [:stop_sample]
             else raise ArgumentError, "the program printed a sound line nobody reads: #{line}"

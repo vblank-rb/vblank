@@ -63,30 +63,43 @@ module VBlank
     #                      signed byte from -64 (the left alone) to 64 (the right alone): `pan:`
     #                      of the shade over 64. It is the note's in place of byte 7's speaker,
     #                      on any part: a recorded part too
-    #   20-21 names        which of those the note names, a bit each (NAMES), and CARRIES
-    #   22-31 (nothing yet: write 0)
+    #   20-21 names        which of these the note names, a bit each (NAMES), and CARRIES
+    #   22-24 hz           a pitch between keys, in 16ths of a hertz, on a part that plays a
+    #                      recording or the noise voice (a Score::Note's `hz:` of this over 16), in
+    #                      place of the key's pitch; more than 0 and 524,288 Hz at most. The key byte
+    #                      must still be 127 or less: past that the note is a rest
+    #   (glides)           GLIDES in the names, on a part that plays a recording: the note does not
+    #                      strike, and the one sounding carries on at its pitch (`glides: true`). Its
+    #                      instrument, volume and loudness are the part's own (255, 255, 65535)
+    #   25-31 (nothing yet: write 0)
     #
     # A voice that has no such setting leaves it as the part's own (a duty off the squares, a fade
     # on the wave voice, a slide off the song's first square), as does a number past the setting's
     # range, where a build holding the record refuses both.
     PackNote = Data.define(:at, :length, :key, :instrument, :volume, :pan, :loudness, :noise_clock,
-                           :pitch_number, :fade, :duty, :vibrato, :slide, :shade, :carries)
+                           :pitch_number, :fade, :duty, :vibrato, :slide, :shade, :carries, :hz, :glides)
 
     class PackNote
-      def initialize(pitch_number: nil, fade: nil, duty: nil, vibrato: nil, slide: nil, shade: nil, carries: false, **) = super
+      def initialize(pitch_number: nil, fade: nil, duty: nil, vibrato: nil, slide: nil, shade: nil, carries: false, hz: nil,
+                     glides: false, **)
+        super
+      end
 
       BYTES = 12
       VOICED_BYTES = 32
-      # Bytes 12 to 21 of a voiced record: the settings and the names.
-      VOICED_LAYOUT = "v C C v C c v"
+      # Bytes 12 to 24 of a voiced record: the settings, the names and the hz (three bytes, as a
+      # number of two and one of one).
+      VOICED_LAYOUT = "v C C v C c v v C"
       # The bits of the names, and the one that says a vibrato carries.
-      NAMES = { pitch_number: 1, fade: 2, duty: 4, vibrato: 8, slide: 16, shade: 32 }.freeze
+      NAMES = { pitch_number: 1, fade: 2, duty: 4, vibrato: 8, slide: 16, shade: 32, hz: 128, glides: 256 }.freeze
       CARRIES = 64
-      # The highest pitch number, fade, slide and shade a record can name.
+      # The highest pitch number, fade, slide and shade a record can name, and its hz in 16ths.
       MOST_PITCH_NUMBER = 2047
       MOST_FADE = 15
       MOST_SLIDE = 127
       MOST_SHADE = 64
+      HZ_SIXTEENTHS = 16
+      MOST_HZ = Audio::Sound::NOISE_CLOCK_HZ * HZ_SIXTEENTHS
       REST = 255
       PART_OWN = 255
       NO_LOUDNESS = 0xFFFF
@@ -120,21 +133,24 @@ module VBlank
                   noise_clock: clock }
         return new(**plain) unless voiced
 
-        pitch, fade, duty, vibrato, slide, shade, names = record.byteslice(BYTES, VOICED_BYTES - BYTES).unpack(VOICED_LAYOUT.delete(" "))
+        pitch, fade, duty, vibrato, slide, shade, names, hz_low, hz_high =
+          record.byteslice(BYTES, VOICED_BYTES - BYTES).unpack(VOICED_LAYOUT.delete(" "))
         named = ->(field, value) { value if names.anybits?(NAMES.fetch(field)) }
         new(**plain, pitch_number: named.(:pitch_number, pitch), fade: named.(:fade, fade), duty: named.(:duty, duty),
                      vibrato: named.(:vibrato, vibrato), slide: named.(:slide, slide), shade: named.(:shade, shade),
-                     carries: names.anybits?(CARRIES))
+                     carries: names.anybits?(CARRIES), hz: named.(:hz, hz_low | (hz_high << 16)),
+                     glides: names.anybits?(NAMES.fetch(:glides)))
       end
       private_class_method :read
 
       # The bytes after a record's first twelve for +settings+, a Hash of what of NAMES a note
-      # names (each the number its bytes keep) and `carries: true`. For a port's tests, and a
-      # routine of Ruby that writes a slot whole.
+      # names (each the number its bytes keep, the hz in 16ths), `carries: true` and `glides:
+      # true`. For a port's tests, and a routine of Ruby that writes a slot whole.
       def self.voiced_bytes_of(settings)
-        names = settings.sum { |field, _| NAMES.fetch(field, 0) } | (settings[:carries] ? CARRIES : 0)
+        names = settings.sum { |field, said| said ? NAMES.fetch(field, 0) : 0 } | (settings[:carries] ? CARRIES : 0)
+        hz = settings[:hz] || 0
         [settings[:pitch_number] || 0, settings[:fade] || 0, settings[:duty] || 0, settings[:vibrato] || 0, settings[:slide] || 0,
-         settings[:shade] || 0, names].pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
+         settings[:shade] || 0, names, hz & 0xFFFF, hz >> 16].pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
       end
 
       # +notes+ as the bytes of a slot +count+ notes long: each [at, length, key, instrument,
@@ -174,7 +190,7 @@ module VBlank
 
       # WHAT A VOICED RECORD'S SETTINGS ARE, AS A SCORE::NOTE IS GIVEN THEM: a Hash of the words of
       # those it names (`pitch_number:`, `decay:` or `swell:`, `duty:`, `vibrato:`, `slide_up:` or
-      # `slide_down:`, `pan:`), each nil where it names none. A number past its range is left out
+      # `slide_down:`, `pan:`, `hz:`, `glides:`), each left out where it names none. A number past its range is left out
       # by the file's reading (IR::StartFile) and refused by a build holding the record, which
       # asks .settings_out_of_range first.
       def score_settings
@@ -185,6 +201,8 @@ module VBlank
         settings[:vibrato] = vibrato_words if vibrato
         settings.merge!(slide_words) if slide
         settings[:pan] = Rational(shade, MOST_SHADE) if shade
+        settings[:hz] = Rational(hz, HZ_SIXTEENTHS) if hz
+        settings[:glides] = true if glides
         settings
       end
 
@@ -196,6 +214,7 @@ module VBlank
         out << :fade if fade && fade > MOST_FADE
         out << :slide if slide && !PackNote.slide_in_range?(slide)
         out << :shade if shade && shade.abs > MOST_SHADE
+        out << :hz if hz && !hz.between?(1, MOST_HZ)
         out
       end
 

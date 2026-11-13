@@ -177,7 +177,7 @@ module VBlank
           pitch = settings.delete(:pitch_number)
           # A voiced record's shade is the note's in place of its speaker, on a recorded part too.
           pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side unless recorded)
-          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch),
+          Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch || settings[:hz]),
                                  volume: pack_note_volume(note, recorded, subject),
                                  instrument: pack_note_instrument(note, handle.instruments, subject),
                                  pan: pan, noise_clock: clock, pitch_number: pitch, **settings)
