@@ -84,6 +84,15 @@ module VBlank
             HOLD = "rt hold"
             # Set when the reader has taken the last pass it compares one by one: no timer moves on after it.
             LAST_PASS_TAKEN = "rt last pass taken"
+            # A PASS IS HELD AT ITS END FOR A READER THAT ASKS (READER_HOLDS), until the reader has taken it
+            # (PASS_TAKEN, the number of the last pass it took). A reader looks at the program once a frame, and a
+            # pass that ends just before a retrace would otherwise be through its wait, and on into the next pass,
+            # before the reader looked: that pass would never be read. The hold comes after the retrace has sent
+            # the pass's picture, still WAITING, so a pass the reader took before the retrace, as nearly every one
+            # is, waits for nothing, and the retrace is never missed for it; a pass taken late makes the next pass
+            # begin late, which it counts as any slow pass. No program run without a reader is ever held.
+            READER_HOLDS = "rt reader holds"
+            PASS_TAKEN = "rt pass taken"
             FRAMES = "rt frames" # frames counted since the game began
             STEP_TAKEN = "rt step"
             FRAMES_TAKEN = "rt frames taken"
@@ -112,7 +121,7 @@ module VBlank
 
             WORDS = [STATE, WAITING, PASSES, SHOWN, HELD, SEEN, PRESSED, HOLD, LAST_PASS_TAKEN, FRAMES, STEP_TAKEN,
                      FRAMES_TAKEN, CHANGED_TOP, CHANGED_BOTTOM, TIMER_TICKS, TICKS_MARK, BIOS_TIME, BIOS_TIMER, KEY_HELD, KEY_PRESSED,
-                     KEY_EXTENDED, KEY_SKIP].freeze
+                     KEY_EXTENDED, KEY_SKIP, READER_HOLDS, PASS_TAKEN].freeze
           end
 
           # The timer's interrupts in one frame, a power of two so the ticks are made frames by a shift, and
@@ -383,6 +392,17 @@ module VBlank
             asm.label("rt_wait_took_some")
             asm.mov(:eax, at.call(Frame::PASSES))
             asm.mov(at.call(Frame::SHOWN), :eax)
+            # Held for a reader until it has taken this pass, now shown (Frame::READER_HOLDS). A reader nearly
+            # always took it before the retrace and nothing is held; the time held is the next pass's.
+            asm.cmp(at.call(Frame::READER_HOLDS), 0)
+            asm.je("rt_wait_not_held")
+            asm.label("rt_wait_held")
+            asm.mov(:eax, at.call(Frame::PASSES))
+            asm.cmp(:eax, at.call(Frame::PASS_TAKEN))
+            asm.jbe("rt_wait_not_held")
+            asm.hlt # until the timer's next tick
+            asm.jmp("rt_wait_held")
+            asm.label("rt_wait_not_held")
             asm.mov(:eax, at.call(Frame::HOLD))
             asm.test(:eax, :eax)
             asm.jne("rt_stopped")

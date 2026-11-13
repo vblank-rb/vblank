@@ -186,6 +186,25 @@ class TestDOSCheckedRun < Minitest::Test
     refute_equal VBlank::Graphics::Color.resolve(:black), run.screen.pixel(8, 8)
   end
 
+  # Passes heavy enough that some end just before a retrace, which the reader would look at only after the
+  # program was through its wait and into the next pass: each pass is held for the reader, so every one is read
+  # (Runtime::Frame::READER_HOLDS). Two big sprites turned and doubled every pass did that on the 320 x 240 screen.
+  def test_every_pass_is_read_however_close_to_a_retrace_it_ends
+    checked(frames: 30) do
+      screen :bitmap
+      colors :base, %i[transparent red green blue]
+      image :big, width: 64, height: 64, places: Array.new(4096) { |i| i % 4 }, colors: :base
+      clear_screen :cyan
+      sprites = Array.new(2) { |i| sprite :big, at: [40 + (i * 30), 60 + (i * 10)], over_picture: true }
+      game_loop do
+        sprites.each do |each|
+          each.scale 2.0
+          each.turn 3
+        end
+      end
+    end
+  end
+
   def test_repeat_and_if_and_else_agree
     checked(frames: 5) do
       total = var :total, 0

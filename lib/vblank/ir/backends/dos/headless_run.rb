@@ -78,6 +78,7 @@ module VBlank
               refuse_stuck_game! if frames > LONGEST_PASS_FRAMES
             end
             press_before_first_pass
+            write32(runtime_place(Runtime::Frame::READER_HOLDS), 1) # each pass waits to be read (Frame::READER_HOLDS)
             @core.release_gate
             set_buttons(buttons_sent(1))
           end
@@ -238,7 +239,9 @@ module VBlank
             second = [Runtime::Sprites::PLACED, Runtime::View::SHOWN_X].any? { |name| @places.runtime.key?(name) }
             after_data = DOS.picture_shown_after_data(screen_built_for, second: second)
             drawn = Diagnostics::DOSMemory.picture(@core, width * height, after_data: after_data)
-            refuse_card_not_showing!(@stopped ? drawn : @picture_before)
+            # A pass taken after its retrace, held for the reader (Runtime::Frame::READER_HOLDS), is on the card already.
+            late = !@stopped && shown_pass == passes
+            refuse_card_not_showing!(@stopped || late ? drawn : @picture_before)
             @picture_before = drawn
           end
 
@@ -263,6 +266,9 @@ module VBlank
           def half(offset) = Diagnostics::DOSMemory.read16(@core, offset)
           def read32(offset) = Diagnostics::DOSMemory.read32(@core, offset)
           def write32(offset, value) = Diagnostics::DOSMemory.write32(@core, offset, value)
+
+          # The pass the program holds at its end has been read, so it goes on (Runtime::Frame::READER_HOLDS).
+          def pass_taken(pass) = write32(runtime_place(Runtime::Frame::PASS_TAKEN), pass)
 
           def state = read32(runtime_place(Runtime::Frame::STATE))
           def waiting? = read32(runtime_place(Runtime::Frame::WAITING)) == 1

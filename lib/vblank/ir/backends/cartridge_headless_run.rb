@@ -246,6 +246,7 @@ module VBlank
 
             pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera, read_picture_drawn]
             @song_at_pass_end = read_music_playing
+            pass_taken(passes)
             if ends_before_first_picture?(frames)
               @music_playing = @song_at_pass_end
               return end_before_first_picture(*pending[1..5])
@@ -269,6 +270,10 @@ module VBlank
 
         # What is read once the first pass has ended.
         def first_pass_ended = nil
+
+        # The pass numbered +pass+ has been read: a console whose program holds each pass for the reader
+        # lets it go on.
+        def pass_taken(_pass) = nil
 
         # How many entries the sound log held as the game was found waiting, and where the camera
         # put the view: none and nowhere, for a console's run that reads neither then.
