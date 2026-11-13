@@ -106,7 +106,7 @@ module VBlank
         # all, so whatever the lowering does not make is raised before the interpreter plays a frame of a
         # game it could never be held to.
         def build(program)
-          @rom = kit.lowering.new.build(program, title: "CHECKED")
+          @rom = cartridge_builder.build(program, title: "CHECKED")
           @built_for = program
           @rom
         end
@@ -124,6 +124,7 @@ module VBlank
           @deciding = false
           @decided = nil
           @moments = []
+          @passes_missed = []
           @vars = {}
           @lists = {}
           @sprites = []
@@ -140,6 +141,13 @@ module VBlank
         private def read_program = @built_for
 
         def stopped_at_budget? = false
+
+        # THE PASSES THE RUN NEVER READ, by number: each one ended and went on to the next without the
+        # game being found waiting at its end, so it has no moment, and the moments after it keep the
+        # numbers the runtime counted them by. A console whose runtime can go on without waiting (the
+        # Super Nintendo's, in a pass that ends inside the blank) leaves these; a checked run, which
+        # must compare every pass, builds its cartridge so that none is left (#cartridge_builder).
+        attr_reader :passes_missed
 
         # Which song is playing, by its name, or nil for none (Reference#music_playing), as the
         # console's player kept it on the frame the run's picture is.
@@ -192,6 +200,9 @@ module VBlank
         # What a console's run sets up for itself as a run starts, past what every one does.
         def start_run(_program) = nil
 
+        # The console's lowering, made ready to build the cartridge played, as a game is built.
+        def cartridge_builder = kit.lowering.new
+
         # Where each of the runtime's names is kept.
         def runtime = kit.lowering::Runtime
 
@@ -221,8 +232,13 @@ module VBlank
         # is found waiting at its end, its picture once the screen shows it. The interpreter, told
         # to play +frames+ frames, plays one pass more and stops as that one ends, without a frame
         # boundary for it: the end of the run is that pass.
+        #
+        # Each pass is named by the runtime's count (#passes). One found waiting further on than the
+        # pass after the last one read means the passes between ended without being found waiting
+        # (#passes_missed).
         def play_passes(frames)
           pending = nil # [pass, variables, lists, sprites, sounds, camera] whose picture is not on the screen yet
+          last_read = 0
           waited = 0
           loop do
             play_frame
@@ -242,8 +258,11 @@ module VBlank
               return finish_after_halt
             when runtime::Frame::WENT_WRONG then raise_cartridge_fault!
             end
-            next unless pending.nil? && waiting? && passes > @moments.size
+            next unless pending.nil? && waiting? && passes > last_read
 
+            missed = ((last_read + 1)...passes).to_a
+            @passes_missed.concat(missed)
+            last_read = passes
             pending = [passes, read_variables, read_lists, read_sprites, read_sounds, read_camera, read_picture_drawn]
             @song_at_pass_end = read_music_playing
             if ends_before_first_picture?(frames)
@@ -251,7 +270,9 @@ module VBlank
               return end_before_first_picture(*pending[1..5])
             end
 
-            note_frames_took(passes - 1) if passes > 1
+            # The pass before this one, and every one missed (the last of which is that pass), as far
+            # back as the runtime keeps their frames.
+            [*missed, passes - 1].uniq.last(runtime::Frame::STEPS_KEPT).each { |pass| note_frames_took(pass) if pass.positive? }
             mark_last_pass_taken if passes == frames
             hold_after_this_pass if passes > frames
             waited = 0

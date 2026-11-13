@@ -88,6 +88,13 @@ module VBlank
         # and what it is to the author.
         GameRoutine = Data.define(:addresses, :routine)
 
+        # +sleeps_every_pass+ builds the cartridge a checked run reads, in which every pass sleeps
+        # until the next blank, even one that ends inside a blank (Runtime::Frame#emit_sleep_unless_in_blank).
+        # Every other build leaves it unset, and a game without music is the same bytes either way.
+        def initialize(sleeps_every_pass: false)
+          @sleeps_every_pass = sleeps_every_pass
+        end
+
         # What the build found to say about what it decided (Cartridge::LoweredBuild).
         def findings = (@findings ||= [])
 
@@ -188,7 +195,7 @@ module VBlank
             return build(program, title: title, **choices, sprite_squares: false)
           end
           begin
-            runtime = Runtime.sections(memory, carries, lowering)
+            runtime = Runtime.sections(memory, carries, lowering, sleeps_every_pass: @sleeps_every_pass)
           rescue Runtime::Sound::TooBig
             raise if scene_recordings || !lowering.recordings_of_one_scene?
 

@@ -50,6 +50,7 @@ module VBlank
           refuse_endless_game_without_frames!(program)
           before = @save.dup # the interpreter starts from the save memory the cartridge started from
           super(program, frames: frames)
+          refuse_passes_missed!
           width, height = screen.then { |picture| [picture.width, picture.height] }
           interpreted = play_on_interpreter(program, frames, width, height, before)
           difference = moments_difference(interpreted)
@@ -60,6 +61,16 @@ module VBlank
         end
 
         private
+
+        # A pass the cartridge ended without being found waiting has no moment to compare
+        # (CartridgeHeadlessRun#passes_missed). That is a fault of the checked run's cartridge, which is
+        # built to wait at every pass (CartridgeHeadlessRun#cartridge_builder), so it fails the run, naming the pass.
+        def refuse_passes_missed!
+          missed = passes_missed.first or return
+
+          raise Disagreement, "the #{kit.title} cartridge went on from pass #{missed} without waiting for the " \
+                              "screen, so the checked run never read that pass to compare it"
+        end
 
         # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
         def buttons_sent(frame) = (@played[frame] = super)

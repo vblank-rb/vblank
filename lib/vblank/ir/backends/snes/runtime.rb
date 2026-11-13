@@ -80,8 +80,9 @@ module VBlank
           # a cartridge that carries +carries+. +lowering+ gives what only lowering the game finds out:
           # the routine run at each frame boundary, the wave voice's waveforms, the sections of its
           # songs and of its plays of recordings, where it keeps its music volume, the layers it bends,
-          # and how its layers and sprites are drawn.
-          def sections(memory, carries, lowering)
+          # and how its layers and sprites are drawn. +sleeps_every_pass+ for the cartridge a checked
+          # run reads (Frame#emit_sleep_unless_in_blank).
+          def sections(memory, carries, lowering, sleeps_every_pass: false)
             c = carries
             lowered = lowered_facts(c, lowering)
             vectors = W65816.new("runtime vectors", home: :first)
@@ -92,7 +93,7 @@ module VBlank
             Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
             pad = memory.scratch(4)
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
-                                    second_controller: c.second_controller, dims: c.dims)
+                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass)
             Blank.emit(asm, memory, Blank.scratch(memory))
             lists = Lists.scratch(memory)
             Lists.emit(asm, memory, lists)

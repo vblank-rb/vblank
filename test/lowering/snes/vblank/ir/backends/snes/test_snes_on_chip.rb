@@ -147,11 +147,9 @@ class TestSNESOnChip < Minitest::Test
   # A routine the chip takes several frames over, called on every pass: the frames still count, a
   # press made and let go while the chip works is still seen, and a song still moves on, as on the
   # interpreter, which reads the buttons and moves the music on at every frame however long a pass is.
-  # Turns enough for three frames a pass, ending well inside the third rather than in its blank. A
-  # game with music that ends a pass in the blank goes straight on without waiting
-  # (Frame#emit_sleep_unless_in_blank), and the run reading the cartridge, which looks once a frame,
-  # does not see that pass end at all.
-  CHIP_TURNS = 3600
+  # Turns enough for three frames a pass, with the song's passes ending a few lines into a blank,
+  # where the shipped cartridge goes straight on without waiting (Frame#emit_sleep_unless_in_blank).
+  CHIP_TURNS = 4300
   PRESSED_ON = [17, 24, 31, 38, 45, 52].freeze
 
   private def long_chip_run(song: false)
@@ -195,6 +193,12 @@ class TestSNESOnChip < Minitest::Test
     run = game_player.run(superfx_program(long_chip_run), frames: 40)
 
     assert_operator run[:frames], :>=, 30, "the frames the chip ran through were counted"
+  end
+
+  def test_the_shipped_song_game_ends_passes_in_the_blank
+    run = SNES::HeadlessRun.new.run(superfx_program(long_chip_run(song: true)), frames: 30)
+
+    refute_empty run.passes_missed, "no pass went on without waiting, so the song test below checks nothing of it"
   end
 
   def test_a_song_across_long_chip_runs_agrees_with_the_interpreter

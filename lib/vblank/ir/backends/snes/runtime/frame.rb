@@ -133,8 +133,10 @@ module VBlank
 
             # +pad+ is two words of the direct page, the same on the game's page and the
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
-            # whose wait ends in Sound's rt_sound_frame.
-            def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false)
+            # whose wait ends in Sound's rt_sound_frame. +sleeps_every_pass+ for the cartridge a checked
+            # run reads (#emit_sleep_unless_in_blank gives the reason).
+            def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false,
+                     sleeps_every_pass: false)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
               asm.label("rt_vblank_interrupt")
@@ -164,7 +166,7 @@ module VBlank
               asm.jsl(asm.long("rt_sound_frame")) if sound # the music of the frames the pass took (Sound)
               asm.rtl
 
-              emit_show_pass_routines(asm, memory, at, dims)
+              emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank: memory.reserved?(Sound::QUEUE) && !sleeps_every_pass)
               emit_buttons(asm, memory, pad, extra_buttons, second_controller)
               emit_stopping(asm, memory)
             end
@@ -227,8 +229,9 @@ module VBlank
             # the screen is still off, so everything set up so far is copied while nothing is drawn,
             # and the screen comes on in the blank after, showing it; after that, the pass's changes
             # are copied in the blank. Then the sleeps it waits for the blank in, and the step that
-            # moves on what keeps time by the frame.
-            def emit_show_pass_routines(asm, memory, at, dims)
+            # moves on what keeps time by the frame. +goes_on_in_blank+ for a pass that ends inside the
+            # blank to go straight on to the copying (#emit_sleep_unless_in_blank).
+            def emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank:)
               h = Console::SNESHardware
               asm.label("rt_show_pass")
               asm.lda(at.call(DISPLAY_ON))
@@ -255,7 +258,7 @@ module VBlank
                 # for after it (rt_show_pass_shown).
                 asm.jsr(asm.abs("rt_letterbox_wait"))
               else
-                asm.jsr(asm.abs(memory.reserved?(Sound::QUEUE) ?"rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
+                asm.jsr(asm.abs(goes_on_in_blank ? "rt_sleep_unless_in_blank" : "rt_sleep_until_vblank"))
               end
               asm.jsl(asm.long("rt_upload"))
               # After it, since a big change takes several blanks and the brightness belongs to
@@ -278,7 +281,7 @@ module VBlank
               asm.sta(at.call(SHOWN, 2))
               asm.rts
 
-              emit_sleep_unless_in_blank(asm, at) if memory.reserved?(Sound::QUEUE)
+              emit_sleep_unless_in_blank(asm, at) if goes_on_in_blank
               asm.label("rt_sleep_until_vblank")
               asm.stz(at.call(VBLANK))
               asm.label("rt_sleep_until_vblank_wait")
@@ -308,6 +311,15 @@ module VBlank
             # FRAMES still at FRAMES_MARK means no blank has begun since the last wait ended: a pass
             # so short that it ends in the blank it started in, which is still the frame before's,
             # and it sleeps.
+            #
+            # A CHECKED RUN'S CARTRIDGE SLEEPS AT EVERY PASS (SNES#initialize's +sleeps_every_pass+).
+            # A pass that goes straight on is waiting only while the blank lasts, and the emulator
+            # stops only as a blank begins, so a reader that looks once a frame never finds it waiting
+            # and never reads its numbers (CartridgeHeadlessRun#passes_missed). The cartridge a checked
+            # run builds therefore leaves this routine out, and each such pass takes one frame more;
+            # the interpreter is told the frames each pass took, so the two still agree. What that
+            # costs: checked runs never play the copying started late in a blank. The headless run's
+            # own tests of the shipped cartridge (its frames, its torn frames) are where it is played.
             def emit_sleep_unless_in_blank(asm, at)
               asm.label("rt_sleep_unless_in_blank")
               asm.lda(at.call(FRAMES))

@@ -298,6 +298,37 @@ class TestSNESCheckedRun < Minitest::Test
     assert_operator run[:frames], :>, run[:passes], "a pass spanned more than one frame"
   end
 
+  # A game with a song whose passes end all through the frame, some a few lines into the blank. A
+  # cartridge as shipped goes straight on from such a pass without waiting for the next blank
+  # (Runtime::Frame#emit_sleep_unless_in_blank), so nothing reading it once a frame finds it waiting.
+  private def passes_ending_in_the_blank
+    program_of do
+      screen :bitmap
+      enable_sound
+      song(:tune) { voice(:lead) { 64.times { note :C4, :eighth; note :E4, :sixteenth } } }
+      play_song :tune
+      work = var :work, 0
+      size = var :size, 0
+      game_loop do
+        size = (size + 13) % 500
+        repeat(size + 100) { work += 1 }
+      end
+    end
+  end
+
+  def test_every_pass_is_checked_where_passes_end_in_the_blank
+    run = SNES::CheckedRun.new.run(passes_ending_in_the_blank, frames: 60)
+
+    assert_equal [*1..60, :end], run.moments.map(&:frame)
+  end
+
+  def test_the_headless_run_names_each_pass_by_the_cartridges_count_and_the_passes_it_missed
+    run = SNES::HeadlessRun.new.run(passes_ending_in_the_blank, frames: 60)
+
+    refute_empty run.passes_missed, "no pass went on without waiting, so this game tests nothing"
+    assert_equal [*(1..60).to_a - run.passes_missed, :end], run.moments.map(&:frame)
+  end
+
   def test_a_routine_that_can_call_itself_is_refused_in_plain_words
     program = VBlank::IR::Build.program(
       VBlank::IR::Build.func(:again, VBlank::IR::Build.call(:again)), VBlank::IR::Build.call(:again)
