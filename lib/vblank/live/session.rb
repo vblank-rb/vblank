@@ -58,6 +58,12 @@ module VBlank
       # waiting is how far what a person sees and hears trails the buttons they press.
       SPEAKER_AHEAD_FRAMES = 4
 
+      # THE PASS THE GAME SETS ITSELF UP IN, which the play's speed leaves out (Rate): its pass, the
+      # frames it took and the seconds to their end. A first pass played in fast forward shares its
+      # frame with the passes after it, so none is left out.
+      Setup = Data.define(:passes, :frames, :seconds)
+      NO_SETUP = Setup.new(passes: 0, frames: 0, seconds: 0)
+
       # The game is built as Ruby here from +program+, before any device is opened, so a game the
       # Ruby runtime cannot play yet is refused (IR::Backends::Ruby::RuntimeGap) before a window
       # comes up.
@@ -95,7 +101,8 @@ module VBlank
         watch_game_for_device
         stopped_on = @game.play(self, match_seed: @network&.seed, local_player: @network&.player)
         rate = Rate.new(passes: @passes, frames: @frames, seconds: @frame_began - @started - @seconds_paused,
-                        stopped_itself: !stopped_on.nil?, lateness: @uncapped ? nil : @lateness.lateness)
+                        stopped_itself: !stopped_on.nil?, lateness: @uncapped ? nil : @lateness.lateness,
+                        setup_passes: @setup.passes, setup_frames: @setup.frames, setup_seconds: @setup.seconds)
         keep_showing(stopped_on) if stopped_on && @keep_last_picture
         rate
       ensure
@@ -115,6 +122,7 @@ module VBlank
         @fast_forward_passes = 0 # passes played in it
         @lateness = LatenessTally.new(frame_seconds: @frame_seconds)
         @pass_began = nil # when the game was handed the buttons for the pass it is playing; nil in the first
+        @setup = NO_SETUP # the pass the game set itself up in, once it has been played (#record_setup)
         @started = @frame_began = @device.now
         @device.seat_players(@game.seats) if @device.respond_to?(:seat_players)
         @device.wait_until(@frame_began)
@@ -143,6 +151,7 @@ module VBlank
         else
           end_fast_forward if @fast_frame_began
           play_at_console_speed(pixels, left, right)
+          record_setup if @passes == 1
         end
         leave_pause_out_of_pacing
         return nil if @device.stop? || @passes == @stop_after_passes
@@ -281,6 +290,11 @@ module VBlank
 
           @device.wait_until(@device.now + @frame_seconds)
         end
+      end
+
+      # The first pass has been played at the console's speed: it and the frames it took are the setup.
+      def record_setup
+        @setup = Setup.new(passes: 1, frames: @frames, seconds: @frame_began - @started)
       end
 
       def play_at_console_speed(pixels, left, right)

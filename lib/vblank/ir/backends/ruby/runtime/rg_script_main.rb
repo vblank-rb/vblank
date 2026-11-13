@@ -52,10 +52,8 @@ module VBlankScript
     rate = SHELL_FACTS ? play_shell(window, options, play_game) : play_game.call(game)
     return unless rate
 
-    if rate.passes.positive?
-      puts format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
-                  pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
-                  console: 1 / game.frame_seconds)
+    if rate.passes_after_setup.positive?
+      puts rate.words(console_frame_seconds: game.frame_seconds)
       puts rate.lateness.words if rate.lateness
     end
     puts "#{TITLE} stopped itself. Its last picture stayed in the window." if rate.stopped_itself?

@@ -1233,10 +1233,8 @@ module VBlank
     def say_rate(game, program, rate)
       return unless rate
 
-      if rate.passes.positive?
-        say format("%<pictures>d frames in %<seconds>.1f s (%<per_second>.1f fps; the console shows %<console>.1f)",
-                   pictures: rate.passes, seconds: rate.seconds, per_second: rate.passes_per_second,
-                   console: 1 / program.described_console.frame_seconds)
+      if rate.passes_after_setup.positive?
+        say rate.words(console_frame_seconds: program.described_console.frame_seconds)
         say rate.lateness.words if rate.lateness && !match_without_window?
       end
       say_stopped_itself(game, rate) if rate.stopped_itself?

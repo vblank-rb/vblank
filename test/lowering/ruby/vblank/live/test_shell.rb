@@ -422,7 +422,7 @@ class TestShell < Minitest::Test
                                        "--settings-file", File.join(folder, "settings.txt"), chdir: folder)
 
       assert status.success?, played
-      assert_match(/3 frames in/, played)
+      assert_match(/2 frames in/, played)
       assert_holds_none_of original_pieces, File.binread(path), "the Ruby script"
     end
   end

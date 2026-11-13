@@ -80,6 +80,33 @@ class TestSession < Minitest::Test
     assert_in_delta 1 / (2 * frame), rate.passes_per_second, 0.001
   end
 
+  # THE PASS THE GAME SETS ITSELF UP IN IS NOT PART OF ITS SPEED: a big game can take seconds over
+  # it before its first picture, and then play at the console's speed. Here it takes half a second,
+  # and the nine passes after it each a quarter of a frame, so the play went at the console's speed,
+  # and the setup is said on a line of its own.
+  def test_a_slow_first_pass_is_left_out_of_the_speed
+    program = counting_game
+    frame = frame_seconds(program)
+    setup = 30 * frame
+    device = Headless.new(frames: 10, pass_seconds: ->(pass) { pass == 1 ? setup : frame / 4 })
+    rate = Session.new(program).play(device)
+
+    assert_equal setup, rate.setup_seconds
+    assert_in_delta 1 / frame, rate.passes_per_second, 0.001
+    assert_in_delta 1 / frame, rate.frames_per_second, 0.001
+    assert_match(/\A9 frames in 0\.2 s \(59\.\d fps; the console shows 59\.\d\)/, rate.words(console_frame_seconds: frame))
+    assert_match(/set itself up in 0\.5 s/, rate.words(console_frame_seconds: frame))
+  end
+
+  # A setup no longer than a frame is not worth a line.
+  def test_a_quick_first_pass_is_not_said
+    program = counting_game
+    frame = frame_seconds(program)
+    rate = Session.new(program).play(Headless.new(frames: 4, pass_seconds: frame / 4))
+
+    refute_match(/set itself up/, rate.words(console_frame_seconds: frame))
+  end
+
   # WITH A SPEAKER, THE SPEAKER PACES THE PLAY. A pass that runs two frames long uses up two frames
   # of the sound waiting for the speaker, and since a few frames' worth is kept waiting, the speaker
   # never runs dry: every frame's sound is heard with no gap, and the game is moved on a frame a

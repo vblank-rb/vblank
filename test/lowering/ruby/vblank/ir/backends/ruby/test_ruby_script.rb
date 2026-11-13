@@ -36,7 +36,7 @@ class TestRubyScript < Minitest::Test
 
     assert status.success?, played
     assert_match(/Playing COLORSCRIPT\. Press P to pause/, played, "a game with no menu says nothing of F1")
-    assert_match(/3 frames in/, played)
+    assert_match(/2 frames in/, played)
   end
 
   # A game with a menu carries it, and the menu's letters, and says how to open it.
