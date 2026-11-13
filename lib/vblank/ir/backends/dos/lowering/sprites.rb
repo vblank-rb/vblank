@@ -204,15 +204,45 @@ module VBlank
             def emit_present_objects(node)
               # In a game that scrolls the interpreter builds the view again as the sprites are placed (Reference
               # @repaints); Runtime::Scenery leaves a build that would make the picture it shows.
-              @asm.call("rt_scenery_request") if scenery_used? && scenery_rebuilt_each_pass?
+              if sprites_stacked?
+                @asm.call("rt_scenery_rebuild") # the view holds the sprites as they were placed
+              elsif scenery_used? && scenery_rebuilt_each_pass?
+                @asm.call("rt_scenery_request")
+              end
               return if sprite_objects.empty? # a pass ends by placing the sprites in a game with none too
 
               @asm.mov(runtime_at(Runtime::Sprites::PLACED), 0)
-              node.names.each { |name| emit_sprite_placed(sprite_objects.fetch(name)) }
+              sprites = node.names.map { |name| sprite_objects.fetch(name) }
+              return sprites.each { |sprite| emit_sprite_placed(sprite) } unless sprites_stacked?
+
+              emit_sprites_by_level(sprites)
             end
 
-            # One sprite put in the table, if it is shown and its pose picks one of its pictures.
-            def emit_sprite_placed(sprite)
+            # Sprites drawn into the view at their levels, placed a level at a time from the back, in the order they
+            # are drawn inside each: the table is then back to front, as the interpreter counts the sprites drawn
+            # (Reference#sprites_by_depth). A sprite that can be put in other layers is placed at the level its
+            # variable picks now.
+            def emit_sprites_by_level(sprites)
+              depths = stacked_picture.depths
+              sprites.flat_map { |sprite| Stacking.levels_of(depths, sprite) }.uniq.sort.each do |level|
+                sprites.each do |sprite|
+                  levels = Stacking.levels_of(depths, sprite)
+                  next unless levels.include?(level)
+                  next emit_sprite_placed(sprite, level) if levels.uniq.size == 1
+
+                  elsewhere = fresh_label("sprite_at_another_level")
+                  emit_sprite_level(sprite)
+                  @asm.cmp(:dl, level)
+                  @asm.jne(elsewhere)
+                  emit_sprite_placed(sprite, level)
+                  @asm.label(elsewhere)
+                end
+              end
+            end
+
+            # One sprite put in the table, if it is shown and its pose picks one of its pictures; with its +level+
+            # in the stack, in a game whose sprites are drawn at their levels.
+            def emit_sprite_placed(sprite, level = nil)
               skip = fresh_label("sprite_not_drawn")
               recolored = !sprite.recolors.to_a.empty?
               emit_value(sprite.active)
@@ -245,7 +275,27 @@ module VBlank
               @asm.mov(:dx, sprite_names.name_number(sprite.declared))
               @asm.call("rt_sprite_place")
               emit_sprite_turned(sprite) if Sprites.turns?(sprite)
+              if level
+                # The level of the sprite just placed (Runtime::Sprites::LEVELS).
+                @asm.mov(:bx, X86.mem(nil, @memory[Runtime::Sprites::PLACED], size: 16))
+                @asm.mov(X86.mem(:bx, @memory[Runtime::Sprites::LEVELS] - 1, size: 8), level)
+              end
               @asm.label(skip)
+            end
+
+            # DL the level in the stack of a sprite that can be put in other layers, as Reference#object_level works
+            # it out: the one its variable picks, where it picks one of them, or the one it was declared at.
+            def emit_sprite_level(sprite)
+              levels = Stacking.levels_of(stacked_picture.depths, sprite)
+              emit_value(sprite.layer_pick)
+              @asm.mov(:dl, levels.first)
+              levels.drop(1).each_with_index do |level, pick|
+                other = fresh_label("sprite_layer_other")
+                @asm.cmp(:eax, pick)
+                @asm.jne(other)
+                @asm.mov(:dl, level)
+                @asm.label(other)
+              end
             end
 
             # The sprite just placed turns (Runtime::Turning): its angle and its size as they are now, and what

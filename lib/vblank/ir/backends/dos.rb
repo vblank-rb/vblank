@@ -136,6 +136,7 @@ module VBlank
           Runtime.reserve(memory, saves: SaveLayout.named_by?(program), clock: Lowering::Clock.used_by?(program),
                                   area: Lowering.area_used_by?(program), sprites: sprites,
                                   walks: walks, view: view, turned: Lowering::Sprites.turned_in?(program),
+                                  stacked: Lowering::Scenery.stacks_sprites?(program),
                                   overlaps: Lowering.overlaps_in?(program))
           Lowering::Sprites.reserve(memory, program)
           Lowering::Scenery.reserve(memory, program)

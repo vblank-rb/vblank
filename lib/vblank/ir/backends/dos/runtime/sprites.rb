@@ -42,6 +42,13 @@ module VBlank
             # The table as it was when the picture shown was last made, and how many it held.
             PLACED_BEFORE = "rt sprites placed before"
             TABLE_BEFORE = "rt sprites before"
+            # A SPRITE AT ITS LEVEL IN THE STACK. Where a game's layers put a background in front of a sprite, or its
+            # sprites at different levels, the sprites are not drawn over the picture but into the view as it is
+            # built (Runtime::Scenery#emit_view), each after the backgrounds of its own level and before those in
+            # front, as the interpreter paints them (Reference#repaint_view). Such a game keeps a byte for each sprite
+            # placed, its level, in the order of the table (LEVELS), and the picture shown is then the game's
+            # picture with nothing over it.
+            LEVELS = "rt sprites levels"
             # A place nothing is kept in: a game has it when one of its sprites turns or changes size, which is
             # what says its table's rows are the longer ones.
             TURNED = "rt sprites turned"
@@ -70,6 +77,9 @@ module VBlank
 
             def turned?(memory) = memory.places.key?(TURNED)
 
+            # Whether the sprites are drawn into the view at their levels (LEVELS).
+            def stacked?(memory) = memory.places.key?(LEVELS)
+
             # How long a row of the table is, and the shift that multiplies by it.
             def entry_bytes(memory) = turned?(memory) ? TURNED_ENTRY_BYTES : ENTRY_BYTES
             def entry_shift(memory) = entry_bytes(memory).bit_length - 1
@@ -78,9 +88,10 @@ module VBlank
             def places(memory) = [PLACED, TABLE] + (turned?(memory) ? [TURNED] : [])
 
             # +most+ is how many sprites the game has: no pass places more. +turned+ is whether any of them
-            # turns or changes size.
-            def reserve(memory, most, turned: false)
+            # turns or changes size, and +stacked+ whether they are drawn at their levels in the stack.
+            def reserve(memory, most, turned: false, stacked: false)
               memory.reserve(TURNED, 4) if turned
+              memory.reserve(LEVELS, most) if stacked
               WORDS.each { |name| memory.reserve(name, 4) }
               memory.reserve(TABLE, most * entry_bytes(memory))
               memory.reserve(TABLE_BEFORE, most * entry_bytes(memory))
@@ -93,6 +104,7 @@ module VBlank
               screen = Edges.new(left: 0, top: 0, right: memory.screen.width, bottom: memory.screen.height)
               emit_place(asm, memory)
               emit_over_picture(asm, memory)
+              emit_at_level(asm, memory) if stacked?(memory)
               Turning.emit(asm, memory) if turned?(memory)
               Runtime.emit_blit_routine(asm, memory, screen, name: "rt_sprite_blit", marks: false)
             end
@@ -229,6 +241,8 @@ module VBlank
               asm.label("rt_sprites_rows_marked")
               # 2. The game's picture, where anything changed.
               asm.call("rt_picture_rows")
+              return emit_drawn_already(asm) if stacked?(memory)
+
               # 3. The sprites over it.
               asm.mov(:cx, placed)
               asm.test(:cx, :cx)
@@ -239,18 +253,7 @@ module VBlank
               asm.label("rt_sprites_draw")
               asm.push(:cx)
               asm.push(:bp)
-              if turned?(memory)
-                asm.cmp(entry.call(TURNS, 16), 0)
-                asm.je("rt_sprites_draw_upright")
-                asm.call("rt_sprite_turned_blit")
-                asm.jmp("rt_sprites_draw_next")
-                asm.label("rt_sprites_draw_upright")
-              end
-              asm.mov(:si, entry.call(ART, 16))
-              asm.mov(:eax, entry.call(X, 32))
-              asm.mov(:ecx, entry.call(Y, 32))
-              asm.call("rt_sprite_blit")
-              asm.label("rt_sprites_draw_next")
+              emit_entry_drawn(asm, memory, "rt_sprites_draw")
               asm.pop(:bp)
               asm.pop(:cx)
               asm.add(:bp, entry_bytes(memory))
@@ -258,6 +261,53 @@ module VBlank
               asm.jne("rt_sprites_draw")
               Rows.emit_pop_picture_segment(asm, memory.screen)
               asm.label("rt_sprites_drawn")
+              asm.ret
+            end
+
+            # The end of rt_sprites_over_picture where the sprites are in the game's picture already (LEVELS).
+            def emit_drawn_already(asm)
+              asm.label("rt_sprites_drawn")
+              asm.ret
+            end
+
+            # One sprite of the table drawn into the picture ES (and FS) name, with BP at its row.
+            def emit_entry_drawn(asm, memory, tag)
+              entry = ->(part, size) { X86.mem(:bp, part, size: size) }
+              if turned?(memory)
+                asm.cmp(entry.call(TURNS, 16), 0)
+                asm.je("#{tag}_upright")
+                asm.call("rt_sprite_turned_blit")
+                asm.jmp("#{tag}_next")
+                asm.label("#{tag}_upright")
+              end
+              asm.mov(:si, entry.call(ART, 16))
+              asm.mov(:eax, entry.call(X, 32))
+              asm.mov(:ecx, entry.call(Y, 32))
+              asm.call("rt_sprite_blit")
+              asm.label("#{tag}_next")
+            end
+
+            # rt_sprites_at_level: each sprite placed whose level is AL drawn into the game's picture, in the table's
+            # order, as the view is built. Changes every register but the segment ones and AL.
+            def emit_at_level(asm, memory)
+              asm.label("rt_sprites_at_level")
+              asm.mov(:cx, X86.mem(nil, memory[PLACED], size: 16))
+              asm.test(:cx, :cx)
+              asm.je("rt_sprites_at_level_done")
+              asm.mov(:bp, memory[TABLE])
+              asm.mov(:bx, memory[LEVELS])
+              asm.label("rt_sprites_at_level_each")
+              asm.cmp(X86.mem(:bx, 0, size: 8), :al)
+              asm.jne("rt_sprites_at_level_passed")
+              %i[ax bx cx bp].each { |register| asm.push(register) }
+              emit_entry_drawn(asm, memory, "rt_sprites_at_level_draw")
+              %i[bp cx bx ax].each { |register| asm.pop(register) }
+              asm.label("rt_sprites_at_level_passed")
+              asm.add(:bp, entry_bytes(memory))
+              asm.inc(:bx)
+              asm.dec(:cx)
+              asm.jne("rt_sprites_at_level_each")
+              asm.label("rt_sprites_at_level_done")
               asm.ret
             end
           end

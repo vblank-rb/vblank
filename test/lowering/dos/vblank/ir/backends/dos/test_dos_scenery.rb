@@ -119,22 +119,20 @@ class TestDOSScenery < Minitest::Test
     assert_equal VBlank::Graphics::Color.resolve(:black), run.screen.pixel(0, 0)
   end
 
-  # A background in a named layer can be put up behind one already up, and the stack is settled again then,
-  # which is not made yet: such a game is refused by name.
-  def test_a_background_in_a_named_layer_is_refused
+  # Backgrounds in named layers put up in another order than the stack draws them: the one behind, stamped over
+  # the picture as it goes up, would cover the one in front, where the interpreter keeps it behind.
+  def test_a_background_put_up_behind_one_already_up_stays_behind
     test = self
-    error = assert_raises(DOS::Lowering::NotMadeYet) do
-      DOS.new.build(program_of do
-        screen :tiled
-        test.tilesets(self)
-        layers :sky, :world
-        layer(:world) { background :front, tiles: :over, map: Array.new(4, "CN" * 4) }
-        layer(:sky) { background :back, tiles: :colors, map: test.stripes(8, 4) }
-        game_loop {}
-      end)
+    run = checked(frames: 3) do
+      screen :tiled, backdrop: :black
+      test.tilesets(self)
+      layers :sky, :world
+      layer(:world) { background :front, tiles: :over, map: Array.new(4, "CN" * 4) }
+      layer(:sky) { background :back, tiles: :colors, map: test.stripes(8, 4) }
+      game_loop {}
     end
 
-    assert_match(/named layer/, error.message)
+    assert_equal VBlank::Graphics::Color.resolve(:yellow), run.screen.pixel(0, 0)
   end
 
   # One background scrolled every pass is built again every pass, and in less than a frame, so the game's

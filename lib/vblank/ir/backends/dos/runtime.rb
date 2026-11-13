@@ -143,11 +143,11 @@ module VBlank
 
           # +saves+ is whether the game keeps anything in save memory, +clock+ whether it reads or sets the
           # clock, and +area+ whether it holds drawing to an area: a game that does none has none of them.
-          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false, turned: false, overlaps: false)
+          def reserve(memory, saves:, clock:, area:, sprites:, walks:, view: false, turned: false, stacked: false, overlaps: false)
             Overlap.reserve(memory) if overlaps
             Fades.reserve(memory) if walks
             View.reserve(memory) if view
-            Sprites.reserve(memory, sprites, turned: turned) if sprites.positive?
+            Sprites.reserve(memory, sprites, turned: turned, stacked: stacked) if sprites.positive?
             ModeX.reserve(memory) if memory.screen.mode == :mode_x
             memory.reserve(AREA, AREA_BYTES) if area
             Frame::WORDS.each { |name| memory.reserve(name, 4) }

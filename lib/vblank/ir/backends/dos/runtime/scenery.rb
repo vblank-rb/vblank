@@ -26,9 +26,9 @@ module VBlank
           # pixels left as they were.
           #
           # In the art segment, read through GS, each background has a record (RECORD), its tiles (a palette
-          # entry a pixel) and its map (a word a cell, row after row); the records' order for building the view is
-          # a list of their places, its length first. In the data segment each has its scroll and whether it shows
-          # from its corner (STATE).
+          # entry a pixel) and its map (a word a cell, row after row); the view is built from them in an order written
+          # into the code (#emit_view). In the data segment each has its scroll and whether it shows from its corner
+          # (STATE).
           module Scenery
             # A background's record in the art segment: where its cells are, how many columns and rows of them are kept,
             # a tile's width and height, how wide and tall its grid is in pixels and whether its map comes round at the
@@ -91,14 +91,15 @@ module VBlank
             RUN_WORDS = ["rt scenery run list", "rt scenery run item", "rt scenery run byte", "rt scenery run pixels",
                          "rt scenery run mask", "rt scenery run left", "rt scenery run entry", "rt scenery run header"].freeze
 
-            # A background's place in the data segment: its scroll, whether it shows from its corner, and the place
-            # the view was last built showing it from.
+            # A background's place in the data segment: its scroll, whether it shows from its corner, the place the
+            # view was last built showing it from, and whether it has been put up.
             STATE_BYTES = 24
             SCROLL_X = 0
             SCROLL_Y = 4
             FROM_CORNER = 8
             BUILT_X = 12
             BUILT_Y = 16
+            SHOWN = 20
             STATES = "rt scenery states"
 
             OWED = "rt scenery owed" # the view must be built again before it is next shown
@@ -129,11 +130,10 @@ module VBlank
             ROUND = "rt scenery round"
             SCROLL_SHOWN_X = "rt scenery shown x"
             SCROLL_SHOWN_Y = "rt scenery shown y"
-            NEXT = "rt scenery next"
 
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
-                     PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y, NEXT].freeze
+                     PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y].freeze
 
             module_function
 
@@ -152,17 +152,19 @@ module VBlank
             # The place of background number +number+'s STATE.
             def state_at(memory, number) = memory[STATES] + (number * STATE_BYTES)
 
-            # +order+ is the art segment's place of the list of records the view is built from, and +backgrounds+
-            # how many there are. +cells+, +held+ and +maps+ say whether the game changes a cell, holds a change for
-            # the frame's end, or shows another map.
-            def emit(asm, memory, order:, backgrounds:, cells: false, held: false, maps: false, runs: false)
+            # +levels+ is what the view is built from, a level of the stack at a time from the back: the art segment's
+            # places of the records of the backgrounds at that level, in the order they are drawn, and whether a sprite
+            # can be at that level and is drawn into the view (Sprites::LEVELS). +backgrounds+ is how many there are.
+            # +cells+, +held+ and +maps+ say whether the game changes a cell, holds a change for the frame's end, or
+            # shows another map.
+            def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false)
               emit_requests(asm, memory, backgrounds, held: held)
               emit_paint_run(asm, memory) if runs
               emit_set_cell(asm, memory) if cells
               emit_held(asm, memory) if held
               emit_show_map(asm, memory) if maps
               emit_backdrop(asm, memory)
-              emit_view(asm, memory, order, backgrounds)
+              emit_view(asm, memory, levels, backgrounds)
               emit_window(asm, memory)
               emit_stamp(asm, memory)
               emit_map_row(asm, memory)
@@ -218,6 +220,7 @@ module VBlank
               end
               asm.call("rt_scenery_forget_corners")
               asm.mov(X86.mem(:bx, FROM_CORNER, size: 32), 1)
+              asm.mov(X86.mem(:bx, SHOWN, size: 32), 1)
               asm.mov(word.call(ANY_FROM_CORNER), 1)
               asm.mov(word.call(UP), 1)
               asm.mov(word.call(BUILT), 0)
@@ -522,13 +525,15 @@ module VBlank
               Runtime.emit_mark_every_row(asm, memory)
             end
 
-            # rt_scenery_view: the whole view built again (Reference#repaint_view): the backdrop, then each
-            # background's window, in the order the list at +order+ in the art segment holds them.
+            # rt_scenery_view: the whole view built again (Reference#repaint_view): the backdrop, then a level of
+            # the stack at a time from the back, each background's window at that level and then, in a game that
+            # draws its sprites at their levels, the sprites placed there (rt_sprites_at_level).
             #
             # The interpreter builds it every pass in a game that scrolls. What it builds depends on nothing but the
             # backdrop and where each background shows from, so where the picture is still the view last built
             # (BUILT) and none of those has changed, building it again would make the same picture, and is left.
-            def emit_view(asm, memory, order, backgrounds)
+            # Placing sprites that are drawn into the view builds it again (rt_scenery_rebuild).
+            def emit_view(asm, memory, levels, backgrounds)
               asm.label("rt_scenery_view")
               asm.cmp(at(memory, BUILT), 0)
               asm.je("rt_scenery_view_build")
@@ -561,20 +566,16 @@ module VBlank
               asm.push(:gs)
               asm.mov_segment(:ax, :art)
               asm.mov(:gs, :ax)
-              asm.mov(at(memory, NEXT, 16), order + 2)
-              asm.mov(:cx, X86.mem(nil, order, seg: :gs, size: 16))
-              asm.label("rt_scenery_view_next")
-              asm.test(:cx, :cx)
-              asm.je("rt_scenery_view_done")
-              asm.push(:cx)
-              asm.mov(:bx, at(memory, NEXT, 16))
-              asm.mov(:si, X86.mem(:bx, 0, seg: :gs, size: 16))
-              asm.add(at(memory, NEXT, 16), 2)
-              asm.call("rt_scenery_window")
-              asm.pop(:cx)
-              asm.dec(:cx)
-              asm.jmp("rt_scenery_view_next")
-              asm.label("rt_scenery_view_done")
+              levels.each_with_index do |(records, sprites), level|
+                records.each do |record|
+                  asm.mov(:si, record)
+                  asm.call("rt_scenery_window")
+                end
+                next unless sprites
+
+                asm.mov(:al, level)
+                asm.call("rt_sprites_at_level")
+              end
               asm.pop(:gs)
               asm.ret
             end

@@ -26,7 +26,7 @@ module VBlank
             REBUILT_EACH_PASS = %i[scroll_background set_tile show_map tile_run background_colors].freeze
 
             # The part of the build a game with such a screen waits for, for a test run to count skips by.
-            PART = "a screen of tiles with layers over sprites, status bars, boxes, bends, turns, other colours, " \
+            PART = "a screen of tiles with status bars, boxes, bends, turns, other colours, " \
                    "text, or a scene's own scenery; sprites painted from a list"
 
             # Whether +program+ shows a screen made of tiles.
@@ -52,12 +52,23 @@ module VBlank
 
             def self.holds_cells?(program) = program.walk.any? { |node| node.kind == :set_tile && node.held }
 
-            # What Runtime::Scenery.emit is handed: the art segment's place of the list the view is built in
-            # the order of, and how many backgrounds there are; nil for a game with no screen of tiles.
+            # Whether +program+'s sprites are drawn into the view at their levels (Runtime::Sprites::LEVELS) rather than
+            # over it: a screen of tiles whose layers put a background in front of a sprite, or its sprites at
+            # different levels, which a picture drawn over the view in the table's order would not keep.
+            def self.stacks_sprites?(program)
+              return false unless tiled?(program)
+
+              picture = Stacking.picture(program)
+              levels = picture.objects.flat_map { |object| Stacking.levels_of(picture.depths, object) }.uniq
+              levels.size > 1 || (levels.any? && Stacking.scenery_over_objects?(picture.depths, scenery: picture.scenery, objects: picture.objects))
+            end
+
+            # What Runtime::Scenery.emit is handed: the levels the view is built from, and how many backgrounds there
+            # are; nil for a game with no screen of tiles.
             def scenery_plan
               return unless scenery_used?
 
-              { order: @art_places.fetch(:scenery_order), backgrounds: scenery_backgrounds.size,
+              { levels: scenery_levels, backgrounds: scenery_backgrounds.size,
                 cells: scenery_kinds.include?(:set_tile), held: Scenery.holds_cells?(@program), maps: scenery_kinds.include?(:show_map),
                 runs: Scenery.paints_tiles?(@program) }
             end
@@ -96,7 +107,6 @@ module VBlank
               return "a painted screen as well" if screens.map { |node| Scenery.tiles_mode?(node.mode) }.uniq.size > 1
               return "a screen of its own in a scene" unless @plan.handover.scene_screens.empty?
               return "a backdrop that follows a list of colours" if @plan.handover.backdrop_follows_list?
-              return "layers that put a background in front of a sprite" if scenery_over_sprites?
               return "a layer that shows through" if @program.walk.any? { |node| node.kind == :layers && !node.see_through.empty? }
 
               scenery_backgrounds.each do |bg|
@@ -108,9 +118,20 @@ module VBlank
               nil
             end
 
-            def scenery_over_sprites?
-              Stacking.scenery_over_objects?(stacked_picture.depths, scenery: stacked_picture.scenery, objects: stacked_picture.objects)
+            # The view's levels from the back (Runtime::Scenery#emit_view): at each, the places of the records of the
+            # backgrounds there, in the order the stack draws them, and whether a sprite drawn into the view can be
+            # there.
+            def scenery_levels
+              depths = stacked_picture.depths
+              order = scenery_backgrounds.each_index.sort_by { |number| [depths.of_scenery(scenery_backgrounds[number]), number] }
+              by_level = order.group_by { |number| depths.of_scenery(scenery_backgrounds[number]) }
+              sprite_levels = sprites_stacked? ? stacked_picture.objects.flat_map { |object| Stacking.levels_of(depths, object) } : []
+              (0...depths.count).map do |level|
+                [by_level.fetch(level, []).map { |number| @art_places.fetch([:background, number]) }, sprite_levels.include?(level)]
+              end
             end
+
+            def sprites_stacked? = @sprites_stacked.nil? ? (@sprites_stacked = Scenery.stacks_sprites?(@program)) : @sprites_stacked
 
             def unmade_in_background(bg)
               return "a status bar" if bg.bar?
@@ -121,7 +142,6 @@ module VBlank
               return "a background drawn in other colours with tiles the game paints" if recolored?(bg) && bg.tiles.any? { |name| painted_tiles.key?(name) }
               return "a background whose tiles come in sets" if bg.several_sets?
               return "a scene's own background" if bg.scene
-              return "a background in a named layer" if bg.layer && stacked_picture.stack.include?(bg.layer)
 
               nil
             end
@@ -141,8 +161,7 @@ module VBlank
               (tiles + backdrops + runs).map { |color| Graphics::Color.resolve(color) }.uniq
             end
 
-            # Each background's tiles, map and record in the art segment, and the list the view is built in the
-            # order of.
+            # Each background's tiles, map and record in the art segment.
             def make_scenery_art
               return unless scenery_used?
 
@@ -152,9 +171,6 @@ module VBlank
                 @art_places[[:background, number]] = @art.bytesize
                 @art << fields.pack("v*").ljust(Runtime::Scenery::RECORD_BYTES, "\0")
               end
-              order = scenery_backgrounds.each_index.sort_by { |number| [stacked_picture.depths.of_scenery(scenery_backgrounds[number]), number] }
-              @art_places[:scenery_order] = @art.bytesize
-              @art << [order.size, *order.map { |number| @art_places.fetch([:background, number]) }].pack("v*")
               @picks_at = {}.compare_by_identity
               make_run_art
               @program.walk.select { |node| node.kind == :set_tile && node.picked? }.each do |node|
@@ -395,6 +411,29 @@ module VBlank
               @asm.mov(:si, @art_places.fetch([:background, number]))
               @asm.mov(:bx, Runtime::Scenery.state_at(@memory, number))
               @asm.call("rt_scenery_put_up")
+              emit_stamps_in_front(node)
+            end
+
+            # A layer can put a background behind one already up, and a stamp covers wherever it has solid pixels,
+            # so each background up in front of +node+ is stamped again over it, back to front, which settles the
+            # stack (Reference#put_up_background). A game whose backgrounds go up in the order they are drawn
+            # stamps nothing more.
+            def emit_stamps_in_front(node)
+              stack = stacked_picture.stack
+              depth = stack.index(node.layer) or return
+              in_front = scenery_backgrounds.each_index.select do |number|
+                other = stack.index(scenery_backgrounds[number].layer)
+                other && other > depth
+              end
+              in_front.sort_by { |number| [stack.index(scenery_backgrounds[number].layer), number] }.each do |number|
+                state = Runtime::Scenery.state_at(@memory, number)
+                down = fresh_label("background_not_up")
+                @asm.cmp(X86.mem(nil, state + Runtime::Scenery::SHOWN, size: 32), 0)
+                @asm.je(down)
+                @asm.mov(:si, @art_places.fetch([:background, number]))
+                @asm.call("rt_scenery_stamp")
+                @asm.label(down)
+              end
             end
 
             # In a list of the tiles a set_tile picks from, a number that names none of the background's tiles.

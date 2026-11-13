@@ -260,7 +260,7 @@ module VBlank
                                                var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
                                                func call scene case_var every after shake_screen
                                                timer table chance rand roll seed randomize list pool
-                                               save_data players_connected drawing_for_local_player tiles background
+                                               save_data players_connected drawing_for_local_player tiles background layers layer
                                                colors_name_of computer_keys computer_gamepad shell_screen]
       })
 
