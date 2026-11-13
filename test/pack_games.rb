@@ -1034,6 +1034,30 @@ module PackGames
         builder.finalize_program
         built(builder.program, builder.made_data_pack_file)
       end,
+      # One sprite showing a pose of sprite tiles and a picture drawn by places, both of one list
+      # from the pack, drawn with another bank. Place 0 of a bank is a colour in the copy and a
+      # marker with the pack left out, and the set and the picture hold it see-through alike.
+      game(:pose_of_sprite_tiles_and_a_picture_of_a_pack_list_drawn_with_another, passes: 6) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :ink, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :other_ink, pack[:palette].bank(2, size: BANK_SIZE)
+          image :stripes, width: 8, height: 8, colors: :ink, places: Array.new(64) { |at| 1 + (at % 3) }
+          image :plain, width: 8, height: 8, colors: :ink, places: Array.new(64, 2)
+          set = sprite_tiles :ball_tiles, count: 1, colors: :ink
+          image :spin, tiles_from: :ball_tiles, pieces: [[0, 0, 0]]
+          ball = sprite :ball, at: [40, 20], frames: %i[spin plain], rate: 2
+          ball.draw_with :other_ink
+          set.copy_from :stripes, at: 0, count: 1, to: 0
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
       # Drawn with another list, a picture given as colours is swapped by finding each pixel's
       # place in its own list, which a build that does not hold the list cannot do.
       game(:picture_of_colors_in_a_pack_list_drawn_with_another_list, passes: 3, refused: refused_by_builder("places:")) do |folder, options|

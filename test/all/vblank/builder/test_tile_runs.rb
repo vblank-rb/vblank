@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "differential"
+require "stringio"
 
 # TILES WHOSE PIXELS COME FROM A LIST THE GAME OWNS — `tiles :box, from: list, count: n`.
 #
@@ -162,7 +163,62 @@ class TestTileRuns < Minitest::Test
     assert_empty mismatched_pixels(oracle, console), "the console paints the run as the interpreter does"
   end
 
+  # A run given a list by name whose first place is a colour, beside a drawn tile of that list and
+  # drawn with another list: place 0 is see-through in both tiles, and every other place takes the
+  # other list's colour. The Color keeps a background's tiles in lists of its own, and its
+  # cartridge is held to the interpreter here.
+  private def run_beside_a_tile_of_its_named_list
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled, backdrop: :blue
+      colors :ink, %i[red white green]
+      colors :other, %i[red yellow cyan]
+      image :plain, width: 8, height: 8, colors: :ink, places: Array.new(64) { |at| at.even? ? 2 : 0 }
+      canvas = list :canvas, capacity: 32, width: :byte, full_of: 0x10
+      box = tiles :box, from: canvas, count: 1, colors: :ink, 2 => :plain
+      front = background :front, tiles: :box, map: [[1, 2]]
+      front.draw_with :other
+      game_loop { box.changed }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_run_of_a_named_list_whose_first_place_is_a_colour_is_drawn_with_another_list
+    program = run_beside_a_tile_of_its_named_list
+    picture = game_player.run(program, frames: 4).screen
+    blue = VBlank::Graphics::Color.resolve(:blue)
+
+    assert_equal [blue, VBlank::Graphics::Color.resolve(:yellow)], [picture.pixel(0, 0), picture.pixel(1, 0)], "the run"
+    assert_equal [VBlank::Graphics::Color.resolve(:cyan), blue], [picture.pixel(8, 0), picture.pixel(9, 0)], "the drawn tile"
+    oracle, console = backend_pictures(program, frames: 4)
+    assert_empty mismatched_pixels(oracle, console)
+  end
+
   # --- a sprite's picture from a list ---
+
+  # A painted picture given a list by name whose first place is a colour holds that list as every
+  # other picture drawn from it does: place 0 see-through. So a sprite showing it beside a picture
+  # of that list, drawn with another list, is told what is really wrong: a painted picture is the
+  # whole of its sprite.
+  def test_a_painted_picture_beside_a_picture_of_its_named_list_is_told_it_must_be_alone
+    told = StringIO.new
+    assert_raises(VBlank::ROMError) do
+      VBlank.build("PAINTED", console: :gba, out: StringIO.new, err: told) do
+        screen :tiled
+        colors :ink, %i[red white blue]
+        colors :other, %i[red yellow cyan]
+        canvas = list :canvas, capacity: 32, width: :byte, full_of: 0x11
+        painted = image :painted, from: canvas, width: 8, height: 8, colors: :ink
+        image :plain, width: 8, height: 8, colors: :ink, places: Array.new(64, 2)
+        hero = sprite :hero, at: [40, 20], frames: %i[painted plain], rate: 2
+        hero.draw_with :other
+        game_loop { painted.changed }
+      end
+    end
+
+    assert_match(/must be the only picture of its sprite/, told.string)
+  end
 
   # A 16x8 picture is two tiles side by side, so its list is 64 bytes, the left tile first —
   # the order the console keeps a sprite's tiles in. +body+ runs each pass with the list, the
