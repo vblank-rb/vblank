@@ -112,6 +112,21 @@ class TestIRVerifier < Minitest::Test
     assert_match(/value node/, err.message)
   end
 
+  # A number the game works out, handed to a verb that takes only a number written in the
+  # program, is the game author's slip and not a VBlank bug. So it is refused in plain words
+  # naming the verb and the line, not as an invariant a lowering trips over later.
+  def test_a_game_number_in_a_fixed_number_slot_is_refused_naming_the_verb_and_line
+    builder = VBlank::Builder.new
+    speed = builder.instance_eval { var :speed, 3 }
+    bad = program(Nodes::FillRect.new(x: speed, y: 0, w: 2, h: 2, color: :red, source: "game.rb:7"))
+
+    err = assert_raises(VBlank::IR::Guardrails::ValidationError) { Verifier.verify!(bad) }
+    assert_match(/fill_rect/, err.message)
+    assert_match(/game\.rb:7/, err.message)
+    assert_match(/works out as it runs/, err.message)
+    refute_match(/#<VBlank::DSL::Value/, err.message, "the message names no Ruby object")
+  end
+
   def test_a_wrong_literal_type_in_a_structural_slot_is_caught
     bad = program(Nodes::Every.new(counter: :t, period: :nope)) # period must be an Integer
     err = assert_raises(IR::InvariantError) { Verifier.verify!(bad) }

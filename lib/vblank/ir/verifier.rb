@@ -29,6 +29,13 @@ module VBlank
     # for us to fix — it is not a Guardrails::Finding, is never shown to a game
     # developer, and offers no fix.
     #
+    # One mismatch is the exception, because it has a cause outside VBlank: a game's
+    # own number (a variable or an expression) in a slot that takes only a number
+    # written in the program. A verb that takes a fixed size passed the game's handle
+    # straight through, and the author can fix that line, so it is refused as a
+    # Guardrails::ValidationError naming the verb and the line (see
+    # #refuse_game_number_in_fixed_field!).
+    #
     # The author-time escape hatch is already in the model, not a special case: a
     # constant is a value node of kind +int+, folded once while authoring and
     # loaded with a single move at run time — so "everything is a value" never
@@ -120,7 +127,28 @@ module VBlank
 
         return if valid?(type, value)
 
+        refuse_game_number_in_fixed_field!(node, field, type, value)
         raise InvariantError, mismatch_message(node, field, type, value)
+      end
+
+      # A game's own number in a slot that takes only a written one is the author's slip, not a
+      # VBlank bug: a verb that takes a fixed size or place was handed a variable or an
+      # expression, and passed the handle straight into the node. Left to the lowering it
+      # fails far from the line ("cannot make ... a number"), so it is refused here in plain
+      # words, naming the verb and the line the node was built at.
+      #
+      # The handle is known by what it answers rather than by its class (IR loads before the
+      # DSL that defines it): it stands for a value node. Asked only of a field that already
+      # failed its check, so a well-formed program pays nothing for it.
+      def refuse_game_number_in_fixed_field!(node, field, type, value)
+        return unless value.respond_to?(:node) && value.node.is_a?(Node) && value.node.value?
+
+        verb = Messages::PlainWords.verb(node.kind)
+        where = node.source ? " at #{node.source}" : ""
+        fix = type == :int ? "write a plain number for #{field}, such as 10" : "write #{field} in the program"
+        raise Guardrails::ValidationError,
+              "`#{verb}`#{where} takes only a value that is written in the program for its #{field}. " \
+              "You gave it a number that the game works out as it runs. To fix this, #{fix}."
       end
 
       # A value slot must actually be there — a verb that forgot to set it is as

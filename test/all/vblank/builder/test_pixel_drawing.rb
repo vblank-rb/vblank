@@ -109,6 +109,63 @@ class TestPixelDrawing < Minitest::Test
     assert_operator rom.size, :>=, 512
   end
 
+  # A rectangle whose place and size the game works out: a variable for x, an expression for
+  # the width, a variable named by its symbol for the height. It is drawn where those numbers
+  # say, on every console, rather than reaching the console as something it cannot read.
+  def test_fill_rect_takes_numbers_the_game_works_out
+    program = build_program do
+      screen :bitmap
+      x = var :x, 40
+      w = var :w, 4
+      var :h, 3
+      clear_screen :blue
+      fill_rect x, 20, w * 2 + 1, :h, :red
+      halt
+    end
+
+    picture = game_player.run(program).screen
+    red = Color.resolve(:red)
+    blue = Color.resolve(:blue)
+    assert_equal red, picture.pixel(40, 20), "the top left corner is at x = 40"
+    assert_equal red, picture.pixel(48, 22), "it is w * 2 + 1 = 9 wide and 3 tall"
+    assert_equal blue, picture.pixel(39, 20), "nothing left of it"
+    assert_equal blue, picture.pixel(49, 20), "nothing right of it"
+    assert_equal blue, picture.pixel(40, 23), "nothing below it"
+  end
+
+  # The numbers change as the game runs, and the rectangle follows them.
+  def test_fill_rect_follows_a_number_that_changes
+    program = build_program do
+      screen :bitmap
+      x = var :x, 10
+      game_loop do
+        clear_screen :blue
+        x += 2
+        fill_rect x, 30, 4, 4, :red
+      end
+    end
+
+    picture = game_player.run(program, frames: 5).screen
+    assert_equal Color.resolve(:red), picture.pixel(20, 30), "five frames in, x is 20"
+    assert_equal Color.resolve(:blue), picture.pixel(19, 30)
+    assert_equal Color.resolve(:blue), picture.pixel(10, 30), "the first place is painted over"
+  end
+
+  def test_dma_fill_rect_takes_numbers_the_game_works_out
+    program = build_program do
+      screen :bitmap
+      y = var :y, 50
+      clear_screen :blue
+      dma_fill_rect 30, y + 10, 6, 2, :red
+      halt
+    end
+
+    picture = game_player.run(program).screen
+    assert_equal Color.resolve(:red), picture.pixel(30, 60), "the top is at y + 10 = 60"
+    assert_equal Color.resolve(:blue), picture.pixel(30, 59)
+    assert_equal Color.resolve(:blue), picture.pixel(30, 62), "it is 2 tall"
+  end
+
   def test_halt_produces_loop
     rom = VBlank.build("HALT", console: :gba, code: "BHLT", maker: "01", out: nil, err: nil) do
       screen :bitmap
@@ -144,5 +201,12 @@ class TestPixelDrawing < Minitest::Test
       assert_equal rom.buffer, data
       assert_equal "PIXELS\x00\x00\x00\x00\x00\x00", data[0xA0, 12]
     end
+  end
+
+  private def build_program(&block)
+    builder = Builder.new
+    builder.instance_eval(&block)
+    builder.finalize_program
+    builder.program
   end
 end

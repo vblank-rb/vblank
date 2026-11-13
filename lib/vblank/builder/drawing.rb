@@ -404,13 +404,18 @@ module VBlank
 
       # Fill a rectangle in bitmap mode (MODE_3).
       #
-      # @param x [Integer] left edge (0-239)
-      # @param y [Integer] top edge (0-159)
-      # @param w [Integer] width in pixels
-      # @param h [Integer] height in pixels
+      # A place and size written in the program are drawn by the fill made for them, unrolled
+      # while building. Any of the four the game works out as it runs (a variable, an expression,
+      # a variable's name) makes it the rectangle `draw_rect_at` draws, which every console
+      # reads its numbers for as it runs: a game need not know which verb is which.
+      #
+      # @param x [Integer, Symbol, Value] left edge (0-239)
+      # @param y [Integer, Symbol, Value] top edge (0-159)
+      # @param w [Integer, Symbol, Value] width in pixels
+      # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def fill_rect(x, y, w, h, c)
-        record(Build.fill_rect(x, y, w, h, c))
+        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
       end
 
       # Clear the entire screen to a solid color.
@@ -863,15 +868,16 @@ module VBlank
         record(Build.show_light_now)
       end
 
-      # Fill a rectangle at a fixed position and size.
+      # Fill a rectangle at a fixed position and size. A number the game works out makes it
+      # the rectangle `draw_rect_at` draws, as for #fill_rect.
       #
-      # @param x [Integer] left edge
-      # @param y [Integer] top edge
-      # @param w [Integer] width in pixels (must be even for the fast fill)
-      # @param h [Integer] height in pixels
+      # @param x [Integer, Symbol, Value] left edge
+      # @param y [Integer, Symbol, Value] top edge
+      # @param w [Integer, Symbol, Value] width in pixels (must be even for the fast fill)
+      # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def dma_fill_rect(x, y, w, h, c)
-        record(Build.dma_fill_rect(x, y, w, h, c))
+        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
       end
 
       # Draw ONE COLUMN of a picture, stretched to a height the game works out.
@@ -971,6 +977,16 @@ module VBlank
       end
 
       private
+
+      # Record the node the block builds from the rectangle's four numbers when each was
+      # written in the program (a bare number, or a handle standing for one), or a
+      # `draw_rect_at` when the game works any of them out as it runs.
+      def record_fixed_or_runtime_rect(x, y, w, h, c)
+        fixed = [x, y, w, h].map { |operand| DSL::Value.fixed_number(operand) }
+        return draw_rect_at(x, y, w, h, c) if fixed.include?(nil)
+
+        record(yield(*fixed))
+      end
 
       # A block is a whole number of pixels, and the console has sizes from one pixel, which
       # is the picture as drawn, to sixteen. A size written in the program outside those is
