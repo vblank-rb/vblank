@@ -19,14 +19,21 @@ class TestPackBigCellsOnTheSuperNintendo < Minitest::Test
     [[0, 1], [1, 2], [16, 3], [17, 1], [2, 2], [3, 3], [18, 1], [19, 2]].each { |tile, places| video[tile] = PLACES[places] }
   end.freeze
 
-  # The cell at tile +first+ as drawn, 16 rows of 16 places.
-  private def big_places(first)
-    Array.new(16) { |y| Array.new(16) { |x| VIDEO.fetch(first + ((y / 8) * 16) + (x / 8)).fetch(((y % 8) * 8) + (x % 8)) } }
+  # The cell at tile +first+ as drawn, 16 rows of 16 places, a tile of it that is a key of
+  # +shown+ drawn as the tile it gives.
+  private def big_places(first, shown = {})
+    Array.new(16) do |y|
+      Array.new(16) do |x|
+        tile = first + ((y / 8) * 16) + (x / 8)
+        VIDEO.fetch(shown.fetch(tile, tile)).fetch(((y % 8) * 8) + (x % 8))
+      end
+    end
   end
 
-  # Every pixel the cell at tile +first+ draws, at (+at_x+, 0), from +bank+, turned as +turn+ says.
-  private def assert_big_cell(screen, first, at_x, bank, mirrored: false, upside_down: false)
-    places = big_places(first)
+  # Every pixel the cell at tile +first+ draws, at (+at_x+, 0), from +bank+, turned as +turn+ says,
+  # with the tiles of +shown+ (#big_places) taking turns.
+  private def assert_big_cell(screen, first, at_x, bank, mirrored: false, upside_down: false, shown: {})
+    places = big_places(first, shown)
     16.times do |y|
       16.times do |x|
         place = places.fetch(upside_down ? 15 - y : y).fetch(mirrored ? 15 - x : x)
@@ -86,6 +93,48 @@ class TestPackBigCellsOnTheSuperNintendo < Minitest::Test
 
       assert_big_cell(screen, 2, 0, 0, mirrored: true)
       assert_big_cell(screen, 2, 16, 1)
+    end
+  end
+
+  # Tile 17, the bottom right quarter of the cell at tile 0, takes turns through tiles 19 and 3,
+  # neither of which it starts as. The map shows the cell at (0, 0); on its second pass the game
+  # writes it at (1, 0) in the other bank, mirrored and upside down, from a number kept in a variable; from its
+  # sixth the group shows its second picture. Each cell is one 16x16 tile of a run, turned whole.
+  def test_a_cell_of_16x16_with_a_quarter_taking_turns_shows_each_picture_turned_whole
+    Dir.mktmpdir do |folder|
+      words = [SNES_CELL.(0), SNES_CELL.(0)]
+      written = SNES_CELL.(0, bank: 1, mirrored: true, upside_down: true)
+      from = original(folder, :snes, snes_tiles, words)
+      b = VBlank::Builder.new(options: BUILT_FOR_THE_SNES)
+      b.instance_eval do
+        screen :tiled
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :video, at: TILES_AT, count: VIDEO.length, colors: 16
+          slots.numbers :map, at: MAP_AT, count: words.length, width: :half, signed: false
+          slots.colors :palette, at: COLORS_AT, count: 32
+        end
+        lamp = tile_pictures :lamp, tiles: { pack[:video].tile(17) => [pack[:video].tile(19), pack[:video].tile(3)] }
+        world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 2, cell: 16,
+                                   set_cells: [written]
+        which = var :which, written
+        pass = var :pass, 0
+        game_loop do
+          wait_vblank
+          pass += 1
+          world.set_cell pass - 1, 0, which if pass == 2
+          lamp.show 1 if pass == 6
+        end
+      end
+      b.finalize_program
+      first = game_player.run(b.program, frames: 4).screen
+
+      assert_big_cell(first, 0, 0, 0, shown: { 17 => 19 })
+      assert_big_cell(first, 0, 16, 1, mirrored: true, upside_down: true, shown: { 17 => 19 })
+
+      later = game_player.run(b.program, frames: 10).screen
+
+      assert_big_cell(later, 0, 0, 0, shown: { 17 => 3 })
+      assert_big_cell(later, 0, 16, 1, mirrored: true, upside_down: true, shown: { 17 => 3 })
     end
   end
 end

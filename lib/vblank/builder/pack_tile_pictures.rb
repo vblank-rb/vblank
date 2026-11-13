@@ -147,23 +147,72 @@ module VBlank
       # of each key they name it in. Hands back the name of the run's tile for each CellTile.
       def declare_moving_pack_tiles(name, cells, moving, bank_lists)
         cells.group_by { |tile| [moving.fetch(tile.tile).first, tile.bank] }.each_with_object({}) do |((group, bank), drawn), names|
-          list = bank_lists.fetch(bank) do
-            raise ArgumentError, "background :#{name} has a cell drawn from bank #{bank} of colors, and its colors: slot holds " \
-                                 "#{bank_lists.length} banks. To fix this, give it a slot that holds every bank its map and " \
-                                 "its set_cells: use."
-          end
-          run = :"#{group.name}_run_#{group.parts.length}" # one for each background and bank
-          places = group.pictures.map { |handles| handles.map { |handle| pack_tile_places(handle, "tile_pictures :#{group.name}").first } }
+          list = moving_pack_bank_list(name, bank, bank_lists)
+          places = moving_pack_picture_places(group)
           bytes = (0...group.pictures.first.length).flat_map do |picture|
-            drawn.flat_map do |tile|
-              rows = places.fetch(moving.fetch(tile.tile).last).fetch(picture).each_slice(Original::Slot::TILE_SIDE).to_a
-              painted_tile_bytes(turned_rows(rows, mirrored: tile.mirrored, upside_down: tile.upside_down).flatten)
+            drawn.flat_map { |tile| moving_pack_tile_bytes(tile, places.fetch(moving.fetch(tile.tile).last).fetch(picture)) }
+          end
+          names.merge!(declare_moving_pack_run(group, drawn, list, bytes, Original::Slot::TILE_SIDE))
+        end
+      end
+
+      # THE RUNS OF A BACKGROUND OF 16x16 CELLS BUILT ALL-IN-ONE (PackBackgrounds#big_pack_cells?):
+      # each cell of +cells+ (the four quarters of each, Console::CellTile, a quarter or more of
+      # which +moving+ says take turns, all in one group) is a 16x16 picture of a run, for each group
+      # and each bank: its turning quarters the group's picture, the rest the slot's tile, each
+      # turned as the cell turns it. So a `show` copies the whole cell, four times the bytes of a
+      # tile, and the map names one tile for it, as a console's own game keeps such a screen.
+      # Hands back the name of the run's tile for each cell's quarters.
+      def declare_moving_pack_big_cells(shape, cells, moving)
+        by_run = cells.group_by do |quarters|
+          [moving.fetch(quarters.find { |tile| moving.key?(tile.tile) }.tile).first, quarters.first.bank]
+        end
+        by_run.each_with_object({}) do |((group, bank), drawn), names|
+          list = moving_pack_bank_list(shape.name, bank, shape.bank_lists)
+          places = moving_pack_picture_places(group)
+          bytes = (0...group.pictures.first.length).flat_map do |picture|
+            drawn.flat_map do |quarters|
+              quarters.flat_map do |tile|
+                _, key_at = moving[tile.tile]
+                tile_places = if key_at
+                                places.fetch(key_at).fetch(picture)
+                              else
+                                pack_tile_at(shape.tile_places, tile.tile, "background :#{shape.name}")
+                              end
+                moving_pack_tile_bytes(tile, tile_places)
+              end
             end
           end
-          group.parts << declare_tile_picture_run(run, count: drawn.length, colors: list, side: Original::Slot::TILE_SIDE,
-                                                       bytes: bytes, fast: group.fast)
-          drawn.each_with_index { |tile, at| names[tile] = Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1) }
+          names.merge!(declare_moving_pack_run(group, drawn, list, bytes, shape.tiles_a_side * Original::Slot::TILE_SIDE))
         end
+      end
+
+      # The list of colours of +bank+ for a run of background +name+, or a friendly error.
+      def moving_pack_bank_list(name, bank, bank_lists)
+        bank_lists.fetch(bank) do
+          raise ArgumentError, "background :#{name} has a cell drawn from bank #{bank} of colors, and its colors: slot holds " \
+                               "#{bank_lists.length} banks. To fix this, give it a slot that holds every bank its map and " \
+                               "its set_cells: use."
+        end
+      end
+
+      # Each key's pictures of +group+, each a list of its 64 places row by row.
+      def moving_pack_picture_places(group)
+        group.pictures.map { |handles| handles.map { |handle| pack_tile_places(handle, "tile_pictures :#{group.name}").first } }
+      end
+
+      # The painted bytes of the 8x8 +places+ turned as +tile+ (a Console::CellTile) turns them.
+      def moving_pack_tile_bytes(tile, places)
+        rows = places.each_slice(Original::Slot::TILE_SIDE).to_a
+        painted_tile_bytes(turned_rows(rows, mirrored: tile.mirrored, upside_down: tile.upside_down).flatten)
+      end
+
+      # A run of +group+ holding a +side+ tile for each of +drawn+, drawn in +list+, its pictures
+      # +bytes+; one for each background and bank. Hands back the name of the run's tile for each.
+      def declare_moving_pack_run(group, drawn, list, bytes, side)
+        run = :"#{group.name}_run_#{group.parts.length}"
+        group.parts << declare_tile_picture_run(run, count: drawn.length, colors: list, side: side, bytes: bytes, fast: group.fast)
+        drawn.each_with_index.to_h { |cell, at| [cell, Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1)] }
       end
 
       # THE RUNS OF A BACKGROUND READ AS THE GAME STARTS (+where+, an IR::StartFile::Background):

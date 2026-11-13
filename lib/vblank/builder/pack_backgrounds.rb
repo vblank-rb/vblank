@@ -104,8 +104,9 @@ module VBlank
         map_words = pack_map_cells(map, "#{subject}'s map:").each_slice(across).to_a
         shape = PackMapShape.new(name: name, words: words, tiles_a_side: tiles_a_side, tile_places: tile_places,
                                  bank_lists: bank_lists)
-        made = if big_pack_cells?(tiles_a_side, moving)
-                 pack_background_of_big_cells(shape, map_words, set_cells)
+        turning = (turning_big_cells(shape, map_words, set_cells, moving) if big_pack_cells?(tiles_a_side))
+        made = if turning && big_cells_turn_in_one_group?(turning, moving)
+                 pack_background_of_big_cells(shape, map_words, set_cells, turning, moving)
                else
                  pack_background_of_tiles(shape, map_words, set_cells, moving)
                end
@@ -135,17 +136,40 @@ module VBlank
       # Made of 8x8 pictures the same screen is a map of 64 by 64, four times the bytes, and sending
       # it holds the game for frames as the scene arrives. So where the console has tiles of 16x16
       # each different cell as drawn is one picture of 16x16, as a game drawing the screen itself
-      # would declare it. Tiles that take turns through pictures are 8x8 pictures of runs
-      # (PackTilePictures), so a background with any keeps its cells as 8x8 tiles.
-      # A program built for no console (a test's) is laid out for none, so it keeps 8x8 tiles.
-      def big_pack_cells?(tiles_a_side, moving)
-        tiles_a_side == 2 && moving.empty? && !@program.console.nil? && @console.big_background_tiles
+      # would declare it, and writing a cell (set_cell) is one word of the map, not four. A cell
+      # with a quarter that takes turns through pictures is a 16x16 picture of a run
+      # (PackTilePictures#declare_moving_pack_big_cells). A program built for no console (a
+      # test's) is laid out for none, so it keeps 8x8 tiles.
+      def big_pack_cells?(tiles_a_side)
+        tiles_a_side == 2 && !@program.console.nil? && @console.big_background_tiles
+      end
+
+      # The quarters (#pack_cell_quarters) of every different cell the map's +map_words+ and
+      # +set_cells+ name that has a quarter among +moving+.
+      def turning_big_cells(shape, map_words, set_cells, moving)
+        return [] if moving.empty?
+
+        side = shape.tiles_a_side
+        cells = map_words.flatten.map { |word| pack_cell_quarters(shape.words, word) } +
+                told_cell_tiles(shape.name, set_cells, shape.words, side).each_slice(side * side).to_a
+        cells.uniq.select { |quarters| quarters.any? { |tile| moving.key?(tile.tile) } }
+      end
+
+      # Whether each of +turning+ (#turning_big_cells) has its quarters that take turns in one group:
+      # a run is one group's, so a cell whose quarters take turns in two groups cannot be one picture
+      # of a run, and the background keeps 8x8 tiles.
+      def big_cells_turn_in_one_group?(turning, moving)
+        turning.all? do |quarters|
+          groups = quarters.filter_map { |tile| moving[tile.tile]&.first }
+          groups.uniq.one?
+        end
       end
 
       # The map of +map_words+ (rows of cells) as a picture of 16x16 for each cell, kept by its
-      # cell's four tiles. Hands back a PackMapPictures.
-      def pack_background_of_big_cells(shape, map_words, set_cells)
-        pictures = {}
+      # cell's four tiles; a cell of +turning+ (#turning_big_cells) is a picture of a run. Hands back
+      # a PackMapPictures.
+      def pack_background_of_big_cells(shape, map_words, set_cells, turning, moving)
+        pictures = declare_moving_pack_big_cells(shape, turning, moving)
         rows = map_words.map do |row|
           row.map do |word|
             quarters = pack_cell_quarters(shape.words, word)

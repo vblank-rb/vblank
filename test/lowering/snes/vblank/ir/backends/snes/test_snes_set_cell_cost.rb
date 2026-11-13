@@ -19,9 +19,10 @@ class TestSNESSetCellCost < Minitest::Test
   TOLD = 80
   WRITES = 12
   # The told cells are at tiles 0, 2, 4 ... of video memory: a cell at tile t is t, t + 1, t + 16
-  # and t + 17. The last tile is one no cell names, which takes turns in the games that say so.
+  # and t + 17. Tile 17 takes turns in the games that say so: the bottom right quarter of cell 0
+  # and the top right of cell 8, which the map shows and the game writes.
   TILE_COUNT = (2 * (TOLD - 1)) + 19
-  MOVING_TILE = TILE_COUNT - 1
+  MOVING_TILE = 17
   TILE_PLACES = Array.new(TILE_COUNT) { |tile| Array.new(64) { |at| 1 + (((at * 7) + (tile * 13) + (at * tile)) % 15) } }
   MAP_AT = 0x100
   BIG_TILES_AT = 0x1000
@@ -48,27 +49,30 @@ class TestSNESSetCellCost < Minitest::Test
     assert_worked_out_costs_about_written(moving: false)
   end
 
-  # A slot with a tile that takes turns keeps 8x8 tiles, so a cell is four writes.
-  def test_a_worked_out_cell_of_four_tiles_costs_about_what_one_written_in_the_program_does
+  # A cell with a quarter that takes turns is still one tile of 16x16, as the console's own game
+  # keeps it: one write a cell, as in a game whose slot has no such tile.
+  def test_a_worked_out_cell_with_a_tile_taking_turns_costs_about_one_cell_written_in_the_program
     assert_worked_out_costs_about_written(moving: true)
   end
 
   def test_worked_out_cells_show_as_the_interpreter_says
     [false, true].each do |moving|
       Dir.mktmpdir do |folder|
-        VBlank::IR::Backends::SNES::CheckedRun.new.run(arena_game(folder, worked_out: true, moving: moving).program(console: :snes), frames: 8)
+        game = arena_game(folder, worked_out: true, moving: moving, showing: moving)
+        VBlank::IR::Backends::SNES::CheckedRun.new.run(game.program(console: :snes), frames: 8)
       end
     end
     pass
   end
 
+  # Against cells written in the program on an arena with no tile taking turns: what a 16x16 cell
+  # written by name costs.
   private def assert_worked_out_costs_about_written(moving:)
     Dir.mktmpdir do |folder|
       worked_out = rom_of(arena_game(folder, worked_out: true, moving: moving)).profile(out: StringIO.new, frames: FRAMES, settle: 10)
-      written = rom_of(arena_game(folder, worked_out: false, moving: moving)).profile(out: StringIO.new, frames: FRAMES, settle: 10)
+      written = rom_of(arena_game(folder, worked_out: false)).profile(out: StringIO.new, frames: FRAMES, settle: 10)
 
-      tiles = WRITES * (moving ? 4 : 1)
-      assert_operator (written.idle_share - worked_out.idle_share) / tiles, :<, MOST_EXTRA_SHARE_A_TILE,
+      assert_operator (written.idle_share - worked_out.idle_share) / WRITES, :<, MOST_EXTRA_SHARE_A_TILE,
                       "idle: #{worked_out.idle_share} worked out against #{written.idle_share} written in the program"
     end
   end
@@ -90,8 +94,9 @@ class TestSNESSetCellCost < Minitest::Test
 
   # The arena, and each pass WRITES cells written along its top rows: with +worked_out+ each word
   # worked out from the pass, otherwise each the told word written in the program. With +moving+ a
-  # tile of the slot takes turns through pictures, so the arena keeps 8x8 tiles.
-  private def arena_game(folder, worked_out:, moving: false)
+  # tile of the slot takes turns through pictures, and with +showing+ as well the group shows the
+  # next picture every other pass.
+  private def arena_game(folder, worked_out:, moving: false, showing: false)
     from = arena_original(folder)
     told = Array.new(TOLD) { |cell| SNES_CELL.(2 * cell) }
     VBlank.game("ARENA", consoles: %i[snes]) do
@@ -101,13 +106,14 @@ class TestSNESSetCellCost < Minitest::Test
         slots.numbers :map, at: MAP_AT, count: ACROSS * DOWN, width: :half, signed: false
         slots.colors :palette, at: COLORS_AT, count: 16
       end
-      tile_pictures :lamp, tiles: { pack[:video].tile(MOVING_TILE) => [pack[:video].tile(0), pack[:video].tile(1)] } if moving
+      lamp = (tile_pictures :lamp, tiles: { pack[:video].tile(MOVING_TILE) => [pack[:video].tile(0), pack[:video].tile(1)] } if moving)
       arena = background :arena, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: ACROSS, cell: 16,
                                  set_cells: told
       pass = var :pass, 0
       word = var :word, 0
       game_loop do
         pass += 1
+        lamp.show((pass / 2) % 2) if showing
         WRITES.times do |at|
           # Both games work the word out, so the two differ only in how the cell is written.
           word = told.first + (((pass + (at * 7)) % TOLD) * 2)
