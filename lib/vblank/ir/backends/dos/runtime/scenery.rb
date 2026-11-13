@@ -60,9 +60,11 @@ module VBlank
             # +corner_y+ is the row of the map the screen's top shows while the background shows from its corner: nought,
             # or for a status bar the row it was declared at, less than nought (a word with a sign). +above_row+ is the
             # row a background held above a row stops at (`above_row:`), or nought. +bends+ is where a bent background's
-            # rows are kept in the data segment (Lowering::Scenery.bend_rows_place), or nought for one not bent.
+            # rows are kept in the data segment (Lowering::Scenery.bend_rows_place), or nought for one not bent. +scene+ is
+            # nought for a background every screen shows, and one more than its scene's number for a scene's own, which
+            # shows only while that scene is up (SceneHandover#showing).
             RECORD = %i[cells cols rows tile_w tile_h wrap_w wrap_h wraps across down step_x step_y map_h state mixed
-                        mask_delta lengths maps map_count colors_offset corner_y above_row bends].freeze
+                        mask_delta lengths maps map_count colors_offset corner_y above_row bends scene].freeze
             RECORD_BYTES = 48
             NO_TILE = 0xFFFF
 
@@ -174,6 +176,15 @@ module VBlank
             # #put_up_background, #stamp_background).
             BAR_SHOWN = "rt scenery bar shown"
             ALONE_SHOWN = "rt scenery alone shown"
+            # Whether a scene taking over took the last one's scenery down (Lowering::Scenery#emit_scene_arrival).
+            TOOK_DOWN = "rt scenery took down"
+            # IN A GAME THAT SHOWS MORE THAN ONE KIND OF SCREEN, the kind up now (Reference @screen_mode,
+            # SceneHandover::DISPLAYS): none yet, a painted one, one drawn from tiles, or one that turns. While a painted
+            # one is up nothing builds the view (Reference#request_repaint).
+            SCREEN_KIND = "rt scenery screen kind"
+            NO_SCREEN = 0
+            KINDS = { painted: 1, tiles: 2, turning: 3 }.freeze
+            PAINTED = KINDS.fetch(:painted)
             # Which row a bend is being worked out for (Lowering::Scenery#emit_bend_rows).
             BEND_ROW = "rt scenery bend row"
             # What a turned background's drawing keeps while it works (#emit_turned_window): the first and third numbers
@@ -187,7 +198,7 @@ module VBlank
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
                      PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y, CLIP_LEFT, CLIP_TOP, CLIP_RIGHT, CLIP_BOTTOM,
-                     SCENERY_ROWS, BAR_RECORD, ALONE_ROW, ALONE_RECORD, BAR_SHOWN, ALONE_SHOWN, BEND_ROW,
+                     SCENERY_ROWS, BAR_RECORD, ALONE_ROW, ALONE_RECORD, BAR_SHOWN, ALONE_SHOWN, TOOK_DOWN, SCREEN_KIND, BEND_ROW,
                      TURN_ACROSS, TURN_DOWN, TURN_ORIGIN_X, TURN_ORIGIN_Y].freeze
 
             module_function
@@ -214,17 +225,19 @@ module VBlank
             # shows another map. +bars+ is the record of each status bar, and +alone+ each background shown alone above
             # its row, as [its record, its row, whether it keeps the sprites out too]. +live_bends+ is the game's routine
             # that works its bends out as the view is built before its first wait, or nil. +turned+ is each background that
-            # can turn, as a Turned.
+            # can turn, as a Turned. +scene_at+ is where the number of the scene up is kept, in a game with scenes. +crosses+
+            # is whether the game shows both kinds of screen.
             def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false, bars: [], alone: [],
-                     live_bends: nil, turned: [])
-              emit_requests(asm, memory, backgrounds, held: held)
+                     live_bends: nil, turned: [], scene_at: nil, crosses: false)
+              emit_requests(asm, memory, backgrounds, held: held, crosses: crosses)
               emit_paint_run(asm, memory) if runs
               emit_set_cell(asm, memory) if cells
               emit_held(asm, memory) if held
               emit_show_map(asm, memory) if maps
               emit_backdrop(asm, memory)
-              emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends)
-              emit_clipped_window(asm, memory)
+              emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends, scene_at)
+              emit_clipped_window(asm, memory, scene_at)
+              emit_wipe(asm, memory)
               turned.each { |background| emit_turned_window(asm, memory, background) }
               emit_fill_rows(asm, memory)
               emit_window(asm, memory, turned)
@@ -242,14 +255,19 @@ module VBlank
             #
             # A background put up again shows its cells as they are now, and a change held for it is forgotten
             # (Reference#put_up_background): it was made to the cells the put-up stamps.
-            def emit_requests(asm, memory, backgrounds, held: false)
+            def emit_requests(asm, memory, backgrounds, held: false, crosses: false)
               word = ->(name) { at(memory, name) }
               # rt_scenery_rebuild: the view owed and built again, since what it is built from has changed.
               asm.label("rt_scenery_rebuild")
               asm.mov(word.call(BUILT), 0)
               asm.label("rt_scenery_request")
+              if crosses
+                asm.cmp(word.call(SCREEN_KIND), PAINTED)
+                asm.je("rt_scenery_request_done") # a painted screen is up: it is left as the game paints it
+              end
               asm.call("rt_scenery_forget_corners")
               asm.mov(word.call(OWED), 1)
+              asm.label("rt_scenery_request_done")
               asm.ret
 
               asm.label("rt_scenery_paint_owed")
@@ -614,7 +632,7 @@ module VBlank
             # backdrop and where each background shows from, so where the picture is still the view last built
             # (BUILT) and none of those has changed, building it again would make the same picture, and is left.
             # Placing sprites that are drawn into the view builds it again (rt_scenery_rebuild).
-            def emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends)
+            def emit_view(asm, memory, levels, backgrounds, bars, alone, live_bends, scene_at = nil)
               asm.label("rt_scenery_view")
               asm.cmp(at(memory, BUILT), 0)
               asm.je("rt_scenery_view_build")
@@ -655,8 +673,8 @@ module VBlank
               asm.push(:gs)
               asm.mov_segment(:ax, :art)
               asm.mov(:gs, :ax)
-              emit_view_bar(asm, memory, bars)
-              emit_view_alone(asm, memory, alone)
+              emit_view_bar(asm, memory, bars, scene_at)
+              emit_view_alone(asm, memory, alone, scene_at)
               levels.each_with_index do |(records, sprites), level|
                 records.each do |record|
                   asm.mov(:si, record)
@@ -667,8 +685,33 @@ module VBlank
                 asm.mov(:al, level)
                 asm.call("rt_sprites_at_level")
               end
-              emit_view_over_sprites(asm, memory, bars, alone)
+              emit_view_over_sprites(asm, memory, bars, alone, scene_at)
               asm.pop(:gs)
+              asm.ret
+            end
+
+            # To +label+ unless the background whose record SI is at (GS at the art) is showing: one every screen shows,
+            # or a scene's own while that scene is up (SceneHandover#showing), whether or not it has been put up yet, as
+            # the interpreter paints it. Changes EAX.
+            def emit_unless_showing(asm, scene_at, label)
+              return unless scene_at
+
+              showing = "#{label}_showing"
+              asm.movzx(:eax, X86.mem(:si, field(:scene), seg: :gs, size: 16))
+              asm.test(:eax, :eax)
+              asm.je(showing)
+              asm.dec(:eax)
+              asm.cmp(:eax, X86.mem(nil, scene_at, size: 32))
+              asm.jne(label)
+              asm.label(showing)
+            end
+
+            # rt_scenery_wipe: the picture the backdrop again, every row marked, and no longer the view as built, as a
+            # scene taking over takes the last one's scenery down (Reference#take_down_scenery).
+            def emit_wipe(asm, memory)
+              asm.label("rt_scenery_wipe")
+              asm.mov(at(memory, BUILT), 0)
+              emit_fill_with_backdrop(asm, memory, "rt_scenery_wipe")
               asm.ret
             end
 
@@ -683,15 +726,14 @@ module VBlank
             # A status bar first (Reference#repaint_view): the one showing, from its top to the screen's bottom, and
             # the rows above its top are where the backgrounds are seen. Its top is where it was declared while it
             # shows from its corner, and where it was last placed after.
-            def emit_view_bar(asm, memory, bars)
+            def emit_view_bar(asm, memory, bars, scene_at = nil)
               asm.mov(at(memory, SCENERY_ROWS), memory.screen.height)
               asm.mov(at(memory, BAR_RECORD, 16), 0)
               bars.each_with_index do |record, nth|
                 down = "rt_scenery_view_bar_#{nth}_down"
                 asm.mov(:si, record)
                 asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
-                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
-                asm.je(down)
+                emit_unless_showing(asm, scene_at, down)
                 emit_bar_top(asm, "rt_scenery_view_bar_#{nth}")
                 asm.mov(at(memory, SCENERY_ROWS), :eax)
                 asm.mov(at(memory, BAR_RECORD, 16), :si)
@@ -712,13 +754,12 @@ module VBlank
             end
 
             # The row of a background shown alone above its row, if one is up: the others are seen only below it.
-            def emit_view_alone(asm, memory, alone)
+            def emit_view_alone(asm, memory, alone, scene_at = nil)
               asm.mov(at(memory, ALONE_ROW), 0)
               alone.each_with_index do |(record, row, _without_sprites), nth|
                 down = "rt_scenery_view_alone_#{nth}_down"
-                asm.mov(:bx, X86.mem(nil, record + field(:state), seg: :gs, size: 16))
-                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
-                asm.je(down)
+                asm.mov(:si, record)
+                emit_unless_showing(asm, scene_at, down)
                 asm.cmp(at(memory, ALONE_ROW), 0)
                 asm.jne(down) # the first one up, as the interpreter finds it
                 asm.mov(at(memory, ALONE_ROW), row)
@@ -730,7 +771,7 @@ module VBlank
             # Over the sprites drawn into the view: a status bar that covers them, its rows from the backdrop up again
             # (Reference#paint_bar_over_sprites), and a background shown alone without them, its rows above its row
             # (Reference#paint_held_over_sprites).
-            def emit_view_over_sprites(asm, memory, bars, alone)
+            def emit_view_over_sprites(asm, memory, bars, alone, scene_at = nil)
               unless bars.empty?
                 asm.mov(:si, at(memory, BAR_RECORD, 16))
                 asm.test(:si, :si)
@@ -749,9 +790,7 @@ module VBlank
 
                 down = "rt_scenery_view_held_#{nth}_down"
                 asm.mov(:si, record)
-                asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
-                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
-                asm.je(down)
+                emit_unless_showing(asm, scene_at, down)
                 asm.mov(:eax, at(memory, SCENERY_ROWS))
                 asm.cmp(:eax, row)
                 asm.jle("rt_scenery_view_held_#{nth}_rows")
@@ -792,9 +831,10 @@ module VBlank
             # part of the screen it is seen in (CLIP_LEFT and the rest), or not at all where that is nothing: the rows
             # above a status bar's top, and above its own row where it is held above one; below the row of another
             # shown alone above its row; and inside its box, where it is held to one.
-            def emit_clipped_window(asm, memory)
+            def emit_clipped_window(asm, memory, scene_at = nil)
               clip = ->(name) { at(memory, name) }
               asm.label("rt_scenery_clipped_window")
+              emit_unless_showing(asm, scene_at, "rt_scenery_clipped_nothing")
               asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
               asm.mov(:eax, clip.call(SCENERY_ROWS))
               emit_clip_rows(asm, memory, 0, :eax)

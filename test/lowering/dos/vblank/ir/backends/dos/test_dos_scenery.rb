@@ -163,6 +163,30 @@ class TestDOSScenery < Minitest::Test
     end
   end
 
+  # A screen that turns is another kind than one of tiles (SceneHandover::DISPLAYS): moving to it and back wipes the
+  # display, and what every screen shows comes back as declared, the cell changed before gone.
+  def test_a_turning_screen_and_back_puts_the_scenery_up_again_as_declared
+    test = self
+    checked(frames: 10) do
+      screen :tiled
+      test.tilesets(self)
+      floor = background :floor, tiles: :colors, map: test.stripes(32, 32)
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:one) { floor.set_tile 0, 0, "W" if tick == 2 }
+      scene(:two) { screen :rotozoom }
+      game_loop do
+        tick += 1
+        state = 1 if tick == 5
+        state = 0 if tick == 8
+        case_var(:state) do
+          when_val 0, :one
+          when_val 1, :two
+        end
+      end
+    end
+  end
+
   # One background scrolled every pass is built again every pass, and in less than a frame, so the game's
   # passes keep to the screen's frames on either screen.
   def test_a_scrolled_view_is_built_within_a_frame

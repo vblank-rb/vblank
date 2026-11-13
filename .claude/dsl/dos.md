@@ -50,7 +50,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
 - `keep_showing` — works: the same as on the Advance.
-- `fade` — works: `fade` and `tint` change the palette the card shows, so the whole picture changes at once. How a fade of part of the screen (`inside:`, `outside:`, `under:`) is made is decided when that is made: until then the build refuses it and says so.
+- `fade` — works: `fade` and `tint` change the palette the card shows, so the whole picture changes at once. A fade under a layer (`under:`) is refused: the card's 320 × 200 screen shows each pixel as one of 256 palette colours and cannot mix a faded colour with one that is not. How a fade of part of the screen (`inside:`, `outside:`) is made is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: see `fade`.
 - `fade_in` — works: the same as on the Advance.
 - `fade_out` — works: the same as on the Advance.
@@ -91,7 +91,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
 - `sprite_tiles` — works: the same as on the Advance.
-- `layers` — works: the same as on the Advance.
+- `layers` — works: its 320 × 200 screen shows each pixel as one of 256 palette colours and mixes none, so `transparency:`, one layer seen through another, is refused. A layer's place in the stack works as on the Advance.
 - `layer` — works: see `layers`.
 - `draw_text` — works: the same as on the Advance.
 - `draw_number` — works: see `draw_text`.
@@ -176,5 +176,5 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - everything past numbers, the game loop and a painted screen of pixels, rectangles, pictures, text and numbers: the verbs `place`, `viewer`, `change_picture`, `shading`, `screen_spot`, `draw_place`, `grid`, `keep_showing`, `fade_in`, `fade_out`, `flash_screen`, `fade_level`, `pixelate_in`, `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`, `camera_follows`, `color_walk`, `colors_in_use`, `mirror`, `upside_down`, `draw_in_order`, `hide_sprites`, `picture_groups`, `box`, `canvas`, `tile_pictures`, `sprite_tiles`, `font`, `text_width`, `text_height`, `menu`, `part`, `start_over`, `saves_keep_everything`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `uses`, `data_pack`, `dump_func`, `entry`, `most_players`, `mark`, `rumble`, `random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `beep`, `draw_place`, `enable_sound`, `fill_face`, `hide_sprites`, `hold_music`, `load_sprite_tiles`, `noise`, `play_from_list`, `play_sample`, `play_song`, `play_sound_effect`, `rumble`, `see_through`, `shade_outside`, `show_light_now`, `show_picture_group`, `stop_music`, `stop_sample`, `stop_wave`, `wave`
 - the 640 × 480 screen (variants: { dos: :vesa_640x480 }): a game that uses one is refused.
 - sprites put in order by a list: a game that uses one is refused.
-- a screen of tiles with blocks, other colours, or a scene's own scenery; sprites painted from a list: a game that uses one is refused.
+- a screen of tiles with blocks or other colours; sprites painted from a list: a game that uses one is refused.
 - a fade of part of the screen (`inside:`, `outside:`, `under:`): a game that uses one is refused.

@@ -77,8 +77,10 @@ module VBlank
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the palette the card shows, so the whole picture changes at once. " \
-                    "How a fade of part of the screen (`inside:`, `outside:`, `under:`) is made is decided when " \
-                    "that is made: until then the build refuses it and says so."),
+                    "A fade under a layer (`under:`) is refused: the card's 320 × 200 screen shows each pixel as one of " \
+                    "256 palette colours and cannot mix a faded colour with one that is not. How a fade of part of the " \
+                    "screen (`inside:`, `outside:`) is made is decided when that is made: until then the build " \
+                    "refuses it and says so."),
         tint: works("see `fade`."),
         fade_in: works,
         fade_out: works,
@@ -135,7 +137,9 @@ module VBlank
         canvas: works,
         tile_pictures: works,
         sprite_tiles: works,
-        layers: works,
+        layers: works("its 320 × 200 screen shows each pixel as one of 256 palette colours and mixes none, so " \
+                      "`transparency:`, one layer seen through another, is refused. A layer's place in the stack " \
+                      "works as on the Advance."),
         layer: works("see `layers`."),
 
         # --- text ---

@@ -397,7 +397,7 @@ module VBlank
             when :halt then emit_halt
             when :wait_vblank then emit_wait_vblank
             # Mode 13h is set at power-on, and a screen of one page is all there is; a screen of tiles shows its backdrop.
-            when :screen then emit_tiled_screen(node) if scenery_used?
+            when :screen then emit_screen(node) if scenery_used?
             when :background then emit_background(node)
             when :scroll_background then emit_scroll_background(node)
             when :place_bar then emit_place_bar(node)
@@ -506,11 +506,13 @@ module VBlank
           def emit_routines
             @plan.called.each do |name|
               @routine = Lowering.routine_label(name)
+              @lowering_scene = (name if Modes.scene_func?(name)) # whose backgrounds a name means (#for_background)
               @asm.label(@routine)
               @plan.funcs.fetch(name).children.each { |node| emit_statement(node) }
               @asm.ret
             end
             @routine = MAIN
+            @lowering_scene = nil
           end
 
           # --- what TimerSteps asks of a lowering ---
@@ -624,11 +626,13 @@ module VBlank
               emit_value(Build.binop(:==, Build.var_ref(@scene), Build.int(-1)))
               emit_store(at_power_on)
               emit_number_into(@scene, number)
+              emit_scene_arrival(scene)
               jump_unless(Build.var_ref(at_power_on), done)
               @asm.call(label)
               @asm.jmp(done)
             else
               emit_number_into(@scene, number)
+              emit_scene_arrival(scene)
             end
             @asm.label(staying)
             @asm.call(label)

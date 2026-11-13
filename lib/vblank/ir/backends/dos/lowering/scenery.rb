@@ -17,8 +17,10 @@ module VBlank
           # end, or a whole other map at once; tiles the game paints from a list; a background drawn from another
           # list of colours; a status bar, a background held above a row or to a box (Runtime::Scenery's clip);
           # text; backgrounds bent row by row (worked out at each wait, #emit_bend_routine) and turned and resized
-          # (Runtime::Scenery#emit_turned_window). A background or a stack that needs more is refused by name
-          # (PART), until the slice that makes it.
+          # (Runtime::Scenery#emit_turned_window); a scene's own scenery, which goes up as the scene takes over and
+          # comes down as the next one does (#emit_scene_arrival); and a game that moves between a painted screen and
+          # one drawn from tiles (#emit_screen). A background or a stack that needs more is refused by name (PART),
+          # until the slice that makes it.
           module Scenery
             STATEMENT_KINDS = %i[background scroll_background set_tile show_held_tiles show_map copy_tiles copy_owed_tiles
                                  background_colors place_bar box_background scroll_rows affine_background].freeze
@@ -28,8 +30,7 @@ module VBlank
             REBUILT_EACH_PASS = %i[scroll_background place_bar box_background scroll_rows affine_background set_tile show_map tile_run background_colors].freeze
 
             # The part of the build a game with such a screen waits for, for a test run to count skips by.
-            PART = "a screen of tiles with blocks, other colours, or a scene's own scenery; " \
-                   "sprites painted from a list"
+            PART = "a screen of tiles with blocks or other colours; sprites painted from a list"
 
             # Whether +program+ shows a screen made of tiles.
             def self.tiled?(program) = program.walk.any? { |node| node.kind == :screen && tiles_mode?(node.mode) }
@@ -98,7 +99,9 @@ module VBlank
 
               { levels: scenery_levels, backgrounds: scenery_backgrounds.size, bars: scenery_bars, alone: scenery_alone,
                 live_bends: Scenery.bends_in(@program).empty? ? nil : "game bends live", turned: scenery_turned,
-                cells: scenery_kinds.include?(:set_tile), held: Scenery.holds_cells?(@program), maps: scenery_kinds.include?(:show_map),
+                cells: scenery_kinds.include?(:set_tile), held: Scenery.holds_cells?(@program),
+                maps: scenery_kinds.include?(:show_map) || scenery_backgrounds.any? { |bg| put_back_on_arrival?(bg) },
+                scene_at: (place_of(@scene) if @scene), crosses: crosses_screens?,
                 runs: Scenery.paints_tiles?(@program) }
             end
 
@@ -131,9 +134,6 @@ module VBlank
 
             # What about the game's screen of tiles the build does not make yet, in words, or nil.
             def unmade_in_scenery
-              screens = @program.walk.select { |node| node.kind == :screen }
-              return "a painted screen as well" if screens.map { |node| Scenery.tiles_mode?(node.mode) }.uniq.size > 1
-              return "a screen of its own in a scene" unless @plan.handover.scene_screens.empty?
               return "a backdrop that follows a list of colours" if @plan.handover.backdrop_follows_list?
               return "a layer that shows through" if @program.walk.any? { |node| node.kind == :layers && !node.see_through.empty? }
 
@@ -184,8 +184,10 @@ module VBlank
             # Reference#exec_affine_background: the angle and the size worked out, kept with the point it turns about,
             # and the map moved from the screen's corner where the game named a point of the map; the background then
             # turns from now on, and the view is built again.
-            def emit_affine_background(node)
-              state = Runtime::Scenery.state_at(@memory, background_named(node.name))
+            def emit_affine_background(node) = for_background(node) { |number| emit_affine_background_of(node, number) }
+
+            def emit_affine_background_of(node, number)
+              state = Runtime::Scenery.state_at(@memory, number)
               part = ->(at) { X86.mem(nil, state + at, size: 32) }
               emit_values_into(%i[eax ecx], [value_node(node.angle), value_node(node.scale)])
               @asm.mov(part.call(Runtime::Scenery::ANGLE), :eax)
@@ -220,7 +222,6 @@ module VBlank
               return "a background drawn from several lists of colours the game changes" if bg.follows_several?
               return "a background drawn in other colours with tiles the game paints" if recolored?(bg) && bg.tiles.any? { |name| painted_tiles.key?(name) }
               return "a background whose tiles come in sets" if bg.several_sets?
-              return "a scene's own background" if bg.scene
 
               nil
             end
@@ -245,17 +246,21 @@ module VBlank
               return unless scenery_used?
 
               @scenery_tile_places = []
+              @art_places[:no_picture] = @art.bytesize # a picture of nothing, which a sprite that is off shows
+              @art << [0, 0].pack("v2")
               records = scenery_backgrounds.each_with_index.map { |bg, number| scenery_record(bg, number) }
               @scenery_records = records
               records.each_with_index do |fields, number|
                 @art_places[[:background, number]] = @art.bytesize
                 @art << fields.pack("v*").ljust(Runtime::Scenery::RECORD_BYTES, "\0")
               end
-              @picks_at = {}.compare_by_identity
+              @picks_at = {}
               make_run_art
               @program.walk.select { |node| node.kind == :set_tile && node.picked? }.each do |node|
-                @picks_at[node] = @art.bytesize
-                @art << node.picks.map { |tile| picked_place(tile, @scenery_tile_places.fetch(background_named(node.name))) }.pack("v*")
+                scenery_backgrounds.each_index.select { |number| scenery_backgrounds[number].name == node.name }.each do |number|
+                  @picks_at[[node, number]] = @art.bytesize
+                  @art << node.picks.map { |tile| picked_place(tile, @scenery_tile_places.fetch(number)) }.pack("v*")
+                end
               end
             end
 
@@ -286,7 +291,8 @@ module VBlank
               [cells, cols, rows, bg.tile_w, bg.tile_h, wrap_w, wrap_h, wraps ? 1 : 0, across, down, step_x, step_y,
                maps.map(&:length).max * bg.tile_h, Runtime::Scenery.state_at(@memory, number), mixed, mask_delta,
                copies.first.last, table, copies.size, 0, bg.bar? ? -bg.bar_top.clamp(0, @memory.screen.height) & 0xFFFF : 0,
-               bg.above_row || 0, Scenery.bends_in(@program).key?(bg.name) ? @memory[Scenery.bend_rows_place(bg.name)] : 0]
+               bg.above_row || 0, Scenery.bends_in(@program).key?(bg.name) ? @memory[Scenery.bend_rows_place(bg.name)] : 0,
+               bg.scene ? @plan.scenes.fetch(bg.scene) + 1 : 0]
             end
 
             # +map+'s cells, +cols+ across and +rows+ down, into the art segment: a word a cell, where its tile's pixels
@@ -308,7 +314,16 @@ module VBlank
             end
 
             # Whether the game hands +bg+ another of its maps (Reference#exec_show_map), so each is kept as declared.
-            def shows_other_maps?(bg) = bg.maps.size > 1 && @program.walk.any? { |node| node.kind == :show_map && node.name == bg.name }
+            def shows_other_maps?(bg)
+              (bg.maps.size > 1 && @program.walk.any? { |node| node.kind == :show_map && node.name == bg.name }) || put_back_on_arrival?(bg)
+            end
+
+            # Whether +bg+, a scene's own, goes up as declared each time its scene takes over and the game can change its
+            # cells or its map while it is up: its declared cells are kept to be laid out again (#emit_scene_arrival).
+            def put_back_on_arrival?(bg)
+              put_up_again = @plan.handover.on_arrival?(bg) || (bg.scene.nil? && crosses_screens?)
+              put_up_again && @program.walk.any? { |node| %i[set_tile show_map].include?(node.kind) && node.name == bg.name }
+            end
 
             # A background's tiles into the art segment as Runtime::Scenery keeps them: the solid ones, then those with
             # see-through pixels, then those ones' masks. Answers where each tile's pixels went (NO_TILE for a tile with
@@ -390,8 +405,9 @@ module VBlank
 
             # Reference#exec_background_colors: the copy of the tiles in the list of colours numbered +which+ shown from
             # now on, or the colours they were drawn in where it names none of the background's lists.
-            def emit_background_colors(node)
-              number = background_named(node.name)
+            def emit_background_colors(node) = for_background(node) { |number| emit_background_colors_of(node, number) }
+
+            def emit_background_colors_of(node, number)
               sets = scenery_backgrounds[number].recolors.to_a.size
               drawn = fresh_label("colors_as_drawn")
               chosen = fresh_label("colors_chosen")
@@ -480,15 +496,48 @@ module VBlank
               scenery_backgrounds.index { |bg| bg.equal?(node) } or raise LoweringError, "the background #{node.name.inspect} is not in the stack"
             end
 
-            # The background a line naming +name+ means: the one declaration of it, since a scene's own is refused.
-            def background_named(name)
-              scenery_backgrounds.index { |bg| bg.name == name } or raise LoweringError, "the background #{name.inspect} is never declared"
+            # The number of the background +node+ (a scroll, a changed cell, a map handed over...) means, yielded to the
+            # block: the one by its name, or, where several scenes each declare one by that name, the one of the scene
+            # whose routine is being written, or the one every screen shows (SceneHandover#background_named). Where
+            # which it is cannot be told as the game is built, the block is written once for each scene that has one,
+            # each run while that scene is up.
+            def for_background(node)
+              declared = @plan.handover.background_named(node, scene: @lowering_scene, error: LoweringError)
+              return yield(background_number(declared)) if declared
+
+              @plan.scenes.each do |scene, number|
+                own = @plan.handover.arrival(scene).scenery.find { |bg| bg.name == node.name } or next
+                other = fresh_label("not_this_scene")
+                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
+                yield background_number(own)
+                @asm.label(other)
+              end
             end
 
             # Reference#exec_background: what is owed painted first, then the background put up.
             def emit_background(node)
+              # A scene's own scenery goes up as the scene takes over (#emit_scene_arrival), not where its statement is,
+              # which runs every pass the scene does; on a painted screen it is drawing like any other, stamped each
+              # time (Reference#exec_background).
+              return if @plan.handover.on_arrival?(node)
+
               number = background_number(node)
               @asm.call("rt_scenery_paint_owed")
+              return emit_scene_stamp(number) if node.scene
+
+              emit_put_up(node, number)
+            end
+
+            # A scene's own background on a painted screen, stamped onto the picture where its statement is
+            # (Reference#stamp_background).
+            def emit_scene_stamp(number)
+              @asm.mov(:si, @art_places.fetch([:background, number]))
+              @asm.mov(:bx, Runtime::Scenery.state_at(@memory, number))
+              @asm.call("rt_scenery_restamp")
+            end
+
+            # Background number +number+ (+node+) put up (Reference#put_up_background).
+            def emit_put_up(node, number)
               @asm.mov(:si, @art_places.fetch([:background, number]))
               @asm.mov(:bx, Runtime::Scenery.state_at(@memory, number))
               return emit_built_put_up(node) if node.bar? || node.above_row
@@ -584,8 +633,9 @@ module VBlank
             # Reference#exec_place_bar: the status bar's top worked out and kept to the screen, and whether it covers
             # the sprites where the game says, then kept as its scroll (Runtime::Scenery::STATE). Placing a background
             # that is not a status bar changes nothing.
-            def emit_place_bar(node)
-              number = background_named(node.name)
+            def emit_place_bar(node) = for_background(node) { |number| emit_place_bar_of(node, number) }
+
+            def emit_place_bar_of(node, number)
               return unless scenery_backgrounds[number].bar?
 
               state = Runtime::Scenery.state_at(@memory, number)
@@ -625,9 +675,11 @@ module VBlank
             # Reference#exec_box_background: whether the background is held to a box worked out first, and where held,
             # the box's x, y, width and height, kept to the screen (Reference#screen_box) and laid in its STATE. The view
             # is built again, since what it shows of the background has changed.
-            def emit_box_background(node)
+            def emit_box_background(node) = for_background(node) { |number| emit_box_background_of(node, number) }
+
+            def emit_box_background_of(node, number)
               scenery = Runtime::Scenery
-              state = scenery.state_at(@memory, background_named(node.name))
+              state = scenery.state_at(@memory, number)
               part = ->(at) { X86.mem(nil, state + at, size: 32) }
               done = fresh_label("box_done")
               empty = fresh_label("box_empty")
@@ -666,6 +718,117 @@ module VBlank
               @asm.call("rt_scenery_rebuild")
             end
 
+            # A SCENE TAKING OVER (Reference#take_over, IR::SceneHandover): the view owed is built first where any scenery
+            # comes or goes; the last scene's own scenery down, the picture the backdrop again and what every screen
+            # shows stamped back, in the stack's order; what records which map each of this scene's own shows back at the
+            # first, with its box and its cells as declared; the tiles its scenery paints copied in from their lists as
+            # they are now; its own scenery put up; and the sprites drawn again over it where any are placed.
+            def emit_scene_arrival(scene)
+              return unless scenery_used?
+
+              arrival = @plan.handover.arrival(scene)
+              emit_arrival_screen(arrival)
+              own = scenery_backgrounds.each_index.select { |number| scenery_backgrounds[number].scene }
+              return if own.empty?
+
+              took = runtime_at(Runtime::Scenery::TOOK_DOWN)
+              emit_paint_owed_before_arrival(arrival, own)
+              @asm.mov(took, 0)
+              own.each do |number|
+                state = Runtime::Scenery.state_at(@memory, number)
+                up = X86.mem(nil, state + Runtime::Scenery::SHOWN, size: 32)
+                down = fresh_label("not_up")
+                @asm.cmp(up, 0)
+                @asm.je(down)
+                @asm.mov(up, 0)
+                @asm.mov(took, 1)
+                @asm.label(down)
+              end
+              emit_stamps_kept(own)
+              arrival.map_choices.each { |var| @asm.mov(number_at(var), 0) }
+              arrival.scenery.each { |bg| emit_put_back(bg) }
+              arrival.painted_tiles.each { |run| emit_paint_run(run.name) }
+              arrival.scenery.each { |bg| emit_put_up(bg, background_number(bg)) }
+              emit_sprites_over_arrival(arrival)
+            end
+
+            # Reference#take_over: the scene's own screen first, since changing the kind wipes what went up before it; or,
+            # for a scene that names none, the kind it draws on, which crosses only from the other kind
+            # (Reference#cross_to_scene_screen), and otherwise its backdrop.
+            def emit_arrival_screen(arrival)
+              return emit_screen(arrival.screen, arrival.backdrop) if arrival.screen
+
+              screen = Build.screen(Modes::SCREEN_OF_MODE.fetch(arrival.mode), buffered: arrival.mode == Modes::BUFFERED)
+              return emit_screen(screen, arrival.backdrop) if crosses_screens?
+
+              emit_backdrop_shown(arrival.backdrop)
+            end
+
+            # Reference#take_over: what is owed painted where this scene has scenery of its own, or the last one's is up.
+            def emit_paint_owed_before_arrival(arrival, own)
+              return @asm.call("rt_scenery_paint_owed") if arrival.scenery.any?
+
+              paint = fresh_label("paint_before_arrival")
+              done = fresh_label("arrival_painted")
+              own.each do |number|
+                @asm.cmp(X86.mem(nil, Runtime::Scenery.state_at(@memory, number) + Runtime::Scenery::SHOWN, size: 32), 0)
+                @asm.jne(paint)
+              end
+              @asm.jmp(done)
+              @asm.label(paint)
+              @asm.call("rt_scenery_paint_owed")
+              @asm.label(done)
+            end
+
+            # Reference#take_down_scenery: where any was taken down, the picture the backdrop again and every background
+            # still up stamped back in the stack's order.
+            def emit_stamps_kept(own)
+              done = fresh_label("none_taken_down")
+              @asm.cmp(runtime_at(Runtime::Scenery::TOOK_DOWN), 0)
+              @asm.je(done)
+              @asm.call("rt_scenery_wipe")
+              # In the stack's order, as the backgrounds are numbered (Stacking.order_by_stack, Reference#in_stack_order).
+              kept = scenery_backgrounds.each_index.reject { |number| own.include?(number) && @plan.handover.on_arrival?(scenery_backgrounds[number]) }
+              kept.each do |number|
+                state = Runtime::Scenery.state_at(@memory, number)
+                not_up = fresh_label("kept_not_up")
+                @asm.cmp(X86.mem(nil, state + Runtime::Scenery::SHOWN, size: 32), 0)
+                @asm.je(not_up)
+                @asm.mov(:si, @art_places.fetch([:background, number]))
+                @asm.mov(:bx, state)
+                @asm.call("rt_scenery_restamp")
+                @asm.label(not_up)
+              end
+              @asm.label(done)
+            end
+
+            # +bg+ as declared again: no box, and where the game changes its cells or map, its first map laid out.
+            def emit_put_back(bg)
+              number = background_number(bg)
+              @asm.mov(X86.mem(nil, Runtime::Scenery.state_at(@memory, number) + Runtime::Scenery::BOXED, size: 32), 0) if bg.scene
+              return unless put_back_on_arrival?(bg)
+
+              @asm.xor(:eax, :eax)
+              @asm.mov(:si, @art_places.fetch([:background, number]))
+              @asm.call("rt_scenery_show_map")
+            end
+
+            # Reference#redraw_sprites_over_arrived_scenery: the view owed again where scenery came or went and sprites
+            # were placed, so they are drawn over what arrived.
+            def emit_sprites_over_arrival(arrival)
+              return if sprite_objects.empty?
+
+              done = fresh_label("no_sprites_over_arrival")
+              unless arrival.scenery.any?
+                @asm.cmp(runtime_at(Runtime::Scenery::TOOK_DOWN), 0)
+                @asm.je(done)
+              end
+              @asm.cmp(X86.mem(nil, @memory[Runtime::Sprites::PLACED], size: 16), 0)
+              @asm.je(done)
+              @asm.call("rt_scenery_request")
+              @asm.label(done)
+            end
+
             # A layer can put a background behind one already up, and a stamp covers wherever it has solid pixels,
             # so each background up in front of +node+ is stamped again over it, back to front, which settles the
             # stack (Reference#put_up_background). A game whose backgrounds go up in the order they are drawn
@@ -697,12 +860,13 @@ module VBlank
 
             # Reference#exec_set_tile: the tile worked out first, and nothing more where it names none of the
             # background's tiles; then its column and row, and the change made or held.
-            def emit_set_tile(node)
-              number = background_named(node.name)
+            def emit_set_tile(node) = for_background(node) { |number| emit_set_tile_of(node, number) }
+
+            def emit_set_tile_of(node, number)
               places = @scenery_tile_places.fetch(number)
               done = fresh_label("no_tile_set")
               if node.picked?
-                emit_picked_tile(node, done)
+                emit_picked_tile(node, number, done)
               else
                 return unless node.tile.nil? || node.tile < places.size
 
@@ -718,8 +882,8 @@ module VBlank
 
             # The place of the pixels of the tile +node+ picks by a number the game works out, into DX, from a list of
             # them in the art segment; to +done+ where the number names none (Reference#tile_picked).
-            def emit_picked_tile(node, done)
-              table = @picks_at.fetch(node)
+            def emit_picked_tile(node, number, done)
+              table = @picks_at.fetch([node, number])
               emit_value(node.picked_by)
               @asm.sub(:eax, node.picks_from) unless node.picks_from.zero?
               @asm.cmp(:eax, node.picks.size)
@@ -738,25 +902,76 @@ module VBlank
             def emit_show_held_tiles(_node) = @asm.call("rt_scenery_show_held")
 
             # Reference#exec_show_map
-            def emit_show_map(node)
+            def emit_show_map(node) = for_background(node) { |number| emit_show_map_of(node, number) }
+
+            def emit_show_map_of(node, number)
               emit_value(node.which)
-              @asm.mov(:si, @art_places.fetch([:background, background_named(node.name)]))
+              @asm.mov(:si, @art_places.fetch([:background, number]))
               @asm.call("rt_scenery_show_map")
             end
 
             # Reference#exec_scroll_background
-            def emit_scroll_background(node)
+            def emit_scroll_background(node) = for_background(node) { |number| emit_scroll_background_of(node, number) }
+
+            def emit_scroll_background_of(node, number)
               emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
-              @asm.mov(:bx, Runtime::Scenery.state_at(@memory, background_named(node.name)))
+              @asm.mov(:bx, Runtime::Scenery.state_at(@memory, number))
               @asm.call("rt_scenery_scroll")
             end
 
-            # Reference#exec_screen, on a screen of tiles: the backdrop it means shown, where it means one.
-            def emit_tiled_screen(node)
-              color = @plan.handover.backdrop_of(node) or return
+            # Whether the game shows more than one kind of screen (Reference @changes_screen_kind).
+            def crosses_screens? = @crosses_screens.nil? ? (@crosses_screens = Modes.resolve(@program).crosses_display_systems?) : @crosses_screens
+
+            # Reference#exec_screen: in a game that shows both kinds, a screen of the other kind than the one up wipes
+            # the display (#emit_screen_crossing); otherwise the backdrop it means shown, where it means one.
+            def emit_screen(node, backdrop = @plan.handover.backdrop_of(node))
+              return emit_backdrop_shown(backdrop) unless crosses_screens?
+
+              kind = Runtime::Scenery::KINDS.fetch(SceneHandover::DISPLAYS.fetch(node.mode))
+              up = runtime_at(Runtime::Scenery::SCREEN_KIND)
+              same = fresh_label("same_kind_of_screen")
+              done = fresh_label("screen_done")
+              @asm.cmp(up, Runtime::Scenery::NO_SCREEN)
+              @asm.je(same)
+              @asm.cmp(up, kind)
+              @asm.je(same)
+              emit_screen_crossing(kind, backdrop)
+              @asm.jmp(done)
+              @asm.label(same)
+              @asm.mov(up, kind)
+              emit_backdrop_shown(backdrop)
+              @asm.label(done)
+            end
+
+            # Reference#show_backdrop: +color+ the backdrop, nil leaving it as it is.
+            def emit_backdrop_shown(color)
+              return if color.nil?
 
               @asm.mov(:al, palette_entry(color))
               @asm.call("rt_scenery_backdrop")
+            end
+
+            # A SCREEN OF THE OTHER KIND (Reference#exec_screen crossing, #reset_scenery_state, #put_up_always_up): the
+            # display wiped to the backdrop, nothing up any more, the kind noted, and on a screen of tiles or one that turns what
+            # every screen shows put up again as declared, which nothing else would put up after power-on.
+            def emit_screen_crossing(kind, backdrop)
+              if backdrop
+                @asm.mov(:al, palette_entry(backdrop))
+                @asm.mov(X86.mem(nil, @memory[Runtime::Scenery::BACKDROP], size: 8), :al)
+              end
+              @asm.call("rt_scenery_wipe")
+              scenery_backgrounds.each_index do |number|
+                @asm.mov(X86.mem(nil, Runtime::Scenery.state_at(@memory, number) + Runtime::Scenery::SHOWN, size: 32), 0)
+              end
+              %w[BAR_SHOWN ALONE_SHOWN UP].each { |word| @asm.mov(runtime_at(Runtime::Scenery.const_get(word)), 0) }
+              @asm.mov(runtime_at(Runtime::Scenery::SCREEN_KIND), kind)
+              return if kind == Runtime::Scenery::PAINTED
+
+              always = @plan.handover.always_up
+              always.scenery.each { |bg| emit_put_back(bg) }
+              always.map_choices.each { |var| @asm.mov(number_at(var), 0) }
+              always.painted_tiles.each { |run| emit_paint_run(run.name) }
+              always.scenery.each { |bg| emit_put_up(bg, background_number(bg)) }
             end
 
             # The drawing steps that leave the game's picture as it is: sprites are drawn over a copy of it as a frame

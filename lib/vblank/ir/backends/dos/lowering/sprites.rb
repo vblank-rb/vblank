@@ -275,6 +275,7 @@ module VBlank
               @asm.mov(:dx, sprite_names.name_number(sprite.declared))
               @asm.call("rt_sprite_place")
               emit_sprite_turned(sprite) if Sprites.turns?(sprite)
+              emit_sprite_off_while_painted(sprite)
               if level
                 # The level of the sprite just placed (Runtime::Sprites::LEVELS).
                 @asm.mov(:bx, X86.mem(nil, @memory[Runtime::Sprites::PLACED], size: 16))
@@ -296,6 +297,27 @@ module VBlank
                 @asm.mov(:dl, level)
                 @asm.label(other)
               end
+            end
+
+            # THE SPRITES OF A SCREEN OF TILES ARE OFF WHILE A PAINTED SCREEN IS UP, in a game that shows both kinds
+            # (Reference#exec_present_objects): the sprite just placed is still in the table, which is what the game has
+            # drawn as the interpreter counts it, but shows a picture of nothing and takes no rows. A sprite over the
+            # picture (`over_picture: true`) is the painted screen's own and shows.
+            def emit_sprite_off_while_painted(sprite)
+              return if sprite.over_picture || !scenery_used? || !crosses_screens?
+
+              shows = fresh_label("sprite_shows")
+              entry = ->(part, size) { X86.mem(:bx, part, size: size) }
+              @asm.cmp(runtime_at(Runtime::Scenery::SCREEN_KIND), Runtime::Scenery::PAINTED)
+              @asm.jne(shows)
+              @asm.mov(:bx, X86.mem(nil, @memory[Runtime::Sprites::PLACED], size: 16))
+              @asm.dec(:bx)
+              @asm.shl(:bx, Runtime::Sprites.entry_shift(@memory))
+              @asm.add(:bx, @memory[Runtime::Sprites::TABLE])
+              @asm.mov(entry.call(Runtime::Sprites::ART, 16), @art_places.fetch(:no_picture))
+              @asm.mov(entry.call(Runtime::Sprites::HEIGHT, 16), 0)
+              @asm.mov(entry.call(Runtime::Sprites::TURNS, 16), 0) if Runtime::Sprites.turned?(@memory)
+              @asm.label(shows)
             end
 
             # The sprite just placed turns (Runtime::Turning): its angle and its size as they are now, and what
