@@ -417,7 +417,8 @@ module VBlank
                                      # row, on the one of four, beside two other backgrounds
                                      # (Backends::SNES::Lowering::Picture.third_layer?); three with
                                      # neither among them it does not make yet, and says so.
-                                     # Mode 7 turns one layer, alone; the build does not use it.
+                                     # Mode 7 turns one layer, alone; the build uses it only to
+                                     # show a painted screen of big pixels.
                                      backgrounds: 3, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                                      bar_is_a_background: true, bar_shares_display: true,
                                      # Its colour maths adds, subtracts or halves, never the
@@ -463,6 +464,10 @@ module VBlank
                                      # Video memory takes writes only in the blank or with the screen
                                      # off, and the screen can be switched off line by line.
                                      gives_up_rows: true,
+                                     # A painted screen of big pixels is shown on Mode 7's layer,
+                                     # whose matrix reads half a pixel a step
+                                     # (Backends::SNES::Runtime::PaintDoubled).
+                                     shows_bigger_pixels: true,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no

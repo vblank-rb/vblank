@@ -97,12 +97,23 @@ class TestScreenShownRows < Minitest::Test
     assert_empty Answers.new.detect(made.program(console: :snes))
   end
 
-  # Big pixels count rows in the small picture, which no console that gives up rows shows.
-  def test_shown_rows_beside_big_pixels_are_refused
-    error = assert_raises(ArgumentError) do
-      game(%i[gba]) { screen :bitmap, pixel_size: 2, shown_rows: 16...64 }.program
+  # Big pixels count rows in the small picture. The Super Nintendo shows both; the Advance gives up
+  # no rows, so it refuses the two together.
+  def test_shown_rows_beside_big_pixels_count_rows_of_the_small_picture
+    made = game(%i[gba snes]) do
+      screen :bitmap, pixel_size: 2, shown_rows: 16...64
+      game_loop { clear_screen :blue }
     end
 
-    assert_match(/pixel_size: 2/, error.message)
+    assert_empty Answers.new.detect(made.program(console: :snes))
+    refused = Answers.new.detect(made.program(console: :gba)).find { |finding| finding.message.include?("shown_rows") }
+    assert refused, "the Advance says nothing of shown_rows"
+    assert_equal :error, refused.severity
+  end
+
+  def test_shown_rows_past_the_small_picture_are_refused
+    error = refusal { screen :bitmap, pixel_size: 2, shown_rows: 16...200 }
+
+    assert_match(/112/, error.message)
   end
 end

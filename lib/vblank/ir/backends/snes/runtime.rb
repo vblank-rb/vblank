@@ -8,6 +8,7 @@ require_relative "runtime/blank"
 require_relative "runtime/lists"
 require_relative "runtime/picture"
 require_relative "runtime/paint"
+require_relative "runtime/paint_doubled"
 require_relative "runtime/paint_log"
 require_relative "runtime/paint_turns"
 require_relative "runtime/text_layer"
@@ -49,7 +50,11 @@ module VBlank
           # the copy of the screen's interrupt it runs meanwhile after the rest, so a plain cartridge's places do not move.
           def reserve(memory, carries)
             c = carries
-            Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns) if c.painted
+            if c.doubled
+              PaintDoubled.reserve(memory)
+            elsif c.painted
+              Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns)
+            end
             Frame.reserve(memory, second_controller: c.second_controller)
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
                                     bends: c.bends, scene_bends: c.scene_bends,
@@ -99,7 +104,11 @@ module VBlank
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
                                       held_hides_sprites: c.held_hides_sprites)
-            Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?) if c.painted
+            if c.doubled
+              PaintDoubled.emit(asm, memory, Paint.scratch(memory), band: c.shown_band)
+            elsif c.painted
+              Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?)
+            end
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))

@@ -221,6 +221,7 @@ module VBlank
                 refuse_unmade!("a background on a painted (bitmap) screen") unless @backgrounds.empty?
                 refuse_unmade!("a hardware sprite on a painted (bitmap) screen") unless @objects.empty?
               end
+              refuse_unmade_doubled_screen! if doubled?
               @program.walk.select { |node| node.kind == :background }.each do |bg|
                 unless bg.tile_w == bg.tile_h && [8, BIG_TILE].include?(bg.tile_w)
                   refuse_unmade!("background tiles of #{bg.tile_w}×#{bg.tile_h}")
@@ -228,6 +229,16 @@ module VBlank
                 refuse_unmade!("a background drawn from several sets of tiles") if bg.several_sets?
                 refuse_unmade!("a background whose maps are of different sizes or too big to hold") if bg.streams?
               end
+            end
+
+            # What a painted screen of big pixels (Runtime::PaintDoubled) does not paint yet.
+            def refuse_unmade_doubled_screen!
+              kinds = @program.walk.map(&:kind)
+              refuse_unmade!("big pixels (`pixel_size: 2`) on a Super FX cartridge") if @chip_board
+              if kinds.intersect?(%i[save_region restore_region])
+                refuse_unmade!("a sprite on a painted screen of big pixels (`pixel_size: 2`)")
+              end
+              refuse_unmade!("`draw_column_at` with big pixels (`pixel_size: 2`)") if kinds.include?(:draw_column_at)
             end
 
             # Every picture a sprite can show, made into sprite pieces in the order SpriteNames numbers

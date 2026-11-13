@@ -33,6 +33,7 @@ module VBlank
             private
 
             def prepare_chip(chip)
+              @chip_board = chip
               @chip_routines = chip ? @called.select { |name| @funcs.fetch(name).on_chip } : []
               @chip_code = nil
             end

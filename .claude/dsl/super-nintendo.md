@@ -16,12 +16,12 @@ This file is `Console::SNESAnswers.reference` written out (`ruby tools/console_a
 and a test fails when the two differ. The Advance's answers are in
 `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet. `shown_rows:` works: the rows outside the range are black. The screen is off on those rows, so the build copies the picture to video memory on those rows and in the gap after each picture. Then a picture that changes many tiles in each pass shows sooner.
+- `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn. `screen :bitmap, pixel_size: 2` shows each pixel of the game's 128×112 picture as a square of four. The build keeps the picture as one byte for each pixel. It shows the picture on the layer that can turn, at twice its size. Then a change to the picture copies a quarter of the bytes, or fewer. `shown_rows:` works: the rows outside the range are black. The screen is off on those rows, so the build copies the picture to video memory on those rows and in the gap after each picture. Then a picture that changes many tiles in each pass shows sooner. With `pixel_size: 2` the rows are rows of the small picture.
 - `setting` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :snes.
-- `screen_width` — works: 256 on a Super Nintendo.
-- `screen_height` — works: 224 on a Super Nintendo.
+- `screen_width` — works: 256 on a Super Nintendo. 128 with `pixel_size: 2`.
+- `screen_height` — works: 224 on a Super Nintendo. 112 with `pixel_size: 2`.
 - `border` — works: it does nothing on a Super Nintendo, which shows the game's screen whole.
 - `wait_vblank` — works: in a game loop, the sprites and scroll of a pass show on the frame after the wait. If a game writes the wait in a scene or an `if`, they show a frame later than that.
 - `halt` — works: the same as on the Advance.

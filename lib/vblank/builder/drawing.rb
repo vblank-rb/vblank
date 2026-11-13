@@ -138,6 +138,7 @@ module VBlank
       # video memory only while it is not drawing has those rows to copy in as well as the gap
       # between pictures, so a picture that changes a lot each pass arrives sooner. It is the whole
       # game's, so it goes on the game's first `screen` line, and every later screen is a painted one.
+      # With `pixel_size: 2` the rows are the small picture's.
       #
       # @example A view 160 rows high, with more time each frame to send it
       #   screen :bitmap, shown_rows: 32...192
@@ -247,10 +248,6 @@ module VBlank
         unless mode == :bitmap
           raise ArgumentError, "`shown_rows:` works only with `screen :bitmap`. To fix this, write " \
                                "`screen :bitmap, shown_rows: #{rows.inspect}`."
-        end
-        if @program.pixel_size
-          raise ArgumentError, "`shown_rows:` does not work with `pixel_size: #{@program.pixel_size}`. No console " \
-                               "that gives up rows shows big pixels. To fix this, remove one of the two."
         end
         if @screen_line_written || @building_scene
           raise ArgumentError, "`shown_rows:` must be on the game's first `screen` line, outside any scene. It " \

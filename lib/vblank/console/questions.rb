@@ -110,6 +110,10 @@ module VBlank
         when :screen
           if node.mode == :rotozoom
             Question.new(:screen, "This game has a turning screen (`screen :rotozoom`)", console.turns_backgrounds?)
+          elsif node.pixel_size && node.shown_rows
+            Question.new(:screen, "This game shows its pixels bigger (`pixel_size: #{node.pixel_size}`) and gives " \
+                                  "up rows of the screen (`shown_rows:`)",
+                         console.shows_bigger_pixels && console.gives_up_rows)
           elsif node.pixel_size
             Question.new(:screen, "This game shows its pixels bigger (`pixel_size: #{node.pixel_size}`)",
                          console.shows_bigger_pixels)

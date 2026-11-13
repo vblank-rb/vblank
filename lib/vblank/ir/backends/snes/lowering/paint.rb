@@ -58,11 +58,17 @@ module VBlank
               program.walk.any? { |node| PAINTING.include?(node.kind) }
             end
 
+            # Whether +program+'s painted screen shows its pixels bigger (`screen :bitmap, pixel_size:
+            # 2`), on Mode 7 (Runtime::PaintDoubled). Such a screen has one layer and keeps its
+            # pictures a byte a pixel, so it has no text layer, no second picture and no inks.
+            def self.doubled?(program) = painted?(program) && !program.pixel_size.nil? && program.pixel_size > 1
+
             # The SNES::PaintedArt the game paints with.
             attr_reader :painted_art
 
             def prepare_paint
               @painted = Paint.painted?(@program)
+              @doubled = Paint.doubled?(@program)
               @painted_art = PaintedArt.new
               @picture_lists = [] # each a list of SNES::PaintedArt pictures' numbers
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
@@ -78,7 +84,7 @@ module VBlank
             # it writes text that can go there, and never moves the camera, whose room in video RAM
             # the layer takes.
             def self.text_layer?(program)
-              painted?(program) && program.walk.none? { |node| node.kind == :camera } &&
+              painted?(program) && !doubled?(program) && program.walk.none? { |node| node.kind == :camera } &&
                 program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
             end
 
@@ -98,6 +104,8 @@ module VBlank
             # last pass whole and never needs the other picture, and one that never clears again
             # never compares a pass with one; either keeps the whole log.
             def self.takes_turns?(program)
+              return false if doubled?(program)
+
               paintings = program.walk.select { |node| PAINTING.include?(node.kind) }
               paintings.any? { |node| node.kind == :clear_screen && node.parent&.kind != :program } &&
                 paintings.any? { |node| !painted_alike_each_pass?(node) }
@@ -198,10 +206,12 @@ module VBlank
             # Whether +program+ paints text in a colour picked as it runs, which an ink can paint
             # (#emit_draw_text): its colours then change as it runs (Runtime::Tint::COLORS_NOW).
             def self.inks?(program)
-              painted?(program) && program.walk.any? { |node| node.kind == :draw_text && node.picked }
+              painted?(program) && !doubled?(program) && program.walk.any? { |node| node.kind == :draw_text && node.picked }
             end
 
             def painted? = @painted
+
+            def doubled? = @doubled
 
             # Does the game draw columns of pictures on the console (Runtime::Paint's
             # rt_paint_column)? Columns drawn in a routine on the Super FX chip are the chip's own
@@ -253,6 +263,8 @@ module VBlank
             # The tables Runtime::Paint reads, as sections for the Linker: the colours, every picture
             # and its rows, and the lists of pictures.
             def paint_sections
+              return doubled_paint_sections if @doubled
+
               tables = W65816.new("paint tables", holds: Picture::ART)
               tables.label("art colors")
               tables.data_bytes(@painted_art.cgram.bytes)
@@ -292,6 +304,65 @@ module VBlank
 
             # The most bytes of pictures' rows in one section: well inside a bank of the cartridge.
             ROWS_A_SECTION = 0x6000
+
+            # The same tables for a screen of big pixels (Runtime::PaintDoubled): the colours, each
+            # picture's place, width and height, the lists of pictures, and each picture's rows as
+            # runs of a byte a pixel.
+            def doubled_paint_sections
+              tables = W65816.new("paint tables", holds: Picture::ART)
+              tables.label("art colors")
+              tables.data_bytes(@painted_art.cgram.bytes)
+              tables.label("paint pictures")
+              @painted_art.pictures.each do |picture|
+                tables.data_longs("paint runs #{picture.number}")
+                tables.data_bytes(0)
+                tables.data_words(picture.width, picture.height)
+              end
+              tables.label("paint picture lists")
+              @picture_lists.each_index do |number|
+                tables.data_longs("paint picture list #{number}")
+                tables.data_bytes(0)
+              end
+              @picture_lists.each_with_index do |numbers, number|
+                tables.label("paint picture list #{number}")
+                tables.data_words(numbers.length, *numbers)
+              end
+              [tables.section, *doubled_picture_sections]
+            end
+
+            # Each picture's runs (Runtime::PaintDoubled's rt_paint_blit), as many pictures to a
+            # section as fit; a picture is never split, so its runs are read without crossing a bank.
+            def doubled_picture_sections
+              sections = []
+              asm = nil
+              bytes = 0
+              @painted_art.pictures.each do |picture|
+                runs = Paint.doubled_runs(picture)
+                if asm.nil? || bytes + runs.bytesize > ROWS_A_SECTION
+                  sections << asm.section if asm
+                  asm = W65816.new("paint runs #{sections.length}", holds: Picture::ART)
+                  bytes = 0
+                end
+                asm.label("paint runs #{picture.number}")
+                asm.data_bytes(runs.bytes)
+                bytes += runs.bytesize
+              end
+              sections << asm.section if asm
+              sections
+            end
+
+            # +picture+'s rows as Runtime::PaintDoubled reads them: each row its runs of pixels drawn,
+            # a word of how many, a word of how far from the left edge, then a byte for each pixel, its
+            # colour's place; and a word of nought after a row's last run.
+            def self.doubled_runs(picture)
+              Array.new(picture.height) do |y|
+                drawn = ->(x) { picture.places.key?([x, y]) }
+                runs = (0...picture.width).slice_when { |x, after| drawn.call(x) != drawn.call(after) }
+                runs.select { |xs| drawn.call(xs.first) }.map do |xs|
+                  [xs.length, xs.first].pack("v2") + xs.map { |x| picture.places.fetch([x, y]) }.pack("C*")
+                end.join + [0].pack("v")
+              end.join
+            end
 
             private
 
@@ -516,6 +587,8 @@ module VBlank
             # colour list, and they are not all met yet, so an ink takes a place only while more than
             # half the list is free, and a game has MOST_INKS at most.
             def text_ink(node)
+              return nil if @doubled
+
               @text_inks.fetch(node.object_id) do
                 @text_inks[node.object_id] =
                   if @inks.length < Runtime::Paint::MOST_INKS && @painted_art.places_left > PaintedArt::COLORS / 2

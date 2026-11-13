@@ -188,6 +188,7 @@ module VBlank
 
           def start_run(program)
             @near = HeadlessRun.near_pictures?(program)
+            @pixel_size = program.described_console.pixel_size
             @logged_entries = []
             @sounds = 0
             @audio = []
@@ -224,8 +225,10 @@ module VBlank
           def end_before_first_picture(variables, lists, sprites, sounds, camera)
             hold_after_this_pass
             @sprites = sprites
-            off = Array.new(@core.width * @core.height, Reference::Framebuffer::HELD_OFF)
-            record_moment(:end, variables, lists, Picture.new(shown: off, width: @core.width, height: @core.height,
+            width = @core.width / @pixel_size
+            height = @core.height / @pixel_size
+            off = Array.new(width * height, Reference::Framebuffer::HELD_OFF)
+            record_moment(:end, variables, lists, Picture.new(shown: off, width: width, height: height,
                                                               camera_x: camera[0], camera_y: camera[1]), sounds)
           end
 
@@ -425,9 +428,22 @@ module VBlank
           end
 
           # The emulator's picture, each pixel the 15-bit colour the console holds, and where the
-          # camera put the view, [x, y], as the pass left it.
-          def picture_now(camera) = Picture.new(shown: @core.colors, width: @core.width, height: @core.height,
-                                                camera_x: camera[0], camera_y: camera[1])
+          # camera put the view, [x, y], as the pass left it. A game of big pixels is read a pixel
+          # of its small picture at a time, the top left of each square the console shows it as, as
+          # the interpreter plays it (Testing::Pictures#pixel_squares_of).
+          def picture_now(camera)
+            shown = @core.colors
+            width = @core.width
+            height = @core.height
+            if @pixel_size > 1
+              shown = (0...(height / @pixel_size)).flat_map do |y|
+                (0...(width / @pixel_size)).map { |x| shown[(y * @pixel_size * width) + (x * @pixel_size)] }
+              end
+              width /= @pixel_size
+              height /= @pixel_size
+            end
+            Picture.new(shown: shown, width: width, height: height, camera_x: camera[0], camera_y: camera[1])
+          end
 
           # Where a painted screen's camera puts the view, as the game gave it (Runtime::Paint's
           # CAMERA); [0, 0] for a screen with no camera.
