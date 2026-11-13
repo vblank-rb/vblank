@@ -127,6 +127,11 @@ module VBlank
           # The same for the backgrounds' tiles (+background_tiles+).
           class TooManyBackgroundTiles < TooMuch; end
 
+          # A screen's backgrounds still need more sets of colours than eight with each scene bringing
+          # its own in, and some of those sets hold a list the game changes, alone: built again, the
+          # short lists one background changes share a set (+shared_held_lists+, #held_palette).
+          class TooManyHeldBackgroundLists < TooMuch; end
+
           # A background on the third layer, a status bar or one held above a row, whose art does not
           # fit four-colour tiles. Nothing a second build tries can help, so it is not one of TooMuch.
           class ThirdLayerArtTooColorful < LoweringError; end
@@ -206,9 +211,23 @@ module VBlank
           #
           # A STATUS BAR ON THE THIRD LAYER (+third_layer+, #bar_cell) takes the last 64 tile places
           # for its map (Runtime::Picture::THIRD_LAYER_MAP), so the backgrounds keep 960.
+          #
+          # SHORT LISTS ONE BACKGROUND CHANGES SHARE A SET (+shared_held_lists+, #held_background_palette).
+          # A list the game changes has a set of colours to itself, and a set holds fifteen. A
+          # background from the data pack of four-colour tiles is drawn from banks of three colours and
+          # see-through, each a list, so walking its four banks up from black takes four sets where its
+          # colours fill a fifth of one. On the console, the four-colour layer's banks sit one after
+          # another in the first sixteen colours of colour memory, so in a game that does not fit
+          # otherwise those lists go one after another in one set, each tile's places counted from
+          # where its list starts there.
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], third_layer: false, tile_memo: TileMemo.new)
+                         background_tiles: false, small_sprite_scenes: [], third_layer: false, shared_held_lists: false,
+                         tile_memo: TileMemo.new)
             @tile_memo = tile_memo
+            @shared_held_lists = shared_held_lists
+            @held_offsets = {} # whose list => where in its palette it starts, where not at the first place
+            @held_owners = {} # [a scene or nil, a palette] => the background whose held lists may share it
+            @held_lengths = {} # a background whose held lists may share => each such list's colours, how many
             @most_background_tiles = third_layer ? THIRD_LAYER_TILE_PLACES : MOST_BACKGROUND_TILES
             @bar_palettes = []
             @bar_tile_numbers = { blank_bar_tile => 0 }
@@ -257,15 +276,16 @@ module VBlank
           # +held+ is the palette of a list the game changes (#held_background_palette), whose
           # tiles are drawn from it place for place. +scene+ is the scene whose own background this
           # is, in a game of +screen_colors+, and nil for what every screen shows; +tile_scene+ the
-          # same for its tiles, in a game of +background_tiles+.
-          def background_cell(image, held: nil, scene: nil, tile_scene: nil)
+          # same for its tiles, in a game of +background_tiles+. +held_offset+ is where the held list
+          # starts in its palette (#held_offset_of).
+          def background_cell(image, held: nil, held_offset: 0, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
             colors = @tile_memo.colors_drawn(image, 64)
             palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
-            bytes = @tile_memo.tiles(image, 64, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
+            bytes = @tile_memo.tiles(image, 64, held ? [:held, held_offset] : TileMemo.places_of(colors, palettes[palette])) do
               TileBytes.of(Array.new(64) do |at|
                 if image.tile_see_through_at?(at) then 0
-                elsif held then place_in_list(image, at)
+                elsif held then place_in_list(image, at) + held_offset
                 else palettes[palette].index(image.color_at(at)) + 1
                 end
               end)
@@ -287,16 +307,16 @@ module VBlank
           # So the four quarters of +image+ (an Assets::Image of 16×16) go in four places that
           # pattern takes, the first of them at an even place in an even row, and the whole tile is
           # drawn from one palette. Its tile number (the top left quarter's) and the palette.
-          def background_big_cell(image, held: nil, scene: nil, tile_scene: nil)
+          def background_big_cell(image, held: nil, held_offset: 0, scene: nil, tile_scene: nil)
             palettes = background_palettes(scene)
             colors = @tile_memo.colors_drawn(image, 256)
             palette = held || palette_for(palettes, colors, backgrounds_in_message(scene))
-            quarters = @tile_memo.tiles(image, 256, held ? :held : TileMemo.places_of(colors, palettes[palette])) do
+            quarters = @tile_memo.tiles(image, 256, held ? [:held, held_offset] : TileMemo.places_of(colors, palettes[palette])) do
               (0...4).map do |quarter|
                 TileBytes.of(Array.new(64) do |at|
                   pixel = ((((quarter / 2) * 8) + (at / 8)) * 16) + ((quarter % 2) * 8) + (at % 8)
                   if image.tile_see_through_at?(pixel) then 0
-                  elsif held then place_in_list(image, pixel)
+                  elsif held then place_in_list(image, pixel) + held_offset
                   else palettes[palette].index(image.color_at(pixel)) + 1
                   end
                 end)
@@ -365,8 +385,49 @@ module VBlank
           # be the place it was drawn at, and nothing else's colours can share it. +key+ names whose
           # it is, a background's name and a list or a sprites' list. Its colours are the first ones
           # it holds; the rest go in as the game runs (Runtime::Tint's rt_colors_hold).
-          def held_background_palette(key, colors, scene: nil)
-            held_palette(background_palettes(scene), key, colors, backgrounds_in_message(scene), 0...PALETTES)
+          #
+          # +owner+ names the background the list is drawn on, where its tiles are made here and so
+          # can count their places from anywhere in a set: in a game of +shared_held_lists+ the list
+          # then goes after another of that owner's in a set with room for it (#held_offset_of).
+          def held_background_palette(key, colors, scene: nil, owner: nil)
+            # Must come first: the first ask for a scene's palettes takes its copy of every screen's.
+            palettes = background_palettes(scene)
+            return @held_palettes[key] if @held_palettes.key?(key)
+
+            if @shared_held_lists && owner
+              shared = share_held_palette!(palettes, scene, key, colors, owner)
+              return shared if shared
+            end
+
+            held_palette(palettes, key, colors, backgrounds_in_message(scene), 0...PALETTES).tap do |palette|
+              @held_owners[[scene, palette]] = owner
+              (@held_lengths[owner] ||= []) << colors.length if owner
+            end
+          end
+
+          # Where the list kept under +key+ starts in its palette: 0, its first place, unless it
+          # shares the palette with lists before it.
+          def held_offset_of(key) = @held_offsets.fetch(key, 0)
+
+          # Puts +colors+, the list kept under +key+, after +owner+'s lists in a palette of +palettes+
+          # (+scene+'s) with room for them, and hands back that palette; nil, changing nothing, where
+          # none has room.
+          def share_held_palette!(palettes, scene, key, colors, owner)
+            palette = (0...PALETTES).find do |at|
+              @held_owners[[scene, at]] == owner && palettes[at].length + colors.length <= OWN_COLORS
+            end
+            return nil unless palette
+
+            @held_offsets[key] = palettes[palette].length
+            palettes[palette] += colors
+            @held_palettes[key] = palette
+            palette
+          end
+
+          # Whether some background holds two lists of its own short enough to share a palette, which
+          # a build of +shared_held_lists+ would put in one.
+          def held_lists_can_share?
+            @held_lengths.each_value.any? { |lengths| lengths.length > 1 && lengths.min(2).sum <= OWN_COLORS }
           end
 
           # The sets of colours +scene+'s own backgrounds are drawn from: in a game of +screen_colors+
@@ -703,10 +764,21 @@ module VBlank
 
           # The refusal for +palettes+ being full: the one that builds the game again with each scene
           # bringing its own colours in, where that has not been tried and is what would help.
+          #
+          # With each scene's colours already its own, a game whose backgrounds hold a list the game
+          # changes is built again with those lists sharing sets (+shared_held_lists+): that is tried
+          # last, so a game that fits without it keeps the sets it had.
           def too_much_error_for(palettes)
             return TooManySpriteColors if palettes.equal?(@sprite_palettes) && !@sprite_colors
+            return TooManyBackgroundColors if palettes.equal?(@background_palettes) && !@screen_colors
+            return TooManyHeldBackgroundLists if !@shared_held_lists && held_lists_can_share? && background_palettes?(palettes)
 
-            palettes.equal?(@background_palettes) && !@screen_colors ? TooManyBackgroundColors : TooMuch
+            TooMuch
+          end
+
+          # Whether +palettes+ are the backgrounds', every screen's or a scene's own copy.
+          def background_palettes?(palettes)
+            palettes.equal?(@background_palettes) || @scene_palettes.each_value.any? { |own| own.equal?(palettes) }
           end
 
           # The refusal for the sprites' tiles being full: the one that builds the game again with each

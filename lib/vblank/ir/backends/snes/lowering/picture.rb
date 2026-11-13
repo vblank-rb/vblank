@@ -176,7 +176,7 @@ module VBlank
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
-                             third_layer: @third_layer, tile_memo: @tile_memo)
+                             third_layer: @third_layer, shared_held_lists: @shared_held_lists, tile_memo: @tile_memo)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -525,26 +525,39 @@ module VBlank
 
             # What a background's palettes hold at its step +step+ (nil for its own colours): each list
             # it is drawn from, by place, as the list named for that step gives (Assets::Recolor).
+            #
+            # Lists that share a palette (Art#held_offset_of) are one set, each list's colours where
+            # it starts in the palette, so the write of one leaves none of the others' as zeros.
             def background_held_set(bg, step)
               swaps = step && bg.list_swaps(step)
-              ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
+              lists = ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
                 swapped = swaps && swaps[list]
                 colors = (1...image.colors.length).map { |place| (swapped && swapped[place]) || image.colors[place] }
-                [@art.background_palette_at(palette), colors]
+                [palette, @art.held_offset_of(held_list_key(bg, list)), colors]
+              end
+              lists.group_by(&:first).map do |palette, held|
+                [@art.background_palette_at(palette), held.sort_by { |_, offset, _| offset }.flat_map(&:last)]
               end
             end
 
             # The palette of the list +image+ is drawn from, in a background the game draws with other
-            # colours, and nil in any other.
+            # colours, and nil in any other. A list a tile painted from a list is drawn from keeps its
+            # palette's first place, since the game writes those tiles' places as they are in the list
+            # (Runtime::Picture's rt_tile_run_copy); any other may share its palette with the
+            # background's other lists (Art#held_background_palette).
             def held_background_palette(bg, image)
               return nil if Array(bg.recolors).empty?
 
               list = image.list_drawn_from
               colors = image.colors.drop(1).map { |color| color & 0x7FFF }
-              palette = @art.held_background_palette([:backgrounds, *held_lists_key(bg), list], colors, scene: colors_scene_of(bg))
+              owner = held_lists_key(bg) unless @tile_runs.any? { |run| run.list_drawn_from == list }
+              palette = @art.held_background_palette(held_list_key(bg, list), colors, scene: colors_scene_of(bg), owner: owner)
               ((@background_lists ||= {})[held_lists_key(bg)] ||= {})[list] = [palette, image]
               palette
             end
+
+            # What +bg+'s held +list+ is kept under in the Art.
+            def held_list_key(bg, list) = [:backgrounds, *held_lists_key(bg), list]
 
             # THE PALETTE OF A RUN ON A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS: the one its list has
             # on that background, shared with the pictures drawn from the list, so a walk of colours
@@ -1376,7 +1389,8 @@ module VBlank
               @run_cells.fetch(name) do
                 image = @cache.image(picture_named(name))
                 held = held_background_palette(bg, image)
-                places = { held: held, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
+                offset = held ? @art.held_offset_of(held_list_key(bg, image.list_drawn_from)) : 0
+                places = { held: held, held_offset: offset, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
                 bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
               end
             end

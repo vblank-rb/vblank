@@ -228,11 +228,13 @@ module VBlank
           # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
           # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
-          # into the sound unit (Runtime::Sound, "Each scene's recordings").
+          # into the sound unit (Runtime::Sound, "Each scene's recordings"). +shared_held_lists+ has the
+          # short lists one background changes share a set of colours (Art).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         scene_recordings: false, cache: BuildCache.for(SNES, program))
+                         scene_recordings: false, shared_held_lists: false, cache: BuildCache.for(SNES, program))
             @program = program
+            @shared_held_lists = shared_held_lists
             @scene_recordings = scene_recordings
             @cache = cache
             @tile_memo = cache.facts.tile_memo
