@@ -207,6 +207,35 @@ class TestSavesKeepEverything < Minitest::Test
     assert_match(/saved: false/, message)
   end
 
+  # A mark written after the variable has its first number would come too late: the variable is
+  # made already, as one a save keeps. So the build stops at the mark, rather than at a
+  # saves_keep_everything that cannot say why.
+  def test_a_mark_after_the_game_block_variable_has_its_first_number_is_refused
+    builder = Builder.new
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc do
+        game_variables :flash
+        @flash = 0
+        game_variables :flash, saved: false
+      end))
+    end
+
+    assert_match(/@flash.*first number/, error.message)
+    assert_match(/saved: false/, error.message)
+    assert_match(/test_saves_keep_everything\.rb:\d+/, error.message)
+  end
+
+  # The same mark in a class reopened: test_saves_keep_everything_reopened_class.rb.
+
+  def test_a_mark_naming_no_variable_is_refused
+    builder = Builder.new
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc { game_variables saved: false }))
+    end
+
+    assert_match(/names no/, error.message)
+  end
+
   def test_saying_it_twice_is_a_friendly_error
     message = refused do
       hearts = var :hearts, 3

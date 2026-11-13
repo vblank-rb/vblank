@@ -48,19 +48,33 @@ module VBlank
         # `saved: false` marks every instance variable on the line as scratch: a save record
         # never keeps one, and `saves_keep_everything` passes it over. That is what a name starting
         # with _ says for a `var`, without making the game write a second name for each.
+        #
+        # The mark must come before the variable's first number, since that line makes the variable
+        # (#note_made_variable): a mark after it is refused (Uses#refuse_late_unsaved_mark!).
         def name_game_variables(owner, *names, saved: true, **chosen_by_keyword)
           refuse_saved_not_true_or_false!(saved)
           names += [chosen_by_keyword] unless chosen_by_keyword.empty?
           labels, chosen = labels_and_chosen_names(names)
+          refuse_unsaved_naming_nothing! if !saved && labels.empty?
+          uses = owner.is_a?(Builder) ? owner.instance_variable_uses : Builder.in_use&.instance_variable_uses
+          uses&.refuse_late_unsaved_mark!(owner, labels) unless saved
           case owner
-          when Builder then owner.instance_variable_uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
+          when Builder then uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
           when Module
             name_in_module(owner, labels)
             name_in_module(owner, labels, constant: UNSAVED_NAMES_CONSTANT) unless saved
             store_chosen_names(owner, chosen) unless chosen.empty?
+            # A class reopened while a game builds: the build's cache of class names is out of date.
+            uses&.clear_class_name_cache
           else refuse_named_outside_class!(owner)
           end
           nil
+        end
+
+        def refuse_unsaved_naming_nothing!
+          raise Refused, "`game_variables saved: false` names no instance variable, so it marks nothing. To fix " \
+                         "this, name the variables on the same line, like `game_variables :busy, saved: false`." \
+                         "#{Messages::AuthorSource.at_author_line}"
         end
 
         # +names+ as instance variable labels, and the names the game chose for some of them.
@@ -527,6 +541,7 @@ module VBlank
         # A game variable just made for +owner+'s +label+: noted as made with no `var` line, and as
         # unsaved where the line naming it set `saved: false`. Kept as the instance variable's own.
         def note_made_variable(builder, variable, owner, label)
+          builder.instance_variable_uses.note_first_number(owner, label)
           variable.note_made_with_no_var_line
           variable.note_unsaved if builder.instance_variable_uses.marked_unsaved?(owner, label)
           Writes.keep_as_own(variable)
@@ -605,7 +620,35 @@ module VBlank
             @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
+            @first_numbers = {}
             @uses = {}.compare_by_identity
+          end
+
+          # A variable was just made for +owner+'s +label+, at the line running now. Recorded with
+          # that line, under the class a mark would be written in (#first_number_owner).
+          def note_first_number(owner, label)
+            @first_numbers[[first_number_owner(owner), label]] ||= Messages::AuthorSource.author_file_and_line
+          end
+
+          # `saved: false` on +labels+, written in +marker+: the game block, or a class or module. A
+          # label already given its first number has its variable made, as one a save keeps, so
+          # the mark is too late. A label already marked is left alone: the line run again. A first
+          # number recorded under a class counts where that class is +marker+ or is made from it.
+          def refuse_late_unsaved_mark!(marker, labels)
+            marking_class = marker.is_a?(Builder) ? Builder : marker
+            labels.each do |label|
+              next if marked_unsaved_by?(marker, label)
+
+              made_at = @first_numbers.find { |(made_by, made_label), _| made_label == label && made_by <= marking_class }&.last
+              refuse_late_mark!(label, made_at) if made_at
+            end
+          end
+
+          # Clear the cache of what each class names, after a class names more.
+          def clear_class_name_cache
+            @names_by_class.clear
+            @unsaved_by_class.clear
+            @chosen_by_class.clear
           end
 
           def name_on_builder(labels, chosen = {}, unsaved: [])
@@ -687,6 +730,23 @@ module VBlank
           end
 
           def use_of(owner, label) = (@uses[owner] ||= {})[label] ||= Use.new(false, nil, nil, nil)
+
+          # +owner+ is the game block or an object: the class its first numbers are recorded under.
+          def first_number_owner(owner) = owner.is_a?(Builder) ? Builder : owner.class
+
+          # Has +marker+, the game block or a class or module, marked +label+ `saved: false` already?
+          def marked_unsaved_by?(marker, label)
+            return @unsaved_on_builder.include?(label) if marker.is_a?(Builder)
+
+            InstanceVariables.names_in_module(marker, constant: UNSAVED_NAMES_CONSTANT).include?(label)
+          end
+
+          def refuse_late_mark!(label, made_at)
+            raise Refused, "`game_variables` marks `#{label}` with `saved: false` here, but `#{label}` got its first " \
+                           "number before this line (at #{made_at}). Its game variable is made already, and a save " \
+                           "keeps it. To fix this, move the mark above the line that gives `#{label}` its first " \
+                           "number.#{Messages::AuthorSource.at_author_line}"
+          end
 
           def refuse_unnamed_change!(owner, label, changed_at)
             name = label.to_s.delete_prefix("@")

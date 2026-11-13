@@ -84,7 +84,9 @@ instance variables.
   its line, those given a name of their own too (`game_variables :damage, bonus: :flash_bonus,
   saved: false`); a name marked on any line, in the class or a parent, stays marked. The mark counts
   for a variable made after the line runs, so it goes in the class's body (or, in the game block,
-  above the first `@flash = 0`), as `game_variables` always does. It works in the game block too. `saved:` takes only `true` or `false`; to name an instance variable `@saved`, write
+  above the first `@flash = 0`), as `game_variables` always does. A mark written after the variable
+  has its first number (a second line, or the class reopened) is refused, naming both lines, and so
+  is `game_variables saved: false` with no names. It works in the game block too. `saved:` takes only `true` or `false`; to name an instance variable `@saved`, write
   `game_variables({ saved: :its_name })`. Worked example:
   `test/all/vblank/builder/test_saves_keep_everything.rb`.
 - **A named value given another game value copies its number**: `@held = @states[0]`, `@best =
@@ -219,6 +221,8 @@ Each is a friendly error naming the line.
 | an instance variable nobody named that holds another part's game variable, given another game variable in game code | `game_variables :held` in the class's body: then the line copies the number |
 | two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
 | `game_variables :busy, saved: :x` (`saved:` given something but `true` or `false`) | `saved: false`, or `game_variables({ saved: :x })` to name `@saved` |
+| `game_variables :flash, saved: false` after `@flash` has its first number | the mark above that line |
+| `game_variables saved: false` with no names | the names on the same line, `game_variables :busy, saved: false` |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
