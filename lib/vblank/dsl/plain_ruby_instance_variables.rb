@@ -36,11 +36,35 @@ module VBlank
         # The constant a class keeps the variable names it chose in, as `{ :@states => :lit_state }`.
         CHOSEN_NAMES_CONSTANT = :VBLANK_GAME_VARIABLE_NAMES
 
+        # The constant a class keeps the instance variables it marks `saved: false` in, as `:@busy`.
+        UNSAVED_NAMES_CONSTANT = :VBLANK_UNSAVED_GAME_VARIABLES
+
         # `game_variables :busy, :seed`, written in a class's body, a module's, or the game block
         # (+owner+ is whichever ran it). The rewrite turns the call into this one. A Hash among
-        # +names+ (`game_variables states: :lit_state`) names an instance variable and gives its
-        # game variable a name of the game's own, which a profile and a test read it by.
-        def name_game_variables(owner, names)
+        # +names+, or the keywords left in +chosen+ (`game_variables states: :lit_state`), names an
+        # instance variable and gives its game variable a name of the game's own, which a profile
+        # and a test read it by.
+        #
+        # `saved: false` marks every instance variable on the line as scratch: a save record
+        # never keeps one, and `saves_keep_everything` passes it over. That is what a name starting
+        # with _ says for a `var`, without making the game write a second name for each.
+        def name_game_variables(owner, *names, saved: true, **chosen_by_keyword)
+          refuse_saved_not_true_or_false!(saved)
+          names += [chosen_by_keyword] unless chosen_by_keyword.empty?
+          labels, chosen = labels_and_chosen_names(names)
+          case owner
+          when Builder then owner.instance_variable_uses.name_on_builder(labels, chosen, unsaved: saved ? [] : labels)
+          when Module
+            name_in_module(owner, labels)
+            name_in_module(owner, labels, constant: UNSAVED_NAMES_CONSTANT) unless saved
+            store_chosen_names(owner, chosen) unless chosen.empty?
+          else refuse_named_outside_class!(owner)
+          end
+          nil
+        end
+
+        # +names+ as instance variable labels, and the names the game chose for some of them.
+        def labels_and_chosen_names(names)
           labels = []
           chosen = {}
           names.each do |name|
@@ -52,14 +76,16 @@ module VBlank
               chosen[label] = chosen_variable_name!(label, variable_name)
             end
           end
-          case owner
-          when Builder then owner.instance_variable_uses.name_on_builder(labels, chosen)
-          when Module
-            name_in_module(owner, labels)
-            store_chosen_names(owner, chosen) unless chosen.empty?
-          else refuse_named_outside_class!(owner)
-          end
-          nil
+          [labels, chosen]
+        end
+
+        def refuse_saved_not_true_or_false!(saved)
+          return if [true, false].include?(saved)
+
+          raise Refused, "`game_variables` takes `saved: false` or `saved: true`, and it was given " \
+                         "`saved: #{saved.inspect}`. If a save never keeps these variables, write `saved: " \
+                         "false`. To give `@saved` a name of its own, write `game_variables({ saved: " \
+                         "#{saved.inspect} })`.#{Messages::AuthorSource.at_author_line}"
         end
 
         # The name +label+'s game variable is given, `:lit_state` from `states: :lit_state`, refused
@@ -152,16 +178,17 @@ module VBlank
         # A class keeps its names in a constant, which every Ractor that builds a game can read. A
         # second line, in the body or in the class reopened, adds its names, as a second
         # `attr_reader` does; the same line run again (a file loaded twice) changes nothing.
-        def name_in_module(owner, labels)
-          if owner.const_defined?(NAMES_CONSTANT, false)
-            named = owner.const_get(NAMES_CONSTANT, false)
+        # The marks `saved: false` sets are kept the same way, in a constant of their own.
+        def name_in_module(owner, labels, constant: NAMES_CONSTANT)
+          if owner.const_defined?(constant, false)
+            named = owner.const_get(constant, false)
             labels = named | labels
             return if labels == named
 
-            owner.class_eval { remove_const(NAMES_CONSTANT) }
+            owner.class_eval { remove_const(constant) }
           end
 
-          owner.const_set(NAMES_CONSTANT, Ractor.make_shareable(labels.uniq))
+          owner.const_set(constant, Ractor.make_shareable(labels.uniq))
         end
 
         # `game_variables` in a method, `def self.setup` above all: there it would run on whatever the
@@ -216,10 +243,11 @@ module VBlank
                          "`class`.#{Messages::AuthorSource.at_author_line}"
         end
 
-        # The instance variables +holder+ and the classes and modules it is made from name.
-        def names_in_module(holder)
+        # The instance variables +holder+ and the classes and modules it is made from name (or, given
+        # UNSAVED_NAMES_CONSTANT, mark `saved: false`).
+        def names_in_module(holder, constant: NAMES_CONSTANT)
           holder.ancestors.flat_map do |each_module|
-            each_module.const_defined?(NAMES_CONSTANT, false) ? each_module.const_get(NAMES_CONSTANT, false) : []
+            each_module.const_defined?(constant, false) ? each_module.const_get(constant, false) : []
           end
         end
 
@@ -382,8 +410,7 @@ module VBlank
           builder = Builder.in_use
           suffix = key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key.to_s : "key"
           variable = builder.var(free_name_for(owner, label, :"#{base}_#{suffix}"), start)
-          variable.note_made_with_no_var_line
-          Writes.keep_as_own(variable)
+          note_made_variable(builder, variable, owner, label)
         end
 
         # What a named Hash or Array of numbers becomes: its slots are game variables, taken at keys
@@ -483,7 +510,14 @@ module VBlank
         def make_variable(owner, label, start)
           builder = Builder.in_use
           variable = builder.var(free_name_for(owner, label, variable_name(owner, label)), start)
+          note_made_variable(builder, variable, owner, label)
+        end
+
+        # A game variable just made for +owner+'s +label+: noted as made with no `var` line, and as
+        # unsaved where the line naming it set `saved: false`. Kept as the instance variable's own.
+        def note_made_variable(builder, variable, owner, label)
           variable.note_made_with_no_var_line
+          variable.note_unsaved if builder.instance_variable_uses.marked_unsaved?(owner, label)
           Writes.keep_as_own(variable)
         end
 
@@ -554,16 +588,27 @@ module VBlank
 
           def initialize
             @named_on_builder = Set.new
+            @unsaved_on_builder = Set.new
             @chosen_on_builder = {}
             @names_by_class = {}
+            @unsaved_by_class = {}
             @chosen_by_class = {}
             @makers_by_name = {}
             @uses = {}.compare_by_identity
           end
 
-          def name_on_builder(labels, chosen = {})
+          def name_on_builder(labels, chosen = {}, unsaved: [])
             @named_on_builder.merge(labels)
+            @unsaved_on_builder.merge(unsaved)
             @chosen_on_builder = InstanceVariables.merge_chosen_names(@chosen_on_builder, chosen)
+          end
+
+          # Did a line naming +owner+'s +label+ (in its class or an ancestor) set `saved: false`?
+          def marked_unsaved?(owner, label)
+            return @unsaved_on_builder.include?(label) if owner.is_a?(Builder)
+
+            (@unsaved_by_class[owner.class] ||=
+               InstanceVariables.names_in_module(owner.class, constant: UNSAVED_NAMES_CONSTANT)).include?(label)
           end
 
           # Was variable name +name+ first made for +label+ of an object of +owner+'s class (or the
@@ -650,5 +695,5 @@ end
 # reads as game code, so the method itself is only ever reached from a file that came in some other
 # way. Without it that file stops with a NoMethodError naming no fix; this names the fix instead.
 class Module
-  private def game_variables(*) = VBlank::DSL::PlainRuby::InstanceVariables.refuse_unread_file!(caller_locations(1, 1).first)
+  private def game_variables(*, **) = VBlank::DSL::PlainRuby::InstanceVariables.refuse_unread_file!(caller_locations(1, 1).first)
 end

@@ -141,7 +141,8 @@ module VBlank
       # player finds the one thing wrong. Checked here, at the end of the build, it is a
       # friendly error the day the thing is added.
       #
-      # A name that starts with _ is scratch and never needed, a `save_var` saves itself, and
+      # A name that starts with _ is scratch and never needed, and so is an instance variable a
+      # part marks with `game_variables ..., saved: false`. A `save_var` saves itself, and
       # what the framework keeps for itself (named with two underscores) is its own business.
       # A pool counts only when it is kept whole, since one field on its own leaves which
       # slots are live behind.
@@ -201,6 +202,7 @@ module VBlank
       # Why a name left out is not one the check would ever ask for.
       def except_name_reason(name)
         if scratch?(name) then "a name that starts with _ is scratch, and is never needed."
+        elsif unsaved_variable?(name) then ":#{name} is in `game_variables` with `saved: false`, so a save never keeps it."
         elsif persisted?(name) then ":#{name} is a `save_var`, which saves itself."
         elsif name == :random_numbers then "the game rolls no random numbers."
         else "the game declares no variable, list or pool with that name."
@@ -210,7 +212,9 @@ module VBlank
       # The game's own state, each name with the words that say what it is.
       def declared_state
         state = {}
-        @variables.each { |name| state[name] = "the variable :#{name}" unless scratch?(name) || persisted?(name) }
+        @variables.each do |name|
+          state[name] = "the variable :#{name}" unless scratch?(name) || unsaved_variable?(name) || persisted?(name)
+        end
         @program.walk do |node|
           state[node.name] = "the list :#{node.name}" if node.kind == :list_new && !scratch?(node.name)
         end

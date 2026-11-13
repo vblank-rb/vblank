@@ -450,12 +450,14 @@ module VBlank
         end
 
         # In a method, `def self.setup` above all, it would run on whatever the method runs on, and
-        # name nothing a game reads, so it is refused there.
+        # name nothing a game reads, so it is refused there. The arguments are passed as written,
+        # so `saved: false` arrives as a keyword and a name given as `states: :lit_state` among the
+        # rest.
         def game_variables_text(node)
           return "#{INSTANCE_VARIABLES}.refuse_named_in_method!" if @in_method
 
-          names = node.arguments ? rewritten_text(node.arguments) : ""
-          "#{INSTANCE_VARIABLES}.name_game_variables(self, [#{names}])"
+          names = node.arguments ? ", #{rewritten_text(node.arguments)}" : ""
+          "#{INSTANCE_VARIABLES}.name_game_variables(self#{names})"
         end
 
         # What each of Ruby's attribute calls makes: a reader, a writer, or both.

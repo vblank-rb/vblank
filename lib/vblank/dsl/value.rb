@@ -107,6 +107,9 @@ module VBlank
 
       def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name)
 
+      # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
+      def note_unsaved = @builder.note_unsaved_variable(@name)
+
       # Was this variable made for the instance variable holding it (see PlainRuby::Steps.reassign)?
       attr_accessor :own_to_its_name
 

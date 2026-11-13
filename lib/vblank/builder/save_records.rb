@@ -563,6 +563,11 @@ module VBlank
                                "saves itself each time it changes. To fix this, declare it with `var`, " \
                                "or leave it out of the record."
         end
+        if @port.handle.unsaved_variable?(item.name)
+          raise ArgumentError, "save_data :#{record} keeps :#{item.name}, and `game_variables` names it with " \
+                               "`saved: false`. A save never keeps a variable with that mark. To fix this, " \
+                               "remove it from the record, or move it to a `game_variables` line without `saved: false`."
+        end
         if (width = @port.handle.kept_width_of(item.name))
           raise ArgumentError, "save_data :#{record} keeps :#{item.name}, which says `width: :#{width}`. " \
                                "A save record keeps whole numbers. To fix this, remove `width:`, or leave it out of the record."

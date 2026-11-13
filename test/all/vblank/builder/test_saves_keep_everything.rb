@@ -2,6 +2,8 @@
 
 require "test_helper"
 
+VBlank.require_game_file "../../../fixtures/game_with_working_variables/screen_flash"
+
 # SAVES KEEP EVERYTHING: a game that saves in the middle of play says so once, and the build
 # refuses a cartridge where some of the game's own state is kept by no save_data record — a
 # forgotten `keep` becomes a friendly error at build time instead of a load that quietly puts
@@ -139,6 +141,70 @@ class TestSavesKeepEverything < Minitest::Test
 
   def test_a_game_with_no_record_is_a_friendly_error
     assert_match(/declares no save_data record/, refused { var :hearts, 3; saves_keep_everything })
+  end
+
+  # WORKING ROOM A PART MARKS. `game_variables ..., saved: false` says a save never keeps those
+  # instance variables, so the check passes them over, with no name of their own starting _.
+  private def flash_game(part, tick, except: [])
+    builder = Builder.new
+    builder.instance_eval do
+      hearts = var :hearts, 3
+      part.new(self)
+      save_data(:file) { keep hearts }
+      saves_keep_everything(except:)
+      game_loop { call tick }
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_working_variables_a_part_marks_unsaved_build_and_are_read_by_their_usual_names
+    player = game_player
+    player.run(flash_game(ScreenFlash, :screen_flash_tick), frames: 3)
+
+    assert_equal [3, 4], [player[:screen_flash_damage], player[:flash_bonus]]
+  end
+
+  # The game block names its own instance variables the same way, and marks them the same way.
+  def test_working_variables_the_game_block_marks_unsaved_build
+    builder = Builder.new
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc do
+      game_variables :hearts
+      game_variables :flash, saved: false
+      @hearts = 3
+      @flash = 0
+      save_data(:file).keep(@hearts)
+      saves_keep_everything
+      game_loop { @flash += 1 }
+    end))
+    builder.finalize_program
+    player = game_player
+    player.run(builder.program, frames: 2)
+
+    assert_equal [3, 2], [player[:hearts], player[:flash]]
+  end
+
+  def test_the_same_working_variables_unmarked_are_refused
+    message = assert_raises(ArgumentError) { flash_game(UnmarkedScreenFlash, :unmarked_screen_flash_tick) }.message
+
+    assert_match(/no save_data record keeps/, message)
+    assert_match(/:unmarked_screen_flash_damage/, message)
+  end
+
+  def test_a_record_keeping_a_variable_marked_unsaved_is_a_friendly_error
+    message = assert_raises(ArgumentError) { flash_game(KeptScreenFlash, :kept_screen_flash_tick) }.message
+
+    assert_match(/save_data :flash keeps :kept_screen_flash_damage/, message)
+    assert_match(/saved: false/, message)
+  end
+
+  def test_leaving_out_a_variable_marked_unsaved_is_a_friendly_error
+    message = assert_raises(ArgumentError) do
+      flash_game(ScreenFlash, :screen_flash_tick, except: [:flash_bonus])
+    end.message
+
+    assert_match(/leaves out :flash_bonus/, message)
+    assert_match(/saved: false/, message)
   end
 
   def test_saying_it_twice_is_a_friendly_error

@@ -2773,6 +2773,15 @@ class TestPlainRuby < Minitest::Test
     assert_match(/`@score` and `@best` the same variable name/, error.message)
   end
 
+  def test_saved_given_something_but_true_or_false_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played { game_variables :score, saved: :points }
+    end
+
+    assert_match(/takes `saved: false` or `saved: true`/, error.message)
+    assert_match(/game_variables\(\{ saved: :points \}\)/, error.message)
+  end
+
   def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
       played do
