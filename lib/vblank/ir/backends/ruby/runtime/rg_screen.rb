@@ -1183,9 +1183,11 @@ end
 
 def rg_visit_mixes(name, mixes)
   values = rg_state_numbers(name, [*mixes.is_mixed, *mixes.tops, *mixes.unders])
-  mixes.is_mixed.replace(values[0, RG_SCREEN_CELLS])
-  mixes.tops.replace(values[RG_SCREEN_CELLS, RG_SCREEN_CELLS])
-  mixes.unders.replace(values[2 * RG_SCREEN_CELLS, RG_SCREEN_CELLS])
+  # Copied in rather than replaced with a slice, which would share the slice's storage (see
+  # rg_row_has_mixed_cell?).
+  mixes.is_mixed[0, RG_SCREEN_CELLS] = values[0, RG_SCREEN_CELLS]
+  mixes.tops[0, RG_SCREEN_CELLS] = values[RG_SCREEN_CELLS, RG_SCREEN_CELLS]
+  mixes.unders[0, RG_SCREEN_CELLS] = values[2 * RG_SCREEN_CELLS, RG_SCREEN_CELLS]
 end
 
 # How many areas are open around the one in force, then that one, then each open around it, the

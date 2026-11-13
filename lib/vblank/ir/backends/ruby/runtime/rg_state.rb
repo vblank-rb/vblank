@@ -145,10 +145,13 @@ def rg_state_field_named(name, count)
   numbers
 end
 
-# A field of the numbers in the Array +values+: written, or replaced by what the image holds.
+# A field of the numbers in the Array +values+: written, or replaced by what the image holds. The
+# numbers are copied in (Array#[]=) rather than handed over with Array#replace, which would leave
+# +values+ sharing the image's storage: the game's next write to it, a picture's page among them,
+# would then copy the whole of it first.
 def rg_state_numbers(name, values)
   if @rg_state_image
-    values.replace(rg_state_field_named(name, values.length))
+    values[0, values.length] = rg_state_field_named(name, values.length)
   else
     @rg_state_lines << "#{name}\t#{[values.length, *rg_state_words(values)].join(" ")}\n"
   end
