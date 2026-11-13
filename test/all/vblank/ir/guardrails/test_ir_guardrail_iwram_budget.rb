@@ -239,6 +239,51 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     refute_includes err.string, "`filler0`"
   end
 
+  # A game a few words short of the Color's memory, whose loop reads 64 items that a method moves
+  # past before they are used: each keeps the number of its line in a copy, as Ruby's does, and
+  # those copies run the game out. The error names the line, what its copies cost, and how to
+  # write the Ruby so it needs none. The same game reading each item after the move fits.
+  def test_running_out_of_memory_through_copies_names_their_line_and_the_change_that_needs_none
+    fillers = (VBlank::Console::COLOR.free_work_memory_bytes / Budget::WORD) - 40
+    err = StringIO.new
+    assert_raises(VBlank::ROMError) do
+      VBlank.build("COPIES", console: :gbc, out: StringIO.new, err: err) do
+        def bump(place) = place.increase!(1)
+        packed = table :packed, [10, 20, 30], width: :byte
+        at = var :at, 0
+        total = var :total, 0
+        fillers.times { |i| var :"filler#{i}", 0 }
+        game_loop do
+          64.times do
+            flags = packed[at]
+            bump(at)
+            total += flags
+          end
+        end
+      end
+    end
+
+    copy_line = "test_ir_guardrail_iwram_budget.rb:#{__LINE__ - 8}"
+    assert_includes err.string, "64 are copies (256B)"
+    assert_includes err.string, "#{copy_line} (256B)"
+    assert_includes err.string, "read the name before"
+    refute_includes err.string, "`var`."
+
+    VBlank.build("NO COPIES", console: :gbc, out: StringIO.new, err: StringIO.new) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      total = var :total, 0
+      fillers.times { |i| var :"filler#{i}", 0 }
+      game_loop do
+        64.times do
+          bump(at)
+          total += packed[at]
+        end
+      end
+    end
+  end
+
   def test_a_color_program_within_the_colors_memory_is_not_flagged
     prog = program(
       screen(:tiled),

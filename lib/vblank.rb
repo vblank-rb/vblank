@@ -198,7 +198,7 @@ module VBlank
     if evaluated.debug_halted?
       IR::ProgramChecks.refuse_malformed!(program, progress: progress)
     else
-      made = [evaluated.variables_with_no_var_line, evaluated.hidden_variable_notes.length]
+      made = [evaluated.variables_with_no_var_line, evaluated.hidden_variable_notes]
       told_checks = IR::Guardrails.default_checks.map { |check| check.respond_to?(:told_of) ? check.told_of(*made) : check }
       checks = told_checks + evaluated.game_pack_checks +
                [IR::Guardrails::Checks::OrphanedCondition.new(evaluated.unused_conditions),

@@ -50,17 +50,26 @@ module VBlank
           # How many names of variables made with no `var` line to give.
           NAMES_SHOWN = 6
 
+          # How many lines of the game's that keep a copy of a name's number to give, most first.
+          COPY_LINES_SHOWN = 5
+
+          # How to write the Ruby so a name needs no copy, here and in the profile
+          # (Diagnostics::HiddenVariables).
+          COPY_ADVICE = "To need no copy, read the name before the line that changes the number. Or, after the " \
+                        "call that changes it, read the number again."
+
           # +made_names+ are the variables that came from no line of the author's, names normal
-          # Ruby made variables of, and +hidden_count+ how many hidden ones (#told_of).
-          def initialize(made_names: [], hidden_count: 0)
+          # Ruby made variables of, and +hidden_notes+ the hidden ones (Builder#hidden_variable_notes,
+          # #told_of), each with the game's line that made it.
+          def initialize(made_names: [], hidden_notes: [])
             @made_names = made_names
-            @hidden_count = hidden_count
+            @hidden_notes = hidden_notes
           end
 
           # The same check, knowing which variables came from no line of the author's. A game can
           # fill the memory with variables it never declared, and "2205 variables" would not help
           # it look.
-          def told_of(names, hidden) = self.class.new(made_names: names, hidden_count: hidden)
+          def told_of(names, hidden_notes) = self.class.new(made_names: names, hidden_notes: hidden_notes)
 
           def detect(program)
             console = program.described_console
@@ -189,14 +198,31 @@ module VBlank
           # What the author can look for, since no line of theirs writes `var` for these.
           def made_variables_message
             names = @made_names.to_a
-            hidden = @hidden_count.to_i
+            hidden = @hidden_notes.length
             return "" if names.empty? && hidden.zero?
 
             shown = names.first(NAMES_SHOWN).map { |name| "`#{name}`" }.join(", ")
             more = names.length > NAMES_SHOWN ? " and #{names.length - NAMES_SHOWN} more" : ""
             made = names.empty? ? "" : " These names are variables with no `var` line: #{shown}#{more}."
             kept = hidden.zero? ? "" : " The build also made #{pluralize(hidden, 'hidden variable')}."
-            "#{made}#{kept}"
+            "#{made}#{kept}#{copies_message}"
+          end
+
+          # The copies plain Ruby takes (PlainRuby::Steps.kept_answer): a local given a game value
+          # keeps the number of its line, as Ruby's does, in a hidden variable of its own wherever
+          # the game can change that number before the local is read. Named by the game's own file
+          # and line, with what each costs, and the change to the Ruby that needs none.
+          def copies_message
+            lines = @hidden_notes.select { |note| note.why == :copy }.group_by(&:source)
+            return "" if lines.empty?
+
+            count = lines.values.sum(&:length)
+            shown = lines.sort_by { |_, copies| -copies.length }.first(COPY_LINES_SHOWN)
+                         .map { |source, copies| "#{source ? File.basename(source) : 'the library'} (#{human_size(copies.length * WORD)})" }
+            more = lines.length > COPY_LINES_SHOWN ? ", and #{lines.length - COPY_LINES_SHOWN} more lines" : ""
+            " Of these, #{count} are copies (#{human_size(count * WORD)}): a name keeps the number it got on its line, " \
+              "as in Ruby. #{shown.join(', ')}#{more}. The game can change that number before it reads the name. " \
+              "#{COPY_ADVICE}"
           end
 
           # What memory the console has, said the way that console has it: two memories, or one.
