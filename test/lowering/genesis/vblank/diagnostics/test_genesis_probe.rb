@@ -82,6 +82,24 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
+  # The vertical scroll memory is handed over high byte first, as the other memories are: a field
+  # whose view is moved five pixels down reads as the word 5, not 0x0500.
+  def test_the_scroll_memory_reads_high_byte_first
+    built = VBlank.build("SCROLLED", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      field = background :field, tiles: :set, map: Array.new(32) { "." * 40 }
+      field.scroll_to(0, 5)
+      game_loop {}
+    end
+    verifier = VBlank::Diagnostics::Verifier.new(built, frames: FRAMES)
+
+    assert_equal 5, verifier.scroll_ram.unpack1("n")
+  ensure
+    verifier&.close
+  end
+
   # The 68000 reads a word or a long word at any even address, so a game keeps long words at
   # addresses that are not a multiple of four; an odd address stops the processor and is refused.
   def test_a_long_word_reads_at_any_even_address_and_not_at_an_odd_one

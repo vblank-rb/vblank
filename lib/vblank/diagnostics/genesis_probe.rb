@@ -82,9 +82,10 @@ module VBlank
 
       # What only the Genesis has (GenesisReading): the square voices' and the noise voice's
       # registers (RubyGenesisEmulator::Core#psg_registers), the vertical scroll memory (80 bytes, two
-      # for each pair of columns), and the video chip's 24 registers, a byte each.
+      # for each pair of columns, high byte first like the memories above; the core keeps it low byte
+      # first), and the video chip's 24 registers, a byte each.
       def square_voice_registers = @core.psg_registers
-      def scroll_ram = @core.vsram
+      def scroll_ram = @core.vsram.unpack("v*").pack("n*")
       def video_registers = @core.vdp_registers.pack("C*")
 
       # Genesis Plus GX here mixes every voice together and draws every layer together.
