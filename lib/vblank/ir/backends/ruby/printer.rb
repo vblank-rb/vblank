@@ -69,6 +69,19 @@ module VBlank
           PACKING = Ractor.make_shareable({ "int8_t" => "c*", "uint8_t" => "C*", "char" => "C*",
                                             "int16_t" => "s<*", "uint16_t" => "S<*", "int32_t" => "l<*" })
 
+          # The runtime's tables that grow with a game's art and sound, kept as binary Strings
+          # rather than Arrays where the game never writes them (see "THE GAME'S ART AND SOUND" in
+          # runtime/rg_runtime.rb): a full collection reads every slot of an Array, and these are
+          # millions. The runtime reads each only by one index at a time (or through the methods
+          # its classes add), which a String of that class answers as an Array does. A game's own
+          # tables stay Arrays: the runtime's routines that are handed one read it as an Array.
+          KEPT_AS_BYTES = Ractor.make_shareable(Set["rg_game_image_pixels", "rg_game_tile_pixels", "rg_game_map_cells",
+                                                    "rg_game_music", "rg_game_recording_samples"])
+
+          # The runtime's class for a table of KEPT_AS_BYTES, by the C type it is kept in.
+          BYTES_CLASS = Ractor.make_shareable({ "int8_t" => "RgSignedBytes", "uint8_t" => "RgBytes", "int16_t" => "RgSignedHalves",
+                                                "uint16_t" => "RgHalves", "int32_t" => "RgWords" })
+
           # The most branches one printed method holds (#branches_in counts them), well inside what
           # a Ractor's stack compiles (see the class's heading).
           MOST_BRANCHES_A_METHOD = 3_000
@@ -199,7 +212,9 @@ module VBlank
             values = item.values.map { |value| integer(value) }
             name = "@#{item.name.text}"
             frozen = item.writable ? "" : ".freeze"
-            if values.size > MOST_WRITTEN_AS_NUMBERS
+            if !item.writable && KEPT_AS_BYTES.include?(item.name.text)
+              print_table_of_bytes(item)
+            elsif values.size > MOST_WRITTEN_AS_NUMBERS
               packing = PACKING.fetch(item.type) { raise LoweringError, "the printer has no packing for C's #{item.type}" }
               bytes = [item.values.pack(packing)].pack("m0")
               add_starting_value("#{name} = #{string(bytes)}.unpack1(\"m\").unpack(#{string(packing)})#{frozen}")
@@ -209,6 +224,15 @@ module VBlank
               rows = values.each_slice(16).map { |row| "#{INDENT * 2}#{row.join(', ')},\n" }.join
               @setup << "#{INDENT}#{name} = [\n#{rows}#{INDENT}]#{frozen}\n"
             end
+          end
+
+          # A table of KEPT_AS_BYTES: its bytes in base64, held as the runtime's class for its type.
+          # An empty one holds one entry, nought, as an empty table written as numbers does.
+          def print_table_of_bytes(item)
+            kept_as = BYTES_CLASS.fetch(item.type) { raise LoweringError, "the printer cannot keep C's #{item.type} as bytes" }
+            values = item.values.empty? ? [0] : item.values
+            bytes = [values.pack(PACKING.fetch(item.type))].pack("m0")
+            add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\")).freeze")
           end
 
           # An array the start file fills (Statements::StartFileArray): its size alone, zeros until the runtime

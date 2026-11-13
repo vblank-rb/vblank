@@ -259,6 +259,9 @@ RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 class RgBytes < String
   def initialize(count) = super("\0".b * count)
 
+  # The table holding +bytes+, a binary String, one entry a byte.
+  def self.of(bytes) = allocate.replace(bytes)
+
   alias [] getbyte
   alias []= setbyte
 end
@@ -267,6 +270,121 @@ class RgSignedBytes < RgBytes
   def [](index)
     byte = getbyte(index)
     byte && byte >= 0x80 ? byte - 0x100 : byte
+  end
+end
+
+# THE GAME'S ART AND SOUND ARE KEPT AS BYTES TOO: its pictures' and tiles' pixels, its maps' cells,
+# its songs' notes and its recordings' samples (Printer::KEPT_AS_BYTES), each a binary String in
+# the width the table is kept in, low byte first. A game's art is millions of numbers, and Ruby's
+# garbage collector, whenever it marks everything, reads every slot of every Array: held as Arrays
+# they made each such collection several frames long. A String is one object, whose bytes the
+# collector never reads. A read is a method of a few byte reads, several times what an Array's read
+# costs once YJIT has compiled both, so the loop that reads the most of them, painting a
+# background, reads a tile's pixels from an Array they are copied into (RgHalves#cached_at).
+#
+# Sixteen bits an entry, unsigned (a tile's pixel, RG_SEE_THROUGH being 0xFFFF). A write keeps the
+# low sixteen bits, as the C's table does; a table is written only once the runtime has put an
+# unfrozen copy in place of the game's (the start file filling pixels, a background's tiles
+# following a list).
+class RgHalves < String
+  # The most entries #cached_at keeps: the pixels of more tiles than a screen of backgrounds shows
+  # at once, few enough that the one Array holding them costs a collection little.
+  MOST_CACHED = 262_144
+
+  # The cached entries, run after run, in one Array (#cached_at says where each run starts).
+  attr_reader :cache
+
+  # The table holding +bytes+, a binary String, two bytes an entry.
+  def self.of(bytes) = allocate.replace(bytes).start_cache
+
+  # A copy (String#dup, before the runtime writes the game's table) has a cache of its own.
+  def initialize_copy(other)
+    super
+    start_cache
+  end
+
+  def [](index)
+    at = index << 1
+    getbyte(at) | (getbyte(at + 1) << 8)
+  end
+
+  def []=(index, value)
+    at = index << 1
+    setbyte(at, value & 0xFF)
+    setbyte(at + 1, (value >> 8) & 0xFF)
+    forget_cached_entries unless @cached.empty?
+  end
+
+  # +count+ entries from +index+ on, as an Array of their numbers.
+  def entries(index, count) = Array.new(count) { |i| self[index + i] }
+
+  # Where in #cache the +count+ entries from +index+ on are, copied there the first time they are
+  # asked for and kept until the table is written: a tile's pixels, read by the screen's loops as
+  # an Array's. Emptied when it would hold more than MOST_CACHED, so a game showing ever more tiles
+  # keeps no more than that.
+  def cached_at(index, count)
+    key = (index << 16) | count # a run is a tile's pixels, far fewer than 65536
+    at = @cached[key]
+    return at if at
+
+    forget_cached_entries if @cache.length + count > MOST_CACHED
+    at = @cache.length
+    i = 0
+    while i < count
+      @cache << self[index + i]
+      i += 1
+    end
+    @cached[key] = at
+  end
+
+  # The cached entries are copied from the table again on their next read. Emptied in place: the
+  # game's table is frozen, so what it holds can change but not which objects.
+  def forget_cached_entries
+    @cached.clear
+    @cache.clear
+  end
+
+  # A cache of no entries, for a table just made: #forget_cached_entries empties it.
+  def start_cache
+    @cached = {}
+    @cache = []
+    self
+  end
+
+  # The bytes of +count+ entries from +index+ on, and putting such bytes in from +index+ on.
+  def entry_bytes(index, count) = byteslice(index << 1, count << 1)
+
+  # Only the cached runs it overlaps are made again: a background's tiles follow a list a tile at
+  # a time, and the rest of the screen's tiles stay as they were.
+  def put_entry_bytes(index, bytes)
+    bytesplice(index << 1, bytes.bytesize, bytes)
+    past = index + (bytes.bytesize >> 1)
+    @cached.delete_if { |key, _| (key >> 16) < past && (key >> 16) + (key & 0xFFFF) > index }
+  end
+
+  # A table of +total+ entries, the first +held+ of them this one's and the rest +fill+.
+  def grown(held, total, fill) = self.class.of(byteslice(0, held << 1) + ([fill].pack("v") * (total - held)))
+end
+
+# Sixteen bits an entry, signed (an image's pixel, RG_NOT_DRAWN being -1; a map's cell).
+class RgSignedHalves < RgHalves
+  def [](index)
+    at = index << 1
+    half = getbyte(at) | (getbyte(at + 1) << 8)
+    half >= 0x8000 ? half - 0x10000 : half
+  end
+end
+
+# Thirty-two bits an entry, signed (a song's notes). Never written: a table of words the start file
+# fills is written by the game unfrozen, an Array.
+class RgWords < String
+  # The table holding +bytes+, a binary String, four bytes an entry.
+  def self.of(bytes) = allocate.replace(bytes)
+
+  def [](index)
+    at = index << 2
+    word = getbyte(at) | (getbyte(at + 1) << 8) | (getbyte(at + 2) << 16) | (getbyte(at + 3) << 24)
+    word >= 0x8000_0000 ? word - 0x1_0000_0000 : word
   end
 end
 
@@ -594,18 +712,19 @@ end
 # background (rg_runtime.h, rg_start_file_put_tile_pixels).
 def rg_start_file_put_tile_pixels(_total, start, count, pixels)
   @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
-  @rg_game_tile_pixels[start, count] = pixels.first(count)
+  table = @rg_game_tile_pixels
+  count.times { |i| table[start + i] = pixels[i] }
 end
 
 # The pixels made +total+ long where the game holds the first +held+: room for what the file fills
 # whole, which the game is written without (rg_screen.h, rg_screen_tile_pixels_room and
 # rg_screen_image_pixels_room). Unfrozen, as a fill's copy is.
 def rg_screen_tile_pixels_room(total, held)
-  @rg_game_tile_pixels = @rg_game_tile_pixels.first(held) + Array.new(total - held, RG_SEE_THROUGH)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.grown(held, total, RG_SEE_THROUGH)
 end
 
 def rg_screen_image_pixels_room(total, held)
-  @rg_game_image_pixels = @rg_game_image_pixels.first(held) + Array.new(total - held, RG_NOT_DRAWN)
+  @rg_game_image_pixels = @rg_game_image_pixels.grown(held, total, RG_NOT_DRAWN)
 end
 
 # How String#unpack reads the cells of a map in the file: a byte each (a map of tile numbers), two

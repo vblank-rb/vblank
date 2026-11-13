@@ -163,7 +163,7 @@ def rg_copy_map(background, which)
   map = rg_map_entry(up, which)
   count = @rg_game_maps[map + RG_MAP_COLS] * @rg_game_maps[map + RG_MAP_ROWS]
   first = @rg_game_maps[map + RG_MAP_CELLS]
-  @rg_cells_now[rg_keeper_of(background)] = [which, @rg_game_map_cells[first, count], up]
+  @rg_cells_now[rg_keeper_of(background)] = [which, @rg_game_map_cells.entries(first, count), up]
 end
 
 # Each background with the name is drawn from its own first map again, as declared.
@@ -538,11 +538,11 @@ def rg_background_follow(rules, set)
   changed = false
   rules[2].times do |i|
     to = start + (rules[3 + i] * tile_size)
-    wanted = @rg_game_tile_pixels[to + (set * set_size), tile_size]
-    next if @rg_game_tile_pixels[to, tile_size] == wanted
+    wanted = @rg_game_tile_pixels.entry_bytes(to + (set * set_size), tile_size)
+    next if @rg_game_tile_pixels.entry_bytes(to, tile_size) == wanted
 
     @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
-    @rg_game_tile_pixels[to, tile_size] = wanted
+    @rg_game_tile_pixels.put_entry_bytes(to, wanted)
     changed = true
   end
   rg_request_repaint if changed
@@ -649,15 +649,27 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
   return if row >= @rg_game_maps[map + RG_MAP_ROWS]
 
   own = @rg_cells_now[keeper][1]
-  cells = own || @rg_game_map_cells
-  first = (own ? 0 : @rg_game_maps[map + RG_MAP_CELLS]) + (row * cols)
+  if own
+    cells = own
+    first = row * cols
+  else
+    # The map's row read from the Array it is cached in, as a tile's pixels are (RgHalves#cached_at).
+    map_cells = @rg_game_map_cells
+    first = map_cells.cached_at(@rg_game_maps[map + RG_MAP_CELLS] + (row * cols), cols)
+    cells = map_cells.cache
+  end
   ty = my % tile_h
   tile_size = tile_w * tile_h
   set_start = rg_background_field(background, RG_BG_TILES_START) +
-              (rg_tile_set_now(background) * rg_background_field(background, RG_BG_TILES) * tile_size) + (ty * tile_w)
+              (rg_tile_set_now(background) * rg_background_field(background, RG_BG_TILES) * tile_size)
+  row_in_tile = ty * tile_w
   painted = rg_background_field(background, RG_BG_PAINTED)
   painted_tiles = @rg_game_painted_tiles
   pixels = @rg_game_tile_pixels
+  cached_cell = RG_CELL_EMPTY # the cell whose tile starts at tile_at in cache
+  tile_at = 0
+  cache = nil
+  from = 0
   sheet = @rg_onto_sheet ? @rg_sheet : nil
   sheet_row = py * RG_SCREEN_WIDTH
   # With no fade painted in and no see-through layer being mixed, rg_lay_scenery comes to storing
@@ -686,10 +698,20 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
     cell = col < cols ? cells[first + col] : RG_CELL_EMPTY
     if cell >= 0
       slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
-      from = set_start + (cell * tile_size) + tx
+      # The tile's pixels read from the Array they are cached in (RgHalves#cached_at): reading each
+      # from the table's bytes was most of what painting a background cost. The same tile as the
+      # one before it is where it was.
+      unless slow
+        if cell != cached_cell
+          tile_at = pixels.cached_at(set_start + (cell * tile_size), tile_size)
+          cache = pixels.cache
+          cached_cell = cell
+        end
+        from = tile_at + row_in_tile + tx
+      end
       i = 0
       while i < run
-        color = slow ? rg_tile_pixel(background, cell, tx + i, ty) : pixels[from + i]
+        color = slow ? rg_tile_pixel(background, cell, tx + i, ty) : cache[from + i]
         if color != RG_SEE_THROUGH
           at = sheet_row + px + i
           if sheet
@@ -776,6 +798,7 @@ def rg_paint_turned_window(background)
     last_col = -1
     cell = RG_CELL_EMPTY
     start = 0
+    cache = nil
     slow = false
     px = 0
     while px < RG_SCREEN_WIDTH
@@ -789,13 +812,14 @@ def rg_paint_turned_window(background)
         cell = row < rows && col < cols ? cells[first + (row * cols) + col] : RG_CELL_EMPTY
         if cell >= 0
           slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
-          start = set_start + (cell * tile_size)
+          start = slow ? 0 : pixels.cached_at(set_start + (cell * tile_size), tile_size) # as rg_paint_map_row reads it
+          cache = pixels.cache
         end
       end
       if cell >= 0
         tx = mx % tile_w
         ty = my % tile_h
-        color = slow ? rg_tile_pixel(background, cell, tx, ty) : pixels[start + (ty * tile_w) + tx]
+        color = slow ? rg_tile_pixel(background, cell, tx, ty) : cache[start + (ty * tile_w) + tx]
         if color != RG_SEE_THROUGH
           if sheet
             sheet[(py * RG_SCREEN_WIDTH) + px] = color
