@@ -533,9 +533,11 @@ module PackSoundTests
     b.program
   end
 
+  # Each is played on a frame of its own, both short of a frame, since a console that sounds one
+  # recording at a time (the Color, the Genesis) drops a play while another sounds.
   def test_a_16_bit_recording_beside_one_read_as_the_game_starts_sounds_as_all_in_one
     Dir.mktmpdir do |folder|
-      presses = ->(frame) { { 1 => [:a, :b] }.fetch(frame, []) }
+      presses = ->(frame) { { 1 => [:a], 3 => [:b] }.fetch(frame, []) }
       wanted = game_player.input_each_frame(&presses).run(full_depth_beside_pack_game(folder), frames: 6)
       left_out = full_depth_beside_pack_game(folder, options: PACK_AT_START)
       heard = game_player.hand_file(sound_pack_file).input_each_frame(&presses).run(left_out, frames: 6)
@@ -676,7 +678,6 @@ module PackSoundTests
   private def assert_brr_sounds_as(folder, bytes, loop_point, by_hand, why)
     whole = brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new)
     left_out = brr_game(folder, bytes, loop_point: loop_point, options: PACK_AT_START).program
-    return assert_console_refuses(left_out, whole.made_data_pack_file) unless console_mixes_recordings?
 
     wanted = game_player.run(brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new,
                                                      by_hand: by_hand).program, frames: BRR_FRAMES)
