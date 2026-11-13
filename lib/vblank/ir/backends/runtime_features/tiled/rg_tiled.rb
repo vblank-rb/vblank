@@ -633,7 +633,13 @@ end
 # rg_paint_turned_window asks; and the plain pixel it lays is rg_lay_scenery's. A change to how
 # cells, tile sets or a laid pixel are kept changes those three places too. The checked run holds
 # all of it to the interpreter, pixel for pixel.
+#
+# While a background is held to a box (@rg_clip, see rg_paint_scenery_in_box), a row outside the box
+# is not painted and a row inside it only from the box's left column to its right.
 def rg_paint_map_row(background, my, off_x, wrap_w, py)
+  clip = @rg_clip
+  return if clip && (py < clip[1] || py >= clip[3])
+
   tile_w = rg_background_field(background, RG_BG_TILE_W)
   tile_h = rg_background_field(background, RG_BG_TILE_H)
   keeper = rg_keeper_of(background)
@@ -663,9 +669,10 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
   without_sprites = rg_sprites_seen_through? ? @rg_picture_without_sprites : nil
   # A tile's width of the row at a time: the screen pixels from px that show one tile's row, which
   # end at the tile's right edge or the screen's. Where the map wraps it wraps at a whole number of
-  # tiles, so a tile is never cut by the wrap.
-  px = 0
-  while px < RG_SCREEN_WIDTH
+  # tiles, so a tile is never cut by the wrap. A box cuts the row's first and last tiles.
+  px = clip ? clip[0] : 0
+  past = clip ? clip[2] : RG_SCREEN_WIDTH
+  while px < past
     mx = off_x + px
     mx %= wrap_w if wrap_w
     if mx < 0 # only where the map does not wrap: nothing until the map's left edge
@@ -675,7 +682,7 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
     col = mx / tile_w
     tx = mx - (col * tile_w)
     run = tile_w - tx
-    run = RG_SCREEN_WIDTH - px if run > RG_SCREEN_WIDTH - px
+    run = past - px if run > past - px
     cell = col < cols ? cells[first + col] : RG_CELL_EMPTY
     if cell >= 0
       slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
@@ -852,7 +859,23 @@ end
 
 # Reference#paint_scenery_in_box: a background held to a box goes onto the sheet as it would onto
 # the picture, and only its pixels inside the box are laid on the picture.
+#
+# A background that does not turn is painted a row at a time (rg_paint_map_row), so it is painted
+# straight onto the picture, each row held to the box (@rg_clip): what lands is what the sheet would
+# have laid, pixel for pixel, with no sheet to fill and no method called for each pixel. That is
+# most of a pass for a stage under a bar shown alone above a row, which holds the stage to the rows
+# below it. A turned background is painted a pixel at a time, through the sheet.
 def rg_paint_scenery_in_box(background, box)
+  unless @rg_turns[rg_keeper_of(background)].turned
+    @rg_clip = box
+    begin
+      rg_paint_window(background)
+    ensure
+      @rg_clip = nil
+    end
+    return
+  end
+
   left, top, right, bottom = box
   @rg_sheet.fill(RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = true
@@ -907,6 +930,9 @@ def rg_tiled_setup
   @rg_sheet = Array.new(RG_SCREEN_CELLS, RG_NOTHING_ON_SHEET)
   @rg_onto_sheet = false
   @rg_rows_tall = 1
+  # The box a background held to one is painted inside, [left, top, right, bottom], while it is
+  # painted straight onto the picture (rg_paint_scenery_in_box); nil otherwise.
+  @rg_clip = nil
   @rg_shown_backgrounds = []
   # What the game does to a background, kept by the entry that keeps its NAME (rg_keeper_of): the
   # map its cells hold now, the run's own copy of them and the entry whose map that is (Reference
