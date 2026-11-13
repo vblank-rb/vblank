@@ -220,12 +220,18 @@ module VBlank
         # The game built with one set of its sprites' pictures (#build), or nil where that does not
         # apply or does not fit, which leaves the other ways of fitting it to be tried, once, and with
         # nothing the attempt found to say.
+        #
+        # Backgrounds over their sets of colours are refused here, as this try found them. The other
+        # tries change only how the sprites are kept, so each would fail too, and the last would
+        # report the sprites instead.
         def build_with_one_sprite_tile_set(program, title, choices, lowering)
           return nil if choices[:one_sprite_tile_set] || @one_sprite_tile_set_failed || !lowering.sprites_draw_with_lists?
 
           said = findings.length
           begin
             build(program, title: title, **choices, one_sprite_tile_set: true)
+          rescue Art::BackgroundColorsFull
+            raise
           rescue Art::TooMuch, Lowering::NotMadeYet
             @one_sprite_tile_set_failed = true
             findings.slice!(said..)

@@ -80,4 +80,41 @@ class TestSNESSceneColors < Minitest::Test
     assert_match(/scene :crowded/, error.message)
     assert_match(/fewer colours/, error.message)
   end
+
+  CRAFT_IMAGES = 24
+
+  # A stage whose arena takes all eight sets of background colours and whose bar walks a list of its
+  # own up from black, which needs a ninth, beside sprites that fit their tiles only as one set of
+  # pictures worn in another list. The sprites are laid out before the bar's walk, so the backgrounds
+  # run out only in the build that fits the sprites, and that is what the game is told.
+  def test_backgrounds_over_their_sets_beside_worn_sprites_are_refused_naming_the_backgrounds
+    places = Array.new(CRAFT_IMAGES) { |n| Random.new(n).then { |rng| Array.new(32 * 32) { rng.rand(2) } } }
+    error = assert_raises(VBlank::BuildError) do
+      VBlank.build("HELDNINE", console: :snes, out: StringIO.new, err: StringIO.new) do
+        screen :tiled
+        layers :scenery, :craft, :bar
+        arena_row = SceneColorLists.declare(self, :arena, (0...8).to_a)
+        bar_row = SceneColorLists.declare(self, :bar, [20])
+        colors :hero, %i[transparent white red]
+        colors :hurt, %i[transparent yellow blue]
+        CRAFT_IMAGES.times { |n| image(:"craft_#{n}", width: 32, height: 32, colors: :hero, places: places.fetch(n)) }
+        var :state, 0
+        walk = var :walk, 0
+        scene(:stage) do
+          layer(:scenery) { background :arena, tiles: :arena, map: [arena_row] }
+          layer(:craft) { CRAFT_IMAGES.times { |n| sprite(:"craft_#{n}", at: [(n % 6) * 36, 40 + ((n / 6) * 34)]).draw_with :hurt } }
+          layer(:bar) do
+            bar = background :bar, tiles: :bar, map: [bar_row]
+            bar.draw_with({ bar_list20: color_walk(:bar_list20, from: :black) }, showing: walk)
+          end
+        end
+        game_loop do
+          walk += 1
+          case_var(:state) { when_val 0, :stage }
+        end
+      end
+    end
+
+    assert_match(/backgrounds of the scene :stage hold more lists of colours/, error.message)
+  end
 end

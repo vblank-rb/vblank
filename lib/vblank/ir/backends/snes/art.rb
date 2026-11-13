@@ -132,6 +132,11 @@ module VBlank
           # short lists one background changes share a set (+shared_held_lists+, #held_palette).
           class TooManyHeldBackgroundLists < TooMuch; end
 
+          # A screen's backgrounds need more sets of colours than eight with every way of fitting
+          # them tried. Nothing a try for the sprites changes can help, so such a try passes it on
+          # (SNES#build_with_one_sprite_tile_set) rather than leaving a later one to fail on sprites.
+          class BackgroundColorsFull < TooMuch; end
+
           # A background on the third layer, a status bar or one held above a row, whose art does not
           # fit four-colour tiles. Nothing a second build tries can help, so it is not one of TooMuch.
           class ThirdLayerArtTooColorful < LoweringError; end
@@ -773,7 +778,7 @@ module VBlank
             return TooManyBackgroundColors if palettes.equal?(@background_palettes) && !@screen_colors
             return TooManyHeldBackgroundLists if !@shared_held_lists && held_lists_can_share? && background_palettes?(palettes)
 
-            TooMuch
+            background_palettes?(palettes) ? BackgroundColorsFull : TooMuch
           end
 
           # Whether +palettes+ are the backgrounds', every screen's or a scene's own copy.
