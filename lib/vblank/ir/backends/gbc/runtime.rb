@@ -54,11 +54,14 @@ module VBlank
           # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?). +song_entries_in_banks+
           # means its songs' entries are kept in a bank, and copied out as each song starts
           # (GBC::Music#entries_in_banks?). +tune_plays_once+ means a song it plays as a tune plays once
-          # (GBC::Music#tune_plays_once?).
+          # (GBC::Music#tune_plays_once?). +walks_colors+ means it fades or tints (Lowering#walks_colors?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false)
+                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false,
+                      walks_colors: false)
+            # Must be first: the walk's tables share a page, and the first place there is fits them whole.
+            Picture.reserve_walk_tables(memory) if walks_colors
             SpriteTileLoads.reserve(memory) if tile_loads
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
@@ -96,10 +99,12 @@ module VBlank
           # screens' tiles and colours and its maps are kept are in a bank (GBC#build_in_view).
           # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
           # +save_list_moves+ means it moves a whole list to or from save memory (Lists#emit_save_moves).
+          # +walks_colors+ is as for #reserve.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
                        count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false)
+                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false,
+                       walks_colors: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
             # recording writes down every bank put in view, for the timer to put back (Runtime::Clips).
@@ -121,7 +126,8 @@ module VBlank
                                       room_colors: art.room_colors?, lent_families: art.lent_families?,
                                       backdrop: art.first_screen_backdrop, banked_colors: banked_colors,
                                       first_kept_list: art.first_kept_list, tall_pieces: art.tall_pieces?,
-                                      sprites_over_picture: sprites_over_picture, indexes_in_banks: indexes_in_banks)
+                                      sprites_over_picture: sprites_over_picture, indexes_in_banks: indexes_in_banks,
+                                      walks_colors: walks_colors)
             BigMaps.emit(asm, memory, buffer: big_maps&.first, staged: big_maps&.last)
             Paint.emit(asm, memory, painting: art.painting?, map_count: art.square_maps.length, bar: !bar_rows.nil?)
             Sound.emit(asm, memory)

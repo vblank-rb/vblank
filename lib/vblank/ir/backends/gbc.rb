@@ -374,7 +374,8 @@ module VBlank
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
                                   song_entries_in_banks: lowering.music.entries_in_banks?, tune_plays_once: lowering.music.tune_plays_once?,
                                   cells_shown_now: lowering.cells_shown_now?,
-                                  bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?)
+                                  bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?,
+                                  walks_colors: lowering.walks_colors?)
           game = lowering.sections
           runs = lowering.run_uploads
           clips = lowering.clips if lowering.clips.any?
@@ -390,7 +391,8 @@ module VBlank
                                              save_list_moves: lowering.moves_lists_to_save?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
                                              indexes_in_banks: view.indexes_in_banks,
-                                             byte_divides: lowering.divides_by_written_bytes?)
+                                             byte_divides: lowering.divides_by_written_bytes?,
+                                             walks_colors: lowering.walks_colors?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
         end
