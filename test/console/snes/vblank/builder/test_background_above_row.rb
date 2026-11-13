@@ -246,6 +246,23 @@ class TestBackgroundAboveRow < Minitest::Test
     end
   end
 
+  # The same in blocks of 6 with the bar shown alone: above the row a block shows the bar alone at
+  # its top left, the backdrop through its see-through pixels and its empty first row of cells.
+  def test_a_bar_shown_alone_over_two_backgrounds_in_blocks
+    screen = game_player.run(stage(6, alone: true), frames: 4).screen
+    spots = (0...240).step(5).flat_map { |x| (0...200).map { |y| [x, y] } }
+
+    spots.each do |x, y|
+      left = x - (x % 6)
+      top = y - (y % 6)
+      expected = if y >= STAGE_ROWS then arena_pixel(left, top)
+                 elsif top >= 8 && STEPS[top % 8][left % 8] == "#" then WHITE
+                 else BLACK
+                 end
+      assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
+    end
+  end
+
   # SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), on the third layer beside two
   # backgrounds: a sprite climbing across the row is hidden above it, where the bar and the backdrop
   # show, and shown from the row down. With `alone: true` it shows above the row too.
@@ -306,5 +323,81 @@ class TestBackgroundAboveRow < Minitest::Test
     run = game_player.run(two_scenes, frames: 16)
 
     assert_equal RED, run.screen.pixel(100, ROWS + 4)
+  end
+
+  # Two bars shown alone above a row on one screen, the second in a scene that adds it to the bar
+  # every screen shows: neither the interpreter nor a console's build picks one.
+  private def two_alone_bars
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:top_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      tiles :bar_set, "t" => :top_tile
+      background :score, tiles: :bar_set, map: Array.new(4) { "t" * 32 }, above_row: ROWS, alone: :without_sprites
+      var :state, 0
+      scene(:stage) { background :lives, tiles: :bar_set, map: Array.new(2) { "t" * 32 }, above_row: 16, alone: true }
+      game_loop { case_var(:state) { when_val 0, :stage } }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_two_bars_shown_alone_on_one_screen_are_refused
+    error = assert_raises(VBlank::IR::ProgramError, VBlank::IR::Guardrails::ValidationError) do
+      game_player.run(two_alone_bars, frames: 2)
+    end
+
+    assert_match(/:score and :lives alone above a row/, error.message)
+  end
+
+  # A SCENE WITH AN ALONE BAR, THEN ONE WITHOUT, over a field every screen shows: the second scene's
+  # bar is not alone, so the field shows through its see-through pixels above the row; the third has
+  # no bar, so the field covers every row. +after+ is :plain_bar or :no_bar.
+  private def alone_bar_followed_by(after)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:field_tile, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:bar_art, "#" => :white, "." => :transparent) { STEPS.join("\n") }
+      tiles :field_set, "#" => :field_tile
+      tiles :bar_set, "a" => :bar_art
+      state = var :state, 0
+      passes = var :passes, 0
+      background :field, tiles: :field_set, map: Array.new(32) { "#" * 32 }
+      scene(:held) { background :alone_bar, tiles: :bar_set, map: Array.new(4) { "a" * 32 }, above_row: ROWS, alone: true }
+      if after == :plain_bar
+        scene(:plain_bar) { background :plain_bar, tiles: :bar_set, map: Array.new(4) { "a" * 32 }, above_row: ROWS }
+      else
+        scene(:no_bar) { nil }
+      end
+      game_loop do
+        passes += 1
+        state = 1 if passes == 6
+        case_var(:state) do
+          when_val 0, :held
+          when_val 1, after
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # A see-through pixel of the bar's first tile, row 1 of the bar (STEPS: "." where the column is
+  # not past the row).
+  SEE_THROUGH_SPOT = [1, 1].freeze
+
+  def test_a_scene_after_an_alone_bar_shows_the_field_through_a_bar_that_is_not_alone
+    x, y = SEE_THROUGH_SPOT
+    assert_equal BLACK, game_player.run(alone_bar_followed_by(:plain_bar), frames: 4).screen.pixel(x, y), "alone"
+    assert_equal GREEN, game_player.run(alone_bar_followed_by(:plain_bar), frames: 16).screen.pixel(x, y), "not alone"
+  end
+
+  def test_a_scene_with_no_bar_after_an_alone_bar_shows_the_field_on_every_row
+    x, y = SEE_THROUGH_SPOT
+    screen = game_player.run(alone_bar_followed_by(:no_bar), frames: 16).screen
+
+    assert_equal GREEN, screen.pixel(x, y)
+    assert_equal GREEN, screen.pixel(100, 4)
   end
 end

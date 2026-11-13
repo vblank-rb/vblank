@@ -346,10 +346,11 @@ require_relative "guardrails/layer_solid_while_fading"
 require_relative "guardrails/stack_not_honored"
 require_relative "guardrails/too_many_background_layers"
 require_relative "guardrails/too_many_status_bars"
+require_relative "guardrails/too_many_backgrounds_alone"
 require_relative "guardrails/status_bar_cannot_share"
 require_relative "guardrails/boxed_background_cannot_share"
 require_relative "guardrails/sprite_over_picture_beside_tiles"
-require_relative "guardrails/layer_refusals" # the five above, which each backend asks itself
+require_relative "guardrails/layer_refusals" # The six above, which each backend asks itself
 require_relative "guardrails/sprite_words" # shared by the two sprite checks below
 require_relative "guardrails/too_many_sprites"
 require_relative "guardrails/poses_with_different_colors"
@@ -401,6 +402,7 @@ module VBlank
         Checks::LayerSolidWhileFading.new,
         Checks::TooManyBackgroundLayers.new,
         Checks::TooManyStatusBars.new,
+        Checks::TooManyBackgroundsAlone.new,
         Checks::StatusBarCannotShare.new,
         Checks::BoxedBackgroundCannotShare.new,
         Checks::SpriteOverPictureBesideTiles.new,
