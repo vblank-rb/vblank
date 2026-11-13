@@ -14,6 +14,8 @@ i.raw_var(:speed)                  # the stored number instead: 12.5 kept as 12.
 i.list(:trail)                     # a list's items now, oldest first, as an Array
 i.pool(:guard, :x)                 # a pool field, one entry per slot: the value, or nil where the slot is free
 i.game_state                       # { vars:, lists:, pools: } — all of the game's own state; compare two with ==
+i.saved_state                      # the same, holding only what the save_data records keep: a loaded game against
+                                   # the moment it saved (no _ scratch, no `saved: false`, no except: names)
 i.screen_mode                      # e.g. :bitmap
 i.audio                            # the audio/register log
 i.mixed_sound                      # every frame's slice of mixed recordings, the bytes the cartridge's mixer writes

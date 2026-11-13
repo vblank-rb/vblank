@@ -1505,6 +1505,15 @@ module VBlank
 
         private def in_game_units(stored, bits) = bits ? Rational(stored, 1 << bits) : stored
 
+        # Each save_data record the game declared, as [name, half bytes, copies, kept] (SaveMemory),
+        # without the record the framework keeps the save_vars in on flash. Read by a test writing a
+        # copy into save memory (Reference::SaveWriting) and by the reading of what the saves keep
+        # (Reference::ReadingBack#saved_state).
+        def save_data_records
+          node = walk.find { |one| one.kind == :save_memory }
+          (node&.records || []).reject { |one| one.first == SaveLayout::SAVE_VAR_RECORD }
+        end
+
         # Sprite +name+ as it stands (an IR::SpriteState), read from +reader+'s stored numbers; every
         # reader of a running game asks this (IR::ReadingByName#sprite).
         def sprite_state(name, reader) = sprite_reading(name).state_from(reader)
