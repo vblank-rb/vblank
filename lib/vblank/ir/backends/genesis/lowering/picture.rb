@@ -231,6 +231,8 @@ module VBlank
                   @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
                 elsif recolored?(name) || follows_unchanging_list?(name)
                   @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))
+                elsif pictures_in_list_order? && (list = list_order_of(name))
+                  @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image), taker: "the list of colours :#{list}"))
                 else
                   @art.cut_sprite_picture(name, image)
                 end
@@ -283,20 +285,37 @@ module VBlank
             # :sprites or :lists).
             def colors_scene_of_picture(name) = sprite_colors_take_turns? ? scene_owning_picture(name) : nil
 
-            def sprite_colors_take_turns? = %i[sprites lists].include?(@scene_colors)
-            def lists_take_turns? = @scene_colors == :lists
+            def sprite_colors_take_turns? = %i[sprites lists list_order].include?(@scene_colors)
+            def lists_take_turns? = %i[lists list_order].include?(@scene_colors)
+            def pictures_in_list_order? = @scene_colors == :list_order
+
+            # THE LIST A PICTURE IS DRAWN IN ITS ORDER FROM, built with :list_order: the list of colours the
+            # picture was declared with (`colors:`, or the bank of a data pack's colours its frame names),
+            # where that list fits a palette. A console game draws each piece from the palette line its frame
+            # names, a line holding one bank of colours in the bank's order. Packed by their colours, pictures
+            # of three banks can need more than three palettes, the colours of one picture spread over two;
+            # in their lists' order, they need one palette for each list, and every picture of one list shares it.
+            # Nil for a picture drawn in no list.
+            def pictures_in_lists? = @objects.values.flat_map(&:poses).uniq.any? { |name| list_order_of(name) }
+
+            def list_order_of(name)
+              list = picture_named(name).colors_name or return nil
+              list if own_colors(@cache.image(picture_named(name))).length <= Art::OWN_COLORS
+            end
 
             # THE +scene_colors+ TO BUILD WITH after a build with +tried+ ran out of palettes (Genesis#build),
             # or nil when nothing is left to try: :backgrounds, each scene's own backgrounds in palettes of its
             # own while it is up, every sprite picture's colours kept for the whole game; then :sprites, a
             # scene's own sprite pictures' colours taking turns too; then :lists, a list the game changes that
-            # only some scenes draw with keeping its palette in those scenes alone (#scene_held_lists). Only
+            # only some scenes draw with keeping its palette in those scenes alone (#scene_held_lists); then
+            # :list_order, each picture declared with a list cut against a palette of that list (#list_order_of). Only
             # in a game of one dispatch, as tiles are (#art_of_one_scene?), and a step that would change
             # nothing is passed over.
             public def scene_colors_after(tried)
               backgrounds = one_dispatch? && @backgrounds.any? { |bg| scene_owning_background(bg) }
               steps = [(:backgrounds if backgrounds), (:sprites if sprites_of_one_scene?),
-                       (:lists if one_dispatch? && !scene_held_lists.empty?)].compact
+                       (:lists if one_dispatch? && !scene_held_lists.empty?),
+                       (:list_order if one_dispatch? && pictures_in_lists?)].compact
               return steps.first unless tried
 
               steps[steps.index(tried) + 1] if steps.include?(tried)

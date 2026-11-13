@@ -82,6 +82,20 @@ class TestSceneColorsOnTheGenesis < Minitest::Test
     assert_equal shown(SceneColorGames.list_after(:screen, TITLE_AGAIN_PASS - 1)[1]), lair.pixel(200, 150), "the backdrop in the lair"
   end
 
+  # Pictures drawn from three lists of fifteen fill four palettes and more when packed by their colours,
+  # and three in their lists' order. Played to the end, each pass held to the interpreter's picture.
+  def test_pictures_of_three_lists_show_in_three_palettes
+    program = list_pictures_game
+    game_player.run(program, frames: LIST_PASSES_PLAYED)
+
+    shown_pieces = screen_after(program, LIST_PASSES_PLAYED - 1)
+    LIST_PICTURE_PLACES.each_index do |which|
+      x, y = SceneColorGames.list_picture_at(which)
+      picture = SceneColorGames.list_picture(which)
+      assert_equal [shown(picture[0]), shown(picture[1])], [shown_pieces.pixel(x, y), shown_pieces.pixel(x + 1, y)], "picture #{which}"
+    end
+  end
+
   # Back on the title, each list shows the set the game told it to hold while the lair was up.
   def test_lists_another_scene_drew_with_show_what_they_hold_as_it_comes_back
     program = lair_game

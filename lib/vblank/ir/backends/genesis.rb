@@ -99,7 +99,9 @@ module VBlank
         # Art), so what has to fit is one scene's with what every screen keeps: :backgrounds first,
         # every sprite picture's colours kept for the whole game, then :sprites, a scene's own sprite
         # pictures' colours taking turns too, then :lists, a list the game changes that only some scenes
-        # draw with keeping its palette in those scenes alone (Lowering::Picture#scene_colors_after).
+        # draw with keeping its palette in those scenes alone, then :list_order, each picture declared
+        # with a list of colours drawn from a palette of that list in its order
+        # (Lowering::Picture#scene_colors_after).
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #

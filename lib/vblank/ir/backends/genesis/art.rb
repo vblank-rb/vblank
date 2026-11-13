@@ -162,11 +162,12 @@ module VBlank
             @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
             @scene_held = {} # whose list => the scenes whose copies alone keep its palette (#reserve_scene_held_palette)
             @held_names = {} # whose list => what a refusal calls it, where its key does not say (#held_name)
-            @shared_takers = Array.new(PALETTES) { [] } # what each palette every screen keeps holds, for a refusal's words
+            # What each palette holds, for a refusal's words: by scene, nil for the palettes every screen keeps.
+            @takers = Hash.new { |takers, scene| takers[scene] = Array.new(PALETTES) { [] } }
             if beside_painting
               @palettes[PAINTED_PALETTE] = []
               @held[:painted_screen] = PAINTED_PALETTE
-              @shared_takers[PAINTED_PALETTE] << "the painted screen"
+              @takers[nil][PAINTED_PALETTE] << "the painted screen"
             end
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
             @shared_palettes = @palettes # the palettes every screen keeps; @palettes is those, or a scene's copy
@@ -324,7 +325,7 @@ module VBlank
               end
 
               @palettes[line] ||= words
-              note_shared_taker(line, taker)
+              note_taker(line, taker)
               @ordered[words] = line
             end
           end
@@ -353,7 +354,7 @@ module VBlank
               end
 
               @palettes[free] = colors.map { |color| word_of(color) }
-              note_shared_taker(free, held_taker(key))
+              note_taker(free, held_taker(key))
               @held[key] = free
             end
           end
@@ -376,6 +377,7 @@ module VBlank
               raise TooManyLists.new(scene_lists_full_message(scenes.first), scene: scenes.first) unless free
 
               copies.each { |palettes| palettes[free] = colors.map { |color| word_of(color) } }
+              scenes.each { |scene| @takers[scene][free] << held_taker(key) }
               @scene_held[key] = scenes
               @held[key] = free
             end
@@ -667,20 +669,22 @@ module VBlank
               "A Genesis holds #{PALETTES} sets of #{OWN_COLORS} colours. #{kept_sets_words(colors_scene)}"
           end
 
-          # How many sets every scene keeps and what each holds, and how many +colors_scene+ gets: a list the
-          # game changes that every scene can show, or the pictures every scene shows. So a game can move
-          # what it does not need everywhere into the scenes that show it.
+          # How many sets every scene keeps and what each holds, how many +colors_scene+ gets, and what each
+          # of those holds so far: a list the game changes, or the pictures. So a game can move what it does
+          # not need everywhere into the scenes that show it, and see which of a scene's pictures fill its sets.
           def kept_sets_words(colors_scene)
             scene = Modes.strip_scene_prefix(colors_scene)
             kept = (0...PALETTES).select { |p| @shared_palettes[p] }
-            return "The scene :#{scene} gets all #{PALETTES} sets." if kept.empty?
+            own = ((0...PALETTES).to_a - kept).select { |p| @takers[colors_scene][p].any? }
+            own_words = own.each_with_index.map do |p, at|
+              set = at.zero? ? " In the scene :#{scene}, set" : " Set"
+              "#{set} #{p + 1} holds #{takers_words(@takers[colors_scene][p])}."
+            end.join
+            return "The scene :#{scene} gets all #{PALETTES} sets.#{own_words}" if kept.empty?
 
-            listed = kept.map { |p| " Set #{p + 1} holds #{@shared_takers[p].join(' and ')}." }.join
-            held = @scene_held.select { |_, scenes| scenes.include?(colors_scene) }.keys
-            own = held.empty? ? "" : " This scene also shows lists of colours that the game changes. They use " \
-                                     "#{held.length} of its sets: #{held.map { |key| held_name(key) }.join(', ')}."
+            listed = kept.map { |p| " Set #{p + 1} holds #{takers_words(@takers[nil][p])}." }.join
             "Every scene keeps #{kept.length} of the sets. The scene :#{scene} gets the other #{PALETTES - kept.length}." \
-              "#{listed}#{own}"
+              "#{listed}#{own_words}"
           end
 
           # What a refusal says of the lists of colours the pictures have, beside a painted screen.
@@ -699,12 +703,12 @@ module VBlank
 
             used = (0...PALETTES).select { |p| @palettes[p] && !held_here?(p) }
             found = used.find { |p| (colors - @palettes[p]).empty? }
-            return found.tap { note_shared_taker(found, taker) } if found
+            return found.tap { note_taker(found, taker) } if found
 
             roomy = used.select { |p| (@palettes[p] | colors).length <= OWN_COLORS }.max_by { |p| (@palettes[p] & colors).length }
             if roomy
               @palettes[roomy] |= colors
-              note_shared_taker(roomy, taker)
+              note_taker(roomy, taker)
               return roomy
             end
             unused = (0...PALETTES).find { |p| @palettes[p].nil? }
@@ -717,7 +721,7 @@ module VBlank
             end
 
             @palettes[unused] = colors.dup
-            note_shared_taker(unused, taker)
+            note_taker(unused, taker)
             unused
           end
 
@@ -727,11 +731,23 @@ module VBlank
             @held.any? { |key, held| held == p && (!@scene_held.key?(key) || @scene_held[key].include?(@colors_scene)) }
           end
 
-          # Notes that palette +p+ holds +taker+'s colours, where +p+ is one every screen keeps.
-          def note_shared_taker(p, taker)
-            return unless @palettes.equal?(@shared_palettes)
+          # Notes that palette +p+ holds +taker+'s colours: in the palettes every screen keeps, or in the copy
+          # of the scene being added to.
+          def note_taker(p, taker)
+            takers = @takers[@palettes.equal?(@shared_palettes) ? nil : @colors_scene][p]
+            takers << taker unless takers.include?(taker)
+          end
 
-            @shared_takers[p] << taker unless @shared_takers[p].include?(taker)
+          # How many of a set's pictures and lists a refusal names before it counts the rest.
+          TAKERS_NAMED = 3
+
+          # +takers+ as a refusal names them: the first few, and how many more.
+          def takers_words(takers)
+            named = takers.first(TAKERS_NAMED)
+            more = takers.length - named.length
+            return named.join(" and ") if more.zero?
+
+            "#{named.join(', ')} and #{more} more"
           end
 
           # What a list the game changes is, for a refusal's words, from the key the lowering keeps it under.

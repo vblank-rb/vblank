@@ -122,7 +122,10 @@ module VBlank
                       "all the scenes need more than four lists, each scene gets the lists that every scene does " \
                       "not use, and writes its own colours into them when it starts. A list that the game changes " \
                       "keeps the same one of the four in every scene that draws with it. If the scenes still need " \
-                      "more, a scene that does not draw with that list uses its one for its own colours. If a " \
+                      "more, a scene that does not draw with that list uses its one for its own colours. If the " \
+                      "scenes still need more, each picture declared with a list of 15 colours or fewer is drawn " \
+                      "from one list that holds that list's colours in order, as a Genesis game's pieces each name " \
+                      "a palette line. If a " \
                       "scene does not fit, the build stops and says what each kept list holds."),
         recolor: works("a list told to hold other colours keeps one of the four lists to itself for the whole " \
                        "game, written over in the blank. In a game whose scenes need more than four lists, it keeps " \

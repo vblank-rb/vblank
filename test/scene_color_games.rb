@@ -238,4 +238,66 @@ module SceneColorGames
     b.finalize_program
     b.program
   end
+
+  # A SCENE WHOSE PICTURES ARE DRAWN FROM THREE LISTS OF FIFTEEN COLOURS, as a Genesis game's pieces each
+  # name one of its palette lines. Each picture uses a few of its list's colours, and the pictures are
+  # in an order that spreads their colours over four palettes when they are packed by colour: two
+  # halves of each list, then pictures of a list's first and last colours, which no palette holds
+  # together. In their lists' order the scene needs three palettes, one for each list. A title scene
+  # of fifteen colours of its own comes first and hands over to it on LIST_SCENE_PASS, so the two
+  # scenes do not fit together either.
+  LIST_SCENE_PASS = 3
+  LIST_PASSES_PLAYED = 6
+  LIST_PICTURE_PLACES = [
+    [0, (1..8).to_a], [1, (1..8).to_a], [2, (1..7).to_a], [0, (9..15).to_a], [1, (9..15).to_a], [2, (8..15).to_a],
+    [0, [1, 15]], [1, [1, 15]], [2, [1, 15]], [0, [2, 14]], [1, [2, 14]], [2, [2, 14]], [0, [3, 13]], [1, [3, 13]]
+  ].freeze
+
+  # Place +place+ (1 to 15) of list +list+: no two the same in the three lists.
+  def self.list_color(list, place) = widened([(place - 1) % 8, (place - 1) / 8, list + 1])
+
+  # Where picture +which+ stands, and its pixels: its colours in turn along each row.
+  def self.list_picture_at(which) = [8 + ((which % 7) * 16), 40 + ((which / 7) * 16)]
+
+  def self.list_picture(which)
+    list, places = LIST_PICTURE_PLACES.fetch(which)
+    Array.new(64) { |i| list_color(list, places[(i % 8) % places.length]) }
+  end
+
+  # +extra_lists+ more lists of fifteen, each drawn by one picture of all its colours, for a test of a
+  # scene that does not fit even in its lists' order.
+  private def list_pictures_game(extra_lists: 0)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      lists = 3 + extra_lists
+      lists.times { |list| colors :"line_#{list}", [:black, *(1..15).map { |place| SceneColorGames.list_color(list, place) }] }
+      screen :tiled
+      image :badge, width: 8, height: 8, data: Array.new(64) { |i| SceneColorGames.widened([(1 + (i % 15)) % 8, 2 + ((1 + (i % 15)) / 8), 0]) }
+      LIST_PICTURE_PLACES.each_with_index do |(list, _), which|
+        image :"piece_#{which}", width: 8, height: 8, data: SceneColorGames.list_picture(which), colors: :"line_#{list}"
+      end
+      extra_lists.times do |extra|
+        list = 3 + extra
+        image :"whole_#{list}", width: 8, height: 8, colors: :"line_#{list}",
+                                data: Array.new(64) { |i| SceneColorGames.list_color(list, 1 + (i % 15)) }
+      end
+      state = var :state, 0
+      pass = var :pass, 0
+      scene(:title) { sprite :badge, at: [100, 100] }
+      scene(:pieces) do
+        LIST_PICTURE_PLACES.each_index { |which| sprite :"piece_#{which}", at: SceneColorGames.list_picture_at(which) }
+        extra_lists.times { |extra| sprite :"whole_#{3 + extra}", at: [8 + (extra * 16), 120] }
+      end
+      game_loop do
+        pass += 1
+        state = 1 if pass == LIST_SCENE_PASS
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :pieces
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
 end

@@ -53,6 +53,25 @@ class TestGenesisSceneColors < Minitest::Test
     end
   end
 
+  # The scene's pictures of three lists fit only cut in their lists' order (:list_order).
+  def test_pictures_of_three_lists_fit_with_the_list_order_step
+    program = genesis_program(list_pictures_game)
+    lowering = Genesis::Lowering.new(program, memory: Genesis::Memory.new, scene_colors: :sprites)
+
+    assert_raises(Genesis::Art::TooManyColors) { lowering.sections }
+    assert_equal :list_order, lowering.scene_colors_after(:sprites)
+    Genesis.new.build(program)
+  end
+
+  # Five lists of fifteen do not fit four palettes in any order: the refusal names what holds each set
+  # in the scene.
+  def test_a_refusal_names_what_holds_each_set_in_the_scene
+    error = assert_raises(VBlank::BuildError) { Genesis.new.build(genesis_program(list_pictures_game(extra_lists: 2))) }
+
+    assert_includes error.message, "In the scene :pieces, set 1 holds the list of colours :line_0"
+    assert_includes error.message, "Set 4 holds the list of colours :line_3"
+  end
+
   # The lair game's lists are drawn only on the title, so it fits only built with :lists, which keeps
   # them in the title alone (what that shows is TestSceneColorsOnTheGenesis's).
   def test_lists_drawn_in_one_scene_fit_with_the_lists_step
