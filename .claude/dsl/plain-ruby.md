@@ -128,8 +128,13 @@ instance variables.
   `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
   `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
   out as the game plays: it holds the item read before, in a game block, a game file and a method a
-  routine calls alike. A change made inside another method, or a `func` called between, is not
-  seen: there, read `packed[at]` into a `var` with `store!`.
+  routine calls alike. A call between the two lines that runs game code written elsewhere (a
+  method of the game, `bump(at)` or `reader.next_byte(0)`, or `call :step_on`, `case_var` and
+  `start_over`) counts as a change to everything, so `flags` keeps the item it read there too, and
+  so does `high` in `high = next_byte(c); (high << 8) | next_byte(c)`. A write through a worked-out
+  place (`state.fetch(:at)[c] = at + 1`) changes everything read from `state`, so `at` keeps the
+  place it read. One gap remains: a method called on something (`reader.next_byte`) counts only
+  when the same file defines a method of that name.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

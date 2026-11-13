@@ -456,6 +456,21 @@ module CopyReaderTests
     end
   end
 
+  # A READER WRITTEN IN A GAME FILE (FlaggedByteReader, test/plain_ruby_flagged_bytes_part.rb)
+  # sets `at` from a place kept in a list, moves the place on, then reads the copy at `at`; and sets
+  # `high` from one such read before the next. Each holds what it was set to: the first byte, 5,
+  # then 10 and 20 joined. Read late, `at` would be the moved place and `high` the byte after.
+  def test_a_name_set_from_a_place_a_readers_method_moves_on_holds_the_place_before
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, FlaggedBytes::PACKED.pack("C*"))
+      unpacking = flagged_byte_reader_pack(VBlank::Builder.new, from).unpacking
+      played = unpacking.run_on(game_player, frames: 4)
+
+      first, second, third = FlaggedBytes::PACKED
+      assert_equal [first, (second << 8) | third].pack("v*"), unpacking.slot_bytes_in(played)[:read]
+    end
+  end
+
   # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:
   # pairs of a count and a byte, the byte written that many times, until a count of 0. The
   # decoder says what it wrote with `count_written`, so the count of bytes done moves on, and the

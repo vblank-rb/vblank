@@ -72,6 +72,67 @@ def flagged_bytes_game_by_method(build)
   end
 end
 
+# Reads the copy a byte at a time from a place kept in a list, as a port's song reader reads a
+# channel's next command: #next_byte hands back the byte at the place before it moves the place on,
+# and #read_first_and_pair reads one byte, then two joined high byte first. The same routine in a
+# game block is `next_item` in test/all/vblank/dsl/test_plain_ruby.rb.
+class FlaggedByteReader
+  def initialize(copy, places, read)
+    @copy = copy
+    @state = { at: places }
+    @read = read
+  end
+
+  def next_byte(channel)
+    at = @state.fetch(:at)[channel]
+    @state.fetch(:at)[channel] = at + 1
+    @copy.byte(at)
+  end
+
+  def read_first_and_pair
+    @read[0] = next_byte(0)
+    high = next_byte(0)
+    @read[1] = (high << 8) | next_byte(0)
+  end
+end
+
+# A data pack whose unpacking reads FlaggedBytes::PACKED with a FlaggedByteReader into the slot
+# :read: its first byte, then the next two joined, (10 << 8) | 20.
+def flagged_byte_reader_pack(build, from)
+  build.data_pack(from: from, version: "1") do |slots|
+    slots.numbers :places, count: 1, width: :byte, signed: false
+    slots.numbers :read, count: 2, width: :half, signed: false
+    slots.fill_from_copy do |copy, pack|
+      FlaggedByteReader.new(copy, pack[:places], pack[:read]).read_first_and_pair
+    end
+  end
+end
+
+def step_flagged_place_on(place) = place.increase!(1)
+
+# The first flags byte read into a local, then the place moved on before the local is used: by
+# #step_flagged_place_on, a method, into :by_method, and by the routine :step_flagged_place, which a
+# `call` runs, into :by_routine. Each holds FlaggedBytes::PACKED's first byte.
+def flagged_byte_held_across_calls_game(build)
+  packed = build.table :packed, FlaggedBytes::PACKED, width: :byte
+  at = build.var :at, 0
+  by_method = build.var :by_method, 0
+  by_routine = build.var :by_routine, 0
+  place = 0
+  build.func(:step_flagged_place) { place += 1 }
+  build.game_loop do
+    at.store!(0)
+    flags = packed[at]
+    step_flagged_place_on(at)
+    by_method = flags
+    place = 0
+    first = packed[place]
+    build.call :step_flagged_place
+    by_routine = first
+    build.halt
+  end
+end
+
 # A data pack whose unpacking routine is written in this file: the packed bytes copied as they are
 # into the slot :packed, and unpacked into :unpacked by the routine's own lines, or by
 # #unpack_flagged_bytes when +by_method+.
