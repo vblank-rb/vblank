@@ -17,7 +17,7 @@ class TestAboveRowOption < Minitest::Test
   end
 
   # The settings a held background is refused with, plain and shown alone.
-  SETTINGS = [{}, { alone: true }].freeze
+  SETTINGS = [{}, { alone: true }, { alone: :without_sprites }].freeze
 
   def test_a_console_that_cannot_do_it_refuses_in_plain_words
     %i[gba gbc genesis].each do |console|
@@ -39,7 +39,7 @@ class TestAboveRowOption < Minitest::Test
   def test_alone_that_is_not_true_or_false_is_refused
     error = assert_raises(ArgumentError) { held_background(:snes, 32, alone: :yes) }
 
-    assert_match(/must be true or false/, error.message)
+    assert_match(/must be true, false or :without_sprites/, error.message)
   end
 
   def test_a_row_off_the_screen_is_refused_in_plain_words

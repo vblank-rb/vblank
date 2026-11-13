@@ -153,9 +153,10 @@ module VBlank
                           "keeps a background to the rows above that row, and takes no processor time as the " \
                           "screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the " \
                           "console shows only that background and the sprites above the row, so its see-through " \
-                          "pixels show the backdrop. Beside two other " \
+                          "pixels show the backdrop. With `alone: :without_sprites`, the console shows only that " \
+                          "background above the row, and no sprite. Beside two other " \
                           "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
-                          "see-through. Without `alone: true`, it must be in front of the other backgrounds. Its " \
+                          "see-through. Without `alone:`, it must be in front of the other backgrounds. Its " \
                           "tiles must have no see-through pixel. Each cell of its map that can show must have " \
                           "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \

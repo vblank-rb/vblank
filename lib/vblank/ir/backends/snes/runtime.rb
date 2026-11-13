@@ -97,7 +97,8 @@ module VBlank
                                       run_scratch: (Picture.run_scratch(memory) if run_count.positive?),
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
-                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer)
+                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
+                                      held_hides_sprites: c.held_hides_sprites)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?) if c.painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)

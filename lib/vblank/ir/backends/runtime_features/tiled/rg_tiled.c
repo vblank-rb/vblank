@@ -884,17 +884,36 @@ static void rg_tiled_paint_level(int32_t level) {
   }
 }
 
+/* Reference#paint_held_over_sprites: a background shown alone without sprites painted again over
+ * its rows, from the backdrop up. */
+static void paint_held_over_sprites(int32_t held) {
+  mix_nothing();
+  fade_unless_left_as_drawn(RG_NO_LAYER);
+  fill_cells(0, 0, RG_SCREEN_WIDTH, rows_shown_of(held), backdrop);
+  blend_as_background(held);
+  paint_scenery(held);
+}
+
 /* Reference#paint_bar_over_sprites */
-static void rg_tiled_repaint_ending(void) {
-  int32_t bar = bar_in_rebuild;
-  bar_in_rebuild = -1;
-  if (bar < 0 || !bar_covers[keeper_of(bar)]) return;
+static void paint_bar_over_sprites(int32_t bar) {
   int32_t top = bar_top_shown(bar);
   mix_nothing();
   fade_unless_left_as_drawn(RG_NO_LAYER);
   fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, backdrop);
   blend_as_background(bar);
   paint_status_bar(bar);
+}
+
+/* The end of Reference#repaint_view */
+static void rg_tiled_repaint_ending(void) {
+  int32_t bar = bar_in_rebuild;
+  bar_in_rebuild = -1;
+  if (bar >= 0 && bar_covers[keeper_of(bar)]) paint_bar_over_sprites(bar);
+  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
+    if (showing(bg) && background_field(bg, RG_BG_ALONE) == RG_SHOWN_WITHOUT_SPRITES) {
+      paint_held_over_sprites(bg);
+      return;
+    }
 }
 
 /* Reference#scene_framebuffer: every background showing, stamped. */

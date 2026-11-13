@@ -671,7 +671,9 @@ module VBlank
               @bg_by_name[n.name] = n
               # One that follows several lists the game changes looks different whenever one of
               # them is told what to hold, so it is rebuilt from the map as a recoloured one is.
-              @repaints = true if n.follows_several?
+              # So is one that keeps the sprites out above its row, which is painted over them as
+              # the view is built (#paint_held_over_sprites).
+              @repaints = true if n.follows_several? || n.hides_sprites
             when :scroll_background, :place_bar, :box_background
               # A program that scrolls even once can put its background at a non-zero
               # offset, so the whole scene has to be repainted every frame — the static
@@ -2534,6 +2536,8 @@ module VBlank
             end
           end
           paint_bar_over_sprites(bar, kept) if bar && @bar_covers[bar.name]
+          held = showing_scenery.find(&:hides_sprites)
+          paint_held_over_sprites(held, kept) if held
           @screen.set_paint_fade(nil, nil)
           @screen.set_paint_see_through(nil)
         end
@@ -2547,6 +2551,18 @@ module VBlank
           @screen.fill_rect(0, top, @screen.width, @screen.height - top, @backdrop)
           set_blend_for(bar.name, kept)
           paint_status_bar(bar)
+        end
+
+        # A BACKGROUND SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`): its rows above its row
+        # painted again over everything, from the backdrop up, so a sprite there is gone and its
+        # see-through pixels show the backdrop, as on a display told to show that one layer on those
+        # lines. No other background is painted there anyway (#box_shown_of).
+        def paint_held_over_sprites(held, kept)
+          rows = rows_shown_of(held)
+          set_blend_for(nil, kept)
+          @screen.fill_rect(0, 0, @screen.width, rows, @backdrop)
+          set_blend_for(held.name, kept)
+          paint_scenery(held)
         end
 
         # A fade, over the whole screen or placed in the stack.

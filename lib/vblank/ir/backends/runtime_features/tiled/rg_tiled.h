@@ -118,7 +118,12 @@ void rg_game_work_out_bends(void);
  * front of every background and behind every sprite, so its RG_BG_LEVEL is RG_NOT_A_BAR too.
  *
  * RG_BG_ABOVE_ROW is RG_NOT_A_BAR, or the row a background is held above (Nodes::Background#above_row).
- * RG_BG_ALONE is 1 for one shown alone above that row (Nodes::Background#alone), and 0 otherwise. */
+ * RG_BG_ALONE is RG_SHOWN_ALONE for one shown alone above that row (Nodes::Background#alone),
+ * RG_SHOWN_WITHOUT_SPRITES for one that keeps the sprites out there too (#hides_sprites), and
+ * RG_SHOWN_WITH_OTHERS otherwise. */
+#define RG_SHOWN_WITH_OTHERS 0
+#define RG_SHOWN_ALONE 1
+#define RG_SHOWN_WITHOUT_SPRITES 2
 #define RG_EVERY_SCENE (-1)
 #define RG_NEVER_ARRIVES (-2)
 

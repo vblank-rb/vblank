@@ -83,7 +83,11 @@ module VBlank
         #
         # +alone+, on a background with +above_row+, shows it alone above that row: no other
         # background is drawn there, so its see-through pixels show the backdrop, and the sprites
-        # are drawn over it as anywhere. Absent on every other background.
+        # are drawn there as the stack puts them. Absent on every other background.
+        #
+        # +hides_sprites+, on a background with +alone+, keeps the sprites out above that row too:
+        # there the picture is that background over the backdrop and nothing else. Absent on every
+        # other background.
         #
         # +boxed+, on a background the game holds to a box (BoxBackground), names the variable that
         # holds whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
@@ -105,7 +109,19 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, alone: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+                 above_row: :int, alone: :flag, hides_sprites: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+
+        # How alone it is shown above its row, as the number a runtime keeps it by: with the other
+        # backgrounds, alone with the sprites (+alone+), or alone without them (+hides_sprites+).
+        SHOWN_WITH_OTHERS = 0
+        SHOWN_ALONE = 1
+        SHOWN_WITHOUT_SPRITES = 2
+
+        def shown_above_row
+          return SHOWN_WITHOUT_SPRITES if hides_sprites
+
+          alone ? SHOWN_ALONE : SHOWN_WITH_OTHERS
+        end
 
         # Whether it follows several lists the game changes (see +follows_each+).
         def follows_several? = !follows_each.nil? && !follows_each.empty?

@@ -84,13 +84,20 @@ module VBlank
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
 
-            # Whether +program+ shows a background alone above its row (`alone: true`) on one of the
-            # two ordinary layers, where the line table then reads, as it is made, whether the one held
-            # now is alone (Runtime::Picture's ROW_HELD_ALONE). One on the third layer shows alone
-            # whatever it sets (#refuse_held_see_through!), so a game with it there needs nothing more.
+            # Whether the line table reads, as it is made, how alone the background held now is
+            # (Runtime::Picture's ROW_HELD_ALONE, Nodes::Background#shown_above_row): in a game that shows one alone
+            # above its row (`alone: true`) on one of the two ordinary layers, or one without sprites
+            # (`alone: :without_sprites`) on any layer. One on the third layer shows alone with the
+            # sprites whatever it sets (#refuse_held_see_through!), so `alone: true` there needs
+            # nothing more.
             def self.alone_flag_in_line_table?(program)
-              program.walk.any? { |node| node.kind == :background && node.alone } && !third_layer?(program)
+              held_hides_sprites?(program) ||
+                (program.walk.any? { |node| node.kind == :background && node.alone } && !third_layer?(program))
             end
+
+            # Whether +program+ shows a background alone without sprites (`alone: :without_sprites`),
+            # which the line table then leaves the sprites out above the row for.
+            def self.held_hides_sprites?(program) = program.walk.any? { |node| node.kind == :background && node.hides_sprites }
 
             # Whether +program+ changes colours as it runs, which the runtime then keeps a place for
             # (Runtime::Tint's rt_colors_hold).
@@ -1131,7 +1138,7 @@ module VBlank
                 runtime_call("rt_bar_covers", [covers]) if covers
               end
               if bg.above_row
-                alone = @alone_flag_in_line_table ? [Build.int(bg.alone ? 1 : 0)] : []
+                alone = @alone_flag_in_line_table ? [Build.int(bg.shown_above_row)] : []
                 runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row), *alone])
               end
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }

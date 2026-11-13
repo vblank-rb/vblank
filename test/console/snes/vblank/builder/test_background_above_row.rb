@@ -163,12 +163,28 @@ class TestBackgroundAboveRow < Minitest::Test
   YELLOW = 0x03FF
   BLACK = 0x0000 # The backdrop, which no screen here sets
 
+  # A red square that climbs a pixel a pass from row CROSSING_START across the bar's row.
+  CROSSING_X = 100
+  CROSSING_SIDE = 16
+  CROSSING_START = 40
+  # The frames the crossing test plays, and the rows the square covers then, a pass either way,
+  # above the bar's row and from it down.
+  CROSSING_FRAMES = 20
+  CROSSING_ROWS_ABOVE = ((CROSSING_START - CROSSING_FRAMES + 2)...STAGE_ROWS).freeze
+  CROSSING_ROWS_BELOW = (STAGE_ROWS...(CROSSING_START - CROSSING_FRAMES - 1 + CROSSING_SIDE)).freeze
+
   # The stage in blocks of +size+. With +alone+ the bar is shown alone above its row
-  # (`alone: true`), its steps' other half see-through and its first row of cells empty.
-  private def stage(size = 1, alone: false)
+  # (`alone: true` or `:without_sprites`), its steps' other half see-through and its first row of
+  # cells empty. With +crossing+ a sprite climbs across the bar's row (CROSSING_X).
+  private def stage(size = 1, alone: false, crossing: false)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
       screen :tiled
+      if crossing
+        image(:crossing, "#" => :red) { Array.new(CROSSING_SIDE) { "#" * CROSSING_SIDE }.join("\n") }
+        climb = var :climb, 0
+        square = sprite :crossing, at: [CROSSING_X, CROSSING_START]
+      end
       image(:floor_art, "#" => :red, "." => :blue) { STRIPES.join("\n") }
       image(:wall_art, "#" => :green, "." => :transparent) { STEPS.join("\n") }
       image(:bar_art, "#" => :white, "." => alone ? :transparent : :yellow) { STEPS.join("\n") }
@@ -179,7 +195,13 @@ class TestBackgroundAboveRow < Minitest::Test
       background(:walls, tiles: :wall_tiles, map: Array.new(32) { "a" * 32 }).scroll_to(*WALLS_SCROLL)
       bar_map = Array.new(4) { |row| (alone && row.zero? ? " " : "a") * 32 }
       background :bar, tiles: :bar_tiles, map: bar_map, above_row: STAGE_ROWS, alone: alone
-      game_loop { pixelate size, sprites: false }
+      game_loop do
+        pixelate size, sprites: false
+        if crossing
+          climb += 1
+          square.move_to CROSSING_X, CROSSING_START - climb
+        end
+      end
     end
     b.finalize_program
     b.program
@@ -221,6 +243,25 @@ class TestBackgroundAboveRow < Minitest::Test
       top = y - (y % 6)
       expected = y >= STAGE_ROWS && top < STAGE_ROWS ? arena_pixel(left, top) : stage_pixel(left, top)
       assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
+    end
+  end
+
+  # SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), on the third layer beside two
+  # backgrounds: a sprite climbing across the row is hidden above it, where the bar and the backdrop
+  # show, and shown from the row down. With `alone: true` it shows above the row too.
+  def test_a_bar_shown_alone_without_sprites_over_two_backgrounds_hides_a_sprite_above_its_row
+    { without_sprites: false, true => true }.each do |alone, sprite_above|
+      screen = game_player.run(stage(alone: alone, crossing: true), frames: CROSSING_FRAMES).screen
+
+      (CROSSING_X...(CROSSING_X + CROSSING_SIDE)).each do |x|
+        CROSSING_ROWS_ABOVE.each do |y|
+          expected = if sprite_above then RED
+                     else STEPS[y % 8][x % 8] == "#" ? WHITE : BLACK
+                     end
+          assert_equal expected, screen.pixel(x, y), "alone: #{alone.inspect} above the row at (#{x}, #{y})"
+        end
+        CROSSING_ROWS_BELOW.each { |y| assert_equal RED, screen.pixel(x, y), "alone: #{alone.inspect} below the row at (#{x}, #{y})" }
+      end
     end
   end
 

@@ -54,6 +54,17 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
   # Where each of a colour's red, green and blue starts.
   CHANNEL_SHIFTS = [0, 5, 10].freeze
   BACKDROP = 0x0000 # Black, which no screen here changes
+  WHITE = 0x7FFF
+  # A white square that climbs across the bar's row, right of the other sprites: its column, its
+  # side, and the row it starts at.
+  CROSSING_X = 220
+  CROSSING_SIDE = 16
+  CROSSING_START = 60
+  # The frames the crossing tests play, and the rows the climbing square covers then, a pass either
+  # way, above the bar's row and from it down.
+  CROSSING_FRAMES = 40
+  CROSSING_ROWS_ABOVE = ((CROSSING_START - CROSSING_FRAMES + 2)...BAR_ROWS).freeze
+  CROSSING_ROWS_BELOW = (BAR_ROWS...(CROSSING_START - CROSSING_FRAMES - 1 + CROSSING_SIDE)).freeze
   # The pixels of a bar cell looked at.
   CELL_SPOTS = [[0, 0], [3, 5], [7, 2]].freeze
 
@@ -71,8 +82,9 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
   end
 
   # The stage, its bar shown alone above its row with +alone+, and its arena scrolled a pixel across
-  # and down each pass with +scrolled+.
-  private def stage(from, alone: false, scrolled: false)
+  # and down each pass with +scrolled+. With +crossing+ a white square of CROSSING_SIDE climbs a pixel
+  # each pass from CROSSING_START at CROSSING_X, across the bar's row.
+  private def stage(from, alone: false, scrolled: false, crossing: false)
     b = VBlank::Builder.new(options: SNES_OPTIONS)
     b.instance_eval do
       screen :tiled
@@ -89,6 +101,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       colors :hero, %i[transparent white red]
       colors :hurt, %i[transparent yellow blue]
       SPRITES.times { |n| image(:"craft_#{n}", width: 32, height: 32, colors: :hero, places: SPRITE_PLACES.fetch(n)) }
+      image(:crossing, width: CROSSING_SIDE, height: CROSSING_SIDE, colors: :hero, places: Array.new(CROSSING_SIDE**2, 1)) if crossing
       var :state, 0
       walk = var :walk, 0
       scene(:stage) do
@@ -98,6 +111,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
         end
         layer(:craft) do
           SPRITES.times { |n| sprite(:"craft_#{n}", at: [(n % 6) * 36, 40 + ((n / 6) * 34)]).draw_with :hurt }
+          sprite(:crossing, at: [CROSSING_X, CROSSING_START]).move_to CROSSING_X, CROSSING_START - walk if crossing
         end
         layer(:bar) do
           bar = background :bar, tiles: pack[:bar_tiles], map: pack[:bar_map], colors: pack[:bar_colors], across: 32, cell: 8,
@@ -200,6 +214,44 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
 
       [17, 26].each do |column|
         assert_includes ARENA_COLORS, shown.pixel((column * 8) + SEE_THROUGH_X, 8), "the arena through the bar's cell #{column}"
+      end
+    end
+  end
+
+  # The colour the bar shows at (+x+, +y+) of the screen, as drawn: nil where it is see-through.
+  private def bar_pixel(x, y)
+    word = BAR_WORDS.fetch(((y / 8) * 32) + (x / 8))
+    place = BAR_TILES.fetch(word & 0x3FF).fetch(((y % 8) * 8) + (x % 8))
+    place.zero? ? nil : BAR_COLORS.fetch((((word >> 10) & 7) * 4) + place)
+  end
+
+  # A BAR SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), as a Super Nintendo game shows its
+  # bar with only that layer on the lines above its split: a sprite climbing across the row is hidden
+  # above it, the bar's own pixels and the backdrop showing there, and shown from the row down.
+  def test_a_bar_shown_alone_without_sprites_hides_a_sprite_above_its_row
+    Dir.mktmpdir do |folder|
+      shown = game_player.run(stage(bar_original(folder), alone: :without_sprites, crossing: true), frames: CROSSING_FRAMES).screen
+
+      (CROSSING_X...(CROSSING_X + CROSSING_SIDE)).each do |x|
+        CROSSING_ROWS_ABOVE.each do |y|
+          assert_equal bar_pixel(x, y) || BACKDROP, shown.pixel(x, y), "the bar over the hidden sprite at (#{x}, #{y})"
+        end
+        CROSSING_ROWS_BELOW.each { |y| assert_equal WHITE, shown.pixel(x, y), "the sprite under the bar's row at (#{x}, #{y})" }
+      end
+    end
+  end
+
+  # Shown alone with its sprites (`alone: true`), the same sprite shows through the bar's see-through
+  # pixels above the row (the stack puts the bar in front of it).
+  def test_a_bar_shown_alone_with_sprites_shows_a_sprite_through_it_above_its_row
+    Dir.mktmpdir do |folder|
+      shown = game_player.run(stage(bar_original(folder), alone: true, crossing: true), frames: CROSSING_FRAMES).screen
+
+      (CROSSING_X...(CROSSING_X + CROSSING_SIDE)).each do |x|
+        CROSSING_ROWS_ABOVE.each do |y|
+          assert_equal bar_pixel(x, y) || WHITE, shown.pixel(x, y), "the bar over the sprite at (#{x}, #{y})"
+        end
+        CROSSING_ROWS_BELOW.each { |y| assert_equal WHITE, shown.pixel(x, y), "the sprite under the bar's row at (#{x}, #{y})" }
       end
     end
   end

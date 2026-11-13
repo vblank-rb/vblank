@@ -51,6 +51,12 @@ RG_BG_ABOVE_ROW = 21
 RG_BG_ALONE = 22
 RG_BG_FIELDS = 23
 
+# What RG_BG_ALONE holds: shown with the other backgrounds above its row, alone there, or alone
+# without the sprites too.
+RG_SHOWN_WITH_OTHERS = 0
+RG_SHOWN_ALONE = 1
+RG_SHOWN_WITHOUT_SPRITES = 2
+
 # Each map is RG_MAP_FIELDS numbers in @rg_game_maps.
 RG_MAP_CELLS = 0
 RG_MAP_COLS = 1
@@ -973,18 +979,35 @@ def rg_tiled_paint_level(level)
   end
 end
 
-# Reference#paint_bar_over_sprites
-def rg_tiled_repaint_ending
-  bar = @rg_bar_in_rebuild
-  @rg_bar_in_rebuild = nil
-  return if !bar || !@rg_bar_covers[rg_keeper_of(bar)]
+# Reference#paint_held_over_sprites: a background shown alone without sprites painted again over
+# its rows, from the backdrop up.
+def rg_paint_held_over_sprites(held)
+  rg_mix_nothing
+  rg_fade_unless_left_as_drawn(RG_NO_LAYER)
+  rg_fill_cells(0, 0, RG_SCREEN_WIDTH, rg_rows_shown_of(held), @rg_backdrop)
+  rg_blend_as_background(held)
+  rg_paint_scenery(held)
+end
 
+# Reference#paint_bar_over_sprites
+def rg_paint_bar_over_sprites(bar)
   top = rg_bar_top_shown(bar)
   rg_mix_nothing
   rg_fade_unless_left_as_drawn(RG_NO_LAYER)
   rg_fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, @rg_backdrop)
   rg_blend_as_background(bar)
   rg_paint_status_bar(bar)
+end
+
+# The end of Reference#repaint_view
+def rg_tiled_repaint_ending
+  bar = @rg_bar_in_rebuild
+  @rg_bar_in_rebuild = nil
+  rg_paint_bar_over_sprites(bar) if bar && @rg_bar_covers[rg_keeper_of(bar)]
+  held = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times.find do |bg|
+    rg_showing?(bg) && rg_background_field(bg, RG_BG_ALONE) == RG_SHOWN_WITHOUT_SPRITES
+  end
+  rg_paint_held_over_sprites(held) if held
 end
 
 # Reference#scene_framebuffer: every background showing, stamped.

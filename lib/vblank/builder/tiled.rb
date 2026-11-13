@@ -279,9 +279,11 @@ module VBlank
       # A BAR ABOVE A ROW: `above_row: 32` shows the background only on the rows above row 32, and
       # `alone: true` shows it alone there, as a console's own status bar often is: no other
       # background is drawn above the row, so its see-through pixels show the backdrop and not the
-      # field under it. Sprites are still drawn over it.
+      # field under it. Sprites are still drawn there, as the stack puts them. `alone:
+      # :without_sprites` keeps the sprites out above the row too, so only the bar and the backdrop
+      # show there, as a console that shows that one layer on those lines does.
       #
-      #     background :bar, tiles: :hud, map: BAR_ROWS, above_row: 32, alone: true
+      #     background :bar, tiles: :hud, map: BAR_ROWS, above_row: 32, alone: :without_sprites
       #
       # CELLS THAT CHANGE TOGETHER: `held: true` keeps every `set_tile` of a pass and shows
       # them all on the next frame, as the frame's other framework drawing shows.
@@ -315,7 +317,8 @@ module VBlank
       # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a
       #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
       # @param above_row [Integer, nil] show the background only on the rows above this row
-      # @param alone [Boolean] with `above_row:`, show no other background above the row
+      # @param alone [Boolean, :without_sprites] with `above_row:`, show no other background above the
+      #   row, and with :without_sprites no sprite either
       # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
       #   the next frame
       # @param set_cells [Array<Integer, Range>, Range, nil] for a background from the data pack, the
@@ -453,13 +456,19 @@ module VBlank
                              "screen. Give a number written in the program, from 1 to #{screen_height - 1}."
       end
 
-      # `alone:` is true or false, and true only beside `above_row:`, whose rows it is about.
+      # What `alone:` takes: alone with the sprites, not alone, or alone without the sprites too.
+      ALONE_SETTINGS = [true, false, :without_sprites].freeze
+
+      # `alone:` is one of ALONE_SETTINGS, and set only beside `above_row:`, whose rows it is about.
       def refuse_bad_alone!(name, alone, above_row)
-        raise ArgumentError, "background :#{name} has `alone: #{alone.inspect}`. `alone:` must be true or false." unless [true, false].include?(alone)
+        unless ALONE_SETTINGS.include?(alone)
+          raise ArgumentError, "background :#{name} has `alone: #{alone.inspect}`. `alone:` must be true, false or " \
+                               ":without_sprites."
+        end
         return unless alone && above_row.nil?
 
-        raise ArgumentError, "background :#{name} has `alone: true` but no `above_row:`. `alone:` shows a background alone " \
-                             "above its row. To fix this, give it `above_row:` too, or remove `alone: true`."
+        raise ArgumentError, "background :#{name} has `alone: #{alone.inspect}` but no `above_row:`. `alone:` shows a " \
+                             "background alone above its row. To fix this, give it `above_row:` too, or remove `alone:`."
       end
 
       # `held:` is true or false, on a screen with cells to change.
@@ -539,7 +548,8 @@ module VBlank
           record(Build.background(name, tiles: tile_names, map: grids.first,
                                         maps: map_names.size > 1 ? grids : [], choice: choice,
                                         tile_w: set[:tile_w], tile_h: set[:tile_h],
-                                        scene: declaring_scene, bar_top: bar_top, above_row: above_row, alone: alone,
+                                        scene: declaring_scene, bar_top: bar_top, above_row: above_row,
+                                        alone: alone != false, hides_sprites: alone == :without_sprites,
                                         affine: @screen_mode == :rotozoom, **(sets || {})))
         # WHICH SCENE THIS BACKGROUND BELONGS TO, so that everything written for it each
         # frame is written only while that scene is the live one. Where a background sits
