@@ -16,8 +16,12 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
 
   SNES_OPTIONS = VBlank::Cartridge::Options.new(console: :snes)
 
-  # Four tiles of four colours, no place see-through: each a pattern of places 1 to 3.
-  BAR_TILES = (0...4).map { |n| (0...64).map { |at| 1 + (((at % 8) + (at / 8) + n) % 3) } }.freeze
+  # Four tiles of four colours: each a pattern of places 1 to 3, but for its second column, place 0,
+  # see-through.
+  SEE_THROUGH_X = 1
+  BAR_TILES = (0...4).map do |n|
+    (0...64).map { |at| (at % 8) == SEE_THROUGH_X ? 0 : 1 + (((at % 8) + (at / 8) + n) % 3) }
+  end.freeze
   BAR_ROWS = 32
   # Where the original keeps the bar's colours, map and tiles.
   BAR_COLORS_AT = 0x20
@@ -36,6 +40,8 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
   ARENA_SETS = 5
   ARENA_COLORS = (0...(15 * ARENA_SETS)).map { |k| ((k + 1) * 271) % 0x8000 }.freeze
   ARENA_ROW = (0...32).map { |column| (97 + (column % ARENA_SETS)).chr }.join.freeze
+  # The arena's first row, empty under the bar's first two banks: the backdrop shows through there.
+  ARENA_FIRST_ROW = ((" " * 16) + ARENA_ROW[16..]).freeze
 
   # Two dozen pictures of 32x32 whose tiles are all different, each sprite showing one and drawn
   # with another list: one copy of each in each list is more tiles than the sprites have.
@@ -83,7 +89,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       var :state, 0
       walk = var :walk, 0
       scene(:stage) do
-        layer(:scenery) { background :arena, tiles: :arena_tiles, map: Array.new(32) { ARENA_ROW } }
+        layer(:scenery) { background :arena, tiles: :arena_tiles, map: [ARENA_FIRST_ROW, *Array.new(31) { ARENA_ROW }] }
         layer(:craft) do
           SPRITES.times { |n| sprite(:"craft_#{n}", at: [(n % 6) * 36, 40 + ((n / 6) * 34)]).draw_with :hurt }
         end
@@ -135,6 +141,30 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
         assert_equal told, shown.pixel((TOLD_COLUMN * 8) + x, y), "the cell written later at (#{x}, #{y})"
       end
       assert_equal ARENA_COLORS.fetch(5), shown.pixel(5, BAR_ROWS), "the arena under the bar's rows"
+    end
+  end
+
+  # A bar cell's see-through pixels show what is behind it, whichever bank it is drawn from: the
+  # backdrop where the arena's cell is empty, the arena where it has one. A bank whose list starts
+  # partway into a shared set keeps its see-through pixels see-through.
+  def test_the_bars_see_through_pixels_show_what_is_behind_in_every_bank
+    Dir.mktmpdir do |folder|
+      shown = game_player.run(stage(bar_original(folder)), frames: 40).screen
+
+      [0, 9].each do |column|
+        assert_equal 0, shown.pixel((column * 8) + SEE_THROUGH_X, 0), "the backdrop through the bar's cell #{column}"
+      end
+      [17, 26].each do |column|
+        arena = ARENA_COLORS.fetch(((column % ARENA_SETS) * 15) + SEE_THROUGH_X)
+        assert_equal arena, shown.pixel((column * 8) + SEE_THROUGH_X, 0), "the arena through the bar's cell #{column}"
+      end
+      [1, 9].each do |column|
+        arena = ARENA_COLORS.fetch(((column % ARENA_SETS) * 15) + SEE_THROUGH_X)
+        assert_equal arena, shown.pixel((column * 8) + SEE_THROUGH_X, 8), "the arena through the bar's cell #{column} of row 1"
+      end
+      mirrored_x = 7 - SEE_THROUGH_X
+      arena = ARENA_COLORS.fetch(((TOLD_COLUMN % ARENA_SETS) * 15) + mirrored_x)
+      assert_equal arena, shown.pixel((TOLD_COLUMN * 8) + mirrored_x, 0), "the arena through the cell written later"
     end
   end
 end
