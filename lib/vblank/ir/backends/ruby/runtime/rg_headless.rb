@@ -4,7 +4,7 @@
 #
 # plays FRAMES frames and stops at the start of the next one, the way the interpreter's
 # run(program, frames: FRAMES) does. Each line of standard input is the buttons held during one
-# frame, as a number with a bit per button (bit 0 is a, in the order rg_runtime.rb lists them); a
+# frame, as a number with a bit per button (bit 0 is a, in IR::Buttons::NAMES's order); a
 # missing line holds nothing.
 #
 # At every frame boundary it prints "frame N", every variable as "var name value", every list as

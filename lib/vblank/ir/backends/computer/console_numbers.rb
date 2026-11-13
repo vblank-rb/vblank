@@ -21,7 +21,9 @@ module VBlank
           # What the runtimes are told of +console+ (a Console::Description), by the name each
           # reads it as: numbers, and true or false for what the console does or does not do.
           # +start_up+ false leaves the console's start-up out, for a program with no cartridge to
-          # read it from (a shell's parts, Native#build_desktop_shell).
+          # read it from (a shell's parts, Native#build_desktop_shell). The buttons a player's
+          # number keeps are every console's, since a build refuses a button its console lacks
+          # before there is a game to play.
           def values(console, start_up: true)
             { "RG_SCREEN_WIDTH" => console.screen_width, "RG_SCREEN_HEIGHT" => console.screen_height,
               "RG_CONSOLE_TICKS_A_SECOND" => console.cycles_a_second,
@@ -32,7 +34,8 @@ module VBlank
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits,
               "RG_VOICES_READ_SOUND_MEMORY" => console.voices_read_sound_memory,
               "RG_CONSOLE_PLAYS_BIOS_START_UP" => start_up && console.plays_bios_start_up,
-              "RG_SHOWN_FIRST_ROW" => console.shown_row_bounds[0], "RG_SHOWN_PAST_ROW" => console.shown_row_bounds[1] }
+              "RG_SHOWN_FIRST_ROW" => console.shown_row_bounds[0], "RG_SHOWN_PAST_ROW" => console.shown_row_bounds[1],
+              "RG_ONE_PLAYERS_BUTTONS" => IR::Buttons::EVERY_BUTTON_MASK }
               .merge(StartFileNumbers.names)
           end
 

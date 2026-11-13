@@ -72,8 +72,8 @@ _Noreturn void rg_fault(const char *format, ...) __attribute__((format(printf, 1
 #define RG_GAME_WENT_WRONG 3
 
 /* Whether a button is down (held), or went down since the last frame (pressed): 1 or 0. The
- * buttons are numbered in the order the console's key register holds them — a, b, select,
- * start, right, left, up, down, r, l — and -1 means any of them. */
+ * buttons are numbered in IR::Buttons::NAMES's order — a, b, select, start, right, left, up,
+ * down, r, l (the Advance's key register's), then x, y, c — and -1 means any of them. */
 int32_t rg_held(int32_t button);
 int32_t rg_pressed(int32_t button);
 /* The same for another player (1 to 16, or 0 for any connected player), asking about +mask+, a

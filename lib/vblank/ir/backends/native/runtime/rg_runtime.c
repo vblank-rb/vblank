@@ -17,11 +17,10 @@
 
 const rg_driver *rg_active_driver;
 
-#define ONE_PLAYERS_BUTTONS 0x1FFFu /* thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last */
-
 /* EACH PLAYER'S BUTTONS, a number each, the first player's first (IR::Buttons.masks), a bit a
- * button. The lists are as long as the most players any build reads; only the first +connected+
- * can hold anything, and a player past them holds nothing. */
+ * button; RG_ONE_PLAYERS_BUTTONS (rg_console.h) has every button's bit set. The lists are as long
+ * as the most players any build reads; only the first +connected+ can hold anything, and a player
+ * past them holds nothing. */
 static uint32_t held[RG_MOST_PLAYERS];    /* buttons down now */
 static uint32_t seen[RG_MOST_PLAYERS];    /* ...and at the last frame boundary, to tell a press from a hold */
 static uint32_t pressed[RG_MOST_PLAYERS]; /* buttons that went down at the last frame boundary */
@@ -33,7 +32,7 @@ static void hold_players(int32_t count, const uint32_t *masks) {
   if (count > RG_MOST_PLAYERS) count = RG_MOST_PLAYERS;
   if (count > connected) connected = count;
   for (int32_t player = 0; player < RG_MOST_PLAYERS; player++)
-    held[player] = player < count ? masks[player] & ONE_PLAYERS_BUTTONS : 0;
+    held[player] = player < count ? masks[player] & RG_ONE_PLAYERS_BUTTONS : 0;
 }
 
 /* A button counts as pressed on the one frame it goes down, however long it is then held — the
@@ -373,7 +372,7 @@ void rg_dump_list(const struct rg_list *list) {
 
 /* A button's bit in +buttons+, or any of the first player's for -1. */
 static int32_t button_down(uint32_t buttons, int32_t button) {
-  if (button < 0) return (buttons & ONE_PLAYERS_BUTTONS) != 0;
+  if (button < 0) return (buttons & RG_ONE_PLAYERS_BUTTONS) != 0;
   return (int32_t)((buttons >> button) & 1u);
 }
 

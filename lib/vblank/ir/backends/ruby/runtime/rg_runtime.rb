@@ -3,11 +3,11 @@
 # whether there is a window: the driver is the methods named rg_driver_*, which the driver's own
 # file gives the game's class (rg_headless.rb, the one with no window).
 
-# Every button a program can name (IR::Buttons), a bit each. That is the same buttons on every
-# console: a console with fewer has a build that refuses the ones it lacks before there is a game
-# to play, so nothing here needs to know which console it is. Each connected player's buttons are
-# a number of their own, in a list, the first player's first (IR::Buttons.masks).
-RG_ONE_PLAYERS_BUTTONS = 0x1FFF # Thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last
+# Every button a program can name (IR::Buttons), a bit each, is RG_ONE_PLAYERS_BUTTONS, written
+# ahead of the runtime (Computer::ConsoleNumbers). That is the same buttons on every console: a
+# console with fewer has a build that refuses the ones it lacks before there is a game to play, so
+# nothing here needs to know which console it is. Each connected player's buttons are a number of
+# their own, in a list, the first player's first (IR::Buttons.masks).
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970
@@ -74,8 +74,8 @@ def rg_players_buttons(now)
   held + ([0] * [@rg_held.length - held.length, 0].max)
 end
 
-# A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in the
-# order the console's key register holds them: a, b, select, start, right, left, up, down, r, l.
+# A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in
+# IR::Buttons::NAMES's order.
 def rg_button_down(buttons, button)
   return (buttons & RG_ONE_PLAYERS_BUTTONS) != 0 ? 1 : 0 if button < 0
 
