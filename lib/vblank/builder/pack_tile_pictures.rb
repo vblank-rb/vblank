@@ -19,7 +19,8 @@ module VBlank
     # every console and build that a background from the pack does. A run has one list of colours
     # and its tiles one turn each, while the cells naming a tile can be of several banks and
     # turns. So each background drawn from the slot gets, for each bank its cells name the tile
-    # in, a run of the tile turned each way they name it (#declare_moving_pack_tiles), and the
+    # in (the map's, and those `set_cells:` names, which `set_cell` writes later), a run of the
+    # tile turned each way they name it (#declare_moving_pack_tiles), and the
     # group's `show` copies the picture into every run (#emit_pack_tile_picture_copies). Those
     # runs are made as a background is declared, so the group is declared before any background
     # drawn from its tiles' slot.
@@ -27,8 +28,9 @@ module VBlank
     # WITH THE PACK LEFT OUT the map is not known as the game is built, nor which banks and turns
     # name the tile. So each background has a run for every bank of its colours, each holding the
     # tile turned all four ways, and the cells are pointed at them as the game starts
-    # (IR::StartFile::Background#moving). The pictures are read from the file as it starts too, in
-    # the bytes a run copies (IR::StartFile::PaintedTiles).
+    # (IR::StartFile::Background#moving); a told cell naming a key is written as the run's tile
+    # for its bank and turn (PackBackgrounds#pack_run_tile_read_at_start). The pictures are read
+    # from the file as it starts too, in the bytes a run copies (IR::StartFile::PaintedTiles).
     module PackTilePictures
       # The four ways a tile of such a background is turned, in the order a run read at start
       # holds them; a tile's place in it is IR::StartFile::MovingTile#turn_of.
@@ -147,7 +149,8 @@ module VBlank
         cells.group_by { |tile| [moving.fetch(tile.tile).first, tile.bank] }.each_with_object({}) do |((group, bank), drawn), names|
           list = bank_lists.fetch(bank) do
             raise ArgumentError, "background :#{name} has a cell drawn from bank #{bank} of colors, and its colors: slot holds " \
-                                 "#{bank_lists.length} banks. To fix this, give it a slot that holds every bank its map uses."
+                                 "#{bank_lists.length} banks. To fix this, give it a slot that holds every bank its map and " \
+                                 "its set_cells: use."
           end
           run = :"#{group.name}_run_#{group.parts.length}" # one for each background and bank
           places = group.pictures.map { |handles| handles.map { |handle| pack_tile_places(handle, "tile_pictures :#{group.name}").first } }

@@ -1631,6 +1631,9 @@ module PackGames
       end,
       game(:tile_taking_turns_on_a_background_of_many_cells_in_two_banks, passes: 8) do |folder, options|
         built(*title_belt_game_and_file(folder, words: PackTilePictureGames.title_belt_words(24), options: options))
+      end,
+      game(:cell_written_with_set_cell_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        built(*written_cell_game_and_file(folder, options: options))
       end
     ].freeze
   end

@@ -168,9 +168,10 @@ module VBlank
             row.flat_map { |word| Array.new(side) { |along| shape.words.cell_tile(word, along, down, side) } }
           end
         end
-        # The tiles that take turns through pictures are tiles of runs (PackTilePictures).
-        pictures = declare_moving_pack_tiles(shape.name, cells.flatten.uniq.select { |tile| moving.key?(tile.tile) }, moving,
-                                             shape.bank_lists)
+        # The tiles that take turns through pictures are tiles of runs (PackTilePictures): the map's,
+        # then those of the cells set_cell may write, in banks and turns the map may never name.
+        drawn = [*cells.flatten, *told_cell_tiles(shape.name, set_cells, shape.words, side)].uniq
+        pictures = declare_moving_pack_tiles(shape.name, drawn.select { |tile| moving.key?(tile.tile) }, moving, shape.bank_lists)
         rows = cells.map do |row|
           row.map do |tile|
             pictures.fetch(tile) do
@@ -184,8 +185,20 @@ module VBlank
         PackMapPictures.new(rows: rows, pictures: pictures, told: told)
       end
 
+      # Every tile as drawn (a Console::CellTile) of the cells +set_cells+ names, +side+ tiles each
+      # way of a cell; none where it names none.
+      def told_cell_tiles(name, set_cells, words, side)
+        return [] if set_cells.nil?
+
+        cells = DSL::PackCells.new(format: words, side: side, tiles_by_word: {})
+        pack_cell_words!(name, set_cells, cells).flat_map { |word| pack_cell_tiles(words, word, side) }
+      end
+
+      # The tiles of the cell +word+, +side+ each way, as drawn, row by row.
+      def pack_cell_tiles(words, word, side) = Array.new(side * side) { |at| words.cell_tile(word, at % side, at / side, side) }
+
       # The four tiles of the 16x16 cell +word+, as drawn: top left, top right, bottom left, bottom right.
-      def pack_cell_quarters(words, word) = Array.new(4) { |at| words.cell_tile(word, at % 2, at / 2, 2) }.freeze
+      def pack_cell_quarters(words, word) = pack_cell_tiles(words, word, 2).freeze
 
       # The picture of 16x16 of a cell whose tiles as drawn are +quarters+ (#pack_cell_quarters),
       # drawn from the list of its bank. Nil for a cell that draws nothing, left empty in the map.
@@ -328,9 +341,10 @@ module VBlank
       # THE CELLS IT MAY BE WRITTEN LATER (`set_cells:`) are known here though the map's are not:
       # a told number names its tile, its turn and its bank, and only the tile's pixels are in the
       # file. So each told tile is a picture of the background's tileset after the banks'
-      # stand-ins, read from the file as any picture of a tile from the pack is
-      # (#declare_told_tile_read_at_start), and `set_cell` writes it by its key as it does built
-      # all-in-one. The tiles the map draws come after them, made as the game starts.
+      # stand-ins and the runs of any tiles that take turns, read from the file as any picture of
+      # a tile from the pack is (#declare_told_tile_read_at_start), and `set_cell` writes it by its
+      # key as it does built all-in-one. A told tile that takes turns is its run's tile instead.
+      # The tiles the map draws come after them, made as the game starts.
       def declare_pack_background_read_at_start(name, tiles:, map:, colors:, across:, tiles_a_side:, words:, moving:, set_cells: nil,
                                                 **others)
         subject = "background :#{name}"
@@ -357,16 +371,19 @@ module VBlank
                     else
                       where.bank_names.each_with_index.map { |list, bank| declare_bank_stand_in(name, list, bank, where, subject) }
                     end
-        told = {}
-        cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
-          declare_told_tile_read_at_start(name, tile, where, number)
-        end
-        held = [*stand_ins, *told.values]
         # The tiles that take turns through pictures follow, each a tile of a run (PackTilePictures).
         unless moving.empty?
-          runs, where = declare_pack_tile_runs_at_start(name, moving, where, held.length)
-          held.concat(runs)
+          runs, where = declare_pack_tile_runs_at_start(name, moving, where, stand_ins.length)
+          (@run_tiles_read_at_start ||= Set.new).merge(runs)
         end
+        told = {}
+        cells = declare_pack_cells_written_later(name, set_cells, words, tiles_a_side, told, where.bank_names) do |tile, number|
+          # A told tile that takes turns is the run's tile for its bank and turn, as the map's are.
+          next pack_run_tile_read_at_start(runs, where, stand_ins.length, tile) if moving.key?(tile.tile) && tile.bank < where.bank_count
+
+          declare_told_tile_read_at_start(name, tile, where, number)
+        end
+        held = [*stand_ins, *runs, *told.values].uniq
         refuse_oversized_map_at_start!(name, where, held.length)
         tileset = :"background :#{name} tiles"
         tiles(tileset, held.to_h { |picture| [picture, picture] })
@@ -376,6 +393,14 @@ module VBlank
 
         # Which bank the map uses is in the file, so one list given alone is every bank's.
         handle.allow_one_list_for_every_bank.allow_set_cells(cells)
+      end
+
+      # The tile of +runs+ (the run tiles a background read as the game starts holds from tile
+      # +first+ on) that a cell naming +tile+ (a Console::CellTile that takes turns) shows: the one
+      # the start of the game points such a map cell at (IR::StartFile::MovingTile#tile_of).
+      def pack_run_tile_read_at_start(runs, where, first, tile)
+        key = where.moving.find { |moving_tile| moving_tile.tile == tile.tile }
+        runs.fetch(key.tile_of(tile.bank, tile.mirrored, tile.upside_down) - first)
       end
 
       # THE ONE TILE THE BUILD HOLDS FOR A BACKGROUND DRAWN FROM THE WHOLE TABLE, read as the game
@@ -470,7 +495,7 @@ module VBlank
           next false unless node.kind == :set_tile && read.key?(node.name)
 
           put = node.picked? ? node.picks.compact : [node.tile]
-          read.fetch(node.name).any? { |background| put.any? { |tile| !picture_from_start_file?(background.tiles[tile]) } }
+          read.fetch(node.name).any? { |background| put.any? { |tile| !told_cell_tile_at_start?(background.tiles[tile]) } }
         end
         return unless changed
 
@@ -480,8 +505,12 @@ module VBlank
                              "the game all-in-one."
       end
 
-      # +held+ is how many tiles the build holds for it besides the map's: a stand-in for each bank
-      # and the told cells'.
+      # Is +picture+ a tile of a background read as the game starts that a told cell can show: a
+      # told tile's picture read from the file, or a tile of a run that takes turns?
+      def told_cell_tile_at_start?(picture) = picture_from_start_file?(picture) || @run_tiles_read_at_start&.include?(picture) || false
+
+      # +held+ is how many tiles the build holds for it besides the map's: a stand-in for each bank,
+      # the runs of tiles that take turns, and the told cells'.
       def refuse_oversized_map_at_start!(name, where, held)
         most = MOST_TILES_READ_AT_START - held
         return if where.tiles_drawn <= most

@@ -183,6 +183,60 @@ module PackTilePictureGames
     [b.program, b.made_data_pack_file]
   end
 
+  # A SUPER NINTENDO ORIGINAL WHOSE MOVING CELL IS WRITTEN BY THE GAME, as a retail game writes
+  # its moving blocks into the arena when a stage starts: the map names only the still cell at tile
+  # 0, and the cell at tile 2 (tiles 2, 3, 18 and 19, a 16x16 cell's four quarters) takes turns
+  # through the belt, each quarter a picture further on than the one before. Its still quarters
+  # are all one picture, which no picture of the belt's shows on all four, so a written cell that
+  # stood still would show.
+  WRITTEN_VIDEO = Array.new(20) { PLACES[0] }.tap do |video|
+    [[0, 1], [1, 2], [16, 3], [17, 1], [2, 2], [3, 2], [18, 2], [19, 2]].each { |tile, places| video[tile] = PLACES[places] }
+  end.freeze
+  WRITTEN_KEYS = [2, 3, 18, 19].freeze
+  WRITTEN_BELT_AT = TILES_AT + (WRITTEN_VIDEO.length * 32)
+  # The cells the game writes on its first pass: at column 1 plain, at column 2 in bank 1, mirrored.
+  WRITTEN_CELLS = [SNES_CELL.(2), SNES_CELL.(2, bank: 1, mirrored: true)].freeze
+  WRITTEN_MAP = [SNES_CELL.(0), SNES_CELL.(0), SNES_CELL.(0)].freeze
+
+  # The picture the quarter +quarter+ of the written cell shows while the group shows +picture+.
+  def self.written_quarter(quarter, picture) = BELT.fetch((quarter + picture) % BELT.length)
+
+  # The game: a scene whose background from the pack has WRITTEN_MAP, whose first pass writes
+  # WRITTEN_CELLS with set_cell, and whose group shows picture (tick / 2) % 3 on every pass.
+  private def written_cell_game_and_file(folder, options: VBlank::Cartridge::Options.new)
+    tiles = [*WRITTEN_VIDEO, *BELT].map(&MadeUpOriginalLayouts::FOUR_PLANES).join
+    from = original(folder, :snes, tiles, WRITTEN_MAP)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: WRITTEN_VIDEO.length, colors: 16
+        slots.tiles :belt, at: WRITTEN_BELT_AT, count: BELT.length, colors: 16
+        slots.numbers :map, at: MAP_AT, count: WRITTEN_MAP.length, width: :half, signed: false
+        slots.colors :palette, at: COLORS_AT, count: 32
+      end
+      keys = WRITTEN_KEYS.each_with_index.to_h do |tile, quarter|
+        [pack[:video].tile(tile), Array.new(BELT.length) { |picture| pack[:belt].tile((quarter + picture) % BELT.length) }]
+      end
+      blocks = tile_pictures :blocks, tiles: keys
+      tick = var :tick, 0
+      var :where, 0
+      scene :stage do
+        arena = background :arena, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: WRITTEN_MAP.length,
+                                    cell: 16, set_cells: WRITTEN_CELLS
+        tick += 1
+        if tick == 1
+          arena.set_cell 1, 0, WRITTEN_CELLS[0]
+          arena.set_cell 2, 0, WRITTEN_CELLS[1]
+        end
+        blocks.show((tick / 2) % 3)
+      end
+      game_loop { case_var(:where) { when_val 0, :stage } }
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
   # A game of the made-up original for +platform+ whose map is +words+, its tile 2 taking turns
   # through the slot :belt. +step+ is run every pass, handed the group and a count of passes. With
   # +in_scene+ the background is declared in the scene that shows it, the group outside it. With
@@ -347,6 +401,36 @@ class TestPackTilePictures < Minitest::Test
       assert_cell_shows(screen, 2, PLACES[3], 2, why: why, color_of: lair)
       assert_cell_shows(screen, 3, BELT[picture], 1, upside_down: true, why: why, color_of: lair)
       assert_cell_shows(screen, 4, PLACES[1], 3, why: why, color_of: lair)
+    end
+  end
+
+  # A cell the map never names, written with set_cell at the scene's start, takes turns with the
+  # group: each of its four quarters, in its own bank and turn, as the cell the map names stays still.
+  def test_a_cell_written_with_set_cell_takes_turns_with_the_group
+    program = Dir.mktmpdir { |folder| written_cell_game_and_file(folder).first }
+
+    [3, 5, 7, 9].each do |frames|
+      picture = (frames / 2) % 3
+      screen = screen_after(program, frames)
+      why = "after #{frames} frames"
+      assert_big_cell_shows(screen, 0, [PLACES[1], PLACES[2], PLACES[3], PLACES[1]], 0, why: "#{why}, the map's cell")
+      quarters = Array.new(4) { |quarter| PackTilePictureGames.written_quarter(quarter, picture) }
+      assert_big_cell_shows(screen, 16, quarters, 0, why: why)
+      assert_big_cell_shows(screen, 32, quarters, 1, mirrored: true, why: "#{why}, mirrored in bank 1")
+    end
+  end
+
+  # Every drawn pixel of the 16x16 cell at (+at_x+, 0) whose quarters are +quarters+ (top left, top
+  # right, bottom left, bottom right), drawn from +bank+ and turned whole.
+  private def assert_big_cell_shows(screen, at_x, quarters, bank, why:, mirrored: false)
+    16.times do |y|
+      16.times do |x|
+        seen_x = mirrored ? 15 - x : x
+        place = quarters.fetch(((y / 8) * 2) + (seen_x / 8)).fetch(((y % 8) * 8) + (seen_x % 8))
+        next if place.zero?
+
+        assert_equal BANKS.fetch(bank).fetch(place), screen.pixel(at_x + x, y), "#{why}: the pixel (#{x}, #{y}) of the cell at #{at_x}"
+      end
     end
   end
 
