@@ -183,7 +183,7 @@ module VBlank
               return value(operand) if bytes > 2 || folded(operand)
 
               name = variable_kept_at_least(operand, bytes)
-              return emit_low_bytes_at(place_of(name), bytes) if name
+              return emit_low_bytes_at(kept_place_of(name), bytes) if name
               return emit_low_negative(operand, bytes) if operand.is_a?(Node) && operand.kind == :neg
               return value(operand) unless operand.is_a?(Node) && operand.kind == :binop
 
@@ -231,7 +231,7 @@ module VBlank
             # out by #low_value.
             def emit_low_byte_in_a(operand)
               name = variable_kept_at_least(operand, 1)
-              return @asm.load(:a, [place_of(name)]) if name && !folded(operand)
+              return @asm.load(:a, [kept_place_of(name)]) if name && !folded(operand)
               return emit_item_low_byte_in_a(operand) if list_item_in_place?(operand)
               if operand.is_a?(Node) && operand.kind == :binop && LOW_SUM_OPS.include?(operand.op)
                 left, right = operand.lhs, operand.rhs
@@ -301,7 +301,7 @@ module VBlank
                 return
               end
 
-              name ? @asm.load(:hl, place_of(name)) : @asm.pop(:hl)
+              name ? @asm.load(:hl, kept_place_of(name)) : @asm.pop(:hl)
               %i[e d].first(bytes).each_with_index do |register, i|
                 @asm.load(:a, register)
                 if name

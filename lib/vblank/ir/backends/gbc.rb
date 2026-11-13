@@ -179,6 +179,10 @@ module VBlank
           art = ArtSettings.new(lends: false, tile_rooms: false, room_colors: false)
           loop do
             return build_in_view(program, title, art, cache)
+          rescue Lowering::VariableHandedOver
+            # A try asked for the place of a variable kept narrow: it is whole from the next try
+            # on, and the program has only so many variables, so the tries end (Lowering#place_of).
+            next
           rescue Art::TooManySpriteTiles
             raise if @scene_pictures
 
@@ -393,7 +397,7 @@ module VBlank
                                              music: lowering.music, runs: runs, drawn_palettes: lowering.drawn_palettes,
                                              big_maps: lowering.big_map_places, together: lowering.groups_up_together?,
                                              bar_rows: lowering.bar_rows, bar_maps: lowering.bar_shows_maps?, clips: clips,
-                                             count_at: (lowering.variables[Frames::COUNT] if lowering.counts_dark_frames?),
+                                             count_at: (lowering.whole_place_of(Frames::COUNT) if lowering.counts_dark_frames?),
                                              banked_colors: view.bank_background_colors && !lowering.drawn_palettes.nil?,
                                              byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
