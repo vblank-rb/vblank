@@ -100,11 +100,14 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 256, pitch_held_through(heard, 6..14), 4
   end
 
+  # Quiet is asked at a frame the clip played as recorded would still sound in, and a few frames past
+  # where the octave-up one ends: the voice settles where it stands a couple of frames after a clip
+  # ends, a step the listener can hear in whichever frame it falls.
   def test_a_recording_played_an_octave_up_is_over_in_half_the_time
     heard = console_voice(clip_game(waves: 100, pitch: :C5), :wave, frames: 30)
 
     assert_operator heard.loudness(10), :>=, SoundComparison::HEARD
-    assert_operator heard.loudness(22), :<, SoundComparison::HEARD
+    assert_operator heard.loudness(25), :<, SoundComparison::HEARD
   end
 
   # Played at another note, a recording is a clip of its own, and stopping it by name stops that clip.

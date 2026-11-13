@@ -688,6 +688,12 @@ module VBlank
               background_tiles.times.each_slice(128).with_index do |slice, half|
                 chunks << ["art_background_tiles", slice.first, slice.length, half / 2, half.even? ? 0x9000 : 0x8800]
               end
+              # Each chunk of at most 128 tiles by the console's own copy (rt_gdma), as the display is
+              # off from power-on until the first frame. Every scene's tiles go in here, so with the
+              # processor copying them a byte at a time, the tiles a game's later scenes draw held
+              # its first picture back; the console's copy moves 16 bytes in the time the
+              # processor moves two. The tiles' sections start on 16 bytes (Art#data_section), as
+              # it needs.
               chunks.each do |label, first, count, bank, to|
                 asm.load(:a, bank)
                 asm.load_high(h::VBK, :a)
@@ -697,8 +703,8 @@ module VBlank
                 asm.load(:de, first * 16)
                 asm.add_hl(:de)
                 asm.load(:de, to)
-                asm.load(:bc, count * 16)
-                asm.call("rt_copy_bc")
+                asm.load(:c, count - 1) # blocks of 16, less one
+                asm.call("rt_gdma")
               end
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)

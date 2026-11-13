@@ -58,12 +58,19 @@ class TestGBCPackSceneArrival < Minitest::Test
   # scene taking over to the second is held, though the colours change as each arrives.
   def test_no_frame_holds_the_picture_as_each_fading_scene_from_the_pack_takes_over
     Dir.mktmpdir do |folder|
-      game = scene_game(%i[pack pack], folder, fading: true)
-      rom = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
-      result = rom.profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: PROFILED_FRAMES)
+      result = color_rom(scene_game(%i[pack pack], folder, fading: true)).profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: PROFILED_FRAMES)
 
       assert_empty result.held.map { |reading| [reading.frame, reading.picture_held_by] }
     end
+  end
+
+  # POWER-ON DOES NOT GROW WITH WHAT LATER SCENES DRAW. The tiles of every scene's background are
+  # copied in while the screen is off at power-on, so a second screen's tiles in the pack must not
+  # hold the game's first picture a frame later than the game with one.
+  def test_the_first_picture_is_not_held_by_a_second_screens_tiles
+    shown = [%i[none pack], %i[pack pack]].map { |hows| Dir.mktmpdir { |folder| first_picture_frame(scene_game(hows, folder)) } }
+
+    assert_equal shown.first, shown.last
   end
 
   def test_each_scene_from_the_pack_arrives_in_one_frame_beside_another
@@ -121,6 +128,15 @@ class TestGBCPackSceneArrival < Minitest::Test
     end
     pass
   end
+
+  # The frame from power-on the game's first picture went up on. Frame 1 is left out: it is read
+  # against work memory as the console powers on, before the start-up clears it.
+  private def first_picture_frame(game)
+    profile = color_rom(game).profile(out: StringIO.new, tape: NOTHING_PRESSED, frames: 1..FIRST_PASS)
+    profile.readings.drop(1).find(&:new_picture?)&.frame
+  end
+
+  private def color_rom(game) = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
 
   private def arrival_run(game) = GBC::HeadlessRun.new.run(game.program(console: :gbc), frames: SECOND_PASS + 4)
 
