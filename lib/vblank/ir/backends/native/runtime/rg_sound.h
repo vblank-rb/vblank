@@ -34,7 +34,8 @@
  * them; see rg_sound.c for the layouts). */
 extern const int32_t rg_game_sound_rules[];
 /* A game with a part that reads its wave from the start file writes it into this table as it
- * starts (rg_music_fill_wave, rg_music.h), and says so before this header (RG_WAVEFORMS_WRITABLE). */
+ * starts (the music feature does, through its own header), and defines RG_WAVEFORMS_WRITABLE
+ * before this header. */
 #ifdef RG_WAVEFORMS_WRITABLE
 extern int32_t rg_game_waveforms[];
 #else
