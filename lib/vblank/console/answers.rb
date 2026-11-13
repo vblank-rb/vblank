@@ -64,6 +64,14 @@ module VBlank
       RECORDINGS_WHERE_PANNED = "A part that plays a recording is heard where `pan` puts it: each voice " \
                                 "of the sound chip has a volume for the left speaker and one for the right."
 
+      # What a Score note's own rattle and its own waveform do (Audio::Score::Note#metallic, #wave), a
+      # sentence of its own: played as the note starts, or on a console whose player puts a new music
+      # volume on a held note from the part's own settings, refused where the game sets that volume.
+      NOTE_VOICES = "A note on the noise voice can have its own `metallic:`, and a note on the wave voice can " \
+                    "have its own `wave:`. The note sets them when it starts."
+      NOTE_VOICES_NOT_UNDER_VOLUME = "#{NOTE_VOICES} If the game sets its music volume, such a note is refused: " \
+                                     "this build does not make it yet."
+
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 

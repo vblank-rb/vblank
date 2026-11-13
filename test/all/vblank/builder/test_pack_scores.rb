@@ -190,6 +190,82 @@ class TestPackScores < Minitest::Test
     end
   end
 
+  # A DRUM WHOSE HITS RATTLE ON SOME NOTES AND A WAVE PART THAT CHANGES WAVE, from voiced records
+  # (Original::PackNote's bytes 25 and 26), as a Game Boy driver sets NR43's bit 3 and the wave for
+  # each note it strikes. A record's wave is one of the part's (`notes(waves: [...])`): a wave of
+  # the copy, a shape, or the copy's other wave. A rest's settings mean nothing. Its twin read as
+  # the game starts is in test/pack_scores_at_start_tests.rb.
+  RATTLING = [
+    [[0, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }],
+    [[8, 6, 62, OWN, { metallic: 0 }], { key: 62, metallic: false }],
+    [[16, 6, 64, OWN, {}], { key: 64 }],
+    [[24, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }]
+  ].freeze
+  WAVE_TURNS = [
+    [[0, 6, 57, OWN, { wave: 0 }], { key: 57, wave: :wave_0 }],
+    [[8, 6, 59, OWN, { wave: 1 }], { key: 59, wave: :sine }],
+    [[16, 6, 60, OWN, {}], { key: 60 }],
+    [[24, 6, 62, OWN, { wave: 2 }], { key: 62, wave: :wave_1 }]
+  ].freeze
+
+  private def rattling_original(folder)
+    record = VBlank::Original::PackNote
+    copy = "\0".b * (VOICED_AT + (2 * MOST * record::VOICED_BYTES))
+    copy[WAVES_AT, 32] = WAVES.flatten.pack("C*")
+    [RATTLING, WAVE_TURNS].each_with_index do |notes, place|
+      tuples = notes.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
+      copy[VOICED_AT + (place * MOST * record::VOICED_BYTES), MOST * record::VOICED_BYTES] = record.bytes_of(tuples, count: MOST, voiced: true)
+    end
+    path = File.join(folder, "made_up_rattling.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gbc,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The copy's wave +index+ as the 32 steps a note written by hand names.
+  private def copy_wave_steps(index) = WAVES[index].flat_map { |byte| [byte >> 4, byte & 0xF] }
+
+  # The song of the drum and the wave part: from the pack when +from+ is given, by hand otherwise.
+  private def rattling_game(from = nil)
+    steps = { wave_0: copy_wave_steps(0), wave_1: copy_wave_steps(1) }
+    hand = lambda do |notes|
+      notes.map do |(at, length, *), words|
+        Note.new(at: at, length: length, **words.merge(words[:wave] ? { wave: steps.fetch(words[:wave], words[:wave]) } : {}))
+      end
+    end
+    b = Builder.new
+    b.instance_eval do
+      pack = if from
+               data_pack from: from, version: "1" do |slots|
+                 slots.numbers :waves, at: WAVES_AT, count: 32, width: :byte, signed: false
+                 slots.voiced_notes :drum, at: VOICED_AT, count: MOST
+                 slots.voiced_notes :pad, at: VOICED_AT + (MOST * VBlank::Original::PackNote::VOICED_BYTES), count: MOST
+               end
+             end
+      drum = pack ? pack[:drum].notes : hand.(RATTLING)
+      pad = pack ? pack[:pad].notes(waves: [pack[:waves].wave(0), :sine, pack[:waves].wave(1)]) : hand.(WAVE_TURNS)
+      music = songs :music, [Score.new(parts: [Part.new(notes: drum, plays: :noise), Part.new(notes: pad, plays: :sawtooth)],
+                                       tempo: 150, length: 40)]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_drum_that_rattles_and_a_wave_part_that_changes_wave_from_the_pack_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(rattling_game, frames: 36).audio
+      played = game_player.run(rattling_game(rattling_original(folder)), frames: 36).audio
+
+      assert_equal [true, false, false, true], wanted.select { |kind, hit| kind == :noise && hit }.map { |_, hit| hit[:metallic] }
+      assert_equal [copy_wave_steps(0), :sine, :sawtooth, copy_wave_steps(1)],
+                   wanted.select { |kind, wave| kind == :wave && wave }.map { |_, wave| wave[:shape] }
+      assert_equal wanted, played
+    end
+  end
+
   # A WAVE OF THE COPY'S (`plays: pack[:waves].wave(1)`), as a Color or Advance driver keeps its
   # wave voice's patterns, sixteen bytes each. Its twin read as the game starts is in
   # test/pack_scores_at_start_tests.rb.

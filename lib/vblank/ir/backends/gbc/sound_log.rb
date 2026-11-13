@@ -67,7 +67,7 @@ module VBlank
             @tables = places.sound_tables.to_h { |label, entry| [code.fetch(label).address, entry] }
             bytes = Music.note_bytes(Music.slides_in?(places.notes), Music.pans_in?(places.notes),
                                      Music.shapes_in?(places.notes), Music.wobbles_in?(places.notes),
-                                     Music.carries_in?(places.notes))
+                                     Music.carries_in?(places.notes), Music.waves_in?(places.notes))
             # Each note by where it is. Songs kept in the cartridge's banks (GBC::Music#sections) put
             # notes of two banks at one address, so there a note is known by its bank as well, which
             # the player holds in A as the note arrives (Runtime::Music#emit_notes).
@@ -224,11 +224,11 @@ module VBlank
           def wave_or_noise(kind, note)
             part = note.part
             if kind == :wave
-              note.pitch.zero? ? [:stop_wave] : [:wave, { shape: part.wave, frequency: note.pitch, volume: part.volume }]
+              note.pitch.zero? ? [:stop_wave] : [:wave, { shape: note.wave, frequency: note.pitch, volume: part.volume }]
             else
               return [:noise, nil] if note.pitch.zero?
 
-              [:noise, { pitch: note.pitch, decay: part.decay, volume: part.volume, metallic: part.metallic }]
+              [:noise, { pitch: note.pitch, decay: part.decay, volume: part.volume, metallic: note.metallic }]
             end
           end
         end

@@ -277,6 +277,10 @@ module VBlank
         # ...and a recorded note's own envelope as a sound chip keeps it (an Audio::SNESEnvelope),
         # beside the nearest shape in the envelope's place.
         CHIP_ENVELOPE_SLOT = 12
+        # ...and whether a drum hit rattles, true or false, where its note was given it (Score::Note#metallic).
+        METALLIC_SLOT = 13
+        # ...and a wave note's own waveform, a shape or 32 steps (Score::Note#own_wave).
+        WAVE_SLOT = 14
 
         # Does this part, or a note of it, set a slide?
         def slides? = Music.slides_said?(slide, events)

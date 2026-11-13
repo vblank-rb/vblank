@@ -81,7 +81,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
     the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
     `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
-    where the console glides at all: the Super Nintendo and the PlayStation). A setting the
+    where the console glides at all: the Super Nintendo and the PlayStation), and **a rattle** (byte 25,
+    1 for a hit that rattles and 0 for one that does not, on the noise voice: `metallic:`) and **a wave**
+    (byte 26, which of the part's waves, counting from 0, on the wave voice: `wave:`). A part names its
+    waves as it names instruments, `pack[:pad].notes(waves: [pack[:waves].wave(0), :sine])`, each a
+    shape, 32 steps or a wave of the pack, and a wave number past them is the part's own from the
+    player's file and refused all-in-one (worked examples:
+    `test_a_drum_that_rattles_and_a_wave_part_that_changes_wave_from_the_pack_play_as_written_by_hand` in
+    `test/all/vblank/builder/test_pack_scores.rb`, and its twin read as the game starts in
+    `test/pack_scores_at_start_tests.rb`). A setting the
     part's voice lacks (a duty off the squares, a fade on the wave, a slide off the song's first square,
     a pitch number off the squares and the wave), or one past its range, is refused all-in-one as a note
     written by hand is, and from the player's file is the part's own; a note whose slide and vibrato

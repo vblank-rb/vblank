@@ -174,6 +174,29 @@ module VBlank
       # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
 
+      # WHETHER A DRUM HIT RATTLES (the noise voice's short, metallic hiss): its note's own setting
+      # where it was given one (Score::Note#metallic), else its part's.
+      def said_metallic(part, event)
+        own = event[Audio::Music::Part::METALLIC_SLOT]
+        own.nil? ? part.metallic : own
+      end
+
+      # Whether any note of +part+ was given its own rattle. A console that keeps a part's
+      # rattle once, with what the part sounds like, then keeps each note's instead.
+      def notes_say_metallic?(part) = part.events.any? { |event| !event[Audio::Music::Part::METALLIC_SLOT].nil? }
+
+      # THE WAVEFORM A WAVE NOTE PLAYS: its own when it named one (Score::Note#own_wave), else its
+      # part's. +own_wave+ is the note's alone, nil for its part's.
+      def said_wave(part, event) = own_wave(event) || part.wave
+      def own_wave(event) = event[Audio::Music::Part::WAVE_SLOT]
+
+      # Every waveform +part+ plays, its own first and then each its notes name, once each.
+      def waves_of(part) = [part.wave, *part.events.filter_map { |event| own_wave(event) }].compact.uniq
+
+      # Whether any part of +songs+ has a note that names a waveform of its own: a console that puts a
+      # tune's waveform in once as it starts then puts each note's in as it starts.
+      def notes_name_waves?(songs) = songs.any? { |song| song.voices.any? { |part| part.events.any? { |event| own_wave(event) } } }
+
       # A NOTE SETTING ITS VOICE, as every backend's log says it: [:voice, channel, who, frequency,
       # volume], then the note's fade, its slide and its wobble when it set them (#said_fade,
       # #said_slide, #said_vibrato), its side when it is one speaker (#note_side), and its shape

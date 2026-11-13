@@ -51,6 +51,14 @@ module VBlank
           CARRIES_VIBRATO = 1 << 9
           # ...and set on a recorded note that carries on the one sounding (IR::Tunes.glides?).
           GLIDES = 1 << 10
+          # ...and set on a drum hit given its own rattle (IR::Tunes.said_metallic),
+          # with its noise bits (Audio::Sound.noise_register_bits) above it (rg_music.c's HAS_NOISE_BITS).
+          HAS_NOISE_BITS = 1 << 11
+          NOISE_BITS_AT = 12
+          # ...and set on a wave note that names a waveform of its own (IR::Tunes.own_wave), with that
+          # waveform's number (SoundLog#note_waveform_number) above it (rg_music.c's HAS_WAVE).
+          HAS_WAVE = 1 << 16
+          WAVE_AT = 17
 
           private
 
@@ -449,7 +457,10 @@ module VBlank
                song.group ? groups.index(song.group) : -1, Tunes.priority_of(rank), song.keeps_voices ? 1 : 0]
             end
             by_rank = Tunes.effects_by_rank(songs).map { |name, _| @sound_log.effect_number(name) }
-            plays_wave = songs.any? { |song| Tunes.parts_on(song, :wave).positive? }
+            # Each wave note puts its waveform in itself where an effect plays the wave voice, or a
+            # note names a waveform of its own.
+            plays_wave = songs.any? { |song| Tunes.parts_on(song, :wave).positive? } || !@sound_log.note_waves.empty? ||
+                         !@sound_log.waves_of_records.empty?
             sound_table("effects", [rows.size, plays_wave ? 1 : 0, *rows.flatten, *by_rank])
           end
 
@@ -516,21 +527,15 @@ module VBlank
                                         Tunes::ORDER_MASK, Tunes::COUNTED_A_FRAME])
           end
 
-          # Every different waveform the game can put on the wave voice, 32 steps each: the ones
-          # its `wave`s name and the ones its songs' parts play, and after them one for each wave a
-          # part reads from the start file (#waves_from_start_file), held as its stand-in until
-          # rg_music_fill_wave writes it.
-          def waveforms
-            @waveforms ||= begin
-              said = @sound_log.waves.map { |wave| wave.fetch(:shape) }
-              played = @sound_log.songs.flat_map { |song| song.voices.reject(&:wave_from_file).filter_map(&:wave) }
-              (said + played).map { |shape| VBlank::Audio::Sound.wavetable(shape) }.uniq +
-                waves_from_start_file.map { StartFile::WAVE_STAND_IN }
-            end
-          end
+          # Every different waveform the game can put on the wave voice, 32 steps each, numbered as
+          # the sound log numbers them (SoundLog#waveforms): the ones its `wave`s name and its songs'
+          # parts play, then the ones its notes name for themselves, then one for each wave read from
+          # the start file (#waves_from_start_file), held as its stand-in until rg_music_fill_wave
+          # writes it.
+          def waveforms = @sound_log.waveforms
 
-          # Each different place in the start file a part reads its wave from (StartFile::Wave).
-          def waves_from_start_file = @waves_from_start_file ||= @sound_log.songs.flat_map { |song| song.voices.filter_map(&:wave_from_file) }.uniq
+          # Each different place in the start file a part or a note reads its wave from (StartFile::Wave).
+          def waves_from_start_file = @sound_log.waves_from_start_file
 
           def waveform_number(shape) = waveforms.index(VBlank::Audio::Sound.wavetable(shape))
 
@@ -542,7 +547,7 @@ module VBlank
           end
 
           # The number of the first waveform written from the start file, which come after the rest.
-          def first_start_file_waveform = waveforms.size - waves_from_start_file.size
+          def first_start_file_waveform = @sound_log.first_start_file_waveform
 
           def waveform_table = sound_table("waveforms", [waveforms.size, *waveforms.flatten], writable: !waves_from_start_file.empty?)
 
@@ -752,12 +757,19 @@ module VBlank
           # the second and the fourth number of a note for each (Notes#pitch_number_events). How each
           # setting comes to a note's fifth and sixth numbers is the bits #encoded_note writes, so the
           # runtime puts the record's own bits in their places.
+          #
+          # After those, before the rules for a pitch between keys: how many waves the part names for
+          # its notes (StartFile::Notes#waves) and each one's waveform number (HAS_WAVE), then a drum
+          # hit's noise bits when it rattles and when it does not (HAS_NOISE_BITS).
           def voiced_note_rules(where, kind, part)
             return [] unless where.voiced
 
             numbers = where.pitch_number_events
+            sound = VBlank::Audio::Sound
             [where.takes.sum { |setting| Original::PackNote::NAMES.fetch(setting) }, numbers.size,
              *numbers.map { |event| @sound_log.pitch_number(event[1]) }, *numbers.map { |event| note_ticks(kind, event[1]) },
+             where.waves.size, *where.waves.map { |wave| @sound_log.note_waveform_number(wave) },
+             sound.noise_register_bits(true), sound.noise_register_bits(false),
              *hz_note_rules(where, kind, part)]
           end
 
@@ -903,7 +915,21 @@ module VBlank
             side = pitch.zero? ? 0 : Audio::Pan.bits_of(Tunes.note_side(part, note))
             shapes = Tunes.said_duty(part, note) unless pitch.zero?
             [at, @sound_log.pitch_number(pitch), heard, last, Int32.wrap(flags | (side << PAN_AT)),
-             (shapes ? HAS_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0)]
+             (shapes ? HAS_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0) |
+               (pitch.zero? ? 0 : own_voice_bits(note, kind))]
+          end
+
+          # A drum hit's own noise bits, or a wave note's own waveform, where the note named them
+          # (HAS_NOISE_BITS, HAS_WAVE); nought for a note that plays its part's.
+          def own_voice_bits(note, kind)
+            if kind == :noise
+              own = note[Audio::Music::Part::METALLIC_SLOT]
+              own.nil? ? 0 : HAS_NOISE_BITS | (VBlank::Audio::Sound.noise_register_bits(own) << NOISE_BITS_AT)
+            elsif kind == :wave && (wave = Tunes.own_wave(note))
+              HAS_WAVE | (@sound_log.note_waveform_number(wave) << WAVE_AT)
+            else
+              0
+            end
           end
 
           # EVERYTHING A RECORDED NOTE IS BUT HOW LOUD, the interpreter's way

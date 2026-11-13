@@ -54,8 +54,13 @@ module VBlank
           # In a game where a note wobbles, two more after those: the note's vibrato
           # (Audio::Vibrato#bits, nought for a note that holds still), its depth and speed in the
           # first and its wait in the second, which the player keeps for the frames after.
-          def self.note_bytes(slides, pans, shapes, wobbles, carries = false)
-            NOTE_BYTES + (slides ? 1 : 0) + (pans ? 1 : 0) + (shapes ? 1 : 0) + (wobbles ? 2 : 0) + (carries ? 1 : 0)
+          #
+          # In a game where a wave note names a waveform of its own, one more straight after the
+          # volume, before all of those: the note's own waveform by number, 1 up, or nought for its
+          # part's (#emit_note), which the player puts in before it starts the note.
+          def self.note_bytes(slides, pans, shapes, wobbles, carries = false, waves = false)
+            NOTE_BYTES + (slides ? 1 : 0) + (pans ? 1 : 0) + (shapes ? 1 : 0) + (wobbles ? 2 : 0) + (carries ? 1 : 0) +
+              (waves ? 1 : 0)
           end
 
           # Whether any note of these lists (#notes) slides its pitch, whether any plays from one
@@ -69,13 +74,18 @@ module VBlank
           # does a note carry a byte saying whether it starts the swing over.
           def self.carries_in?(notes) = notes.each_value.any? { |list| list.any? { |note| note.vibrato&.carries } }
 
+          # Whether any wave note names a waveform of its own (Note#names_wave).
+          def self.waves_in?(notes) = notes.each_value.any? { |list| list.any?(&:names_wave) }
+
           # One note of a part as the music table holds it, with what it is to the interpreter: the
           # song's name, the part, the voice it plays on, its pitch (0 for a rest), its volume, and
           # how it fades or swells, how it slides its pitch and how it wobbles when the note or its
           # part asked for it (IR::Tunes.said_fade, IR::Tunes.said_slide, IR::Tunes.said_vibrato), and
           # the speaker it plays from when it is one (IR::Tunes.note_side), and the shapes a square
-          # note names (IR::Tunes.said_duty).
-          Note = Data.define(:song, :part, :voice, :pitch, :volume, :fade, :slide, :vibrato, :side, :duty)
+          # note names (IR::Tunes.said_duty). A wave note's waveform (IR::Tunes.said_wave) and whether
+          # it is the note's own (+names_wave+), and whether a drum hit rattles (IR::Tunes.said_metallic).
+          Note = Data.define(:song, :part, :voice, :pitch, :volume, :fade, :slide, :vibrato, :side, :duty, :wave, :names_wave,
+                             :metallic)
 
           # A NOTE'S FADE RIDES IN ITS TUNING'S TOP FOUR BITS, which a square or noise note never
           # uses: a square voice's period is eleven bits and the hiss's clock eight. The player
@@ -290,8 +300,15 @@ module VBlank
             @shapes
           end
 
+          # ...and one where a wave note names a waveform of its own: only then does a note carry a
+          # byte for it, and each wave note put its waveform in as it starts.
+          def waves?
+            @waves = Music.waves_in?(notes) unless defined?(@waves)
+            @waves
+          end
+
           # How many bytes a note of this game's takes (.note_bytes).
-          def note_bytes = Music.note_bytes(slides?, pans?, shapes?, wobbles?, carries?)
+          def note_bytes = Music.note_bytes(slides?, pans?, shapes?, wobbles?, carries?, waves?)
 
           def carries?
             @carries = Music.carries_in?(notes) unless defined?(@carries)
@@ -307,7 +324,10 @@ module VBlank
                      slide: (Tunes.said_slide(part, event) unless pitch.zero?),
                      vibrato: (Tunes.said_vibrato(part, event) unless pitch.zero?),
                      side: (Tunes.note_side(part, event) unless pitch.zero?),
-                     duty: (Tunes.said_duty(part, event) unless pitch.zero?))
+                     duty: (Tunes.said_duty(part, event) unless pitch.zero?),
+                     wave: (Tunes.said_wave(part, event) if voice == WAVE_VOICE),
+                     names_wave: voice == WAVE_VOICE && !pitch.zero? && !Tunes.own_wave(event).nil?,
+                     metallic: (Tunes.said_metallic(part, event) if voice == NOISE_VOICE))
           end
 
           # A note as the table holds it: when it starts, its tuning with its fade in the top bits
@@ -318,6 +338,7 @@ module VBlank
             at, pitch, _, volume = event
             asm.data_words(at, note_tuning(voice, part, event))
             asm.data_bytes(volume || part.volume)
+            asm.data_bytes(own_waveform_number(voice, event)) if waves?
             asm.data_bytes(pitch.zero? ? 0 : Tunes.said_slide(part, event)&.bits || 0) if slides?
             asm.data_bytes(pitch.zero? ? 0 : VBlank::Audio::Pan.bits_of(Tunes.note_side(part, event))) if pans?
             asm.data_bytes(note_shapes(part, event)) if shapes?
@@ -337,13 +358,34 @@ module VBlank
             (Tunes.said_duty(part, event) || VBlank::Audio::Duty.one(part.duty)).bits
           end
 
+          # A wave note's own waveform as its byte holds it: its number among #waveforms, 1 up, or
+          # nought for its part's (a rest's too, and every other voice's).
+          def own_waveform_number(voice, event)
+            own = Tunes.own_wave(event) if voice == WAVE_VOICE && !event[1].zero?
+            own ? waveforms.index(own) + 1 : 0
+          end
+
           def note_tuning(voice, part, event)
             pitch = event[1]
             fade = Tunes.said_fade(part, event) unless pitch.zero?
             clock = Tunes.said_noise_clock(event)
-            return tuning(voice, pitch, clock) unless fade
+            tuned = tuning(voice, pitch, clock) | note_rattle(voice, part, event)
+            return tuned unless fade
 
-            tuning(voice, pitch, clock) | (fade.bits << FADE_SHIFT) | (voice == NOISE_VOICE ? NOISE_HAS_FADE : 0)
+            tuned | (fade.bits << FADE_SHIFT) | (voice == NOISE_VOICE ? NOISE_HAS_FADE : 0)
+          end
+
+          # A DRUM HIT GIVEN ITS OWN RATTLE keeps it in bit 3 of its tuning's low
+          # byte, which is where the noise voice's register (NR43) keeps it and which the clock's bits
+          # leave free: the player writes the byte with the part's rattle ORed in, and a part any of
+          # whose notes are given one has none of its own there (#tone_of). Nothing for a rest, any other voice,
+          # or a part whose notes are given none, which is the bytes it always was.
+          NOISE_METALLIC_BIT = 0x08
+
+          def note_rattle(voice, part, event)
+            return 0 unless voice == NOISE_VOICE && !event[1].zero? && Tunes.notes_say_metallic?(part)
+
+            Tunes.said_metallic(part, event) ? NOISE_METALLIC_BIT : 0
           end
 
           # Every rank the game's songs and sound effects can have, and nobody's, lowest first.
@@ -436,7 +478,7 @@ module VBlank
             sound = VBlank::Audio::Sound
             case voice
             when WAVE_VOICE then waveforms.index(part.wave)
-            when NOISE_VOICE then sound.fade_step(part.decay) | (part.metallic ? 0x80 : 0)
+            when NOISE_VOICE then sound.fade_step(part.decay) | (part.metallic && !Tunes.notes_say_metallic?(part) ? 0x80 : 0)
             else GameBoySound.duty_bits(part.duty) << 6
             end
           end
@@ -458,7 +500,8 @@ module VBlank
           end
 
           def waveforms
-            @waveforms ||= @songs.flat_map(&:voices).filter_map { |part| part.wave if Tunes.part_kind(part) == :wave }.uniq
+            @waveforms ||= @songs.flat_map(&:voices).select { |part| Tunes.part_kind(part) == :wave }
+                                 .flat_map { |part| Tunes.waves_of(part) }.uniq
           end
 
           # A waveform's 32 steps as the wave voice keeps them: two to a byte, the first in the

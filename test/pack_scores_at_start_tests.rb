@@ -711,6 +711,75 @@ module PackScoresAtStartTests
     end
   end
 
+  # A DRUM THAT RATTLES ON SOME HITS AND A WAVE PART THAT CHANGES WAVE, read as the game starts from
+  # voiced records (Original::PackNote's bytes 25 and 26). A record's wave is one of the part's
+  # (`notes(waves: [...])`): a wave of the pack, a shape, the pack's other wave; one past those, and a
+  # rattle byte past 1, are the part's own. The pad holds a note across the loop in the copy's wave.
+  RATTLING = [
+    [[0, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }],
+    [[8, 6, 62, OWN, { metallic: 0 }], { key: 62, metallic: false }],
+    [[16, 6, 64, OWN, {}], { key: 64 }],
+    [[24, 6, 60, OWN, { metallic: 7 }], { key: 60 }],
+    [[32, 6, 60, OWN, { metallic: 1 }], { key: 60, metallic: true }]
+  ].freeze
+  WAVE_TURNS = [
+    [[0, 6, 57, OWN, { wave: 0 }], { key: 57, wave: :wave_0 }],
+    [[8, 6, 59, OWN, { wave: 1 }], { key: 59, wave: :sine }],
+    [[16, 6, 60, OWN, { wave: 9 }], { key: 60 }],
+    [[24, 0, 62, OWN, { wave: 2 }], { key: 62, wave: :wave_1 }]
+  ].freeze
+  # The pack's waves a note written by hand names, by which of WAVES each is.
+  PACK_WAVE_NAMES = { wave_0: 0, wave_1: 1 }.freeze
+
+  # A game of a song of the drum and the pad, read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand.
+  private def rattling_game(folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        slots.voiced_notes :drum, at: 0, count: MOST
+        slots.voiced_notes :pad, at: MOST * PackNote::VOICED_BYTES, count: MOST
+        slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false
+      end
+      drum = pack ? pack[:drum].notes : test.rattling_notes_by_hand(RATTLING)
+      pad = pack ? pack[:pad].notes(waves: [pack[:waves].wave(0), :sine, pack[:waves].wave(1)]) : test.rattling_notes_by_hand(WAVE_TURNS)
+      music = songs :music, [Score.new(parts: [Part.new(notes: drum, plays: :noise), Part.new(notes: pad, plays: :sawtooth)],
+                                       tempo: 150, length: 44, loop_from: 20)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Called back from the game's block, so it is public.
+  def rattling_notes_by_hand(notes)
+    voiced_written(notes).map { |note| PACK_WAVE_NAMES.key?(note.wave) ? note.with(wave: wave_steps(PACK_WAVE_NAMES.fetch(note.wave))) : note }
+  end
+
+  def test_a_drum_that_rattles_and_a_wave_part_that_changes_wave_read_as_the_game_starts_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      by_hand = rattling_game
+      left_out = rattling_game(folder: folder)
+      file = VBlank::Original::Pack.holding({ drum: voiced_records(RATTLING), pad: voiced_records(WAVE_TURNS),
+                                              waves: WAVES.flatten.pack("C*") },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 100)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 100)
+
+      assert(wanted.audio.any? { |kind, wave| kind == :wave && wave && wave[:shape] == wave_steps(1) }, "the pad plays the copy's wave")
+      assert(wanted.audio.any? { |kind, hit| kind == :noise && hit && hit[:metallic] }, "the drum rattles")
+      assert_equal wanted.audio, played.audio
+    end
+  end
+
   # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
   # name hz in 16ths and glides, the first shaded between the speakers, one naming an instrument and a volume as it glides (the part's
   # own, from the file), one out of range (its key), and a noise part whose hits name hz, one

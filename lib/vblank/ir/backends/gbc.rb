@@ -365,7 +365,7 @@ module VBlank
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
                                   bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
-                                  wobbles: lowering.music.wobbles?, shapes: lowering.music.shapes?,
+                                  wobbles: lowering.music.wobbles?, shapes: lowering.music.shapes?, waves: lowering.music.waves?,
                                   swells: lowering.holds_swells?, noise_swells: lowering.holds_noise_swells?,
                                   banked_songs: lowering.music.banked?, clips: lowering.clips.any?,
                                   clip_laps: lowering.clips.loops?,

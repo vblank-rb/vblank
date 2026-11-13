@@ -162,7 +162,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `music_volume` — works: the same as on the Advance.
 - `fade_music_in` — works: the same as on the Advance.
 - `fade_music_out` — works: the same as on the Advance.
-- `songs` — works: the same as on the Advance.
+- `songs` — works: see `song`. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts. If the game sets its music volume, such a note is refused: this build does not make it yet.
 - `sound_effects` — works: see `song`.
 - `sample` — works: the sound chip plays recordings itself, each on a voice of its own with its own loudness and shape, 16 at once.
 - `instrument` — works: see `sample`.

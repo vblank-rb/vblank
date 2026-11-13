@@ -225,8 +225,11 @@ module VBlank
     # reader (+pose+, by name). An image reads it (Builder::PackPoses).
     PackFrame = Data.define(:slot, :at, :count, :piece_layout, :pose)
 
-    # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names (PackSlot#notes).
-    PackNotes = Data.define(:slot, :instruments)
+    # A PART'S NOTES IN A SLOT OF NOTES, and the instruments a note's number names and the waves a
+    # voiced note's wave number names (PackSlot#notes).
+    PackNotes = Data.define(:slot, :instruments, :waves) do
+      def initialize(waves: [], **) = super
+    end
 
     # ONE NUMBER OF A SLOT OF NUMBERS (PackSlot#number), and ONE ENVELOPE OF A SLOT OF BYTES
     # (PackSlot#envelope), each read as the game is built; and ONE ENVELOPE AS A SUPER NINTENDO'S
@@ -375,13 +378,16 @@ module VBlank
 
       # A handle on a slot of notes as a part of a Score plays them (`Score::Part.new(notes: ...)`):
       # +instruments+ names the recordings a note's instrument number counts through, 0 first.
-      def notes(instruments: [])
+      # +waves+ names the waves a voiced record's wave number counts through, 0 first, on a part on
+      # the wave voice: each a shape, 32 steps, or a wave of the pack (`pack[:waves].wave(2)`), as a
+      # part's `plays:` takes them (Original::PackNote's byte 26).
+      def notes(instruments: [], waves: [])
         unless Original::Slot::NOTE_SHAPES.include?(shape)
           raise ArgumentError, "Slot :#{layout.name} holds #{shape}. `notes` reads a slot of notes. To fix this, call " \
                                "it on a slot like `slots.notes :theme, count: 400`."
         end
 
-        DSL::PackNotes.new(slot: self, instruments: instruments)
+        DSL::PackNotes.new(slot: self, instruments: instruments, waves: waves)
       end
 
       # A handle on wave +index+ (0 first) of a slot of bytes, sixteen bytes each, for the wave a

@@ -329,8 +329,13 @@ module VBlank
       # :none`), where a build holding the record refuses it; a gliding note's instrument and volume
       # are the part's own, as it carries on the note sounding; and a noise clock is played in
       # place of a pitch between keys.
-      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded, :voiced, :takes_slide) do
-        def initialize(voiced: false, takes_slide: false, **) = super
+      #
+      # A voiced record's rattle is the note's on a part on the noise voice, and its wave on a part
+      # on the wave voice is one of +waves+, the part's (DSL::PackSlot#notes): a shape, 32 steps, or a
+      # Wave of this file. A wave number the part does not name is the part's own.
+      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded, :voiced, :takes_slide,
+                          :waves) do
+        def initialize(voiced: false, takes_slide: false, waves: [].freeze, **) = super
 
         # The frame each tick falls on (an Audio::Score::Timing).
         def timing = Audio::Score::Timing.new(self)
@@ -352,6 +357,8 @@ module VBlank
           taken.push(:slide) if kind == :square && takes_slide
           taken.push(:hz) if %i[recorded noise].include?(kind) && part.transpose.to_i.zero? && part.pitch_offset.to_i.zero?
           taken.push(:glides) if kind == :recorded
+          taken.push(:metallic) if kind == :noise
+          taken.push(:wave) if kind == :wave && !waves.empty?
           taken
         end
 
@@ -467,8 +474,17 @@ module VBlank
                                  key: (key unless clock || pitch || settings[:hz]),
                                  volume: (volume_of(note, where.recorded) unless glides),
                                  instrument: (where.instruments[note.instrument] unless glides), pan: pan,
-                                 noise_clock: clock, pitch_number: pitch, **settings)
+                                 noise_clock: clock, pitch_number: pitch, wave: (wave_of(bytes, note, where) if key), **settings)
         end
+      end
+
+      # The wave a voiced +note+ names among +where+'s waves (Notes), as a note's `wave:` takes it, a
+      # Wave of this file read as its steps; nil for the part's own.
+      def self.wave_of(bytes, note, where)
+        return nil unless note.wave && where.takes.include?(:wave)
+
+        wave = where.waves[note.wave]
+        wave.is_a?(Wave) ? wave.steps_in(bytes) : wave
       end
 
       # The settings of a voiced +note+ (an Original::PackNote) the part takes (+takes+, Notes#takes),
@@ -493,7 +509,7 @@ module VBlank
 
       # Which of Original::PackNote::NAMES each word of Original::PackNote#score_settings is.
       SETTING_OF_WORD = { pitch_number: :pitch_number, decay: :fade, swell: :fade, duty: :duty, vibrato: :vibrato,
-                          slide_up: :slide, slide_down: :slide, pan: :shade, hz: :hz, glides: :glides }.freeze
+                          slide_up: :slide, slide_down: :slide, pan: :shade, hz: :hz, glides: :glides, metallic: :metallic }.freeze
 
       # The volume of +note+ (an Original::PackNote) on a part that plays a recording or not: its
       # loudness as a volume with a fraction where it gives one on a recorded part, held to the

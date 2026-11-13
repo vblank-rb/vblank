@@ -30,6 +30,11 @@ RG_HAS_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its sh
 RG_DUTY_BITS = 0xFF # A note's eight shape bits (Audio::Duty#bits), under the flag
 RG_CARRIES_VIBRATO = 1 << 9 # Above the shapes: set when the vibrato carries its swing on
 RG_GLIDES = 1 << 10 # Set on a recorded note that carries on the one sounding
+RG_HAS_NOISE_BITS = 1 << 11 # Set on a drum hit that says whether it rattles...
+RG_NOISE_BITS_AT = 12 # ...its noise bits above it
+RG_NOISE_BITS = 0xF
+RG_HAS_WAVE = 1 << 16 # Set on a wave note that names a waveform of its own...
+RG_WAVE_AT = 17 # ...that waveform's number above it
 RG_VIBRATO_CARRIES_LOGGED = 1 << 16 # The same flag as the log writes it, above the vibrato's bits
 RG_NUMBERS_PER_NOTE_SOUND = 8
 
@@ -113,7 +118,7 @@ def rg_order_mask = @rg_game_sound_rules[RG_WAVE_QUARTERS + RG_VOLUMES]
 def rg_counted_a_frame = @rg_game_sound_rules[RG_WAVE_QUARTERS + RG_VOLUMES + 1]
 def rg_song_count = @rg_game_music[0]
 def rg_effect_count = @rg_game_effects[0]
-def rg_effects_play_wave = @rg_game_effects[1]
+def rg_notes_put_in_waveforms = @rg_game_effects[1]
 
 # --- the player ---
 
@@ -428,7 +433,7 @@ def rg_switch_to_wanted_song
     rg_fault("song number #{@rg_playing} has #{@rg_part_count} parts, and the most is #{RG_PARTS_MOST}")
   end
   rg_start_walks(false)
-  return true if rg_effects_play_wave != 0
+  return true if rg_notes_put_in_waveforms != 0
 
   wave_part = @rg_parts.first(@rg_part_count).find { |part| part.kind == RG_PART_WAVE }
   rg_wave_load(wave_part.tone) if wave_part
@@ -470,6 +475,28 @@ def rg_note_slide(note) = (@rg_game_music[note + 4] >> RG_SLIDE_AT) & RG_SLIDE_B
 # The speaker a note plays from: RG_PAN_LEFT, RG_PAN_RIGHT, or nought for both.
 def rg_note_pan(note) = (@rg_game_music[note + 4] >> RG_PAN_AT) & RG_PAN_BITS
 
+# A drum hit's noise bits, and a wave note's waveform: its own where it named one, else its part's.
+def rg_note_noise_bits(part, note)
+  own = @rg_game_music[note + 5]
+  own.anybits?(RG_HAS_NOISE_BITS) ? (own >> RG_NOISE_BITS_AT) & RG_NOISE_BITS : part.tone
+end
+
+def rg_note_waveform(part, note)
+  own = @rg_game_music[note + 5]
+  own.anybits?(RG_HAS_WAVE) ? own >> RG_WAVE_AT : part.tone
+end
+
+# The log's line for a note on the wave or noise voice, with the waveform or the noise bits after
+# it where the note named its own.
+def rg_log_wave_or_noise(what, who, part, pitch, note)
+  wave = part.kind == RG_PART_WAVE
+  unless @rg_game_music[note + 5].anybits?(wave ? RG_HAS_WAVE : RG_HAS_NOISE_BITS)
+    return rg_sound_log("#{what} #{who} #{part.number} #{pitch}")
+  end
+
+  rg_sound_log("#{what} #{who} #{part.number} #{pitch} #{wave ? rg_note_waveform(part, note) : rg_note_noise_bits(part, note)}")
+end
+
 # The log's line for a note setting its voice, with the note's fade when it set one, and its
 # slide, its wobble, its speaker and its shapes after that when it set them — with -1, for none,
 # before one set after it.
@@ -508,8 +535,8 @@ def rg_play_note(part, note)
       rg_sound_log("stop_wave")
       rg_rest_on(part)
     else
-      rg_sound_log("part_wave #{@rg_playing} #{part.number} #{pitch}")
-      rg_wave_put_in(part.tone) if rg_effects_play_wave != 0
+      rg_log_wave_or_noise("part_wave", @rg_playing, part, pitch, note)
+      rg_wave_put_in(rg_note_waveform(part, note)) if rg_notes_put_in_waveforms != 0
       rg_wave_start(ticks, rg_wave_quarters_at(sounded))
       rg_voice_struck(RG_WAVE_VOICE)
     end
@@ -519,10 +546,10 @@ def rg_play_note(part, note)
       rg_sound_log("noise_rest")
       rg_rest_on(part)
     else
-      rg_sound_log("part_noise #{@rg_playing} #{part.number} #{pitch}")
-      rg_noise_start(ticks, part.tone, sounded, fade)
+      rg_log_wave_or_noise("part_noise", @rg_playing, part, pitch, note)
+      rg_noise_start(ticks, rg_note_noise_bits(part, note), sounded, fade)
       rg_voice_struck(RG_NOISE_VOICE)
-      rg_swell_start(part.voice, note, part.tone, sounded, fade) if @rg_level_variable
+      rg_swell_start(part.voice, note, rg_note_noise_bits(part, note), sounded, fade) if @rg_level_variable
     end
   else
     # A note that fades, swells or slides by itself is left to it (rg_sound.c's play_note says why).
@@ -635,8 +662,8 @@ def rg_play_effect_note(effect, part, note)
       rg_sound_log("stop_wave")
       rg_silence_voice(part.voice)
     else
-      rg_sound_log("part_wave #{number} #{part.number} #{pitch}")
-      rg_wave_put_in(part.tone)
+      rg_log_wave_or_noise("part_wave", number, part, pitch, note)
+      rg_wave_put_in(rg_note_waveform(part, note))
       rg_wave_start(ticks, rg_wave_quarters_at(volume))
       rg_voice_struck(RG_WAVE_VOICE)
     end
@@ -645,8 +672,8 @@ def rg_play_effect_note(effect, part, note)
       rg_sound_log("noise_rest")
       rg_silence_voice(part.voice)
     else
-      rg_sound_log("part_noise #{number} #{part.number} #{pitch}")
-      rg_noise_start(ticks, part.tone, volume, fade)
+      rg_log_wave_or_noise("part_noise", number, part, pitch, note)
+      rg_noise_start(ticks, rg_note_noise_bits(part, note), volume, fade)
       rg_voice_struck(RG_NOISE_VOICE)
     end
   else
@@ -967,13 +994,23 @@ RG_NOTE_GLIDES = 1 << 10
 # rg_music.c's start_file_double.
 def rg_start_file_double(high, low) = [high, low].pack("l>l>").unpack1("G")
 
-# rg_music.c's start_file_hz_rules: where a voiced part's rules for a pitch between keys start.
-def rg_start_file_hz_rules(rules)
+RG_NAMES_METALLIC = 512
+RG_NAMES_WAVE = 1024
+RG_NOTE_MOST_METALLIC = 1
+
+# rg_music.c's start_file_wave_rules: where a voiced part's rules for its notes' waves start.
+def rg_start_file_wave_rules(rules)
   instruments = rules[RG_NOTES_INSTRUMENTS]
   same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
   clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED].zero? ? 1 : instruments + 1) * RG_NOTE_KEYS)
   voiced = clock_pitches + (2 * rules[RG_NOTES_CLOCKS])
   voiced + 2 + (2 * rules[voiced + 1])
+end
+
+# rg_music.c's start_file_hz_rules: where a voiced part's rules for a pitch between keys start.
+def rg_start_file_hz_rules(rules)
+  waves = rg_start_file_wave_rules(rules)
+  waves + 1 + rules[waves] + 2
 end
 
 # rg_music.c's start_file_noise_hz_ticks.
@@ -1034,9 +1071,12 @@ end
 def rg_start_file_slide_named(slide) = slide.zero? || (slide <= RG_NOTE_MOST_SLIDE && (slide >> 4).positive? && (slide & 7).positive?)
 
 # rg_music.c's start_file_event_voice: a voiced +record+'s settings (its bytes) into +event+.
-def rg_start_file_event_voice(event, record, takes)
-  pitch, fade, duty, vibrato, slide, shade, all_names, hz_low, hz_high = record.byteslice(12, 13).unpack("vCCvCcvvC")
+def rg_start_file_event_voice(event, record, takes, wave_count)
+  pitch, fade, duty, vibrato, slide, shade, all_names, hz_low, hz_high, metallic, wave = record.byteslice(12, 15).unpack("vCCvCcvvCCC")
   names = all_names & takes
+  event.metallic = metallic if names.anybits?(RG_NAMES_METALLIC) && metallic <= RG_NOTE_MOST_METALLIC
+  # A wave the part does not name is the part's own.
+  event.wave = wave if names.anybits?(RG_NAMES_WAVE) && wave < wave_count
   if names.anybits?(RG_NAMES_PITCH) && pitch <= RG_NOTE_MOST_PITCH
     event.pitch = pitch
     event.key = 0
@@ -1059,10 +1099,14 @@ def rg_start_file_event_voice(event, record, takes)
   event.volume = RG_NOTE_VOLUMES
 end
 
-# rg_music.c's start_file_voice_numbers: [fifth, sixth] with +event+'s settings in their places.
-def rg_start_file_voice_numbers(flags, shapes, event)
+# rg_music.c's start_file_voice_numbers: [fifth, sixth] with +event+'s settings in their places, a
+# hit's rattle and a wave note's waveform from the rules at +waves+ (rg_start_file_wave_rules).
+def rg_start_file_voice_numbers(flags, shapes, event, rules, waves)
   f = flags
   s = shapes
+  noise_bits = waves + 1 + rules[waves] # when it rattles, then when not
+  s |= RG_HAS_NOISE_BITS | (rules[noise_bits + (event.metallic == 1 ? 0 : 1)] << RG_NOISE_BITS_AT) if event.metallic >= 0
+  s |= RG_HAS_WAVE | (rules[waves + 1 + event.wave] << RG_WAVE_AT) if event.wave >= 0
   f = (f & ~RG_FLAG_FADE_BITS) | RG_FLAG_HAS_FADE | event.fade if event.fade >= 0
   f = (f & ~RG_FLAG_SLIDE_BITS) | RG_FLAG_HAS_SLIDE | (event.slide << RG_FLAG_SLIDE_AT) if event.slide >= 0
   if event.vibrato >= 0
@@ -1099,7 +1143,7 @@ def rg_start_file_event_clock(clock, key, clocks) = key >= 0 && clock < clocks ?
 
 # An event of a part (rg_music.c's start_file_event).
 RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume, :side, :clock, :pitch, :fade, :duty, :vibrato, :slide,
-                              :hz, :row, :glides)
+                              :hz, :row, :glides, :metallic, :wave)
 
 # rg_music.c's start_file_keep_event: +event+ after those in +events+.
 def rg_start_file_keep_event(events, event, total_frames)
@@ -1150,7 +1194,9 @@ def rg_start_file_write_note(music, into, event, rules)
   music[into + 5] = rest ? 0 : rules[RG_NOTES_SHAPES]
   return if rest
 
-  music[into + 4], music[into + 5] = rg_start_file_voice_numbers(music[into + 4], music[into + 5], event) if rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES
+  if rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES
+    music[into + 4], music[into + 5] = rg_start_file_voice_numbers(music[into + 4], music[into + 5], event, rules, rg_start_file_wave_rules(rules))
+  end
   music[into + 5] |= RG_NOTE_GLIDES if event.glides == 1
 end
 
@@ -1177,7 +1223,7 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
   records = records.each_with_index.sort_by { |record, place| [record[0], place] }.map(&:first)
 
   events = []
-  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1, -1, -1, 0)
+  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1)
   records.each_with_index do |(tick, length, key, instrument, volume, pan, loudness, clock_byte, bytes, place), n|
     named = instrument < instruments
     played = key < RG_NOTE_KEYS ? key : -1
@@ -1185,8 +1231,8 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
     event = RgStartFileEvent.new(frame_of.call(tick), clock >= 0 ? 0 : played, named ? instrument + 1 : 0,
                                  named ? rules[same_recording + instrument] : -1,
                                  rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED]),
-                                 rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0)
-    rg_start_file_event_voice(event, bytes, takes) if takes != 0 && played >= 0
+                                 rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1)
+    rg_start_file_event_voice(event, bytes, takes, rules[rg_start_file_wave_rules(rules)]) if takes != 0 && played >= 0
     # A recorded note between keys has a row of its own, one for each record.
     if event.hz >= 0 && rules[hz_rules] == RG_HZ_RECORDED
       event.row = rules[hz_rules + 3] + place
@@ -1214,7 +1260,8 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
         strike = !(ending.key == held.key && ending.recording == held.recording && ending.volume == held.volume &&
                    ending.side == held.side && ending.clock == held.clock && ending.pitch == held.pitch &&
                    ending.fade == held.fade && ending.duty == held.duty && ending.vibrato == held.vibrato &&
-                   ending.slide == held.slide && ending.hz == held.hz && ending.glides == held.glides)
+                   ending.slide == held.slide && ending.hz == held.hz && ending.glides == held.glides &&
+                   ending.metallic == held.metallic && ending.wave == held.wave)
       else
         silence = !ending.nil? && ending.key >= 0
       end

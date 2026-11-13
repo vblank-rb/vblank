@@ -40,6 +40,9 @@ module VBlank
             NOTE_VOLUME = "rt music note volume" # The note being played's volume, as written
             # ...and how it slides its pitch, in a game where a note does (GBC::Music.note_bytes).
             NOTE_SLIDE = "rt music note slide"
+            # ...and its own waveform, 1 up, or nought for its part's, in a game where a wave note
+            # names one (GBC::Music.note_bytes).
+            NOTE_WAVE = "rt music note wave"
             HELD_VOICES = 3
             # The waveform in the wave voice, 1 up, in a game with sound effects: a song's part and an
             # effect's can each sound in their own, so a note puts its own in when it is not there.
@@ -71,8 +74,25 @@ module VBlank
 
             # WHETHER EACH WAVE NOTE PUTS ITS WAVEFORM IN, rather than the tune at its start: in a game
             # whose sound effects or recordings can sound on the wave voice with a waveform of their
-            # own (WAVE_LOADED holds which is in), so a note after them finds its own gone.
+            # own (WAVE_LOADED holds which is in), so a note after them finds its own gone, or whose
+            # wave notes name waveforms of their own.
             def reloads_wave?(memory) = memory.reserved?(WAVE_LOADED)
+
+            # Whether a wave note can name a waveform of its own (NOTE_WAVE).
+            def note_waves?(memory) = memory.reserved?(NOTE_WAVE)
+
+            # A = the waveform of the note being played, 1 up: its own (NOTE_WAVE), or else its part's
+            # ([PART] + 1). +own+ is the label the own way goes to, one for each place this is written.
+            def emit_note_waveform(asm, memory, part, own)
+              if note_waves?(memory)
+                asm.load(:a, [memory[NOTE_WAVE]])
+                asm.and_a(:a)
+                asm.jump_relative(:nz, own)
+              end
+              asm.load(:a, [part + 1])
+              asm.inc(:a)
+              asm.label(own) if note_waves?(memory)
+            end
 
             # Whether a wave note held across a recording is put back as it ends (WAVE_BACK).
             def wave_back?(memory) = memory.reserved?(WAVE_BACK)
@@ -88,13 +108,14 @@ module VBlank
 
             def entries_in_banks?(memory) = memory.reserved?(ENTRY_COPY)
 
-            def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, swells: false, noise_swells: false, banked: false,
-                        holds: false, effect_table: false, entries_in_banks: false)
+            def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, waves: false, swells: false, noise_swells: false,
+                        banked: false, holds: false, effect_table: false, entries_in_banks: false)
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
               memory.reserve(TUNE_HELD, 1) if holds
               reserve_song_player(memory, banked)
-              memory.reserve(WAVE_LOADED, 1) unless effects.empty? && !Clips.any?(memory)
+              memory.reserve(WAVE_LOADED, 1) unless effects.empty? && !Clips.any?(memory) && !waves
+              memory.reserve(NOTE_WAVE, 1) if waves
               if Clips.any?(memory)
                 memory.reserve(WAVE_TUNING, 2)
                 memory.reserve(WAVE_SHAPE, 1)
@@ -223,7 +244,7 @@ module VBlank
               emit_game_side(asm, memory, sharing)
               return emit_no_songs(asm) unless songs
 
-              bytes = GBC::Music.note_bytes(slides, pans, shapes?(memory), wobbles?(memory), carries)
+              bytes = GBC::Music.note_bytes(slides, pans, shapes?(memory), wobbles?(memory), carries, note_waves?(memory))
               emit_tick(asm, memory, level, sharing)
               emit_notes(asm, memory, level, sharing, fades, slides, pans, bytes)
               emit_wobbles(asm, memory, carries) if wobbles?(memory)
@@ -251,6 +272,11 @@ module VBlank
             # (rt_shape_start). And in one where a note wobbles, the voice set to wobble the note from
             # the two after those (rt_wobble_start). Keeps B and DE.
             def emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+              if note_waves?(memory) # a wave note's own waveform comes first (GBC::Music.note_bytes)
+                asm.inc(:hl)
+                asm.load(:a, [:hl])
+                asm.load([memory[NOTE_WAVE]], :a)
+              end
               if slides
                 asm.inc(:hl)
                 asm.load(:a, [:hl])
@@ -1144,8 +1170,7 @@ module VBlank
               asm.ret
               asm.label("rt_music_note_wave_on")
               if reloads_wave?(memory)
-                asm.load(:a, [part + 1])
-                asm.inc(:a)
+                emit_note_waveform(asm, memory, part, "rt_music_note_wave_own")
                 asm.load(:hl, memory[WAVE_LOADED])
                 asm.cp_a([:hl])
                 asm.call(:nz, "rt_music_wave_load")
@@ -1346,7 +1371,12 @@ module VBlank
                   asm.load([memory[WAVE_TUNING]], :a)
                   asm.load(:a, :d)
                   asm.load([memory[WAVE_TUNING] + 1], :a)
-                  asm.load(:a, [part + 1])
+                  if note_waves?(memory)
+                    emit_note_waveform(asm, memory, part, "rt_music_hold_wave_own")
+                    asm.dec(:a)
+                  else
+                    asm.load(:a, [part + 1])
+                  end
                   asm.load([memory[WAVE_SHAPE]], :a)
                 end
                 asm.ret

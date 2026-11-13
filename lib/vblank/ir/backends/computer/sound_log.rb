@@ -73,6 +73,58 @@ module VBlank
           # it makes with `noise`, in the order the C numbers them.
           attr_reader :waves, :hits
 
+          # EVERY WAVEFORM THE WAVE VOICE CAN BE GIVEN, 32 steps each, in the order the C numbers
+          # them: the ones the game's `wave`s name and its songs' parts play, once each; then one for
+          # each different waveform a note names for itself (#note_waves), kept apart even where two
+          # are the same steps, so the number a note carries reads back as the waveform it named;
+          # then one for each wave read from the start file (#waves_from_start_file), a stand-in until
+          # it is written there.
+          def waveforms
+            @waveforms ||= begin
+              said = @waves.map { |wave| wave.fetch(:shape) }
+              played = @songs.flat_map { |song| song.voices.reject(&:wave_from_file).filter_map(&:wave) }
+              (said + played).map { |shape| Audio::Sound.wavetable(shape) }.uniq + note_waves.map { |shape| Audio::Sound.wavetable(shape) } +
+                waves_from_start_file.map { StartFile::WAVE_STAND_IN }
+            end
+          end
+
+          # Every different waveform a song's note names for itself (Tunes.own_wave), in the order met,
+          # those a part reading its notes from the start file can name (StartFile::Notes#waves)
+          # included; a wave read from the start file is one of #waves_from_start_file instead.
+          def note_waves
+            @note_waves ||= (@songs.flat_map { |song| song.voices.flat_map { |part| part.events.filter_map { |event| Tunes.own_wave(event) } } } +
+                             waves_of_records).reject { |wave| wave.is_a?(StartFile::Wave) }.uniq
+          end
+
+          # Each different place in the start file a part, or a note, reads its wave from (StartFile::Wave).
+          def waves_from_start_file
+            @waves_from_start_file ||= (@songs.flat_map { |song| song.voices.filter_map(&:wave_from_file) } +
+                                        waves_of_records.grep(StartFile::Wave)).uniq
+          end
+
+          # Every wave a part reading its notes from the start file names for its records (StartFile::Notes#waves).
+          def waves_of_records = @songs.flat_map { |song| song.voices.filter_map(&:from_file) }.flat_map(&:waves)
+
+          # The number of the first waveform a note names, and of the first written from the start file.
+          def first_note_waveform = waveforms.size - waves_from_start_file.size - note_waves.size
+          def first_start_file_waveform = waveforms.size - waves_from_start_file.size
+
+          # The number the C carries for a waveform a note names for itself: a shape or 32 steps, or a
+          # wave read from the start file.
+          def note_waveform_number(wave)
+            return first_start_file_waveform + waves_from_start_file.index(wave) if wave.is_a?(StartFile::Wave)
+
+            first_note_waveform + note_waves.index(wave)
+          end
+
+          # The waveform a note named for itself, by the number the C printed (#note_waveform_number),
+          # as the interpreter logs it: its own shape or steps, or the steps the start file holds.
+          def note_wave_of(number)
+            return waves_from_start_file.fetch(number - first_start_file_waveform).steps_in(@start_file.b) if number >= first_start_file_waveform
+
+            note_waves.fetch(number - first_note_waveform)
+          end
+
           # The number the C prints for this beep: which of the game's sounds it makes.
           def beep_number(node) = @effects.index(effect_of(node, @defined))
 
@@ -118,8 +170,9 @@ module VBlank
             when "stop_wave" then [:stop_wave]
             when "noise" then [:noise, @hits.fetch(numbers[0])]
             when "noise_rest" then [:noise, nil]
-            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
-            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
+            # A note's own waveform, or its own noise bits, after its pitch where it named one.
+            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]), numbers[3])]
+            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]), numbers[3])]
             when "sample" then [:sample, @recordings.fetch(numbers[0]).name]
             when "stop_sample" then [:stop_sample]
             else raise ArgumentError, "the program printed a sound line nobody reads: #{line}"
@@ -147,14 +200,20 @@ module VBlank
 
           # A note of a song's part on the wave voice or the noise voice, as the interpreter's
           # player logs one (Reference::Player#log_wave_or_noise). The C prints the note's pitch;
-          # the rest is the part's, its wave read from the start file where it keeps it there.
-          def wave_of_part(part, pitch)
-            shape = part.wave_from_file ? part.wave_from_file.steps_in(@start_file.b) : part.wave
+          # the rest is the part's, its wave read from the start file where it keeps it there. A note
+          # that named its own waveform prints its number (#note_wave_of), and one that said whether
+          # it rattles prints its noise bits (Audio::Sound.noise_register_bits).
+          def wave_of_part(part, pitch, own = nil)
+            shape = if own then note_wave_of(own)
+                    elsif part.wave_from_file then part.wave_from_file.steps_in(@start_file.b)
+                    else part.wave
+                    end
             { shape: shape, frequency: pitch, volume: part.volume }
           end
 
-          def hit_of_part(part, pitch)
-            { pitch: pitch, decay: part.decay, volume: part.volume, metallic: part.metallic }
+          def hit_of_part(part, pitch, bits = nil)
+            metallic = bits ? bits == Audio::Sound.noise_register_bits(true) : part.metallic
+            { pitch: pitch, decay: part.decay, volume: part.volume, metallic: metallic }
           end
         end
       end

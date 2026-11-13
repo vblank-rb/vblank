@@ -164,10 +164,12 @@ module VBlank
       def pack_notes_in_start_file(handle, score, number, recorded:, takes_slide:)
         slot = handle.slot.layout
         instruments = recorded ? handle.instruments.map { |named| named.is_a?(Symbol) ? named : named.name } : []
+        # A wave of the pack a note names is read from where it is in the start file, as a part's is.
+        waves = handle.waves.map { |wave| wave.is_a?(DSL::PackWave) ? pack_wave_in_start_file(wave, "A song") : written_wave(wave) }
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
                                          part: score.parts[number], tempo: score.tempo, ticks_per_beat: score.ticks_per_beat,
                                          who: "Part #{number} of a Score", recorded: recorded,
-                                         voiced: slot.shape == :voiced_notes, takes_slide: takes_slide)
+                                         voiced: slot.shape == :voiced_notes, takes_slide: takes_slide, waves: waves.freeze)
         refuse_keys_part_cannot_play!(notes, slot)
         notes
       end
@@ -204,11 +206,33 @@ module VBlank
           pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side unless recorded)
           # A gliding note carries on the one sounding, with its instrument and volume (Original::PackNote).
           glides = settings[:glides]
+          wave = pack_note_wave(note, handle.waves, subject, verb) if key && note.wave
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch || settings[:hz]),
                                  volume: (pack_note_volume(note, recorded, subject) unless glides),
                                  instrument: (pack_note_instrument(note, handle.instruments, subject) unless glides),
-                                 pan: pan, noise_clock: clock, pitch_number: pitch, **settings)
+                                 pan: pan, noise_clock: clock, pitch_number: pitch, wave: wave, **settings)
         end
+      end
+
+      # A wave the game wrote in a part's `notes(waves: [...])`: a shape or 32 steps, as a note's
+      # `wave:` keeps it (Audio::Score::Note#own_wave).
+      def written_wave(wave)
+        Audio::Music.resolve_plays(wave)[:wave] or
+          raise ArgumentError, "`notes(waves: [...])` names #{wave.inspect}. A wave is a shape " \
+                               "(#{Audio::Music::WAVE_SHAPES.map(&:inspect).join(', ')}), #{Audio::Sound::WAVE_SAMPLES} steps " \
+                               "of 0 to #{Audio::Sound::WAVE_STEP_MAX}, or a wave of the pack, like `pack[:waves].wave(0)`. " \
+                               "Give one of those."
+      end
+
+      # The wave a voiced record names among the part's +waves+ (`notes(waves: [...])`), as a note's
+      # `wave:` takes it: a wave of the pack read here as its steps.
+      def pack_note_wave(note, waves, subject, verb)
+        wave = waves.fetch(note.wave) do
+          raise ArgumentError, "#{subject}: the note at tick #{note.at} plays wave #{note.wave}. The part names " \
+                               "#{waves.length} waves. To fix this, name every wave its notes play, like " \
+                               "`notes(waves: [pack[:waves].wave(0), :sine])`."
+        end
+        wave.is_a?(DSL::PackWave) ? pack_wave_steps(wave, verb) : written_wave(wave)
       end
 
       def refuse_voice_settings_out_of_range!(note, subject)

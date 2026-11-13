@@ -251,7 +251,7 @@ module VBlank
               end
               # A part on the WAVE or NOISE voice: the console makes the sound itself, so no
               # mixer voice is taken — the whole point of putting a part there.
-              log_wave_or_noise(kind, part, frequency) if %i[wave noise].include?(kind)
+              log_wave_or_noise(kind, part, event) if %i[wave noise].include?(kind)
               @cursors[number] += 1
             end
             advance_song_frame(song)
@@ -406,7 +406,7 @@ module VBlank
               @sounding.delete(channel) # the song's note there, if it had one, is gone
               @log << [:note, name, frequency]
               set_voice(channel, name, part, event)
-              log_wave_or_noise(kind, part, frequency) unless kind == :square
+              log_wave_or_noise(kind, part, event) unless kind == :square
             end
             run.frame += 1
           end
@@ -583,16 +583,20 @@ module VBlank
           # they really are the same voice: a game that plays a hit while its drum part is
           # playing one gets whichever came last, and a test that reads the log sees exactly
           # that.
-          def log_wave_or_noise(kind, part, frequency)
+          #
+          # The waveform is the note's own where it named one, and whether a hit rattles is the
+          # note's own where it said (IR::Tunes.said_wave, IR::Tunes.said_metallic).
+          def log_wave_or_noise(kind, part, event)
+            frequency = event[1]
             if kind == :wave
               return @log << [:stop_wave] if frequency.zero?
 
-              @log << [:wave, { shape: part.wave, frequency: frequency, volume: part.volume }]
+              @log << [:wave, { shape: IR::Tunes.said_wave(part, event), frequency: frequency, volume: part.volume }]
             else
               return @log << [:noise, nil] if frequency.zero?
 
               @log << [:noise, { pitch: frequency, decay: part.decay,
-                                 volume: part.volume, metallic: part.metallic }]
+                                 volume: part.volume, metallic: IR::Tunes.said_metallic(part, event) }]
             end
           end
 

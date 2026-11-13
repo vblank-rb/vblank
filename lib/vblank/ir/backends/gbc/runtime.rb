@@ -54,7 +54,7 @@ module VBlank
           # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?). +song_entries_in_banks+
           # means its songs' entries are kept in a bank, and copied out as each song starts
           # (GBC::Music#entries_in_banks?).
-          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false,
+          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
                       bar_covers: false, tile_loads: false, song_entries_in_banks: false)
@@ -67,7 +67,7 @@ module VBlank
                                     cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?)
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
-            Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, swells: swells, noise_swells: noise_swells,
+            Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
                                   entries_in_banks: song_entries_in_banks)
           end

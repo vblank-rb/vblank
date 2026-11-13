@@ -149,7 +149,7 @@ module VBlank
           # on the voice loads its own (see WAVE_LOADED). The store goes after the writes, so a
           # player running in between loads once more than it needs to rather than once too few.
           def emit_forget_waveform
-            return unless @effect_waves
+            return unless loads_wave_by_note?
 
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @primitives.store_var(ACC, WAVE_LOADED)
@@ -231,6 +231,11 @@ module VBlank
           KEEPS_SWING = 1 << 27
           def note_word? = @wobbles || @pans || @shape_steps
           def console_row_bytes = note_word? ? SQUARE_ROW + 4 : SQUARE_ROW
+
+          # ...and in a game where a wave note names a waveform of its own, a wave row has a word more
+          # after those: where its note's waveform is in the score, its own or its part's (see
+          # #emit_load_waveform). Only the wave lanes' rows grow.
+          def wave_row_at = console_row_bytes
 
           # Where a console row's pitch value is (after its frame and its control value), its
           # eleven bits, and the most they can be.
@@ -499,6 +504,9 @@ module VBlank
                      Array.new(recorded) { |lane| Lane.new(:recorded, lane) } +
                      console.map { |kind, channel| Lane.new(kind, channel) }
             @waves = console.key?(:wave)
+            # A game where a wave note names a waveform of its own keeps where it is on each wave row,
+            # and each note puts its waveform in as it starts (see WAVE_LOADED).
+            @note_waves = IR::Tunes.notes_name_waves?(IR::Tunes.playable_songs(program))
             prepare_sound_effects(program)
             # One directory entry: the tune's length in frames, which lanes it uses, where it
             # loops from, and where each lane's events start — and, in a game with sound effects,
@@ -1095,11 +1103,12 @@ module VBlank
             @emitter.emit_branch(:bcond, no_tune, cond: :eq)
             @emitter.emit(ASM.load_immediate(frame, 0))
             emit_rewind_lanes(base, at, playing)
-            if @waves && @effect_waves
+            # Where a wave note names a waveform, each wave row names its note's, which the note puts in.
+            if @waves && @effect_waves && !@note_waves
               emit_entry_address(at, base, playing)
               @emitter.emit(ASM.ldr_offset(ACC, at, ENTRY_WAVE))
               @primitives.store_var(ACC, MUSIC_WAVE)
-            elsif @waves
+            elsif @waves && !@note_waves
               emit_upload_wavetable(base, at, playing)
             end
             return unless plays_sound_effects?
@@ -1249,7 +1258,19 @@ module VBlank
           # Does the routine that puts a waveform in place sit inside the screen's interrupt? In a
           # game whose songs play the wave voice, yes, beside the song's lane that calls it. In one
           # where only effects do, it sits with the effects' step, the one place that calls it.
-          def upload_wave_in_interrupt? = @effect_waves && @waves
+          def upload_wave_in_interrupt? = loads_wave_by_note? && @waves
+
+          # Does each wave note put its waveform in as it starts (WAVE_LOADED), rather than the tune
+          # as it starts? In a game whose effects play the wave voice, or whose wave notes name
+          # waveforms of their own.
+          def loads_wave_by_note? = @effect_waves || @note_waves
+
+          # The routine that puts a waveform in place, in a game with no sound effects whose wave
+          # notes name waveforms of their own: the song's wave lane is the one place that calls it.
+          # (With sound effects it is written beside their routine, #emit_sound_effects_routine.)
+          def emit_note_wave_routine
+            emit_upload_wave_routine if @note_waves && @waves && !plays_sound_effects?
+          end
 
           # THE FRAME OF ONE EFFECT that has something to do, handed over by the walk above with
           # its place in the table in EFFECT_SLOT, its entry in EFFECT_ENTRY and its rank in r9.
@@ -1358,7 +1379,7 @@ module VBlank
                 emit_take_voice(lane: lane, rank: rank, row: row, dropped: skip)
                 emit_keep_voice(lane, rank, entry) if @effects_keep_voices
                 if lane.kind == :wave
-                  e.emit(ASM.ldr_offset(ACC, entry, effect_wave_at))
+                  e.emit(ASM.ldr_offset(ACC, @note_waves ? row : entry, @note_waves ? wave_row_at : effect_wave_at))
                   emit_load_waveform(row)
                 end
                 emit_console_note(lane, row)
@@ -1378,8 +1399,12 @@ module VBlank
           # Where an effect's waveform sits in its entry, after where its lanes start — and how
           # long an entry is.
           def effect_wave_at = EFFECT_STARTS + (4 * @effect_lanes.size)
-          def effect_keeps_at = effect_wave_at + (@effect_waves ? 4 : 0)
+          def effect_keeps_at = effect_wave_at + (effect_names_waveform? ? 4 : 0)
           def effect_entry_bytes = effect_keeps_at + (@effects_keep_voices ? 4 : 0)
+
+          # Does an effect's entry name its waveform? In a game whose effects play the wave voice, unless
+          # its wave notes name waveforms, when each wave row names its own (#row_waveform).
+          def effect_names_waveform? = @effect_waves && !@note_waves
 
           # THE ROW AT +row+ IS ABOUT TO BE WRITTEN TO THE WAVE VOICE, with its waveform in ACC: a
           # note loads that waveform first if it is not the one there, and a rest loads nothing. A
@@ -1994,12 +2019,15 @@ module VBlank
               heard = @emitter.gensym
               @emitter.emit_branch(:b, heard)
               @emitter.place_label(dropped)
-              @emitter.emit(ASM.add_imm(cursor, cursor, console_row_bytes))
+              @emitter.emit(ASM.add_imm(cursor, cursor, row_bytes(lane)))
               @primitives.store_var(cursor, self.class.music_cursor(number))
               @emitter.emit_branch(:b, skip)
               @emitter.place_label(heard)
             end
-            if lane.kind == :wave && @effect_waves
+            if lane.kind == :wave && @note_waves
+              @emitter.emit(ASM.ldr_offset(ACC, at, wave_row_at))
+              emit_load_waveform(at)
+            elsif lane.kind == :wave && @effect_waves
               @primitives.load_var(ACC, MUSIC_WAVE)
               emit_load_waveform(at)
             end
@@ -2015,13 +2043,13 @@ module VBlank
               emit_start_wobble(lane, at)
               emit_start_shapes(lane, at)
               emit_set_speakers(lane, at)
-              @emitter.emit(ASM.add_imm(cursor, cursor, console_row_bytes))
+              @emitter.emit(ASM.add_imm(cursor, cursor, row_bytes(lane)))
             else
               emit_console_note(lane, at)
               emit_start_wobble(lane, at)
               emit_start_shapes(lane, at)
               emit_set_speakers(lane, at)
-              @emitter.emit(ASM.add_imm(cursor, cursor, console_row_bytes))
+              @emitter.emit(ASM.add_imm(cursor, cursor, row_bytes(lane)))
             end
             @primitives.store_var(cursor, self.class.music_cursor(number))
             @emitter.place_label(skip)
@@ -2568,6 +2596,7 @@ module VBlank
             # them use it.
             shapes = (@song_numbers.keys + @effects).flat_map { |name| wave_shapes(@songs.fetch(name)) }.uniq
             wave_at = shapes.each_with_index.to_h { |shape, i| [shape, waves_at + (i * WAVE_BYTES)] }
+            @wave_at = wave_at
             events_at = waves_at + (shapes.size * WAVE_BYTES)
 
             directory = ("\0" * entry_bytes).b
@@ -2633,7 +2662,7 @@ module VBlank
                 starts[number] = rows_at + rows.bytesize
                 rows << lane_rows(@effect_lanes[number], part, part.events)
               end
-              wave = @effect_waves ? [waveform_at(song, wave_at)] : []
+              wave = effect_names_waveform? ? [waveform_at(song, wave_at)] : []
               keeps = @effects_keep_voices ? [song.keeps_voices ? 1 : 0] : []
               [song.total_frames, @effect_ranks.fetch(name), *starts, *wave, *keeps].pack("V*")
             end
@@ -2657,9 +2686,10 @@ module VBlank
             end
           end
 
-          # The waveform a song's parts on the wave voice play. There is one wave voice, so
-          # there is at most one — Checks::SongTooManyParts refuses a song with two such parts.
-          def wave_shapes(song) = song.voices.filter_map { |part| part.wave }.uniq
+          # The waveforms a song's part on the wave voice plays, its own first and then any its notes
+          # name (IR::Tunes.waves_of). There is one wave voice, so there is at most one such part —
+          # Checks::SongTooManyParts refuses a song with two.
+          def wave_shapes(song) = song.voices.flat_map { |part| IR::Tunes.waves_of(part) }.uniq
 
           # Where in the score that waveform is, given where each one is in +wave_at+ — or 0 for a
           # song or effect with no part on the wave voice.
@@ -2668,7 +2698,11 @@ module VBlank
             shape ? wave_at.fetch(shape) : 0
           end
 
-          def row_bytes(lane) = lane.kind == :recorded ? RECORDED_ROW : console_row_bytes
+          def row_bytes(lane)
+            return RECORDED_ROW if lane.kind == :recorded
+
+            @note_waves && lane.kind == :wave ? wave_row_at + 4 : console_row_bytes
+          end
 
           # Which lane each of a song's parts plays on: each kind takes its own lanes in the
           # order the parts are written. Refused before this by Checks::SongTooManyParts, so a
@@ -2709,24 +2743,35 @@ module VBlank
                 shapes = IR::Tunes.said_duty(part, event) if frequency.positive? && lane.kind == :square
                 writes = console_note(lane, part, frequency, volume || part.volume, fade: IR::Tunes.said_fade(part, event),
                                                                                    clock: IR::Tunes.said_noise_clock(event),
-                                                                                   duty: shapes&.at(0))
+                                                                                   duty: shapes&.at(0),
+                                                                                   metallic: IR::Tunes.said_metallic(part, event))
                 control = note_reg_value(writes, regs[:reg_a])
                 control |= (volume || part.volume) << WAVE_VOLUME_SHIFT if keeps_wave_volume?(lane, frequency)
                 pitch = note_reg_value(writes, regs[:reg_b])
                 slide = IR::Tunes.said_slide(part, event) if frequency.positive?
                 control, pitch = packed_with_slide(control, pitch, slide) if slide
                 row = [frame, control, pitch].pack("Vvv")
-                next row unless note_word?
-
-                wobble = IR::Tunes.said_vibrato(part, event) if frequency.positive?
-                side = frequency.positive? ? VBlank::Audio::Pan.bits_of(IR::Tunes.note_side(part, event)) : 0
-                stepping = shapes&.steps? ? (shapes.bits | SHAPES_STEP) << SHAPES_SHIFT : 0
-                moves = VBlank::Audio::Vibrato.moves?(wobble)
-                keeps = @carries && (!moves || wobble.carries) ? KEEPS_SWING : 0
-                row + [(moves ? wobble.bits : 0) | (side << PAN_SHIFT) | stepping | keeps].pack("V")
+                if note_word?
+                  wobble = IR::Tunes.said_vibrato(part, event) if frequency.positive?
+                  side = frequency.positive? ? VBlank::Audio::Pan.bits_of(IR::Tunes.note_side(part, event)) : 0
+                  stepping = shapes&.steps? ? (shapes.bits | SHAPES_STEP) << SHAPES_SHIFT : 0
+                  moves = VBlank::Audio::Vibrato.moves?(wobble)
+                  keeps = @carries && (!moves || wobble.carries) ? KEEPS_SWING : 0
+                  row += [(moves ? wobble.bits : 0) | (side << PAN_SHIFT) | stepping | keeps].pack("V")
+                end
+                row + row_waveform(lane, part, event)
               end
-              rows.join + [NEVER, 0, 0].pack("Vvv") + (note_word? ? [0].pack("V") : "")
+              rows.join + [NEVER, 0, 0].pack("Vvv") + (note_word? ? [0].pack("V") : "") + row_waveform(lane, nil, nil)
             end
+          end
+
+          # A wave row's last word, in a game where a wave note names a waveform of its own: where
+          # the note's waveform is in the score (#wave_row_at), and nothing on a row waiting for NEVER.
+          # Nothing on any other lane's rows, or in any other game.
+          def row_waveform(lane, part, event)
+            return "".b unless @note_waves && lane.kind == :wave
+
+            [part ? @wave_at.fetch(IR::Tunes.said_wave(part, event)) : 0].pack("V")
           end
 
           # WHERE A ROW KEEPS ITS NOTE'S SLIDE: the slide register's seven bits ride in bits of the
@@ -2756,7 +2801,8 @@ module VBlank
           # — and the player copies whichever pair it finds, knowing none of that. A square or noise
           # note's +fade+ (IR::Tunes.said_fade) is in its control value, which the voice counts by
           # itself, and so is a square note's +duty+ — its own first shape, or its part's.
-          def console_note(lane, part, frequency, volume, fade: nil, duty: nil, clock: nil)
+          # A drum hit rattles as +metallic+ says (IR::Tunes.said_metallic), its part's unless given.
+          def console_note(lane, part, frequency, volume, fade: nil, duty: nil, clock: nil, metallic: part.metallic)
             SoundRegisters.at_addresses(case lane.kind
             when :square
               GameBoySound.channel_note(lane.index, frequency: frequency, duty: duty || part.duty,
@@ -2765,7 +2811,7 @@ module VBlank
               GameBoySound.wave_note(frequency: frequency, volume: volume)
             else
               GameBoySound.noise_note(frequency: frequency, volume: volume,
-                                          decay: part.decay, metallic: part.metallic, fade: fade, clock: clock)
+                                          decay: part.decay, metallic: metallic, fade: fade, clock: clock)
             end)
           end
 

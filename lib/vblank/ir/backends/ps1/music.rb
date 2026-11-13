@@ -19,10 +19,11 @@ module VBlank
 
           LoweringError = PS1::LoweringError
 
-          # The loops a game's songs play beside its own sounds: each wave part's waveform, and the noise
-          # when a song has a drum part (SoundMemory).
+          # The loops a game's songs play beside its own sounds: each waveform a wave part or its notes
+          # play, and the noise when a song has a drum part (SoundMemory).
           def self.waveforms(program)
-            IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :wave }.map(&:wave)
+            IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :wave }
+                                             .flat_map { |part| IR::Tunes.waves_of(part) }
           end
 
           def self.drums?(program) = IR::Tunes.declared_songs(program).flat_map(&:voices).any? { |part| IR::Tunes.part_kind(part) == :noise }

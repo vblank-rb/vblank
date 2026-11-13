@@ -128,7 +128,7 @@ module VBlank
         song: works("#{Answers::PAN_LEAD} #{Answers::NEAREST_SIDE} #{Answers::RECORDINGS_FROM_BOTH}"),
         play_song: works, stop_music: works, hold_music: works, release_music: works,
         music_volume: works, fade_music_in: works, fade_music_out: works,
-        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet."),
+        songs: works("a recorded note with `glides: true` is refused: this build does not make it yet. #{Answers::NOTE_VOICES}"),
         sound_effects: works, sample: works, instrument: works
       })
 

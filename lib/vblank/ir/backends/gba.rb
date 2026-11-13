@@ -1460,6 +1460,7 @@ module VBlank
           # Audio#calling_interrupt_routines_from_cartridge).
           @mixer.emit_music_voice_routines if @mixer.music_takes_voices?
           @audio.emit_sound_effects_routine if @audio.plays_sound_effects?
+          @audio.emit_note_wave_routine
           # ...and, in a game that asks for a tune `this_frame: true`, the player's big steps as
           # routines the music step above calls too (see Audio#emit_tune_routines), and the
           # routine the game's own code calls to start a tune (Audio#emit_start_song_here_routine).

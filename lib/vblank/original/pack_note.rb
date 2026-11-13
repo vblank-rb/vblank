@@ -71,33 +71,42 @@ module VBlank
     #   (glides)           GLIDES in the names, on a part that plays a recording: the note does not
     #                      strike, and the one sounding carries on at its pitch (`glides: true`). Its
     #                      instrument, volume and loudness are the part's own (255, 255, 65535)
-    #   25-31 (nothing yet: write 0)
+    #   25    metallic     on the noise voice, 1 for a hit that rattles (the short, metallic hiss)
+    #                      and 0 for one that does not, in place of the part's `metallic:` (a
+    #                      Score::Note's `metallic:`)
+    #   26    wave         on the wave voice, which of the part's waves the note plays, counting
+    #                      from 0, in the order the game names them (`notes(waves: [...])`), in
+    #                      place of the part's own (a Score::Note's `wave:`); a number past those
+    #                      is the part's own from the player's file, and refused all-in-one
+    #   27-31 (nothing yet: write 0)
     #
     # A voice that has no such setting leaves it as the part's own (a duty off the squares, a fade
     # on the wave voice, a slide off the song's first square), as does a number past the setting's
     # range, where a build holding the record refuses both.
     PackNote = Data.define(:at, :length, :key, :instrument, :volume, :pan, :loudness, :noise_clock,
-                           :pitch_number, :fade, :duty, :vibrato, :slide, :shade, :carries, :hz, :glides)
+                           :pitch_number, :fade, :duty, :vibrato, :slide, :shade, :carries, :hz, :glides, :metallic, :wave)
 
     class PackNote
       def initialize(pitch_number: nil, fade: nil, duty: nil, vibrato: nil, slide: nil, shade: nil, carries: false, hz: nil,
-                     glides: false, **)
+                     glides: false, metallic: nil, wave: nil, **)
         super
       end
 
       BYTES = 12
       VOICED_BYTES = 32
-      # Bytes 12 to 24 of a voiced record: the settings, the names and the hz (three bytes, as a
-      # number of two and one of one).
-      VOICED_LAYOUT = "v C C v C c v v C"
+      # Bytes 12 to 26 of a voiced record: the settings, the names and the hz (three bytes, as a
+      # number of two and one of one), then the rattle and the wave.
+      VOICED_LAYOUT = "v C C v C c v v C C C"
       # The bits of the names, and the one that says a vibrato carries.
-      NAMES = { pitch_number: 1, fade: 2, duty: 4, vibrato: 8, slide: 16, shade: 32, hz: 128, glides: 256 }.freeze
+      NAMES = { pitch_number: 1, fade: 2, duty: 4, vibrato: 8, slide: 16, shade: 32, hz: 128, glides: 256, metallic: 512,
+                wave: 1024 }.freeze
       CARRIES = 64
-      # The highest pitch number, fade, slide and shade a record can name, and its hz in 16ths.
+      # The highest pitch number, fade, slide, shade and rattle a record can name, and its hz in 16ths.
       MOST_PITCH_NUMBER = 2047
       MOST_FADE = 15
       MOST_SLIDE = 127
       MOST_SHADE = 64
+      MOST_METALLIC = 1
       HZ_SIXTEENTHS = 16
       MOST_HZ = Audio::Sound::NOISE_CLOCK_HZ * HZ_SIXTEENTHS
       REST = 255
@@ -133,13 +142,14 @@ module VBlank
                   noise_clock: clock }
         return new(**plain) unless voiced
 
-        pitch, fade, duty, vibrato, slide, shade, names, hz_low, hz_high =
+        pitch, fade, duty, vibrato, slide, shade, names, hz_low, hz_high, metallic, wave =
           record.byteslice(BYTES, VOICED_BYTES - BYTES).unpack(VOICED_LAYOUT.delete(" "))
         named = ->(field, value) { value if names.anybits?(NAMES.fetch(field)) }
         new(**plain, pitch_number: named.(:pitch_number, pitch), fade: named.(:fade, fade), duty: named.(:duty, duty),
                      vibrato: named.(:vibrato, vibrato), slide: named.(:slide, slide), shade: named.(:shade, shade),
                      carries: names.anybits?(CARRIES), hz: named.(:hz, hz_low | (hz_high << 16)),
-                     glides: names.anybits?(NAMES.fetch(:glides)))
+                     glides: names.anybits?(NAMES.fetch(:glides)), metallic: named.(:metallic, metallic),
+                     wave: named.(:wave, wave))
       end
       private_class_method :read
 
@@ -150,7 +160,8 @@ module VBlank
         names = settings.sum { |field, value| value ? NAMES.fetch(field, 0) : 0 } | (settings[:carries] ? CARRIES : 0)
         hz = settings[:hz] || 0
         [settings[:pitch_number] || 0, settings[:fade] || 0, settings[:duty] || 0, settings[:vibrato] || 0, settings[:slide] || 0,
-         settings[:shade] || 0, names, hz & 0xFFFF, hz >> 16].pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
+         settings[:shade] || 0, names, hz & 0xFFFF, hz >> 16, settings[:metallic] || 0, settings[:wave] || 0]
+          .pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
       end
 
       # +notes+ as the bytes of a slot +count+ notes long: each [at, length, key, instrument,
@@ -190,7 +201,8 @@ module VBlank
 
       # WHAT A VOICED RECORD'S SETTINGS ARE, AS A SCORE::NOTE IS GIVEN THEM: a Hash of the words of
       # those it names (`pitch_number:`, `decay:` or `swell:`, `duty:`, `vibrato:`, `slide_up:` or
-      # `slide_down:`, `pan:`, `hz:`, `glides:`), each left out where it names none. A number past its
+      # `slide_down:`, `pan:`, `hz:`, `glides:`, `metallic:`), each left out where it names none. Its
+      # wave is a number among the part's waves, which the part's reader looks up (#wave). A number past its
       # range is here as it is: the file's reading (IR::StartFile.voice_settings_of) leaves it out,
       # and a build holding the record refuses it, each asking #settings_out_of_range.
       def score_settings
@@ -203,6 +215,7 @@ module VBlank
         settings[:pan] = Rational(shade, MOST_SHADE) if shade
         settings[:hz] = Rational(hz, HZ_SIXTEENTHS) if hz
         settings[:glides] = true if glides
+        settings[:metallic] = metallic == 1 if metallic
         settings
       end
 
@@ -215,6 +228,7 @@ module VBlank
         out << :slide if slide && !PackNote.slide_in_range?(slide)
         out << :shade if shade && shade.abs > MOST_SHADE
         out << :hz if hz && !hz.between?(1, MOST_HZ)
+        out << :metallic if metallic && metallic > MOST_METALLIC
         out
       end
 
