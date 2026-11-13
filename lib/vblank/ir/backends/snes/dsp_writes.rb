@@ -110,8 +110,13 @@ module VBlank
           # ...and as the sound unit starts: muted and every voice held off, written outright, since
           # what FLG reads before anything writes it is not to be relied on (fullsnes).
           SOUND_OFF = 0xE0
-          # Main volume, the most there is (127, on both sides).
-          MAIN_VOLUME = 0x7F
+          # Main volume where the game names none: the most there is (127, on both sides). The main
+          # volume scales the whole mix after each voice's own volume (fullsnes, "MVOLL/MVOLR"), so
+          # a game that names one (`enable_sound main_volume:`, logged as [:enabled, volume]) is heard
+          # that many 127ths as loud, songs and effects alike.
+          MAIN_VOLUME_LOUDEST = 0x7F
+          # A voice's volume register at its loudest, which a recording's loudness is scaled to.
+          VOICE_VOLUME_LOUDEST = 0x7F
 
           # Fastest attack, ADSR on (ADSR1); the sustain level at the top (ADSR2's high three bits),
           # so the note goes straight to its sustain, whose rate (ADSR2's low five bits) is its fade.
@@ -177,7 +182,7 @@ module VBlank
 
           NO_VOICING = Voicing.new
 
-          # The writes one sound-log entry means: [:enabled], [:beep, effect], [:noise, hit], [:wave,
+          # The writes one sound-log entry means: [:enabled] or [:enabled, main volume], [:beep, effect], [:noise, hit], [:wave,
           # params], [:stop_wave], a song's or a sound effect's [:note, ...] (nothing: the [:voice, ...]
           # after it is the note) and [:voice, channel, song, frequency, volume], [:sound_effect, name]
           # (nothing: its notes are its writes), and [:stop_music, name], the cartridge's, which lets go
@@ -185,7 +190,9 @@ module VBlank
           # [register, value], or [SET_BITS, register, mask, bits].
           def for_entry(entry, voicing = NO_VOICING, song: nil, effect_voices: 0)
             case entry.first
-            when :enabled then [[SET_BITS, FLAGS, SWITCHES, SOUND_ON], [MAIN_LEFT, MAIN_VOLUME], [MAIN_RIGHT, MAIN_VOLUME]]
+            when :enabled
+              main_volume = entry[1] || MAIN_VOLUME_LOUDEST
+              [[SET_BITS, FLAGS, SWITCHES, SOUND_ON], [MAIN_LEFT, main_volume], [MAIN_RIGHT, main_volume]]
             when :beep then beep(entry.last)
             when :noise then entry.last ? noise(entry.last) : key_off(1 << NOISE_VOICE)
             when :wave then wave(entry.last, voicing.waves)

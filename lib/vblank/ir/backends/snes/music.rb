@@ -62,7 +62,7 @@ module VBlank
           def console_title = "Super Nintendo"
 
           # A recorded note's voice volume: the mix's scale turned to the DSP's.
-          def recording_volume(value) = (value * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round
+          def recording_volume(value) = (value * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round
         end
       end
     end

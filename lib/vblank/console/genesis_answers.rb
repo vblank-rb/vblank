@@ -242,7 +242,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works("`main_volume:` is refused: the sound chips of a Sega Genesis have no main volume."),
         define_sound: works("a Genesis plays a square on its PSG, which has three square voices. Each square is " \
                             "half up and half down, so `duty:` is not heard, and a PSG voice sounds from both " \
                             "speakers. A fade or a swell moves in the same time as on the Advance. The lowest " \

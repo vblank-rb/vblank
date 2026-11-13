@@ -148,7 +148,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `rand` — works: the same as on the Advance.
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
-- `enable_sound` — works: the same as on the Advance.
+- `enable_sound` — works: `main_volume:` is refused: this build does not make it yet.
 - `define_sound` — works: the sound chip plays a square as a short recording of one wave, on a voice of its own. A fade moves the voice's loudness a step at a time, at the same pace as on the Advance.
 - `beep` — works: see `define_sound`.
 - `noise` — works: the sound chip plays the Advance's noise as a recording, at the pitch the game names. A metallic noise is a recording of the Advance's rattle.

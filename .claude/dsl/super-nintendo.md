@@ -149,7 +149,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rand` — works: the same as on the Advance.
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
-- `enable_sound` — works: the same as on the Advance.
+- `enable_sound` — works: `main_volume:` sets the main volume of the sound chip. It changes the loudness of all songs and effects by the same share.
 - `define_sound` — works: a Super Nintendo has no square voice: its sound chip plays recordings, so the square is played as a recording of one. The sound chip cannot make a note above 16000 Hz, so a higher note plays at 16000 Hz.
 - `beep` — works: see `define_sound`.
 - `noise` — works: a hiss is played on the sound chip's own noise. The sound chip has no metallic noise, so a metallic hit is played as a recording of one. The sound chip's noise is at most 32000 steps a second, so a :high hiss is lower than on the Game Boy Advance.

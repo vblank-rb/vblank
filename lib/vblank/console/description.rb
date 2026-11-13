@@ -121,6 +121,10 @@ module VBlank
     # +holds_background_above_row+ marks that a background can be kept to the rows above a row (`above_row:`),
     # and +glides_recordings+ that a recorded note can carry on at a new pitch (`glides: true`).
     #
+    # +sets_main_volume+ marks that the console's build writes the main volume a game names
+    # (`enable_sound main_volume:`) to its sound chip, which scales everything the chip plays. Where it
+    # is false the build refuses such a game (Console::Questions), rather than play it louder.
+    #
     # +background_box+ sets how a background is held to a box the game moves (`show_only_inside`):
     # :shared_windows where the display's windows do it and the light, a status bar and a fade held
     # to part of the screen use the same windows (the Advance); :own_window where a window does it
@@ -134,7 +138,7 @@ module VBlank
     # it, and the build refuses such a call (Checks::CallInsideArea).
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
-                              :glides_recordings, :sprites, :sprite_places,
+                              :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
@@ -292,7 +296,7 @@ module VBlank
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sprites: 128,
+                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sets_main_volume: false, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
                               # written (Backends::GBA::Statements#emit_inside).
                               area_clips_called_routines: false,
@@ -345,7 +349,7 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
-                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 40, sprite_places: 40,
+                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: false, sprites: 40, sprite_places: 40,
                             # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
                             area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
@@ -397,7 +401,7 @@ module VBlank
     # verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
                                      buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
-                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sprites: 128,
+                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sets_main_volume: true, sprites: 128,
                                      # rt_paint_area keeps the area in memory, and a routine on a
                                      # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,
                                      # SNES::ChipCode#area_places).
@@ -476,7 +480,7 @@ module VBlank
     # channel. What each verb does on it is Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: nil, glides_recordings: false, sprites: 80, sprite_places: 80,
+                              holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
                               # A row of the screen shows at most 20 sprites (16 on a screen of 256
@@ -539,7 +543,7 @@ module VBlank
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses. A recorded note
                                   # can glide: its voice's pitch is a register written while it plays.
-                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true,
+                                  holds_background_above_row: false, background_box: :own_window, glides_recordings: true, sets_main_volume: false,
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,

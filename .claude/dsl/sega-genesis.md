@@ -149,7 +149,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rand` — works: the same as on the Advance.
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
-- `enable_sound` — works: the same as on the Advance.
+- `enable_sound` — works: `main_volume:` is refused: the sound chips of a Sega Genesis have no main volume.
 - `define_sound` — works: a Genesis plays a square on its PSG, which has three square voices. Each square is half up and half down, so `duty:` is not heard, and a PSG voice sounds from both speakers. A fade or a swell moves in the same time as on the Advance. The lowest square note is 109 Hz.
 - `beep` — works: see `define_sound`.
 - `noise` — works: a hiss is played on the PSG's noise voice, and `metallic:` is its rattle.

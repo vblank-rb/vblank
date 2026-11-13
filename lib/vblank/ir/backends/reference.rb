@@ -1181,8 +1181,11 @@ module VBlank
           @screen.camera_to(eval_value(node.x), eval_value(node.y))
         end
 
+        # The sound switched on, and the main volume the game named for everything it plays
+        # (Program#main_volume), which a console with one writes as it switches its sound on: the
+        # log says it only where the game named one.
         def exec_enable_sound(node)
-          @audio << [:enabled]
+          @audio << [:enabled, *@read_program&.main_volume]
         end
 
         # SHAKE THE PLAYER'S HANDS (Nodes::Rumble): the motor runs on the frames the screen shows

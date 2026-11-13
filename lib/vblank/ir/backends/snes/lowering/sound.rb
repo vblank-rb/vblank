@@ -204,7 +204,7 @@ module VBlank
               row = Runtime::Recordings.row(
                 source: source,
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
-                volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::MAIN_VOLUME / IR::Tunes::MIX_FULL.to_f).round,
+                volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
                 walks: walks, chip_envelope: chip_envelope_number(envelope ? chip_envelope : declared.chip_envelope)
@@ -424,7 +424,7 @@ module VBlank
               row = Runtime::Recordings.row(
                 source: source,
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
-                volume: (loudness * DSPWrites::MAIN_VOLUME / VBlank::Audio::Sound::MIX_LEVELS[:full].to_f).round,
+                volume: (loudness * DSPWrites::VOICE_VOLUME_LOUDEST / VBlank::Audio::Sound::MIX_LEVELS[:full].to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: sound_entry_number([:sample, node.name]), name: @samples.keys.index(node.name),
                 shape: shape_of(info.envelope), chip_envelope: chip_envelope_number(declared.chip_envelope)
@@ -508,7 +508,7 @@ module VBlank
             end
 
             # Reference#exec_enable_sound.
-            def emit_enable_sound(_node) = emit_sound_entry([:enabled])
+            def emit_enable_sound(_node) = emit_sound_entry([:enabled, *@program.main_volume])
 
             # Reference#exec_beep: the beep resolved as the interpreter resolves it.
             def emit_beep(node)

@@ -36,6 +36,7 @@ and a test fails when the two differ.
 - `rumble` — works: nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, so the game plays the same without it.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
+- `enable_sound` — works: `main_volume:` is refused: this build does not make it yet.
 - `song` — works: a part can sit between the speakers. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording plays from both speakers, wherever `pan` puts it: all recordings are mixed into one sound, and both speakers play it.
 - `songs` — works: a recorded note with `glides: true` is refused: this build does not make it yet. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts.
 
@@ -55,6 +56,6 @@ These work as their group files say:
 `sub`, `sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
 `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
 `case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`,
-`hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`,
-`sound_effects`, `sample`, `instrument`.
+`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`,
+`release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`,
+`instrument`.

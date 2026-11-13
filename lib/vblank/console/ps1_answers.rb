@@ -215,7 +215,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works(Answers::MAIN_VOLUME_NOT_MADE_YET),
         define_sound: works("the sound chip plays a square as a short recording of one wave, on a voice of its own. " \
                             "A fade moves the voice's loudness a step at a time, at the same pace as on the Advance."),
         beep: works("see `define_sound`."),

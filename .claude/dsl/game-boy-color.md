@@ -150,7 +150,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rand` — works: the same as on the Advance.
 - `chance` — works: the same as on the Advance.
 - `random_numbers` — works: the same as on the Advance.
-- `enable_sound` — works: the same as on the Advance.
+- `enable_sound` — works: `main_volume:` is refused: this build does not make it yet.
 - `define_sound` — works: the same as on the Advance.
 - `beep` — works: the same as on the Advance.
 - `noise` — works: the same as on the Advance.

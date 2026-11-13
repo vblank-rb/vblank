@@ -72,6 +72,10 @@ module VBlank
       NOTE_VOICES_NOT_UNDER_VOLUME = "#{NOTE_VOICES} If the game sets its music volume, such a note is refused: " \
                                      "this build does not make it yet."
 
+      # What `enable_sound main_volume:` does on a console whose build does not write it yet
+      # (Description#sets_main_volume false), though its sound chip has a main volume.
+      MAIN_VOLUME_NOT_MADE_YET = "`main_volume:` is refused: this build does not make it yet."
+
       # How the reference names each verdict.
       VERDICT_WORDS = { works: "works", refused: "**refused**" }.freeze
 

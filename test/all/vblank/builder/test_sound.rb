@@ -49,6 +49,13 @@ class TestSound < Minitest::Test
     assert_includes error.message, "mix_rate"
   end
 
+  def test_enable_sound_refuses_a_main_volume_that_is_no_volume
+    [128, -1, 1.5, "loud"].each do |volume|
+      error = assert_raises(ArgumentError) { Builder.new.instance_eval { enable_sound main_volume: volume } }
+      assert_includes error.message, "main_volume", volume.inspect
+    end
+  end
+
   # ========================================================================
   # Error handling
   # ========================================================================

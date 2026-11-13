@@ -87,11 +87,7 @@ module VBlank
         when :held, :pressed then button_question(node, console)
         when :players_connected
           Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
-        when :program
-          most = node.most_players
-          if most && most > 1
-            Question.new(:held, "This game takes up to #{most} players (`players:`)", most <= console.controllers)
-          end
+        when :program then program_question(node, console)
         when :fade
           Question.new(:fade, "This line fades part of the screen", console.blends) if node.under || node.reaches
         when :background
@@ -126,6 +122,20 @@ module VBlank
                          console.turning_sprites)
           end
         end
+      end
+
+      # What the program's own settings ask: how many players it takes, and the main volume it names
+      # (`enable_sound main_volume:`, kept on the program since it is said once for the whole game). A
+      # line answers one question, so where both are asked the one this console cannot do is it.
+      def program_question(program, console)
+        most = program.most_players
+        questions = []
+        questions << Question.new(:held, "This game takes up to #{most} players (`players:`)", most <= console.controllers) if most && most > 1
+        if program.main_volume
+          questions << Question.new(:enable_sound, "This game sets the main volume of all its sound (`enable_sound main_volume:`)",
+                                    console.sets_main_volume)
+        end
+        questions.find { |question| question.can == false } || questions.first
       end
 
       # A recording, and the part of playing one that only a console that mixes them can do

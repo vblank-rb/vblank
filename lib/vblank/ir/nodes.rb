@@ -1464,7 +1464,7 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 shown_rows: :list, start_file: :start_file, mix_rate: :int, computer_controls: :list
+                 shown_rows: :list, start_file: :start_file, mix_rate: :int, main_volume: :int, computer_controls: :list
 
         # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
         # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
@@ -1476,6 +1476,12 @@ module VBlank
         # +mix_rate+ is the rate the game asked its recordings to be mixed at, in samples a second
         # (`enable_sound mix_rate: 13379`), or absent where the mix runs at the rate most of its
         # recordings were made at (IR::Mixing.requested_rate).
+        #
+        # +main_volume+ is how loud the sound chip plays everything, in 127ths of its loudest
+        # (`enable_sound main_volume: 96`, or a share), or absent where it plays at its loudest. It scales
+        # the chip's whole mix: the interpreter logs it as the sound is switched on ([:enabled, 96],
+        # Reference#exec_enable_sound), a console whose build sets it writes it then, and every other
+        # console's build refuses a game that names it (Console::Questions).
 
         # The most players the game takes on this build, or nil where it gave nothing.
         def most_players = players&.last

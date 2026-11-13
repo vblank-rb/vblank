@@ -263,7 +263,8 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works("`main_volume:` sets the main volume of the sound chip. It changes the loudness " \
+                            "of all songs and effects by the same share."),
         define_sound: works("a Super Nintendo has no square voice: its sound chip plays recordings, so the " \
                             "square is played as a recording of one. The sound chip cannot make a note above " \
                             "16000 Hz, so a higher note plays at 16000 Hz."),

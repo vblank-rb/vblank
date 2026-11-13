@@ -271,7 +271,7 @@ module VBlank
         seed: works, randomize: works, roll: works, rand: works, chance: works, random_numbers: works,
 
         # --- sound and music ---
-        enable_sound: works,
+        enable_sound: works(Answers::MAIN_VOLUME_NOT_MADE_YET),
         define_sound: works,
         beep: works,
         noise: works,
