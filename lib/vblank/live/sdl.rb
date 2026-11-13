@@ -361,7 +361,23 @@ module VBlank
         bytes = samples.length * MOMENT_BYTES
         return if @sdl.SDL_GetAudioStreamQueued(speaker) > SOUND_BEHIND_FRAMES * bytes
 
-        @sdl.SDL_PutAudioStreamData(speaker, samples.zip(right).flatten.pack("s<*"), bytes)
+        @sdl.SDL_PutAudioStreamData(speaker, interleaved_bytes(samples, right), bytes)
+      end
+
+      # The two speakers' samples one after the other, left then right, as the bytes SDL takes: into
+      # the same Array and String every frame, which SDL copies from, so a frame's sound takes no
+      # new memory here (a frame's worth of pairs made new each frame were for Ruby to collect).
+      private def interleaved_bytes(left, right)
+        both = (@sound_both ||= [])
+        count = left.length
+        both.pop while both.length > 2 * count
+        i = 0
+        while i < count
+          both[2 * i] = left[i]
+          both[(2 * i) + 1] = right[i]
+          i += 1
+        end
+        both.pack("@0s<*", buffer: (@sound_bytes ||= String.new(encoding: Encoding::BINARY)))
       end
 
       # Seconds of sound waiting for the speaker, or nil before the first frame's sound opens one,

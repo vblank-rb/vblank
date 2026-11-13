@@ -317,12 +317,21 @@ end
 def rg_mix_sound_frame
   return if rg_mixes == 0
 
-  slice = Array.new(rg_slice_samples, 0)
+  # The voices are added up in one Array and the slice kept in another, both the same two every
+  # frame, so mixing takes no new memory a frame (see rg_sound_frame_buffers).
+  samples = rg_slice_samples
+  totals = (@rg_mix_totals ||= Array.new(samples, 0)).fill(0)
   rg_mix_voices_in_use.each do |voice|
-    voice.sounding = false if voice.sounding && !rg_mix_voice_into(voice, slice)
+    voice.sounding = false if voice.sounding && !rg_mix_voice_into(voice, totals)
   end
   highest = (128 << rg_mix_full_depth_shift) - 1
-  @rg_mix_slice = slice.map { |sample| sample.clamp(-highest - 1, highest) }
+  slice = @rg_mix_slice
+  slice = @rg_mix_slice = Array.new(samples, 0) if slice.nil? || slice.length != samples
+  at = 0
+  while at < samples
+    slice[at] = totals[at].clamp(-highest - 1, highest)
+    at += 1
+  end
   @rg_mix_slices_made += 1
 end
 

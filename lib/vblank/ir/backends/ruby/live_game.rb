@@ -13,7 +13,8 @@ module VBlank
         #   buttons_after(pixels, left, right)  the picture as the screen shows it, a 15-bit colour
         #                          a pixel, a row at a time, drawn over next frame, and the sound of
         #                          the frame just played, the left speaker's 16-bit samples and the
-        #                          right's at #sound_rate; gives back the buttons held for the pass
+        #                          right's at #sound_rate, both written over next frame too;
+        #                          gives back the buttons held for the pass
         #                          that starts, a number for each connected player
         #                          (IR::Buttons.masks), or nil to stop the play
         class LiveGame

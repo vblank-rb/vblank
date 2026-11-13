@@ -58,9 +58,10 @@ module VBlank
       end
 
       # The left speaker's sound is kept. The right one's is as long, so it shows nothing more about
-      # when the speaker runs out.
+      # when the speaker runs out. The sound is the game's own and is written over next frame, so a
+      # copy is kept.
       def play_sound(samples, rate, _right = samples)
-        @sounds << samples
+        @sounds << samples.dup
         @sound_rate = rate
         return unless @speaker
 

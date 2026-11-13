@@ -13,7 +13,8 @@ module VBlank
     #   show(pixels, width, height)  the picture, as the screen shows it (15-bit colours, a row at a time),
     #                                which the game draws over next frame: a device that keeps it copies it
     #   play_sound(left, rate, right) the sound of the frame just shown, the left speaker's 16-bit
-    #                                samples and the right's, +rate+ a second each
+    #                                samples and the right's, +rate+ a second each, which the game
+    #                                writes over next frame: a device that keeps them copies them
     #   sound_waiting                seconds of sound the speaker has still to play, or nil for a
     #                                device with no speaker (yet)
     #   held_buttons(pass)           the buttons held as picture number +pass+ is shown (1, 2, 3, …),

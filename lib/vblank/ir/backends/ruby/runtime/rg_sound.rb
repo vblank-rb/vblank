@@ -358,8 +358,8 @@ def rg_sound_render_frame
   hiss = @rg_hiss
   noise_sounds = hiss.step_ticks != 0 && !hiss.loudness.stays_silent?
   noise_to_left, noise_to_right = rg_speakers_of(RG_NOISE_VOICE)
-  left = Array.new(count)
-  right = Array.new(count)
+  frame = rg_sound_frame_buffers(count)
+  left, right = frame
   i = 0
   while i < count
     if (@rg_slide_clock += 1) == RG_SLIDE_TICK_SAMPLES
@@ -394,7 +394,19 @@ def rg_sound_render_frame
     right[i] = on_right < -32768 ? -32768 : (on_right > 32767 ? 32767 : on_right)
     i += 1
   end
-  [left, right]
+  frame
+end
+
+# The two speakers' Arrays a frame's sound is written into, [left, right], made +count+ samples long:
+# the same two every frame, so a frame's sound takes no new memory (a new pair each frame was
+# memory Ruby had to collect, and enough of it brings on a collection that stops the game for frames).
+# Whoever is handed them keeps a copy if it keeps the sound past the frame (Live::Session says so to
+# its devices). A frame is a sample shorter or longer than the one before as the leftover part of a
+# sample carries, so each is cut back here, and grows as it is written.
+def rg_sound_frame_buffers(count)
+  frame = (@rg_sound_frame ||= [[], []])
+  frame.each { |side| side.pop while side.length > count }
+  frame
 end
 
 # --- the log ---

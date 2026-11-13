@@ -403,8 +403,8 @@ def rg_spu_render_frame
 
   rg_spu_frame_begins
   chip_hz = @rg_game_spu_rules[0]
-  left = Array.new(count)
-  right = Array.new(count)
+  frame = rg_sound_frame_buffers(count) # rg_sound.rb
+  left, right = frame
   out = @rg_spu_out
   i = 0
   while i < count
@@ -417,7 +417,7 @@ def rg_spu_render_frame
     right[i] = out[1]
     i += 1
   end
-  [left, right]
+  frame
 end
 
 # What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording).
