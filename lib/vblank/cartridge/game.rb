@@ -116,6 +116,30 @@ module VBlank
         evaluated(settings, refuse_console_not_for!(console), variant).program
       end
 
+      # THE KEPT NUMBERS THAT DIFFERED FROM WHAT THEY WERE COPIED FROM, as the game plays on the
+      # interpreter for +frames+: a list of IR::Backends::Reference::CopyWatch::Difference, each
+      # naming the line that kept a local's number, the local, the game variables it was worked
+      # out from, the number kept and the one they read when the local was read, and the frame.
+      #
+      # A plain Ruby local keeps the number of its line, as Ruby's does (`kept = @x`, then a call
+      # that moves @x: `kept` is still the old number). A game written while such a local followed
+      # its variable may lean on the live read, and this finds the line. Where Ruby's local would
+      # also have kept the old number, the game's line is what to change: read the variable again
+      # after the call. The cartridge is not touched, and nor is any other run.
+      #
+      # The block, if given, is handed the interpreter before it plays, to hold buttons
+      # (`input_each_frame`). +settings+, +console+ and +variant+ are as for #program.
+      def copies_that_differed(frames:, settings: {}, console: @consoles.first, variant: variant_for(console))
+        evaluated = evaluated(settings, refuse_console_not_for!(console), variant)
+        watch = IR::Backends::Reference::CopyWatch
+        copies = evaluated.hidden_variable_notes.select { |note| note.why == :copy }
+                          .to_h { |note| [note.name, watch::CopyLine.new(source: note.source, local: note.local)] }
+        interpreter = IR::Backends::Reference.new.extend(watch).watch_copies(copies)
+        yield interpreter if block_given?
+        interpreter.run(evaluated.program, frames: frames)
+        interpreter.copy_differences
+      end
+
       # THE PROGRAM A GAME PLAYED AS RUBY RUNS: checked as a build checks it, every guardrail on and
       # their warnings printed to +err+, without making the cartridge (VBlank.build's +cartridge+).
       # +progress+, +settings+ and +console+ are as for #build_rom. +for_computer+ is what the game's

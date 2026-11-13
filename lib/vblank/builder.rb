@@ -145,7 +145,10 @@ module VBlank
     Build = IR::Build
 
     # One variable the build added for the author: its name, the line that needed it, and why.
-    HiddenVariableNote = Data.define(:name, :source, :why)
+    # +local+ is the plain Ruby local it holds the number of (Value#owner_name), or nil.
+    HiddenVariableNote = Data.define(:name, :source, :why, :local) do
+      def initialize(name:, source:, why:, local: nil) = super
+    end
 
     # A line of game code that gave a name a new number while it held a game variable.
     HandedNameWrite = Data.define(:name, :variable, :source)
@@ -1201,6 +1204,13 @@ module VBlank
 
     # What the build added for the author that the author never wrote, for `rom.profile`.
     def hidden_variable_notes = @hidden_variable_notes
+
+    # The hidden variable +name+ holds the number of the plain local +local+ (Value#owner_name=),
+    # for Cartridge::Game#copies_that_differed to name it.
+    def record_hidden_variable_local(name, local)
+      at = @hidden_variable_notes.rindex { |note| note.name == name } or return # made just before, so near the end
+      @hidden_variable_notes[at] = @hidden_variable_notes[at].with(local: local)
+    end
 
     # Game code gave a new number to +name+, which held the game +variable+ it was handed, so the
     # variable stayed as it was (PlainRuby::Writes.note_handed_name_written). One warning for each

@@ -2,6 +2,7 @@
 
 require "set"
 
+require_relative "reference/copy_watch"
 require_relative "reference/framebuffer"
 require_relative "reference/list_value"
 require_relative "reference/mixer"

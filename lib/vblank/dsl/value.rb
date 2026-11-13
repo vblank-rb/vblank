@@ -139,8 +139,13 @@ module VBlank
       attr_accessor :own_to_its_name
 
       # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or
-      # PlainRuby::Steps.kept_answer, or nil.
-      attr_accessor :owner_name
+      # PlainRuby::Steps.kept_answer, or nil. The build's note of a hidden one names it too.
+      attr_reader :owner_name
+
+      def owner_name=(name)
+        @builder.record_hidden_variable_local(@name, name) if name && hidden?
+        @owner_name = name
+      end
 
       # A game has no nil, and a number variable has no false. A name that can hold those as well
       # as a number keeps which it holds in a hidden variable beside it: NIL_HELD, FALSE_HELD or
