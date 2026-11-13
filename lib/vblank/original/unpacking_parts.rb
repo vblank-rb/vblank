@@ -19,6 +19,71 @@ module VBlank
       def record_write(name) = @written << name
     end
 
+    # An unpacking's program names a game variable that its own build did not make
+    # (BuiltNames#refuse_outside_variables!).
+    class OutsideVariableError < BuildError; end
+
+    # THE VARIABLES ONE BUILD OF AN UNPACKING ROUTINE MADE (Builder#unpacking_program records
+    # them): every one, which part's block made each, and which the build made unique
+    # (Builder#unique_names). +whole+ is the whole routine's BuiltNames, for a build of one part
+    # alone: which part made a variable there.
+    class BuiltNames
+      attr_reader :variables, :unique_names
+
+      def initialize(whole: nil)
+        @whole = whole
+        @variables = Set.new
+        @unique_names = Set.new
+        @parts_by_variable = {}
+      end
+
+      # The part +part+'s block made the variables +names+ as it ran.
+      def record_made_by(part, names) = names.each { |name| @parts_by_variable[name] ||= part }
+
+      def record_build(variables:, unique_names:)
+        @variables.merge(variables)
+        @unique_names.merge(unique_names)
+      end
+
+      # The part that made the variable +name+ in this build, or nil where no part's block did.
+      def part_that_made(name) = @parts_by_variable[name]
+
+      # REFUSES A BUILD THAT REACHED A VARIABLE ANOTHER BUILD MADE. A game variable belongs to the
+      # build that made it: an object's instance variable, or a Ruby local, keeps the variable it
+      # was first given, and a later build that reaches the same object or local uses that one
+      # rather than making its own. Its writes are recorded in the build that made it, and its
+      # reads name a variable this build never declared, which every backend reads as nothing. So
+      # the unpacking is not the routine the game wrote: an object the game made before its data
+      # pack, or one part's object reached from another part built alone, whose cache entry would
+      # then keep a stale pack. The reads show in the program, and only a read can change a slot,
+      # so they are what is looked for. +program+ is this build's, of the parts +parts+.
+      def refuse_outside_variables!(program, parts)
+        outside = IR::Reach.variables(program) - IR::Reach::FRAME_VARIABLES - @variables.to_a
+        return if outside.empty?
+
+        name = outside.first
+        part = (parts.first if parts.length == 1 && @whole)
+        maker = @whole&.part_that_made(name)
+        raise OutsideVariableError, outside_variable_message(name, part, maker == part ? nil : maker)
+      end
+
+      private
+
+      def outside_variable_message(name, part, maker)
+        user = part ? "Part :#{part} of the data pack's unpacking" : "The data pack's unpacking"
+        reached = "#{user} uses the game variable :#{name}"
+        if maker
+          "#{reached}, and part :#{maker} made it. The build makes each part on its own, so two parts " \
+            "cannot keep a number in one object or one Ruby local. To give a number to a later part, write " \
+            "it into a slot in part :#{maker}. Then read that slot in part :#{part}."
+        else
+          "#{reached}, and an object or a Ruby local from outside the unpacking keeps it. The build makes " \
+            "the unpacking on its own, so the unpacking must make the objects and locals that keep its " \
+            "numbers. Make that object or local inside the `slots.fill_from_copy` block that uses it."
+        end
+      end
+    end
+
     # THE PARTS OF AN UNPACKING ROUTINE (`slots.fill_from_copy :music do ... end`, one block a
     # part), as the pack cache keeps them apart (PackCache#pack). Each part is built once more as
     # a program of its own, the slots copied as they are and that part alone, to learn what it
@@ -50,7 +115,9 @@ module VBlank
     # as the game is built (an instance variable set in one block, a local both close over) can
     # make a part build differently alone than after the others, and the count of bytes done
     # (CopyReader#bytes_done) runs on from one part to the next. A part that hands anything to
-    # another this way must hand it through a slot instead.
+    # another this way must hand it through a slot instead. One way is refused rather than missed:
+    # a part built alone that reads a game variable another part's object or local keeps
+    # (BuiltNames#refuse_outside_variables!).
     #
     # WHAT A PART'S CACHE KEY IS MADE OF (#key_source): the program of the part built alone, for each
     # part played to make it (#played_for), as digests of each one's text as the pack cache keys a

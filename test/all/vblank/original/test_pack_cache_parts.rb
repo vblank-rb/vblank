@@ -213,6 +213,47 @@ class TestPackCacheParts < Minitest::Test
     Dir.mktmpdir { |folder| assert_equal %i[first], parts_with_locals(folder).inputs_of(:third) }
   end
 
+  # ONE OBJECT REACHED FROM TWO PARTS hands a number from one to the other through its instance
+  # variable's game variable (LampPart, test/plain_ruby_game_parts.rb), which no slot shows. Built
+  # alone, the part reading it reaches the variable the other part's build made, and a change to
+  # the writing part would leave the reader's cached slots stale: the build refuses, naming both.
+  def test_a_part_reading_an_object_another_part_made_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(VBlank::Original::OutsideVariableError) do
+        VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :switch, count: 1, width: :byte, signed: false
+          slots.numbers :shown, count: 1, width: :byte, signed: false
+          lamp = nil
+          slots.fill_from_copy(:switch) do |copy, into|
+            into[:switch][0] = copy.byte(0)
+            lamp = LampPart.new
+            repeat(1) { lamp.lit = copy.byte(1) }
+          end
+          slots.fill_from_copy(:shown) { |_copy, into| into[:shown][0] = lamp.lit }
+        end.unpacking_parts
+      end
+
+      assert_match(/Part :shown .* part :switch made it.*write it into a slot/m, error.message)
+    end
+  end
+
+  # An object the game made before its data pack keeps a variable of the game's own build, which
+  # the unpacking, a program of its own, never declares: it would read nothing there.
+  def test_an_unpacking_reading_an_object_made_outside_it_is_refused
+    Dir.mktmpdir do |folder|
+      builder = VBlank::Builder.new
+      lamp = LampPart.new
+      error = assert_raises(VBlank::Original::OutsideVariableError) do
+        builder.data_pack(from: original(folder), version: "1") do |slots|
+          slots.numbers :shown, count: 1, width: :byte, signed: false
+          slots.fill_from_copy { |_copy, into| into[:shown][0] = lamp.lit }
+        end
+      end
+
+      assert_match(/:lamp_part_lit.*outside the unpacking.*inside the `slots.fill_from_copy` block/m, error.message)
+    end
+  end
+
   # Built all-in-one with a cache, the routine in parts makes the pack the build with no cache makes.
   def test_a_build_with_a_cache_makes_the_pack_of_the_build_without
     Dir.mktmpdir do |folder|

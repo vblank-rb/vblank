@@ -100,13 +100,16 @@ module VBlank
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         routines = slots.routines
-        unpacking = (unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release) unless routines.empty?)
+        whole_names = Original::BuiltNames.new
+        unless routines.empty?
+          unpacking = unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: whole_names)
+        end
         # Built once, the first time the cache or a test asks; nil is an answer too.
         parts_built = false
         parts = nil
         make_parts = lambda do
           unless parts_built
-            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release, unpacking) if routines.size > 1)
+            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release, unpacking, whole_names) if routines.size > 1)
             parts_built = true
           end
           parts
@@ -505,9 +508,10 @@ module VBlank
       # (DSL::PackSlots::Routine) run one after another as game code on a builder of its own. A
       # pack with no routine has one too, which only copies: it is what a shell runs for any pack.
       # The program holds none of the copy however it is built. +slot_uses+, by part name, records
-      # which slots each part reads and writes as it is built (#unpacking_parts), and
-      # +unique_names+, a Set where given, is handed the variable names the build made unique
-      # (Builder#unique_names).
+      # which slots each part reads and writes as it is built (#unpacking_parts), and +built_names+
+      # (an Original::BuiltNames) the variables the build made, which part made each, and which of
+      # them it made unique. A program naming a variable the build did not make is refused
+      # (Original::BuiltNames#refuse_outside_variables!).
       #
       # Built all-in-one, +bytes+ is the copy the build read: the program is built for a copy of
       # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
@@ -520,7 +524,7 @@ module VBlank
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
-                            slot_uses: {}, unique_names: nil)
+                            slot_uses: {}, built_names: Original::BuiltNames.new)
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
@@ -548,7 +552,9 @@ module VBlank
           end
           routines.each do |routine|
             pack.record_uses_in(slot_uses[routine.part])
+            made_before = maker.variables
             maker.instance_exec(reader, pack, release.name, &routine.block)
+            built_names.record_made_by(routine.part, maker.variables - made_before)
           end
           pack.record_uses_in(nil)
           wait = lambda do
@@ -563,7 +569,8 @@ module VBlank
           end
           maker.halt
           maker.finalize_program
-          unique_names&.merge(maker.unique_names)
+          built_names.record_build(variables: maker.variables, unique_names: maker.unique_names)
+          built_names.refuse_outside_variables!(maker.program, routines.map(&:part))
           maker.program.for_unpacking = true
           # Written, so a lowering's many questions of a long routine read one walk of it rather
           # than walking it again for each (IR::Node#mark_written!).
@@ -674,22 +681,30 @@ module VBlank
       # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
       # cannot be built alone: one that calls a routine another part defines, say. The whole
       # routine is then cached as one, as a routine of one part is. +whole+ is the routine's
-      # Unpacking with every part, built already, which is the program of every part.
-      def unpacking_parts(bytes, slots, routines, reading, release, whole)
+      # Unpacking with every part, built already, which is the program of every part, and
+      # +whole_names+ (an Original::BuiltNames) the names that build made.
+      #
+      # A part whose program alone names a variable its own build did not make is refused
+      # (Original::BuiltNames#refuse_outside_variables!), naming the part that made it: it reached
+      # another part's object or Ruby local, so built alone it is not the part the whole routine
+      # plays.
+      def unpacking_parts(bytes, slots, routines, reading, release, whole, whole_names)
         parts = routines.map do |routine|
           uses = Original::SlotUses.new
-          unique_names = Set.new
+          built_names = Original::BuiltNames.new(whole: whole_names)
           alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses },
-                                                                      unique_names: unique_names)
+                                                                      built_names: built_names)
           Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
                                              names: Original::UnpackingParts.names_in(alone.program),
-                                             unique_names: unique_names,
+                                             unique_names: built_names.unique_names,
                                              program_digest: Original::UnpackingParts.program_digest(alone.program))
         end
         make = lambda do |played|
           unpacking_program(bytes, slots, routines.select { |routine| played.include?(routine.part) }, reading, release: release)
         end
         Original::UnpackingParts.new(parts: parts, make_unpacking: make, whole: whole)
+      rescue Original::OutsideVariableError
+        raise
       rescue ArgumentError, BuildError
         # A part that builds only after another (it calls a routine the other defines) is no
         # fault: the whole routine built already.
