@@ -163,7 +163,7 @@ instance variables.
 - `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number. Either side can be
   the game's number: `3 == hp` is the test `hp == 3` is.
 - `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass.
-- `case` on a game number takes `when` with a number, a symbol, a range, a comma list, a variable, or
+- `case` on a game number takes `when` with a number, a symbol, a range (`4..` and `..2` too), a comma list, a variable, or
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
   values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
   a plain value only.

@@ -628,6 +628,35 @@ class TestPlainRuby < Minitest::Test
     assert_equal [1, 2, 3, 4], [1, 7, 10, 3].map { |start| case_on(start, &arms) }
   end
 
+  def test_case_takes_a_range_with_no_end_or_no_start
+    arms = proc do |n|
+      picked = case n
+               when 7.. then 1
+               when ..2 then 2
+               when ...4 then 3
+               else 4
+               end
+      picked
+    end
+    starts = [1, 2, 3, 4, 6, 7, 9]
+
+    assert_equal starts.map(&arms), starts.map { |start| case_on(start, &arms) }
+  end
+
+  def test_case_in_takes_a_range_with_no_end_or_no_start
+    arms = proc do |n|
+      picked = case n
+               in 7.. then 1
+               in ..2 then 2
+               else 3
+               end
+      picked
+    end
+    starts = [1, 2, 3, 7, 9]
+
+    assert_equal starts.map(&arms), starts.map { |start| case_on(start, &arms) }
+  end
+
   def test_case_on_a_name_holding_a_symbol
     player = played do
       mode = :title

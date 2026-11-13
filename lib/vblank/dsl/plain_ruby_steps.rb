@@ -153,9 +153,16 @@ module VBlank
           end
         end
 
+        # A range with no start (`..2`) or no end (`4..`) tests only the side it has, as Ruby's
+        # Range#=== does. `nil..nil` holds every number, so it is a test that always passes: the
+        # number against itself.
         def test_of_range(subject, range)
-          below_top = range.exclude_end? ? subject < range.end : subject <= range.end
-          (subject >= range.begin) & below_top
+          tests = []
+          tests << (subject >= range.begin) unless range.begin.nil?
+          tests << (range.exclude_end? ? subject < range.end : subject <= range.end) unless range.end.nil?
+          return subject == subject if tests.empty? # rubocop:disable Lint/BinaryOperatorWithIdenticalOperands
+
+          tests.reduce(:&)
         end
 
         # `target || 7` on a name that may hold nil: its number if it is truthy, and the right side
