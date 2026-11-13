@@ -410,12 +410,16 @@ module VBlank
       # file (a StartFile::RecordingSettings), for those it reads from there. Nil otherwise.
       # +chip_recording+ is the recording as a console's sound chip keeps it (an Audio::SNESRecording),
       # with +bytes+ and +holds_from+ then what the chip decodes from it. Nil otherwise.
+      # +full_samples+ is a 16-bit recording's own samples (two bytes each, low byte first), with
+      # +bytes+ then the high byte of each, or as the recording's file reduced them to eight bits.
+      # Nil for an 8-bit recording.
       def sample(name, bytes, rate, note: :C4, envelope: nil, holds_from: nil, from_file: nil, chip_envelope: nil,
-                 settings_from_file: nil, chip_recording: nil)
+                 settings_from_file: nil, chip_recording: nil, full_samples: nil)
         attrs = { name: name, bytes: bytes, rate: rate, note: note, envelope: envelope, holds_from: holds_from,
                   from_file: from_file, chip_envelope: chip_envelope }
         attrs[:settings_from_file] = settings_from_file if settings_from_file
         attrs[:chip_recording] = chip_recording if chip_recording
+        attrs[:full_samples] = full_samples if full_samples
         Nodes.build(:sample, **attrs)
       end
 

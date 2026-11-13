@@ -510,6 +510,40 @@ module PackSoundTests
     end
   end
 
+  # A RECORDING OF SIXTEEN BITS BESIDE ONE FROM THE PACK: the game is mixed at sixteen bits, and the
+  # pack's recording, filled from the start file as eight, is heard as its bytes shifted up, as it
+  # is built all-in-one.
+  private def full_depth_beside_pack_game(folder, options: VBlank::Cartridge::Options.new)
+    from = options.pack_at_start ? original_nowhere(folder) : original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") { |slots| slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT }
+      bang = sample :bang, pcm: pack[:bang], rate: SOUND_RATE
+      hum = sample :hum, pcm: [300, -301] * 32, bits: 16, rate: SOUND_RATE
+      game_loop do
+        wait_vblank
+        bang.play if pressed(:a)
+        hum.play if pressed(:b)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_16_bit_recording_beside_one_read_as_the_game_starts_sounds_as_all_in_one
+    Dir.mktmpdir do |folder|
+      presses = ->(frame) { { 1 => [:a, :b] }.fetch(frame, []) }
+      wanted = game_player.input_each_frame(&presses).run(full_depth_beside_pack_game(folder), frames: 6)
+      left_out = full_depth_beside_pack_game(folder, options: PACK_AT_START)
+      heard = game_player.hand_file(sound_pack_file).input_each_frame(&presses).run(left_out, frames: 6)
+
+      assert(wanted.full_depth_sound.flatten.any? { |level| level % 256 != 0 }, "the mix keeps the low byte")
+      assert_equal wanted.full_depth_sound, heard.full_depth_sound
+    end
+  end
+
   def test_a_cartridge_build_cannot_leave_the_pack_with_samples_out
     Dir.mktmpdir do |folder|
       from = original_nowhere(folder)

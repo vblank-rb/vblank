@@ -347,6 +347,7 @@ def rg_sound_render_frame
   # frame, and heard only with every voice. Asked once a frame, never once a sample.
   mixed = @rg_heard_only == 0 ? rg_hook_mixed_slice(nil) : 0
   mixed_count = mixed == 0 ? 0 : mixed.length
+  mixed_shift = rg_hook_mixed_sample_shift
   squares = @rg_squares
   sounding = []
   squares.each_with_index do |square, at|
@@ -385,7 +386,7 @@ def rg_sound_render_frame
       on_right += sample if noise_to_right
     end
     if mixed_count > 0 # the recordings play from both
-      sample = mixed[i * mixed_count / count] * RG_MIX_STEP
+      sample = (mixed[i * mixed_count / count] * RG_MIX_STEP) >> mixed_shift
       on_left += sample
       on_right += sample
     end

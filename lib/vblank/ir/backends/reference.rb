@@ -108,6 +108,10 @@ module VBlank
         # mixer writes for that frame (see Mixer#mix). Empty for a program with no recording.
         def mixed_sound = @mixer.slices
 
+        # ...and as a build for a computer mixes it: all sixteen bits of a program with a 16-bit
+        # recording, and the same slices as #mixed_sound for any other (see Mixer#full_depth_slices).
+        def full_depth_sound = @mixer.full_depth_slices
+
         # ...and whose each of them is — see {Mixer#owners}.
         def sound_owners = @mixer.owners
 
@@ -616,7 +620,7 @@ module VBlank
             when :sound_effect_list
               @player.declare_effects(n.name, n.effects)
             when :sample
-              @mixer.declare(n.name, Assets::Sample.of(n), n.bytes)
+              @mixer.declare(n)
             when :list_new
               # A list is room the cartridge sets aside, so it is there, empty, from power-on —
               # wherever it is declared. A scene that shows tiles painted from a list declared
@@ -1284,7 +1288,8 @@ module VBlank
           return unless IR::Mixing.mixes?(program)
 
           @mixer.start_clock(clock: @console.sample_clock(IR::Mixing.requested_rate(program)),
-                             shapes: IR::Mixing.shapes_any_note?(program), voices: @console.recordings_at_once)
+                             shapes: IR::Mixing.shapes_any_note?(program), voices: @console.recordings_at_once,
+                             full_depth: IR::Mixing.full_depth?(program))
         end
 
         # One vblank: snapshot the current buttons as "previous" (so an edge can

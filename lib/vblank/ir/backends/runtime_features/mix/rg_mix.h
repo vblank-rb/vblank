@@ -31,6 +31,8 @@ extern int8_t rg_game_recording_samples[];
 #else
 extern const int8_t rg_game_recording_samples[];
 #endif
+/* A game that mixes at sixteen bits: each sample's low byte, beside its high byte above (rg_mix.c). */
+extern const uint8_t rg_game_recording_low_bytes[];
 
 /* The game's own `play` of recording number +recording+: read +step+ 65536ths of a sample for
  * each sample of the mix (its pitch), at +loudness+ out of 512, going +back+ that many samples at

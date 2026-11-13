@@ -35,4 +35,25 @@ class TestSampledAudio < Minitest::Test
       assert_includes error.message, "4 samples long"
     end
   end
+
+  # `bits:` says how deep `pcm:` is (test/full_depth_sound_tests.rb plays one of sixteen).
+  def test_a_depth_other_than_8_or_16_is_a_friendly_error
+    error = assert_raises(ArgumentError) { VBlank::Builder.new.instance_eval { sample :bang, pcm: [10, -10], bits: 12 } }
+
+    assert_includes error.message, "bits: 8 or bits: 16"
+  end
+
+  def test_a_depth_without_pcm_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      VBlank::Builder.new.instance_eval { sample :bang, from: "bang.wav", bits: 16 }
+    end
+
+    assert_includes error.message, "remove bits:"
+  end
+
+  def test_a_16_bit_sample_outside_sixteen_bits_is_a_friendly_error
+    error = assert_raises(ArgumentError) { VBlank::Builder.new.instance_eval { sample :bang, pcm: [10, 40_000], bits: 16 } }
+
+    assert_includes error.message, "-32768..32767"
+  end
 end

@@ -33,14 +33,23 @@
  * note's distance to its next gain is multiplied by to slide it there); how many voices there
  * are; and the shifts the arithmetic is done in — the gain's whole 256ths, the step's, the gain's
  * fraction, the slide's split, a shape's full level and the shift it scales by, how far a
- * loudness (out of 512) is shifted up to be its gain, and how far a loudness times a level is
- * shifted down to the whole 256ths a shaped note's gain aims at.
+ * loudness (out of 512) is shifted up to be its gain, how far a loudness times a level is
+ * shifted down to the whole 256ths a shaped note's gain aims at, and how far a byte is shifted up
+ * in a game that mixes at sixteen bits (IR::Mixing::FULL_DEPTH_SHIFT), nought in any other.
  *
  * rg_game_recordings: how many recordings, then seven numbers each — where its samples start in
  * rg_game_recording_samples, how many there are, 1 if it has a shape, and the shape's four
  * numbers (attack, decay, sustain, release).
  *
  * rg_game_recording_samples: every recording's samples, -128 to 127, a byte each.
+ *
+ * AT SIXTEEN BITS (IR::Mixing.full_depth?), for a game given a recording of sixteen bits:
+ * rg_game_recording_samples holds each sample's high byte and rg_game_recording_low_bytes, as
+ * long, its low byte (an 8-bit recording's are nought), so a sample is the high byte shifted up
+ * and the low byte added. The arithmetic is the same, and each total of the slice is held to what
+ * sixteen bits hold rather than a byte. The speaker takes the slice down by that shift again
+ * (rg_mix_mixed_sample_shift), so a recording is as loud as at eight bits; with the speaker's
+ * other half kept for the console's voices, it hears fifteen of the sixteen bits.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,6 +75,7 @@
 #define SHAPE_SCALE (rg_game_mix[10])
 #define LOUDNESS_TO_GAIN (rg_game_mix[11])
 #define WHOLE_GAIN_SHIFT (rg_game_mix[12])
+#define FULL_DEPTH_SHIFT (rg_game_mix[13])
 
 /* Which part of its shape a note is in, and the frame after it has fallen to nothing, which the
  * voice is held for so it comes free on the same frame the console's does. */
@@ -317,12 +327,16 @@ void rg_mix_stop(int32_t recording) {
 static int32_t mix_voice_into(mix_voice *voice, int32_t *totals) {
   const int32_t *numbers = recording_numbers(voice->recording);
   const int8_t *data = &rg_game_recording_samples[numbers[0]];
+  int32_t full_depth = FULL_DEPTH_SHIFT;
+  int32_t high_scale = 1 << full_depth;
+  const uint8_t *low = full_depth ? &rg_game_recording_low_bytes[numbers[0]] : NULL;
   int32_t length = numbers[1];
   int32_t whole = voice->step >> STEP_SHIFT;
   int32_t part = voice->step & ((1 << STEP_SHIFT) - 1);
   int32_t gain = SHAPES ? voice->gain : voice->loudness << LOUDNESS_TO_GAIN;
   for (int32_t at = 0; at < SLICE_SAMPLES; at++) {
-    totals[at] += (int32_t)(((int64_t)gain * data[voice->position]) >> (VOL_SHIFT + GAIN_FRACTION));
+    int32_t sample = full_depth ? (data[voice->position] * high_scale) + low[voice->position] : data[voice->position];
+    totals[at] += (int32_t)(((int64_t)gain * sample) >> (VOL_SHIFT + GAIN_FRACTION));
     gain += voice->ramp;
     voice->fraction += part;
     voice->position += whole + (voice->fraction >> STEP_SHIFT);
@@ -346,9 +360,10 @@ static void rg_mix_sound_frame(void) {
   for (int32_t i = 0; i < VOICES; i++) {
     if (voices[i].sounding && !mix_voice_into(&voices[i], slice)) voices[i].sounding = 0;
   }
+  int32_t highest = (128 << FULL_DEPTH_SHIFT) - 1;
   for (int32_t at = 0; at < SLICE_SAMPLES; at++) {
-    if (slice[at] > 127) slice[at] = 127;
-    if (slice[at] < -128) slice[at] = -128;
+    if (slice[at] > highest) slice[at] = highest;
+    if (slice[at] < -highest - 1) slice[at] = -highest - 1;
   }
   slices_made++;
 }
@@ -436,6 +451,10 @@ static int32_t rg_mix_mixed_slice(const int32_t **samples) {
   *samples = slice;
   return slices_made > 0 ? SLICE_SAMPLES : 0;
 }
+
+/* How many bits the speaker takes a sample of the slice down by (see rg_hook_mixed_sample_shift):
+ * eight at sixteen bits, so a sample is as loud as its byte would be, and none otherwise. */
+static int32_t rg_mix_mixed_sample_shift(void) { return FULL_DEPTH_SHIFT; }
 
 /* What a sounding voice is playing: the recording, its loudness out of 512, how far its shape has
  * climbed or fallen, and whose it is — +owner+ 0 for the game's own sound, 1 for the song's, 2 for

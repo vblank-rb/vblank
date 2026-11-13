@@ -2,7 +2,7 @@
 
 module VBlank
   class Builder
-    # The sampled-audio verb: `sample` — define a recorded sound (8-bit PCM) and hand
+    # The sampled-audio verb: `sample` — define a recorded sound (8- or 16-bit PCM) and hand
     # back a {Sample} handle to play and stop it. A concern of {Builder}, mixed in so
     # `sample` stays a flat DSL verb.
     module SampledAudio
@@ -20,10 +20,16 @@ module VBlank
       # samples as an Array of -128..127 (or a binary String) and the `rate:` they play at.
       # Returns a {Sample} handle — `play` it, `stop` it.
       #
+      # +bits+ 16 takes `pcm:` as 16-bit samples, an Array of -32768..32767 or a String of two
+      # bytes each, low byte first. A 16-bit WAV is 16-bit without it. A build for a computer
+      # plays all sixteen bits; a console's build keeps what its sound hardware holds, made from
+      # the high byte of each sample, as an 8-bit recording of those bytes would be.
+      #
       # @param name [Symbol] the sample's name
-      # @param pcm [Array<Integer>, String, nil] the 8-bit signed PCM samples (or use from:)
+      # @param pcm [Array<Integer>, String, nil] the signed PCM samples (or use from:)
       # @param from [String, nil] a .wav file to load (or use pcm:)
       # @param rate [Integer, nil] samples per second — defaults to the WAV's rate, or 8192 for pcm:
+      # @param bits [Integer, nil] 8 or 16, how many bits each `pcm:` sample has (8 when not given)
       # @return [Sample]
       #
       # +length+ is how many of the samples the recording plays, from its first: for a recording
@@ -35,7 +41,7 @@ module VBlank
       # bytes or a slot of the data pack, and +brr_loop+ how many bytes into it its loop starts: the
       # Super Nintendo plays those bytes as they are, and every other build what the chip decodes.
       def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
-                 brr: nil, brr_loop: 0)
+                 brr: nil, brr_loop: 0, bits: nil)
         raise ArgumentError, "A sample name must be a Symbol. You gave #{name.inspect}." unless name.is_a?(Symbol)
         if VBlank::Audio::Music::CONSOLE_VOICE_NAMES.include?(name)
           raise ArgumentError, "The recording #{name.inspect} has the name of one of the console's own " \
@@ -46,6 +52,10 @@ module VBlank
 
         refuse_brr_beside_samples!(name, pcm: pcm, from: from, holds_from: holds_from, length: length) if brr
         refuse_brr_loop_alone!(name, brr_loop) unless brr
+        unless bits.nil?
+          refuse_unknown_bits!(name, bits)
+          refuse_bits_without_pcm!(name, pcm)
+        end
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
         settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
@@ -66,15 +76,19 @@ module VBlank
         # A recording in the Super Nintendo sound chip's format is played everywhere else as the
         # samples the chip decodes from it, round its own loop.
         chip_recording = snes_recording(name, brr, brr_loop) if brr
+        full_samples = nil
         if chip_recording
           decoded = chip_recording.decoded
           bytes = decoded.pcm
           rate ||= DEFAULT_SAMPLE_RATE
           holds_from = decoded.holds_from
         else
-          bytes, rate = sample_data(name, pcm, from, rate)
-          room = bytes.bytesize
-          bytes = bytes.byteslice(0, recording_length(name, length, room, length_from_pack: length_from_pack)) if length
+          recording = sample_data(name, pcm, from, rate, bits)
+          room = recording.bytes.bytesize
+          recording = recording.first(recording_length(name, length, room, length_from_pack: length_from_pack)) if length
+          bytes = recording.bytes
+          full_samples = recording.full_samples
+          rate = recording.rate
         end
         # Where a hold the game wrote can be: inside the samples given, where the pack gave the length.
         hold_room = length_from_pack ? room : bytes.bytesize
@@ -90,7 +104,8 @@ module VBlank
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate, room: hold_room,
                                                                            from_pack: hold_from_pack),
                                                    from_file: start_file_offset, chip_envelope: chip_envelope,
-                                                   settings_from_file: settings_from_file, chip_recording: chip_recording))
+                                                   settings_from_file: settings_from_file, chip_recording: chip_recording,
+                                                   full_samples: full_samples))
         DSL::Sample.new(self, name)
       end
 
@@ -104,13 +119,32 @@ module VBlank
       #
       # @return [Instrument]
       def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
-                     brr: nil, brr_loop: 0)
+                     brr: nil, brr_loop: 0, bits: nil)
         note_verb_written(:instrument)
         DSL::Instrument.new(self, sample(name, pcm: pcm, from: from, rate: rate, note: note, envelope: envelope,
-                                               holds_from: holds_from, length: length, brr: brr, brr_loop: brr_loop))
+                                               holds_from: holds_from, length: length, brr: brr, brr_loop: brr_loop,
+                                               bits: bits))
       end
 
       private
+
+      # `bits:` is how many bits each `pcm:` sample has: 8 or 16.
+      def refuse_unknown_bits!(name, bits)
+        return if [8, 16].include?(bits)
+
+        raise ArgumentError, "sample :#{name} has bits: #{bits.inspect}. bits: is how many bits each pcm: sample has. " \
+                             "To fix this, give bits: 8 or bits: 16."
+      end
+
+      # `bits:` says how deep the samples given as `pcm:` are, so it means nothing for any other
+      # source: a WAV file and a BRR recording say their own, and a data pack's samples are bytes.
+      def refuse_bits_without_pcm!(name, pcm)
+        return if pcm && !pcm.is_a?(DSL::PackSlot)
+
+        source = pcm ? "takes its samples from the data pack, which keeps 8 bits a sample" : "has no pcm:"
+        raise ArgumentError, "sample :#{name} has bits: and #{source}. bits: is for samples given as pcm:. A WAV file " \
+                             "says its own bits. To fix this, remove bits:."
+      end
 
       # A BRR recording's samples and where it loops are its own bytes', so nothing else can give them.
       def refuse_brr_beside_samples!(name, pcm:, from:, holds_from:, length:)
@@ -222,18 +256,25 @@ module VBlank
         IR::StartFile.hold_held(at, length)
       end
 
-      # Resolve the sample's [bytes, rate] from whichever source was given — a WAV file
-      # (its own rate, unless overridden) or raw pcm: samples — insisting on exactly one.
-      def sample_data(name, pcm, from, rate)
+      # Resolve the sample's samples and rate (an Audio::Wav::Recording) from whichever source was
+      # given — a WAV file (its own rate, unless overridden) or raw pcm: samples — insisting on
+      # exactly one. Its bytes are the 8-bit samples every console's build plays; a 16-bit
+      # recording's high byte of each sample, as a 16-bit WAV's have always been.
+      def sample_data(name, pcm, from, rate, bits)
+        recording = Audio::Wav::Recording
         if from
           raise ArgumentError, "You gave both pcm: and from: to sample :#{name}. Give pcm: or from:, not both." if pcm
 
           loaded = Audio::Wav.load(resolve_asset_path(from))
-          [loaded[:bytes], rate || loaded[:rate]]
+          rate ? loaded.with(rate: rate) : loaded
         elsif pcm.is_a?(DSL::PackSlot)
-          [pack_recording_bytes(name, pcm, rate), rate]
+          recording.new(bytes: pack_recording_bytes(name, pcm, rate), full_samples: nil, rate: rate)
+        elsif pcm && bits == 16
+          full_samples = pack_pcm_16bit(name, pcm)
+          recording.new(bytes: full_samples.unpack("s<*").map { |level| level >> 8 }.pack("c*"), full_samples: full_samples,
+                        rate: rate || DEFAULT_SAMPLE_RATE)
         elsif pcm
-          [pack_pcm(name, pcm), rate || DEFAULT_SAMPLE_RATE]
+          recording.new(bytes: pack_pcm(name, pcm), full_samples: nil, rate: rate || DEFAULT_SAMPLE_RATE)
         else
           raise ArgumentError, "sample :#{name} needs sound data. Give pcm: (raw samples) or from: (a .wav file)."
         end
@@ -275,6 +316,30 @@ module VBlank
           pcm.pack("c*")
         else
           raise ArgumentError, "sample :#{name} pcm: must be an Array of -128..127 or a byte String. You gave #{pcm.class}."
+        end
+      end
+
+      # Pack 16-bit PCM into two bytes a sample, low byte first, from a String already in that
+      # form or an Array of sample values.
+      def pack_pcm_16bit(name, pcm)
+        case pcm
+        when String
+          if pcm.bytesize.odd?
+            raise ArgumentError, "sample :#{name} has bits: 16 and a pcm: String of #{pcm.bytesize} bytes. A 16-bit " \
+                                 "sample is two bytes, low byte first, so the String must have an even length."
+          end
+          raise ArgumentError, "sample :#{name} has no PCM data. Give it one or more samples." if pcm.empty?
+
+          pcm.b
+        when Array
+          bad = pcm.find { |s| !s.is_a?(Integer) || !s.between?(-32_768, 32_767) }
+          raise ArgumentError, "sample :#{name} has a bad PCM value #{bad.inspect}. With bits: 16, each value must be -32768..32767." if bad
+          raise ArgumentError, "sample :#{name} has no PCM data. Give it one or more samples." if pcm.empty?
+
+          pcm.pack("s<*")
+        else
+          raise ArgumentError, "sample :#{name} pcm: must be an Array of -32768..32767 or a String of 16-bit samples. " \
+                               "You gave #{pcm.class}."
         end
       end
     end

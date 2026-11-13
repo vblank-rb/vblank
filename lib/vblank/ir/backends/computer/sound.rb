@@ -342,12 +342,23 @@ module VBlank
                                 mixes ? Mixing.slide_share(samples) : 0, @program.described_console.recordings_at_once,
                                 sound::VOL_SHIFT,
                                 sound::STEP_SHIFT, sound::GAIN_FRACTION, sound::RAMP_SPLIT, envelope::FULL, envelope::SCALE,
-                                sound::LOUDNESS_TO_GAIN, envelope::WHOLE_GAIN_SHIFT])
+                                sound::LOUDNESS_TO_GAIN, envelope::WHOLE_GAIN_SHIFT,
+                                full_depth? ? Mixing::FULL_DEPTH_SHIFT : 0])
           end
+
+          # Whether the game mixes at sixteen bits (IR::Mixing.full_depth?).
+          def full_depth? = Mixing.full_depth?(@program)
 
           # Every recording the game declares, seven numbers each; and all their samples, in an
           # array of bytes of their own, since a sample is one and recordings can be most of a
           # game's sound.
+          #
+          # A game that mixes at sixteen bits has a second array beside it, as long, of each sample's
+          # low byte: the first then holds each sample's high byte, so a sample is the two read
+          # together, and an 8-bit recording is its bytes with low bytes of nought. Kept as two arrays
+          # of bytes rather than one of sixteen bits so that a recording read from the start file is
+          # filled into the first as it always was, and so that a long one is still embedded as
+          # bytes (Native::Printer#print_embedded_array). Any other game's second array is empty.
           def recordings_tables
             recordings = @sound_log.recordings
             heads = recordings.map do |sample|
@@ -356,24 +367,37 @@ module VBlank
               [recording_starts.fetch(sample.name), info.length, shape ? 1 : 0,
                *(shape ? [shape.attack, shape.decay, shape.sustain, shape.release] : [0, 0, 0, 0])]
             end
-            samples = kept_recordings.flat_map { |sample| sample.bytes.unpack("c*") }
+            samples, low_bytes = recording_sample_bytes
             [sound_table("recordings", [recordings.size, *heads.flatten], writable: recordings_table_written_at_start?),
              Statements::ConstArray.new(name: recording_samples_name, type: "int8_t", values: samples, exported: true,
-                                        writable: recordings_read_from_start_file?)]
+                                        writable: recordings_read_from_start_file?),
+             Statements::ConstArray.new(name: @names.own("recording_low_bytes"), type: "uint8_t", values: low_bytes,
+                                        exported: true)]
+          end
+
+          # The two arrays of #recordings_tables: every kept recording's samples, or their high bytes
+          # in a game that mixes at sixteen bits, and their low bytes in such a game (none in any other).
+          def recording_sample_bytes
+            return [kept_recordings.flat_map { |sample| sample.bytes.unpack("c*") }, []] unless full_depth?
+
+            levels = kept_recordings.flat_map { |sample| Mixing.full_depth_samples(sample) }
+            shift = Mixing::FULL_DEPTH_SHIFT
+            [levels.map { |level| level >> shift }, levels.map { |level| level & ((1 << shift) - 1) }]
           end
 
           # WHERE EACH RECORDING'S SAMPLES START in the array of them all, by its name. A recording's
           # seven numbers carry where its samples are and everything else about it (its length and
           # its shape), so recordings declared under several names with the same samples, as one
           # instrument's recording shaped several ways is, start at the same place and the array
-          # holds those samples once. Two that read their samples from the start file are the same
+          # holds those samples once (two of the same bytes and different sixteen bits are two).
+          # Two that read their samples from the start file are the same
           # only when they read the same place in it: what the build holds for both is zeros.
           def recording_starts
             @recording_starts ||= begin
               at = 0
               starts = {}
               @sound_log.recordings.to_h do |sample|
-                kept = [sample.bytes, sample.from_file]
+                kept = [sample.bytes, sample.full_samples, sample.from_file]
                 unless starts.key?(kept)
                   starts[kept] = at
                   at += sample.bytes.bytesize

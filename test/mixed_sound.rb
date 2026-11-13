@@ -34,10 +34,12 @@ module MixedSound
     end
   end
 
-  # ...and the interpreter's, the same buttons on the same frames.
-  def interpreted_mixes(program, frames, presses: {})
-    VBlank::IR::Backends::Reference.new.input_each_frame { |frame| presses.fetch(frame, []) }
-                                    .run(program, frames: frames).mixed_sound
+  # ...and the interpreter's, the same buttons on the same frames: the console's mix, or with
+  # +full_depth+ the mix a computer's build makes (Reference#full_depth_sound).
+  def interpreted_mixes(program, frames, presses: {}, full_depth: false)
+    run = VBlank::IR::Backends::Reference.new.input_each_frame { |frame| presses.fetch(frame, []) }
+                                         .run(program, frames: frames)
+    full_depth ? run.full_depth_sound : run.mixed_sound
   end
 
   # Both backends make the same bytes, from the first slice with sound in it, for at least
@@ -58,7 +60,7 @@ module MixedSound
 
   def assert_native_mixes_agree(program, frames, presses, at_least)
     native = game_player.input_each_frame { |frame| presses.fetch(frame, []) }.run(program, frames: frames).mixed_sound
-    interpreted = interpreted_mixes(program, frames, presses: presses)
+    interpreted = interpreted_mixes(program, frames, presses: presses, full_depth: true)
 
     from_sound = native.drop_while { |slice| slice.all?(&:zero?) }
     assert_operator from_sound.length, :>=, at_least, "too few frames with sound in them to compare"

@@ -310,7 +310,12 @@ module VBlank
           # order of the voices; the most that sounded at once; how many plays were dropped; the
           # level a sounding recording of the game's plays at; and how far through its shape the
           # first voice sounding a recording is.
+          #
+          # A build for a computer mixes a game with a recording of sixteen bits at sixteen
+          # (IR::Mixing.full_depth?), so its slices are what the interpreter gives as
+          # #full_depth_sound, and the two names give the same slices here.
           def mixed_sound = @mix_slices.dup
+          def full_depth_sound = mixed_sound
           def active_samples = @mixing.map { |recording, *| recording_name(recording) }
           def peak_voices = @mix_peak
 

@@ -76,8 +76,11 @@ module VBlank
           # how far it has climbed or fallen (0 to Envelope::FULL) and +phase+ which part of the
           # note it is in. A voice with no envelope carries none of it and sounds flat out, which
           # is what every voice did before shapes existed.
+          #
+          # +full_data+ is the recording at sixteen bits, in a program a computer's build mixes at
+          # sixteen (IR::Mixing.full_depth?), and nil in any other.
           Voice = Struct.new(:name, :owner, :rank, :volume, :ticket, :envelope, :level, :phase,
-                             :data, :position, :fraction, :step, :back, :loudness, :gain, :ramp,
+                             :data, :full_data, :position, :fraction, :step, :back, :loudness, :gain, :ramp,
                              keyword_init: true)
 
           # Which part of a note a voice is in. Named where the rule that moves it is
@@ -102,6 +105,13 @@ module VBlank
           # recording, which has no mix.
           attr_reader :slices
 
+          # EVERY FRAME'S SLICE AS A COMPUTER'S BUILD MIXES IT, oldest first. In a program with a
+          # recording of sixteen bits (IR::Mixing.full_depth?), the same voices read at sixteen bits
+          # and each sum held to what sixteen bits hold; in any other, #slices, which is what such a
+          # build mixes then. The console's build mixes #slices whatever the program, from the 8-bit
+          # samples it holds.
+          def full_depth_slices = @full_depth ? @full_depth_slices : @slices
+
           # +log+ is the interpreter's own list of observable audio events, written into rather
           # than owned, so everything a run made a noise about stays in one place and in order.
           def initialize(log:)
@@ -114,6 +124,9 @@ module VBlank
             @drops = 0      # plays and notes that found every voice busy and were dropped
             @drops_music = 0 # ...and the most voices songs and effects held at one of those moments
             @slices = []
+            @full_depth_slices = []
+            @full_data = {}  # name -> the recording at sixteen bits, for a mix at sixteen
+            @full_depth = false
             @clock = nil
             @shapes = false
           end
@@ -126,17 +139,28 @@ module VBlank
           # volume moves (see #rescale_music). Until this is set there is no mix. +voices+ is how
           # many recordings the console sounds together (Console::Description#recordings_at_once):
           # a play past that is dropped rather than stealing one already sounding.
-          def start_clock(clock:, shapes:, voices:)
+          # +full_depth+ mixes the program a second time at sixteen bits, as a computer's build
+          # mixes it (#full_depth_slices).
+          def start_clock(clock:, shapes:, voices:, full_depth: false)
             @clock = clock
             @shapes = shapes
             @slots = Array.new(voices)
+            @full_depth = full_depth
           end
 
           # A `sample` declaration was reached. Gathered up front, like a func body, so playing
-          # one declared later still works. +bytes+ is the recording itself, a byte a sample.
-          def declare(name, info, bytes)
-            @samples[name] = info
-            @data[name] = bytes.unpack("c*")
+          # one declared later still works. +node+ is the declaration: its bytes are the recording,
+          # a byte a sample, and a recording of sixteen bits has those too. What a mix at sixteen
+          # reads of an 8-bit one is worked out when a voice first needs it (#full_data_of).
+          def declare(node)
+            @samples[node.name] = Assets::Sample.of(node)
+            @data[node.name] = node.bytes.unpack("c*")
+            @full_data[node.name] = IR::Mixing.full_depth_samples(node) if node.full_samples
+          end
+
+          # Recording +name+ as a mix at sixteen bits reads it (IR::Mixing.full_depth_samples).
+          def full_data_of(name)
+            @full_data[name] ||= @data.fetch(name).map { |level| level << IR::Mixing::FULL_DEPTH_SHIFT }
           end
 
           def sample_info(name)
@@ -201,7 +225,7 @@ module VBlank
             shape = envelope && !envelope.plain? ? envelope : nil
             { envelope: shape, level: shape ? 0 : VBlank::Audio::Envelope::FULL,
               phase: VBlank::Audio::Envelope::CLIMBING,
-              data: @data.fetch(name), position: 0, fraction: 0, back: back,
+              data: @data.fetch(name), full_data: (full_data_of(name) if @full_depth), position: 0, fraction: 0, back: back,
               step: IR::Mixing.step(@samples.fetch(name), frequency, @clock.rate),
               loudness: loudness, gain: shape ? 0 : loudness << LOUDNESS_TO_GAIN, ramp: 0 }
           end
@@ -218,25 +242,34 @@ module VBlank
           # byte. A voice that reaches the end of its recording with nowhere to read back to
           # gives its voice back there; a game's sound that reads back logs it, so a loop shows
           # up in the audio log each time round.
+          #
+          # In a program mixed at sixteen bits too, each voice adds its sample at sixteen bits into
+          # a second running total as it goes, by the same arithmetic, and each of those totals is
+          # held to -32768 to 32767 (#full_depth_slices).
           def mix
             return unless @clock
 
             totals = Array.new(@clock.samples_a_frame, 0)
+            full_totals = (Array.new(@clock.samples_a_frame, 0) if @full_depth)
             @slots.each_with_index do |voice, slot|
-              @slots[slot] = nil if voice && !mix_voice(voice, totals)
+              @slots[slot] = nil if voice && !mix_voice(voice, totals, full_totals)
             end
             @slices << totals.map { |total| total.clamp(-128, 127) }
+            @full_depth_slices << full_totals.map { |total| total.clamp(-32_768, 32_767) } if full_totals
           end
 
-          # One voice's frame into +totals+. False when its recording ran out partway and it
-          # stopped, which is the rest of the frame left out of the totals.
-          def mix_voice(voice, totals)
+          # One voice's frame into +totals+, and at sixteen bits into +full_totals+ when it is
+          # given. False when its recording ran out partway and it stopped, which is the rest of
+          # the frame left out of the totals.
+          def mix_voice(voice, totals, full_totals)
             data = voice.data
+            full_data = voice.full_data
             whole = voice.step >> STEP_SHIFT
             part = voice.step & ((1 << STEP_SHIFT) - 1)
             gain = @shapes ? voice.gain : voice.loudness << LOUDNESS_TO_GAIN
             totals.each_index do |at|
               totals[at] += (gain * data[voice.position]) >> (VOL_SHIFT + GAIN_FRACTION)
+              full_totals[at] += (gain * full_data[voice.position]) >> (VOL_SHIFT + GAIN_FRACTION) if full_totals
               gain += voice.ramp
               voice.fraction += part
               voice.position += whole + (voice.fraction >> STEP_SHIFT)

@@ -804,6 +804,7 @@ module VBlank
 
         if settings.length
           node.bytes = node.bytes.byteslice(0, length_held(number_in(bytes, settings.length), node.bytes.bytesize))
+          node.full_samples = node.full_samples.byteslice(0, node.bytes.bytesize * 2) if node.full_samples
           node.holds_from = hold_held(node.holds_from, node.bytes.bytesize) if node.holds_from
         end
         node.rate = rate_held(number_in(bytes, settings.rate)) if settings.rate

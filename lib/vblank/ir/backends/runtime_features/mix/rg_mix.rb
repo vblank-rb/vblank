@@ -8,7 +8,8 @@
 # frame here then does nothing.
 #
 # The sound runtime calls it through the sound hooks: rg_mix_sound_frame as a frame begins,
-# rg_mix_sound_frame_ended after the tune has played, and rg_mix_mixed_slice for the render.
+# rg_mix_sound_frame_ended after the tune has played, and rg_mix_mixed_slice and
+# rg_mix_mixed_sample_shift for the render.
 #
 # The interpreter's numbers are Ruby's whole numbers, and so are these, so a product too big for
 # 32 bits is exact here as it is there.
@@ -96,6 +97,7 @@ def rg_shape_full = @rg_game_mix[9]
 def rg_shape_scale = @rg_game_mix[10]
 def rg_loudness_to_gain = @rg_game_mix[11]
 def rg_whole_gain_shift = @rg_game_mix[12]
+def rg_mix_full_depth_shift = @rg_game_mix[13]
 
 # Where recording number +recording+'s numbers start in @rg_game_recordings.
 def rg_recording_numbers(recording)
@@ -291,9 +293,13 @@ def rg_mix_voice_into(voice, totals)
   whole = voice.step >> step_shift
   part = voice.step & step_mask
   down = rg_vol_shift + rg_gain_fraction
+  high_shift = rg_mix_full_depth_shift
+  low_bytes = @rg_game_recording_low_bytes if high_shift != 0
   gain = rg_mix_shapes != 0 ? voice.gain : voice.loudness << rg_loudness_to_gain
   rg_slice_samples.times do |at|
-    totals[at] += (gain * samples[data + voice.position]) >> down
+    place = data + voice.position
+    sample = low_bytes ? (samples[place] << high_shift) + low_bytes[place] : samples[place]
+    totals[at] += (gain * sample) >> down
     gain += voice.ramp
     voice.fraction += part
     voice.position += whole + (voice.fraction >> step_shift)
@@ -315,7 +321,8 @@ def rg_mix_sound_frame
   rg_mix_voices_in_use.each do |voice|
     voice.sounding = false if voice.sounding && !rg_mix_voice_into(voice, slice)
   end
-  @rg_mix_slice = slice.map { |sample| sample.clamp(-128, 127) }
+  highest = (128 << rg_mix_full_depth_shift) - 1
+  @rg_mix_slice = slice.map { |sample| sample.clamp(-highest - 1, highest) }
   @rg_mix_slices_made += 1
 end
 
@@ -389,6 +396,9 @@ def rg_mix_drops = [@rg_mix_drop_count, @rg_mix_drops_music]
 
 # rg_hook_mixed_slice: the newest slice for the render of a frame, or 0 before the first.
 def rg_mix_mixed_slice(_samples) = @rg_mix_slices_made > 0 ? @rg_mix_slice : 0
+
+# rg_hook_mixed_sample_shift (rg_mix.c's rg_mix_mixed_sample_shift).
+def rg_mix_mixed_sample_shift = rg_mix_full_depth_shift
 
 # For a game that mixes recordings, a windowless run prints (rg_headless.rb): the slice made since
 # the last moment ("mix" and its samples), each sounding voice's recording, loudness out of 512,

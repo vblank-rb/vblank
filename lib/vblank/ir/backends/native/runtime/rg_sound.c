@@ -120,6 +120,7 @@ static void rg_hook_sound_frame(void);                           /* the frame be
 static void rg_hook_sound_frame_ended(void);                     /* ...and what follows the tune's frame */
 static void rg_hook_voice_taken_by_game(int32_t voice);          /* a beep, wave or stop_wave took a voice */
 static int32_t rg_hook_mixed_slice(const int32_t **samples);     /* the newest mixed slice, or 0 for none */
+static int32_t rg_hook_mixed_sample_shift(void);                 /* ...and how far the speaker takes it down */
 static inline void rg_hook_recordings_told(void);               /* the chip told what each mixer voice plays */
 static void rg_hook_moment_printed(void);                        /* a windowless run prints a moment */
 static void rg_hook_visit_sound_state(void);                     /* the state image visits each feature's fields */
@@ -474,6 +475,7 @@ int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
    * It is asked once here and never once a sample. */
   const int32_t *mixed;
   int32_t mixed_count = heard_only == 0 ? rg_hook_mixed_slice(&mixed) : 0;
+  int32_t mixed_shift = rg_hook_mixed_sample_shift();
 
   for (int32_t i = 0; i < count; i++) {
     if (++slide_clock == SLIDE_TICK_SAMPLES) {
@@ -487,7 +489,7 @@ int32_t rg_sound_render_frame(int16_t *left, int16_t *right) {
     add_to_sides(RG_WAVE_VOICE, heard(RG_WAVE_VOICE, wave_sample()), &on_left, &on_right);
     add_to_sides(RG_NOISE_VOICE, heard(RG_NOISE_VOICE, noise_sample()), &on_left, &on_right);
     if (mixed_count > 0) { /* the recordings play from both */
-      int32_t sample = mixed[(int64_t)i * mixed_count / count] * MIX_STEP;
+      int32_t sample = (mixed[(int64_t)i * mixed_count / count] * MIX_STEP) >> mixed_shift;
       on_left += sample;
       on_right += sample;
     }

@@ -1638,7 +1638,13 @@ module VBlank
         category :data
         operands name: :name, bytes: :text, rate: :int, note: :option,
                  envelope: :shape, holds_from: :int, from_file: :int, chip_envelope: :chip_shape,
-                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording
+                 settings_from_file: :file_recording_settings, chip_recording: :chip_recording,
+                 full_samples: :text
+
+        # +full_samples+ is a recording of sixteen bits as it was given, two bytes a sample, low byte
+        # first, for a backend that plays all of them (IR::Mixing.full_depth?); +bytes+ is then the
+        # eight bits a console holds, which every console's backend plays as it did before a game
+        # could give sixteen. Nil for an 8-bit recording.
 
         # +settings_from_file+ is where its rate, the sample it holds from and its envelope are in
         # the file the program is handed as it starts (a StartFile::RecordingSettings), for those
