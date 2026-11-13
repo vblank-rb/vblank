@@ -1017,9 +1017,22 @@ def rg_screen_shown_in_five_bits
   tops = mixes.tops
   unders = mixes.unders
   mixed_by = @rg_mixed_cells_by
+  # A row read straight across, with a fade or tint over all of it or none, and no layer in front, no
+  # light and no feature moving its columns, is the stored row turned through the fade's table as one
+  # (rg_screen_shown_row_through): no lookup and no comparison a pixel.
+  whole_rows = !front && !dim && !columns && camera_x == 0 && (!fade || fade_all)
+  lookup = whole_rows && fade ? rg_colors_through(fade_table) : nil
   RG_SCREEN_HEIGHT.times do |y|
     from_y = rg_hook_shown_row(y) + @rg_camera_y
     row = y * RG_SCREEN_WIDTH
+    if whole_rows && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
+      from = from_y * RG_SCREEN_WIDTH
+      # A mixed cell (marked 1, and every other cell 0) is mixed again through the table, a pixel at a time below.
+      unless remix && mixed_cells[from, RG_SCREEN_WIDTH].sum != 0
+        rg_screen_shown_row_through(shown, row, viewed, from, lookup, fade_table)
+        next
+      end
+    end
     # Where a filter does not apply everywhere, its row says [from, to, inverted]: a pixel is
     # changed when inverted differs from from <= x < to.
     fade_row = fade && !fade_all ? fade_rows[y] : nil
@@ -1056,6 +1069,42 @@ def rg_screen_shown_in_five_bits
     end
   end
   shown
+end
+
+# How many colours a cell can hold: sixteen bits.
+RG_CELL_COLORS = 0x10000
+
+# A fade's or tint's +table+ (a Hash that works a colour out the first time it is asked) kept again
+# as an Array, a place for every colour a cell can hold, nil until the colour is first asked, so a
+# row is turned through it as one (Array#values_at) where the Hash takes a call a colour. Made again
+# when the filter hands over another table, which it does as the fade or tint moves.
+def rg_colors_through(table)
+  return @rg_colors_through if @rg_colors_through_table.equal?(table)
+
+  @rg_colors_through_table = table
+  @rg_colors_through = Array.new(RG_CELL_COLORS)
+end
+
+# One row of the picture: the stored row from +from+, through +lookup+ (rg_colors_through of
+# +table+) where a fade or tint is over it, into +shown+ at +row+. A colour not asked before is
+# worked out by the table first; a colour no cell holds goes through the table a pixel at a time.
+def rg_screen_shown_row_through(shown, row, viewed, from, lookup, table)
+  stored = viewed[from, RG_SCREEN_WIDTH]
+  return shown[row, RG_SCREEN_WIDTH] = stored unless lookup
+
+  low, high = stored.minmax
+  if low.negative? || high >= RG_CELL_COLORS
+    stored.each_with_index { |color, x| shown[row + x] = table[color] }
+    return
+  end
+
+  colors = lookup.values_at(*stored)
+  # Array#compact finds a nil without a call an element, where include?(nil) makes one.
+  if colors.compact.length < RG_SCREEN_WIDTH
+    stored.each { |color| lookup[color] ||= table[color] }
+    colors = lookup.values_at(*stored)
+  end
+  shown[row, RG_SCREEN_WIDTH] = colors
 end
 
 # rg_screen_shown with nothing over the picture: each row the stored row the window sits over, and
