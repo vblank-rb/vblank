@@ -130,6 +130,10 @@ class TestRubyObjectsAPass < Minitest::Test
     assert_allocates_little(scrolling_field(tinted_every_pass: true))
   end
 
+  def test_a_fade_that_moves_every_pass_allocates_little_a_pass
+    assert_allocates_little(fading_field)
+  end
+
   def test_a_tune_allocates_little_a_pass
     assert_allocates_little(tune)
   end

@@ -99,8 +99,9 @@ end
 # cell holds, looked up with table[color]; +everywhere+ is whether it applies to every pixel; +rows+, when
 # it does not, is [from, to, inverted] for each screen row, a pixel being changed when +inverted+ differs
 # from from <= x < to; +remix+ is whether a see-through mixed cell is mixed again from its two sides, each
-# through the table.
-RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix)
+# through the table; +changes+ counts the times the table was emptied to be worked out again for other
+# settings (the same Hash kept), for an answer kept from it (rg_colors_through), nil for a table never emptied.
+RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix, :changes)
 
 def rg_screen_setup
   # TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
@@ -1021,7 +1022,7 @@ def rg_screen_shown_in_five_bits
   # light and no feature moving its columns, is the stored row turned through the fade's table as one
   # (rg_screen_shown_row_through): no lookup and no comparison a pixel.
   whole_rows = !front && !dim && !columns && camera_x == 0 && (!fade || fade_all)
-  lookup = whole_rows && fade ? rg_colors_through(fade_table) : nil
+  lookup = whole_rows && fade ? rg_colors_through(fade) : nil
   RG_SCREEN_HEIGHT.times do |y|
     from_y = rg_hook_shown_row(y) + @rg_camera_y
     row = y * RG_SCREEN_WIDTH
@@ -1096,13 +1097,17 @@ end
 
 # A fade's or tint's +table+ (a Hash that works a colour out the first time it is asked) kept again
 # as an Array, a place for every colour a cell can hold, nil until the colour is first asked, so a
-# pixel is turned through it by an index where the Hash takes a call a colour. Made again when the
-# filter hands over another table, which it does as the fade or tint moves.
-def rg_colors_through(table)
-  return @rg_colors_through if @rg_colors_through_table.equal?(table)
+# pixel is turned through it by an index where the Hash takes a call a colour. Emptied when the
+# filter hands over another table, or empties its own (+changes+), which it does as the fade or tint
+# moves: the one Array is kept, so a moving fade takes no new memory a pass for it.
+def rg_colors_through(filter)
+  lookup = (@rg_colors_through ||= Array.new(RG_CELL_COLORS))
+  table = filter.table
+  return lookup if @rg_colors_through_table.equal?(table) && @rg_colors_through_changes == filter.changes
 
   @rg_colors_through_table = table
-  @rg_colors_through = Array.new(RG_CELL_COLORS)
+  @rg_colors_through_changes = filter.changes
+  lookup.fill(nil)
 end
 
 # One row of the picture: the stored row from +from+, through +lookup+ (rg_colors_through of
