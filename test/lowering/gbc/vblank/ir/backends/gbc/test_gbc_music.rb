@@ -110,20 +110,23 @@ class TestGBCMusic < Minitest::Test
   end
 
   # +count+ short effects, each two notes of its own and all different, kept in a list the game
-  # plays from by number. The first four are one group, so a later one cuts an earlier one off.
-  private def many_effects(count)
+  # plays from by number. The first +grouped+ are one group, so a later one cuts an earlier one off.
+  # +priorities+ gives effects a priority by name, every other's 0, so one of lower priority is not
+  # played over one of its group sounding.
+  private def many_effects(count, grouped: 4, priorities: {})
     score = VBlank::Audio::Score
     (0...count).to_h do |n|
       notes = [score::Note.new(at: 0, key: PITCHES[n % PITCHES.length], length: 3 + (n % 5)),
                score::Note.new(at: 8, key: PITCHES[(n * 5) % PITCHES.length], length: 3)]
-      [:"zap#{n}", score.new(tempo: 120, group: (:first_four if n < 4), parts: [score::Part.new(notes: notes)])]
+      [:"zap#{n}", score.new(tempo: 120, group: (:first_ones if n < grouped), priority: priorities.fetch(:"zap#{n}", 0),
+                             parts: [score::Part.new(notes: notes)])]
     end
   end
 
-  private def many_effects_game(count, song: false, &loop_body)
+  private def many_effects_game(count, song: false, grouped: 4, priorities: {}, &loop_body)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
     pitches = PITCHES
-    effects = many_effects(count)
+    effects = many_effects(count, grouped: grouped, priorities: priorities)
     b.instance_eval do
       enable_sound
       sfx = sound_effects :sfx, effects
@@ -210,6 +213,28 @@ class TestGBCMusic < Minitest::Test
     assert_operator voice_entries(program, 30), :>=, 4
   end
 
+  # Many effects in one group, of three priorities, decide as the interpreter does: one of lower
+  # priority is not played over the one of its group sounding, one of the same or higher cuts it
+  # off, one asked for after the last has ended starts, and effects asked for on one pass to start
+  # where they are asked for decide in turn. The run checks every pass.
+  def test_many_effects_in_one_group_decide_as_the_interpreter_does
+    priorities = { zap41: 2, zap10: 1, zap50: 2, zap22: 1, zap23: 2 }
+    program = many_effects_game(60, grouped: 60, priorities: priorities) do |sfx, tick|
+      sfx.play :zap41 if tick == 2
+      sfx.play :zap10 if tick == 4 # lower: not played over zap41
+      sfx.play :zap50 if tick == 6 # the same: cuts zap41 off
+      sfx.play :zap57 if tick == 40 # zap50 has ended: starts
+      if tick == 44
+        sfx.play :zap22, this_frame: true # higher: cuts zap57 off
+        sfx.play :zap57, this_frame: true # lower: not played over zap22
+        sfx.play :zap23, this_frame: true # higher: cuts zap22 off
+      end
+      sfx.play :zap22 if tick == 46 # lower: not played over zap23
+    end
+
+    assert_operator voice_entries(program, 80), :>=, 8
+  end
+
   # An effect played to its end is asleep again, and can start again.
   def test_a_sound_effect_played_to_its_end_plays_again
     program = many_effects_game(60) do |sfx, tick|
@@ -220,9 +245,10 @@ class TestGBCMusic < Minitest::Test
     assert_operator voice_entries(program, 80), :>=, 4
   end
 
-  # What the player's routines took of each frame, with +count+ effects in the banks.
-  private def share_of_frame_in_effect_player(count, &loop_body)
-    effects = many_effects(count)
+  # What the player's routines took of each frame, with +count+ effects in the banks, the first
+  # +grouped+ of them one group.
+  private def share_of_frame_in_effect_player(count, grouped: 4, &loop_body)
+    effects = many_effects(count, grouped: grouped)
     game = VBlank.game("EFFECTS #{count}", consoles: %i[gbc]) do
       enable_sound
       sfx = sound_effects :sfx, effects
@@ -250,6 +276,18 @@ class TestGBCMusic < Minitest::Test
     sounding = proc { |sfx, tick| sfx.play :zap9 if (tick & 7) == 1 }
     few = share_of_frame_in_effect_player(60, &sounding)
     many = share_of_frame_in_effect_player(120, &sounding)
+
+    assert_operator few, :>, 0
+    assert_operator many, :<, few * 1.25
+  end
+
+  # Starting an effect of a group costs the same in a game of twice as many effects in that group:
+  # the one of its group sounding is found among what is awake, not by looking at every effect. The
+  # effect started is the group's last, every sixteen passes, so the one before has ended and none
+  # of the group is sounding.
+  def test_starting_a_grouped_sound_effect_costs_the_same_with_more_effects_in_its_group
+    few = share_of_frame_in_effect_player(60, grouped: 60) { |sfx, tick| sfx.play :zap59 if (tick & 15) == 1 }
+    many = share_of_frame_in_effect_player(120, grouped: 120) { |sfx, tick| sfx.play :zap119 if (tick & 15) == 1 }
 
     assert_operator few, :>, 0
     assert_operator many, :<, few * 1.25

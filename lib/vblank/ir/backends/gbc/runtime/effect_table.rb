@@ -36,6 +36,7 @@ module VBlank
             NOW = "rt sfx now"
             AWAKE = "rt sfx awake"
             AWAKE_ENTRY_BYTES = 2
+            AWAKE_NUMBER = 1 # An entry's effect, after its rank
 
             # What NOW holds: the effect being played and what is read of it often.
             NUMBER = 0
@@ -45,10 +46,11 @@ module VBlank
             ROW_AT = 5 # Two bytes
             PART = 7
             CURSOR_AT = 8 # Two bytes
-            # The effect asked for, and how far a walk over the effects has gone.
+            # The effect asked for, the effect a walk has reached, and how far a walk over AWAKE has gone.
             ASKED_FOR = 10
             WALKED = 11
-            NOW_BYTES = 12
+            AWAKE_AT = 12
+            NOW_BYTES = 13
 
             # A row of "music_sfx_index", in view, by the effect's number.
             INDEX_BYTES = 6
@@ -88,7 +90,7 @@ module VBlank
               emit_frame(asm, memory)
               emit_part(asm, memory, keeps, bytes)
               emit_finish(asm, memory, effects)
-              emit_ask(asm, memory, effects)
+              emit_ask(asm, memory)
             end
 
             # The routines that return where things are, which everything below leans on.
@@ -497,8 +499,7 @@ module VBlank
             # rt_sfx_ask(A = an effect) and rt_sfx_now, Runtime::Effects#emit_ask's, in the
             # frame's interrupt held off. rt_sfx_decide sees to the effect's group and, unless it
             # is not to be played, answers with no carry and the effect marked asked for.
-            def emit_ask(asm, memory, effects)
-              now = memory[NOW]
+            def emit_ask(asm, memory)
               asm.label("rt_sfx_ask")
               asm.di
               asm.call("rt_sfx_decide")
@@ -513,12 +514,17 @@ module VBlank
               Clips.emit_timer_let_in_around(asm, memory) { asm.call("rt_sfx_start_here") }
               asm.reti
 
-              emit_decide(asm, now, effects)
+              emit_decide(asm, memory)
               emit_wake(asm, memory)
               emit_start_here(asm, memory)
             end
 
-            def emit_decide(asm, now, effects)
+            # The one of its group sounding is asked for or running, so it is awake: the walk is over
+            # AWAKE, not over every effect, and costs what is sounding, however many effects the game
+            # declares. No two of a group are asked for or running and not stopping at once, so the
+            # order of the walk does not change which it finds.
+            def emit_decide(asm, memory)
+              now = memory[NOW]
               asm.label("rt_sfx_decide")
               asm.load([now + ASKED_FOR], :a)
               asm.call("rt_sfx_index")
@@ -531,11 +537,21 @@ module VBlank
               asm.and_a(:a)
               asm.jump_relative(:z, "rt_sfx_decide_asked")
               asm.xor_a(:a)
-              asm.load([now + WALKED], :a)
+              asm.load([now + AWAKE_AT], :a)
               asm.label("rt_sfx_decide_each")
-              asm.load(:a, [now + WALKED])
-              asm.cp_a(effects.length)
+              asm.load(:a, [now + AWAKE_AT])
+              asm.load(:hl, memory[AWAKE])
+              asm.cp_a([:hl])
               asm.jump_relative(:nc, "rt_sfx_decide_asked")
+              # HL = that entry's effect: past AWAKE's count, the place's entries, and the entry's rank.
+              # Must change with AWAKE_ENTRY_BYTES: the place is doubled with one add.
+              asm.load(:l, :a)
+              asm.load(:h, 0)
+              asm.add_hl(:hl)
+              asm.load(:de, memory[AWAKE] + 1 + AWAKE_NUMBER)
+              asm.add_hl(:de)
+              asm.load(:a, [:hl])
+              asm.load([now + WALKED], :a)
               asm.call("rt_sfx_index")
               asm.load(:de, INDEX_GROUP)
               asm.add_hl(:de)
@@ -556,7 +572,7 @@ module VBlank
               asm.and_a(:a)
               asm.jump_relative(:z, "rt_sfx_decide_current")
               asm.label("rt_sfx_decide_next")
-              asm.load(:hl, now + WALKED)
+              asm.load(:hl, now + AWAKE_AT)
               asm.inc([:hl])
               asm.jump_relative("rt_sfx_decide_each")
               # The one of its group sounding: of higher priority, it keeps on and carry marks it.
