@@ -335,6 +335,17 @@ module VBlank
           current
         end
 
+        # A line of game code gives +owner+'s named +label+, still holding nil, a number under a test
+        # the game makes (one of +tests+). On a pass where that test fails it would still hold nil,
+        # and a game variable cannot, so the build stops here. The same line under a test decided
+        # while building alone gives it its first number as usual (#write_target).
+        def refuse_nil_written_under_game_test!(owner, current, label, tests)
+          return unless current.nil? && tests.any?(&:game?)
+          return unless uses_while_recording(owner)&.named?(owner, label)
+
+          refuse_named_object!(label, current)
+        end
+
         # The builder's record of instance variables, while it records game code.
         def uses_while_recording(owner)
           builder = Builder.in_use

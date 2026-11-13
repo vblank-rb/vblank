@@ -7,6 +7,7 @@ VBlank.require_game_file "../../../plain_ruby_game_parts"
 VBlank.require_game_file "../../../plain_ruby_loop_parts"
 VBlank.require_game_file "../../../plain_ruby_named_parts"
 VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
+VBlank.require_game_file "../../../plain_ruby_secret_lift_parts"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -332,6 +333,55 @@ class TestPlainRubyParts < Minitest::Test
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnsetNamedPart, :unset_named_tick) }
 
     assert_match(/`@aim` is a game variable, and it holds `nil`/, error.message)
+  end
+
+  # A NAMED VALUE ONLY SOME BUILDS HAVE (test/plain_ruby_secret_lift_parts.rb): set only under a
+  # test decided while building, and skipped with the lines naming it by a build that has no use
+  # for it.
+
+  private def secret_lift_program(part, secret_floor:)
+    builder = Builder.new
+    secret_lift_game(builder, part, secret_floor: secret_floor)
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_named_value_set_under_build_time_test_plays_as_var
+    [SecretLiftPart, SecretLiftByBlockPart].each do |part|
+      player = game_player
+      player.run(secret_lift_program(part, secret_floor: true), frames: 2)
+
+      assert_equal 1, player[:lift_secret_called], part.name
+    end
+  end
+
+  # The build that skips every line naming `@secret` is the build of the lift that never names it,
+  # node for node, so it has no variable for `@secret` and every lowering makes the same bytes.
+  def test_named_value_on_skipped_lines_only_builds_as_if_never_named
+    without = secret_lift_program(SecretLiftWithoutSecretPart, secret_floor: false)
+
+    [SecretLiftPart, SecretLiftByBlockPart].each do |part|
+      program = secret_lift_program(part, secret_floor: false)
+
+      assert program.same_shape?(without), "#{part.name} builds as the lift that never names @secret"
+    end
+  end
+
+  def test_named_value_on_skipped_lines_inside_game_test_builds_as_if_never_named
+    player = game_player
+    player.run(secret_lift_program(SecretLiftUnderGameTestPart, secret_floor: true), frames: 2)
+    without = secret_lift_program(SecretLiftUnderGameTestWithoutSecretPart, secret_floor: false)
+
+    assert_equal 1, player[:lift_secret_called]
+    assert secret_lift_program(SecretLiftUnderGameTestPart, secret_floor: false).same_shape?(without)
+  end
+
+  def test_named_value_holding_nil_given_number_under_game_test_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      secret_lift_program(SecretLiftNeverStartedPart, secret_floor: false)
+    end
+
+    assert_match(/`@secret` is a game variable, and it holds `nil`/, error.message)
   end
 
   # A count three a setting-up method works out, counted by `repeat` and by `times` on every pass,
