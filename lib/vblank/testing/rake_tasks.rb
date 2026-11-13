@@ -154,7 +154,7 @@ module VBlank
           task(:golden) { play_golden_runs } if File.file?(golden_list.to_s)
         end
 
-        desc "Run one file on every lowering that plays it (TEST=test/test_foo.rb); see test:all"
+        desc "Run files on every lowering that plays them (TEST=test/test_foo.rb, commas between several); see test:all"
         task :test do
           ENV["TEST"] ? play_runs(plays) : abort(choices_message)
         end
@@ -301,10 +301,18 @@ module VBlank
       end
 
       # One run: whether it passed and how long it took. Every one is played whatever the one
-      # before found, unless FAIL_FAST asks otherwise (#play_runs).
+      # before found, unless FAIL_FAST asks otherwise (#play_runs). TEST names a file, or several
+      # with commas between, and the run plays those of them it loads; +listed+ is for a TEST the
+      # caller has narrowed to the run's own files already.
       def play_run(lowering, console, name, listed: false)
-        named = ENV["TEST"]&.delete_prefix("./")
-        return [name, :not_played, 0] if listed ? named.to_s.empty? : named && !files(lowering, console).include?(named)
+        named = ENV["TEST"]&.split(",")&.map { |file| file.delete_prefix("./") }
+        unless listed || named.nil?
+          loaded = named & files(lowering, console)
+          return [name, :not_played, 0] if loaded.empty?
+
+          return with_settings("TEST" => loaded.join(",")) { play_run(lowering, console, name, listed: true) }
+        end
+        return [name, :not_played, 0] if listed && named.to_a.empty?
 
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         passed = begin
@@ -348,7 +356,7 @@ module VBlank
           t.test_files = files(lowering, console)
           needs = run.needs&.then { |tool| "needs #{tool}; " }
           t.description = "Run the tests on the #{run.title} lowering#{as_console(lowering, console)}: " \
-                          "#{run.does} (#{needs}one file with TEST=)"
+                          "#{run.does} (#{needs}some files with TEST=, commas between)"
         end
       end
     end

@@ -97,6 +97,15 @@ class TestGameSuite < Minitest::Test
     end
   end
 
+  # TEST names several files with commas between, and each run plays all of them.
+  def test_rake_test_plays_each_file_test_names
+    out, passed, = rake("test", env: { "CONSOLE" => "gba", "TEST" => "test/walker_test.rb,test/cartridge_test.rb" })
+
+    assert passed, out
+    assert_match(/^GBA lowering\s+passed/, out)
+    assert_match(/\b3 runs\b/, out, "the walker's two tests and the cartridge's")
+  end
+
   # A game whose list is somewhere of its own names it, and gets the task all the same.
   def test_a_golden_list_kept_elsewhere_is_named
     game_with_a_golden_path do |game|
