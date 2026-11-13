@@ -331,7 +331,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
   another in Ruby (an instance variable, a local both blocks share) or through `copy.bytes_done`:
   the cache cannot see it, so pass it through a slot. The pack is the whole routine's,
   byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
-  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. Leave it out and
+  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. A test that
+  wants the slots, not a pack file, keeps them the same way with
+  `Original::PackCache.new(folder).slot_bytes(pack.unpacking, parts: pack.unpacking_parts) { |playing, parts| playing.slot_bytes_in(playing.run_fastest) }`:
+  the block plays the unpacking it is handed (`playing`, which holds only the parts named), not the
+  whole one. Without `parts:` it caches the whole routine as one entry. Leave `cache:` out and
   every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
   nothing.
 

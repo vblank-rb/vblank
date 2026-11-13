@@ -68,9 +68,13 @@ module VBlank
       # (a Hash of them, as Unpacking#slot_bytes_in gives), which are then stored. For a game's own
       # test that plays the routine itself and wants its slots, not a pack file; the entry is a
       # pack file all the same, named for no copy and no build.
-      def slot_bytes(unpacking)
-        made = pack(unpacking, sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION) do |path|
-          Pack.holding(yield, sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION).write(path)
+      #
+      # Where +parts+ (an UnpackingParts, DSL::DataPack#unpacking_parts) is given, the routine is
+      # cached a part at a time, as #pack caches it. The block is handed the Unpacking to play and
+      # the names of the parts it plays (nil without parts), and gives back that Unpacking's slots.
+      def slot_bytes(unpacking, parts: nil)
+        made = pack(unpacking, sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION, parts: parts) do |path, playing, names|
+          Pack.holding(yield(playing, names), sha1: SLOTS_ONLY_SHA1, build_version: SLOTS_ONLY_VERSION).write(path)
         end
         made.slots
       end

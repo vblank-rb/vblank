@@ -86,6 +86,28 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
+  # A GAME'S OWN TEST asks for the slots (PackCache#slot_bytes) rather than a pack file, and is
+  # cached a part at a time as a build is: the block plays the Unpacking it is handed, the parts
+  # named, and a part changed between two calls is the only one played the second time.
+  def test_slot_bytes_of_a_routine_in_parts_plays_only_a_changed_part
+    Dir.mktmpdir do |folder|
+      cache = PackCache.new(File.join(folder, "packs"))
+      played = []
+      slots_of = lambda do |unpacking, parts|
+        cache.slot_bytes(unpacking, parts: parts) do |playing, names|
+          played << names
+          playing.slot_bytes_in(playing.run_fastest)
+        end
+      end
+      slots_of.call(*routine_in_parts(folder))
+      unpacking, parts = routine_in_parts(folder, changed: %i[heights])
+      second = slots_of.call(unpacking, parts)
+
+      assert_equal [%i[walls heights sums], %i[heights]], played
+      assert_equal Pack.from_bytes(whole_routine_pack(unpacking)).slots, second, "the slots are the whole routine's"
+    end
+  end
+
   def test_a_changed_part_nothing_reads_is_played_alone
     assert_equal [%i[heights]], parts_played_after_changing(%i[heights])
   end
