@@ -49,6 +49,11 @@ module VBlank
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
         settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
+        # Must be worked out before pack_setting_value turns the pack's numbers into plain ones.
+        # A length read here from the pack is the player's, held as the runtime holds it
+        # (#recording_length), and so is a hold read beside it (#holds_point).
+        length_from_pack = length.is_a?(DSL::PackNumber) && !pack_left_out?
+        hold_from_pack = holds_from.is_a?(DSL::PackNumber)
         rate = pack_setting_value(rate, "sample :#{name}'s rate:", IR::StartFile::RECORDING_STAND_IN_RATE)
         holds_from = pack_hold_value(holds_from, "sample :#{name}'s holds_from:")
         length = pack_setting_value(length, "sample :#{name}'s length:", nil)
@@ -67,8 +72,11 @@ module VBlank
           holds_from = decoded.holds_from
         else
           bytes, rate = sample_data(name, pcm, from, rate)
-          bytes = bytes.byteslice(0, recording_length(name, length, bytes.bytesize)) if length
+          room = bytes.bytesize
+          bytes = bytes.byteslice(0, recording_length(name, length, room, length_from_pack: length_from_pack)) if length
         end
+        # Where a hold the game wrote can be: inside the samples given, where the pack gave the length.
+        hold_room = length_from_pack ? room : bytes.bytesize
         start_file_offset = recording_start_file_offset(pcm)
         unless DSL::Whole.positive?(rate)
           raise ArgumentError, "sample :#{name} must have a positive rate. The rate is how many samples play in one second. You gave #{rate.inspect}."
@@ -78,7 +86,8 @@ module VBlank
 
         record(IR::Build.sample(name, bytes, rate, note: note,
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
-                                                   holds_from: holds_point(name, holds_from, bytes.bytesize, rate),
+                                                   holds_from: holds_point(name, holds_from, bytes.bytesize, rate, room: hold_room,
+                                                                           from_pack: length_from_pack && hold_from_pack),
                                                    from_file: start_file_offset, chip_envelope: chip_envelope,
                                                    settings_from_file: settings_from_file, chip_recording: chip_recording))
         DSL::Sample.new(self, name)
@@ -160,8 +169,14 @@ module VBlank
 
       # How many samples +length+ keeps of a recording of +room+ samples. With the pack left out it
       # is a stand-in, all of them, which the runtime cuts as the game starts (IR::StartFile::RecordingSettings).
-      def recording_length(name, length, room)
+      #
+      # A length read from the pack (+from_pack+) is the player's, so it is held by the rule the
+      # runtime holds it to as the game starts (IR::StartFile.length_held): one below 1 is 1 and one
+      # past the room is all of it. A pack whose copy has no such sound writes nought. Only a length
+      # the game writes itself is a mistake to refuse.
+      def recording_length(name, length, room, length_from_pack:)
         return room if length.nil?
+        return IR::StartFile.length_held(length, room) if length_from_pack
         return length if length.is_a?(Integer) && length.between?(1, room)
 
         raise ArgumentError, "sample :#{name} has `length: #{length.inspect}`, and it holds #{room} samples. A length is " \
@@ -177,18 +192,24 @@ module VBlank
       # same Float-or-Integer rule the rest of the framework uses — and which matters here
       # because a recording taken out of another game arrives with a sample number and nothing
       # else.
-      def holds_point(name, holds_from, length, rate)
+      #
+      # A hold is refused outside +room+, the samples the game gave, and then held inside +length+,
+      # the samples the recording plays. The two differ only where the length was read from the
+      # pack: the recording can then be shorter than the hold the game wrote, and the runtime holds
+      # from its last sample (IR::StartFile.hold_held), as this build does. A hold read from the
+      # pack beside that length (+from_pack+) is the player's too, so it is only held, never refused.
+      def holds_point(name, holds_from, length, rate, room: length, from_pack: false)
         return nil if holds_from.nil?
 
         at = holds_from.is_a?(Float) ? (holds_from * rate).round : holds_from
-        unless at.is_a?(Integer) && at >= 0 && at < length
+        unless from_pack || (at.is_a?(Integer) && at >= 0 && at < room)
           raise ArgumentError, "sample :#{name} holds from #{holds_from.inspect}, and it is " \
-                               "#{length} samples long (#{format('%.2f', length.fdiv(rate))} seconds). " \
+                               "#{room} samples long (#{format('%.2f', room.fdiv(rate))} seconds). " \
                                "A held note reads back to a point inside the recording. Give a time " \
                                "in seconds, like 0.4, or a sample number."
         end
 
-        at
+        IR::StartFile.hold_held(at, length)
       end
 
       # Resolve the sample's [bytes, rate] from whichever source was given — a WAV file

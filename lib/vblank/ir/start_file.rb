@@ -260,7 +260,9 @@ module VBlank
       # +length+ is how many of its samples the recording plays, a Number: the rest of what the
       # build made room for is left out, so a recording that reads back to an earlier sample does
       # so from its own end. One below 1 is 1 and one past the room is all of it, and a hold the
-      # game wrote past the end is the last sample.
+      # game wrote past the end is the last sample. The all-in-one build holds a length from the
+      # pack by the same rule (Builder::SampledAudio#recording_length): a copy without a sound
+      # writes nought for it, and that must build both ways.
       #
       # A HOLD WITH EVERY BIT SET IS NONE (.no_hold?): 255 in a byte, 65535 in two, 4294967295 in
       # four, and -1 in a slot that goes below zero. That is how a pack says a recording does not
