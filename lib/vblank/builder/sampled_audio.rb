@@ -50,11 +50,12 @@ module VBlank
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
         settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
         # Must be worked out before pack_setting_value turns the pack's numbers into plain ones.
-        # A length read here from the pack is the player's, held as the runtime holds it
-        # (#recording_length), and so is a hold read beside it (#holds_point).
+        # A length, a hold or a rate read here from the pack is the player's, held as the runtime
+        # holds it as the game starts (#recording_length, #holds_point, #pack_rate_value), so the
+        # build all-in-one plays what the build with the pack left out plays.
         length_from_pack = length.is_a?(DSL::PackNumber) && !pack_left_out?
         hold_from_pack = holds_from.is_a?(DSL::PackNumber)
-        rate = pack_setting_value(rate, "sample :#{name}'s rate:", IR::StartFile::RECORDING_STAND_IN_RATE)
+        rate = pack_rate_value(rate, "sample :#{name}'s rate:")
         holds_from = pack_hold_value(holds_from, "sample :#{name}'s holds_from:")
         length = pack_setting_value(length, "sample :#{name}'s length:", nil)
         envelope = pack_envelope_value(envelope, "sample :#{name}'s envelope:")
@@ -87,7 +88,7 @@ module VBlank
         record(IR::Build.sample(name, bytes, rate, note: note,
                                                    envelope: Audio::Envelope.of(envelope, "sample :#{name}"),
                                                    holds_from: holds_point(name, holds_from, bytes.bytesize, rate, room: hold_room,
-                                                                           from_pack: length_from_pack && hold_from_pack),
+                                                                           from_pack: hold_from_pack),
                                                    from_file: start_file_offset, chip_envelope: chip_envelope,
                                                    settings_from_file: settings_from_file, chip_recording: chip_recording))
         DSL::Sample.new(self, name)
@@ -167,6 +168,14 @@ module VBlank
         IR::StartFile.no_hold?(held, holds_from.slot.layout.width) ? nil : held
       end
 
+      # +rate+ as samples a second, read here where it is a number of the pack (#pack_setting_value)
+      # and held as the runtime holds it (IR::StartFile.rate_held): one below 1 is 1. A rate the game
+      # writes itself is not held, so #sample refuses one below 1.
+      def pack_rate_value(rate, subject)
+        read = pack_setting_value(rate, subject, IR::StartFile::RECORDING_STAND_IN_RATE)
+        rate.is_a?(DSL::PackNumber) ? IR::StartFile.rate_held(read) : read
+      end
+
       # How many samples +length+ keeps of a recording of +room+ samples. With the pack left out it
       # is a stand-in, all of them, which the runtime cuts as the game starts (IR::StartFile::RecordingSettings).
       #
@@ -193,11 +202,12 @@ module VBlank
       # because a recording taken out of another game arrives with a sample number and nothing
       # else.
       #
-      # A hold is refused outside +room+, the samples the game gave, and then held inside +length+,
-      # the samples the recording plays. The two differ only where the length was read from the
-      # pack: the recording can then be shorter than the hold the game wrote, and the runtime holds
-      # from its last sample (IR::StartFile.hold_held), as this build does. A hold read from the
-      # pack beside that length (+from_pack+) is the player's too, so it is only held, never refused.
+      # A hold the game wrote is refused outside +room+, the samples the game gave, and then held
+      # inside +length+, the samples the recording plays. The two differ only where the length was
+      # read from the pack: the recording can then be shorter than the hold the game wrote, and the
+      # runtime holds from its last sample (IR::StartFile.hold_held), as this build does. A hold
+      # read from the pack (+from_pack+) is the player's, so it is only held, never refused, whatever
+      # gave the length: the runtime holds it the same way as the game starts (IR::StartFile.hold_in).
       def holds_point(name, holds_from, length, rate, room: length, from_pack: false)
         return nil if holds_from.nil?
 

@@ -492,9 +492,11 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   voice reads the recording, how far back a held note reads, the shape's four numbers), so the program holds a
   stand-in for each number worked out and the runtime writes it again from the file at power-on
   (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
-  all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
-  where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
-  still, and a hold outside the recording is its first sample or its last. **A hold with every bit set is none**
+  all-in-one build does, played by the game, a song or a sound effect. **Nothing the pack holds stops the game**,
+  built either way: a rate below 1 plays as 1, so the recording all but stands still, and a hold outside the
+  recording is its first sample or its last. Built all-in-one the numbers are held by the same rules
+  (`IR::StartFile.rate_held`, `.hold_held`), so the two builds sound alike. The same numbers written in the game
+  are a friendly error. **A hold with every bit set is none**
   (255 in a byte, 65535 in two, 4294967295 in four, -1 where the slot goes below zero; `IR::StartFile.no_hold?`):
   the recording does not loop, and sounds as one written without `holds_from:`, built all-in-one too, so one slot
   of holds can say which recordings loop and which play once. **`length: pack[:lengths].number(3)`**

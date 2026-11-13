@@ -252,10 +252,12 @@ module VBlank
       # WHAT OF A RECORDING'S SETTINGS IS IN THE FILE, each nil where the game wrote it: +rate+ and
       # +holds_from+ a Number, +envelope+ an EnvelopeBytes.
       #
-      # The file is the player's, so nothing in it stops the game, where the build that holds the
-      # same numbers refuses them (.rate_held, .hold_held): a rate below 1 plays as 1, so the
-      # recording all but stands still, and a held note that would read back to a sample outside
-      # the recording reads back to its first sample or its last.
+      # The file is the player's, so nothing in it stops the game (.rate_held, .hold_held): a rate
+      # below 1 plays as 1, so the recording all but stands still, and a held note that would read
+      # back to a sample outside the recording reads back to its first sample or its last. The
+      # all-in-one build holds the same numbers read from its pack by these rules
+      # (Builder::SampledAudio#sample), so both builds play them alike; only a number the game
+      # wrote itself is refused.
       #
       # +length+ is how many of its samples the recording plays, a Number: the rest of what the
       # build made room for is left out, so a recording that reads back to an earlier sample does
