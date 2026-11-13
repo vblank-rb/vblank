@@ -14,6 +14,7 @@ static int32_t background_field(int32_t background, int32_t field) {
 
 static int32_t showing(int32_t background);
 static int32_t bar_showing(void);
+static int32_t row_held_alone_by_another(int32_t background);
 
 /* A background is painted onto a sheet of its own first when it is laid on the picture a part at a
  * time: inside a box it is held to, or in blocks (Reference#paint_scenery_in_blocks). While
@@ -228,9 +229,10 @@ static void stamp_map_at(int32_t background, int64_t left, int64_t top) {
 /* Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it. */
 void rg_background_stamp(int32_t background) {
   /* Reference#stamp_background: a status bar is painted from its own top as the view is built, and
-   * a background held above a row stops at it. */
+   * a background held above a row stops at it, and one under a background shown alone starts there. */
   if (background_field(background, RG_BG_BAR_TOP) != RG_NOT_A_BAR ||
-      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || boxes[keeper_of(background)].held) {
+      background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR || boxes[keeper_of(background)].held ||
+      row_held_alone_by_another(background) != RG_NOT_A_BAR) {
     request_repaint();
     return;
   }
@@ -455,6 +457,14 @@ static int64_t rows_shown_of(int32_t background) {
   int32_t above = background_field(background, RG_BG_ABOVE_ROW);
   int64_t rows = scenery_rows();
   return above != RG_NOT_A_BAR && above < rows ? above : rows;
+}
+
+/* Reference#row_held_alone_by_another: the row of a background up and shown alone above it,
+ * where +background+ is another, or RG_NOT_A_BAR. */
+static int32_t row_held_alone_by_another(int32_t background) {
+  for (int32_t bg = 0; bg < rg_game_picture_sizes[RG_SIZE_BACKGROUNDS]; bg++)
+    if (bg != background && showing(bg) && background_field(bg, RG_BG_ALONE)) return background_field(bg, RG_BG_ABOVE_ROW);
+  return RG_NOT_A_BAR;
 }
 
 /* Reference#exec_set_tile: the copy is made even when the cell turns out not to be there. */
@@ -805,9 +815,18 @@ static void paint_scenery_in_box(int32_t background, const background_box *box) 
 }
 
 /* Reference#paint_scenery: a background held to a box with nothing in it paints nothing; one the
- * game has not left as drawn is painted in blocks while the blocks are bigger than a pixel. */
+ * game has not left as drawn is painted in blocks while the blocks are bigger than a pixel. Under a
+ * background shown alone above its row, it is held to the rows from there down as if to a box
+ * (Reference#box_shown_of). */
 static void paint_scenery(int32_t background) {
-  const background_box *box = boxes[keeper_of(background)].held ? &boxes[keeper_of(background)] : NULL;
+  background_box shown = boxes[keeper_of(background)];
+  int32_t alone = row_held_alone_by_another(background);
+  if (alone != RG_NOT_A_BAR) {
+    if (!shown.held)
+      shown = (background_box){.held = 1, .left = 0, .top = 0, .right = RG_SCREEN_WIDTH, .bottom = RG_SCREEN_HEIGHT};
+    if (shown.top < alone) shown.top = alone;
+  }
+  const background_box *box = shown.held ? &shown : NULL;
   if (box && (box->right <= box->left || box->bottom <= box->top)) return;
   int32_t block = rg_hook_block_size();
   if (block > 1 && background_field(background, RG_BG_IN_BLOCKS)) paint_scenery_in_blocks(background, block, box);

@@ -20,7 +20,8 @@ module VBlank
           # +recording_voices+. +holds_music+, +wobbles+, +steps_shapes+, +swells+, +slides+ and +sides+
           # are the parts of the player its songs use. +status_bar+ has a status bar (Picture's
           # rt_bar_place), on the third layer with +third_layer+ (a screen shows it beside two other
-          # backgrounds), and +row_held+ a background held above a row, which takes the same line table.
+          # backgrounds), and +row_held+ a background held above a row, which takes the same line table;
+          # +alone_flag_in_line_table+ shows one alone above its row on one of the two ordinary layers.
           # +bends+ bends a background row by row, a scene's own with +scene_bends+. +tile_runs+ is the
           # bytes of each run of tiles painted from lists, staged for the blank, +straight_tile_runs+ that
           # one of them keeps the console's own form, and +held_runs+ those with pictures held in the
@@ -38,7 +39,7 @@ module VBlank
           # middle of the speakers (Recordings::SIDES).
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
-                                :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
+                                :alone_flag_in_line_table, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans) do
@@ -58,7 +59,8 @@ module VBlank
                   wobbles: SNES::Music.wobbles?(program), steps_shapes: SNES::Music.steps_shapes?(program),
                   swells: SNES::Music.swells_under_level?(program), slides: SNES::Music.slides?(program),
                   sides: SNES::Music.sides_under_level?(program), status_bar: picture.status_bar?(program),
-                  row_held: picture.background_rows_held?(program), bends: picture.bends?(program),
+                  row_held: picture.background_rows_held?(program), alone_flag_in_line_table: picture.alone_flag_in_line_table?(program),
+                  bends: picture.bends?(program),
                   scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) ||

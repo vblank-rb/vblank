@@ -115,7 +115,10 @@ void rg_game_work_out_bends(void);
  *
  * RG_BG_BAR_TOP is RG_NOT_A_BAR for a background, and for a status bar the row of the screen it was
  * declared to start at (Nodes::Background#bar_top). A status bar takes no level: it is painted in
- * front of every background and behind every sprite, so its RG_BG_LEVEL is RG_NOT_A_BAR too. */
+ * front of every background and behind every sprite, so its RG_BG_LEVEL is RG_NOT_A_BAR too.
+ *
+ * RG_BG_ABOVE_ROW is RG_NOT_A_BAR, or the row a background is held above (Nodes::Background#above_row).
+ * RG_BG_ALONE is 1 for one shown alone above that row (Nodes::Background#alone), and 0 otherwise. */
 #define RG_EVERY_SCENE (-1)
 #define RG_NEVER_ARRIVES (-2)
 
@@ -126,7 +129,7 @@ enum {
   RG_BG_TILE_W, RG_BG_TILE_H, RG_BG_FIRST_MAP, RG_BG_SHOWABLE_MAPS, RG_BG_KEPT_BY, RG_BG_NEVER_WRAPS,
   RG_BG_TILES_START, RG_BG_SCENE, RG_BG_LEVEL, RG_BG_ON_ARRIVAL, RG_BG_STACK_PLACE,
   RG_BG_SEE_THROUGH, RG_BG_BENT, RG_BG_FADE_PLACE, RG_BG_TILES, RG_BG_COLOR_STEPS, RG_BG_IN_BLOCKS,
-  RG_BG_CAN_TURN, RG_BG_PAINTED, RG_BG_RUN_COLORS, RG_BG_BAR_TOP, RG_BG_ABOVE_ROW, RG_BG_FIELDS
+  RG_BG_CAN_TURN, RG_BG_PAINTED, RG_BG_RUN_COLORS, RG_BG_BAR_TOP, RG_BG_ABOVE_ROW, RG_BG_ALONE, RG_BG_FIELDS
 };
 extern const int32_t rg_game_backgrounds[];
 #define RG_NOT_PAINTED (-1)

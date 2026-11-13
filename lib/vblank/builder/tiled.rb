@@ -276,6 +276,13 @@ module VBlank
       # a `.`, a `0` or nothing at all — so a grid drawn by hand and a collision layer
       # decoded out of somewhere else both drop in.
       #
+      # A BAR ABOVE A ROW: `above_row: 32` shows the background only on the rows above row 32, and
+      # `alone: true` shows it alone there, as a console's own status bar often is: no other
+      # background is drawn above the row, so its see-through pixels show the backdrop and not the
+      # field under it. Sprites are still drawn over it.
+      #
+      #     background :bar, tiles: :hud, map: BAR_ROWS, above_row: 32, alone: true
+      #
       # CELLS THAT CHANGE TOGETHER: `held: true` keeps every `set_tile` of a pass and shows
       # them all on the next frame, as the frame's other framework drawing shows.
       #
@@ -307,23 +314,28 @@ module VBlank
       #   a Hash of name => path for a background with several maps
       # @param walls [String, Array<String>, Array<Array>, Hash, nil] which cells stop a
       #   mover, apart from the picture. One grid, or a Hash keyed like `map:`.
+      # @param above_row [Integer, nil] show the background only on the rows above this row
+      # @param alone [Boolean] with `above_row:`, show no other background above the row
       # @param held [Boolean] keep each pass's `set_tile` changes and show them together on
       #   the next frame
       # @param set_cells [Array<Integer, Range>, Range, nil] for a background from the data pack, the
       #   original's cell numbers `set_cell` may write later (Builder::PackBackgrounds)
       # @return [Background] a handle: scroll_by / scroll_to / show_map
-      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, held: false, colors: nil, across: nil,
-                     cell: nil, set_cells: nil)
+      def background(name, tiles:, map: nil, from: nil, walls: nil, above_row: nil, alone: false, held: false, colors: nil,
+                     across: nil, cell: nil, set_cells: nil)
         if tiles.is_a?(DSL::PackSlot)
           # The original's own tiles, map and colours, from the data pack (Builder::PackBackgrounds).
           return declare_pack_background(name, tiles: tiles, map: map, colors: colors, across: across, cell: cell || 8,
-                                               set_cells: set_cells, walls: walls, above_row: above_row, held: held)
+                                               set_cells: set_cells, walls: walls, above_row: above_row, alone: alone,
+                                               held: held)
         end
 
         refuse_pack_background_settings!(name, colors, across, cell, set_cells)
         refuse_bad_above_row!(name, above_row)
+        refuse_bad_alone!(name, alone, above_row)
         refuse_bad_held!(name, held)
-        declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row, held: held)
+        declare_background(name, tiles: tiles, map: map, from: from, walls: walls, above_row: above_row, alone: alone,
+                                 held: held)
       end
 
       # A STATUS BAR: a strip of tiles fixed to the screen from row +top+ down to the bottom,
@@ -441,6 +453,15 @@ module VBlank
                              "screen. Give a number written in the program, from 1 to #{screen_height - 1}."
       end
 
+      # `alone:` is true or false, and true only beside `above_row:`, whose rows it is about.
+      def refuse_bad_alone!(name, alone, above_row)
+        raise ArgumentError, "background :#{name} has `alone: #{alone.inspect}`. `alone:` must be true or false." unless [true, false].include?(alone)
+        return unless alone && above_row.nil?
+
+        raise ArgumentError, "background :#{name} has `alone: true` but no `above_row:`. `alone:` shows a background alone " \
+                             "above its row. To fix this, give it `above_row:` too, or remove `alone: true`."
+      end
+
       # `held:` is true or false, on a screen with cells to change.
       def refuse_bad_held!(name, held)
         unless [true, false].include?(held)
@@ -466,7 +487,8 @@ module VBlank
       end
 
       # The body of {#background}, and of {#status_bar}, which is a background with +bar_top+.
-      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil, above_row: nil, held: false)
+      def declare_background(name, tiles:, map: nil, from: nil, walls: nil, bar_top: nil, above_row: nil, alone: false,
+                             held: false)
         refuse_background_in_game_loop!(name)
         if tiles.is_a?(Hash)
           set, map_names, drawn, tile_names, grids, sets = background_from_sets(name, tiles, map, from)
@@ -517,7 +539,7 @@ module VBlank
           record(Build.background(name, tiles: tile_names, map: grids.first,
                                         maps: map_names.size > 1 ? grids : [], choice: choice,
                                         tile_w: set[:tile_w], tile_h: set[:tile_h],
-                                        scene: declaring_scene, bar_top: bar_top, above_row: above_row,
+                                        scene: declaring_scene, bar_top: bar_top, above_row: above_row, alone: alone,
                                         affine: @screen_mode == :rotozoom, **(sets || {})))
         # WHICH SCENE THIS BACKGROUND BELONGS TO, so that everything written for it each
         # frame is written only while that scene is the live one. Where a background sits

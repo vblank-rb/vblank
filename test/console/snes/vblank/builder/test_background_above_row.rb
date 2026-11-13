@@ -161,20 +161,24 @@ class TestBackgroundAboveRow < Minitest::Test
   WALLS_SCROLL = [8, -25].freeze
   WHITE = 0x7FFF
   YELLOW = 0x03FF
+  BLACK = 0x0000 # The backdrop, which no screen here sets
 
-  private def stage(size = 1)
+  # The stage in blocks of +size+. With +alone+ the bar is shown alone above its row
+  # (`alone: true`), its steps' other half see-through and its first row of cells empty.
+  private def stage(size = 1, alone: false)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
       screen :tiled
       image(:floor_art, "#" => :red, "." => :blue) { STRIPES.join("\n") }
       image(:wall_art, "#" => :green, "." => :transparent) { STEPS.join("\n") }
-      image(:bar_art, "#" => :white, "." => :yellow) { STEPS.join("\n") }
+      image(:bar_art, "#" => :white, "." => alone ? :transparent : :yellow) { STEPS.join("\n") }
       tiles :floor_tiles, "a" => :floor_art
       tiles :wall_tiles, "a" => :wall_art
       tiles :bar_tiles, "a" => :bar_art
       background(:floor, tiles: :floor_tiles, map: Array.new(32) { "a" * 32 }).scroll_to 0, 0
       background(:walls, tiles: :wall_tiles, map: Array.new(32) { "a" * 32 }).scroll_to(*WALLS_SCROLL)
-      background :bar, tiles: :bar_tiles, map: Array.new(4) { "a" * 32 }, above_row: STAGE_ROWS
+      bar_map = Array.new(4) { |row| (alone && row.zero? ? " " : "a") * 32 }
+      background :bar, tiles: :bar_tiles, map: bar_map, above_row: STAGE_ROWS, alone: alone
       game_loop { pixelate size, sprites: false }
     end
     b.finalize_program
@@ -216,6 +220,21 @@ class TestBackgroundAboveRow < Minitest::Test
       left = x - (x % 6)
       top = y - (y % 6)
       expected = y >= STAGE_ROWS && top < STAGE_ROWS ? arena_pixel(left, top) : stage_pixel(left, top)
+      assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
+    end
+  end
+
+  # SHOWN ALONE (`alone: true`), the bar's see-through pixels and its empty cells show the backdrop
+  # above its row, and the arena of two backgrounds shows from the row down as before.
+  def test_a_bar_shown_alone_over_two_backgrounds_shows_the_backdrop_through_it
+    screen = game_player.run(stage(alone: true), frames: 4).screen
+    spots = (0...240).step(3).flat_map { |x| (0...200).step(2).map { |y| [x, y] } }
+
+    spots.each do |x, y|
+      expected = if y >= STAGE_ROWS then arena_pixel(x, y)
+                 elsif y >= 8 && STEPS[y % 8][x % 8] == "#" then WHITE
+                 else BLACK
+                 end
       assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
     end
   end

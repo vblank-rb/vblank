@@ -53,6 +53,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
 
   # Where each of a colour's red, green and blue starts.
   CHANNEL_SHIFTS = [0, 5, 10].freeze
+  BACKDROP = 0x0000 # Black, which no screen here changes
   # The pixels of a bar cell looked at.
   CELL_SPOTS = [[0, 0], [3, 5], [7, 2]].freeze
 
@@ -69,7 +70,9 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  private def stage(from)
+  # The stage, its bar shown alone above its row with +alone+, and its arena scrolled a pixel across
+  # and down each pass with +scrolled+.
+  private def stage(from, alone: false, scrolled: false)
     b = VBlank::Builder.new(options: SNES_OPTIONS)
     b.instance_eval do
       screen :tiled
@@ -89,13 +92,16 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       var :state, 0
       walk = var :walk, 0
       scene(:stage) do
-        layer(:scenery) { background :arena, tiles: :arena_tiles, map: [ARENA_FIRST_ROW, *Array.new(31) { ARENA_ROW }] }
+        layer(:scenery) do
+          arena = background :arena, tiles: :arena_tiles, map: [ARENA_FIRST_ROW, *Array.new(31) { ARENA_ROW }]
+          arena.scroll_to walk, walk if scrolled
+        end
         layer(:craft) do
           SPRITES.times { |n| sprite(:"craft_#{n}", at: [(n % 6) * 36, 40 + ((n / 6) * 34)]).draw_with :hurt }
         end
         layer(:bar) do
           bar = background :bar, tiles: pack[:bar_tiles], map: pack[:bar_map], colors: pack[:bar_colors], across: 32, cell: 8,
-                                 above_row: BAR_ROWS, set_cells: [TOLD]
+                                 above_row: BAR_ROWS, set_cells: [TOLD], alone: alone
           bar.set_cell TOLD_COLUMN, 0, TOLD if walk == 20
           banks = (0...4).to_h { |bank| [:"bar_colors_#{bank}", color_walk(:"bar_colors_#{bank}", from: :black)] }
           bar.draw_with banks, showing: walk
@@ -165,6 +171,36 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       mirrored_x = 7 - SEE_THROUGH_X
       arena = ARENA_COLORS.fetch(((TOLD_COLUMN % ARENA_SETS) * 15) + mirrored_x)
       assert_equal arena, shown.pixel((TOLD_COLUMN * 8) + mirrored_x, 0), "the arena through the cell written later"
+    end
+  end
+
+  # A BAR SHOWN ALONE ABOVE ITS ROW (`alone: true`), as a Super Nintendo game shows its bar on the
+  # rows above its split: over an arena scrolled a pixel each pass, its see-through pixels show the
+  # backdrop in every bank, never the arena, and the arena still shows from the row down.
+  def test_a_bar_shown_alone_shows_the_backdrop_through_its_see_through_pixels
+    Dir.mktmpdir do |folder|
+      shown = game_player.run(stage(bar_original(folder), alone: true, scrolled: true), frames: 40).screen
+
+      [0, 9, 17, 26].each do |column|
+        [0, 8, BAR_ROWS - 1].each do |y|
+          assert_equal BACKDROP, shown.pixel((column * 8) + SEE_THROUGH_X, y), "the backdrop through the bar's cell #{column} at row #{y}"
+        end
+        assert_equal bar_color(column, 0, 0), shown.pixel(column * 8, 0), "the bar's cell #{column}"
+      end
+      [5, 100, 200].each do |x|
+        assert_includes ARENA_COLORS, shown.pixel(x, BAR_ROWS), "the scrolled arena under the bar's rows at #{x}"
+      end
+    end
+  end
+
+  # The same stage scrolled, without the setting: the arena shows through the bar, as before.
+  def test_a_bar_not_shown_alone_shows_the_scrolled_arena_through_its_see_through_pixels
+    Dir.mktmpdir do |folder|
+      shown = game_player.run(stage(bar_original(folder), scrolled: true), frames: 40).screen
+
+      [17, 26].each do |column|
+        assert_includes ARENA_COLORS, shown.pixel((column * 8) + SEE_THROUGH_X, 8), "the arena through the bar's cell #{column}"
+      end
     end
   end
 end

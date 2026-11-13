@@ -1984,8 +1984,9 @@ module VBlank
         def stamp_background(node)
           # A status bar is painted from its own top, with nothing under it, as the whole view is
           # built (#repaint_view), never stamped from the screen's corner. A background held above a
-          # row is the same, since a stamp would reach past its row, and so is one held to a box.
-          return request_repaint if node.bar? || node.above_row || @bg_box.key?(node.name)
+          # row is the same, since a stamp would reach past its row, and so is one held to a box, and
+          # one under the rows of a background shown alone (#row_held_alone_by_another).
+          return request_repaint if node.bar? || node.above_row || @bg_box.key?(node.name) || row_held_alone_by_another(node)
 
           tiles = node.tiles
           tile_w = node.tile_w
@@ -2674,11 +2675,33 @@ module VBlank
         # Paint one background where it sits in the view: as drawn, or in blocks while the
         # picture is shown in them.
         def paint_scenery(bg)
-          box = @bg_box[bg.name]
+          box = box_shown_of(bg)
           return paint_scenery_in_box(bg, box) if box
           return paint_background_window(bg) unless in_blocks?(bg.name)
 
           paint_scenery_in_blocks(bg)
+        end
+
+        # The part of the screen +bg+ is drawn in, as [left, top, right, bottom], or nil for all of
+        # it: the box the game holds it to, and only below the row of a background shown alone
+        # above it.
+        def box_shown_of(bg)
+          box = @bg_box[bg.name]
+          row = row_held_alone_by_another(bg)
+          return box unless row
+
+          left, top, right, bottom = box || [0, 0, @screen.width, @screen.height]
+          [left, [top, row].max, right, bottom]
+        end
+
+        # A BACKGROUND SHOWN ALONE ABOVE ITS ROW (`above_row: 32, alone: true`) is what a console's
+        # own status bar often is: the display is told to draw that one layer and the sprites on the
+        # lines above the row, so no other background is drawn there and the bar's see-through pixels
+        # show the backdrop. So every other background is held to the rows from that row down, as if
+        # to a box, which is how a display that switches layers line by line shows it. The row, where
+        # such a background is up and +bg+ is another, or nil.
+        def row_held_alone_by_another(bg)
+          showing_scenery.find { |held| held.alone && !held.equal?(bg) }&.above_row
         end
 
         # A BACKGROUND HELD TO A BOX, and the rule is the display's window: a switch for each pixel

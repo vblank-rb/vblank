@@ -81,6 +81,10 @@ module VBlank
         # +above_row+ shows it only on the rows of the screen above that row. Below it the background
         # is not drawn at all and what is behind shows. Absent on every other background.
         #
+        # +alone+, on a background with +above_row+, shows it alone above that row: no other
+        # background is drawn there, so its see-through pixels show the backdrop, and the sprites
+        # are drawn over it as anywhere. Absent on every other background.
+        #
         # +boxed+, on a background the game holds to a box (BoxBackground), names the variable that
         # holds whether it is held to one now. It goes back to 0, shown everywhere, as the scene the
         # background belongs to takes over, as +choice+ does. Absent on every other background.
@@ -101,7 +105,7 @@ module VBlank
         operands name: :name, tiles: :list, map: :list, maps: :list, choice: :list, tile_w: :int,
                  tile_h: :int, layer: :name, scene: :name, affine: :flag, recolors: :list, palettes: :list,
                  palette_names: :list, sets: :list, set_starts: :list, map_sets: :list, bar_top: :int,
-                 above_row: :int, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
+                 above_row: :int, alone: :flag, boxed: :name, follows: :name, follows_each: :list, from_file: :file_background
 
         # Whether it follows several lists the game changes (see +follows_each+).
         def follows_several? = !follows_each.nil? && !follows_each.empty?

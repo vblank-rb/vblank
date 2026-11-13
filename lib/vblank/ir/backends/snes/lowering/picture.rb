@@ -84,6 +84,14 @@ module VBlank
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
 
+            # Whether +program+ shows a background alone above its row (`alone: true`) on one of the
+            # two ordinary layers, where the line table then reads, as it is made, whether the one held
+            # now is alone (Runtime::Picture's ROW_HELD_ALONE). One on the third layer shows alone
+            # whatever it sets (#refuse_held_see_through!), so a game with it there needs nothing more.
+            def self.alone_flag_in_line_table?(program)
+              program.walk.any? { |node| node.kind == :background && node.alone } && !third_layer?(program)
+            end
+
             # Whether +program+ changes colours as it runs, which the runtime then keeps a place for
             # (Runtime::Tint's rt_colors_hold).
             def self.changing_colors?(program) = program.walk.any? { |node| %i[background_colors color_list_holds].include?(node.kind) }
@@ -173,6 +181,7 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @third_layer = Picture.third_layer?(@program)
+              @alone_flag_in_line_table = Picture.alone_flag_in_line_table?(@program)
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
@@ -1121,7 +1130,10 @@ module VBlank
                 covers = @handover.bar_covers_on_put_up(bg)
                 runtime_call("rt_bar_covers", [covers]) if covers
               end
-              runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row)]) if bg.above_row
+              if bg.above_row
+                alone = @alone_flag_in_line_table ? [Build.int(bg.alone ? 1 : 0)] : []
+                runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row), *alone])
+              end
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
 
@@ -1229,8 +1241,13 @@ module VBlank
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row
 
-              refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
               refuse_unmade!("#{words} beside a see-through layer") unless SeeThrough.layers(@program).empty?
+              # One the game shows alone (`alone: true`) is drawn alone above its row by the
+              # interpreter too, so where it is in the stack and what its see-through pixels show
+              # are the same on both.
+              return if held.alone
+
+              refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
               refuse_held_see_through!(held)
             end
 
@@ -1256,21 +1273,23 @@ module VBlank
             # interpreter draws the backgrounds behind it there too, where it is see-through. So a held
             # background that can be see-through on its rows is refused: a tile with a see-through
             # pixel, or a cell left empty that can come into view. Without a scroll of its own the cells
-            # in view are the ones its corner shows; with one, every cell of its grid.
+            # in view are the ones its corner shows; with one, every cell of its grid. One the game
+            # shows alone (`alone: true`) is not asked: the interpreter shows the backdrop there too.
             def refuse_held_see_through!(held)
               subject = "The background :#{held.name} is held above a row beside two other backgrounds"
               why = "On a Super Nintendo, that background goes on a layer that shows alone above its row. " \
                     "The backgrounds behind it cannot show through it there."
+              alone = "Or, to show the backdrop there, give :#{held.name} `alone: true`."
               tile = held.tiles.find { |name| (0...64).any? { |at| @cache.image(picture_named(name)).tile_see_through_at?(at) } }
               if tile
                 raise Art::HeldArtSeeThrough, "#{subject}, and its tile :#{tile} has see-through pixels. #{why} " \
-                                              "To fix this, draw the tile :#{tile} with no see-through pixels."
+                                              "To fix this, draw the tile :#{tile} with no see-through pixels. #{alone}"
               end
               return unless held_cells_empty?(held)
 
               raise Art::HeldArtSeeThrough, "#{subject}, and its map has empty cells that can show above the row. #{why} " \
                                             "To fix this, put a tile in each cell of its map. If the game does not scroll " \
-                                            "it, only the cells above the row must have a tile."
+                                            "it, only the cells above the row must have a tile. #{alone}"
             end
 
             # Whether a cell of +held+'s maps that can come into view above its row is empty. (A

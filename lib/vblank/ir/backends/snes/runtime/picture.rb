@@ -140,6 +140,9 @@ module VBlank
             # Kept in a game that holds a background above a row, whose runtime then makes the table
             # that way round (#emit_background_held_above).
             ROW_HELD = "rt row held"
+            # Kept in a game that shows a background alone above its row on BG1 or BG2: whether the
+            # one held now is (`alone: true`), 1 or 0, which the line table reads as it is made.
+            ROW_HELD_ALONE = "rt row held alone"
             BAR_CHANNEL = 0x10 # Channel 1's registers, past channel 0's
             # Which layers TM shows on a tiled screen: BG1 and BG2 (a bit each) and the sprites.
             LAYERS_SHOWN = 0x13
@@ -241,9 +244,10 @@ module VBlank
             # The maps of the layers a game uses: the third's too in a game with a bar there.
             def layer_maps(third_layer) = third_layer ? [*LAYER_MAPS, THIRD_LAYER_MAP] : LAYER_MAPS
 
-            def reserve(memory, bar: false, row_held: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
+            def reserve(memory, bar: false, row_held: false, alone_flag_in_line_table: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
                         tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false)
               memory.reserve(ROW_HELD, 2) if row_held
+              memory.reserve(ROW_HELD_ALONE, 2) if alone_flag_in_line_table
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
               memory.reserve(SCENE_BACKGROUND_TILES, SCENE_TILES_BYTES) if scene_background_tiles
               memory.reserve(TILE_SIZES, 2) if tile_sizes
@@ -1002,13 +1006,18 @@ module VBlank
             # A BACKGROUND HELD ABOVE A ROW (`above_row:`) is the bar's line table turned over: every
             # layer shows above the row, and from it down that one layer is switched off, so what is
             # under it shows and nothing the layer's scroll does can reach those rows. No processor
-            # time goes on it once the table is made. rt_background_held_above(layer, row).
+            # time goes on it once the table is made. rt_background_held_above(layer, row), and in a
+            # game that keeps ROW_HELD_ALONE, rt_background_held_above(layer, row, alone).
             def emit_background_held_above(asm, memory, r, bar)
               asm.label("rt_background_held_above")
               asm.lda(asm.direct(r.call(1)))
               asm.sta(asm.abs(bar + BAR_TOP))
               asm.lda(asm.direct(r.call(0)))
               asm.sta(asm.abs(bar + BAR_LAYER))
+              if memory.reserved?(ROW_HELD_ALONE)
+                asm.lda(asm.direct(r.call(2)))
+                asm.sta(asm.abs(memory[ROW_HELD_ALONE]))
+              end
               asm.lda(1)
               asm.sta(asm.abs(bar + BAR_CHANGED))
               asm.rtl
@@ -1078,6 +1087,16 @@ module VBlank
                 # (Lowering::Picture#refuse_held_see_through! explains why it is alone).
                 asm.lda(third_layer ? THIRD_LAYER_SHOWN | SPRITES_SHOWN : LAYERS_SHOWN)
                 asm.sta(asm.direct(work + 2))
+                # ...and one on BG1 or BG2 the game shows alone (`alone: true`) shows alone there too,
+                # its layer and the sprites, so its see-through pixels show the backdrop.
+                if memory.reserved?(ROW_HELD_ALONE)
+                  asm.lda(asm.abs(memory[ROW_HELD_ALONE]))
+                  asm.beq("rt_bar_table_not_alone")
+                  asm.lda(asm.direct(work))
+                  asm.ora(SPRITES_SHOWN)
+                  asm.sta(asm.direct(work + 2))
+                  asm.label("rt_bar_table_not_alone")
+                end
               end
               # The lines above the bar, in one step or two; none for a bar at the top.
               asm.ldx(0)

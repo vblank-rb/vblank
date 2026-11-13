@@ -51,7 +51,8 @@ module VBlank
             c = carries
             Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns) if c.painted
             Frame.reserve(memory, second_controller: c.second_controller)
-            Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, bends: c.bends, scene_bends: c.scene_bends,
+            Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
+                                    bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
                                     scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
