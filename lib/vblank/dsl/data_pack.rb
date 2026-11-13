@@ -33,11 +33,15 @@ module VBlank
       def initialize(platform:)
         @layout = Original.layout_for(platform)
         @list = []
-        @routine = nil
+        @routines = []
       end
 
-      # The slots named so far, in order, and the unpacking routine (a block), or nil for none.
-      attr_reader :list, :routine
+      # One part of the unpacking routine: its +part+ name (nil for a routine of one part) and its block.
+      Routine = Data.define(:part, :block)
+
+      # The slots named so far, in order, and the parts of the unpacking routine (each a Routine),
+      # in the order they run; none for a pack with no routine.
+      attr_reader :list, :routines
 
       # +count+ colours, two bytes each.
       #
@@ -94,20 +98,51 @@ module VBlank
       #   slots.fill_from_copy do |copy, pack, release|
       #     copy.unpack_lz77 at: (release == "EU" ? 0x3040 : 0x3000), into: pack[:sprites]
       #   end
-      def fill_from_copy(&block)
+      #
+      # A ROUTINE IN PARTS. A routine may be given as several named parts, which run one after
+      # another in the order given, as one routine would:
+      #
+      #   slots.fill_from_copy(:floors) { |copy, pack| ... }
+      #   slots.fill_from_copy(:music) { |copy, pack| ... }
+      #
+      # The pack is the same either way. What the parts change is the pack cache
+      # (Original::PackCache): it keeps each part's slots apart, so a change to one part plays
+      # that part again, and what reads from it, and takes every other part's slots from the cache.
+      def fill_from_copy(part = nil, &block)
         unless block
           raise ArgumentError, "`slots.fill_from_copy` needs a block: `slots.fill_from_copy do |copy, pack| ... end`."
         end
-        unless @routine.nil?
-          raise ArgumentError, "The data pack says `slots.fill_from_copy` twice. A data pack has one unpacking routine. " \
-                               "Put all of the unpacking in one block."
-        end
 
-        @routine = block
+        refuse_part_name_not_symbol!(part)
+        refuse_unnamed_part!(part)
+        refuse_part_named_twice!(part)
+        @routines << Routine.new(part: part, block: block)
         nil
       end
 
       private
+
+      def refuse_part_name_not_symbol!(part)
+        return if part.nil? || part.is_a?(Symbol)
+
+        raise ArgumentError, "`slots.fill_from_copy` was given #{part.inspect}. It takes the name of a part of the " \
+                             "routine as a symbol: `slots.fill_from_copy :music do |copy, pack| ... end`."
+      end
+
+      # A routine of several parts names each one, so the cache and its errors can tell them apart.
+      def refuse_unnamed_part!(part)
+        return if @routines.empty? || (part && @routines.all?(&:part))
+
+        raise ArgumentError, "The data pack calls `slots.fill_from_copy` more than once, and one call has no name. When the " \
+                             "routine has more than one part, each part must have a name: " \
+                             "`slots.fill_from_copy :music do |copy, pack| ... end`."
+      end
+
+      def refuse_part_named_twice!(part)
+        return unless part && @routines.any? { |routine| routine.part == part }
+
+        raise ArgumentError, "The data pack names the part :#{part} of its routine twice. Give each part a name of its own."
+      end
 
       def add(slot)
         if @list.any? { |named| named.name == slot.name }
@@ -136,11 +171,15 @@ module VBlank
       # named (an Original::Game, or an Original::Copy), which a shell reads the releases of.
       # +platform+ is the console the original is for, whose layout a view of a slot is read in
       # where it names none (PackSlot#as_tiles).
-      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil, platform: Original::DEFAULT_PLATFORM)
+      # +make_unpacking_parts+ makes the Original::UnpackingParts of an all-in-one build's routine in
+      # parts (nil for any other).
+      def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil, platform: Original::DEFAULT_PLATFORM,
+                     make_unpacking_parts: nil)
         @rom_sha1 = rom_sha1
         @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
+        @make_unpacking_parts = make_unpacking_parts
         @original = original
         @platform = platform
       end
@@ -163,6 +202,12 @@ module VBlank
       # asked for (Original::FrameRewrite), so ask once the game is declared: asked again after
       # the game names another frame, it is made again.
       def unpacking(release: nil) = @make_unpacking.call(release)
+
+      # The parts of an all-in-one build's routine (an Original::UnpackingParts), which the pack
+      # cache keeps apart: nil for a routine of one part, for a build that leaves the pack out, and
+      # where a part cannot be built as a program of its own. What a game's test of its own cache
+      # asks for, beside #unpacking.
+      def unpacking_parts = @make_unpacking_parts&.call
 
       # The handle of the slot named +name+.
       def [](name)

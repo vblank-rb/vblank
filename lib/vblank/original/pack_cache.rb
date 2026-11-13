@@ -31,7 +31,10 @@ module VBlank
     # left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each
     # miss and each store the same bytes: an entry is written under a name of its own and then renamed,
     # so neither reads half of one, and an entry that cannot be read is made again. A PackCache
-    # holds nothing that changes, so it is made for each build.
+    # keeps only the digests of the library and the copies it has keyed, and is made for each build.
+    #
+    # A routine the game gives in parts (`slots.fill_from_copy :music do ... end`) is kept a part
+    # at a time, so a change to one part plays that part again and not the rest (#pack_by_parts).
     class PackCache
       ENTRY_EXTENSION = ".pack"
       PARTIAL_EXTENSION = ".part"
@@ -45,9 +48,15 @@ module VBlank
       # The pack (an Original::Pack) +unpacking+ (an Original::Unpacking, holding the copy it reads)
       # makes for the copy whose SHA-1 is +sha1+ and the build +build_version+: the cached entry on
       # a hit; else the one the block writes to the file at the path it is handed, which is then stored.
-      def pack(unpacking, sha1:, build_version:, &write)
+      #
+      # Where +parts+ (an UnpackingParts) is given, the routine's parts are cached apart: see
+      # #pack_by_parts. The block is then handed, after the path, the Unpacking to play and the
+      # names of the parts it plays.
+      def pack(unpacking, sha1:, build_version:, parts: nil, &write)
+        return pack_by_parts(unpacking, parts, sha1, build_version, &write) if parts
+
         path = File.join(@folder, "#{key(unpacking, sha1, build_version)}#{ENTRY_EXTENSION}")
-        read(path) || store(path, &write)
+        read(path) || store(path) { |temporary| yield temporary, unpacking, nil }
       end
 
       # What a pack that only keeps slots names in its header, where there is no copy's SHA-1 or
@@ -68,13 +77,87 @@ module VBlank
 
       private
 
+      # A ROUTINE IN PARTS (UnpackingParts) is cached a part at a time. A part's entry is a pack
+      # holding the slots it is the last part to write (UnpackingParts#slots_of). Its key is the
+      # whole routine's, with the program of that part and every part it needs
+      # (UnpackingParts#inputs_of) in place of the whole program, the part's name, and the slots
+      # its entry holds (a later part that stops writing a slot makes it this part's): so a change
+      # to a part misses for it and for every part that needs it, and for no other. The parts that
+      # missed are played in one program with all they need (UnpackingParts#played_for), and each
+      # one's slots are stored. The pack is put together from the entries: each slot from the part
+      # last to write it, a slot copied as it is from the copy, and a slot no part writes as
+      # zeros, as the whole routine leaves them.
+      #
+      # Where the parts played go wrong, the whole routine is played instead and nothing is kept,
+      # so the build stops with the error the whole routine stops with.
+      def pack_by_parts(unpacking, parts, sha1, build_version, &write)
+        paths = parts.names.to_h { |name| [name, part_entry_path(unpacking, parts, name, sha1, build_version)] }
+        kept = paths.to_h { |name, path| [name, read(path)] }.compact
+        missed = parts.names - kept.keys
+        unless missed.empty?
+          played = parts.played_for(missed)
+          made = play_parts(parts, played, &write)
+          return play_whole(unpacking, parts, &write) unless made
+
+          missed.each { |name| kept[name] = store_part(paths.fetch(name), made, parts.slots_of(name)) }
+        end
+        assemble_pack(unpacking, parts, kept, sha1, build_version)
+      end
+
+      # The pack the block writes playing the parts +played+, or nil where they went wrong.
+      def play_parts(parts, played)
+        Pack.read_from_temporary_file { |path| yield path, parts.unpacking_of(played), played }
+      rescue StandardError
+        # Must rescue every error: the whole routine, played next, raises the one the build stops with.
+        nil
+      end
+
+      def play_whole(unpacking, parts)
+        Pack.read_from_temporary_file { |path| yield path, unpacking, parts.names }
+      end
+
+      # The part's entry: the slots +slot_names+ of +made+, stored at +path+.
+      def store_part(path, made, slot_names)
+        entry = Pack.holding(slot_names.to_h { |name| [name, made.bytes_of(name)] }, sha1: made.rom_sha1,
+                                                                                    build_version: made.build_version)
+        store(path) { |temporary| entry.write(temporary) }
+      end
+
+      def assemble_pack(unpacking, parts, kept, sha1, build_version)
+        slot_bytes = unpacking.slots.to_h do |slot|
+          writer = parts.last_writer_of(slot.name)
+          bytes = if writer then kept.fetch(writer).bytes_of(slot.name)
+                  elsif slot.filled_by_routine? then "\0".b * slot.byte_size
+                  else slot.cut_from(unpacking.copy_bytes)
+                  end
+          [slot.name, bytes]
+        end
+        Pack.holding(slot_bytes, sha1: sha1, build_version: build_version)
+      end
+
+      def part_entry_path(unpacking, parts, name, sha1, build_version)
+        program = parts.unpacking_of(parts.played_for([name])).program
+        digest = key_digest(unpacking, sha1, build_version)
+        digest << "part " << name.to_s << "\0" << parts.slots_of(name).join(" ") << "\0" << IR::Dump.source(program)
+        File.join(@folder, "#{digest.hexdigest}#{ENTRY_EXTENSION}")
+      end
+
       def key(unpacking, sha1, build_version)
-        digest = Digest::SHA256.new
-        digest << library_digest << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
-        digest << Digest::SHA256.hexdigest(unpacking.copy_bytes) << "\0"
-        digest << sha1.to_s << "\0" << build_version.to_s << "\0"
+        digest = key_digest(unpacking, sha1, build_version)
         digest << IR::Dump.source(unpacking.program)
         digest.hexdigest
+      end
+
+      # The key's digest of everything but the program: the library, the Ruby, the copy, and the
+      # SHA-1 and build version the pack's header names.
+      # Worked out once for every part's key, since the library and the copy can be many megabytes.
+      def key_digest(unpacking, sha1, build_version)
+        library = @library_digest ||= library_digest
+        copy = (@copy_digests ||= {}.compare_by_identity)[unpacking.copy_bytes] ||= Digest::SHA256.hexdigest(unpacking.copy_bytes)
+        digest = Digest::SHA256.new
+        digest << library << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
+        digest << copy << "\0"
+        digest << sha1.to_s << "\0" << build_version.to_s << "\0"
       end
 
       def library_digest

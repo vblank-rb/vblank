@@ -192,7 +192,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
 
   A game has one `data_pack`. A slot with no `at:` is filled by the unpacking routine (below); a slot with
   no `at:` and no routine is refused.
-- **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game
+- **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack, or given in named
+  parts, `slots.fill_from_copy :floors do … end` then `slots.fill_from_copy :music do … end`, which run in
+  that order as one routine would (each part named, no name twice; the cache below keeps them apart). It is **game
   code**, a program of its own (`Original::Unpacking`), so the same routine fills the pack as the game is
   built (played to its `halt` the fastest way the machine has, below) and on the player's machine (see
   "With the pack left out" below). The
@@ -308,7 +310,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
   ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
   routine, the same slots, the same version and the same VBlank reads the pack file back instead
   (`Original::PackCache`).
-  The key is the whole routine, so a change to any part of it runs all of it again. Leave it out and
+  The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
+  in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
+  the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a
+  slot the other writes, or both name one variable, list or routine. Hand nothing from one part to
+  another in Ruby (an instance variable, a local both blocks share) or through `copy.bytes_done`:
+  the cache cannot see it, so pass it through a slot. The pack is the whole routine's,
+  byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
+  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. Leave it out and
   every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
   nothing.
 

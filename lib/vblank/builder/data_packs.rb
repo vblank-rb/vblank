@@ -99,19 +99,30 @@ module VBlank
         copy_release_slots = slots_in_release(slots, copy_release.name)
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
-        unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
+        routines = slots.routines
+        unpacking = (unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release) unless routines.empty?)
+        # Built once, the first time the cache or a test asks; nil is an answer too.
+        parts_built = false
+        parts = nil
+        make_parts = lambda do
+          unless parts_built
+            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release) if routines.size > 1)
+            parts_built = true
+          end
+          parts
+        end
         @data_pack_contents = if unpacking
-                                unpacked_pack(unpacking, cache, sha1: copy.sha1, build_version: version)
+                                unpacked_pack(unpacking, cache, sha1: copy.sha1, build_version: version, make_parts: make_parts)
                               else
                                 Original::Pack.from_bytes(Original::Pack.holding(copied, sha1: copy.sha1, build_version: version).to_bytes)
                               end
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
-                                       slots: slots.list, platform: from.platform,
+                                       slots: slots.list, platform: from.platform, make_unpacking_parts: make_parts,
                                        make_unpacking: lambda { |_release|
                                          frames = pack_frame_section
-                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, slots.routine, reading,
+                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, routines, reading,
                                                                             release: copy_release, frames: frames)
                                        })
       end
@@ -165,7 +176,7 @@ module VBlank
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
                                          frames = pack_frame_section
-                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routine,
+                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines,
                                                                                        reading, release: release, frames: frames)
                                        })
       end
@@ -490,9 +501,11 @@ module VBlank
 
       # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy
       # read from the file the program is handed as it starts, the pack's bytes as one list, each of
-      # +slots+ copied as it is or filled by +routine+, the game's `slots.fill_from_copy` block, run
-      # as game code on a builder of its own. A pack with no routine has one too, which only copies:
-      # it is what a shell runs for any pack. The program holds none of the copy however it is built.
+      # +slots+ copied as it is or filled by +routines+, the game's `slots.fill_from_copy` blocks
+      # (DSL::PackSlots::Routine) run one after another as game code on a builder of its own. A
+      # pack with no routine has one too, which only copies: it is what a shell runs for any pack.
+      # The program holds none of the copy however it is built. +slot_uses+, by part name, records
+      # which slots each part reads and writes as it is built (#unpacking_parts).
       #
       # Built all-in-one, +bytes+ is the copy the build read: the program is built for a copy of
       # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
@@ -504,7 +517,8 @@ module VBlank
       #
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
-      def unpacking_program(bytes, slots, routine, reading, release:, frames: Original::FrameRecord::Section.new(sources: []))
+      def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
+                            slot_uses: {})
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
@@ -530,7 +544,11 @@ module VBlank
           slots.reject(&:filled_by_routine?).each do |slot|
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
-          maker.instance_exec(reader, pack, release.name, &routine) if routine
+          routines.each do |routine|
+            pack.record_uses_in(slot_uses[routine.part])
+            maker.instance_exec(reader, pack, release.name, &routine.block)
+          end
+          pack.record_uses_in(nil)
           wait = lambda do
             maker.call(progress) if progress
             maker.wait_vblank
@@ -635,12 +653,38 @@ module VBlank
       end
 
       # The pack the routine writes, for the copy whose SHA-1 is +sha1+ and the build
-      # +build_version+, read back from +cache+ (a folder, or nil for none) where it is kept.
-      def unpacked_pack(unpacking, cache, sha1:, build_version:)
-        play = ->(path) { play_unpacking(unpacking, path, sha1: sha1, build_version: build_version) }
+      # +build_version+, read back from +cache+ (a folder, or nil for none) where it is kept, part by
+      # part where the routine is in parts (+make_parts+ makes its Original::UnpackingParts).
+      def unpacked_pack(unpacking, cache, sha1:, build_version:, make_parts:)
+        play = lambda do |path, played = unpacking, _part_names = nil|
+          play_unpacking(played, path, sha1: sha1, build_version: build_version)
+        end
         return Original::Pack.read_from_temporary_file(&play) if cache.nil?
 
-        Original::PackCache.new(cache).pack(unpacking, sha1: sha1, build_version: build_version, &play)
+        Original::PackCache.new(cache).pack(unpacking, sha1: sha1, build_version: build_version, parts: make_parts.call, &play)
+      end
+
+      # THE ROUTINE'S PARTS (Original::UnpackingParts), for the pack cache: each part of
+      # +routines+ built alone after the slots copied as they are, to record which slots it reads
+      # and writes and which names it holds, and a way to build the program of any of the parts.
+      # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
+      # cannot be built alone: one that calls a routine another part defines, say. The whole
+      # routine is then cached as one, as a routine of one part is.
+      def unpacking_parts(bytes, slots, routines, reading, release)
+        parts = routines.map do |routine|
+          uses = Original::SlotUses.new
+          alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses })
+          Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
+                                             names: Original::UnpackingParts.names_in(alone.program))
+        end
+        make = lambda do |played|
+          unpacking_program(bytes, slots, routines.select { |routine| played.include?(routine.part) }, reading, release: release)
+        end
+        Original::UnpackingParts.new(parts: parts, make_unpacking: make)
+      rescue ArgumentError, BuildError
+        # A part that builds only after another (it calls a routine the other defines) is no
+        # fault: the whole routine built already.
+        nil
       end
 
       # The pack file +unpacking+ writes, written to +path+, played the fastest way this machine has
@@ -697,7 +741,7 @@ module VBlank
       def slots_in_release(slots, release_name) = slots.list.map { |slot| slot.in_release(release_name) }
 
       def refuse_unfilled_slots!(slots)
-        return if slots.routine
+        return unless slots.routines.empty?
 
         unfilled = slots.list.select(&:filled_by_routine?).map { |slot| ":#{slot.name}" }
         return if unfilled.empty?
