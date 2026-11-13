@@ -18,7 +18,7 @@ module VBlank
         # into each), :runs (one a run), or a count the field before it holds (:scenery_put_up,
         # :held_tiles, four a change), the game's backgrounds (:backgrounds, BACKGROUND_NUMBERS each), or what those
         # hold (:own_cells, a cell of each copy; :bent_lines, a screen's lines each), and the sprites
-        # (:sprites_drawn and :sprites_kept, PLACED_SPRITE_NUMBERS each; :sprite_cuts, two a slice; :sprite_places,
+        # (:sprites_drawn and :sprites_kept, PLACED_SPRITE_NUMBERS each; :sprite_cuts, three a slice; :sprite_places,
         # three for each sprite there is room for), and the sound (:mix_voices, MIX_VOICE_NUMBERS a voice of the
         # mixer; :slice_samples, a slice's samples; :song_parts, two a part of the playing tune;
         # :held_notes, six a note; :sound_effects, EFFECT_NUMBERS an effect).
@@ -127,7 +127,8 @@ module VBlank
             # whether the layer over a painted picture is up.
             Field.new(name: "sprites", count: 3, feature: :sprites),
             # Each sprite: its number, picture, place, level, turn (turned, angle, size, resizes), and
-            # how many slices a crowded line leaves out, then those slices, a line and a piece each.
+            # how many slices a crowded line leaves out, then those slices, each a line, a piece and
+            # the piece's first column left out.
             Field.new(name: "sprites.drawing", count: :sprites_drawn, feature: :sprites),
             Field.new(name: "sprites.drawing.cuts", count: :sprite_cuts, feature: :sprites),
             Field.new(name: "sprites.kept", count: :sprites_kept, feature: :sprites),

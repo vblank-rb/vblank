@@ -100,33 +100,93 @@ static void blit_image_turned(int32_t image, int32_t x, int32_t y, int32_t angle
   }
 }
 
-/* --- how many sprites a line of the screen shows (Backends::SpriteLines, which says how the
+/* --- how many sprites a line of the screen shows (Backends::SpriteLines, which says how each
  * console picks) ---
  *
  * A console that draws only so many pieces of sprites on a line (RG_SPRITE_PIECES_A_LINE, 0 for
- * none) draws the first that many its table holds there and leaves the rest out of that line. Each
- * picture's pieces are listed in rg_game_image_pieces: its first number is how tall a piece is,
- * then for each image where its list starts, and a list is how many pieces, then each piece's
- * across and down inside the picture, in the table's order. */
-enum { MAX_LEFT_OUT = 16384, PIECE_WIDTH = 8 };
-typedef struct { int32_t line, piece; } left_out_piece;
+ * none) draws the first that many its table holds there and leaves the rest out of that line; of
+ * those, one fetches only so many slivers eight pixels wide, from the back (RG_SPRITE_SLIVERS_A_LINE),
+ * and one draws only so many pixels, from the front (RG_SPRITE_PIXELS_A_LINE). Each picture's pieces
+ * are listed in rg_game_image_pieces: its first number is how many images are listed, its second the
+ * game's entry reach (piece_takes_entry), then for each image where its list starts, and a list is how many pieces, then each piece's across, down, width
+ * and height inside the picture, in the table's order. A slice left out is a piece on a line, from
+ * one of its columns to its right edge. */
+enum { MAX_LEFT_OUT = 16384, SLIVER = 8, PIECE_NUMBERS = 4, MAX_LINE_KEPT = 64 };
+typedef struct { int32_t line, piece, from; } left_out_piece;
 static left_out_piece left_out[MAX_LEFT_OUT];
 static int32_t left_out_count;
 
-static int32_t sprite_piece_height(void) { return rg_game_image_pieces[0]; }
-static const int32_t *pieces_of_image(int32_t image) { return rg_game_image_pieces + rg_game_image_pieces[1 + image]; }
+static const int32_t *pieces_of_image(int32_t image) { return rg_game_image_pieces + rg_game_image_pieces[2 + image]; }
+
+/* One piece kept on a line, as the line's limit works it out (SpriteLines.limit_line): its sprite's
+ * place in the table's order, the piece, its left edge on the screen, its width, and the first of its
+ * columns left out (its width for none). */
+typedef struct { int32_t at, piece; int64_t left; int32_t width, from; } line_piece;
+
+/* The slices found left out this frame, each with its sprite's place in the table's order, before
+ * they are put in left_out sprite by sprite. */
+static left_out_piece found_cut[MAX_LEFT_OUT];
+static int32_t found_at[MAX_LEFT_OUT], found_count;
+
+static void note_left_out(int32_t at, int64_t line, int32_t piece, int32_t from) {
+  if (found_count >= MAX_LEFT_OUT) rg_fault("more than %d slices of sprites left out of crowded lines", MAX_LEFT_OUT);
+  found_at[found_count] = at;
+  found_cut[found_count++] = (left_out_piece){(int32_t)line, piece, from};
+}
+
+/* Whether a piece of +width+ by +height+ at +left+, +top+ is on the screen at all. */
+static int piece_on_screen(int64_t left, int64_t top, int32_t width, int32_t height) {
+  return left > -width && left < RG_SCREEN_WIDTH && top > -height && top < RG_SCREEN_HEIGHT;
+}
+
+/* Whether such a piece takes an entry of the table: one on the screen, or one as far past its left
+ * or top edge as the game's entry reach (SpriteLines.entry_reach). */
+static int piece_takes_entry(int64_t left, int64_t top, int32_t width, int32_t height) {
+  int32_t reach = rg_game_image_pieces[1];
+  return piece_on_screen(left, top, width > reach ? width : reach, height > reach ? height : reach);
+}
+
+/* SpriteLines.limit_slivers: slivers fetched from the piece furthest back, each piece's left to right,
+ * those on the screen counted until RG_SPRITE_SLIVERS_A_LINE. */
+static void limit_slivers(line_piece *kept, int32_t count) {
+  int32_t fetched = 0;
+  for (int32_t i = count - 1; i >= 0; i--)
+    for (int32_t offset = 0; offset < kept[i].width; offset += SLIVER) {
+      int64_t sliver = kept[i].left + offset;
+      if (sliver <= -SLIVER || sliver >= RG_SCREEN_WIDTH) continue;
+      if (fetched == RG_SPRITE_SLIVERS_A_LINE) {
+        kept[i].from = offset;
+        break;
+      }
+      fetched++;
+    }
+}
+
+/* SpriteLines.limit_pixels: pieces drawn front-most first, each spending its whole width, until
+ * RG_SPRITE_PIXELS_A_LINE; the one that crosses it keeps the pixels left. */
+static void limit_pixels(line_piece *kept, int32_t count) {
+  int64_t spent = 0;
+  for (int32_t i = 0; i < count; i++) {
+    if (spent + kept[i].width > RG_SPRITE_PIXELS_A_LINE) {
+      int64_t left = RG_SPRITE_PIXELS_A_LINE - spent;
+      kept[i].from = left < 0 ? 0 : (int32_t)left;
+    }
+    spent += kept[i].width;
+  }
+}
 
 /* Reference#mark_slices_left_out: the slices of these sprites that a crowded line leaves out, and
  * the pieces a full table leaves out of every line (RG_SPRITE_PIECES_A_SCREEN, 0 for no limit). The
  * table lists them front-most first: the deepest level last, and inside a level the one drawn last
- * first. A piece takes an entry, and its place on every line of the screen it covers, unless it is
- * wholly off an edge, which the table never holds. */
+ * first, and is filled from the end RG_SPRITE_TABLE_FROM_BACK names. A piece takes an entry
+ * (piece_takes_entry), and its place on every line of the screen it covers. Worked out a line at a
+ * time, as the console does, then put in left_out sprite by sprite. */
 static void mark_slices_left_out(placed_object *placed, int32_t count) {
-  left_out_count = 0;
+  left_out_count = found_count = 0;
   for (int32_t i = 0; i < count; i++) placed[i].cut_from = placed[i].cut_count = 0;
   if ((RG_SPRITE_PIECES_A_LINE == 0 && RG_SPRITE_PIECES_A_SCREEN == 0) || count == 0) return;
-  int32_t entries = 0;
-  int32_t order[RG_MAX_SPRITES], taken[RG_SCREEN_HEIGHT] = {0};
+  _Static_assert(RG_SPRITE_PIECES_A_LINE <= MAX_LINE_KEPT, "more pieces kept on a line than there is room for");
+  int32_t order[RG_MAX_SPRITES];
   for (int32_t i = 0; i < count; i++) {
     int32_t at = i;
     while (at > 0 && placed[order[at - 1]].level <= placed[i].level) {
@@ -135,38 +195,75 @@ static void mark_slices_left_out(placed_object *placed, int32_t count) {
     }
     order[at] = i;
   }
-  int32_t tall = sprite_piece_height();
+  /* Each sprite's first entry of the table, and the lines its pieces on the screen cover. */
+  int32_t first_entry[RG_MAX_SPRITES], entries = 0;
+  int64_t first_line[RG_MAX_SPRITES], past_line[RG_MAX_SPRITES];
   for (int32_t k = 0; k < count; k++) {
-    placed_object *sprite = &placed[order[k]];
+    const placed_object *sprite = &placed[order[k]];
     const int32_t *pieces = pieces_of_image(sprite->image);
-    sprite->cut_from = left_out_count;
+    first_entry[k] = entries;
+    first_line[k] = RG_SCREEN_HEIGHT;
+    past_line[k] = 0;
     for (int32_t piece = 0; piece < pieces[0]; piece++) {
-      int64_t left = (int64_t)sprite->x + pieces[1 + 2 * piece], top = (int64_t)sprite->y + pieces[2 + 2 * piece];
-      if (left <= -PIECE_WIDTH || left >= RG_SCREEN_WIDTH || top <= -tall || top >= RG_SCREEN_HEIGHT) continue;
-      int in_table = RG_SPRITE_PIECES_A_SCREEN == 0 || entries < RG_SPRITE_PIECES_A_SCREEN;
+      const int32_t *p = pieces + 1 + PIECE_NUMBERS * piece;
+      int64_t left = (int64_t)sprite->x + p[0], top = (int64_t)sprite->y + p[1];
+      if (!piece_takes_entry(left, top, p[2], p[3])) continue;
       entries++;
-      int64_t first = top > 0 ? top : 0, past = top + tall < RG_SCREEN_HEIGHT ? top + tall : RG_SCREEN_HEIGHT;
-      for (int64_t line = first; line < past; line++) {
-        if (in_table && (RG_SPRITE_PIECES_A_LINE == 0 || taken[line]++ < RG_SPRITE_PIECES_A_LINE)) continue;
-        if (left_out_count >= MAX_LEFT_OUT) rg_fault("more than %d slices of sprites left out of crowded lines", MAX_LEFT_OUT);
-        left_out[left_out_count++] = (left_out_piece){(int32_t)line, piece};
+      if (!piece_on_screen(left, top, p[2], p[3])) continue;
+      if (top < first_line[k]) first_line[k] = top;
+      if (top + p[3] > past_line[k]) past_line[k] = top + p[3];
+    }
+  }
+  line_piece kept[MAX_LINE_KEPT];
+  for (int64_t line = 0; line < RG_SCREEN_HEIGHT; line++) {
+    int32_t kept_count = 0, on_line = 0;
+    for (int32_t k = 0; k < count; k++) {
+      if (line < first_line[k] || line >= past_line[k]) continue;
+      const placed_object *sprite = &placed[order[k]];
+      const int32_t *pieces = pieces_of_image(sprite->image);
+      int32_t entry = first_entry[k];
+      for (int32_t piece = 0; piece < pieces[0]; piece++) {
+        const int32_t *p = pieces + 1 + PIECE_NUMBERS * piece;
+        int64_t left = (int64_t)sprite->x + p[0], top = (int64_t)sprite->y + p[1];
+        if (!piece_takes_entry(left, top, p[2], p[3])) continue;
+        int in_table = RG_SPRITE_PIECES_A_SCREEN == 0 ||
+                       (RG_SPRITE_TABLE_FROM_BACK ? entry >= entries - RG_SPRITE_PIECES_A_SCREEN : entry < RG_SPRITE_PIECES_A_SCREEN);
+        entry++;
+        if (!piece_on_screen(left, top, p[2], p[3]) || line < top || line >= top + p[3]) continue;
+        if (!in_table) note_left_out(k, line, piece, 0);
+        else if (RG_SPRITE_PIECES_A_LINE == 0) continue;
+        else if (on_line++ >= RG_SPRITE_PIECES_A_LINE) note_left_out(k, line, piece, 0);
+        else kept[kept_count++] = (line_piece){k, piece, left, p[2], p[2]};
       }
     }
+    if (RG_SPRITE_SLIVERS_A_LINE != 0) limit_slivers(kept, kept_count);
+    if (RG_SPRITE_PIXELS_A_LINE != 0) limit_pixels(kept, kept_count);
+    for (int32_t i = 0; i < kept_count; i++)
+      if (kept[i].from < kept[i].width) note_left_out(kept[i].at, line, kept[i].piece, kept[i].from);
+  }
+  /* Sprite by sprite: each sprite's slices together, in the order they were found. */
+  for (int32_t k = 0; k < count; k++) {
+    placed_object *sprite = &placed[order[k]];
+    sprite->cut_from = left_out_count;
+    for (int32_t i = 0; i < found_count; i++)
+      if (found_at[i] == k) left_out[left_out_count++] = found_cut[i];
     sprite->cut_count = left_out_count - sprite->cut_from;
   }
 }
 
 /* SpriteLines.left_out_at?: is column +col+, row +row+ of a sprite's picture, on screen line +line+,
- * left out? It is where a piece left out of that line covers it and no piece drawn there does. */
+ * left out? It is where a piece covering it is left out there from that column, and no piece drawn
+ * there covers it. */
 static int left_out_at(const placed_object *placed, int64_t col, int64_t row, int64_t line) {
   const int32_t *pieces = pieces_of_image(placed->image);
-  int32_t tall = sprite_piece_height(), covered = 0;
+  int32_t covered = 0;
   for (int32_t piece = 0; piece < pieces[0]; piece++) {
-    int64_t across = pieces[1 + 2 * piece], down = pieces[2 + 2 * piece];
-    if (col < across || col >= across + PIECE_WIDTH || row < down || row >= down + tall) continue;
+    const int32_t *p = pieces + 1 + PIECE_NUMBERS * piece;
+    int64_t across = p[0], down = p[1];
+    if (col < across || col >= across + p[2] || row < down || row >= down + p[3]) continue;
     int cut = 0;
     for (int32_t i = placed->cut_from; i < placed->cut_from + placed->cut_count && !cut; i++)
-      cut = left_out[i].line == line && left_out[i].piece == piece;
+      cut = left_out[i].line == line && left_out[i].piece == piece && col - across >= left_out[i].from;
     if (!cut) return 0;
     covered = 1;
   }
@@ -542,11 +639,12 @@ static const uint16_t *rg_sprites_front_layer(void) { return over_picture_up ? o
 
 /* Each sprite on screen in "sprites.drawing" and "sprites.kept": its number, picture, place and
  * level, its turn (turned, angle, size, whether it resizes), and how many slices a crowded line
- * leaves out of it, which follow in the field after, a line and a piece each. */
+ * leaves out of it, which follow in the field after, a line, a piece and its first column left out
+ * each. */
 enum {
   PLACED_STATE_NUMBERS = 10, PLACED_SPRITE = 0, PLACED_IMAGE = 1, PLACED_X = 2, PLACED_Y = 3, PLACED_LEVEL = 4,
   PLACED_TURNED = 5, PLACED_ANGLE = 6, PLACED_SIZE = 7, PLACED_RESIZES = 8, PLACED_CUT_COUNT = 9,
-  CUT_NUMBERS = 2,          /* the line, and the piece */
+  CUT_NUMBERS = 3,          /* the line, the piece, and its first column left out */
   DRAWN_PLACE_NUMBERS = 3,  /* whether drawn, and where */
 };
 
@@ -579,6 +677,7 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
     for (int32_t j = placed[i].cut_from; j < placed[i].cut_from + placed[i].cut_count; j++, at += CUT_NUMBERS) {
       cuts[at] = left_out[j].line;
       cuts[at + 1] = left_out[j].piece;
+      cuts[at + 2] = left_out[j].from;
     }
   rg_state_numbers(cuts_name, cuts, (int32_t)(cut_total * CUT_NUMBERS));
 
@@ -589,7 +688,7 @@ static void visit_placed_objects(const char *name, const char *cuts_name, placed
                                 (int32_t)n[PLACED_LEVEL], (int32_t)n[PLACED_TURNED], (int32_t)n[PLACED_ANGLE],
                                 (int32_t)n[PLACED_SIZE], (int32_t)n[PLACED_RESIZES], left_out_count, (int32_t)n[PLACED_CUT_COUNT]};
     for (int64_t k = 0; k < n[PLACED_CUT_COUNT]; k++, at += CUT_NUMBERS)
-      left_out[left_out_count++] = (left_out_piece){(int32_t)cuts[at], (int32_t)cuts[at + 1]};
+      left_out[left_out_count++] = (left_out_piece){(int32_t)cuts[at], (int32_t)cuts[at + 1], (int32_t)cuts[at + 2]};
   }
   free(cuts);
   free(numbers);

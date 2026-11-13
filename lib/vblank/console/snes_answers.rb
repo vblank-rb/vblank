@@ -133,14 +133,17 @@ module VBlank
         mirror: works,
         upside_down: works,
         blit: works,
-        sprite: works("a sprite is made of the console's pieces, 128 pieces at once and 34 pieces of 8×8 on " \
-                      "any one row of the screen. A sprite whose poses are drawn from different lists of colors " \
+        sprite: works("a sprite is made of the console's pieces, 128 pieces at once. On any one row of the " \
+                      "screen it shows 32 pieces, and 34 strips of them 8 pixels wide. If there are more, some " \
+                      "are not shown: past 32 pieces on a row, the pieces furthest back; past 34 strips, the " \
+                      "right side of the pieces in front; past 128 pieces, the pieces in front, on the whole " \
+                      "screen. A sprite whose poses are drawn from different lists of colors " \
                       "shows each pose in the colors of its own list. It can draw all those lists with one " \
                       "other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists " \
                       "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of " \
                       "big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 " \
-                      "pieces too, wherever they sit. Past 128 pieces, a sprite is not drawn and no error " \
-                      "shows as the game runs. The build warns when the sprites one screen declares pass " \
+                      "pieces too, wherever they sit. No error " \
+                      "shows as the game runs when a piece is not shown. The build warns when the sprites one screen declares pass " \
                       "128, and when it gives up the squares of 16×16 to fit the tiles. It does not count " \
                       "pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super " \
                       "Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with " \

@@ -160,7 +160,10 @@ module VBlank
                       "need more squares than the video memory holds, the build stops. It says how many they " \
                       "need and which pictures use the most. " \
                       "The Genesis shows 80 pieces at once, and 20 pieces and 320 pixels of sprites on any one " \
-                      "row of the screen. Past 80 pieces, a sprite is not drawn and no error shows " \
+                      "row of the screen. A piece spends its whole width of those 320 pixels, its clear pixels and " \
+                      "the pixels off the screen too. If there are more, some are not shown: past 20 pieces on a " \
+                      "row, the pieces furthest back; past 320 pixels, the rest of the pieces furthest back; past " \
+                      "80 pieces, the pieces in front, on the whole screen. No error shows " \
                       "as the game runs. `scale`, `face_angle` and `turn` are refused: a Genesis cannot " \
                       "turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` shows " \
                       "over a painted screen, as on the Advance. The painted picture uses one of the four lists of " \

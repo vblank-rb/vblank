@@ -51,7 +51,7 @@ module VBlank
           end
 
           # The most tiles a sprite entry draws across, and down.
-          PIECE_SQUARES = 4
+          PIECE_SQUARES = SpritePieces::RECTANGLE_SQUARES
           SpritePicture = Data.define(:name, :number, :width, :height, :pieces)
 
           # A piece of a sprite's picture before its tiles have numbers: where it sits, how many tiles
@@ -582,18 +582,11 @@ module VBlank
 
           # +image+ as the pieces it was made of, each group of them (Assets::Image#piece_groups) one block
           # where it makes a whole rectangle of up to four tiles each way, and a block for each piece of the
-          # group where it does not. A block that draws nothing is left out. The picture's pieces are in
-          # front first; the sprite table is written from its last row to its first, so the blocks are in
-          # the other order.
+          # group where it does not (SpritePieces.group_rectangles). The picture's pieces are in front
+          # first; the sprite table is written from its last row to its first, so the blocks are in the
+          # other order.
           def piece_blocks(image, line, palette)
-            at = 0
-            blocks = image.piece_groups.flat_map do |count|
-              group = image.pieces[at, count]
-              at += count
-              whole = rectangle_of_squares(group.flat_map { |piece| squares_of_piece(piece) })
-              whole ? [whole] : group.map { |piece| rectangle_of_squares(squares_of_piece(piece)) }
-            end
-            blocks.reject { |_, _, _, _, squares| squares.all? { |own| own.bytes.all?(&:zero?) } }.reverse.map do |dx, dy, columns, rows, squares|
+            SpritePieces.group_rectangles(image, most: PIECE_SQUARES).reverse.map do |dx, dy, columns, rows, squares|
               tiles = squares.map do |own|
                 TileBytes.of(own.bytes.map { |place| palette_place(image, place, line, palette) })
               end
@@ -607,30 +600,6 @@ module VBlank
             return place if place.zero? || palette
 
             @palettes[line].index(word_of(image.colors.fetch(place))) + 1
-          end
-
-          # A piece of a picture ([dx, dy, places]) as its squares of 8×8, each [left, top, its 64 places].
-          def squares_of_piece(piece)
-            dx, dy, own = piece
-            return [[dx, dy, own]] if Assets::Image.side(own) == Assets::PIECE_SIZE
-
-            Assets::Image.quarters(own).map { |across, down, quarter| [dx + across, dy + down, quarter] }
-          end
-
-          # +squares+ as one rectangle, [left, top, columns, rows, its squares' places down each column and
-          # then across], or nil where they are not every square of a rectangle of up to PIECE_SQUARES each way.
-          def rectangle_of_squares(squares)
-            side = Assets::PIECE_SIZE
-            left = squares.map { |x, _, _| x }.min
-            top = squares.map { |_, y, _| y }.min
-            return nil unless squares.all? { |x, y, _| ((x - left) % side).zero? && ((y - top) % side).zero? }
-
-            placed = squares.to_h { |x, y, own| [[(x - left) / side, (y - top) / side], own] }
-            columns = placed.keys.map(&:first).max + 1
-            rows = placed.keys.map(&:last).max + 1
-            return nil if columns > PIECE_SQUARES || rows > PIECE_SQUARES || placed.length != squares.length || columns * rows != squares.length
-
-            [left, top, columns, rows, (0...columns).flat_map { |column| (0...rows).map { |row| placed.fetch([column, row]) } }]
           end
 
           # The first place of the picture's own list that holds +color+, counting from place 1: place 0 is

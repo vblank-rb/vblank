@@ -381,6 +381,8 @@ module VBlank
           @console = program.described_console
           # How tall a piece of a sprite is on that console, for the lines it counts (#mark_slices_left_out).
           @sprite_piece_height = (program.sprite_piece_size_on(@console.name) || [SpritePieces::SIZE] * 2).last
+          # And how far past the screen's edge one still takes an entry of its table.
+          @sprite_entry_reach = SpriteLines.entry_reach(program, piece_height: @sprite_piece_height)
           width, height = @console.screen_size
           unless [@screen.width, @screen.height] == [width, height]
             @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
@@ -3099,13 +3101,14 @@ module VBlank
         # inside a layer the one drawn last first. Each sprite that loses a slice has it kept as
         # its +:left_out+, which drawing it reads.
         def mark_slices_left_out(drawn)
-          most = @console.sprite_pieces_drawn_a_line
+          limit = SpriteLines::Limit.of(@console)
           entries = @console.sprite_pieces_drawn_a_screen
-          return if (most.nil? && entries.nil?) || drawn.empty?
+          return if (limit.nil? && entries.nil?) || drawn.empty?
 
           order = drawn.each_index.sort_by { |at| [object_level(drawn[at][:object]), at] }.reverse
           sprites = order.map { |at| [drawn[at][:x], drawn[at][:y], sprite_piece_places(drawn[at][:picture])] }
-          cuts = SpriteLines.left_out(sprites, most: most, table_entries: entries, piece_height: @sprite_piece_height,
+          cuts = SpriteLines.left_out(sprites, limit: limit, table_entries: entries, table_from: @console.sprite_table_filled_from,
+                                               entry_reach: @sprite_entry_reach,
                                                screen_width: @screen.width, screen_height: @screen.height)
           order.zip(cuts).each { |at, lines| drawn[at][:left_out] = lines if lines }
         end
@@ -3115,12 +3118,13 @@ module VBlank
         # any other by what it draws.
         def sprite_piece_places(name)
           @sprite_piece_places ||= {}
+          shape = @console.sprite_piece_shape
           @sprite_piece_places[name] ||= if (run = @tile_runs.each_value.find { |r| r.picture == name })
-                                           SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height)
+                                           SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height, shape: shape)
                                          elsif (pose = @tile_poses[name])
                                            SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
                                          else
-                                           SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height)
+                                           SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height, shape: shape)
                                          end
         end
 

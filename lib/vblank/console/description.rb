@@ -23,14 +23,20 @@ module VBlank
     # Advance's does (Backends::GBA::SpriteDrawing::HeldTable), and the same where it does not.
     # +sprites_a_row+ is how many pieces of sprites, eight pixels wide, it draws on one row of the
     # screen before it leaves the rest of that row's out, or nil where the build does not count
-    # them. +sprite_pieces_drawn_a_line+ is the same limit as every backend draws it, or nil where
-    # none does: on each line of the screen the first that many pieces the console's sprite table
-    # holds there, front-most first, are drawn, and the rest are left out of that line alone
-    # (Backends::SpriteLines). It is nil where the console counts a line some other way than
-    # pieces eight pixels wide in its table's order, until that way is drawn too.
+    # them. +sprite_pieces_drawn_a_line+ is how many entries of the console's sprite table every
+    # backend draws on one line of the screen, or nil where none counts them: the first that many the
+    # table holds there, front-most first, and the rest are left out of that line alone
+    # (Backends::SpriteLines). Of those, +sprite_slivers_drawn_a_line+ is how many slivers eight
+    # pixels wide the console fetches, starting from the entry furthest back (the Super Nintendo's
+    # 34), and +sprite_pixels_drawn_a_line+ how many pixels it draws, starting from the front, each
+    # entry spending its whole width (the Genesis's 320); either is nil where it counts no such thing.
+    # +sprite_piece_shape+ is what one entry of its table draws, which is how a picture is cut into
+    # entries: :small, a square of 8×8 (or 8×16, as a game asks); :squares, those or squares of 16×16;
+    # :rectangles, up to four squares of 8×8 across and four down (Backends::SpriteLines.picture_places).
     # +sprite_pieces_drawn_a_screen+ is how many of those pieces its sprite table holds, or nil where
-    # every backend draws every sprite: the table is filled front-most first with each piece on the
-    # screen, and a piece that finds it full is left out of every line (Backends::SpriteLines).
+    # every backend draws every sprite: the table is filled with each piece on the screen from the end
+    # +sprite_table_filled_from+ names (:front, front-most first, or :back), and a piece that finds it
+    # full is left out of every line (Backends::SpriteLines).
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
@@ -142,7 +148,9 @@ module VBlank
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
                               :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
-                              :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_pieces_drawn_a_screen, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
+                              :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
+                              :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
+                              :sprite_table_filled_from, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
@@ -213,7 +221,9 @@ module VBlank
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
-                     gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, **rest) = super
+                     gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
+                     sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
+                     **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -412,12 +422,20 @@ module VBlank
                                      # SNES::ChipCode#area_places).
                                      area_clips_called_routines: true,
                                      sprite_places: 128,
-                                     # A row of the screen shows at most 32 sprites and 34 of their
-                                     # 8-pixel pieces; a piece is what this counts.
-                                     # Which are left out is not drawn yet: the first 32 in range
-                                     # of a line are kept, its squares of 16×16 count as one sprite
-                                     # and two slivers, and a piece just off an edge is in range.
-                                     sprites_a_row: 34, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
+                                     # A row of the screen shows at most 32 entries of the sprite
+                                     # table and 34 slivers 8 pixels wide of them; a sliver is what
+                                     # the build's warning counts. The first 32 entries that reach the
+                                     # line are kept, front-most first, and their slivers fetched from
+                                     # the back, so past 34 the entries in front lose theirs. A square
+                                     # of 16×16 is one entry and two slivers, and a sliver off the
+                                     # screen is not fetched (measured in bsnes).
+                                     sprites_a_row: 34, sprite_pieces_drawn_a_line: 32, sprite_slivers_drawn_a_line: 34,
+                                     sprite_piece_shape: :squares,
+                                     # The table's 128 rows, filled from the sprite furthest back,
+                                     # so past them the pieces in front are not drawn (measured in
+                                     # bsnes).
+                                     sprite_pieces_drawn_a_screen: 128, sprite_table_filled_from: :back,
+                                     turning_sprites: false,
                                      # Every sprite picture is cut into 8×8 pieces (Backends::SNES::Art).
                                      sprite_sizes: nil, tile_planes: 4,
                                      # The build shows a game's backgrounds on the arrangement of
@@ -488,11 +506,18 @@ module VBlank
                               holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,
-                              # A row of the screen shows at most 20 sprites (16 on a screen of 256
-                              # across), and a sprite here is one piece of a picture, up to 32×32.
-                              # Which are left out is not drawn yet: a piece up to 32 wide is one
-                              # of the twenty, and the 320 pixels a line counts blank ones too.
-                              sprites_a_row: 20, sprite_pieces_drawn_a_line: nil, turning_sprites: false,
+                              # A row of the screen shows at most 20 entries of the sprite table (16
+                              # on a screen of 256 across), and an entry here is one piece of a
+                              # picture, up to 32×32. The first 20 that reach the line are kept,
+                              # front-most first, and drawn front-most first until 320 pixels are
+                              # spent: each spends its whole width, its blank pixels and those off
+                              # the screen too (measured in Genesis Plus GX).
+                              sprites_a_row: 20, sprite_pieces_drawn_a_line: 20, sprite_pixels_drawn_a_line: 320,
+                              sprite_piece_shape: :rectangles,
+                              # The table's 80 rows, filled from the sprite furthest back, so past
+                              # them the pieces in front are not drawn (measured in Genesis Plus GX).
+                              sprite_pieces_drawn_a_screen: 80, sprite_table_filled_from: :back,
+                              turning_sprites: false,
                               # Every sprite picture is covered by pieces of whole 8×8 tiles, up to
                               # four across and four down (Backends::SpritePieces.cover).
                               sprite_sizes: nil, tile_planes: nil,

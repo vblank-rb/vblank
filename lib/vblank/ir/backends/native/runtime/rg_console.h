@@ -68,11 +68,29 @@
 #define RG_SPRITE_PIECES_A_LINE 0
 #endif
 
+/* Of those, how many slivers eight pixels wide it fetches, from the piece furthest back, or 0 where
+ * it counts none (Console::Description#sprite_slivers_drawn_a_line); and how many pixels it draws,
+ * from the front, each piece spending its whole width, or 0 where it counts none
+ * (Console::Description#sprite_pixels_drawn_a_line). */
+#ifndef RG_SPRITE_SLIVERS_A_LINE
+#define RG_SPRITE_SLIVERS_A_LINE 0
+#endif
+#ifndef RG_SPRITE_PIXELS_A_LINE
+#define RG_SPRITE_PIXELS_A_LINE 0
+#endif
+
 /* How many pieces of sprites the console's sprite table holds, the pieces furthest back left out
  * of every line once it is full, or 0 where every piece is drawn
  * (Console::Description#sprite_pieces_drawn_a_screen). */
 #ifndef RG_SPRITE_PIECES_A_SCREEN
 #define RG_SPRITE_PIECES_A_SCREEN 0
+#endif
+
+/* Whether the console's cartridge fills that table from the piece furthest back, so a full table
+ * leaves out the pieces in front, rather than front-most first
+ * (Console::Description#sprite_table_filled_from). */
+#ifndef RG_SPRITE_TABLE_FROM_BACK
+#define RG_SPRITE_TABLE_FROM_BACK 0
 #endif
 
 /* Whether the console's cartridge carries a motor that a game's `rumble` runs

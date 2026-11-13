@@ -206,10 +206,13 @@ extern const int32_t rg_game_image_pictures[];
 extern const int32_t rg_game_sprite_blocks[];
 extern const int32_t rg_game_sprite_boxes[];
 /* THE PIECES A CONSOLE'S SPRITE TABLE HOLDS each image as, for a console that draws only so many
- * on a line (RG_SPRITE_PIECES_A_LINE; Backends::SpriteLines). The first number is how tall a piece
- * is; then, for each image by its number, where its pieces start in this array; and there, how
- * many there are, then each one's across and down inside the picture, the one in front first. Only
- * the first number for a console that draws every piece. */
+ * on a line or on the screen (RG_SPRITE_PIECES_A_LINE, RG_SPRITE_PIECES_A_SCREEN;
+ * Backends::SpriteLines). The first number is how many images are listed; the second how far past
+ * the screen's left or top edge a piece still takes an entry of the table, 0 for its own width or
+ * height (SpriteLines.entry_reach); then, for each image by its number, where its pieces start in
+ * this array; and there, how many there are, then each one's across, down, width and height inside
+ * the picture, the one in front first. Only the first two numbers, 0, for a console that draws
+ * every piece. */
 extern const int32_t rg_game_image_pieces[];
 
 /* Each layer the game can be seen through is RG_ST_FIELDS numbers in rg_game_see_through: 1 when

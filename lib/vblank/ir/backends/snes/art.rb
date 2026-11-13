@@ -81,12 +81,12 @@ module VBlank
           # rows of sixteen, and within one page of 256: the row after the last of a page is that
           # page's first, not the next page's. So a square's four tiles have to be laid out in that
           # shape, which is why this class places tiles rather than only listing them.
-          SQUARE = 16
+          SQUARE = SpritePieces::BIG
           TILES_ACROSS = 16
           TILE_ROWS_IN_PAGE = 16
 
           # A square with one piece drawn saves no row and costs four tiles.
-          SQUARE_LEAST_PIECES = 2
+          SQUARE_LEAST_PIECES = SpritePieces::BIG_LEAST_SQUARES
 
           # A grid of map cells, as the console's video memory holds it: +columns+ and +rows+ of
           # 32 or 64, and the bytes, two a cell, laid out in screens of 32×32 cells — the left top
@@ -858,12 +858,8 @@ module VBlank
           # +cut+ and given back as pieces. What is left of +cut+ stays 8×8, and so does a square
           # there is no place for.
           def square_pieces(cut, image, palette)
-            downs = (0..(image.height - SQUARE)).step(SQUARE).to_a
-            acrosses = (0..(image.width - SQUARE)).step(SQUARE).to_a
-            downs.product(acrosses).filter_map do |down, across|
-              parts = [[across, down], [across + 8, down], [across, down + 8], [across + 8, down + 8]]
-              next if parts.count { |part| cut.key?(part) } < SQUARE_LEAST_PIECES
-
+            SpritePieces.big_squares(cut.keys, image.width, image.height, least: SQUARE_LEAST_PIECES).filter_map do |across, down|
+              parts = SpritePieces.big_square_quarters(across, down)
               tile = sprite_square_number(parts.map { |part| cut[part] ? TileBytes.of(cut[part]) : blank_tile })
               next unless tile
 
