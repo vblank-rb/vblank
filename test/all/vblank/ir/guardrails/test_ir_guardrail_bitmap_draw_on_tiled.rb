@@ -111,6 +111,23 @@ class TestIRGuardrailBitmapDrawOnTiled < Minitest::Test
     assert_match(/`blit`/, Check.new.detect(prog).first.message)
   end
 
+  # A `fill_rect` given a number the game works out is drawn the way `draw_rect_at` draws, but
+  # the author wrote `fill_rect`, so that is the verb the refusal names.
+  def test_a_fill_rect_given_a_game_number_is_named_as_written
+    prog = program do
+      screen :tiled
+      image(:blue_t, "#" => :blue) { SOLID_TILE }
+      tiles :ground, "#" => :blue_t
+      background :field, tiles: :ground, map: FIELD
+      x = var :x, 100
+      game_loop { fill_rect x, 70, 40, 20, :red }
+    end
+
+    message = Check.new.detect(prog).first.message
+    assert_match(/`fill_rect`/, message)
+    refute_match(/draw_rect_at/, message, "the author never wrote draw_rect_at")
+  end
+
   # --- what it must NOT flag ---
 
   # The headline false positive. On a tiled screen `draw_text`, `draw_number` and

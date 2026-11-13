@@ -143,7 +143,7 @@ module VBlank
       def refuse_game_number_in_fixed_field!(node, field, type, value)
         return unless value.respond_to?(:node) && value.node.is_a?(Node) && value.node.value?
 
-        verb = Messages::PlainWords.verb(node.kind)
+        verb = Messages::PlainWords.verb_written(node)
         where = node.source ? " at #{node.source}" : ""
         fix = type == :int ? "write a plain number for #{field}, such as 10" : "write #{field} in the program"
         raise Guardrails::ValidationError,

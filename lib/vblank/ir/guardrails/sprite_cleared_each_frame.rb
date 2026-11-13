@@ -27,6 +27,11 @@ module VBlank
           # Ops only a sprite's repaint emits — the tell that a sprite lives in a loop.
           SPRITE_OPS = %i[save_region restore_region].freeze
 
+          # Fills whose width and height can say they cover the display. A `draw_rect_at` reads
+          # its numbers as the program runs; a `fill_rect` given a place the game works out is
+          # one of those too, and its size is still written in the program.
+          RECT_FILLS = %i[fill_rect dma_fill_rect draw_rect_at].freeze
+
           PROBLEM =
             "This game moves a sprite, but it also clears the whole screen every frame. The two work against " \
             "each other. A sprite draws itself each frame and puts back the pixels under it as it moves. This " \
@@ -54,12 +59,23 @@ module VBlank
 
           private
 
-          # A whole-screen wipe: a `clear_screen`, or a fill that covers the display.
+          # A whole-screen wipe: a `clear_screen`, or a fill as big as the display. Where it
+          # starts is not asked: a fill that big wipes the field under the sprite wherever it is. A
+          # size the game works out as it runs is not known while building, so such a fill is
+          # never taken for one.
           def full_screen_clear?(node, (width, height))
             return true if node.kind == :clear_screen
-            return false unless %i[fill_rect dma_fill_rect].include?(node.kind)
+            return false unless RECT_FILLS.include?(node.kind)
 
-            node.w.to_i >= width && node.h.to_i >= height
+            written_size(node.w) >= width && written_size(node.h) >= height
+          end
+
+          # A width or height as written in the program: a plain number, or a value node holding
+          # one. Zero for one the game works out, which covers nothing that can be known.
+          def written_size(size)
+            return size.to_i unless size.is_a?(Node)
+
+            size.kind == :int ? size.value : 0
           end
         end
       end

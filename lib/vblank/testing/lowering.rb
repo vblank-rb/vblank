@@ -63,7 +63,7 @@ module VBlank
       RUNS = Ractor.make_shareable([
                                      Run.new(name: :gba, title: "GBA", console: :gba, checked: false,
                                              does: "the game on the interpreter", needs: nil,
-                                             player: "IR::Backends::Reference", yjit: true),
+                                             player: "Testing::InterpreterPlayer", yjit: true),
                                      Run.new(name: :native, title: "native", console: :gba, checked: true,
                                              does: "the game built as C, checked against the interpreter",
                                              needs: "zig", player: "Testing::CheckedPlayer", yjit: true),

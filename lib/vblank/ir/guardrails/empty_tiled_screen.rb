@@ -98,8 +98,8 @@ module VBlank
           # The verb the developer typed for the first bitmap-only draw, or nil if
           # the game draws nothing at all.
           def bitmap_verb(program)
-            kind = program.each.find { |node| TiledDisplay::BITMAP_DRAWS.include?(node.kind) }&.kind
-            kind && TiledDisplay.verb_for(kind)
+            draw = program.each.find { |node| TiledDisplay::BITMAP_DRAWS.include?(node.kind) }
+            draw && TiledDisplay.verb_for(draw)
           end
 
           def tiled_screen_node(program)

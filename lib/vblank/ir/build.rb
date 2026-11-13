@@ -222,9 +222,11 @@ module VBlank
       # A size the program works out is what a bar or a column needs: a health meter
       # that empties sideways, a wall column in a first-person view, a tower rising
       # out of the ground. A width or height of zero or less draws nothing.
-      def draw_rect_at(x, y, w, h, color)
+      # +written_as+ is the verb the author wrote, where it was not this one (Nodes::DrawRectAt).
+      def draw_rect_at(x, y, w, h, color, written_as: nil)
+        named = written_as ? { written_as: written_as } : {}
         Nodes.build(:draw_rect_at, x: to_value_node(x), y: to_value_node(y), w: to_value_node(w), h: to_value_node(h),
-                                   color: color)
+                                   color: color, **named)
       end
 
       def draw_column_at(name, slice, x, top, height, width: 1)

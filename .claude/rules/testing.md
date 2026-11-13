@@ -59,7 +59,8 @@ files include (`test/clock_tests.rb`). The one lowering skip there is: **a part 
 not make yet** (the player raises that itself, naming the part, or `skip_on_gbc "why"` and its
 siblings), and only while the work to make it is tracked; the skip names the part, never the
 tracker. A run playing as a console refuses a game that console's build refuses before it plays
-(`Testing::BuildChecks`: the guardrails a build runs, so the console's limits and its answers), with
+(`Testing::BuildChecks`: the checks a build runs, from `IR::ProgramChecks`, so the console's limits
+and its answers; the interpreter's run asks only that the tree is one a build can be made from), with
 the build's `Guardrails::ValidationError`, so a test in `test/all/` of what one console cannot do
 fails on that console's runs rather than passing unseen. A test of the refusal itself asserts it
 there: its class and a key phrase. A test that shows what a refused game would do plays it on the

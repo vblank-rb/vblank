@@ -47,6 +47,10 @@ module VBlank
       # a literal that had already been wrapped answered "the game works it out" and took the
       # run-time path for nothing. The report and the reference call these two fixed and
       # worked out, so the code uses fixed too.
+      #
+      # A fraction's bits are not checked, because no handle a game holds is a fraction over a
+      # literal: the one place that makes one is #coerce, whose handle is used up by the operator
+      # it was made for. A verb that ever hands one back must check them here.
       def self.fixed_number(operand)
         node = operand.is_a?(Value) ? operand.node : operand
         return node if node.is_a?(Integer)

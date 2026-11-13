@@ -597,7 +597,7 @@ module VBlank
         # A verb drawing its own text names ITSELF here: a `menu`'s rows really cannot
         # belong to a layer on a bitmap screen, and the author wrote `menu`, not the
         # `draw_text` underneath it (see Text#with_text_owned_by).
-        verb = @verb_owns_text || Messages::PlainWords.verb(node.kind)
+        verb = @verb_owns_text || Messages::PlainWords.verb_written(node)
         raise ArgumentError,
               "`#{verb}` paints where you call it#{bitmap_screen_suffix(node)}, so it cannot " \
               "belong to the layer :#{@current_layer}. A layer holds the things the framework " \

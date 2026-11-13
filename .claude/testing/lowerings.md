@@ -31,7 +31,7 @@ fails on the Color run until it is made — that failure is the work still owed.
 call its run cannot answer (`GBC::HeadlessRun::CannotAnswer`), counted by reason at the end;
 `skip_on_gbc` is there for a test the Color's build does not make yet. A game the Color's build
 refuses is refused by every run playing as the Color before it plays (`Testing::BuildChecks`, the
-guardrails a build runs), in the build's words, so a test of what the Color's hardware cannot do
+checks a build runs, from `IR::ProgramChecks`), in the build's words, so a test of what the Color's hardware cannot do
 fails there and belongs in the folders of the consoles that can. A port's unpacking is not checked
 (`IR::Nodes::Program#for_unpacking`), since it runs only on a computer and no shell checks it.
 `test/lowering/gbc/vblank/ir/backends/gbc/` is its own folder. A game built for both consoles

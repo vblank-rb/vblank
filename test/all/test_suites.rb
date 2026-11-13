@@ -11,7 +11,7 @@ require "test_helper"
 # other side is test_native_suite.rb, test_js_suite.rb and test_gbc_suite.rb, in those lowerings'
 # folders, which fail if another run ever plays them.
 class TestSuitesSplit < Minitest::Test
-  PLAYERS = [Reference, CheckedPlayer, VBlank::IR::Backends::Native::CheckedRun,
+  PLAYERS = [Reference, VBlank::Testing::InterpreterPlayer, CheckedPlayer, VBlank::IR::Backends::Native::CheckedRun,
              VBlank::IR::Backends::Native::HeadlessRun, VBlank::Testing::JSCheckedPlayer,
              VBlank::IR::Backends::JS::CheckedRun, VBlank::IR::Backends::JS::HeadlessRun,
              VBlank::Testing::RubyCheckedPlayer, VBlank::IR::Backends::Ruby::CheckedRun,

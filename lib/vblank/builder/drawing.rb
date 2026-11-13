@@ -415,7 +415,7 @@ module VBlank
       # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def fill_rect(x, y, w, h, c)
-        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
+        record_fixed_or_runtime_rect(:fill_rect, x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
       end
 
       # Clear the entire screen to a solid color.
@@ -877,7 +877,7 @@ module VBlank
       # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def dma_fill_rect(x, y, w, h, c)
-        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
+        record_fixed_or_runtime_rect(:dma_fill_rect, x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
       end
 
       # Draw ONE COLUMN of a picture, stretched to a height the game works out.
@@ -949,12 +949,7 @@ module VBlank
       # @param estimate [Object] does nothing but earn a warning (see Builder#record_estimate_line)
       def draw_rect_at(x_pos, y_pos, w, h, c, estimate: nil)
         record_estimate_line(estimate)
-        record(Build.draw_rect_at(DSL::Value.node_for(x_pos), DSL::Value.node_for(y_pos),
-                                  DSL::Value.node_for(w), DSL::Value.node_for(h), c))
-        ensure_var(x_pos)
-        ensure_var(y_pos)
-        ensure_var(w)
-        ensure_var(h)
+        record_runtime_rect(x_pos, y_pos, w, h, c)
       end
 
       # Lay out a board of equal cells and get a handle for painting them one at a
@@ -980,12 +975,24 @@ module VBlank
 
       # Record the node the block builds from the rectangle's four numbers when each was
       # written in the program (a bare number, or a handle standing for one), or a
-      # `draw_rect_at` when the game works any of them out as it runs.
-      def record_fixed_or_runtime_rect(x, y, w, h, c)
+      # `draw_rect_at` when the game works any of them out as it runs. That one remembers
+      # +verb+, the verb the author wrote, so a message about the line names it.
+      def record_fixed_or_runtime_rect(verb, x, y, w, h, c)
         fixed = [x, y, w, h].map { |operand| DSL::Value.fixed_number(operand) }
-        return draw_rect_at(x, y, w, h, c) if fixed.include?(nil)
+        return record_runtime_rect(x, y, w, h, c, written_as: verb) if fixed.include?(nil)
 
         record(yield(*fixed))
+      end
+
+      # Record a rectangle whose four numbers are read as the program runs. +written_as+ is the
+      # verb the author wrote, where it was not `draw_rect_at`.
+      def record_runtime_rect(x, y, w, h, c, written_as: nil)
+        record(Build.draw_rect_at(DSL::Value.node_for(x), DSL::Value.node_for(y),
+                                  DSL::Value.node_for(w), DSL::Value.node_for(h), c, written_as: written_as))
+        ensure_var(x)
+        ensure_var(y)
+        ensure_var(w)
+        ensure_var(h)
       end
 
       # A block is a whole number of pixels, and the console has sizes from one pixel, which
@@ -1143,7 +1150,7 @@ module VBlank
                                  "the number outside the shape into a variable, and read that variable in the shape."
           end
           unless (node.value? ? LIGHT_SHAPE_VALUES : LIGHT_SHAPE_STATEMENTS).include?(node.kind)
-            did = LIGHT_SHAPE_CANNOT.fetch(node.kind) { "use `#{Messages::PlainWords.verb(node.kind)}`" }
+            did = LIGHT_SHAPE_CANNOT.fetch(node.kind) { "use `#{Messages::PlainWords.verb_written(node)}`" }
             raise ArgumentError, "The light's shape tries to #{did}. A shape can only work numbers out from " \
                                  "the game's numbers and tables, keep them in variables it declares, branch and " \
                                  "repeat. To fix this, do the work outside the shape, keep the number in a " \

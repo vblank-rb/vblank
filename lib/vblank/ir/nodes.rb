@@ -803,11 +803,16 @@ module VBlank
         operands value: :value, x: :int, y: :int, color: :color, font: :name
       end
 
+      # A rectangle whose place and size are read as the program runs. +written_as+ is the verb the
+      # author wrote where it was another (`fill_rect` given a number the game works out is drawn
+      # as this), so a message names that verb (Messages::PlainWords.verb_written); nil for a
+      # `draw_rect_at`. No backend reads it. It is an option, not a name: nothing in the program is
+      # called this, so the walks that gather a program's variable and list names must not see it.
       class DrawRectAt
         include Node
         kind :draw_rect_at
         category :draw
-        operands x: :value, y: :value, w: :value, h: :value, color: :color
+        operands x: :value, y: :value, w: :value, h: :value, color: :color, written_as: :option
       end
 
       # One column of a picture, stretched to a height the program works out. The whole of a

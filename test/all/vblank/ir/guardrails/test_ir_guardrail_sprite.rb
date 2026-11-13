@@ -51,6 +51,26 @@ class TestSpriteGuardrails < Minitest::Test
     assert_equal 1, Cleared.new.detect(prog).length, "a full-screen fill is a clear too"
   end
 
+  # A place the game works out makes the fill a `draw_rect_at`, but a size written in the
+  # program still says it covers the screen. A size the game works out cannot be known while
+  # building, so that one is not flagged.
+  def test_flags_a_full_screen_fill_at_a_place_the_game_works_out
+    prog = program do
+      screen :bitmap
+      image(:heart, "#" => :red) { "##\n##" }
+      shake = var :shake, 0
+      hero = sprite :heart, at: [40, 40]
+      game_loop do
+        wait_vblank
+        fill_rect shake, 0, 240, 160, :black
+        hero.x += 1
+      end
+    end
+    findings = Cleared.new.detect(prog)
+    assert_equal 1, findings.length, "a screen-sized fill is a clear wherever it starts"
+    assert_equal :draw_rect_at, findings.first.node.kind
+  end
+
   def test_does_not_flag_the_correct_sprite_mover
     require VBlank.root.join("examples/sprite_mover").to_s
     assert_empty Cleared.new.detect(SpriteMover.program),

@@ -84,6 +84,14 @@ module VBlank
       VERBS = { blit_pose: "sprite", draw_digit: "draw_number", show_light_now: "light.show_now" }.freeze
 
       def self.verb(kind) = VERBS.fetch(kind) { kind.to_s }
+
+      # The verb the author wrote for +node+. One kind can stand for more than one verb: a
+      # `fill_rect` given a number the game works out is drawn as a `draw_rect_at`, and the node
+      # remembers the verb it was written as (IR::Nodes::DrawRectAt#written_as).
+      def self.verb_written(node)
+        written = node.kind == :draw_rect_at ? node.written_as : nil
+        written ? written.to_s : verb(node.kind)
+      end
     end
   end
 end

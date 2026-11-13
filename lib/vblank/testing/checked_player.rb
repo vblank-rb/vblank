@@ -13,17 +13,21 @@ module VBlank
     end
 
     # A GAME ITS CONSOLE'S BUILD REFUSES IS NOT PLAYED on a run that plays games built for another
-    # machine. A build checks a game with the guardrails before it makes anything (VBlank.build_rom):
-    # a sprite too many on a row, more colour lists than the console holds, a recording looped on a
-    # console that cannot loop one, a tiled screen with nothing on it. A checked run plays a test's
-    # program without that build, so without this it would play, and pass, a game the console's own
-    # cartridge never runs. The checks are the ones every build runs (Guardrails.default_checks), on
-    # the program as the run plays it, so they ask the run's console, and a refusal is the build's own
-    # Guardrails::ValidationError in the build's own words. What a build learns from running the
-    # game's block (a test that is never used, an `estimate:`) is not in a program, so it is not asked.
+    # machine. A build checks a game before it makes anything (VBlank.build, through
+    # IR::ProgramChecks): a game number handed to a verb that takes only a written one, a sprite too
+    # many on a row, more colour lists than the console holds, a recording looped on a console that
+    # cannot loop one, a tiled screen with nothing on it. A checked run plays a test's program without
+    # that build, so without this it would play, and pass, a game the console's own cartridge never
+    # runs, or fail far down its lowering. The checks are the ones every build runs, from the same
+    # place (IR::ProgramChecks, with Guardrails.default_checks), on the program as the run plays it,
+    # so they ask the run's console, and a refusal is the build's own Guardrails::ValidationError in
+    # the build's own words. What a build learns from running the game's block (a test that is never
+    # used, an `estimate:`) is not in a program, so it is not asked.
     #
-    # The interpreter's own run does not ask: it is the answer key for a game a console plays, and a
-    # game its console refuses is not one, so there is nothing to compare.
+    # The interpreter's own run (InterpreterPlayer) asks only the first half, that the program is
+    # one any build can be made from (::refuse_malformed!). The guardrails it does not ask: it is the
+    # answer key for a game a console plays, and a game its console refuses is not one, so there is
+    # nothing to compare.
     #
     # A PORT'S UNPACKING IS NOT CHECKED either (IR::Nodes::Program#for_unpacking). It runs only on a
     # computer, in a shell or as a build makes its pack, and no build checks it against the console's
@@ -39,10 +43,19 @@ module VBlank
       LEFT_OUT = :vblank_build_checks_left_out
 
       def self.refuse_unbuildable!(program)
-        return if Thread.current[LEFT_OUT] || program.kind != :program || program.for_unpacking
+        return unless checked?(program)
 
-        IR::Guardrails::Validator.new.run(program, autofix: false).raise_on_error!
+        IR::ProgramChecks.findings_for!(program).raise_on_error!
       end
+
+      # The proof alone, that +program+ is a tree any build can be made from.
+      def self.refuse_malformed!(program)
+        IR::ProgramChecks.refuse_malformed!(program) if checked?(program)
+      end
+
+      # Whether +program+ is a game a build checks, played outside ::without_checks.
+      def self.checked?(program) = !Thread.current[LEFT_OUT] && program.kind == :program && !program.for_unpacking
+      private_class_method :checked?
 
       # The block, with no program it plays checked as a build checks one.
       def self.without_checks
@@ -50,6 +63,17 @@ module VBlank
         yield
       ensure
         Thread.current[LEFT_OUT] = nil
+      end
+    end
+
+    # What a test's player is on the GBA lowering's run: the interpreter, refusing first a program
+    # no build can be made from, as every other run's player does (BuildChecks::refuse_malformed!).
+    # Without it a slip the build names in plain words would play on here unseen and fail only on
+    # the other runs.
+    class InterpreterPlayer < IR::Backends::Reference
+      def run(program, max_steps: nil, frames: nil)
+        BuildChecks.refuse_malformed!(program)
+        super
       end
     end
 

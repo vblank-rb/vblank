@@ -54,6 +54,7 @@ require_relative "ir/verifier"
 require_relative "ir/portability"
 require_relative "ir/backends"
 require_relative "ir/guardrails"
+require_relative "ir/program_checks"        # What every build and every test player asks of a program first
 require_relative "ir/printer"               # What a report is written through
 require_relative "ir/glyph_usage"
 require_relative "ir/palette"
