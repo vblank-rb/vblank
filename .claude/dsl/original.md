@@ -89,7 +89,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
     count:, voiced: true)` writes them for a test, each note's ninth a Hash of its settings by name
     (worked examples: `test_notes_with_their_voices_settings_from_the_pack_play_as_written_by_hand` in
     `test/all/vblank/builder/test_pack_scores.rb`, and its twin read as the game starts in
-    `test/pack_scores_at_start_tests.rb`). An instrument's numbers can come
+    `test/pack_scores_at_start_tests.rb`).
+  - `pack[:waves].wave(1)` — **a wave of the wave voice**: sixteen bytes of a slot of bytes from wave 1 on,
+    two steps a byte, the earlier in the high four bits (as the Game Boy's wave memory keeps them), for a
+    Score part's `plays:` in place of its 32 steps. Read where the game is built; a build that reads its
+    pack as the game starts refuses it at the line, as not made yet. An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
     **An envelope kept as a Super Nintendo's sound chip keeps it** is `envelope:
@@ -211,7 +215,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
     that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
-    fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    fixed rate has); on the wave voice's VOICE it writes the voice's wave pattern instead, sixteen bytes,
+    which a Score part plays with `plays: pack[:pattern].wave(0)`. **The console voices' own settings**:
+    `copy.unpack_m4a_voiced_track` takes what `unpack_m4a_track` does and writes into a slot of
+    `voiced_notes`, each note with its voice's duty (the squares), sweep (the first square, as a slide) and
+    envelope (the squares and the noise: an attack swells from silence, a decay fades from the note's
+    volume past the driver's sustain level, and with neither the note holds at the sustain level),
+    as the driver sets the voice up for the note. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
     drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
     in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
     voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is

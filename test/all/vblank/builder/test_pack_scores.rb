@@ -132,10 +132,14 @@ class TestPackScores < Minitest::Test
     [[36, 30, 60, 8, { shade: 20 }], { key: 60, volume: 8, pan: Rational(20, 64) }]
   ].freeze
   VOICED_AT = 0x300
+  # Two waves of sixteen bytes in the copy, two steps a byte; a part can play the second.
+  WAVES = [(0...16).map { |at| at * 17 }, (0...16).map { |at| ((15 - at) << 4) | (at % 7) }].freeze
+  WAVES_AT = 0x200
 
   private def voiced_original(folder)
     record = VBlank::Original::PackNote
     copy = "\0".b * (VOICED_AT + (2 * MOST * record::VOICED_BYTES))
+    copy[WAVES_AT, 32] = WAVES.flatten.pack("C*")
     [VOICED_LEAD, VOICED_WAVE].each_with_index do |notes, place|
       tuples = notes.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
       copy[VOICED_AT + (place * MOST * record::VOICED_BYTES), MOST * record::VOICED_BYTES] = record.bytes_of(tuples, count: MOST, voiced: true)
@@ -147,20 +151,27 @@ class TestPackScores < Minitest::Test
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # The song of those two parts: from the pack when +from+ is given, by hand otherwise.
-  private def voiced_song_game(from = nil)
+  # The song of those two parts: from the pack when +from+ is given, by hand otherwise. With
+  # +wave_from_copy+ the wave part plays the copy's second wave (`pack[:waves].wave(1)`, or its
+  # 32 steps written out), else the triangle.
+  private def voiced_song_game(from = nil, wave_from_copy: false)
     hand = ->(notes) { notes.map { |(at, length, *), words| Note.new(at: at, length: (length unless length.zero?), **words) } }
     b = Builder.new
     b.instance_eval do
       pack = if from
                data_pack from: from, version: "1" do |slots|
+                 slots.numbers :waves, at: WAVES_AT, count: 32, width: :byte, signed: false
                  slots.voiced_notes :lead, at: VOICED_AT, count: MOST
                  slots.voiced_notes :wave, at: VOICED_AT + (MOST * VBlank::Original::PackNote::VOICED_BYTES), count: MOST
                end
              end
       lead = pack ? pack[:lead].notes : hand.(VOICED_LEAD)
       pad = pack ? pack[:wave] : hand.(VOICED_WAVE)
-      music = songs :music, [Score.new(parts: [Part.new(notes: lead, duty: :quarter), Part.new(notes: pad, plays: :triangle)],
+      wave = if !wave_from_copy then :triangle
+             elsif pack then pack[:waves].wave(1)
+             else WAVES[1].flat_map { |byte| [byte >> 4, byte & 0xF] }
+             end
+      music = songs :music, [Score.new(parts: [Part.new(notes: lead, duty: :quarter), Part.new(notes: pad, plays: wave)],
                                        tempo: 150, plays_once: true, length: 90)]
       music.play 0
       game_loop { wait_vblank }
@@ -176,6 +187,33 @@ class TestPackScores < Minitest::Test
 
       refute_empty wanted.select { |entry| entry.first == :note }, "the song written by hand plays notes"
       assert_equal wanted, played
+    end
+  end
+
+  # A WAVE OF THE COPY'S (`plays: pack[:waves].wave(1)`), as a Color or Advance driver keeps its
+  # wave voice's patterns, sixteen bytes each.
+  def test_a_wave_part_playing_a_wave_from_the_pack_plays_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(voiced_song_game(wave_from_copy: true), frames: 80).audio
+      played = game_player.run(voiced_song_game(voiced_original(folder), wave_from_copy: true), frames: 80).audio
+
+      assert(wanted.any? { |entry| entry.first == :wave }, "the wave part plays")
+      assert_equal wanted, played
+    end
+  end
+
+  # A build that reads its pack as the game starts does not read a wave from it yet, and says so.
+  def test_a_wave_from_the_pack_read_as_the_game_starts_is_refused
+    Dir.mktmpdir do |folder|
+      b = Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
+      pack = b.data_pack(from: voiced_original(folder), version: "1") do |slots|
+        slots.numbers :waves, at: WAVES_AT, count: 32, width: :byte, signed: false
+      end
+      error = assert_raises(ArgumentError) do
+        b.songs :music, [Score.new(parts: [Part.new(notes: [Note.new(at: 0, key: 60)], plays: pack[:waves].wave(0))], length: 24)]
+      end
+
+      assert_includes error.message, "wave"
     end
   end
 

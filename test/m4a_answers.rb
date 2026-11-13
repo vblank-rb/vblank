@@ -40,9 +40,13 @@ module M4AAnswers
   TRACKS_AT = 0x700
 
   # The voices: a recording, the two squares, the wave, the noise, a key split (low keys the
-  # recording, from key 60 the second square), a drum kit, and a recording at a fixed rate.
-  VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x08, 2, [0, 0, 15, 0]],
-            [0x02, 60, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + 0x5F0, [0, 0, 15, 0]], [0x04, 60, 0, 0, 0, [0, 2, 0, 0]],
+  # recording, from key 60 the second square), a drum kit, and a recording at a fixed rate. The
+  # first square slides down (its sweep byte), and the noise swells in (its attack).
+  WAVE_PATTERN_AT = 0x5F0
+  WAVE_PATTERN = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10].freeze
+  VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x2B, 2, [0, 0, 15, 0]],
+            [0x02, 60, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + WAVE_PATTERN_AT, [0, 0, 15, 0]],
+            [0x04, 60, 0, 0, 0, [3, 2, 0, 0]],
             [0x40, 0, 0, 0, ROM + SPLIT_GROUP_AT, ROM + SPLIT_TABLE_AT], [0x80, 0, 0, 0, ROM + KIT_AT, [0, 0, 0, 0]],
             [0x08, 60, 0, 0, ROM + ONE_SHOT_AT, [255, 40, 200, 10]]].freeze
   SPLIT_VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [200, 10, 180, 100]], [0x02, 60, 0, 0, 3, [0, 0, 10, 0]]].freeze
@@ -145,6 +149,7 @@ module M4AAnswers
     KIT_VOICES.each { |key, voice| copy[KIT_AT + (12 * key), 12] = voice_bytes(voice) }
     copy[WAVE_AT, 16 + WAVE_SAMPLES.length] = wave_bytes(WAVE_SAMPLES, WAVE_RATE, WAVE_LOOP)
     copy[ONE_SHOT_AT, 16 + ONE_SHOT_SAMPLES.length] = wave_bytes(ONE_SHOT_SAMPLES, ONE_SHOT_RATE, nil)
+    copy[WAVE_PATTERN_AT, 16] = WAVE_PATTERN.pack("C*")
     copy
   end
 
@@ -440,11 +445,48 @@ module M4AAnswers
     VBlank::Original::PackNote.bytes_of(records(song_at, walked, kind: kind, numbering: numbering), count: count)
   end
 
+  # THE SAME RECORDS VOICED, each with its console voice's settings as the driver sets the voice up
+  # for the note (ply_note: the sweep, 8 where bits 4 to 6 are clear or bit 7 set; CgbSound: NRx1's
+  # duty from the voice's wave word, the envelope from its attack, decay and sustain; CgbModVol:
+  # the sustain level), matched to a note's own words as Packing::M4A::Walk#emit_voice_settings says.
+  def self.voiced_track_bytes(song_at, walked, count:, kind: 255, numbering: Numbering.new)
+    played = played_song(song_at, walked, kind, numbering)
+    tuples = played.records.zip(played.voices).map do |record, voice|
+      channel = COPY.getbyte(voice) & 7
+      next [*record, {}] if channel.zero?
+
+      volume, settings = cgb_voice_settings(voice, channel, record[4])
+      [*record.first(4), volume, *record.drop(5), settings]
+    end
+    VBlank::Original::PackNote.bytes_of(tuples, count: count, voiced: true)
+  end
+
+  # [the note's volume, its settings by Original::PackNote::NAMES' names] for a note on +channel+
+  # (1 or 2 a square, 3 the wave, 4 the noise) of the voice at +voice+, struck at +volume+. The
+  # driver's envelope, swell to the volume, fall to the sustain level and hold, is matched to the
+  # voice's own counting as Packing::M4A::Walk#emit_voice_settings says.
+  def self.cgb_voice_settings(voice, channel, volume)
+    byte = ->(at) { COPY.getbyte(voice + at) }
+    settings = {}
+    settings[:duty] = (byte.(4) & 3) * 0x55 if channel <= 2
+    sweep = byte.(3)
+    settings[:slide] = sweep & 0x7F if channel == 1 && sweep.nobits?(0x80) && sweep.anybits?(0x70) && sweep.anybits?(7)
+    attack = byte.(8) & 7
+    decay = byte.(9) & 7
+    sustain = byte.(10) & 15
+    held = ((volume * sustain) + 15) >> 4
+    return [held, settings] if channel == 3
+    return [0, settings.merge(fade: 8 | attack)] if attack.positive? && volume == 15
+    return [volume, settings.merge(fade: decay)] if decay.positive? && sustain.zero?
+
+    [held, settings.merge(fade: 0)]
+  end
+
   # The Player that has played the song at +song_at+, walking track +walked+.
   def self.played_song(song_at, walked, kind, numbering)
     Player.new(COPY, song_at, walked: walked, kind: kind, **numbering.to_h).play
   end
-  private_class_method :played_song
+  private_class_method :played_song, :cgb_voice_settings
 
   # [length, loop frame] of the song at +song_at+, 65535 for none.
   def self.length(song_at)

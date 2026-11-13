@@ -671,11 +671,11 @@ module PackScoresAtStartTests
   end
 
   # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
-  # name hz in 16ths and glides, one naming an instrument and a volume as it glides (the part's
+  # name hz in 16ths and glides, the first shaded between the speakers, one naming an instrument and a volume as it glides (the part's
   # own, from the file), one out of range (its key), and a noise part whose hits name hz, one
   # beside a noise clock (the clock). The horn's rate is read from the file too.
   GLIDING = [
-    [[0, 0, 60, OWN, { hz: 4186 }], { hz: Rational(4186, 16) }],
+    [[0, 0, 60, OWN, { hz: 4186, shade: -44 }], { hz: Rational(4186, 16), pan: -0.6875 }],
     [[4, 0, 60, OWN, { hz: 4410, glides: true }], { hz: Rational(4410, 16), glides: true }],
     [[8, 0, 60, 7, { hz: 4700, glides: true }], { hz: Rational(4700, 16), glides: true }],
     [[14, 0, 0, 9, { hz: 3333 }], { hz: Rational(3333, 16), volume: 9 }],

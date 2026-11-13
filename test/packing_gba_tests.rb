@@ -62,6 +62,8 @@ module PackingGBATests
       slots.samples :wave, count: 40
       slots.numbers :wave_voice, count: 4, width: :word, signed: false
       slots.numbers :one_shot_voice, count: 4, width: :word, signed: false
+      3.times { |track| slots.voiced_notes :"voiced_#{track}", count: M4A_NOTES }
+      slots.numbers :wave_pattern, count: 16, width: :byte, signed: false
       slots.fill_from_copy(&fill)
     end.unpacking
   end
@@ -93,6 +95,24 @@ module PackingGBATests
       3.times do |track|
         assert_equal M4AAnswers.track_bytes(ending, track, count: M4A_NOTES), slots.fetch(:"ending_#{track}"), "ending track #{track}"
       end
+    end
+  end
+
+  # THE CONSOLE VOICES' OWN SETTINGS: each track's notes voiced, the squares' duty, the first
+  # square's slide and each square's and the noise's envelope as the driver sets the voice up,
+  # and the wave voice's pattern.
+  def test_each_tracks_console_voices_take_their_settings_from_the_voice_group
+    song = M4AAnswers::SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        3.times { |track| copy.unpack_m4a_voiced_track at: song, into: pack[:"voiced_#{track}"], track: track }
+        copy.unpack_m4a_voice at: M4AAnswers::GROUP_AT + (12 * 3), into: pack[:wave_pattern]
+      end
+
+      3.times do |track|
+        assert_equal M4AAnswers.voiced_track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"voiced_#{track}"), "track #{track}"
+      end
+      assert_equal M4AAnswers::WAVE_PATTERN.pack("C*"), slots.fetch(:wave_pattern)
     end
   end
 

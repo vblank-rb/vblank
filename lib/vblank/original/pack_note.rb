@@ -147,7 +147,7 @@ module VBlank
       # names (each the number its bytes keep, the hz in 16ths), `carries: true` and `glides:
       # true`. For a port's tests, and a routine of Ruby that writes a slot whole.
       def self.voiced_bytes_of(settings)
-        names = settings.sum { |field, said| said ? NAMES.fetch(field, 0) : 0 } | (settings[:carries] ? CARRIES : 0)
+        names = settings.sum { |field, value| value ? NAMES.fetch(field, 0) : 0 } | (settings[:carries] ? CARRIES : 0)
         hz = settings[:hz] || 0
         [settings[:pitch_number] || 0, settings[:fade] || 0, settings[:duty] || 0, settings[:vibrato] || 0, settings[:slide] || 0,
          settings[:shade] || 0, names, hz & 0xFFFF, hz >> 16].pack(VOICED_LAYOUT.delete(" ")).ljust(VOICED_BYTES - BYTES, "\0")
@@ -190,9 +190,9 @@ module VBlank
 
       # WHAT A VOICED RECORD'S SETTINGS ARE, AS A SCORE::NOTE IS GIVEN THEM: a Hash of the words of
       # those it names (`pitch_number:`, `decay:` or `swell:`, `duty:`, `vibrato:`, `slide_up:` or
-      # `slide_down:`, `pan:`, `hz:`, `glides:`), each left out where it names none. A number past its range is left out
-      # by the file's reading (IR::StartFile) and refused by a build holding the record, which
-      # asks .settings_out_of_range first.
+      # `slide_down:`, `pan:`, `hz:`, `glides:`), each left out where it names none. A number past its
+      # range is here as it is: the file's reading (IR::StartFile.voice_settings_of) leaves it out,
+      # and a build holding the record refuses it, each asking #settings_out_of_range.
       def score_settings
         settings = {}
         settings[:pitch_number] = pitch_number if pitch_number
@@ -226,8 +226,8 @@ module VBlank
       end
 
       def fade_words
-        said = Audio::NoteFade.from_bits(fade)
-        said.swells? ? { swell: said.step } : { decay: said.step }
+        counted = Audio::NoteFade.from_bits(fade)
+        counted.swells? ? { swell: counted.step } : { decay: counted.step }
       end
 
       def vibrato_words

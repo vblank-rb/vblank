@@ -190,6 +190,21 @@ module VBlank
     PackEnvelope = Data.define(:slot, :index)
     PackSNESEnvelope = Data.define(:slot, :index)
 
+    # ONE WAVE OF THE WAVE VOICE IN A SLOT OF BYTES (PackSlot#wave), for a Score part's `plays:`:
+    # sixteen bytes from wave +index+ on, two steps of the wave a byte, the earlier in the high four
+    # bits, as the Game Boy's wave memory keeps them.
+    PackWave = Data.define(:slot, :index)
+
+    class PackWave
+      BYTES = 16
+
+      # The 32 steps, 0 to 15 each, of the wave's +bytes+ (a list of sixteen numbers).
+      def self.steps_of(bytes) = bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
+
+      # Where the wave's first byte is in its slot.
+      def first_byte = index * BYTES
+    end
+
     # A TABLE'S ENTRIES IN THE FILE THE GAME IS HANDED AS IT STARTS (IR::StartFile), given to
     # `table` in place of its numbers: +count+ entries from byte +at+ on. A game built with its pack
     # left out reads each table from a slot this way, and its unpacking reads the copy this way;
@@ -322,6 +337,19 @@ module VBlank
         end
 
         DSL::PackNotes.new(slot: self, instruments: instruments)
+      end
+
+      # A handle on wave +index+ (0 first) of a slot of bytes, sixteen bytes each, for the wave a
+      # Score part plays (`plays: pack[:waves].wave(0)`, DSL::PackWave says how it is kept).
+      def wave(index)
+        refuse_run_counted_from_slot_start!("wave")
+        unless shape == :numbers && layout.width == :byte && index.is_a?(Integer) && !index.negative? &&
+               (index + 1) * PackWave::BYTES <= layout.count
+          raise ArgumentError, "Slot :#{layout.name} holds #{layout.count} #{shape}. `wave` picks #{PackWave::BYTES} " \
+                               "bytes of a slot of bytes, two steps of the wave a byte. Got #{index.inspect}."
+        end
+
+        DSL::PackWave.new(slot: self, index: index)
       end
 
       # A handle on number +index+ (0 first) of a slot of numbers, for a setting read as the game is

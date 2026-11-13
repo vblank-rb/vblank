@@ -45,16 +45,37 @@ module VBlank
       end
 
       def score_with_pack_notes(score, verb)
-        return score unless score.parts.any? { |part| pack_notes?(part.notes) } || pack_timing?(score)
+        return score unless score.parts.any? { |part| pack_notes?(part.notes) || part.plays.is_a?(DSL::PackWave) } || pack_timing?(score)
         return score_reading_notes_at_start(score, verb) if pack_left_out?
 
-        parts = score.parts.map { |part| pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part }
+        parts = score.parts.map do |part|
+          part = part.with(plays: pack_wave_steps(part.plays, verb)) if part.plays.is_a?(DSL::PackWave)
+          pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part
+        end
         score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
                    loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
       end
 
       def pack_notes?(notes)
         notes.is_a?(DSL::PackNotes) || (notes.is_a?(DSL::PackSlot) && Original::Slot::NOTE_SHAPES.include?(notes.shape))
+      end
+
+      # The 32 steps of the wave +wave+ (a DSL::PackWave) names, read here, as a part's `plays:`
+      # takes a wave of its own.
+      def pack_wave_steps(wave, verb)
+        subject = "#{verb} reading a wave from slot :#{wave.slot.layout.name}"
+        refuse_slot_from_elsewhere!(wave.slot, subject)
+        DSL::PackWave.steps_of(pack_slot_values(wave.slot, :numbers, subject).slice(wave.first_byte, DSL::PackWave::BYTES))
+      end
+
+      # A wave read from the pack is known only once the file is read, and no build reads one
+      # there yet: each runtime's table of waves is written as the game is built.
+      def refuse_wave_read_at_start!(score, verb)
+        wave = score.parts.map(&:plays).grep(DSL::PackWave).first or return
+
+        raise ArgumentError, "#{verb} has a Score part that plays a wave from slot :#{wave.slot.layout.name}, and this build " \
+                             "reads its pack as the game starts. A wave from the pack is not read that way yet. To fix " \
+                             "this, build the game all-in-one, or give the part its wave in the game, like `plays: :triangle`."
       end
 
       # Whether +score+ reads its length or the tick it comes round to from the pack.
@@ -65,6 +86,7 @@ module VBlank
       # its length, since where the last note ends is in the pack. A length read from the pack
       # comes with the most it can be (`longest:`).
       def score_reading_notes_at_start(score, verb)
+        refuse_wave_read_at_start!(score, verb)
         refuse_pack_score_without_length!(score, verb)
         refuse_pack_timing_beside_written_parts!(score, verb)
         Audio::Score::Checks.plays_once!(score)
@@ -174,12 +196,16 @@ module VBlank
           key = note.key unless note.key == Original::PackNote::REST
           clock = note.clock if key && clocked
           settings = key ? note.score_settings : {}
+          # A noise clock is played in place of a pitch between keys, as IR::StartFile.notes_in plays it.
+          settings.delete(:hz) if clock
           pitch = settings.delete(:pitch_number)
           # A voiced record's shade is the note's in place of its speaker, on a recorded part too.
           pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side unless recorded)
+          # A gliding note carries on the one sounding, with its instrument and volume (Original::PackNote).
+          glides = settings[:glides]
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?), key: (key unless clock || pitch || settings[:hz]),
-                                 volume: pack_note_volume(note, recorded, subject),
-                                 instrument: pack_note_instrument(note, handle.instruments, subject),
+                                 volume: (pack_note_volume(note, recorded, subject) unless glides),
+                                 instrument: (pack_note_instrument(note, handle.instruments, subject) unless glides),
                                  pan: pan, noise_clock: clock, pitch_number: pitch, **settings)
         end
       end

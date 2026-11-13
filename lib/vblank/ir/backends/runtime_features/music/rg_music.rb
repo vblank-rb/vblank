@@ -1121,7 +1121,8 @@ def rg_start_file_write_note(music, into, event, rules)
   clock_lasts = clock_pitches + rules[RG_NOTES_CLOCKS]
   voiced = clock_lasts + rules[RG_NOTES_CLOCKS]
   number_pitches = voiced + 2
-  number_lasts = number_pitches + (rules[voiced + 1] || 0)
+  # Only a voiced part's rules go on past the clocks.
+  number_lasts = number_pitches + (rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES ? rules[voiced + 1] : 0)
   rest = event.key.negative?
   clocked = event.clock >= 0
   numbered = event.pitch >= 0

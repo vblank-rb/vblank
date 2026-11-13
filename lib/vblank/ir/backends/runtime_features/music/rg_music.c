@@ -1360,7 +1360,9 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
   const int32_t *clock_lasts = clock_pitches + rules[RG_NOTES_CLOCKS];
   /* A voiced part's rules: the settings it takes, how many pitch numbers, their pitches and lasts. */
   const int32_t *voiced = clock_lasts + rules[RG_NOTES_CLOCKS];
-  const int32_t *number_pitches = voiced + 2, *number_lasts = number_pitches + voiced[1];
+  /* Only a voiced part's rules go on past the clocks. */
+  int32_t numbers = rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES ? voiced[1] : 0;
+  const int32_t *number_pitches = voiced + 2, *number_lasts = number_pitches + numbers;
   int32_t rest = event->key < 0, clocked = event->clock >= 0, numbered = event->pitch >= 0, between = event->hz >= 0;
   into[0] = event->frame;
   into[1] = rest      ? 0
