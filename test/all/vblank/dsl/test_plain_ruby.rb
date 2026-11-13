@@ -2025,6 +2025,56 @@ class TestPlainRuby < Minitest::Test
     assert_equal 5, player[:seen]
   end
 
+  # The buttons change between passes with no line of the game writing them. `advance` is set from
+  # a press while setting up, as the game starts with nothing down, and Ruby's local keeps that
+  # answer: the routine reading it never sees A, pressed on a later frame.
+  def test_a_name_set_up_from_a_press_keeps_the_press_of_its_line
+    player = played_with_buttons(frames: 5, down_from: 2, button: :a) do
+      advance = pressed(:a) | pressed(:b)
+      seen = var :seen, 0
+      func :read_press do
+        seen = 1 if advance
+      end
+      game_loop { call :read_press }
+    end
+
+    assert_equal 0, player[:seen]
+  end
+
+  # The same for a button held, read in the game loop.
+  def test_a_name_set_up_from_a_held_button_keeps_its_lines_answer
+    player = played_with_buttons(frames: 5, down_from: 2, button: :a) do
+      down = held(:a)
+      seen = var :seen, 0
+      game_loop { seen = 1 if down }
+    end
+
+    assert_equal 0, player[:seen]
+  end
+
+  # A press read in game code is read as the game plays.
+  def test_a_name_set_from_a_press_in_game_code_reads_that_pass
+    player = played_with_buttons(frames: 5, down_from: 2, button: :a) do
+      seen = var :seen, 0
+      game_loop do
+        advance = pressed(:a) | pressed(:b)
+        seen = 1 if advance
+      end
+    end
+
+    assert_equal 1, player[:seen]
+  end
+
+  private def played_with_buttons(frames:, down_from:, button:, &block)
+    builder = Builder.new
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.finalize_program
+    player = game_player
+    player.input_each_frame { |frame| frame >= down_from ? [button] : [] }
+    player.run(builder.program, frames: frames)
+    player
+  end
+
   def test_an_ivar_made_by_var_copies_another_variable
     player = played do
       @a = var :a, 5

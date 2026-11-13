@@ -52,6 +52,17 @@ module VBlank
         # variables back to their starts.
         VERBS_RUNNING_GAME_CODE = %i[call case_var start_over].freeze
 
+        # The verbs whose answer the console changes between passes, with no line of the game
+        # writing it: the buttons and the players connected. A random draw is not one, since
+        # `rand` and `chance` each keep their draw in a variable of their own, set on their line.
+        # `frames_since_power_on` is not one either: it hands back a variable, which a game keeps
+        # as a handle and reads live (Steps.kept_answer).
+        CONSOLE_STATE_VERBS = %i[held pressed players_connected].freeze
+
+        # What a `clock` and a `timer` read, which move on between passes too (`clock.hour`,
+        # `countdown.ticks`).
+        CONSOLE_STATE_READINGS = %i[hour minute second year month day weekday present? set? ticks].freeze
+
         # Writes by game code to a local of the scope the block sits in.
         attr_reader :outside_writes
 
@@ -331,9 +342,34 @@ module VBlank
         # Could anything change what the value +write+ gives +local+ before one of its reads?
         private def changed_before_a_read?(local, write)
           return false if local.reads.empty?
+          return true if read_later_in_game_code?(local, write) && reads_console_state_through_locals?(write)
 
           read_after_any?(local, write, changes_of_value(write) + changes_read_through_locals(write))
         end
+
+        # Does the value +write+ gives its local read what the console changes between passes
+        # (CONSOLE_STATE_VERBS), itself or through the plain locals it works out from? A local set
+        # outside game code and read in it is read a pass or more later, so its line's answer has
+        # gone by then: `advance = pressed(:a)` while setting up keeps the press as the game
+        # started, as Ruby's local does.
+        private def reads_console_state_through_locals?(write)
+          values = [write.value] + locals_worked_out_in(write.value).flat_map { |local| value_writes(local).map(&:value) }
+          values.compact.any? { |value| reads_console_state?(value) }
+        end
+
+        private def reads_console_state?(node)
+          return true if node.is_a?(Prism::CallNode) && console_state_call?(node)
+
+          node.compact_child_nodes.any? { |child| reads_console_state?(child) }
+        end
+
+        private def console_state_call?(call)
+          return CONSOLE_STATE_VERBS.include?(call.name) unless called_on_something?(call)
+
+          CONSOLE_STATE_READINGS.include?(call.name) && (call.name == :ticks || clock_call?(call.receiver))
+        end
+
+        private def clock_call?(node) = node.is_a?(Prism::CallNode) && node.name == :clock && !called_on_something?(node)
 
         # Is +local+, which +write+ sets, read after any of +changes+? A local set outside game
         # code (setting up, or in a method) and read in game code is read after every change that
