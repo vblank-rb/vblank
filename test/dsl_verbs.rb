@@ -50,6 +50,8 @@ module DslVerbs
   # a sprite, a pool and a background say which lists they draw with, so a list that changes
   # can find them. The reference documents `recolor`; nobody writes these.
   # follow_pose_lists is what a sprite's handle calls when `draw_with` is given a hash, documented there;
+  # one_list_for_pose_lists?, list_for_every_pose_list! and colors_to_draw_across_lists are what a sprite
+  # and a pool ask and call when that hash draws every list with one other list, documented there too;
   # list_chosen_at_start? and follow_lists_chosen_at_start are what it asks and calls for a pose whose list
   # its frame picks in a build that reads its pack as the game starts, documented with the pose.
   # record_light_shape, light_circle and show_light_now are the hooks behind `shape`, `circle`
@@ -70,7 +72,8 @@ module DslVerbs
             record_row_bend make_background_affine screen_pages keep_showing_pictures
             tile_collision_routine play_from_list play_sound_effect
             declare_instance_routine record_walk_instance_writes pool_walk_scratch_var
-            colors_to_draw_with follow_pose_lists list_chosen_at_start? follow_lists_chosen_at_start make_object_recolorable make_pool_recolorable
+            colors_to_draw_with follow_pose_lists one_list_for_pose_lists? list_for_every_pose_list!
+            colors_to_draw_across_lists list_chosen_at_start? follow_lists_chosen_at_start make_object_recolorable make_pool_recolorable
             make_object_layer_choosable refuse_unknown_layers! put_objects_in_layer write_picked_choice
             lists_drawn_from list_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
             request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose

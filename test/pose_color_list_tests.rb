@@ -86,6 +86,29 @@ module PoseColorListGames
     end
   end
 
+  # The pass a thing is told to draw every list with :glow, and the pass it is told :own again.
+  FLASH_PASS = 3
+  OWN_PASS = 7
+
+  # Two things of one pool, the first facing :left (of :warm) at AT and the second :right (of :cold)
+  # at [80, 40]. The thing facing +flashed+ is drawn with :glow from FLASH_PASS to OWN_PASS.
+  private def flashing_pool_game(flashed:)
+    pose_colors_game do
+      guards = pool :guard, x: 0, y: 0, way: 0, capacity: 2, facing: { left: :left, right: :right }
+      guards.spawn x: AT[0], y: AT[1], way: 0
+      guards.spawn x: 80, y: 40, way: 1
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        guards.each do |guard|
+          guard.face %i[left right], showing: guard.way
+          guard.draw_with({ warm: :glow, cold: :glow }) if pass == FLASH_PASS && guard.way == flashed
+          guard.draw_with :own if pass == OWN_PASS && guard.way == flashed
+        end
+      end
+    end
+  end
+
   # The colours of the sprite's two halves after +frames+ of +program+.
   private def halves_shown(program, frames:)
     screen = game_player.run(program, frames: frames + framework_drawing_lag).screen
@@ -223,6 +246,87 @@ module PoseColorListFollowTests
   end
 end
 
+# EVERY LIST DRAWN WITH ONE OTHER LIST: told `draw_with({ warm: :glow, cold: :glow })`, a sprite or
+# one thing of a pool shows each pose in :glow, place for place, whichever list the pose is drawn
+# from, and `draw_with :own` puts it back. The others keep their colours. This is how a retail game
+# flashes one enemy white: it gives that object's sprite entries a white palette for a few frames.
+module PoseColorListSwapTests
+  include PoseColorListGames
+
+  # The colours of the two halves of the thing at AT and the thing at [80, 40].
+  private def both_shown(program, frames:)
+    screen = game_player.run(program, frames: frames + framework_drawing_lag).screen
+    [[screen.pixel(*LEFT_HALF), screen.pixel(*RIGHT_HALF)], [screen.pixel(81, 41), screen.pixel(86, 41)]]
+  end
+
+  def test_one_thing_of_a_pool_of_several_lists_is_drawn_with_one_list_then_its_own_again
+    program = flashing_pool_game(flashed: 1)
+
+    assert_equal [shown_all(WARM.drop(1)), shown_all(COLD.drop(1))], both_shown(program, frames: 1), "before"
+    assert_equal [shown_all(WARM.drop(1)), shown_all(GLOW.drop(1))], both_shown(program, frames: FLASH_PASS + 1),
+                 "the thing of :cold drawn with :glow, the other as it was"
+    assert_equal [shown_all(WARM.drop(1)), shown_all(COLD.drop(1))], both_shown(program, frames: OWN_PASS + 1), "its own again"
+  end
+
+  def test_the_thing_of_the_other_list_is_drawn_with_one_list_the_same_way
+    program = flashing_pool_game(flashed: 0)
+
+    assert_equal [shown_all(GLOW.drop(1)), shown_all(COLD.drop(1))], both_shown(program, frames: FLASH_PASS + 1)
+    assert_equal [shown_all(WARM.drop(1)), shown_all(COLD.drop(1))], both_shown(program, frames: OWN_PASS + 1)
+  end
+
+  def test_a_sprite_of_several_lists_is_drawn_with_one_list_whichever_pose_it_shows
+    program = turning_sprite_game(before: ->(ship) { ship.draw_with({ warm: :glow, cold: :glow }) })
+
+    assert_equal shown_all(GLOW.drop(1)), halves_shown(program, frames: TURN_PASS - 1), "the pose of :warm"
+    assert_equal shown_all(GLOW.drop(1)), halves_shown(program, frames: TURN_PASS + 2), "the pose of :cold"
+  end
+
+  def test_a_pool_drawing_its_lists_with_different_lists_is_refused
+    error = assert_raises(ArgumentError) { flashing_pool_game_told({ warm: :glow, cold: :dusk }) }
+
+    assert_includes error.message, "pool :guard"
+    assert_includes error.message, "one list"
+  end
+
+  def test_a_pool_leaving_out_one_of_its_lists_is_refused_naming_it
+    error = assert_raises(ArgumentError) { flashing_pool_game_told({ cold: :glow }) }
+
+    assert_includes error.message, ":warm"
+  end
+
+  def test_a_pool_drawing_with_a_list_none_of_its_pictures_is_drawn_from_is_refused
+    error = assert_raises(ArgumentError) { flashing_pool_game_told({ warm: :glow, cold: :glow, dusk: :glow }) }
+
+    assert_includes error.message, ":dusk"
+  end
+
+  def test_a_sprite_told_to_follow_its_lists_and_to_draw_them_with_one_list_is_refused
+    error = assert_raises(ArgumentError) do
+      turning_sprite_game(before: lambda { |ship|
+        ship.draw_with({ warm: :warm, cold: :cold })
+        ship.draw_with({ warm: :glow, cold: :glow })
+      })
+    end
+
+    assert_includes error.message, "not both"
+  end
+
+  def test_a_pool_told_to_follow_its_lists_is_refused_naming_the_way_round
+    error = assert_raises(ArgumentError) { flashing_pool_game_told({ warm: :warm, cold: :cold }) }
+
+    assert_includes error.message, "cannot follow"
+    assert_includes error.message, "warm: :white"
+  end
+
+  private def flashing_pool_game_told(lists)
+    pose_colors_game do
+      guards = pool :guard, x: 0, y: 0, way: 0, capacity: 2, facing: { left: :left, right: :right }
+      game_loop { guards.each { |guard| guard.draw_with(lists) } }
+    end
+  end
+end
+
 # A CONSOLE WHOSE BUILD SHOWS EACH POSE IN ITS OWN LIST'S COLOURS AND DOES NOT FOLLOW THE LISTS YET
 # refuses a sprite told to follow them, naming itself, before it plays.
 module PoseColorListFollowRefusedTests
@@ -251,5 +355,16 @@ module PoseColorListRefusedTests
     assert_includes error.message, "sprite :ship"
     assert_includes error.message, "#{VBlank::Console.described(game_console).title} build draws all the pictures of one sprite from one list"
     assert_includes error.message, "for the pictures of each list"
+  end
+
+  # A pool of several lists, one thing of which is told to draw them all with one list, is refused
+  # for its lists, as any such pool is, before the hash is looked at.
+  def test_a_pool_of_several_lists_drawn_with_one_list_is_refused_naming_the_console
+    error = assert_raises(Reference::ProgramError, VBlank::IR::Guardrails::ValidationError) do
+      game_player.run(flashing_pool_game(flashed: 1), frames: 2)
+    end
+
+    assert_includes error.message, "pool :guard"
+    assert_includes error.message, "#{VBlank::Console.described(game_console).title} build draws all the pictures of one sprite from one list"
   end
 end

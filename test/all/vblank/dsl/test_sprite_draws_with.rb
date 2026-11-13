@@ -251,6 +251,37 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:red), i.screen.pixel(81, 41)
   end
 
+  # A thing of a pool told a list for each list its pictures are drawn from, then its own again. A
+  # pool of one list takes the hash as draw_with that list; poses of several lists are in
+  # test/pose_color_list_tests.rb, since the Advance refuses such a pool.
+  def test_an_instance_told_a_list_for_its_list_draws_with_it_then_its_own_again
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :ship_colors, OWN
+      image :ship, width: 8, height: 8, data: SHIP, colors: :ship_colors
+      colors :hurt, HURT
+      ships = pool :ship, x: 0, y: 0, capacity: 2, image: :ship
+      ships.spawn x: 40, y: 40
+      ships.spawn x: 80, y: 40
+      frame = 0
+      game_loop do
+        frame += 1
+        ships.each do |ship|
+          ship.draw_with({ ship_colors: :hurt }) if frame == 1 && ship.x == 80
+          ship.draw_with :own if frame == 4 && ship.x == 80
+        end
+      end
+    end
+    builder.finalize_program
+    hurt = game_player.run(builder.program, frames: 3)
+
+    assert_equal [Color.resolve(:red), Color.resolve(:yellow)], [hurt.screen.pixel(41, 41), hurt.screen.pixel(81, 41)]
+    healed = game_player.run(builder.program, frames: 7)
+
+    assert_equal [Color.resolve(:red), Color.resolve(:red)], [healed.screen.pixel(41, 41), healed.screen.pixel(81, 41)]
+  end
+
   def test_the_console_draws_a_pools_instances_the_same
     assert_backends_agree(pool_program, frames: 3)
     assert_backends_agree(pool_program(respawn_at: 3), frames: 5)

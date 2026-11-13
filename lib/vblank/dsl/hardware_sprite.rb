@@ -403,13 +403,21 @@ module VBlank
       #
       #   part.draw_with({ title_1: :title_1, title_2: :title_2 })
       #   part.draw_with(poses.map { |pose| colors_name_of(pose) }.uniq.to_h { |list| [list, list] })
+      #
+      # Or it can draw EVERY ONE OF ITS LISTS WITH ONE OTHER LIST, place for place, as `draw_with :hurt`
+      # draws a sprite of one list: a flash of white for an enemy whatever its kind's colours.
+      #
+      #   enemy.draw_with({ propene: :white, denkyun: :white })
       def draw_with(which, showing: nil)
+        subject = "The sprite :#{@object_node.declared || @poses.first}"
         # A list a pose's frame picks as the game starts (Builder#list_chosen_at_start?) is
         # followed, as the build that holds the pack draws the sprite with the list it names.
         which = { which => which } if which.is_a?(Symbol) && @builder.list_chosen_at_start?(which)
-        if which.is_a?(Hash)
-          subject = "The sprite :#{@object_node.declared || @poses.first}"
+        if which.is_a?(Hash) && @builder.one_list_for_pose_lists?(which)
+          refuse_following_and_swapping!(subject) if @object_node.follows_each
+        elsif which.is_a?(Hash)
           one_list = @builder.follow_pose_lists(@object_node, which, poses: @poses, showing: showing, subject: subject)
+          refuse_following_and_swapping!(subject) if @recolors && one_list.nil?
           return self unless one_list
 
           which = one_list
@@ -448,6 +456,15 @@ module VBlank
       end
 
       private
+
+      # A sprite that follows its lists shows what each list holds, and one drawn with one other list
+      # shows that list: it cannot be told both.
+      def refuse_following_and_swapping!(subject)
+        raise ArgumentError,
+              "#{subject} was told to follow its lists, like `draw_with({ warm: :warm, cold: :cold })`, and to draw " \
+              "them with one other list, like `draw_with({ warm: :white, cold: :white })`. A sprite can do one of " \
+              "these, not both. To fix this, choose one. To change the colors of a list it follows, use `recolor`."
+      end
 
       # Move +delta+ pixels along one axis. With no walls it's a plain nudge; blocked, it
       # happens only if the sprite's box at the destination is clear of every wall (each

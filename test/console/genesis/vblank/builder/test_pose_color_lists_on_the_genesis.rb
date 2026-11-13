@@ -10,6 +10,7 @@ require "pose_color_list_tests"
 class TestPoseColorListsOnTheGenesis < Minitest::Test
   include PoseColorListTests
   include PoseColorListFollowTests
+  include PoseColorListSwapTests
 
   # A sprite and a background following the same two lists, one of which the game never changes:
   # each shows every list's colours, the changed one's as it holds them now.

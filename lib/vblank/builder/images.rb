@@ -331,6 +331,79 @@ module VBlank
         end
       end
 
+      # The same, for a sprite or pool whose poses are drawn from several lists and which was told
+      # to draw every one of them with the list +names+ holds (#list_for_every_pose_list!). Each
+      # pose swaps place for place into it, so the list is checked against each pose's own list.
+      def colors_to_draw_across_lists(names, poses:, subject:)
+        groups = poses.group_by { |pose| colors_drawn_from(pose) }.values
+        names.map do |name|
+          groups.map { |group| colors_to_draw_with([name], poses: group, subject: subject).first }.first
+        end
+      end
+
+      # Whether +lists+ (a hash `draw_with` was given) draws every list with one other list:
+      # `{ warm: :white, cold: :white }`. A hash that draws each list with itself follows them.
+      def one_list_for_pose_lists?(lists)
+        lists.is_a?(Hash) && !lists.empty? && lists.values.uniq.one? && lists.any? { |own, with| own != with }
+      end
+
+      # A SPRITE OR POOL TOLD TO DRAW EVERY LIST ITS POSES ARE DRAWN FROM WITH ONE OTHER LIST, given
+      # as a hash (`draw_with({ warm: :white, cold: :white })`): hands back the name of that list.
+      #
+      # A swap goes by place, so one list lines up with poses of any list: a pose's pixel at place 3
+      # shows the colour at place 3 of the other list. That is what a console's own games do to
+      # flash one enemy white: they name a white palette in that object's sprite entries for a few
+      # frames, whichever palette its kind is drawn in. Each list must be named, so that a game
+      # that later gives the sprite a pose of a new list is told, rather than shown it unchanged.
+      # A hash that draws the lists with different lists is refused: one number picks a sprite's
+      # other colours, and poses of several lists would need a number each.
+      def list_for_every_pose_list!(lists, poses:, showing:, subject:)
+        unless showing.nil?
+          raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. " \
+                               "showing: picks one of several lists by a number, and a hash names one list. " \
+                               "To fix this, leave out showing:."
+        end
+        refuse_swapping_unplaced_pixels!(poses, subject)
+        with = lists.values.first
+        if poses.any? { |pose| @poses_in_frame_bank_colors&.include?(pose) }
+          own = lists.keys.first
+          raise ArgumentError, "#{subject} was told to draw_with #{own.inspect} => #{with.inspect}, and this build reads " \
+                               "its pack as the game starts. Such a sprite can follow each list its pictures are drawn " \
+                               "from, like `#{own.inspect} => #{own.inspect}`. To fix this, follow the list and change its " \
+                               "colors with `recolor`. Or build the game all-in-one."
+        end
+        drawn = poses.map { |pose| list_drawn_from(pose).first }.uniq
+        named = drawn.compact.map { |name| ":#{name}" }
+        if lists.size > 1 && lists.all? { |own, other| own == other }
+          raise ArgumentError, "#{subject} was told to draw_with #{lists.inspect}, which follows each list. The things " \
+                               "of a pool cannot follow their lists yet. To fix this, draw all the lists with one list, " \
+                               "like `draw_with({ #{lists.keys.map { |own| "#{own}: :white" }.join(', ')} })`. Or use a " \
+                               "sprite for each thing."
+        end
+        unless lists.values.uniq.one?
+          raise ArgumentError, "#{subject} was told to draw_with #{lists.inspect}. A sprite can draw all its lists " \
+                               "with one list, but it cannot draw each list with a different list. To fix this, " \
+                               "give each list the same list, like `draw_with({ #{lists.keys.map { |own| "#{own}: #{with.inspect}" }.join(', ')} })`."
+        end
+        unknown = lists.keys.find { |own| !(own.is_a?(Symbol) && drawn.include?(own)) }
+        if unknown
+          raise ArgumentError, "#{subject} was told to draw_with #{unknown.inspect} => #{with.inspect}, and none of its " \
+                               "pictures is drawn from a list named #{unknown.inspect}. Its pictures are drawn from " \
+                               "#{named.empty? ? 'no list that has a name' : named.join(' and ')}. To fix this, name " \
+                               "one of those lists."
+        end
+        missing = drawn - lists.keys
+        unless missing.empty?
+          left_out = missing.map { |name| name ? ":#{name}" : "a list given as its colors" }
+          raise ArgumentError, "#{subject} was told to draw_with #{lists.inspect}, and it also shows pictures drawn from " \
+                               "#{left_out.join(' and ')}. A list that is left out is not drawn with #{with.inspect}. " \
+                               "To fix this, name each list its pictures are drawn from, like `draw_with({ " \
+                               "#{drawn.map { |own| "#{own || 'own'}: #{with.inspect}" }.join(', ')} })`. Give a picture its " \
+                               "list by name with `image ..., colors: :name`."
+        end
+        with
+      end
+
       # A SPRITE TOLD TO FOLLOW THE LISTS ITS POSES ARE DRAWN FROM (HardwareSprite#draw_with given a
       # hash): +lists+ names each list to follow, drawn with itself. The object +node+ then names
       # them (IR::Nodes::Object#follows_each), and a pose drawn from one shows what that list holds.
@@ -364,8 +437,10 @@ module VBlank
 
           raise ArgumentError, "#{subject} shows pictures drawn from #{drawn.length} lists of colors, and it was told " \
                                "to draw the list :#{own} with #{with.inspect}. Such a sprite can follow each of its " \
-                               "lists. It cannot draw one of them with another list. To fix this, write `#{own}: " \
-                               ":#{own}`, and change the colors with `recolor :#{own}, ...`."
+                               "lists, or draw all of them with one other list. It cannot draw only some of them with " \
+                               "another list. To fix this, write `#{own}: :#{own}`, and change the colors with " \
+                               "`recolor :#{own}, ...`. Or give every list the same list, like `draw_with({ " \
+                               "#{drawn.compact.map { |name| "#{name}: #{with.inspect}" }.join(', ')} })`."
         end
         return lists.values.first if drawn.one?
 
@@ -503,9 +578,10 @@ module VBlank
           raise ArgumentError,
                 "#{subject} was told to draw_with other colors, but the pictures it shows were given " \
                 "different `colors:` lists. Another list of colors swaps the sprite's own colors by their " \
-                "places, so give every picture it shows the same `colors:` list. Or tell a sprite to follow " \
-                "each of its lists, like `draw_with({ hero: :hero, cape: :cape })`. Then change the colors of a " \
-                "list with `recolor`."
+                "places, so give every picture it shows the same `colors:` list. Or name each of its lists and " \
+                "one list to draw them all with, like `draw_with({ hero: :white, cape: :white })`. Or tell a " \
+                "sprite to follow each of its lists, like `draw_with({ hero: :hero, cape: :cape })`. Then change " \
+                "the colors of a list with `recolor`."
         end
         raise ArgumentError,
               "#{subject} was told to draw_with other colors, but its pictures have no `colors:` list. " \

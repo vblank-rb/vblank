@@ -136,7 +136,8 @@ module VBlank
         sprite: works("a sprite is a picture the graphics chip draws each frame, any size up to 256 × 256. There is " \
                       "no limit of sprites on a row of the screen. A sprite that turns or resizes is drawn as a " \
                       "textured shape. A sprite whose poses are drawn from different lists of colors shows each " \
-                      "pose in the colors of its own list. On a painted screen, a sprite with `over_picture: true` is " \
+                      "pose in the colors of its own list. It can follow those lists (`draw_with({ hero: :hero })`), " \
+                      "or draw them all with one other list (`draw_with({ hero: :white, cape: :white })`). On a painted screen, a sprite with `over_picture: true` is " \
                       "drawn over a copy of the picture as it goes to the screen, so the picture stays as the game " \
                       "painted it. The build does not make a sprite painted into the picture yet: it refuses it and " \
                       "says so."),

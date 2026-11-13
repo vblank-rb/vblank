@@ -10,4 +10,5 @@ require "pose_color_list_tests"
 class TestPoseColorListsOnTheSuperNintendo < Minitest::Test
   include PoseColorListTests
   include PoseColorListFollowRefusedTests
+  include PoseColorListSwapTests
 end

@@ -135,7 +135,8 @@ module VBlank
         blit: works,
         sprite: works("a sprite is made of the console's pieces, 128 pieces at once and 34 pieces of 8×8 on " \
                       "any one row of the screen. A sprite whose poses are drawn from different lists of colors " \
-                      "shows each pose in the colors of its own list. Such a sprite cannot follow those lists " \
+                      "shows each pose in the colors of its own list. It can draw all those lists with one " \
+                      "other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists " \
                       "(`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of " \
                       "big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 " \
                       "pieces too, wherever they sit. Past 128 pieces, a sprite is not drawn and no error " \
