@@ -52,6 +52,10 @@ module VBlank
       def sound_rate = @facts.sound_rate
       def frame_seconds = @facts.frame_seconds
 
+      # The unpacking seats no players, 0 as for a game that names none: it is played with no
+      # buttons (PictureSender), so a window seats every gamepad as player 1 while it shows.
+      def seats = 0
+
       # The unpacking keeps no save memory.
       def save_size = 0
       def save_file_due? = false

@@ -81,6 +81,23 @@ class TestShell < Minitest::Test
     end
   end
 
+  # A WINDOW SEATS PLAYERS (SDL#seat_players) before each play the shell starts on it, the
+  # unpacking's among them; Headless seats nobody. The first start played on a device that seats
+  # them unpacks the copy and plays the game on the one device, each play told it seats no players.
+  def test_the_first_start_plays_on_a_device_that_seats_players
+    Dir.mktmpdir do |folder|
+      told = []
+      device = Headless.new(frames: 400, buttons: CHOOSE_LOAD_ROM)
+      device.define_singleton_method(:seat_players) { |most| told << most }
+      shell(folder).play(device, folder_path: File.join(folder, "kept"), choose_copy: -> { copy_at(folder) }, refused: ->(_) {},
+                                 play_game: ->(game) { Session.new(game: game, stop_after_passes: GAME_PASSES).play(device) })
+
+      assert_equal [0, 0, 0], told, "the menu, the unpacking and the game were not each told how many players they seat"
+      assert_equal all_in_one_pack, kept_pack(folder)
+      assert_equal all_in_one_pictures, device.pictures.last(GAME_PASSES).map(&:pixels)
+    end
+  end
+
   def test_the_pack_the_shell_keeps_is_the_all_in_one_builds_byte_for_byte
     Dir.mktmpdir do |folder|
       play_shell(shell(folder), folder, picked: copy_at(folder))
