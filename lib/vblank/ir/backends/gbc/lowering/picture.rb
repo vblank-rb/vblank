@@ -1990,28 +1990,54 @@ module VBlank
             end
 
             # A run's sprites front-most first: the list's last entry first, each the number of the
-            # sprite of the run to place.
+            # sprite of the run to place. A sprite of the run with no routine in +placings+ (one not
+            # at this depth) is placed by none.
+            #
+            # THE NUMBER PICKS THE ROUTINE FROM A TABLE, as the Genesis's does: a routine address for
+            # each sprite of the run, read by one dispatch the run shares, so the code grows with the
+            # run's length and not its square.
             def emit_ordered_run(run, placings)
+              dispatch = emit_ordered_dispatch(run, placings)
               (run.objects.length - 1).downto(0) do |k|
                 past = fresh("past_the_ordered")
                 value(Build.list_get(run.order, Build.int(k)))
                 @asm.load(:a, :b)
                 @asm.or_a(:c)
                 @asm.or_a(:d)
-                @asm.jump(:nz, past)
+                @asm.jump_relative(:nz, past)
                 @asm.load(:a, :e)
-                run.objects.each_with_index do |name, at|
-                  next unless placings.key?(name)
-
-                  other = fresh("not_sprite")
-                  @asm.cp_a(at)
-                  @asm.jump(:nz, other)
-                  @asm.call(placings.fetch(name))
-                  @asm.jump(past)
-                  @asm.label(other)
-                end
+                @asm.cp_a(run.objects.length)
+                @asm.jump_relative(:nc, past)
+                @asm.call(dispatch)
                 @asm.label(past)
               end
+            end
+
+            # The routine #emit_ordered_run calls with A the number of a sprite of +run+: it goes on to
+            # that sprite's placing in +placings+ (whose return is the call's), through a table of
+            # their addresses. Written in place, with a jump over it. Returns its label.
+            def emit_ordered_dispatch(run, placings)
+              dispatch = fresh("ordered_dispatch")
+              table = fresh("ordered_placings")
+              none = fresh("placed_by_none")
+              past = fresh("past_ordered_dispatch")
+              @asm.jump(past)
+              @asm.label(dispatch)
+              @asm.load(:l, :a)
+              @asm.load(:h, 0)
+              @asm.add_hl(:hl)
+              @asm.load(:de, table)
+              @asm.add_hl(:de)
+              @asm.load(:a, [:hli])
+              @asm.load(:h, [:hl])
+              @asm.load(:l, :a)
+              @asm.jump(:hl)
+              @asm.label(none)
+              @asm.ret
+              @asm.label(table)
+              @asm.data_words(run.objects.map { |name| placings.fetch(name, none) })
+              @asm.label(past)
+              dispatch
             end
 
             # How deep a sprite sits: the one level it is declared at, for a sprite that never changes
