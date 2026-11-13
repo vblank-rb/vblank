@@ -127,9 +127,11 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works,
         background: works("a background is a picture kept in memory, drawn by the processor at its scroll. " \
-                          "`show_only_inside` holds it to a rectangle, and a background that turns or resizes is " \
-                          "drawn by the processor too."),
-        status_bar: works,
+                          "`show_only_inside` holds it to a rectangle, `above_row:` keeps it to the rows above a row, with " \
+                          "`alone:` as on any console, and a background that turns or resizes is drawn by the " \
+                          "processor too."),
+        status_bar: works("the bar is drawn by the processor from its top row down, over the backdrop, and the " \
+                          "backgrounds are drawn only above it."),
         canvas: works,
         tile_pictures: works,
         sprite_tiles: works,
@@ -260,7 +262,7 @@ module VBlank
                                                var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
                                                func call scene case_var every after shake_screen
                                                timer table chance rand roll seed randomize list pool
-                                               save_data players_connected drawing_for_local_player tiles background layers layer
+                                               save_data players_connected drawing_for_local_player tiles background layers layer status_bar
                                                colors_name_of computer_keys computer_gamepad shell_screen]
       })
 

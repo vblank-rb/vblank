@@ -56,9 +56,13 @@ module VBlank
             # A BACKGROUND DRAWN FROM ANOTHER LIST OF COLOURS (`background_colors`, Reference#background_swap) has its
             # tiles kept again for each list, every copy laid out as the first, so a cell names its tile in the
             # colours it was drawn in and +colors_offset+ is how far on the copy shown now is: nought for those.
+            #
+            # +corner_y+ is the row of the map the screen's top shows while the background shows from its corner: nought,
+            # or for a status bar the row it was declared at, less than nought (a word with a sign). +above_row+ is the
+            # row a background held above a row stops at (`above_row:`), or nought.
             RECORD = %i[cells cols rows tile_w tile_h wrap_w wrap_h wraps across down step_x step_y map_h state mixed
-                        mask_delta lengths maps map_count colors_offset].freeze
-            RECORD_BYTES = 40
+                        mask_delta lengths maps map_count colors_offset corner_y above_row].freeze
+            RECORD_BYTES = 44
             NO_TILE = 0xFFFF
 
             # THE CELL CHANGES HELD FOR THE FRAME'S END (`set_tile ..., held: true`, Reference#exec_set_tile), in the
@@ -92,14 +96,26 @@ module VBlank
                          "rt scenery run mask", "rt scenery run left", "rt scenery run entry", "rt scenery run header"].freeze
 
             # A background's place in the data segment: its scroll, whether it shows from its corner, the place the
-            # view was last built showing it from, and whether it has been put up.
-            STATE_BYTES = 24
+            # view was last built showing it from, and whether it has been put up; for a status bar, whether it covers
+            # the sprites (Reference @bar_covers); and whether it is held to a box (`box_background`), and the box,
+            # its left, top, right and bottom, kept to the screen (Reference#screen_box).
+            #
+            # A STATUS BAR'S TOP is kept as its scroll: it is shown from the map's top-left corner, that many rows down
+            # the screen, so its scroll is nought across and its top less than nought down (`place_bar`), and it is
+            # placed, shown from its corner and built into the view as a scroll is.
+            STATE_BYTES = 48
             SCROLL_X = 0
             SCROLL_Y = 4
             FROM_CORNER = 8
             BUILT_X = 12
             BUILT_Y = 16
             SHOWN = 20
+            COVERS = 24
+            BOXED = 28
+            BOX_LEFT = 32
+            BOX_TOP = 36
+            BOX_RIGHT = 40
+            BOX_BOTTOM = 44
             STATES = "rt scenery states"
 
             OWED = "rt scenery owed" # the view must be built again before it is next shown
@@ -130,10 +146,28 @@ module VBlank
             ROUND = "rt scenery round"
             SCROLL_SHOWN_X = "rt scenery shown x"
             SCROLL_SHOWN_Y = "rt scenery shown y"
+            # THE PART OF THE SCREEN A WINDOW IS PAINTED IN, left, top, right and bottom, the right and bottom just past
+            # it: the whole screen, or less for a background under a status bar, held above a row, under one shown
+            # alone above its row, or held to a box (Reference#rows_shown_of, #box_shown_of).
+            CLIP_LEFT = "rt scenery clip left"
+            CLIP_TOP = "rt scenery clip top"
+            CLIP_RIGHT = "rt scenery clip right"
+            CLIP_BOTTOM = "rt scenery clip bottom"
+            # As the view is built: the rows from the top the backgrounds are seen in (down to a status bar's top,
+            # Reference#scenery_rows), the record of the status bar showing (nought for none), and the row and record of
+            # a background shown alone above its row (Reference#row_held_alone_by_another).
+            SCENERY_ROWS = "rt scenery rows"
+            BAR_RECORD = "rt scenery bar record"
+            ALONE_ROW = "rt scenery alone row"
+            ALONE_RECORD = "rt scenery alone record"
+            # A status bar has been put up, so a background put up is built into the view and never stamped, which
+            # would paint over the bar's rows (Reference#put_up_background).
+            BAR_SHOWN = "rt scenery bar shown"
 
             WORDS = [OWED, EXPIRED, ANY_FROM_CORNER, UP, PLACING, BACKDROP, BUILT, BUILT_BACKDROP, ROW_BEGIN, ROW_END, ROW_OFFSET,
                      TILE_W, MIXED, MASK_DELTA, COLORS_OFFSET, WRAPS, OFF_X,
-                     PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y].freeze
+                     PY, MY, ROUND, SCROLL_SHOWN_X, SCROLL_SHOWN_Y, CLIP_LEFT, CLIP_TOP, CLIP_RIGHT, CLIP_BOTTOM,
+                     SCENERY_ROWS, BAR_RECORD, ALONE_ROW, ALONE_RECORD, BAR_SHOWN].freeze
 
             module_function
 
@@ -156,15 +190,18 @@ module VBlank
             # places of the records of the backgrounds at that level, in the order they are drawn, and whether a sprite
             # can be at that level and is drawn into the view (Sprites::LEVELS). +backgrounds+ is how many there are.
             # +cells+, +held+ and +maps+ say whether the game changes a cell, holds a change for the frame's end, or
-            # shows another map.
-            def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false)
+            # shows another map. +bars+ is the record of each status bar, and +alone+ each background shown alone above
+            # its row, as [its record, its row, whether it keeps the sprites out too].
+            def emit(asm, memory, levels:, backgrounds:, cells: false, held: false, maps: false, runs: false, bars: [], alone: [])
               emit_requests(asm, memory, backgrounds, held: held)
               emit_paint_run(asm, memory) if runs
               emit_set_cell(asm, memory) if cells
               emit_held(asm, memory) if held
               emit_show_map(asm, memory) if maps
               emit_backdrop(asm, memory)
-              emit_view(asm, memory, levels, backgrounds)
+              emit_view(asm, memory, levels, backgrounds, bars, alone)
+              emit_clipped_window(asm, memory)
+              emit_fill_rows(asm, memory)
               emit_window(asm, memory)
               emit_stamp(asm, memory)
               emit_map_row(asm, memory)
@@ -212,7 +249,19 @@ module VBlank
               asm.label("rt_scenery_frame_ended_done")
               asm.ret
 
+              # rt_scenery_put_up_built: put up, and built into the view rather than stamped, for a status bar and a
+              # background held above a row, which a stamp would paint over every row (Reference#put_up_background).
+              asm.label("rt_scenery_put_up_built")
+              asm.call("rt_scenery_mark_up")
+              asm.jmp("rt_scenery_request")
               asm.label("rt_scenery_put_up")
+              asm.call("rt_scenery_mark_up")
+              asm.cmp(word.call(BAR_SHOWN), 0)
+              asm.jne("rt_scenery_request")
+              asm.cmp(X86.mem(:bx, BOXED, size: 32), 0)
+              asm.jne("rt_scenery_request")
+              asm.jmp("rt_scenery_stamp")
+              asm.label("rt_scenery_mark_up")
               if held
                 asm.push(:bx)
                 asm.call("rt_scenery_forget_held")
@@ -224,7 +273,7 @@ module VBlank
               asm.mov(word.call(ANY_FROM_CORNER), 1)
               asm.mov(word.call(UP), 1)
               asm.mov(word.call(BUILT), 0)
-              asm.jmp("rt_scenery_stamp")
+              asm.ret
 
               asm.label("rt_scenery_scroll")
               asm.mov(X86.mem(:bx, SCROLL_X, size: 32), :eax)
@@ -533,7 +582,7 @@ module VBlank
             # backdrop and where each background shows from, so where the picture is still the view last built
             # (BUILT) and none of those has changed, building it again would make the same picture, and is left.
             # Placing sprites that are drawn into the view builds it again (rt_scenery_rebuild).
-            def emit_view(asm, memory, levels, backgrounds)
+            def emit_view(asm, memory, levels, backgrounds, bars, alone)
               asm.label("rt_scenery_view")
               asm.cmp(at(memory, BUILT), 0)
               asm.je("rt_scenery_view_build")
@@ -566,17 +615,187 @@ module VBlank
               asm.push(:gs)
               asm.mov_segment(:ax, :art)
               asm.mov(:gs, :ax)
+              emit_view_bar(asm, memory, bars)
+              emit_view_alone(asm, memory, alone)
               levels.each_with_index do |(records, sprites), level|
                 records.each do |record|
                   asm.mov(:si, record)
-                  asm.call("rt_scenery_window")
+                  asm.call("rt_scenery_clipped_window")
                 end
                 next unless sprites
 
                 asm.mov(:al, level)
                 asm.call("rt_sprites_at_level")
               end
+              emit_view_over_sprites(asm, memory, bars, alone)
               asm.pop(:gs)
+              asm.ret
+            end
+
+            # The clip set to the whole width, from row +top+ (a register, or a number) to +bottom+.
+            def emit_clip_rows(asm, memory, top, bottom)
+              asm.mov(at(memory, CLIP_LEFT), 0)
+              asm.mov(at(memory, CLIP_RIGHT), memory.screen.width)
+              asm.mov(at(memory, CLIP_TOP), top)
+              asm.mov(at(memory, CLIP_BOTTOM), bottom)
+            end
+
+            # A status bar first (Reference#repaint_view): the one showing, from its top to the screen's bottom, and
+            # the rows above its top are where the backgrounds are seen. Its top is where it was declared while it
+            # shows from its corner, and where it was last placed after.
+            def emit_view_bar(asm, memory, bars)
+              asm.mov(at(memory, SCENERY_ROWS), memory.screen.height)
+              asm.mov(at(memory, BAR_RECORD, 16), 0)
+              bars.each_with_index do |record, nth|
+                down = "rt_scenery_view_bar_#{nth}_down"
+                asm.mov(:si, record)
+                asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
+                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
+                asm.je(down)
+                emit_bar_top(asm, "rt_scenery_view_bar_#{nth}")
+                asm.mov(at(memory, SCENERY_ROWS), :eax)
+                asm.mov(at(memory, BAR_RECORD, 16), :si)
+                emit_clip_rows(asm, memory, :eax, memory.screen.height)
+                asm.call("rt_scenery_window")
+                asm.label(down)
+              end
+            end
+
+            # EAX the top of the status bar whose record SI is at and whose STATE BX is at, as shown now.
+            def emit_bar_top(asm, tag)
+              asm.movsx(:eax, X86.mem(:si, field(:corner_y), seg: :gs, size: 16))
+              asm.cmp(X86.mem(:bx, FROM_CORNER, size: 32), 0)
+              asm.jne("#{tag}_top")
+              asm.mov(:eax, X86.mem(:bx, SCROLL_Y, size: 32))
+              asm.label("#{tag}_top")
+              asm.neg(:eax)
+            end
+
+            # The row of a background shown alone above its row, if one is up: the others are seen only below it.
+            def emit_view_alone(asm, memory, alone)
+              asm.mov(at(memory, ALONE_ROW), 0)
+              alone.each_with_index do |(record, row, _without_sprites), nth|
+                down = "rt_scenery_view_alone_#{nth}_down"
+                asm.mov(:bx, X86.mem(nil, record + field(:state), seg: :gs, size: 16))
+                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
+                asm.je(down)
+                asm.cmp(at(memory, ALONE_ROW), 0)
+                asm.jne(down) # the first one up, as the interpreter finds it
+                asm.mov(at(memory, ALONE_ROW), row)
+                asm.mov(at(memory, ALONE_RECORD, 16), record)
+                asm.label(down)
+              end
+            end
+
+            # Over the sprites drawn into the view: a status bar that covers them, its rows from the backdrop up again
+            # (Reference#paint_bar_over_sprites), and a background shown alone without them, its rows above its row
+            # (Reference#paint_held_over_sprites).
+            def emit_view_over_sprites(asm, memory, bars, alone)
+              unless bars.empty?
+                asm.mov(:si, at(memory, BAR_RECORD, 16))
+                asm.test(:si, :si)
+                asm.je("rt_scenery_view_uncovered")
+                asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
+                asm.cmp(X86.mem(:bx, COVERS, size: 32), 0)
+                asm.je("rt_scenery_view_uncovered")
+                asm.mov(:eax, at(memory, SCENERY_ROWS))
+                emit_clip_rows(asm, memory, :eax, memory.screen.height)
+                asm.call("rt_scenery_fill_rows")
+                asm.call("rt_scenery_window")
+                asm.label("rt_scenery_view_uncovered")
+              end
+              alone.each_with_index do |(record, row, without_sprites), nth|
+                next unless without_sprites
+
+                down = "rt_scenery_view_held_#{nth}_down"
+                asm.mov(:si, record)
+                asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
+                asm.cmp(X86.mem(:bx, SHOWN, size: 32), 0)
+                asm.je(down)
+                asm.mov(:eax, at(memory, SCENERY_ROWS))
+                asm.cmp(:eax, row)
+                asm.jle("rt_scenery_view_held_#{nth}_rows")
+                asm.mov(:eax, row)
+                asm.label("rt_scenery_view_held_#{nth}_rows")
+                emit_clip_rows(asm, memory, 0, :eax)
+                asm.call("rt_scenery_fill_rows")
+                asm.call("rt_scenery_clipped_window") # in the rows it is seen in, and inside its box
+                asm.label(down)
+              end
+            end
+
+            # rt_scenery_fill_rows: the rows of the clip, CLIP_TOP to CLIP_BOTTOM, filled with the backdrop. Keeps SI
+            # and BX.
+            def emit_fill_rows(asm, memory)
+              asm.label("rt_scenery_fill_rows")
+              asm.push(:ebp)
+              asm.mov(:ebp, at(memory, CLIP_TOP))
+              asm.label("rt_scenery_fill_rows_row")
+              asm.cmp(:ebp, at(memory, CLIP_BOTTOM))
+              asm.jge("rt_scenery_fill_rows_done")
+              Rows.emit_row_start(asm, memory.screen, :ebp)
+              asm.movzx(:eax, at(memory, BACKDROP, 8))
+              asm.mov(:ah, :al)
+              asm.mov(:cx, :ax)
+              asm.shl(:eax, 16)
+              asm.mov(:ax, :cx)
+              asm.mov(:cx, memory.screen.width / 4)
+              asm.stos(32, rep: true)
+              asm.inc(:ebp)
+              asm.jmp("rt_scenery_fill_rows_row")
+              asm.label("rt_scenery_fill_rows_done")
+              asm.pop(:ebp)
+              asm.ret
+            end
+
+            # rt_scenery_clipped_window, with SI at a background's record and GS at the art: its window painted in the
+            # part of the screen it is seen in (CLIP_LEFT and the rest), or not at all where that is nothing: the rows
+            # above a status bar's top, and above its own row where it is held above one; below the row of another
+            # shown alone above its row; and inside its box, where it is held to one.
+            def emit_clipped_window(asm, memory)
+              clip = ->(name) { at(memory, name) }
+              asm.label("rt_scenery_clipped_window")
+              asm.mov(:bx, X86.mem(:si, field(:state), seg: :gs, size: 16))
+              asm.mov(:eax, clip.call(SCENERY_ROWS))
+              emit_clip_rows(asm, memory, 0, :eax)
+              asm.movzx(:eax, X86.mem(:si, field(:above_row), seg: :gs, size: 16))
+              asm.test(:eax, :eax)
+              asm.je("rt_scenery_clipped_no_row")
+              asm.cmp(:eax, clip.call(CLIP_BOTTOM))
+              asm.jge("rt_scenery_clipped_no_row")
+              asm.mov(clip.call(CLIP_BOTTOM), :eax)
+              asm.label("rt_scenery_clipped_no_row")
+              asm.mov(:eax, clip.call(ALONE_ROW))
+              asm.test(:eax, :eax)
+              asm.je("rt_scenery_clipped_not_alone")
+              asm.cmp(:si, at(memory, ALONE_RECORD, 16))
+              asm.je("rt_scenery_clipped_not_alone")
+              asm.mov(clip.call(CLIP_TOP), :eax)
+              asm.label("rt_scenery_clipped_not_alone")
+              asm.cmp(X86.mem(:bx, BOXED, size: 32), 0)
+              asm.je("rt_scenery_clipped_unboxed")
+              { BOX_LEFT => CLIP_LEFT, BOX_TOP => CLIP_TOP }.each do |side, name| # the box's start, where it is further in
+                asm.mov(:eax, X86.mem(:bx, side, size: 32))
+                asm.cmp(:eax, clip.call(name))
+                asm.jle("rt_scenery_clipped_#{side}_kept")
+                asm.mov(clip.call(name), :eax)
+                asm.label("rt_scenery_clipped_#{side}_kept")
+              end
+              { BOX_RIGHT => CLIP_RIGHT, BOX_BOTTOM => CLIP_BOTTOM }.each do |side, name| # and its end, where it is nearer
+                asm.mov(:eax, X86.mem(:bx, side, size: 32))
+                asm.cmp(:eax, clip.call(name))
+                asm.jge("rt_scenery_clipped_#{side}_kept")
+                asm.mov(clip.call(name), :eax)
+                asm.label("rt_scenery_clipped_#{side}_kept")
+              end
+              asm.label("rt_scenery_clipped_unboxed")
+              asm.mov(:eax, clip.call(CLIP_RIGHT))
+              asm.cmp(:eax, clip.call(CLIP_LEFT))
+              asm.jle("rt_scenery_clipped_nothing")
+              asm.mov(:eax, clip.call(CLIP_BOTTOM))
+              asm.cmp(:eax, clip.call(CLIP_TOP))
+              asm.jg("rt_scenery_window")
+              asm.label("rt_scenery_clipped_nothing")
               asm.ret
             end
 
@@ -588,7 +807,7 @@ module VBlank
               asm.label("rt_scenery_window")
               asm.mov(:bx, record.call(:state))
               asm.xor(:eax, :eax)
-              asm.xor(:ecx, :ecx)
+              asm.movsx(:ecx, record.call(:corner_y))
               asm.cmp(X86.mem(:bx, FROM_CORNER, size: 32), 0)
               asm.jne("rt_scenery_window_placed")
               asm.mov(:eax, X86.mem(:bx, SCROLL_X, size: 32))
@@ -598,7 +817,10 @@ module VBlank
               asm.mov(X86.mem(:bx, BUILT_Y, size: 32), :ecx)
               asm.mov(word.call(SCROLL_SHOWN_X), :eax)
               asm.mov(word.call(SCROLL_SHOWN_Y), :ecx)
-              asm.mov(word.call(PY), 0)
+              asm.mov(:eax, word.call(CLIP_TOP))
+              asm.mov(word.call(PY), :eax)
+              asm.cmp(:eax, word.call(CLIP_BOTTOM))
+              asm.jge("rt_scenery_window_no_rows") # a bar at the screen's bottom, or a background left no rows
               asm.cmp(record.call(:wrap_w), 0)
               asm.jne("rt_scenery_window_wraps")
 
@@ -646,6 +868,7 @@ module VBlank
               asm.movzx(:edx, record.call(:wrap_w))
               emit_map_row_call(asm, memory)
               emit_next_py(asm, memory, "rt_scenery_window_wrapped_row")
+              asm.label("rt_scenery_window_no_rows")
               asm.ret
             end
 
@@ -657,12 +880,12 @@ module VBlank
               asm.pop(:ebp)
             end
 
-            # PY moved down a row, and back to +label+ while it is on the screen.
+            # PY moved down a row, and back to +label+ while it is above the clip's bottom.
             def emit_next_py(asm, memory, label)
               asm.mov(:eax, at(memory, PY))
               asm.inc(:eax)
               asm.mov(at(memory, PY), :eax)
-              asm.cmp(:eax, memory.screen.height)
+              asm.cmp(:eax, at(memory, CLIP_BOTTOM))
               asm.jl(label)
             end
 
@@ -675,6 +898,8 @@ module VBlank
               asm.push(:gs)
               asm.mov_segment(:ax, :art)
               asm.mov(:gs, :ax)
+              asm.mov(word.call(CLIP_LEFT), 0)
+              asm.mov(word.call(CLIP_RIGHT), memory.screen.width)
               asm.mov(word.call(PY), 0) # the top of this time down
               asm.movzx(:eax, record.call(:down))
               asm.mov(word.call(ROUND), :eax)
@@ -743,7 +968,6 @@ module VBlank
               half = ->(name) { at(memory, name, 16) }
               kept = ->(name) { X86.mem(nil, memory[name], seg: :ss, size: 16) }
               record = ->(name) { X86.mem(:si, field(name), seg: :gs, size: 16) }
-              width = memory.screen.width
               asm.label("rt_scenery_map_row")
               asm.push(:si)
               asm.push(:ebp)
@@ -779,18 +1003,22 @@ module VBlank
               asm.mov(half.call(MASK_DELTA), :ax)
               asm.mov(:ax, record.call(:colors_offset))
               asm.mov(half.call(COLORS_OFFSET), :ax)
-              # The first pixel's column of the map: left of a map that does not come round, the row starts at the
-              # map's left edge.
+              # The first pixel's column of the map, at the clip's left: left of a map that does not come round, the
+              # row starts at the map's left edge, and past a sum too big for a number, right of it.
+              asm.mov(:ecx, at(memory, CLIP_LEFT)) # the first pixel of the screen drawn
               asm.mov(:eax, at(memory, OFF_X))
-              asm.xor(:ecx, :ecx) # the first pixel of the screen drawn
+              asm.add(:eax, :ecx)
+              asm.jno("rt_scenery_map_row_summed")
+              asm.cmp(half.call(WRAPS), 0) # a map that comes round is scrolled inside its grid, so never this far
+              asm.je("rt_scenery_map_row_done")
+              asm.label("rt_scenery_map_row_summed")
               asm.cmp(half.call(WRAPS), 0)
               asm.jne("rt_scenery_map_row_first")
               asm.test(:eax, :eax)
               asm.jns("rt_scenery_map_row_first")
-              asm.mov(:ecx, :eax)
-              asm.neg(:ecx)
+              asm.sub(:ecx, :eax)
               asm.xor(:eax, :eax)
-              asm.cmp(:ecx, width) # with no sign: the furthest left of all, -2^31, stays that once turned round
+              asm.cmp(:ecx, at(memory, CLIP_RIGHT)) # with no sign: the furthest left of all, -2^31, stays that once turned round
               asm.jae("rt_scenery_map_row_done")
               asm.label("rt_scenery_map_row_first")
               asm.push(:ecx)
@@ -799,6 +1027,14 @@ module VBlank
               asm.div(:ebx) # EAX the column, EDX how far into its tile
               asm.pop(:ecx)
               asm.movzx(:ebx, record.call(:cols))
+              asm.cmp(half.call(WRAPS), 0)
+              asm.je("rt_scenery_map_row_column")
+              asm.label("rt_scenery_map_row_round") # a clip's left past the grid's edge, brought round
+              asm.cmp(:eax, :ebx)
+              asm.jb("rt_scenery_map_row_column")
+              asm.sub(:eax, :ebx)
+              asm.jmp("rt_scenery_map_row_round")
+              asm.label("rt_scenery_map_row_column")
               asm.cmp(:eax, :ebx)
               asm.jae("rt_scenery_map_row_done") # right of a map that does not come round: nothing at all
               asm.mov(:bx, :ax)
@@ -809,7 +1045,7 @@ module VBlank
               Rows.emit_row_start(asm, memory.screen, :ebp)
               asm.pop(:cx)
               asm.add(:di, :cx)
-              asm.mov(:bp, width)
+              asm.mov(:bp, at(memory, CLIP_RIGHT, 16))
               asm.sub(:bp, :cx) # the pixels of the row still to go
               asm.pop(:dx) # how far into the first tile
               asm.mov(:cx, half.call(TILE_W))

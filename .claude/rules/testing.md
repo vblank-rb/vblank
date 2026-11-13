@@ -140,6 +140,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `runtime_feature_games.rb` (small games that do or do not use a runtime feature, for the native, JavaScript and Ruby runs' tests that a game takes in only the features it uses),
 `save_list_move_tests.rb` (a whole list moved to or from save memory as a block, held to the interpreter, played by each console whose lowering moves the block itself, the Color and the Super Nintendo, and by DOS, which moves it an item at a time),
 `clock_tests.rb` (the clock's tests, played by each console that has one),
+`background_above_row_tests.rb` (a background held above a row of the screen, sliding inside its rows, beside two others, alone and alone without sprites, played by each console that holds one: the Super Nintendo and DOS),
 `sprite_layer_choice_tests.rb` (a sprite moved between layers in a room of two backgrounds, a floor and an arch, played by each console that shows two at once: the Advance and DOS),
 `players_connected_tests.rb` (how many players are connected, played by each console whose build reads one controller: the Advance, the Color, the Genesis and DOS),
 `many_players_tests.rb` (games and tests for four and for sixteen players, played by the interpreter and the game as C, JavaScript and Ruby, which read sixteen; no cartridge does, so not in `test/all/`),

@@ -12,22 +12,23 @@ module VBlank
           # tiles and its map are put in the art segment with its record, and the view is built from the records
           # in the order the interpreter paints them: by their level in the stack, and in that order inside one.
           #
-          # WHAT IS MADE SO FAR is backgrounds every screen shows, put up and scrolled, over a backdrop, with
-          # sprites in front of them all; their cells changed one at a time, held to the frame's end, or a whole
-          # other map at once; tiles the game paints from a list; and a background drawn from another list of
-          # colours. A background or a stack that needs more is refused by name (PART), until the slice that
+          # WHAT IS MADE SO FAR is backgrounds every screen shows, put up and scrolled, over a backdrop, in the
+          # stack's order with the sprites at their levels; their cells changed one at a time, held to the frame's
+          # end, or a whole other map at once; tiles the game paints from a list; a background drawn from another
+          # list of colours; a status bar, a background held above a row or to a box (Runtime::Scenery's clip);
+          # and text. A background or a stack that needs more is refused by name (PART), until the slice that
           # makes it.
           module Scenery
             STATEMENT_KINDS = %i[background scroll_background set_tile show_held_tiles show_map copy_tiles copy_owed_tiles
-                                 background_colors].freeze
+                                 background_colors place_bar box_background].freeze
 
-            # The kinds that change a background's cells, which the interpreter answers by building the view again
-            # every pass (Reference#collect_definitions, @repaints), as it does for a scroll.
-            REBUILT_EACH_PASS = %i[scroll_background set_tile show_map tile_run background_colors].freeze
+            # The kinds that move a background or change its cells, which the interpreter answers by building the view
+            # again every pass (Reference#collect_definitions, @repaints), as it does for a scroll.
+            REBUILT_EACH_PASS = %i[scroll_background place_bar box_background set_tile show_map tile_run background_colors].freeze
 
             # The part of the build a game with such a screen waits for, for a test run to count skips by.
-            PART = "a screen of tiles with status bars, boxes, bends, turns, other colours, " \
-                   "text, or a scene's own scenery; sprites painted from a list"
+            PART = "a screen of tiles with bends, turns, other colours, or a scene's own scenery; " \
+                   "sprites painted from a list"
 
             # Whether +program+ shows a screen made of tiles.
             def self.tiled?(program) = program.walk.any? { |node| node.kind == :screen && tiles_mode?(node.mode) }
@@ -60,7 +61,18 @@ module VBlank
 
               picture = Stacking.picture(program)
               levels = picture.objects.flat_map { |object| Stacking.levels_of(picture.depths, object) }.uniq
-              levels.size > 1 || (levels.any? && Stacking.scenery_over_objects?(picture.depths, scenery: picture.scenery, objects: picture.objects))
+              return false if levels.empty?
+
+              levels.size > 1 || Stacking.scenery_over_objects?(picture.depths, scenery: picture.scenery, objects: picture.objects) ||
+                covers_sprites?(program)
+            end
+
+            # Whether something of +program+'s scenery is painted over its sprites as the view is built: a status bar
+            # that can be told to cover them, or a background shown alone above its row without them.
+            def self.covers_sprites?(program)
+              program.walk.any? do |node|
+                (node.kind == :place_bar && node.covers) || (node.kind == :background && node.hides_sprites)
+              end
             end
 
             # What Runtime::Scenery.emit is handed: the levels the view is built from, and how many backgrounds there
@@ -68,7 +80,7 @@ module VBlank
             def scenery_plan
               return unless scenery_used?
 
-              { levels: scenery_levels, backgrounds: scenery_backgrounds.size,
+              { levels: scenery_levels, backgrounds: scenery_backgrounds.size, bars: scenery_bars, alone: scenery_alone,
                 cells: scenery_kinds.include?(:set_tile), held: Scenery.holds_cells?(@program), maps: scenery_kinds.include?(:show_map),
                 runs: Scenery.paints_tiles?(@program) }
             end
@@ -112,7 +124,6 @@ module VBlank
               scenery_backgrounds.each do |bg|
                 what = unmade_in_background(bg) and return what
               end
-              return "text" if tiled_screen? && @program.walk.any? { |node| %i[draw_text draw_digit].include?(node.kind) }
               return "blocks (`pixelate`)" if @program.walk.any? { |node| node.kind == :pixelate }
 
               nil
@@ -123,7 +134,8 @@ module VBlank
             # there.
             def scenery_levels
               depths = stacked_picture.depths
-              order = scenery_backgrounds.each_index.sort_by { |number| [depths.of_scenery(scenery_backgrounds[number]), number] }
+              order = scenery_backgrounds.each_index.reject { |number| scenery_backgrounds[number].bar? }
+                                         .sort_by { |number| [depths.of_scenery(scenery_backgrounds[number]), number] }
               by_level = order.group_by { |number| depths.of_scenery(scenery_backgrounds[number]) }
               sprite_levels = sprites_stacked? ? stacked_picture.objects.flat_map { |object| Stacking.levels_of(depths, object) } : []
               (0...depths.count).map do |level|
@@ -133,10 +145,21 @@ module VBlank
 
             def sprites_stacked? = @sprites_stacked.nil? ? (@sprites_stacked = Scenery.stacks_sprites?(@program)) : @sprites_stacked
 
+            # The records of the status bars, which the view is built over first (Runtime::Scenery#emit_view_bar).
+            def scenery_bars
+              scenery_backgrounds.each_index.select { |number| scenery_backgrounds[number].bar? }
+                                 .map { |number| @art_places.fetch([:background, number]) }
+            end
+
+            # Each background shown alone above its row: its record, its row, and whether it keeps the sprites out too.
+            def scenery_alone
+              scenery_backgrounds.each_index.select { |number| scenery_backgrounds[number].alone }.map do |number|
+                bg = scenery_backgrounds[number]
+                [@art_places.fetch([:background, number]), bg.above_row, bg.hides_sprites ? true : false]
+              end
+            end
+
             def unmade_in_background(bg)
-              return "a status bar" if bg.bar?
-              return "a background shown only above a row" if bg.above_row
-              return "a background held to a box" if bg.boxed
               return "a background that turns" if bg.affine
               return "a background drawn from several lists of colours the game changes" if bg.follows_several?
               return "a background drawn in other colours with tiles the game paints" if recolored?(bg) && bg.tiles.any? { |name| painted_tiles.key?(name) }
@@ -188,7 +211,7 @@ module VBlank
               (@scenery_color_blocks ||= [])[number] = block
               map = bg.map
               maps = bg.maps.empty? ? [map] : bg.maps
-              wraps = !bg.streams?
+              wraps = !bg.streams? && !bg.bar? # a status bar's map starts at its top-left corner and never comes round
               grid_cols, grid_rows = TileMap.grid(map) if TileMap.fits?(map)
               cols = wraps ? grid_cols : maps.map { |each| each.map(&:length).max || 0 }.max
               rows = wraps ? grid_rows : maps.map(&:length).max
@@ -205,7 +228,8 @@ module VBlank
               step_x, step_y = grid_cols ? [grid_cols * bg.tile_w, grid_rows * bg.tile_h] : [0, 0]
               [cells, cols, rows, bg.tile_w, bg.tile_h, wrap_w, wrap_h, wraps ? 1 : 0, across, down, step_x, step_y,
                maps.map(&:length).max * bg.tile_h, Runtime::Scenery.state_at(@memory, number), mixed, mask_delta,
-               copies.first.last, table, copies.size, 0]
+               copies.first.last, table, copies.size, 0, bg.bar? ? -bg.bar_top.clamp(0, @memory.screen.height) & 0xFFFF : 0,
+               bg.above_row || 0]
             end
 
             # +map+'s cells, +cols+ across and +rows+ down, into the art segment: a word a cell, where its tile's pixels
@@ -410,8 +434,102 @@ module VBlank
               @asm.call("rt_scenery_paint_owed")
               @asm.mov(:si, @art_places.fetch([:background, number]))
               @asm.mov(:bx, Runtime::Scenery.state_at(@memory, number))
+              return emit_built_put_up(node) if node.bar? || node.above_row
+
               @asm.call("rt_scenery_put_up")
               emit_stamps_in_front(node)
+            end
+
+            # A status bar or a background held above a row put up, and built into the view rather than stamped, as the
+            # interpreter does (Reference#put_up_background). Once a bar is up, every background put up is.
+            def emit_built_put_up(node)
+              @asm.call("rt_scenery_put_up_built")
+              @asm.mov(runtime_at(Runtime::Scenery::BAR_SHOWN), 1) if node.bar?
+            end
+
+            # Reference#exec_place_bar: the status bar's top worked out and kept to the screen, and whether it covers
+            # the sprites where the game says, then kept as its scroll (Runtime::Scenery::STATE). Placing a background
+            # that is not a status bar changes nothing.
+            def emit_place_bar(node)
+              number = background_named(node.name)
+              return unless scenery_backgrounds[number].bar?
+
+              state = Runtime::Scenery.state_at(@memory, number)
+              emit_value(node.top)
+              emit_clamped_eax(0, @memory.screen.height)
+              if node.covers
+                @asm.push(:eax)
+                emit_value(node.covers)
+                @asm.test(:eax, :eax)
+                @asm.setne(:al)
+                @asm.movzx(:eax, :al)
+                @asm.mov(X86.mem(nil, state + Runtime::Scenery::COVERS, size: 32), :eax)
+                @asm.mov(runtime_at(Runtime::Scenery::BUILT), 0) # the view does not show whether the bar covers
+                @asm.pop(:eax)
+              end
+              @asm.mov(:ecx, :eax)
+              @asm.neg(:ecx)
+              @asm.xor(:eax, :eax)
+              @asm.mov(:bx, state)
+              @asm.call("rt_scenery_scroll")
+            end
+
+            # EAX held between +low+ and +high+.
+            def emit_clamped_eax(low, high)
+              above = fresh_label("not_below")
+              below = fresh_label("not_above")
+              @asm.cmp(:eax, low)
+              @asm.jge(above)
+              @asm.mov(:eax, low)
+              @asm.label(above)
+              @asm.cmp(:eax, high)
+              @asm.jle(below)
+              @asm.mov(:eax, high)
+              @asm.label(below)
+            end
+
+            # Reference#exec_box_background: whether the background is held to a box worked out first, and where held,
+            # the box's x, y, width and height, kept to the screen (Reference#screen_box) and laid in its STATE. The view
+            # is built again, since what it shows of the background has changed.
+            def emit_box_background(node)
+              scenery = Runtime::Scenery
+              state = scenery.state_at(@memory, background_named(node.name))
+              part = ->(at) { X86.mem(nil, state + at, size: 32) }
+              done = fresh_label("box_done")
+              empty = fresh_label("box_empty")
+              emit_value(node.held)
+              @asm.mov(part.call(scenery::BOXED), 0)
+              @asm.test(:eax, :eax)
+              @asm.je(done)
+              emit_values_into(%i[eax ecx edx ebx], [node.x, node.y, node.width, node.height].map { |operand| value_node(operand) })
+              @asm.mov(part.call(scenery::BOXED), 1)
+              { BOX_LEFT: :eax, BOX_TOP: :ecx, BOX_RIGHT: :edx, BOX_BOTTOM: :ebx }.each { |side, register| @asm.mov(part.call(scenery.const_get(side)), register) }
+              @asm.cmp(:edx, 0)
+              @asm.jle(empty)
+              @asm.cmp(:ebx, 0)
+              @asm.jle(empty)
+              [[scenery::BOX_LEFT, scenery::BOX_RIGHT, @memory.screen.width], [scenery::BOX_TOP, scenery::BOX_BOTTOM, @memory.screen.height]].each do |first, last, most|
+                summed = fresh_label("box_end_summed")
+                @asm.mov(:eax, part.call(first))
+                @asm.mov(:edx, :eax)
+                @asm.add(:edx, part.call(last)) # the end just past it; a sum past the biggest number is past the screen
+                @asm.jno(summed)
+                @asm.mov(:edx, most)
+                @asm.label(summed)
+                emit_clamped_eax(0, most)
+                @asm.mov(part.call(first), :eax)
+                @asm.mov(:eax, :edx)
+                emit_clamped_eax(0, most)
+                @asm.mov(part.call(last), :eax)
+                @asm.cmp(:eax, part.call(first))
+                @asm.jle(empty)
+              end
+              @asm.jmp(done)
+              # Nothing of it on the screen: the empty box at the corner, which shows nothing.
+              @asm.label(empty)
+              %i[BOX_LEFT BOX_TOP BOX_RIGHT BOX_BOTTOM].each { |side| @asm.mov(part.call(scenery.const_get(side)), 0) }
+              @asm.label(done)
+              @asm.call("rt_scenery_rebuild")
             end
 
             # A layer can put a background behind one already up, and a stamp covers wherever it has solid pixels,

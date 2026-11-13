@@ -170,16 +170,20 @@ class TestDOSCheckedRun < Minitest::Test
     end
   end
 
-  def test_a_text_in_a_colour_picked_as_the_game_runs_is_refused_by_name
-    error = assert_raises(DOS::Lowering::NotMadeYet) do
-      checked(frames: 2) do
-        screen :bitmap
-        lit = var :lit, 1
-        game_loop { draw_text "BLINK", 8, 8, %i[white red], showing: lit }
+  # A text whose colour is picked as the game runs, kept as a picture in each colour: the number that picks
+  # turns on and off, and the picture shows the colour picked on each pass.
+  def test_a_text_in_a_colour_picked_as_the_game_runs_shows_the_colour_picked
+    run = checked(frames: 5) do
+      screen :bitmap
+      lit = var :lit, 0
+      game_loop do
+        clear_screen :black
+        lit = 1 - lit
+        draw_text "BLINK", 8, 8, %i[white red], showing: lit
       end
     end
 
-    assert_match(/colour it picks as it runs/, error.message)
+    refute_equal VBlank::Graphics::Color.resolve(:black), run.screen.pixel(8, 8)
   end
 
   def test_repeat_and_if_and_else_agree

@@ -164,7 +164,6 @@ module VBlank
             @plan.refuse_what_console_lacks!
             refuse_unmade_variant!
             refuse_unmade_screens!
-            refuse_unmade_text!
             refuse_unmade_sprites!
             refuse_unmade_fades!
           end
@@ -208,16 +207,6 @@ module VBlank
           # (Console::Description, painted_pages).
           def refuse_unmade_screens! = refuse_unmade_scenery!
 
-          # A text whose colour is picked as the game runs (`picked:`) is two pictures and a choice, which is not
-          # made yet.
-          def refuse_unmade_text!
-            return unless @program.walk.any? { |node| node.kind == :draw_text && node.picked }
-
-            raise NotMadeYet.new("This game writes text in a colour it picks as it runs. The #{CONSOLE.title} build " \
-                                 "does not make that yet. To fix this, give the text one colour for now.",
-                                 part: Console::DOSAnswers::NOT_MADE_YET_PART)
-          end
-
           def loop_variables = @plan.game_loops.flat_map { |node| console_loop(node).variables }
 
           def reserve_variables
@@ -229,7 +218,8 @@ module VBlank
           # The colours the game names, as the 15-bit numbers the interpreter paints with, after black.
           def palette_of(program)
             colors = program.walk.select { |node| PAINTING_KINDS.include?(node.kind) }
-                            .map { |node| Graphics::Color.resolve(node.color) }.uniq - [0]
+                            .flat_map { |node| [node.color, (node.picked if node.kind == :draw_text)].compact }
+                            .map { |color| Graphics::Color.resolve(color) }.uniq - [0]
             colors |= drawn_pictures.flat_map { |name| picture_colors(name) } - [0]
             colors |= recolored_sprite_colors - [0]
             colors |= scenery_colors - [0]
@@ -263,8 +253,10 @@ module VBlank
 
           def make_text_pictures
             @program.walk.select { |node| node.kind == :draw_text }.each do |node|
-              key = text_key(node)
-              @art_places[key] = picture_of_text(node.fonts.get(node.font), node.text, node.color) unless @art_places.key?(key)
+              [node.color, node.picked].compact.each do |color|
+                key = text_key(node, color)
+                @art_places[key] = picture_of_text(node.fonts.get(node.font), node.text, color) unless @art_places.key?(key)
+              end
             end
           end
 
@@ -300,7 +292,7 @@ module VBlank
             place
           end
 
-          def text_key(node) = [:text, node.text, node.font, Graphics::Color.resolve(node.color)]
+          def text_key(node, color = node.color) = [:text, node.text, node.font, Graphics::Color.resolve(color)]
 
           def picture_image(name) = (@images ||= {})[name] ||= @cache.image(picture_node(name))
 
@@ -406,6 +398,8 @@ module VBlank
             when :screen then emit_tiled_screen(node) if scenery_used?
             when :background then emit_background(node)
             when :scroll_background then emit_scroll_background(node)
+            when :place_bar then emit_place_bar(node)
+            when :box_background then emit_box_background(node)
             when :set_tile then emit_set_tile(node)
             when :show_held_tiles then emit_show_held_tiles(node)
             when :show_map then emit_show_map(node)
@@ -876,7 +870,30 @@ module VBlank
 
           # Reference#exec_draw_text: the words as a picture in their colour, at x and y. A text with no pixels
           # in its font draws nothing.
-          def emit_draw_text(node) = emit_picture_at(@art_places.fetch(text_key(node)), node)
+          def emit_draw_text(node)
+            return emit_picture_at(@art_places.fetch(text_key(node)), node) unless node.picked
+
+            emit_picked_text(node)
+          end
+
+          # A text whose colour is picked as it runs (`picked:`): it is kept as a picture in each of its two colours,
+          # and drawn in the picked one where its number (`showing:`) is not nought. x and y are worked out first,
+          # then the number, as the interpreter works them out.
+          def emit_picked_text(node)
+            emit_values_into(%i[eax ecx], [value_node(node.x), value_node(node.y)])
+            @asm.push(:eax)
+            @asm.push(:ecx)
+            emit_value(node.showing)
+            own = fresh_label("text_own_color")
+            @asm.mov(:si, @art_places.fetch(text_key(node)))
+            @asm.test(:eax, :eax)
+            @asm.je(own)
+            @asm.mov(:si, @art_places.fetch(text_key(node, node.picked)))
+            @asm.label(own)
+            @asm.pop(:ecx)
+            @asm.pop(:eax)
+            @asm.call("rt_blit")
+          end
 
           # Reference#exec_draw_column_at: where, how tall and which column worked out, then the picture's place and
           # the strip's width, which are settled as the game is built.

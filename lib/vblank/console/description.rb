@@ -613,7 +613,8 @@ module VBlank
                           # A background is pixels in the processor's own picture, so it is held to a box
                           # as a rectangle the drawing stays inside, kept in memory the way a painted
                           # screen's area is (the same as the PlayStation's).
-                          holds_background_above_row: false, background_box: :own_window, glides_recordings: false,
+                          # ...and kept to the rows above a row the same way, which costs nothing more.
+                          holds_background_above_row: true, background_box: :own_window, glides_recordings: false,
                           area_clips_called_routines: true,
                           # Nothing in the card limits sprites: the processor draws each one, so the limit is
                           # time. 256 shown, as many as a 386 draws in a frame of small ones.
