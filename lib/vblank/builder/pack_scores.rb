@@ -32,7 +32,8 @@ module VBlank
     # number. A part's notes are read then too: the part keeps where its records are and what
     # turns them into events (#song_reading_notes_at_start), and its Score must give its length:
     # a number of its own, or one of the pack with the most it can be (`longest:`), which is then
-    # read as the game starts too, with the tick it comes round to.
+    # read as the game starts too, with the tick it comes round to. So is the wave a part plays
+    # from a slot (`plays: pack[:waves].wave(0)`, #pack_wave_in_start_file).
     # A chip envelope is not made that way yet, and the build says so.
     module PackScores
       private
@@ -68,14 +69,11 @@ module VBlank
         DSL::PackWave.steps_of(pack_slot_values(wave.slot, :numbers, subject).slice(wave.first_byte, DSL::PackWave::BYTES))
       end
 
-      # A wave read from the pack is known only once the file is read, and no build reads one
-      # there yet: each runtime's table of waves is written as the game is built.
-      def refuse_wave_read_at_start!(score, verb)
-        wave = score.parts.map(&:plays).grep(DSL::PackWave).first or return
-
-        raise ArgumentError, "#{verb} has a Score part that plays a wave from slot :#{wave.slot.layout.name}, and this build " \
-                             "reads its pack as the game starts. A wave from the pack is not read that way yet. To fix " \
-                             "this, build the game all-in-one, or give the part its wave in the game, like `plays: :triangle`."
+      # Where the wave +wave+ (a DSL::PackWave) names is in the start file, with the pack left out:
+      # the part plays a stand-in until the file is read (IR::StartFile::Wave).
+      def pack_wave_in_start_file(wave, verb)
+        refuse_slot_from_elsewhere!(wave.slot, "#{verb} reading a wave from slot :#{wave.slot.layout.name}")
+        IR::StartFile::Wave.new(at: @pack_slot_starts.fetch(wave.slot.layout.name) + wave.first_byte)
       end
 
       # Whether +score+ reads its length or the tick it comes round to from the pack.
@@ -84,16 +82,19 @@ module VBlank
       # WITH THE PACK LEFT OUT a part keeps its handle (a DSL::PackNotes) until the song is
       # recorded (#song_reading_notes_at_start), and the Score is held to what such a build needs:
       # its length, since where the last note ends is in the pack. A length read from the pack
-      # comes with the most it can be (`longest:`).
+      # comes with the most it can be (`longest:`). A part that plays a wave of the pack plays it
+      # from where it is in the start file (#pack_wave_in_start_file), which needs no length.
       def score_reading_notes_at_start(score, verb)
-        refuse_wave_read_at_start!(score, verb)
-        refuse_pack_score_without_length!(score, verb)
-        refuse_pack_timing_beside_written_parts!(score, verb)
-        Audio::Score::Checks.plays_once!(score)
+        if score.parts.any? { |part| pack_notes?(part.notes) } || pack_timing?(score)
+          refuse_pack_score_without_length!(score, verb)
+          refuse_pack_timing_beside_written_parts!(score, verb)
+          Audio::Score::Checks.plays_once!(score)
+        end
         [score.length, score.loop_from].grep(DSL::PackNumber).each do |number|
           refuse_slot_from_elsewhere!(number.slot, "#{verb} reading a song's length from slot :#{number.slot.layout.name}")
         end
         parts = score.parts.map do |part|
+          part = part.with(plays: pack_wave_in_start_file(part.plays, verb)) if part.plays.is_a?(DSL::PackWave)
           next part unless pack_notes?(part.notes)
 
           handle = part.notes.is_a?(DSL::PackSlot) ? part.notes.notes : part.notes

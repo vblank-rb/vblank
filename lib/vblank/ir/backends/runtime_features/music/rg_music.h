@@ -102,4 +102,10 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
  * most; a loop frame on or past the end is the song's start (IR::StartFile::SongLength#frames_in). */
 void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 
+/* A PART'S WAVE IN THE FILE (IR::StartFile::Wave): sixteen bytes from +at+ on, two steps a byte,
+ * the earlier in the high four bits, as the Game Boy's wave memory keeps them. The game holds a
+ * stand-in for it as waveform number +which+ of +waveforms+ (rg_sound.c says the layout), and this
+ * writes the wave's 32 steps over it. */
+void rg_music_fill_wave(int32_t *waveforms, int32_t which, int32_t at);
+
 #endif

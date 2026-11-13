@@ -285,7 +285,7 @@ module VBlank
             @audio_played = []
             @screen = nil
             @sprites = []
-            @sound_log = SoundLog.new(program)
+            @sound_log = SoundLog.new(program, start_file: @handed_file)
             @drawn_sprites = DrawnSprites.new(program)
             play(headless_program(program), frames || Reference::DEFAULT_FRAMES)
             self

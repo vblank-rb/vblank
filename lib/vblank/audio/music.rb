@@ -129,6 +129,8 @@ module VBlank
         when *WAVE_SHAPES then { wave: plays }
         # A waveform of the part's own, rather than one of the names — the wave voice either way.
         when Array then { wave: Sound.wave_steps!(plays) }
+        # ...or one read from the file the game is handed as it starts, a stand-in until then.
+        when IR::StartFile::Wave then { wave: IR::StartFile::WAVE_STAND_IN, wave_from_file: plays }
         when :square then raise ArgumentError, SQUARE_PLAYS_MESSAGE
         when Symbol then { instrument: plays }
         else
@@ -226,8 +228,13 @@ module VBlank
       # +from_file+ is where the part's notes are in the file the program is handed as it starts
       # (an IR::StartFile::Notes), for a part that reads them from there: +events+ is then empty
       # until the file is read. Nil for every other part.
+      #
+      # +wave_from_file+ is where the part's wave is in that file (an IR::StartFile::Wave), for a
+      # part on the wave voice that reads it from there: +wave+ is then a stand-in until the file
+      # is read. Nil for every other part.
       Part = Data.define(:events, :duty, :volume, :instrument, :wave, :noise, :decay, :metallic,
-                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope, :from_file)
+                         :name, :envelope, :fade, :slide, :vibrato, :pan, :duties, :chip_envelope, :from_file,
+                         :wave_from_file)
 
       class Part
         # WHAT A PART CARRIES WHEN IT SETS NOTHING — every optional field's answer, in one place,
@@ -237,7 +244,7 @@ module VBlank
         DEFAULTS = { duty: :half, volume: 12, instrument: nil, wave: nil,
                      noise: false, decay: :fast, metallic: false, name: nil, envelope: nil,
                      fade: nil, slide: nil, vibrato: nil, pan: nil, duties: nil, chip_envelope: nil,
-                     from_file: nil }.freeze
+                     from_file: nil, wave_from_file: nil }.freeze
 
         # WHAT A PART'S VOICE CANNOT DO IS REFUSED HERE, where both ways a song reaches the IR meet:
         # a fade on a voice that cannot count one (NoteFade.refuse_without_counting!), a slide off

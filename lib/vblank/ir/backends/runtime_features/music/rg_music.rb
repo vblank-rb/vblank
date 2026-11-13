@@ -1260,3 +1260,13 @@ def rg_music_fill_song_length(music, rules, tick_frames)
   music[song] = total
   music[song + 1] = loop_frame < total ? loop_frame : 0
 end
+
+# --- a part's wave in the file (rg_music.h, rg_music_fill_wave; rg_music.c says each step) ---
+
+RG_WAVE_FILL_BYTES = 16
+RG_WAVE_FILL_STEPS = 32
+
+def rg_music_fill_wave(waveforms, which, at)
+  steps = @rg_start_file.byteslice(at, RG_WAVE_FILL_BYTES).bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
+  waveforms[1 + (which * RG_WAVE_FILL_STEPS), RG_WAVE_FILL_STEPS] = steps
+end

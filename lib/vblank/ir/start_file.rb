@@ -39,6 +39,8 @@ module VBlank
     #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
     # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
     #   that a port's unpacking writes. The program holds no event for it.
+    # - the wave a part of a song plays on the wave voice (Audio::Music::Part#wave_from_file, a
+    #   Wave): sixteen bytes, two steps a byte. The program holds WAVE_STAND_IN until the file is read.
     # - a background (Nodes::Background#from_file, a Background): its map, a record of VBlank's own
     #   a cell (Original::MapCell, four bytes), one number of two bytes a cell in the layout the
     #   original's console keeps a map in, or one byte a cell that is a tile's number
@@ -417,6 +419,17 @@ module VBlank
         end
       end
 
+      # A WAVE OF THE WAVE VOICE IN THE FILE (Audio::Music::Part#wave_from_file), given as a Score
+      # part's `plays:` in place of its steps: Audio::Sound::WAVE_BYTES bytes from +at+ on, kept as
+      # Audio::Sound.wave_steps_of_bytes reads them. Every byte is two steps, so nothing in the file
+      # is out of range. Until the file is read the part plays WAVE_STAND_IN, silence.
+      Wave = Data.define(:at) do
+        # The 32 steps the wave's bytes in +bytes+, the file, come to.
+        def steps_in(bytes) = Audio::Sound.wave_steps_of_bytes(bytes.byteslice(at, Audio::Sound::WAVE_BYTES).bytes)
+      end
+
+      WAVE_STAND_IN = Array.new(Audio::Sound::WAVE_SAMPLES, 0).freeze
+
       # Whether a record's noise clock is its note's pitch on +part+ (an Audio::Score::Part), built
       # all-in-one or from the file: on a part on the noise voice that is not transposed, since a
       # transpose cannot move the voice's own setting.
@@ -492,7 +505,7 @@ module VBlank
 
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
-      # nothing (.place_in_file); a song reads the notes of the parts that keep theirs there.
+      # nothing (.place_in_file); a song reads the notes and the waves of the parts that keep theirs there.
       READ_KINDS = %i[table bitmap sample background screen song shading].freeze
 
       # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
@@ -502,7 +515,7 @@ module VBlank
         case node.kind
         when :screen then node.backdrop_from_file
         when :sample then node.from_file || node.settings_from_file
-        when :song then node.length_from_file || node.voices.filter_map(&:from_file).first
+        when :song then node.length_from_file || node.voices.filter_map { |part| part.from_file || part.wave_from_file }.first
         when :table then node.from_file || node.painted_from_file
         else node.from_file
         end
@@ -719,8 +732,9 @@ module VBlank
         end
       end
 
-      # A song's parts that keep their notes in the file, each the part a Score makes of those
-      # notes when the game is built holding them.
+      # A song's parts that keep their notes or their wave in the file, each the part a Score makes
+      # of those notes and that wave when the game is built holding them. A part made of its notes
+      # takes its wave from its Score part, so the wave is put in after.
       def self.fill_song(node, bytes)
         if (length = node.length_from_file)
           total, from = length.frames_in(bytes, node.total_frames, written_total: node.total_frames,
@@ -731,7 +745,9 @@ module VBlank
         end
         node.voices = node.voices.map do |part|
           where = part.from_file
-          where ? where.voice_playing(notes_in(bytes, where), node.total_frames) : part
+          part = where.voice_playing(notes_in(bytes, where), node.total_frames) if where
+          wave = part.wave_from_file
+          wave ? part.with(wave: wave.steps_in(bytes), wave_from_file: nil) : part
         end
       end
 

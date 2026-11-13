@@ -93,7 +93,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `pack[:waves].wave(1)` — **a wave of the wave voice**: sixteen bytes of a slot of bytes from wave 1 on,
     two steps a byte, the earlier in the high four bits (as the Game Boy's wave memory keeps them), for a
     Score part's `plays:` in place of its 32 steps. Read where the game is built; a build that reads its
-    pack as the game starts refuses it at the line, as not made yet. An instrument's numbers can come
+    pack as the game starts reads the wave then, the part playing silence until it does. A PlayStation
+    build for a computer refuses that, since it makes each wave's sound memory as it is built. An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
     **An envelope kept as a Super Nintendo's sound chip keeps it** is `envelope:

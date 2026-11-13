@@ -66,8 +66,11 @@ module PackGames
 
   # WHICH RUNS REFUSE A GAME BUILT WITH ITS PACK LEFT OUT. The builder refuses on every run. A
   # lowering refuses only where a build for a computer is made, so the interpreter plays the game,
-  # and must play it as the all-in-one build.
-  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates].freeze
+  # and must play it as the all-in-one build. A build for a computer refuses some games only as a
+  # console whose sound chip does what the Advance's does not: mixing recordings at their own
+  # rates, or playing every voice from sound memory (the PlayStation).
+  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates
+                  computer_build_voices_reading_sound_memory].freeze
 
   # A refusal: a phrase its words hold besides the fix, and who refuses (one of REFUSED_BY).
   # +names_fix+ is false for a refusal whose words do not say yet that building all-in-one works;
@@ -1251,6 +1254,7 @@ module PackGames
       parts.each_value.with_index { |notes, place| copy[place * MOST * PackNote::BYTES, MOST * PackNote::BYTES] = records(notes) }
       copy[SETTINGS_AT, SHAPE.length + 1] = [*SHAPE, HOLDS_FROM].pack("C*")
       copy[TIMING_AT, TIMING.length * 2] = TIMING.pack("v*")
+      copy[WAVES_AT, WAVES.flatten.length] = WAVES.flatten.pack("C*")
       path = File.join(folder, "made_up_songs.bin")
       File.binwrite(path, copy)
       VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -1260,7 +1264,9 @@ module PackGames
 
     # A game whose songs and sound effects the block makes, handed a way to get a part's notes by
     # slot name and the instrument settings of the pack. It plays song 0 on A and effect 0 on B.
-    private def scores_game(folder, options, parts, instruments: {}, &scores)
+    # With +waves+ the pack has a slot of the copy's waves, and the block is handed a way to get
+    # one for a part's `plays:` too.
+    private def scores_game(folder, options, parts, instruments: {}, waves: false, &scores)
       from = score_original(folder, parts)
       b = VBlank::Builder.new(options: options)
       b.instance_eval do
@@ -1270,6 +1276,7 @@ module PackGames
           parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
           slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
           slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+          slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
         end
         # A part takes the slot's handle itself too, where its notes name no instrument.
         # A word for the notes written by hand (`recorded:`) means nothing to the pack's.
@@ -1278,7 +1285,9 @@ module PackGames
         end
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
         timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
-        made = instance_exec(notes_of, settings, timing, &scores)
+        wave_of = ->(index) { pack[:waves].wave(index) }
+        # A block may be a lambda, which takes only the arguments it names.
+        made = instance_exec(notes_of, settings, timing, *(wave_of if waves), &scores)
         music = songs :music, made.fetch(:songs)
         effects = (sound_effects :sfx, made[:effects] if made[:effects])
         game_loop do
@@ -1336,6 +1345,17 @@ module PackGames
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low)),
                                       Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
                               tempo: 150, longest: 300, **timing)] }
+        end
+      end,
+      # A song's wave part and a sound effect's, each playing a wave of the copy's, as a sound
+      # driver keeps its wave voice's patterns; the effect's notes are written in the game.
+      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] },
+                                           refused: Refusal.new(phrase: "sound memory", by: :computer_build_voices_reading_sound_memory)) do |folder, options|
+        scores_game(folder, options, { lead: LEAD, wave: WAVE }, waves: true) do |notes_of, _settings, _timing, wave_of|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
+                              tempo: 150, length: 84, loop_from: 36)],
+            effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)],
+                                                 plays: wave_of.(0))], tempo: 150, length: 24)] }
         end
       end,
       # A length from the pack with no most it can be leaves the build no room to make.

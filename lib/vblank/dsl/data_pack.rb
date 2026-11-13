@@ -192,14 +192,14 @@ module VBlank
 
     # ONE WAVE OF THE WAVE VOICE IN A SLOT OF BYTES (PackSlot#wave), for a Score part's `plays:`:
     # sixteen bytes from wave +index+ on, two steps of the wave a byte, the earlier in the high four
-    # bits, as the Game Boy's wave memory keeps them.
+    # bits, as the Game Boy's wave memory keeps them (Audio::Sound.wave_steps_of_bytes).
     PackWave = Data.define(:slot, :index)
 
     class PackWave
-      BYTES = 16
+      BYTES = Audio::Sound::WAVE_BYTES
 
       # The 32 steps, 0 to 15 each, of the wave's +bytes+ (a list of sixteen numbers).
-      def self.steps_of(bytes) = bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
+      def self.steps_of(bytes) = Audio::Sound.wave_steps_of_bytes(bytes)
 
       # Where the wave's first byte is in its slot.
       def first_byte = index * BYTES

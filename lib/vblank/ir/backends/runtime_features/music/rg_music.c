@@ -1540,3 +1540,16 @@ void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32
   song[0] = total;
   song[1] = loop < total ? loop : 0;
 }
+
+/* --- a part's wave in the file (rg_music.h, rg_music_fill_wave) --- */
+
+enum { RG_WAVE_FILL_BYTES = 16, RG_WAVE_FILL_STEPS = 32 };
+
+void rg_music_fill_wave(int32_t *waveforms, int32_t which, int32_t at) {
+  const uint8_t *bytes = rg_start_file_bytes() + at;
+  int32_t *steps = waveforms + 1 + (which * RG_WAVE_FILL_STEPS);
+  for (int32_t i = 0; i < RG_WAVE_FILL_BYTES; i++) {
+    steps[2 * i] = bytes[i] >> 4;
+    steps[(2 * i) + 1] = bytes[i] & 0xF;
+  }
+}

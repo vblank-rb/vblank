@@ -15,8 +15,12 @@ module VBlank
         # not carry it. Both sides number the game's beeps, songs, waves and hits here, the
         # lowering to write the numbers in and the run to read them back, which is what keeps the
         # two in step.
+        #
+        # +start_file+ is the file the program was handed as it starts (IR::StartFile), or nil: a
+        # part that reads its wave from there is read back with the wave the file holds.
         class SoundLog
-          def initialize(program)
+          def initialize(program, start_file: nil)
+            @start_file = start_file
             defined = program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
             @effects = program.walk.select { |node| node.kind == :beep }.map { |node| effect_of(node, defined) }.uniq
             @defined = defined
@@ -143,8 +147,11 @@ module VBlank
 
           # A note of a song's part on the wave voice or the noise voice, as the interpreter's
           # player logs one (Reference::Player#log_wave_or_noise). The C prints the note's pitch;
-          # the rest is the part's.
-          def wave_of_part(part, pitch) = { shape: part.wave, frequency: pitch, volume: part.volume }
+          # the rest is the part's, its wave read from the start file where it keeps it there.
+          def wave_of_part(part, pitch)
+            shape = part.wave_from_file ? part.wave_from_file.steps_in(@start_file.b) : part.wave
+            { shape: shape, frequency: pitch, volume: part.volume }
+          end
 
           def hit_of_part(part, pitch)
             { pitch: pitch, decay: part.decay, volume: part.volume, metallic: part.metallic }

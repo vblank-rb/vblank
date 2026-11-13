@@ -73,19 +73,30 @@ module PackScoresAtStartTests
   TIMING = [84, 36].freeze
   TIMING_AT = 2064
 
+  # Two waves of the wave voice, sixteen bytes each, two steps a byte with the earlier in the high
+  # four bits, as a sound driver keeps its wave voice's patterns; a part plays one with
+  # `plays: pack[:waves].wave(1)`.
+  WAVES = [(0...16).map { |at| at * 17 }, (0...16).map { |at| ((15 - at) << 4) | (at % 7) }].freeze
+  WAVES_AT = 2096
+
+  # Wave +index+ of WAVES as the 32 steps a part written by hand plays.
+  private def wave_steps(index) = WAVES.fetch(index).flat_map { |byte| [byte >> 4, byte & 0xF] }
+
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
-  # +timing+ is what its song's length and loop hold.
-  private def pack_file(parts, timing: TIMING)
+  # +timing+ is what its song's length and loop hold, and with +waves+ it holds WAVES.
+  private def pack_file(parts, timing: TIMING, waves: false)
     slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"),
                                                                     timing: timing.pack("v*"))
+    slots[:waves] = WAVES.flatten.pack("C*") if waves
     VBlank::Original::Pack.holding(slots, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
   end
 
   # A game whose songs and sound effects are made by the block, which is handed a way to get a
   # part's notes by slot name: the slot's handle with the pack left out (+folder+ given), or the
   # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
-  # declares them and plays neither.
-  private def scored_game(parts, folder: nil, instruments: {}, plays: true, &scores)
+  # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
+  # handed a way to get one of them for a part's `plays:`, the same way.
+  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
@@ -96,7 +107,9 @@ module PackScoresAtStartTests
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
         slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+        slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
       end
+      wave_of = ->(index) { pack ? pack[:waves].wave(index) : test.wave_steps_by_hand(index) }
       notes_of = lambda do |name, recorded: false|
         named = instruments.fetch(name, [])
         pack ? pack[name].notes(instruments: named) : test.written_notes(parts.fetch(name), named, recorded)
@@ -109,7 +122,8 @@ module PackScoresAtStartTests
                  end
       # A song's length and loop from the pack, or the same numbers written by hand.
       timing = pack ? { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) } : { length: TIMING[0], loop_from: TIMING[1] }
-      made = instance_exec(notes_of, settings, timing, &scores)
+      # A block may be a lambda, which takes only the arguments it names.
+      made = instance_exec(notes_of, settings, timing, *(wave_of if waves), &scores)
       music = songs :music, made.fetch(:songs)
       effects = (sound_effects :sfx, made[:effects] if made[:effects])
       game_loop do
@@ -125,16 +139,19 @@ module PackScoresAtStartTests
   # Called back from the game's block, so it is public.
   def written_notes(notes, instruments, recorded) = written(notes, instruments, recorded: recorded)
 
+  # Called back from the game's block, so it is public.
+  def wave_steps_by_hand(index) = wave_steps(index)
+
   # The game with its pack left out, handed its pack, is heard as the game written by hand is: the
   # same sound log and the same mixed samples, on each of +buttons+ pressed once.
-  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, &scores)
+  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
     Dir.mktmpdir do |folder|
-      by_hand = scored_game(parts, instruments: instruments, &scores)
-      left_out = scored_game(parts, folder: folder, instruments: instruments, &scores)
+      by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
+      left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
       buttons.each do |button|
         once = ->(frame) { frame == 1 ? [button] : [] }
         wanted = game_player.input_each_frame(&once).run(by_hand, frames: frames)
-        played = game_player.hand_file(pack_file(parts)).input_each_frame(&once).run(left_out, frames: frames)
+        played = game_player.hand_file(pack_file(parts, waves: waves)).input_each_frame(&once).run(left_out, frames: frames)
 
         refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes on #{button}"
         assert_equal wanted.audio, played.audio, "the sound log on #{button}"
@@ -179,6 +196,30 @@ module PackScoresAtStartTests
       { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low), volume: 9),
                                   Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
                           tempo: 150, length: 84, loop_from: 36)] }
+    end
+  end
+
+  # A WAVE OF THE PACK'S, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
+  # part reads its notes from the pack too, and the sound effect's, written in the game, plays the
+  # other wave. Each is heard as the same wave's 32 steps written by hand. A build for a computer
+  # playing as a console whose voices read sound memory (the PlayStation) makes that memory as the
+  # game is built, and refuses the wave in plain words.
+  def test_a_wave_part_playing_a_wave_from_the_pack_read_as_the_game_starts_plays_as_written_by_hand
+    parts = { lead: LEAD, wave: WAVE }
+    scores = lambda do |notes_of, _settings, _timing, wave_of|
+      { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
+                          tempo: 150, length: 84, loop_from: 36)],
+        effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)], plays: wave_of.(0))],
+                            tempo: 150, length: 24)] }
+    end
+    unless VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
+      return assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
+    end
+
+    Dir.mktmpdir do |folder|
+      left_out = scored_game(parts, folder: folder, waves: true, &scores)
+      error = assert_raises(VBlank::BuildError) { game_player.hand_file(pack_file(parts, waves: true)).run(left_out, frames: 1) }
+      assert_includes error.message, "sound memory"
     end
   end
 

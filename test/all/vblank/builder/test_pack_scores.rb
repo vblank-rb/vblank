@@ -191,7 +191,8 @@ class TestPackScores < Minitest::Test
   end
 
   # A WAVE OF THE COPY'S (`plays: pack[:waves].wave(1)`), as a Color or Advance driver keeps its
-  # wave voice's patterns, sixteen bytes each.
+  # wave voice's patterns, sixteen bytes each. Its twin read as the game starts is in
+  # test/pack_scores_at_start_tests.rb.
   def test_a_wave_part_playing_a_wave_from_the_pack_plays_as_written_by_hand
     Dir.mktmpdir do |folder|
       wanted = game_player.run(voiced_song_game(wave_from_copy: true), frames: 80).audio
@@ -199,21 +200,6 @@ class TestPackScores < Minitest::Test
 
       assert(wanted.any? { |entry| entry.first == :wave }, "the wave part plays")
       assert_equal wanted, played
-    end
-  end
-
-  # A build that reads its pack as the game starts does not read a wave from it yet, and says so.
-  def test_a_wave_from_the_pack_read_as_the_game_starts_is_refused
-    Dir.mktmpdir do |folder|
-      b = Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
-      pack = b.data_pack(from: voiced_original(folder), version: "1") do |slots|
-        slots.numbers :waves, at: WAVES_AT, count: 32, width: :byte, signed: false
-      end
-      error = assert_raises(ArgumentError) do
-        b.songs :music, [Score.new(parts: [Part.new(notes: [Note.new(at: 0, key: 60)], plays: pack[:waves].wave(0))], length: 24)]
-      end
-
-      assert_includes error.message, "wave"
     end
   end
 

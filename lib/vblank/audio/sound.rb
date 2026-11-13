@@ -141,6 +141,14 @@ module VBlank
       # ...and how loud one step can be. Four bits, so 0 is silence and 15 is the top.
       WAVE_STEP_MAX = 15
 
+      # A WAVEFORM AS THE GAME BOY'S WAVE MEMORY KEEPS IT: sixteen bytes, two steps a byte, the
+      # earlier step in the high four bits. A sound driver's wave patterns are kept this way, so a
+      # port reads them from its original as these bytes.
+      WAVE_BYTES = WAVE_SAMPLES / 2
+
+      # The 32 steps of +bytes+ (WAVE_BYTES numbers, 0 to 255) kept that way.
+      def self.wave_steps_of_bytes(bytes) = bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
+
       # WHAT THE TWO KINDS OF VOICE CAN ACTUALLY DO. These are limits, not encodings, which is
       # why they sit out here with the musical half rather than inside a lowering: a backend that
       # never writes a register still has to honour them, or the two backends disagree about
