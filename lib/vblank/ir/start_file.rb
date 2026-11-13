@@ -42,7 +42,7 @@ module VBlank
     # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
     #   that a port's unpacking writes. The program holds no event for it.
     # - the wave a part of a song plays on the wave voice (Audio::Music::Part#wave_from_file, a
-    #   Wave): sixteen bytes, two steps a byte. The program holds WAVE_STAND_IN until the file is read.
+    #   Wave): sixteen bytes, two steps a byte. The program holds .wave_stand_in until the file is read.
     # - a background (Nodes::Background#from_file, a Background): its map, a record of VBlank's own
     #   a cell (Original::MapCell, four bytes), one number of two bytes a cell in the layout the
     #   original's console keeps a map in, or one byte a cell that is a tile's number
@@ -497,13 +497,15 @@ module VBlank
       # A WAVE OF THE WAVE VOICE IN THE FILE (Audio::Music::Part#wave_from_file), given as a Score
       # part's `plays:` in place of its steps: Audio::Sound::WAVE_BYTES bytes from +at+ on, kept as
       # Audio::Sound.wave_steps_of_bytes reads them. Every byte is two steps, so nothing in the file
-      # is out of range. Until the file is read the part plays WAVE_STAND_IN, silence.
+      # is out of range. Until the file is read the part plays .wave_stand_in, silence.
       Wave = Data.define(:at) do
         # The 32 steps the wave's bytes in +bytes+, the file, come to.
         def steps_in(bytes) = Audio::Sound.wave_steps_of_bytes(bytes.byteslice(at, Audio::Sound::WAVE_BYTES).bytes)
       end
 
-      WAVE_STAND_IN = Array.new(Audio::Sound::WAVE_SAMPLES, 0).freeze
+      # Must stay a method, not a constant: a shell's one-Ruby-file script carries this file but
+      # not Audio, so nothing here may name Audio as the file loads.
+      def self.wave_stand_in = Array.new(Audio::Sound::WAVE_SAMPLES, 0).freeze
 
       # Whether a record's noise clock is its note's pitch on +part+ (an Audio::Score::Part), built
       # all-in-one or from the file: on a part on the noise voice that is not transposed, since a

@@ -84,7 +84,7 @@ module VBlank
               said = @waves.map { |wave| wave.fetch(:shape) }
               played = @songs.flat_map { |song| song.voices.reject(&:wave_from_file).filter_map(&:wave) }
               (said + played).map { |shape| Audio::Sound.wavetable(shape) }.uniq + note_waves.map { |shape| Audio::Sound.wavetable(shape) } +
-                waves_from_start_file.map { StartFile::WAVE_STAND_IN }
+                waves_from_start_file.map { StartFile.wave_stand_in }
             end
           end
 

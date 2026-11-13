@@ -130,7 +130,7 @@ module VBlank
         # A waveform of the part's own, rather than one of the names — the wave voice either way.
         when Array then { wave: Sound.wave_steps!(plays) }
         # ...or one read from the file the game is handed as it starts, a stand-in until then.
-        when IR::StartFile::Wave then { wave: IR::StartFile::WAVE_STAND_IN, wave_from_file: plays }
+        when IR::StartFile::Wave then { wave: IR::StartFile.wave_stand_in, wave_from_file: plays }
         when :square then raise ArgumentError, SQUARE_PLAYS_MESSAGE
         when Symbol then { instrument: plays }
         else
