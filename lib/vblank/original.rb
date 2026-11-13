@@ -24,6 +24,7 @@ require_relative "original/frame_record"   # One frame of a sprite in a data pac
 require_relative "original/pack"          # The data pack holding every slot
 require_relative "original/unpacking"      # The routine that fills the pack, as a program of its own
 require_relative "original/unpacking_parts"  # The routine's parts, which the pack cache keeps apart
+require_relative "original/pack_library"   # The part of VBlank a kept pack is keyed on
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console

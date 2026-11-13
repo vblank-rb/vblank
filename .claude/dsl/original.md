@@ -323,7 +323,14 @@ from that copy. The game's code says each piece's shape and size; it never depen
   **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
   ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
   routine, the same slots, the same version and the same VBlank reads the pack file back instead
-  (`Original::PackCache`).
+  (`Original::PackCache`). "The same VBlank" means the part of VBlank a pack is built and played
+  with (`Original::PackLibrary`): every file under its `lib` except the folders no unpacking uses,
+  such as each console's cartridge lowering, the cartridge and emulator tools, the network and the
+  window. So a VBlank commit to the Game Boy Color's lowering leaves the kept pack hitting, and a
+  commit to the interpreter or the C build plays the routine again. A test holds that list to what
+  a build really runs and reads. The key also holds the routine's defaults (the `DEFAULTS` of the
+  records it uses), so a changed default plays it again. A pack kept by an older VBlank misses
+  once, and the build keeps it again under the new key.
   The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
   in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
   the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a

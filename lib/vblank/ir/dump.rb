@@ -86,6 +86,29 @@ module VBlank
         "#{record.class.name}.new(#{args.join(', ')})"
       end
 
+      # WHAT #record_source LEAVES OUT, for a key that must change with what a tree means: the
+      # DEFAULTS of every record class +node+'s tree holds, one class a line, sorted by name. The
+      # dump alone keys how a tree is written, and a field at its default is not written, so a
+      # change to a class's DEFAULTS can change what the tree means and leave its dump as it was.
+      def record_defaults_source(node)
+        classes = record_classes_in(node, Set.new)
+        classes.sort_by(&:name).map { |record_class| "#{record_class.name} #{record_class::DEFAULTS.inspect}\n" }.join
+      end
+
+      # Every record class with a DEFAULTS table that +value+ holds, however deep, added to +found+.
+      def record_classes_in(value, found)
+        case value
+        when Node
+          value.attrs.each_value { |operand| record_classes_in(operand, found) }
+          value.children.each { |child| record_classes_in(child, found) }
+        when Array then value.each { |element| record_classes_in(element, found) }
+        when Data
+          found << value.class if value.class.const_defined?(:DEFAULTS)
+          value.to_h.each_value { |field| record_classes_in(field, found) }
+        end
+        found
+      end
+
       # #inspect alone loses a binary string's encoding — re-read as ordinary source,
       # the literal comes back tagged with the FILE's encoding, not the ASCII-8BIT a
       # sample or a packed asset was built with. Appending `.b` (the codebase's own

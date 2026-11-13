@@ -46,7 +46,8 @@ module VBlank
     # another this way must hand it through a slot instead.
     #
     # WHAT A PART'S CACHE KEY IS MADE OF (#key_source): the program of the part built alone, for each
-    # part played to make it (#played_for), as digests of IR::Dump's text of each. A part's blocks
+    # part played to make it (#played_for), as digests of each one's text as the pack cache keys a
+    # program (PackCache.program_source). A part's blocks
     # run as the same DSL calls however many parts are built with them, so the program of a part
     # and those it needs changes only when one of their programs alone does. Building that program
     # for each part's key instead built a port's routine again for every part, and for a port of
@@ -71,7 +72,7 @@ module VBlank
       end
 
       # The digest of a part's program built alone (+program+): what its Part keeps for #key_source.
-      def self.program_digest(program) = Digest::SHA256.hexdigest(IR::Dump.source(program))
+      def self.program_digest(program) = Digest::SHA256.hexdigest(PackCache.program_source(program))
 
       # Every name +program+ holds of a variable, list, table or routine, but UNSHARED_NAME_PATTERN: the
       # operands its kinds declare as names (IR::Node#named_operands).

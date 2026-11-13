@@ -13,22 +13,23 @@ module VBlank
     #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
     #
     # THE KEY is everything the bytes are made from: the unpacking program, which holds the routine,
-    # the slots and the copy's size, written out as IR::Dump writes a program, so a change to any of
+    # the slots and the copy's size, written out as IR::Dump writes a program, with the DEFAULTS of
+    # the record classes it holds, which the dump leaves out (#program_source), so a change to any of
     # them misses; a digest of the copy's bytes themselves, worked out here rather than taken from
     # what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
-    # so a copy of many megabytes adds nothing to the key's text); the library, every file under its
-    # lib by its place there and its contents, since the interpreter that runs the routine is part
-    # of it (so a checkout and a worktree of it share entries); the Ruby; and the SHA-1 and build
-    # version the pack's header names. The folder must be one git ignores, since what is cached is
-    # the original's data.
+    # so a copy of many megabytes adds nothing to the key's text); the part of the library a pack is
+    # built and played with, each file by its place under lib and its contents (PackLibrary, which
+    # says which files and why), so a checkout and a worktree of it share entries; the Ruby; and the
+    # SHA-1 and build version the pack's header names. The folder must be one git ignores, since
+    # what is cached is the original's data.
     #
     # AN ENTRY IS THE PACK FILE ITSELF (Original::Pack), which the routine's run writes straight
     # into the folder (Unpacking#write_pack_fastest), so a pack of hundreds of megabytes is never
     # held twice to be kept.
     #
-    # Each change to the library misses once and writes a new entry, so entries are pruned: one no
-    # build has read for EXPIRE_DAYS goes when the next is stored, and so does a half-written one
-    # left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each
+    # Each change to that part of the library misses once and writes a new entry, so entries are
+    # pruned: one no build has read for EXPIRE_DAYS goes when the next is stored, and so does a
+    # half-written one left by a build that stopped. Two builds at once, in two processes, Ractors or threads, may each
     # miss and each store the same bytes: an entry is written under a name of its own and then renamed,
     # so neither reads half of one, and an entry that cannot be read is made again. A PackCache
     # keeps only the digests of the library and the copies it has keyed, and is made for each build.
@@ -41,8 +42,11 @@ module VBlank
       EXPIRE_DAYS = 7
       SECONDS_A_DAY = 86_400
 
-      def initialize(folder)
+      # +library+ is the part of VBlank the key digests (a PackLibrary); a test hands one of a made-up
+      # library folder.
+      def initialize(folder, library: PackLibrary.new)
         @folder = File.expand_path(folder)
+        @library = library
       end
 
       # The pack (an Original::Pack) +unpacking+ (an Original::Unpacking, holding the copy it reads)
@@ -63,6 +67,11 @@ module VBlank
       # build to name (#slot_bytes).
       SLOTS_ONLY_SHA1 = ("0" * 40).freeze
       SLOTS_ONLY_VERSION = "slots"
+
+      # What a key holds of +program+: the program as IR::Dump writes it, and the DEFAULTS of the
+      # record classes it holds, which the dump leaves out (IR::Dump.record_defaults_source), so the
+      # key changes with what the program means. UnpackingParts keys a part's program the same way.
+      def self.program_source(program) = "#{IR::Dump.source(program)}\0#{IR::Dump.record_defaults_source(program)}"
 
       # Each slot's bytes for +unpacking+, by name: the cached entry's on a hit, else the block's
       # (a Hash of them, as Unpacking#slot_bytes_in gives), which are then stored. For a game's own
@@ -148,7 +157,7 @@ module VBlank
 
       def key(unpacking, sha1, build_version)
         digest = key_digest(unpacking, sha1, build_version)
-        digest << IR::Dump.source(unpacking.program)
+        digest << PackCache.program_source(unpacking.program)
         digest.hexdigest
       end
 
@@ -156,20 +165,12 @@ module VBlank
       # SHA-1 and build version the pack's header names.
       # Worked out once for every part's key, since the library and the copy can be many megabytes.
       def key_digest(unpacking, sha1, build_version)
-        library = @library_digest ||= library_digest
+        library = @library_digest ||= @library.digest
         copy = (@copy_digests ||= {}.compare_by_identity)[unpacking.copy_bytes] ||= Digest::SHA256.hexdigest(unpacking.copy_bytes)
         digest = Digest::SHA256.new
         digest << library << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
         digest << copy << "\0"
         digest << sha1.to_s << "\0" << build_version.to_s << "\0"
-      end
-
-      def library_digest
-        lib = VBlank.root.join("lib").to_s
-        files = Dir.glob(File.join(lib, "**", "*")).select { |path| File.file?(path) }.sort
-        files.each_with_object(Digest::SHA256.new) do |path, digest|
-          digest << path.delete_prefix(lib) << File.binread(path)
-        end.hexdigest
       end
 
       # A hit's pack, its use marked so pruning keeps it; nil on a miss or an entry that cannot be read.
