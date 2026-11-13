@@ -16,14 +16,19 @@ module FullDepthSoundTests
   # A level whose low byte is most of it: 300 is 1 in eight bits, and 300 in sixteen.
   QUIET = 300
 
-  # A game that plays +recordings+ (each a hash of `sample`'s settings, by name) on a loop from its
-  # first frame, together.
-  private def looping_game(recordings)
+  # The run's console: how many recordings it sounds together (a play past that is dropped), and
+  # whether it has the `instrument` verb (the Color plays a song on its own voices alone).
+  private def recordings_at_once = VBlank::Console.described(game_console).recordings_at_once
+  private def console_plays_instruments? = VBlank::Console.for(game_console).answers.answer(:instrument).works?
+
+  # A game that declares +recordings+ (each a hash of `sample`'s settings, by name) and plays those
+  # named in +played+, every one unless given, on a loop from its first frame, together.
+  private def looping_game(recordings, played = recordings.keys)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :bitmap
-      played = recordings.map { |name, settings| sample(name, **settings) }
-      played.each { |recording| recording.play(loop: true) }
+      declared = recordings.to_h { |name, settings| [name, sample(name, **settings)] }
+      played.each { |name| declared.fetch(name).play(loop: true) }
       game_loop { wait_vblank }
     end
     b.finalize_program
@@ -52,11 +57,20 @@ module FullDepthSoundTests
   end
 
   # An 8-bit recording in a game that mixes at sixteen is its sample shifted up eight bits: 2 is 512.
-  def test_an_8_bit_recording_beside_a_16_bit_one_is_heard_shifted_up
+  def test_an_8_bit_recording_in_a_game_of_16_bit_ones_is_heard_shifted_up
+    heard = levels_heard(looping_game({ hum: { pcm: [QUIET] * 64, bits: 16, rate: 8192 },
+                                        buzz: { pcm: [2] * 64, rate: 8192 } }, %i[buzz]))
+
+    assert_equal [512], heard.uniq
+  end
+
+  # Played together, the two add up at sixteen bits. A console that sounds one recording at a time
+  # (the Color, the Genesis) drops the second play and keeps the first.
+  def test_an_8_bit_recording_beside_a_16_bit_one_adds_at_sixteen_bits
     heard = levels_heard(looping_game(hum: { pcm: [QUIET] * 64, bits: 16, rate: 8192 },
                                       buzz: { pcm: [2] * 64, rate: 8192 }))
 
-    assert_equal [QUIET + 512], heard.uniq
+    assert_equal [recordings_at_once >= 2 ? QUIET + 512 : QUIET], heard.uniq
   end
 
   # A stereo 16-bit WAV is the average of its two sides, at all sixteen bits: 1000 and 601 are 800.
@@ -75,7 +89,8 @@ module FullDepthSoundTests
     assert_equal [QUIET], heard.uniq
   end
 
-  # An instrument of sixteen bits, played as a song's note, is heard at sixteen too.
+  # An instrument of sixteen bits, played as a song's note, is heard at sixteen too. A console with
+  # no instruments refuses the game before it plays.
   def test_a_16_bit_instrument_in_a_song_keeps_its_low_byte
     score = VBlank::Audio::Score
     tune = score.new(tempo: 150, length: 48, parts: [score::Part.new(plays: :hum, notes: [score::Note.new(at: 0, key: :C4, length: 48)])])
@@ -89,6 +104,10 @@ module FullDepthSoundTests
       game_loop { wait_vblank }
     end
     b.finalize_program
+    unless console_plays_instruments?
+      return assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(b.program, frames: 1) }
+    end
+
     heard = levels_heard(b.program, frames: 8)
 
     refute_empty heard
