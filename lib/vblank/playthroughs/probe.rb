@@ -159,6 +159,7 @@ module VBlank
       # each in the game's units, a fraction as the fraction; #raw_var is a variable's stored
       # number. A cartridge that is only its file has no build record, and is refused saying so.
       def var(name) = @reader.var(name)
+      def var?(name) = @reader.var?(name)
       def raw_var(name) = @reader.raw_var(name)
       def sprite(name) = @reader.sprite(name)
       def background(name) = @reader.background(name)

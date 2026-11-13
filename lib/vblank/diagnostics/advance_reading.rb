@@ -128,9 +128,11 @@ module VBlank
       # the instruction asking the console to sleep, and the console's own startup can enter
       # that one twice.
       def passes
+        refuse_missing_build_record!("where its game loop is, so its passes cannot be counted")
         unless @count_passes
-          raise ArgumentError, "This run did not count its passes. To count them, build the Verifier with " \
-                               "`count_passes: true`."
+          raise ArgumentError, "This run did not count its passes. A playthrough counts them when its script has a " \
+                               "`steer` step. To count them in another playthrough, give `play` the setting " \
+                               "`count_passes: true`. To count them on a Verifier, build it with `count_passes: true`."
         end
         ensure_rendered!
         return nil unless @passes_counted

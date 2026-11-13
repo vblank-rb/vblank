@@ -116,6 +116,17 @@ class TestBots < Minitest::Test
     assert_equal [0.5], view.list(:trail)
   end
 
+  # The count of passes a playthrough's script reads, and whether the game has a variable, as a bot asks them.
+  def test_a_bot_reads_the_passes_and_asks_whether_a_variable_is_there
+    state = Struct.new(:vars, :lists).new({ "speed" => 3 }, {})
+    game = Struct.new(:state, :program).new(state, nil)
+    view = VBlank::Bots::GameView.new(game, player: 1, players: 1, input_delay: 0).reached(12)
+
+    assert_equal 12, view.passes
+    assert view.var?(:speed)
+    refute view.var?(:no_such)
+  end
+
   def test_bots_that_play_a_tape_give_the_match_the_tape_was_made_of
     pictures = lambda do |devices|
       devices.map { |device| Zlib.crc32(device.last_picture.pixels.pack("v*")) }.uniq

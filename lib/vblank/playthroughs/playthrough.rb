@@ -91,12 +91,15 @@ module VBlank
       # +in_passes+ makes every count in the script a count of passes of the game loop, or of a
       # variable of the game named here, in place of frames (see PassStepper).
       #
+      # +count_passes+ asks the Advance's cartridge to count its passes for `game.passes` where the
+      # playing would not (see Playthrough.counts_passes?). Every other way counts them anyway.
+      #
       # +progress+ (a Messages::Progress) is told how far the playing has got as it goes: a phase
       # from the start and one on from each moment, and the frame each has reached.
       def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-               progress: Messages::Progress.silent, &at_each_moment)
+               count_passes: false, progress: Messages::Progress.silent, &at_each_moment)
         Playing.play(@name, steps_for_playing, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
-                                               in_passes: in_passes, progress: progress, &at_each_moment)
+                                               in_passes: in_passes, count_passes: count_passes, progress: progress, &at_each_moment)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -140,6 +143,23 @@ module VBlank
 
       # The names of the moments the script declares, in the order it declares them.
       def moment_names = @steps.flat_map(&:names)
+
+      # Whether the script has a step that steers.
+      def steers? = @steps.any?(Steer)
+
+      # WHETHER A PLAYING ON THE ADVANCE'S CARTRIDGE COUNTS ITS PASSES, for `game.passes`: where the
+      # playing is counted in them (+in_passes+ true), where it steers (+steps+, or +lead_in+'s), since
+      # a steering block is how a bot decides once a pass, and where it was asked to (+asked+).
+      #
+      # The Advance's cartridge has no count of its own passes. The emulator counts them by stopping
+      # at the game loop on every pass, and it checks for that stop on every instruction it runs
+      # (Diagnostics::AdvanceReading#passes), which a game that keeps the processor busy pays for
+      # most. So a playing that has no use for the count runs without it: a script of presses and
+      # waits, or one that only watches for a screen. Every other way of running counts its passes
+      # at no cost, and so does every other console's cartridge.
+      def self.counts_passes?(steps, lead_in:, in_passes:, asked:)
+        asked || in_passes == true || steps.any?(Steer) || lead_in&.steers? || false
+      end
 
       # A console switched on with +cartridge+ in it and no frame played yet: the reader over
       # one running cartridge that everything here plays on and asks. +save+ is what the
@@ -376,15 +396,16 @@ module VBlank
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      progress: Messages::Progress.silent, &at_each_moment)
+                      count_passes: false, progress: Messages::Progress.silent, &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
           cartridge = Playthrough.cartridge_from(cartridge)
           Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
+          counting = Playthrough.counts_passes?(steps, lead_in: lead_in, in_passes: in_passes, asked: count_passes)
           started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                                count_passes: in_passes == true)
+                                                                count_passes: counting)
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
           playing = new(title, cartridge, game, at_each_moment, stepper: stepper,

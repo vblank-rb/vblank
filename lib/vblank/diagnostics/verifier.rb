@@ -515,14 +515,24 @@ module VBlank
       # {#mem32} is the other half and stays the raw word: an address is whatever is at it, and
       # a hardware register is not a whole number in a program.
       def raw_var(name)
-        unless @var_addresses
-          refuse_missing_build_record!("where its variables are", or_else: "or hand the Verifier where they are: " \
-                                                                         "`vars: backend.var_addresses`")
-          raise ArgumentError, "This cartridge's build record does not say where its variables are. To read one, " \
-                               "hand the Verifier where they are: `vars: backend.var_addresses`."
-        end
+        refuse_unknown_variable_places! unless @var_addresses
         address = @var_addresses[name] || raise(ArgumentError, no_such_message("variable", name, game_variable_names))
         variable_kept_at(name, address)
+      end
+
+      # Whether the cartridge keeps a variable +name+, so #var can read it: the build's own record of
+      # where each is, the framework's included. A cartridge with no record is refused as #raw_var
+      # refuses it, since nothing says what it keeps.
+      def var?(name)
+        refuse_unknown_variable_places! unless @var_addresses
+        @var_addresses.key?(name)
+      end
+
+      private def refuse_unknown_variable_places!
+        refuse_missing_build_record!("where its variables are", or_else: "or hand the Verifier where they are: " \
+                                                                       "`vars: backend.var_addresses`")
+        raise ArgumentError, "This cartridge's build record does not say where its variables are. To read one, " \
+                             "hand the Verifier where they are: `vars: backend.var_addresses`."
       end
 
       # The variables the game named, to offer in place of one it did not. The lowering keeps
