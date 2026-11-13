@@ -76,4 +76,83 @@ class TestScreenPixelSizeOnTheSuperNintendo < Minitest::Test
     assert_equal [0], (column[0, 16] + column[96..]).uniq
     assert_includes column[16...96], Color.resolve(:blue)
   end
+
+  WALL = <<~PICTURE.chomp
+    rrggbbyy
+    rrggbbyy
+    ww..wwww
+    rrggbbyy
+  PICTURE
+
+  BALL = <<~PICTURE.chomp
+    .##.
+    ####
+    ####
+    .##.
+  PICTURE
+
+  # Columns two wide from off the left edge to off the right, stretched taller than the screen
+  # (cut at its top and its bottom) and shorter, over the whole screen.
+  def test_wide_columns_cut_at_every_edge_show_as_the_interpreter_does
+    game = VBlank.game("BIGCUTS", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      image(:wall, "r" => :red, "g" => :green, "b" => :blue, "y" => :yellow, "w" => :white,
+                   "." => :transparent) { WALL }
+      step = var :step, 0
+      game_loop do
+        step += 1
+        clear_screen :black
+        repeat(66) do |column|
+          tall = (((column * 7) + (step * 11)) % 200) + 1
+          draw_column_at :wall, slice: column % 8, x: (column * 2) - 3, top: 56 - (tall / 2), height: tall, width: 2
+        end
+      end
+    end
+    run = game_player.run(game.program(console: :snes), frames: 30)
+
+    assert_operator run[:step], :>=, 3, "three passes or more were checked"
+    assert_includes [0, 111].flat_map { |y| (0...128).map { |x| run.screen.pixel(x, y) } }, Color.resolve(:red),
+                    "a column reaches the top or the bottom row"
+  end
+
+  # A view of walls a column at a time, as a first-person game draws one: in the top half every
+  # column of the small screen is a slice of a wall stretched to a height that changes across the
+  # view and from pass to pass, with see-through pixels. The bottom half
+  # is walls drawn once, and a sprite walks over them, its patch kept and put back each pass, so
+  # what it passes over comes back as it was.
+  private def walls_game
+    VBlank.game("BIGWALLS", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      image(:wall, "r" => :red, "g" => :green, "b" => :blue, "y" => :yellow, "w" => :white,
+                   "." => :transparent) { WALL }
+      image(:ball, "#" => :magenta, "." => :transparent) { BALL }
+      step = var :step, 0
+      clear_screen :black
+      fill_rect 0, 56, screen_width, 56, :gray
+      repeat(screen_width) do |column|
+        draw_column_at :wall, slice: column % 8, x: column, top: 60 + (column % 9), height: 30 - (column % 5)
+      end
+      ball = sprite :ball, at: [-3, 70]
+      game_loop do
+        step += 1
+        fill_rect 0, 0, screen_width, 56, :black
+        repeat(screen_width) do |column|
+          tall = ((column + (step * 3)) % 52) + 4
+          draw_column_at :wall, slice: column % 8, x: column, top: 28 - (tall / 2), height: tall
+        end
+        # A column cut by an area, at its edge.
+        inside(10, 6, 40, 30) { draw_column_at :wall, slice: 3, x: 9 + (step % 42), top: 0, height: 50, width: 2 }
+        ball.move_to(((step * 2) % 140) - 3, 70)
+      end
+    end
+  end
+
+  def test_wall_columns_and_a_sprite_over_them_show_as_the_interpreter_does
+    run = game_player.run(walls_game.program(console: :snes), frames: 40)
+
+    assert_operator run[:step], :>=, 5, "five passes or more were checked"
+    refute_empty (0...128).map { |x| run.screen.pixel(x, 28) }.uniq - [0]
+    ball_rows = (70...74).flat_map { |y| (0...128).map { |x| run.screen.pixel(x, y) } }
+    assert_includes ball_rows, Color.resolve(:magenta), "the sprite shows over the walls"
+  end
 end

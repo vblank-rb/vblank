@@ -59,10 +59,9 @@ module VBlank
           # (emit_fill_band), and otherwise writes four words for every eight pixels of a tile's row
           # that it covers whole.
           #
-          # What Paint does that this does not do yet is refused by name as the game is built
-          # (Lowering::Picture#refuse_unmade_doubled_screen!): the patch under a sprite, a column of a
-          # picture drawn stretched, and a Super FX cartridge. The camera is refused for big pixels on
-          # every console (Guardrails::Checks::BiggerPixelsNotMadeYet).
+          # A Super FX cartridge is refused, saying why, as the game is built
+          # (Lowering::Picture#refuse_unmade_doubled_screen!). The camera is refused for big pixels
+          # on every console (Guardrails::Checks::BiggerPixelsNotMadeYet).
           #
           #   rt_paint_start         at power-on: Mode 7, its matrix, the map, the colours
           #   rt_paint_area          what follows paints only inside a rectangle (`inside`)
@@ -71,6 +70,9 @@ module VBlank
           #   rt_paint_fill          a rectangle in one colour
           #   rt_paint_blit          a picture at a place (Lowering::Paint#doubled_picture_sections)
           #   rt_paint_blit_one_of   one of a list of pictures, by number
+          #   rt_paint_column        a column of a picture, stretched (`draw_column_at`)
+          #   rt_paint_save          the patch of the screen under a sprite, kept
+          #   rt_paint_restore       the patch put back
           #   rt_paint_prepare       as a pass ends: nothing, the rows changed are already marked
           #   rt_paint_upload        in the blank (JSR): the rows changed, then the colours
           module PaintDoubled
@@ -109,6 +111,8 @@ module VBlank
             # What a fill keeps as its band's first row when it has no band of whole rows of tiles
             # (emit_fill_band): no pixel row.
             NO_BAND = 0xFFFF
+            # The bits of a copy's byte that are the row in its tile (rt_paint_doubled_at).
+            TILE_ROW_BITS = 0x0038
 
             R = Paint::R
 
@@ -128,13 +132,16 @@ module VBlank
 
             # +s+ is Paint's scratch (Paint.scratch): the same direct page, used here as named below.
             # +band+ is the console's first and last line shown (Letterbox.band_of), or nil for all.
-            def emit(asm, memory, s, band: nil)
+            # +columns+ for a game that draws columns of pictures (Lowering::Paint#paints_columns?).
+            def emit(asm, memory, s, band: nil, columns: false)
               emit_start(asm, memory)
               Paint.emit_area(asm, memory, s, width: WIDTH, height: HEIGHT)
               emit_helpers(asm, memory, s)
               emit_clear(asm, memory, s)
               emit_fill(asm, memory, s)
+              emit_column(asm, memory, s) if columns
               emit_blit(asm, memory, s)
+              emit_patches(asm, memory, s)
               asm.label("rt_paint_prepare")
               asm.rtl
               emit_upload(asm, memory, s, tile_rows_shown(band))
@@ -493,6 +500,333 @@ module VBlank
               asm.lda(asm.direct(s.chunk))
               Picture.emit_dma(asm, h::DMA_TO_ONE_PORT | h::DMA_FIXED_SOURCE, h::WMDATA, asm.direct(s.temp),
                                asm.bank_of("rt paint doubled places"), nil)
+            end
+
+            # --- a picture's column, stretched ---
+
+            # rt_paint_column(pointer, step, start, rows, x, y, width): a column of a picture walked
+            # down the screen, as Paint's (Lowering::Paint#emit_column_walk works out the numbers and
+            # keeps the rows on the screen). A place of SEE_THROUGH is left alone.
+            #
+            # A column of the small screen is a byte in every eight of a tile's row of the copy, so
+            # the walk writes a byte a row straight into the copy: the next row is eight bytes on,
+            # and from a tile's last row the next row of tiles, 1024 bytes on from the tile's first.
+            # Paint's walk paints each run of rows of one colour as a rectangle, which on these
+            # tiles costs more than writing its bytes; it is kept for a column drawn inside an area
+            # (`inside`) that is not the whole screen, whose rows the walk would have to cut.
+            #
+            # On the direct page: s.pointer the column's places; s.across the column across, with
+            # NEAR; s.height the columns left; s.count the rows left; s.temp the fraction of the place
+            # down the picture, Y its whole part.
+            def emit_column(asm, memory, s)
+              copy = memory[COPY]
+              Paint.emit_column(asm, memory, label: "rt_paint_column_in_area")
+              asm.label("rt_paint_column")
+              asm.lda(asm.abs(memory[Paint::AREA] + Paint::AREA_PART))
+              asm.branch_long(:bne, "rt_paint_column_in_area")
+              asm.lda(asm.direct(R.call(3)))
+              asm.branch_long(:beq, "rt_paint_column_none")
+              asm.lda(asm.direct(R.call(5)))
+              asm.sta(asm.direct(s.mark_row))
+              asm.clc
+              asm.adc(asm.direct(R.call(3)))
+              asm.sta(asm.direct(s.mark_count))
+              asm.jsr(asm.abs("rt_paint_doubled_mark"))
+              2.times do |half|
+                asm.lda(asm.direct(R.call(0) + (half * 2)))
+                asm.sta(asm.direct(s.pointer + (half * 2)))
+              end
+              asm.clc
+              asm.lda(asm.direct(R.call(4)))
+              asm.adc(NEAR)
+              asm.sta(asm.direct(s.across))
+              asm.lda(asm.direct(R.call(4) + 2))
+              asm.adc(0)
+              asm.branch_long(:bne, "rt_paint_column_none")
+              asm.lda(asm.direct(R.call(6)))
+              asm.branch_long(:beq, "rt_paint_column_none")
+              asm.sta(asm.direct(s.height))
+              asm.label("rt_paint_column_across")
+              asm.lda(asm.direct(s.across))
+              asm.cmp(NEAR)
+              asm.bcc("rt_paint_column_next")
+              asm.cmp(NEAR + WIDTH)
+              asm.bcs("rt_paint_column_next")
+              asm.sec
+              asm.sbc(NEAR)
+              asm.sta(asm.direct(s.column))
+              asm.lda(asm.direct(R.call(5)))
+              asm.sta(asm.direct(s.last))
+              asm.jsr(asm.abs("rt_paint_doubled_at"))
+              asm.tax
+              asm.lda(asm.direct(R.call(3)))
+              asm.sta(asm.direct(s.count))
+              asm.lda(asm.direct(R.call(2)))
+              asm.sta(asm.direct(s.temp))
+              asm.ldy(asm.direct(R.call(2) + 2))
+              asm.label("rt_paint_column_row")
+              asm.sep(0x20)
+              asm.lda(asm.ind_long_y(s.pointer))
+              asm.cmp(Lowering::Paint::SEE_THROUGH)
+              asm.beq("rt_paint_column_see_through")
+              asm.sta(asm.long_x(copy))
+              asm.label("rt_paint_column_see_through")
+              asm.rep(0x20)
+              asm.lda(asm.direct(s.temp))
+              asm.clc
+              asm.adc(asm.direct(R.call(1)))
+              asm.sta(asm.direct(s.temp))
+              asm.tya
+              asm.adc(asm.direct(R.call(1) + 2))
+              asm.tay
+              # Eight bytes on is the tile's next row, unless the row bits (TILE_ROW_BITS) came
+              # round to nought: then it is the next tile across, and the next row of tiles is
+              # 1024 on from the tile's first byte.
+              asm.txa
+              asm.clc
+              asm.adc(8)
+              asm.tax
+              asm.bit(TILE_ROW_BITS)
+              asm.bne("rt_paint_column_same_tile")
+              asm.clc
+              asm.adc(ROW_BYTES - TILE_BYTES)
+              asm.tax
+              asm.label("rt_paint_column_same_tile")
+              asm.dec(asm.direct(s.count))
+              asm.bne("rt_paint_column_row")
+              asm.label("rt_paint_column_next")
+              asm.inc(asm.direct(s.across))
+              asm.dec(asm.direct(s.height))
+              asm.branch_long(:bne, "rt_paint_column_across")
+              asm.label("rt_paint_column_none")
+              asm.rtl
+            end
+
+            # --- the patch under a sprite ---
+
+            # The bytes a patch of +width+ × +height+ keeps (Lowering::Paint#reserve_patches): where it
+            # was saved, two words with NEAR added, then a byte a pixel, row by row.
+            def patch_bytes(width, height) = PATCH_HEADER_BYTES + (width * height)
+
+            PATCH_HEADER_BYTES = 4
+
+            # rt_paint_save(patch, x, y, w, h): the screen's pixels under the rectangle kept in the
+            # patch, with where it was. rt_paint_restore(patch, x, y, w, h): the patch put back at the
+            # place, inside the area. As the interpreter keeps nothing for a pixel that was off the
+            # screen when it was saved (Reference#exec_save_region), such a pixel is not put back:
+            # the pixels kept are worked out again from where the patch was saved, so a patch saved
+            # nowhere (all nought, as work RAM starts) puts nothing back.
+            #
+            # On the direct page: s.pointer the patch; s.left and s.top where it was saved, s.first_x
+            # and s.temp where the screen is read or written, all with NEAR; s.across and s.height its
+            # width and height; s.chunk and s.not_mask the columns of it to copy, s.row and s.mask
+            # the rows; s.run the byte of the patch a row starts at.
+            def emit_patches(asm, memory, s)
+              copy = memory[COPY]
+              asm.label("rt_paint_save")
+              emit_patch_numbers(asm, s)
+              emit_patch_place(asm, R.call(1), WIDTH, s.left, "rt_paint_save_x")
+              emit_patch_place(asm, R.call(2), HEIGHT, s.top, "rt_paint_save_y")
+              asm.ldy(0)
+              asm.lda(asm.direct(s.left))
+              asm.sta(asm.ind_long_y(s.pointer))
+              asm.sta(asm.direct(s.first_x))
+              asm.ldy(2)
+              asm.lda(asm.direct(s.top))
+              asm.sta(asm.ind_long_y(s.pointer))
+              asm.sta(asm.direct(s.temp))
+              emit_patch_kept(asm, s, "rt_paint_save_kept")
+              emit_patch_rows(asm, s, "rt_paint_save") do
+                asm.lda(asm.long_x(copy))
+                asm.sta(asm.ind_long_y(s.pointer))
+              end
+
+              asm.label("rt_paint_restore")
+              emit_patch_numbers(asm, s)
+              asm.ldy(0)
+              asm.lda(asm.ind_long_y(s.pointer))
+              asm.sta(asm.direct(s.left))
+              asm.ldy(2)
+              asm.lda(asm.ind_long_y(s.pointer))
+              asm.sta(asm.direct(s.top))
+              emit_patch_kept(asm, s, "rt_paint_restore_kept")
+              # Where it goes, near enough the screen to put anything back, and inside the area.
+              [[R.call(1), WIDTH, s.first_x], [R.call(2), HEIGHT, s.temp]].each do |at, edge, out|
+                asm.clc
+                asm.lda(asm.direct(at))
+                asm.adc(NEAR)
+                asm.sta(asm.direct(out))
+                asm.lda(asm.direct(at + 2))
+                asm.adc(0)
+                asm.branch_long(:bne, "rt_paint_restore_done")
+                asm.lda(asm.direct(out))
+                asm.cmp(NEAR + edge)
+                asm.branch_long(:bcs, "rt_paint_restore_done")
+              end
+              asm.jsr(asm.abs("rt_paint_take_area"))
+              [[s.area_left, s.area_right, s.first_x, s.chunk, s.not_mask, "across"],
+               [s.area_top, s.area_bottom, s.temp, s.row, s.mask, "down"]].each do |low, high, place, first, past, way|
+                # The first kept: past the area's edge, if that is later.
+                asm.lda(asm.direct(low))
+                asm.clc
+                asm.adc(NEAR)
+                asm.sec
+                asm.sbc(asm.direct(place))
+                asm.bmi("rt_paint_restore_#{way}_first")
+                asm.cmp(asm.direct(first))
+                asm.bcc("rt_paint_restore_#{way}_first")
+                asm.sta(asm.direct(first))
+                asm.label("rt_paint_restore_#{way}_first")
+                # The one past the last kept: the area's far edge, if that is sooner.
+                asm.lda(asm.direct(high))
+                asm.clc
+                asm.adc(NEAR)
+                asm.sec
+                asm.sbc(asm.direct(place))
+                asm.branch_long(:bmi, "rt_paint_restore_done")
+                asm.cmp(asm.direct(past))
+                asm.bcs("rt_paint_restore_#{way}_past")
+                asm.sta(asm.direct(past))
+                asm.label("rt_paint_restore_#{way}_past")
+              end
+              # The rows it changes, marked.
+              asm.lda(asm.direct(s.row))
+              asm.cmp(asm.direct(s.mask))
+              asm.branch_long(:bcs, "rt_paint_restore_done")
+              asm.lda(asm.direct(s.chunk))
+              asm.cmp(asm.direct(s.not_mask))
+              asm.branch_long(:bcs, "rt_paint_restore_done")
+              [[s.row, s.mark_row], [s.mask, s.mark_count]].each do |row, out|
+                asm.lda(asm.direct(s.temp))
+                asm.sec
+                asm.sbc(NEAR)
+                asm.clc
+                asm.adc(asm.direct(row))
+                asm.sta(asm.direct(out))
+              end
+              asm.jsr(asm.abs("rt_paint_doubled_mark"))
+              emit_patch_rows(asm, s, "rt_paint_restore") do
+                asm.lda(asm.ind_long_y(s.pointer))
+                asm.sta(asm.long_x(copy))
+              end
+            end
+
+            # The patch's place, width and height, from the routine's numbers.
+            def emit_patch_numbers(asm, s)
+              [[R.call(0), s.pointer], [R.call(0) + 2, s.pointer + 2], [R.call(3), s.across], [R.call(4), s.height]].each do |from, out|
+                asm.lda(asm.direct(from))
+                asm.sta(asm.direct(out))
+              end
+            end
+
+            # +out+ = the place at +at+ (32 bits) with NEAR added, held between nought and NEAR +
+            # +edge+: a place further off the screen keeps no more of the patch than that.
+            def emit_patch_place(asm, at, edge, out, prefix)
+              asm.clc
+              asm.lda(asm.direct(at))
+              asm.adc(NEAR)
+              asm.sta(asm.direct(out))
+              asm.lda(asm.direct(at + 2))
+              asm.adc(0)
+              asm.bmi("#{prefix}_low")
+              asm.bne("#{prefix}_high")
+              asm.lda(asm.direct(out))
+              asm.cmp(NEAR + edge + 1)
+              asm.bcc("#{prefix}_kept")
+              asm.label("#{prefix}_high")
+              asm.lda(NEAR + edge)
+              asm.sta(asm.direct(out))
+              asm.bra("#{prefix}_kept")
+              asm.label("#{prefix}_low")
+              asm.stz(asm.direct(out))
+              asm.label("#{prefix}_kept")
+            end
+
+            # The columns and rows of the patch that were on the screen where it was saved (s.left,
+            # s.top): s.chunk to before s.not_mask, s.row to before s.mask.
+            def emit_patch_kept(asm, s, prefix)
+              [[s.left, WIDTH, s.across, s.chunk, s.not_mask, "across"],
+               [s.top, HEIGHT, s.height, s.row, s.mask, "down"]].each do |saved, edge, size, first, past, way|
+                asm.lda(NEAR)
+                asm.sec
+                asm.sbc(asm.direct(saved))
+                asm.bpl("#{prefix}_#{way}_first")
+                asm.lda(0)
+                asm.label("#{prefix}_#{way}_first")
+                asm.sta(asm.direct(first))
+                asm.lda(NEAR + edge)
+                asm.sec
+                asm.sbc(asm.direct(saved))
+                asm.cmp(asm.direct(size))
+                asm.bcc("#{prefix}_#{way}_past")
+                asm.lda(asm.direct(size))
+                asm.label("#{prefix}_#{way}_past")
+                asm.sta(asm.direct(past))
+              end
+            end
+
+            # The rows s.row to before s.mask of the patch, columns s.chunk to before s.not_mask, each
+            # pixel copied by the block (A 8 bits wide, X the copy's byte, Y the patch's); the screen's
+            # pixel of the patch's top left is (s.first_x, s.temp), with NEAR. Ends the routine.
+            def emit_patch_rows(asm, s, prefix)
+              asm.lda(asm.direct(s.chunk))
+              asm.cmp(asm.direct(s.not_mask))
+              asm.branch_long(:bcs, "#{prefix}_done")
+              asm.lda(asm.direct(s.row))
+              asm.cmp(asm.direct(s.mask))
+              asm.branch_long(:bcs, "#{prefix}_done")
+              # The patch's byte for the first row's first column kept: past the header, s.row rows of
+              # s.across, and s.chunk.
+              asm.lda(PATCH_HEADER_BYTES)
+              asm.clc
+              asm.adc(asm.direct(s.chunk))
+              asm.ldx(asm.direct(s.row))
+              asm.beq("#{prefix}_first_row")
+              asm.label("#{prefix}_rows_before")
+              asm.clc
+              asm.adc(asm.direct(s.across))
+              asm.dex
+              asm.bne("#{prefix}_rows_before")
+              asm.label("#{prefix}_first_row")
+              asm.sta(asm.direct(s.run))
+              asm.label("#{prefix}_row")
+              asm.lda(asm.direct(s.first_x))
+              asm.sec
+              asm.sbc(NEAR)
+              asm.clc
+              asm.adc(asm.direct(s.chunk))
+              asm.sta(asm.direct(s.column))
+              asm.lda(asm.direct(s.temp))
+              asm.sec
+              asm.sbc(NEAR)
+              asm.clc
+              asm.adc(asm.direct(s.row))
+              asm.sta(asm.direct(s.last))
+              asm.jsr(asm.abs("rt_paint_doubled_at"))
+              asm.tax
+              asm.ldy(asm.direct(s.run))
+              asm.lda(asm.direct(s.not_mask))
+              asm.sec
+              asm.sbc(asm.direct(s.chunk))
+              asm.sta(asm.direct(s.count))
+              asm.label("#{prefix}_pixel")
+              asm.sep(0x20)
+              yield
+              asm.rep(0x20)
+              asm.iny
+              emit_next_byte(asm, "#{prefix}_pixel")
+              asm.dec(asm.direct(s.count))
+              asm.bne("#{prefix}_pixel")
+              asm.lda(asm.direct(s.run))
+              asm.clc
+              asm.adc(asm.direct(s.across))
+              asm.sta(asm.direct(s.run))
+              asm.inc(asm.direct(s.row))
+              asm.lda(asm.direct(s.row))
+              asm.cmp(asm.direct(s.mask))
+              asm.bne("#{prefix}_row")
+              asm.label("#{prefix}_done")
+              asm.rtl
             end
 
             # --- pictures ---

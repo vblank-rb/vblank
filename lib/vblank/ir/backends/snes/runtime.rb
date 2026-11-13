@@ -105,7 +105,7 @@ module VBlank
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
                                       held_hides_sprites: c.held_hides_sprites)
             if c.doubled
-              PaintDoubled.emit(asm, memory, Paint.scratch(memory), band: c.shown_band)
+              PaintDoubled.emit(asm, memory, Paint.scratch(memory), band: c.shown_band, columns: lowering.paints_columns?)
             elsif c.painted
               Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?)
             end

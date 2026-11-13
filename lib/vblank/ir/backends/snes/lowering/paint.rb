@@ -213,6 +213,9 @@ module VBlank
 
             def doubled? = @doubled
 
+            # The painted picture's rows: the small picture's with big pixels.
+            def painted_height = @doubled ? Runtime::PaintDoubled::HEIGHT : Runtime::Picture::SCREEN_HEIGHT
+
             # Does the game draw columns of pictures on the console (Runtime::Paint's
             # rt_paint_column)? Columns drawn in a routine on the Super FX chip are the chip's own
             # (Runtime::ChipColumns).
@@ -254,7 +257,7 @@ module VBlank
             # its room in work RAM.
             def reserve_patches
               @program.walk.select { |node| node.kind == :backing_buffer }.each do |node|
-                bytes = Runtime::Paint.patch_bytes(node.width, node.height)
+                bytes = (@doubled ? Runtime::PaintDoubled : Runtime::Paint).patch_bytes(node.width, node.height)
                 place = @memory.reserve_far("the patch under #{node.name.inspect}", bytes)
                 @patches[node.name] = [place, node.width, node.height]
               end
@@ -327,7 +330,7 @@ module VBlank
                 tables.label("paint picture list #{number}")
                 tables.data_words(numbers.length, *numbers)
               end
-              [tables.section, *doubled_picture_sections]
+              [tables.section, *doubled_picture_sections, *column_table_sections, *column_step_sections]
             end
 
             # Each picture's runs (Runtime::PaintDoubled's rt_paint_blit), as many pictures to a
@@ -432,8 +435,12 @@ module VBlank
             def emit_column_walk(name, image)
               height, x, top, width = %i[height x top width].map { |what| Build.var_ref(@column_numbers.fetch(what)) }
               step, first, last, start = %i[step first last start].map { |what| keep_local(what) }
-              value(Build.binop(:/, Build.int(image.height << Reference::FIXED), height))
-              store(step)
+              if @doubled
+                emit_column_step_from_table(name, image, height, step)
+              else
+                value(Build.binop(:/, Build.int(image.height << Reference::FIXED), height))
+                store(step)
+              end
               pointer = keep_local(:pointer)
               value(Build.clamped(Build.var_ref(@column_numbers.fetch(:slice)), Build.int(0), Build.int(image.width - 1)))
               2.times { @asm.asl(@asm.direct(R0)) } # four bytes to a column's start
@@ -444,7 +451,7 @@ module VBlank
               end
               value(Build.clamped(Build.neg(top), Build.int(0), Build.int(Int32::MAX)))
               store(first)
-              value(Build.clamped(height, Build.int(Int32::MIN), Build.binop(:-, Build.int(Runtime::Picture::SCREEN_HEIGHT), top)))
+              value(Build.clamped(height, Build.int(Int32::MIN), Build.binop(:-, Build.int(painted_height), top)))
               store(last)
               done = fresh("no_rows")
               jump_unless(Build.binop(:<, Build.var_ref(first), Build.var_ref(last)), done)
@@ -454,6 +461,56 @@ module VBlank
                                                Build.binop(:-, Build.var_ref(last), Build.var_ref(first)),
                                                x, Build.binop(:+, top, Build.var_ref(first)), width])
               @asm.label(done)
+            end
+
+            # THE STEP DOWN A COLUMN FROM A TABLE, on a screen of big pixels: the step is the
+            # picture's height in 65536ths over the height drawn, and a division of 32 bits is a
+            # routine of a bit at a time, the dearest thing a column does. A view draws a column for
+            # every column of the screen, at heights from a few rows to a few times the screen's, so
+            # the steps for each height below COLUMN_STEP_HEIGHTS are worked out while the game is built
+            # ("column steps of" the picture, #column_table_sections) and a column reads its own;
+            # a taller one divides. The table holds the division's own answers, so nothing changes
+            # but the time.
+            def emit_column_step_from_table(name, image, height, step)
+              divided = fresh("column_step_divided")
+              known = fresh("column_step_known")
+              value(height)
+              @asm.lda(@asm.direct(R0 + 2))
+              @asm.branch_long(:bne, divided)
+              @asm.lda(@asm.direct(R0))
+              @asm.cmp(COLUMN_STEP_HEIGHTS)
+              @asm.branch_long(:bcs, divided)
+              2.times { @asm.asl } # four bytes a step; X is free here, the height being in R0
+              @asm.tax
+              2.times do |half|
+                @asm.lda(@asm.long_x(column_steps_label(name), half * 2))
+                @asm.sta(at_place(place_of(step) + (half * 2)))
+              end
+              @asm.brl(known)
+              @asm.label(divided)
+              value(Build.binop(:/, Build.int(image.height << Reference::FIXED), height))
+              store(step)
+              @asm.label(known)
+            end
+
+            # The heights whose step a column reads from a table (#emit_column_step_from_table).
+            COLUMN_STEP_HEIGHTS = 512
+
+            def column_steps_label(name) = "column steps of #{name}"
+
+            # Each picture drawn a column at a time on the console, its steps for every height below
+            # COLUMN_STEP_HEIGHTS (none for a height of nought, which draws nothing).
+            def column_step_sections
+              @column_routines.each_key.map do |name|
+                image = @cache.image(picture_named(name))
+                asm = W65816.new(column_steps_label(name), holds: Picture::ART)
+                asm.label(column_steps_label(name))
+                COLUMN_STEP_HEIGHTS.times do |tall|
+                  step = tall.zero? ? 0 : IR::Int32.div(image.height << Reference::FIXED, tall)
+                  asm.data_words(step & 0xFFFF, step >> 16)
+                end
+                asm.section
+              end
             end
 
             # Each picture's rows, as many to a section as fit.

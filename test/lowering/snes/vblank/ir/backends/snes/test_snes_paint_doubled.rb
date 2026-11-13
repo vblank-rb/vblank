@@ -92,17 +92,46 @@ class TestSNESPaintDoubled < Minitest::Test
     assert_operator shortened_rate, :>=, 59, "with 64 of the console's lines kept off, a 128x80 picture goes every frame"
   end
 
-  # What the screen of big pixels does not paint yet is refused by name as the build begins.
-  def test_a_column_drawn_stretched_is_refused_with_big_pixels
-    game = VBlank.game("COLUMNS", consoles: %i[snes]) do
+  # The Super FX chip paints the tiles of the screen of small pixels, so a Super FX cartridge with
+  # big pixels is refused as the build begins, saying why.
+  def test_a_super_fx_cartridge_with_big_pixels_is_refused_saying_why
+    game = VBlank.game("CHIPBIG", consoles: %i[snes], variants: { snes: :superfx }) do
       screen :bitmap, pixel_size: 2
-      image(:bars, "#" => :red) { "##\n##" }
-      game_loop { draw_column_at :bars, slice: 0, x: 10, top: 20, height: 40 }
+      game_loop { clear_screen :blue }
     end
     error = assert_raises(VBlank::IR::Backends::SNES::Lowering::NotMadeYet) do
-      game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new)
+      game.build_rom(console: :snes, variant: :superfx, out: StringIO.new, err: StringIO.new)
     end
 
-    assert_match(/draw_column_at/, error.message)
+    assert_match(/Super FX/, error.message)
+    assert_match(/one byte for each pixel/, error.message)
+  end
+
+  # A full view of 128 columns of a wall stretched to heights that change across the view and
+  # from pass to pass, with a ceiling and a floor, measured in passes a second.
+  # VBLANK_DOUBLED_BYTES=1 prints it with the bytes above.
+  def test_a_full_view_of_columns_is_measured
+    wall = (0...16).map { |y| (0...16).map { |x| "rgby"[((x / 4) + (y / 4)) % 4] }.join }.join("\n")
+    game = VBlank.game("VIEW", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      image(:wall, "r" => :red, "g" => :green, "b" => :blue, "y" => :yellow) { wall }
+      step = var :step, 0
+      game_loop do
+        step += 1
+        fill_rect 0, 0, screen_width, 56, :gray
+        fill_rect 0, 56, screen_width, 56, :cyan
+        repeat(screen_width) do |column|
+          tall = ((column + step) % 100) + 8
+          draw_column_at :wall, slice: column % 16, x: column, top: 56 - (tall / 2), height: tall
+        end
+      end
+    end
+    reader = VBlank::Diagnostics::Verifier.new(game.build_rom(console: :snes), frames: 60)
+    first = reader.var(:step)
+    reader.step(300)
+    rate = (reader.var(:step) - first) / 5.0
+    warn "a full view of 128 columns: #{rate} passes a second" if ENV["VBLANK_DOUBLED_BYTES"]
+
+    assert_operator rate, :>=, 3, "a full view goes at three passes a second or more"
   end
 end

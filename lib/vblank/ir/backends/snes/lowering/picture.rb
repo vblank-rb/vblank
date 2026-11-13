@@ -231,15 +231,22 @@ module VBlank
               end
             end
 
-            # What a painted screen of big pixels (Runtime::PaintDoubled) does not paint yet.
+            # What a painted screen of big pixels (Runtime::PaintDoubled) does not paint yet: a Super
+            # FX cartridge. The chip's PLOT writes the planar tiles of Paint's screen
+            # (Runtime::ChipPaint, ChipFill, ChipBlit, ChipColumns), and every routine it runs
+            # paints that layout; Mode 7's tiles are a byte a pixel, which PLOT has no mode for. The
+            # chip could store bytes itself, but that is every chip routine written again.
             def refuse_unmade_doubled_screen!
-              kinds = @program.walk.map(&:kind)
-              refuse_unmade!("big pixels (`pixel_size: 2`) on a Super FX cartridge") if @chip_board
-              if kinds.intersect?(%i[save_region restore_region])
-                refuse_unmade!("a sprite on a painted screen of big pixels (`pixel_size: 2`)")
-              end
-              refuse_unmade!("`draw_column_at` with big pixels (`pixel_size: 2`)") if kinds.include?(:draw_column_at)
+              return unless @chip_board
+
+              raise NotMadeYet.new(DOUBLED_ON_CHIP, part: "the picture")
             end
+
+            DOUBLED_ON_CHIP = "This game has big pixels (`pixel_size: 2`) on a Super FX cartridge. The Super FX chip " \
+                              "paints its pixels in the tiles of a screen with small pixels. A screen with big pixels " \
+                              "keeps one byte for each pixel, on the Super Nintendo's turning layer. The build does " \
+                              "not make the chip paint that layout yet. To fix this, remove `pixel_size: 2`, or build " \
+                              "the game without the Super FX."
 
             # Every picture a sprite can show, made into sprite pieces in the order SpriteNames numbers
             # them, a canvas's picture among them (#make_run_art), so the number a picture is made

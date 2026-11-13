@@ -862,14 +862,15 @@ module VBlank
             # row stands. Rows that land on one colour are one rectangle, so a wall stretched
             # up close, which holds each colour for many rows, costs a few rectangles and not a
             # rectangle for every row. A place of 0xFF is see-through.
-            def emit_column(asm, memory)
+            # +label+ names the routine (PaintDoubled calls it by another name, for an area).
+            def emit_column(asm, memory, label: "rt_paint_column")
               # A painted screen's scratch fills the direct page, so all but the pointer are in work RAM.
               pointer = R.call(7)
               kept = %i[step at x y width].to_h { |what| [what, memory.reserve("rt paint column #{what}", 4)] }
               rows = memory.reserve("rt paint column rows", 2)
               shown = memory.reserve("rt paint column shown", 2)
               run = memory.reserve("rt paint column run", 2)
-              asm.label("rt_paint_column")
+              asm.label(label)
               2.times do |half|
                 asm.lda(asm.direct(R.call(0) + (half * 2)))
                 asm.sta(asm.direct(pointer + (half * 2)))
