@@ -261,6 +261,7 @@ module VBlank
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
+            @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_on) -> their table's label
             @section_routines = {}
             @cuts = RoutineCuts.for(self, cache)
             prepare_picture
@@ -342,7 +343,8 @@ module VBlank
           # --- the data ---
 
           # The places that do not start at nought, each list's place, capacity and slot (the
-          # runtime's start reads them), and the tables of routines a call picks from by number.
+          # runtime's start reads them), the tables of routines a call picks from by number, and the
+          # tables of cell words a tile picked as the game runs is read from.
           def data_section
             asm = W65816.new("game data", holds: DATA)
             asm.label("game_starts")
@@ -359,6 +361,10 @@ module VBlank
             @routine_tables.each do |targets, label|
               asm.label(label)
               asm.data_longs(targets.map { |name| self.class.routine_label(name) })
+            end
+            @cell_tables.each do |words, label|
+              asm.label(label)
+              asm.data_words(words)
             end
             asm.section
           end

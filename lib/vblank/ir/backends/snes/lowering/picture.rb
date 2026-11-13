@@ -1395,23 +1395,23 @@ module VBlank
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.
-            #
-            # A tile picked as the program runs is written as the tests it stands for
-            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
-            # background's cells to index yet.
             def emit_set_tile(node)
-              return for_background(node) { |bg| emit_set_tile_on(node, bg) } unless node.picked?
-
-              tests = PickedTile.tests(node)
-              statement(tests) if tests
+              for_background(node) { |bg| node.picked? ? emit_set_picked_tile_on(node, bg) : emit_set_tile_on(node, bg) }
             end
 
             def emit_set_tile_on(node, bg)
               return if node.tile && node.tile >= bg.tiles.length
 
+              emit_cell_noted(node, bg) { |_outside| cell_word_of(bg, node.tile) }
+            end
+
+            # THE CELL AT +node+'s COLUMN AND ROW OF +bg+ CHANGED (rt_set_cell) to the word the block
+            # gives back, or, where it gives back nil, the one it leaves in A; the block is handed the
+            # label to jump to when the cell is to be left alone.
+            def emit_cell_noted(node, bg)
               columns, rows = TileMap.size_of(bg.every_map.first)
               # One pair for every cell the game changes, each used only until its cell is noted: a
-              # tile picked by a number is a line for each key, and a pair each ran a game out of memory.
+              # pair each ran a game of many changed cells out of memory.
               column = @cell_column ||= keep_local(:column)
               row = @cell_row ||= keep_local(:row)
               value(node.col)
@@ -1421,10 +1421,62 @@ module VBlank
               outside = fresh("cell_outside")
               emit_jump_unless_below(column, columns, outside)
               emit_jump_unless_below(row, rows, outside)
-              tile, palette = cell_of(bg, node.tile)
-              word = tile ? tile | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
+              word = yield outside
               emit_set_cell_call(layer_of(bg), column, row, word)
               @asm.label(outside)
+            end
+
+            # The word a cell of +bg+ showing its tile +tile+ holds in the layer's map: the tile's
+            # number in video memory, its palette and whether it is in front, and nought for no tile.
+            def cell_word_of(bg, tile)
+              number, palette = cell_of(bg, tile)
+              number ? number | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
+            end
+
+            # A word no cell holds, since a cell's word never has the bits that turn its tile (a
+            # picture is turned before it is stored): what an entry of a table of cells holds for a
+            # number that stands for no tile.
+            NO_CELL = 0xFFFF
+
+            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A WORD READ FROM A TABLE, as
+            # a console's own game writes its map: the number, less the one the list starts at, is a
+            # place in a table of the words those tiles' cells hold, kept in the cartridge. A number
+            # whose top half is not nought, or whose low half is past the table, is outside it (one
+            # below the first is far past the last, read with no sign). A number that stands for no
+            # tile reads NO_CELL, and the cell is left alone, as is a tile only another scene's
+            # background of the name has. The Genesis does the same (Genesis's
+            # Picture#emit_set_picked_tile_of); the halving tests IR::PickedTile writes cost a test
+            # and a branch for each told number on the way to one, four times over for a cell of four tiles.
+            def emit_set_picked_tile_on(node, bg)
+              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
+              return if words.all?(NO_CELL)
+
+              table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
+              emit_cell_noted(node, bg) do |outside|
+                value(node.picked_by)
+                unless node.picks_from.zero?
+                  @asm.sec
+                  @asm.lda(@asm.direct(R0))
+                  @asm.sbc(node.picks_from & 0xFFFF)
+                  @asm.sta(@asm.direct(R0))
+                  @asm.lda(@asm.direct(R0 + 2))
+                  @asm.sbc((node.picks_from >> 16) & 0xFFFF)
+                  @asm.sta(@asm.direct(R0 + 2))
+                end
+                @asm.lda(@asm.direct(R0 + 2))
+                @asm.branch_long(:bne, outside)
+                @asm.lda(@asm.direct(R0))
+                @asm.cmp(words.length)
+                @asm.branch_long(:bcs, outside)
+                @asm.asl # two bytes a word
+                @asm.tax
+                @asm.lda(@asm.long_x(table))
+                if words.include?(NO_CELL)
+                  @asm.cmp(NO_CELL)
+                  @asm.branch_long(:beq, outside)
+                end
+                nil
+              end
             end
 
             # A BLAST CHANGES TWENTY CELLS A STEP, so this is written for what it is. A number from
@@ -1440,9 +1492,11 @@ module VBlank
               @asm.branch_long(:bcs, label)
             end
 
-            # rt_set_cell, which reads only the low half of each number.
+            # rt_set_cell, which reads only the low half of each number: its word +word+, or the one in
+            # A where that is nil.
             def emit_set_cell_call(layer, column, row, word)
-              [@asm.imm(layer), at_place(place_of(column)), at_place(place_of(row)), @asm.imm(word)].each_with_index do |from, i|
+              @asm.sta(@asm.direct(Memory.register(3))) unless word
+              [@asm.imm(layer), at_place(place_of(column)), at_place(place_of(row)), word && @asm.imm(word)].compact.each_with_index do |from, i|
                 @asm.lda(from)
                 @asm.sta(@asm.direct(Memory.register(i)))
               end
