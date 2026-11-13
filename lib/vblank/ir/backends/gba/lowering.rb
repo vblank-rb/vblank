@@ -66,6 +66,13 @@ module VBlank
             @attribution.measure_statement(node) do
               @statements.fetch(node.kind) { unknown_statement(node) }.emit_statement(node)
             end
+            @emitter.note_gap_end if @gap_ends&.include?(node)
+          end
+
+          # The statements each gap after a game loop's wait ends after (IR::Frames.gap_ends), held
+          # by identity: two statements alike in every field are still two places in the program.
+          def gap_ends=(statements)
+            @gap_ends = Set.new.compare_by_identity.merge(statements)
           end
 
           # Every kind with a value/statement writer — read by the coverage test that

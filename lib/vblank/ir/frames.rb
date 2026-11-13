@@ -70,6 +70,24 @@ module VBlank
         end
       end
 
+      # WHERE THE GAP AFTER EACH GAME LOOP'S WAIT ENDS, as the statement it ends after: the last of
+      # the boundary's writes that follow the loop's own wait one after another
+      # (#placed_at_boundary?), or the wait itself where none does. What runs from waking to there
+      # belongs to the break the wait woke in, so a measured run can say whether it ran past the
+      # next one. Only the run straight after the wait: a statement of the game's own between two
+      # writes ends the gap early rather than being counted as the gap. A loop with no wait of its
+      # own has no gap. Read on a console that writes the boundary's writes straight after the wait
+      # (not Description#sprites_placed_before_wait), where the loop runs as written.
+      def self.gap_ends(program)
+        program.walk.select { |node| node.kind == :loop }.filter_map do |loop_node|
+          statements = loop_node.children
+          wait_at = statements.index { |node| node.kind == :wait_vblank } or next
+
+          placed = statements.drop(wait_at + 1).take_while { |node| placed_at_boundary?(node) }
+          placed.last || statements[wait_at]
+        end
+      end
+
       # A game loop as a console runs it: +before+, what runs once before the loop; +each_time+,
       # what the loop runs each time round; +placed+, the boundary's writes among those, which a
       # pass that put a background up does not let move that background off its corner

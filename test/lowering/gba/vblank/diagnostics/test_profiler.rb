@@ -208,6 +208,67 @@ class TestProfiler < Minitest::Test
     assert_in_delta 60.0, in_time.fps, 0.5
   end
 
+  # A game whose eighth pass places the frame's sprites only after the screen has gone past the
+  # next break, to line +gap_until+, and then works on into the picture after it, to line 20, so
+  # the pass itself ends with lines to spare. Hand-built, because the gap after the wait holds only
+  # what the framework places there, and no DSL game can make that wait for a line.
+  private def game_whose_gap_runs_to(gap_until)
+    build = VBlank::IR::Build
+    spin_until = lambda do |index, test|
+      build.repeat(build.int(100_000), index, build.add(:spin, build.int(1)), stop_when: test)
+    end
+    eighth = build.binop(:==, build.var_ref(:passes), build.int(8))
+    program = build.program(
+      build.set(:passes, build.int(0)), build.set(:spin, build.int(0)),
+      build.loop_(
+        build.wait_vblank,
+        build.if_(eighth,
+                  spin_until.call(:__repeat_1, build.binop(:<, build.read_scanline, build.int(160))),
+                  spin_until.call(:__repeat_2, build.binop(:>=, build.read_scanline, build.int(gap_until))),
+                  build.present_objects([])),
+        build.if_(eighth,
+                  spin_until.call(:__repeat_3, build.binop(:<, build.read_scanline, build.int(160))),
+                  spin_until.call(:__repeat_4, build.binop(:>=, build.read_scanline, build.int(20)))),
+        build.add(:passes, build.int(1)),
+      ),
+      console: :gba,
+    )
+    assemble_rom(program, name: "PGAP")
+  end
+
+  # THE GAP AFTER A PASS CAN LOSE A PICTURE THE PASS DOES NOT. What the framework places after the
+  # wait is still in the frame the wait began, so a gap that runs past the next break loses that
+  # picture, while the pass after it ends in time. Answered by the emulator's count of breaks begun.
+  def test_a_gap_that_ran_past_the_next_break_is_named_with_how_many_lines
+    out = StringIO.new
+    result = game_whose_gap_runs_to(165).profile(out: out, frames: 12, settle: 0)
+
+    assert_equal 1, result.gap_overruns.size, result.gap_overruns.inspect
+    assert_includes 5..9, result.gap_overruns.first.lines
+    assert_empty result.late_passes, "the pass itself ended with lines to spare"
+    assert_match(/pass 10\b.*updates after the wait ran \d+ lines past the next break between pictures/, out.string)
+  end
+
+  def test_a_gap_that_ran_past_the_next_break_comes_back_as_data_too
+    out = StringIO.new
+    game_whose_gap_runs_to(165).profile(format: :json, out: out, frames: 12, settle: 0)
+    overrun = JSON.parse(out.string)["gap_overruns"].first
+
+    assert_equal 10, overrun["pass"]
+    assert_includes 5..9, overrun["lines"]
+  end
+
+  def test_a_gap_that_ended_in_time_and_a_late_pass_of_its_own_work_name_no_gap
+    in_time = StringIO.new
+    game_whose_gap_runs_to(150).profile(out: in_time, frames: 12, settle: 0)
+    late = StringIO.new
+    late_result = game_ending_on_line(165).profile(out: late, frames: 10)
+
+    refute_match(/updates after the wait/, in_time.string)
+    assert_empty late_result.gap_overruns
+    refute_match(/updates after the wait/, late.string)
+  end
+
   # A game whose setting up waits for the screen to reach each line of +lines+ in turn, so the pass
   # from power-on ends on the last of them whatever the lowering emits. A line in the picture after
   # one in the break is waited for from below it, so the setting up runs on into the next picture.

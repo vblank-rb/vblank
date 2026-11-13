@@ -595,6 +595,7 @@ module VBlank
                                    routines: routine_addresses,
                                    timer_handlers: timer_handler_addresses,
                                    video_copies: video_copy_addresses, late_pages: late_page_addresses,
+                                   gap_ends: gap_end_addresses,
                                    lists: @lists.list_places,
                                    voices: voice_table,
                                    sound_drops: drop_table,
@@ -718,6 +719,12 @@ module VBlank
           @emit.late_pages_shown.flat_map do |shown|
             runtime_sites(shown.at).map { |site| { tears: shown.tears, **site } }
           end
+        end
+
+        # WHERE THE GAP AFTER A GAME LOOP'S WAIT ENDS, the same way (see Emit#note_gap_end): the
+        # first instruction after it, which a pass reaches once.
+        def gap_end_addresses
+          @emit.gap_ends.flat_map { |at| runtime_sites(at) }
         end
 
         # The address an instruction at +at+ in the emitted code runs from: by the routine it sits
@@ -886,6 +893,7 @@ module VBlank
           @mixer.prepare_direct_sound(program) # embed the program's samples as ROM data
           @audio.prepare_music(program) # number its tunes, and keep the mixer voices they play on
           @uses_vblank = program.walk.any? { |node| node.kind == :wait_vblank }
+          @lowering.gap_ends = IR::Frames.gap_ends(program) # where a measured run reads how late each gap ended
           @clock_chip.prepare(program) # whether anything reads the clock
           @mixer.prepare_mixer(program) # the software mixer's rate, buffers, voice slots, timer
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step

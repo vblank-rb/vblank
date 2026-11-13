@@ -79,7 +79,7 @@ module VBlank
           TABLED_FROM = 3
 
           attr_reader :code, :labels, :fixups, :data_blobs, :data_positions, :address_register,
-                      :list_register, :video_copies, :late_pages_shown, :number_loads
+                      :list_register, :video_copies, :late_pages_shown, :gap_ends, :number_loads
 
           # How many jumps have been emitted so far. Counted here because this is where a
           # jump is made, and read by {Attribution}, which needs to know whether the code a
@@ -98,6 +98,7 @@ module VBlank
             @data_links = []       # words inside a blob that hold another blob's address
             @video_copies = []     # run-time copies into video memory, for the profile (see VideoCopy)
             @late_pages_shown = [] # where a late page is shown at once, for the profile (see #note_late_page_shown)
+            @gap_ends = []         # where the gap after a game loop's wait ends, for the profile (see #note_gap_end)
             @number_loads = []     # every load a number table could take (see NumberLoad)
             @number_table = nil    # the table of the routine being emitted, when it has one
             @copied_blocks = []    # blocks copied elsewhere to run, which no plain jump may leave (see #keep_jumps_inside)
@@ -160,6 +161,13 @@ module VBlank
 
           def note_late_page_shown(tears:)
             @late_pages_shown << LatePageShown.new(at: pos, tears: tears)
+          end
+
+          # The instruction that follows is the first after the gap after a game loop's wait (see
+          # IR::Frames.gap_ends), so a measured run reads the line the screen is on as a pass reaches
+          # it. Nothing is emitted for it.
+          def note_gap_end
+            @gap_ends << pos
           end
 
           # Emit a 4-byte branch placeholder now and remember to resolve it against

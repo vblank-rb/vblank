@@ -3334,6 +3334,18 @@ struct pc_tally {
     int      *missed;
     int      *ended_before;
     size_t    pass_count;
+    /* THE GAP AFTER THE WAIT. A game loop does the screen's updates straight after it wakes, and
+     * those belong to the break it woke in; one that runs past the next break loses that picture
+     * however much the rest of the pass has to spare. +gap_ends+ are the addresses whose arrival
+     * ends that gap (the caller's, from the build); +gap_reached+ says this pass reached one, with
+     * the breaks begun and the line then. +gap_overran_by+ keeps, for each pass, how many lines into
+     * a break the gap ended (see lines_past_break), or -1 for a gap that ended before any. */
+    uint32_t *gap_ends;
+    long      gap_end_count;
+    int       gap_reached;
+    int       gap_breaks;
+    int       gap_line;
+    int      *gap_overran_by;
     uint64_t  samples;   /* instructions seen */
     uint64_t  halted;    /* CYCLES slept, not steps — see profile_one_frame */
     uint64_t  elsewhere; /* executing somewhere we have no room to count */
@@ -3382,6 +3394,11 @@ pc_tally_free(struct pc_tally *t)
     t->missed = NULL;
     free(t->ended_before);
     t->ended_before = NULL;
+    free(t->gap_overran_by);
+    t->gap_overran_by = NULL;
+    free(t->gap_ends);
+    t->gap_ends = NULL;
+    t->gap_end_count = 0;
 }
 
 /* Flat arrays rather than a hash: an address maps straight to a slot, so the
@@ -3408,7 +3425,8 @@ pc_tally_init(struct pc_tally *t, size_t rom_bytes)
     }
     t->missed = calloc(PROF_PASSES_MAX, sizeof(int));
     t->ended_before = calloc(PROF_PASSES_MAX, sizeof(int));
-    if (!t->missed || !t->ended_before) {
+    t->gap_overran_by = calloc(PROF_PASSES_MAX, sizeof(int));
+    if (!t->missed || !t->ended_before || !t->gap_overran_by) {
         pc_tally_free(t);
         return 0;
     }
@@ -3495,6 +3513,32 @@ lines_before_break(int breaks_began, int line)
     return before;
 }
 
+/* HOW MANY LINES INTO A BREAK THE GAP AFTER A WAIT ENDED, given the breaks begun since the pass
+ * woke and the line it ended on; -1 for a gap that ended before any break began. Counted as
+ * lines_before_break counts a late pass: ending on the break's first line is one line late. A gap
+ * that ended in the picture after a break is late by the whole rest of that break as well, and
+ * each further break it ran through adds a whole frame. */
+static int
+lines_past_break(int breaks_began, int line)
+{
+    if (breaks_began == 0)
+        return -1;
+    int into = line >= GBA_VIDEO_VERTICAL_PIXELS
+             ? line - GBA_VIDEO_VERTICAL_PIXELS
+             : line + VIDEO_VERTICAL_TOTAL_PIXELS - GBA_VIDEO_VERTICAL_PIXELS;
+    return into + 1 + (breaks_began - 1) * VIDEO_VERTICAL_TOTAL_PIXELS;
+}
+
+/* Is +pc+ one of the addresses that end the gap after a wait? A handful at most, so a walk. */
+static inline int
+at_gap_end(const struct pc_tally *t, uint32_t pc)
+{
+    for (long i = 0; i < t->gap_end_count; ++i)
+        if (t->gap_ends[i] == pc)
+            return 1;
+    return 0;
+}
+
 /* Step one frame, writing down where the CPU was at each step.
  *
  * The frame is walked the same way measure_frame_split walks it — by global
@@ -3537,6 +3581,13 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
              * away by an interrupt's handler, and after it the game's code would not look like
              * the game's. */
             int games_code = gba->cpu->cpsr.priv != MODE_IRQ && pc >= SIZE_BIOS;
+            /* The first arrival at the gap's end in a pass is where its gap ended: the breaks begun
+             * so far, and the line, both as they stand before this instruction runs. */
+            if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, pc)) {
+                t->gap_reached = 1;
+                t->gap_breaks = t->breaks_began;
+                t->gap_line = gba->video.vcount;
+            }
             /* mTimingGlobalTime, not globalCycles: the emulator brings globalCycles up to date
              * only when it next has something scheduled to do, so between two of those every
              * step reads as nothing and the step that catches up reads as all of it. */
@@ -3584,10 +3635,12 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
              * off while the game waits for the screen — is not a pass of the game. */
             if (t->games_code_ran && t->pass_count < PROF_PASSES_MAX) {
                 t->missed[t->pass_count] = t->breaks_began;
+                t->gap_overran_by[t->pass_count] = t->gap_reached ? lines_past_break(t->gap_breaks, t->gap_line) : -1;
                 t->ended_before[t->pass_count++] = lines_before_break(t->breaks_began, line);
             }
             t->breaks_began = 0;
             t->games_code_ran = 0;
+            t->gap_reached = 0;
         }
         t->awake = 0;
 
@@ -3841,14 +3894,17 @@ touch_tally_hash(const struct touch_tally *t)
  *   :pc        { address => times seen }
  *   :cycles    { address => cycles it took }, a copy it started included
  *   :passes    for every pass, [breaks that began while it ran, lines before the next
- *              break it went to sleep] — below nothing asleep inside a break it missed
+ *              break it went to sleep, lines into a break the gap after its wait ended]
+ *              — the second below nothing asleep inside a break it missed, the third -1
+ *              for a gap that ended before any break began or was not seen
  *   :touches   { word address => reads and writes } in the two working memories
  *
- * The caller decides what has settled and what to hold: run it after stepping
- * past the boot frames, with whatever keys the measured behaviour needs.
- * GBA-only. */
+ * +rb_gap_ends+ is an Array of the addresses whose arrival ends the gap after a wait
+ * (see pc_tally), empty for none. The caller decides what has settled and what to
+ * hold: run it after stepping past the boot frames, with whatever keys the measured
+ * behaviour needs. GBA-only. */
 static VALUE
-mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys)
+mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
 {
     struct mgba_core *mc = get_mgba_core(self);
     if (mc->core->platform(mc->core) != mPLATFORM_GBA)
@@ -3857,6 +3913,10 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys)
     long frames = NUM2LONG(rb_frames);
     if (frames <= 0)
         rb_raise(rb_eArgError, "frames must be positive, got %ld", frames);
+    Check_Type(rb_gap_ends, T_ARRAY);
+    long gap_end_count = RARRAY_LEN(rb_gap_ends);
+    for (long i = 0; i < gap_end_count; ++i)
+        NUM2UINT(rb_ary_entry(rb_gap_ends, i)); /* raise on a bad address before anything is allocated */
 
     struct mCore *core = mc->core;
     struct ARMCore *cpu = ((struct GBA *)core->board)->cpu;
@@ -3864,6 +3924,16 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys)
     struct touch_tally touched;
     if (!pc_tally_init(&tally, core->romSize(core)))
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
+    if (gap_end_count) {
+        tally.gap_ends = calloc((size_t)gap_end_count, sizeof(uint32_t));
+        if (!tally.gap_ends) {
+            pc_tally_free(&tally);
+            rb_raise(rb_eNoMemError, "could not allocate the profile tally");
+        }
+        for (long i = 0; i < gap_end_count; ++i)
+            tally.gap_ends[i] = NUM2UINT(rb_ary_entry(rb_gap_ends, i));
+        tally.gap_end_count = gap_end_count;
+    }
     if (!touch_tally_init(&touched)) {
         pc_tally_free(&tally);
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
@@ -3897,7 +3967,8 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys)
 
     VALUE passes = rb_ary_new_capa((long)tally.pass_count);
     for (size_t i = 0; i < tally.pass_count; ++i)
-        rb_ary_push(passes, rb_ary_new_from_args(2, INT2NUM(tally.missed[i]), INT2NUM(tally.ended_before[i])));
+        rb_ary_push(passes, rb_ary_new_from_args(3, INT2NUM(tally.missed[i]), INT2NUM(tally.ended_before[i]),
+                                                 INT2NUM(tally.gap_overran_by[i])));
     rb_hash_aset(out, ID2SYM(rb_intern("passes")), passes);
     rb_hash_aset(out, ID2SYM(rb_intern("touches")), touch_tally_hash(&touched));
 
@@ -4715,7 +4786,7 @@ Init_ruby_gba_emulator_ext(void)
     rb_define_method(cCore, "cpu_halted?",   mgba_core_cpu_halted_p, 0);
     rb_define_method(cCore, "measure_frame_busy_cycles", mgba_core_measure_frame_busy_cycles, 0);
     rb_define_method(cCore, "measure_frame_work", mgba_core_measure_frame_work, 0);
-    rb_define_method(cCore, "profile",       mgba_core_profile, 2);
+    rb_define_method(cCore, "profile",       mgba_core_profile, 3);
     rb_define_method(cCore, "profile_gb",    mgba_core_profile_gb, 1);
     rb_define_method(cCore, "sound_feed_start",  mgba_core_sound_feed_start, 0);
     rb_define_method(cCore, "sound_feed_finish", mgba_core_sound_feed_finish, 0);

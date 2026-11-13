@@ -109,7 +109,7 @@ module VBlank
                            :reached, :tearing, :flicker, :tick_rates, :sound_drops, :video_copies,
                            :late_passes, :split_hints, :list_touches, :late_hand_overs,
                            :pages_shown_at_once, :pages_shown_part_way, :power_on_pass, :colors_short,
-                           :sprites_left_out) do
+                           :sprites_left_out, :gap_overruns) do
         # +split_hints+ are the parts of routines that missed the quick memory worth making a
         # `func` of (see SplitHints), busiest first. +list_touches+ is how many times the run read
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
@@ -123,9 +123,11 @@ module VBlank
         # .colors_short_line), each one sprite on one frame; nil for a game that lends nothing.
         # +sprites_left_out+ is how many rows were left out of the console's full table (see
         # .sprites_left_out_line), each one row on one frame; nil for a game whose rows fit it.
+        # +gap_overruns+ are the passes whose gap after the wait ran past the next break (see
+        # GapOverrun), in the order they ran.
         def initialize(split_hints: [], list_touches: {}, late_hand_overs: [], pages_shown_at_once: 0,
                        pages_shown_part_way: 0, power_on_pass: nil, colors_short: nil, sprites_left_out: nil,
-                       **rest) = super
+                       gap_overruns: [], **rest) = super
 
         def dropping_frames? = fps < 59.5
 
@@ -138,6 +140,7 @@ module VBlank
           { frames: frames, samples: samples, fps: fps, idle_share: idle_share,
             keys: keys.map(&:to_s), unattributed: unattributed, reached: reached.to_h,
             late_passes: late_passes, power_on_pass: power_on_pass&.to_h,
+            gap_overruns: gap_overruns.map(&:to_h),
             pages_shown_at_once: pages_shown_at_once,
             pages_shown_part_way: pages_shown_part_way, colors_short: colors_short,
             sprites_left_out: sprites_left_out,
@@ -198,17 +201,19 @@ module VBlank
 
         losses = Losses.new(sounds: rom.built.sound_drops, colors_short_at: rom.built.colors_short_at,
                             sprites_left_out_at: rom.built.held_sprites&.left_out_at)
+        gap_ends = gap_end_addresses(rom)
         profile, tearing, flicker, lost, counted = in_temp_rom(rom) do |path|
           probe = Emulator.probe(path)
           probe.clock_at(clock) if clock # a clock chip reading that moment (see Verifier#initialize)
           begin
             measured =
               if from
-                profile_from_saved_state(probe, from, path, frames, pressed, losses)
+                profile_from_saved_state(probe, from, path, frames, pressed, losses, gap_ends: gap_ends)
               elsif holding
-                profile_holding_words(probe, holding, frames, settle, held, losses, starting, pressed, presses)
+                profile_holding_words(probe, holding, frames, settle, held, losses, starting, pressed, presses,
+                                      gap_ends: gap_ends)
               else
-                profile_from_boot(probe, frames, settle, held, losses, pressed)
+                profile_from_boot(probe, frames, settle, held, losses, pressed, gap_ends: gap_ends)
               end
             # Looked at AFTER the profiling, from wherever it left the game — so the frames
             # judged are the same frames that were measured, doing the same work.
@@ -234,6 +239,7 @@ module VBlank
 
         late_pages = rom.built.late_pages
         shown_at_once = count_at_sites(profile, late_pages, loaded_sets)
+        gap_overruns = GapOverrun.of(profile.passes)
         # Only a run from power-on with no settling sees the first pass whole; nil on any other.
         power_on_pass = FirstPass.of(profile.passes.first) unless from || holding || settle.positive?
         build_result(profile, routines, held, reached, tearing, flicker,
@@ -245,7 +251,28 @@ module VBlank
                 pages_shown_at_once: shown_at_once,
                 pages_shown_part_way: count_at_sites(profile, late_pages.select { |site| site[:tears] }, loaded_sets),
                 fps: pictures_per_second(profile, shown_at_once),
-                power_on_pass: power_on_pass, **counted)
+                power_on_pass: power_on_pass, gap_overruns: gap_overruns, **counted)
+      end
+
+      # WHERE EACH GAP AFTER A GAME LOOP'S WAIT ENDS, as the addresses a measured run watches (see
+      # Cartridge::BuildRecord#gap_ends). One in a scene's own routine is left out: its second
+      # address is another scene's code while that scene's set is in (see #video_copies_in), and
+      # which set is in is known only once the run is over.
+      def self.gap_end_addresses(rom)
+        rom.built.gap_ends.reject { |site| site[:set] }.map { |site| site[:at] }
+      end
+
+      # A PASS WHOSE GAP AFTER ITS WAIT RAN PAST THE NEXT BREAK: the screen's updates done after the
+      # wait were not finished when the next break began, so that picture was lost there, however
+      # many lines the pass had to spare when it went to sleep. +pass+ is which pass it was, counted
+      # from one at the first the run saw; +lines+ how many lines into that break the gap ended (see
+      # RubyGBAEmulator::Probe::Pass#gap_overran_by).
+      GapOverrun = Data.define(:pass, :lines) do
+        def self.of(passes)
+          passes.each_with_index.filter_map do |pass, at|
+            new(pass: at + 1, lines: pass.gap_overran_by) if pass.gap_overran_by
+          end
+        end
       end
 
       # NEW PICTURES A SECOND. The emulator counts the frames the game finished its work in by
@@ -439,11 +466,11 @@ module VBlank
       # same source twice gives the same bytes, so simply re-running a build never costs anybody
       # their saved moments. Only a real change moves the addresses, and that is exactly when the
       # state has stopped meaning anything.
-      def self.profile_from_saved_state(probe, state_path, rom_path, frames, held, losses = nil)
+      def self.profile_from_saved_state(probe, state_path, rom_path, frames, held, losses = nil, gap_ends: [])
         check_state_matches!(probe, state_path, rom_path)
         probe.load_state(state_path)
         clear_losses(probe, losses) # the state brought the moment's own history with it
-        probe.profile(frames: frames, keys: held)
+        probe.profile(frames: frames, keys: held, gap_ends: gap_ends)
       end
 
       def self.check_state_matches!(probe, state_path, rom_path)
@@ -467,10 +494,10 @@ module VBlank
 
       # The settling is stepped here rather than handed to the probe, so there is a moment
       # between it and the measuring for the counters to be put back to nothing.
-      def self.profile_from_boot(probe, frames, settle, held, losses = nil, pressed = held)
+      def self.profile_from_boot(probe, frames, settle, held, losses = nil, pressed = held, gap_ends: [])
         step_past_power_on(probe, held, at_least: settle) if settle.positive?
         clear_losses(probe, losses)
-        probe.profile(frames: frames, keys: pressed)
+        probe.profile(frames: frames, keys: pressed, gap_ends: gap_ends)
       end
 
       # RUN THE GAME UNTIL ITS FIRST PASS HAS ENDED, and at least +at_least+ frames. What a game
@@ -541,7 +568,7 @@ module VBlank
       # and the measured frames together settles for longer, so the frames measured are always
       # its last: a tape that walks into a fight and then fights is measured fighting.
       def self.profile_holding_words(probe, writes, frames, settle, held, losses = nil, starting = [], pressed = held,
-                                     presses = nil)
+                                     presses = nil, gap_ends: [])
         step_past_power_on(probe, held, at_least: BOOT_FRAMES)
         writes.each { |address, value| probe.write32(address, value) }
         if presses
@@ -555,7 +582,8 @@ module VBlank
 
         frames.times.map do |frame|
           writes.each { |address, value| probe.write32(address, value) }
-          probe.profile(frames: 1, keys: presses ? pressed | presses.buttons_on(settle + frame) : pressed)
+          probe.profile(frames: 1, keys: presses ? pressed | presses.buttons_on(settle + frame) : pressed,
+                        gap_ends: gap_ends)
         end.reduce { |a, b| add_profiles(a, b) }
       end
 
@@ -885,6 +913,7 @@ module VBlank
         printer.puts("  #{(result.idle_share * 100).round(1)}% of each frame spare")
         power_on_pass_line(result.power_on_pass, printer, result.frames)
         late_pass_line(result.late_passes, printer)
+        gap_overrun_lines(result.gap_overruns, printer)
         shown_at_once_line(result, printer)
         result.late_hand_overs.each { |late| printer.puts("  #{HandOvers.message(late)}") }
         tearing_line(result.tearing, printer)
@@ -951,6 +980,34 @@ module VBlank
         passes = late.one? ? "1 pass" : "#{late.size} passes"
         "#{passes} ended after the break between pictures began. Each one then waited a whole picture for " \
           "the next break. Ending #{lines_phrase(late)} sooner keeps the picture."
+      end
+
+      # Said only about passes whose gap after the wait ran past the next break (see GapOverrun):
+      # the pass may have ended in time, so the late passes above do not name it, and the frame rate
+      # alone says a picture was lost but not where.
+      def self.gap_overrun_lines(overruns, printer)
+        return if overruns.nil? || overruns.empty?
+
+        printer.puts("  #{gap_overrun_message(overruns)}", severity: :bad)
+      end
+
+      # How many passes the gap line names by number before it counts the rest: a game whose every
+      # gap runs over would otherwise list every pass of the run.
+      GAP_OVERRUNS_NAMED = 5
+
+      # The words for +overruns+, each a GapOverrun. A pass is named by its number in the run.
+      def self.gap_overrun_message(overruns)
+        passes = overruns.map(&:pass)
+        named =
+          if passes.one? then "pass #{passes.first}"
+          elsif passes.size <= GAP_OVERRUNS_NAMED then "passes #{passes[0...-1].join(', ')} and #{passes.last}"
+          else "passes #{passes.first(GAP_OVERRUNS_NAMED).join(', ')} and #{passes.size - GAP_OVERRUNS_NAMED} more"
+          end
+        lines = overruns.map(&:lines)
+        lost = overruns.one? ? "there" : "each time"
+        "In #{named}, the screen updates after the wait ran #{lines_phrase(lines)} past the next break " \
+          "between pictures. So the game lost a picture #{lost}. Ending these updates " \
+          "#{counted(lines.max, 'line')} sooner keeps the picture."
       end
 
       # "3 lines", "1 to 9 lines": the least and the most of +lines+.
