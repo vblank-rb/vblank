@@ -116,14 +116,16 @@ static int32_t left_out_count;
 static int32_t sprite_piece_height(void) { return rg_game_image_pieces[0]; }
 static const int32_t *pieces_of_image(int32_t image) { return rg_game_image_pieces + rg_game_image_pieces[1 + image]; }
 
-/* Reference#mark_slices_left_out: the slices of these sprites that a crowded line leaves out. The
+/* Reference#mark_slices_left_out: the slices of these sprites that a crowded line leaves out, and
+ * the pieces a full table leaves out of every line (RG_SPRITE_PIECES_A_SCREEN, 0 for no limit). The
  * table lists them front-most first: the deepest level last, and inside a level the one drawn last
- * first. A piece takes its place on every line of the screen it covers, unless it is wholly off
- * the left or right, which the table never holds. */
+ * first. A piece takes an entry, and its place on every line of the screen it covers, unless it is
+ * wholly off an edge, which the table never holds. */
 static void mark_slices_left_out(placed_object *placed, int32_t count) {
   left_out_count = 0;
   for (int32_t i = 0; i < count; i++) placed[i].cut_from = placed[i].cut_count = 0;
-  if (RG_SPRITE_PIECES_A_LINE == 0 || count == 0) return;
+  if ((RG_SPRITE_PIECES_A_LINE == 0 && RG_SPRITE_PIECES_A_SCREEN == 0) || count == 0) return;
+  int32_t entries = 0;
   int32_t order[RG_MAX_SPRITES], taken[RG_SCREEN_HEIGHT] = {0};
   for (int32_t i = 0; i < count; i++) {
     int32_t at = i;
@@ -140,10 +142,12 @@ static void mark_slices_left_out(placed_object *placed, int32_t count) {
     sprite->cut_from = left_out_count;
     for (int32_t piece = 0; piece < pieces[0]; piece++) {
       int64_t left = (int64_t)sprite->x + pieces[1 + 2 * piece], top = (int64_t)sprite->y + pieces[2 + 2 * piece];
-      if (left <= -PIECE_WIDTH || left >= RG_SCREEN_WIDTH) continue;
+      if (left <= -PIECE_WIDTH || left >= RG_SCREEN_WIDTH || top <= -tall || top >= RG_SCREEN_HEIGHT) continue;
+      int in_table = RG_SPRITE_PIECES_A_SCREEN == 0 || entries < RG_SPRITE_PIECES_A_SCREEN;
+      entries++;
       int64_t first = top > 0 ? top : 0, past = top + tall < RG_SCREEN_HEIGHT ? top + tall : RG_SCREEN_HEIGHT;
       for (int64_t line = first; line < past; line++) {
-        if (taken[line]++ < RG_SPRITE_PIECES_A_LINE) continue;
+        if (in_table && (RG_SPRITE_PIECES_A_LINE == 0 || taken[line]++ < RG_SPRITE_PIECES_A_LINE)) continue;
         if (left_out_count >= MAX_LEFT_OUT) rg_fault("more than %d slices of sprites left out of crowded lines", MAX_LEFT_OUT);
         left_out[left_out_count++] = (left_out_piece){(int32_t)line, piece};
       }

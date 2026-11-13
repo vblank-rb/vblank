@@ -3093,17 +3093,19 @@ module VBlank
         end
 
         # THE SLICES OF THIS FRAME'S SPRITES A CROWDED LINE LEAVES OUT, on a console that draws only
-        # so many pieces of sprites on a line of the screen (Backends::SpriteLines, which says how
+        # so many pieces of sprites on a line of the screen, and THE PIECES ITS SPRITE TABLE HAS NO
+        # ROOM FOR, on one whose table holds only so many (Backends::SpriteLines, which says how
         # the console picks). Its table lists them front-most first: the deepest layer last, and
         # inside a layer the one drawn last first. Each sprite that loses a slice has it kept as
         # its +:left_out+, which drawing it reads.
         def mark_slices_left_out(drawn)
-          most = @console.sprite_pieces_drawn_a_line or return
-          return if drawn.empty?
+          most = @console.sprite_pieces_drawn_a_line
+          entries = @console.sprite_pieces_drawn_a_screen
+          return if (most.nil? && entries.nil?) || drawn.empty?
 
           order = drawn.each_index.sort_by { |at| [object_level(drawn[at][:object]), at] }.reverse
           sprites = order.map { |at| [drawn[at][:x], drawn[at][:y], sprite_piece_places(drawn[at][:picture])] }
-          cuts = SpriteLines.left_out(sprites, most: most, piece_height: @sprite_piece_height,
+          cuts = SpriteLines.left_out(sprites, most: most, table_entries: entries, piece_height: @sprite_piece_height,
                                                screen_width: @screen.width, screen_height: @screen.height)
           order.zip(cuts).each { |at, lines| drawn[at][:left_out] = lines if lines }
         end

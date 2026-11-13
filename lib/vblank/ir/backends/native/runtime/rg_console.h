@@ -68,6 +68,13 @@
 #define RG_SPRITE_PIECES_A_LINE 0
 #endif
 
+/* How many pieces of sprites the console's sprite table holds, the pieces furthest back left out
+ * of every line once it is full, or 0 where every piece is drawn
+ * (Console::Description#sprite_pieces_drawn_a_screen). */
+#ifndef RG_SPRITE_PIECES_A_SCREEN
+#define RG_SPRITE_PIECES_A_SCREEN 0
+#endif
+
 /* Whether the console's cartridge carries a motor that a game's `rumble` runs
  * (Console::Description#rumbles). */
 #ifndef RG_CONSOLE_RUMBLES

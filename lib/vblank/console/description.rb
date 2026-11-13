@@ -28,6 +28,9 @@ module VBlank
     # holds there, front-most first, are drawn, and the rest are left out of that line alone
     # (Backends::SpriteLines). It is nil where the console counts a line some other way than
     # pieces eight pixels wide in its table's order, until that way is drawn too.
+    # +sprite_pieces_drawn_a_screen+ is how many of those pieces its sprite table holds, or nil where
+    # every backend draws every sprite: the table is filled front-most first with each piece on the
+    # screen, and a piece that finds it full is left out of every line (Backends::SpriteLines).
     # +backgrounds+ is how many tiled layers it stacks, +turning_backgrounds+ how many of
     # them can turn and resize, and +backgrounds_beside_turning+ how many still scroll on a screen
     # where one turns. +bar_is_a_background+ marks whether a status bar is one of those layers, or a
@@ -139,7 +142,7 @@ module VBlank
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
                               :holds_background_above_row, :background_box, :area_clips_called_routines,
                               :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
-                              :sprites_a_row, :sprite_pieces_drawn_a_line, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
+                              :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_pieces_drawn_a_screen, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :bar_shares_display, :changes_cells_while_drawing,
                               :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
@@ -210,7 +213,7 @@ module VBlank
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
-                     gives_up_rows: false, **rest) = super
+                     gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -353,8 +356,10 @@ module VBlank
                             # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
                             area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
-                            # (each piece is a sprite of its own, 8 wide).
-                            sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
+                            # (each piece is a sprite of its own, 8 wide), and forty pieces on the
+                            # whole screen, the forty entries of its table.
+                            sprites_a_row: 10, sprite_pieces_drawn_a_line: 10, sprite_pieces_drawn_a_screen: 40,
+                            turning_sprites: false, sprite_sizes: nil, tile_planes: 2,
                             backgrounds: 1, turning_backgrounds: 0, backgrounds_beside_turning: 0,
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false, bar_shares_display: true,

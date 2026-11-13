@@ -19,6 +19,12 @@ module VBlank
       # not in the table, so they take nothing; a piece wholly off the left or right of the screen is
       # not written into it either, so it takes nothing; any other piece takes its place on each line
       # it covers whether or not that line has room left to draw it.
+      #
+      # HOW MANY SPRITES THE SCREEN SHOWS. The table itself holds only so many entries (the Color's,
+      # forty: #sprite_pieces_drawn_a_screen). It is filled front-most first with every piece on the
+      # screen — a piece wholly off any edge is not written — so with more than that, the pieces
+      # furthest back find it full and are drawn on no line at all, and take no place on a line
+      # either, since the table never holds them.
       module SpriteLines
         # Where each piece of a picture stands inside it, [across, down] in pixels, in the order the
         # table holds them, the first in front. A picture made of pieces (Assets::Image#pieces) is
@@ -49,22 +55,27 @@ module VBlank
 
         # WHICH SLICES OF A FRAME'S SPRITES ARE LEFT OUT. +sprites+ are the frame's, front-most first
         # (the table's order), each [x, y, places] with places as #picture_places gives them. +most+
-        # is how many pieces a line draws. What comes back is one entry for each sprite: nil for one
-        # drawn whole, or for one that loses a slice, by each line of the screen it loses one on, the
-        # pieces of it that cover that line as [across, left out?]. A pixel of it is then left out
-        # where #left_out_at? answers true.
-        def self.left_out(sprites, most:, piece_height:, screen_width:, screen_height:)
+        # is how many pieces a line draws and +table_entries+ how many the table holds, either nil
+        # for no limit. What comes back is one entry for each sprite: nil for one drawn whole, or for
+        # one that loses a slice, by each line of the screen it loses one on, the pieces of it that
+        # cover that line as [across, left out?]. A pixel of it is then left out where #left_out_at?
+        # answers true.
+        def self.left_out(sprites, most:, piece_height:, screen_width:, screen_height:, table_entries: nil)
           taken = Hash.new(0)
+          entries = 0
           sprites.map do |x, y, places|
             lines = {}
             places.each do |across, down|
               left = x + across
-              next unless left > -SpritePieces::SIZE && left < screen_width
-
               top = y + down
-              ([top, 0].max...[top + piece_height, screen_height].min).each do |line|
-                (lines[line] ||= []) << [across, taken[line] >= most]
-                taken[line] += 1
+              next unless left > -SpritePieces::SIZE && left < screen_width
+              next unless top > -piece_height && top < screen_height
+
+              in_table = table_entries.nil? || entries < table_entries
+              entries += 1
+              (top.clamp(0, nil)...[top + piece_height, screen_height].min).each do |line|
+                (lines[line] ||= []) << [across, !in_table || (most && taken[line] >= most)]
+                taken[line] += 1 if in_table
               end
             end
             lines.select! { |_, pieces| pieces.any?(&:last) }

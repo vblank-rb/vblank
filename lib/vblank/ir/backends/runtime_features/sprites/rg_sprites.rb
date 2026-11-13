@@ -94,19 +94,21 @@ end
 # --- how many sprites a line of the screen shows (rg_screen.c's, Backends::SpriteLines) ---
 #
 # @rg_game_image_pieces: how tall a piece is, then where each image's pieces start, and there how
-# many, then each one's across and down. RG_SPRITE_PIECES_A_LINE is 0 where every piece is drawn.
+# many, then each one's across and down. RG_SPRITE_PIECES_A_LINE is 0 where every piece is drawn,
+# and RG_SPRITE_PIECES_A_SCREEN 0 where the table holds every piece.
 RG_PIECE_WIDTH = 8
 
-# Reference#mark_slices_left_out: each sprite that loses slices to a crowded line keeps them as its
-# +cuts+. The table lists them front-most first: the deepest level last, and inside a level the one
-# drawn last first.
+# Reference#mark_slices_left_out: each sprite that loses slices to a crowded line, or pieces to a
+# full table, keeps them as its +cuts+. The table lists them front-most first: the deepest level
+# last, and inside a level the one drawn last first.
 def rg_mark_slices_left_out(placed)
   placed.each { |sprite| sprite.cuts = nil }
-  return if RG_SPRITE_PIECES_A_LINE == 0 || placed.empty?
+  return if (RG_SPRITE_PIECES_A_LINE == 0 && RG_SPRITE_PIECES_A_SCREEN == 0) || placed.empty?
 
   pieces = @rg_game_image_pieces
   tall = pieces[0]
   taken = Array.new(RG_SCREEN_HEIGHT, 0)
+  entries = 0
   placed.each_index.sort_by { |at| [placed[at].level, at] }.reverse_each do |at|
     sprite = placed[at]
     start = pieces[1 + sprite.image]
@@ -114,11 +116,15 @@ def rg_mark_slices_left_out(placed)
     pieces[start].times do |piece|
       left = sprite.x + pieces[start + 1 + (2 * piece)]
       top = sprite.y + pieces[start + 2 + (2 * piece)]
-      next if left <= -RG_PIECE_WIDTH || left >= RG_SCREEN_WIDTH
+      next if left <= -RG_PIECE_WIDTH || left >= RG_SCREEN_WIDTH || top <= -tall || top >= RG_SCREEN_HEIGHT
 
+      in_table = RG_SPRITE_PIECES_A_SCREEN == 0 || entries < RG_SPRITE_PIECES_A_SCREEN
+      entries += 1
       ([top, 0].max...[top + tall, RG_SCREEN_HEIGHT].min).each do |line|
-        cuts << [line, piece] if taken[line] >= RG_SPRITE_PIECES_A_LINE
-        taken[line] += 1
+        if !in_table || (RG_SPRITE_PIECES_A_LINE != 0 && taken[line] >= RG_SPRITE_PIECES_A_LINE)
+          cuts << [line, piece]
+        end
+        taken[line] += 1 if in_table
       end
     end
     sprite.cuts = cuts unless cuts.empty?

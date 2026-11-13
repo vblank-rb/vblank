@@ -279,14 +279,14 @@ module VBlank
           end
 
           # Reference#sprite_piece_places, for a console that draws only so many pieces of sprites on
-          # a line: how tall a piece is, then where each image's pieces start, then each image's
-          # pieces (see rg_screen.h for the layout). Only how tall a piece is where the console
-          # draws them all.
+          # a line or on the screen: how tall a piece is, then where each image's pieces start, then
+          # each image's pieces (see rg_screen.h for the layout). Only how tall a piece is where the
+          # console draws them all.
           def image_pieces_array
             console = @program.described_console
             tall = (@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last
             values = [tall]
-            if console.sprite_pieces_drawn_a_line
+            if console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen
               lists = @images.each_key.map { |name, _| sprite_piece_places(name, tall) }
               start = 1 + lists.length
               lists.each do |places|
