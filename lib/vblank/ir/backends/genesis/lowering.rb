@@ -284,6 +284,7 @@ module VBlank
             reserve_patches
             keep_tile_runs
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
+            keep_scene_held_sets
             keep_timer_numbers
             keep_corner_notes
             keep_loop_running

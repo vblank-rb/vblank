@@ -35,8 +35,33 @@ class TestGenesisSceneColors < Minitest::Test
       error = assert_raises(Genesis::Art::TooMuch) { Genesis.new.build(genesis_program(program)) }
 
       assert_includes error.message, "The pictures of the scene :two use more colours"
-      assert_includes error.message, "every scene shows use 1 of the sets"
+      assert_includes error.message, "Every scene keeps 1 of the sets"
     end
+  end
+
+  # The list every scene uses is drawn by the moon, a sprite every scene shows, so its set is kept for
+  # every scene, and the refusal names it as what that set holds.
+  def test_a_refusal_names_what_each_kept_set_holds
+    Dir.mktmpdir do |folder|
+      program = scene_colors_game(folder, more_in_two: proc {
+        image :crowd, width: 8, height: 8, data: Array.new(64) { |i| SceneColorGames.widened([i % 5, (i / 8) % 3, 7]) }
+        sprite :crowd, at: [80, 80]
+      })
+      error = assert_raises(Genesis::Art::TooMuch) { Genesis.new.build(genesis_program(program)) }
+
+      assert_includes error.message, "holds the list of colours :screen_colors"
+    end
+  end
+
+  # The lair game's lists are drawn only on the title, so it fits only built with :lists, which keeps
+  # them in the title alone (what that shows is TestSceneColorsOnTheGenesis's).
+  def test_lists_drawn_in_one_scene_fit_with_the_lists_step
+    program = genesis_program(lair_game)
+    lowering = Genesis::Lowering.new(program, memory: Genesis::Memory.new, scene_colors: :sprites)
+
+    assert_raises(Genesis::Art::TooManyColors) { lowering.sections }
+    assert_equal :lists, lowering.scene_colors_after(:sprites)
+    Genesis.new.build(program)
   end
 
   # Two scenes of sprites alone, two pictures of fifteen colours each, beside a sprite of fifteen more

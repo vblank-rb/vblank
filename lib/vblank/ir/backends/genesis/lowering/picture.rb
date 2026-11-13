@@ -180,7 +180,7 @@ module VBlank
               return unless places_sprites?
 
               poses = @objects.values.flat_map(&:poses).uniq.sort_by { |name| @sprite_names.picture_number(name) }
-              refuse_hand_over_inside_test!(:colors) if @scene_colors == :sprites
+              refuse_hand_over_inside_test!(:colors) if sprite_colors_take_turns?
               allot_shared_colors(poses) if @scene_colors
               return make_art_by_scene(poses) if @scene_tiles
 
@@ -243,23 +243,36 @@ module VBlank
             # sprites are drawn with; then the colours of the sprite pictures and the backgrounds every screen
             # shows. A scene's own pictures are made after, each from its scene's copy.
             def allot_shared_colors(poses)
+              scene_held = lists_take_turns? ? scene_held_lists : {}
               poses.each do |name|
                 list = followed_list_of(name)
-                @art.reserve_held_palette([:sprites, list], own_colors(@cache.image(picture_named(name)))) if list
+                next unless list && !scene_held.key?([:sprites, list])
+
+                @art.reserve_held_palette([:sprites, list], own_colors(@cache.image(picture_named(name))))
               end
-              @objects.each_value { |obj| recolor_palettes(obj) }
+              later, now = @objects.values.partition { |obj| object_draws_with_scene_held_list?(obj, scene_held) }
+              now.each { |obj| recolor_palettes(obj) }
               @backgrounds.each do |bg|
                 bg.tiles.uniq.each do |tile|
-                  run = run_painting(tile)
-                  image = run || @cache.image(picture_named(tile)) # a run answers list_drawn_from as a picture does
-                  next if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+                  palette = held_list_palette_of_tile(bg, tile) or next
+                  next unless palette.key && !scene_held.key?(palette.key)
 
-                  palette = list_palette_of(bg, image)
-                  @art.reserve_held_palette(palette.key, palette.colors) if palette.key
+                  @art.reserve_held_palette(palette.key, palette.colors, name: palette.name)
                 end
               end
               poses.each { |name| cut_sprite_picture(name) unless colors_scene_of_picture(name) }
               @backgrounds.each { |bg| make_background_art(bg) unless colors_scene_of(bg) }
+              scene_held.each { |key, held| @art.reserve_scene_held_palette(key, held.colors, held.scenes, name: held.name) }
+              later.each { |obj| @art.with_colors_of(object_scene(obj)) { recolor_palettes(obj) } }
+            end
+
+            # The palette of a list the game changes that the tile +tile+ of +bg+ is drawn from (#list_palette_of),
+            # or nil for a tile drawn in its own colours.
+            def held_list_palette_of_tile(bg, tile)
+              image = run_painting(tile) || @cache.image(picture_named(tile)) # a run answers list_drawn_from as a picture does
+              return nil if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
+
+              list_palette_of(bg, image)
             end
 
             # THE SCENE WHOSE OWN COLOURS +bg+ IS DRAWN IN, in a game of +scene_colors+: the scene it is declared
@@ -267,20 +280,85 @@ module VBlank
             def colors_scene_of(bg) = @scene_colors ? scene_owning_background(bg) : nil
 
             # The same for the sprite picture +name+, when sprite colours take turns too (+scene_colors+ of
-            # :sprites).
-            def colors_scene_of_picture(name) = @scene_colors == :sprites ? scene_owning_picture(name) : nil
+            # :sprites or :lists).
+            def colors_scene_of_picture(name) = sprite_colors_take_turns? ? scene_owning_picture(name) : nil
+
+            def sprite_colors_take_turns? = %i[sprites lists].include?(@scene_colors)
+            def lists_take_turns? = @scene_colors == :lists
 
             # THE +scene_colors+ TO BUILD WITH after a build with +tried+ ran out of palettes (Genesis#build),
             # or nil when nothing is left to try: :backgrounds, each scene's own backgrounds in palettes of its
             # own while it is up, every sprite picture's colours kept for the whole game; then :sprites, a
-            # scene's own sprite pictures' colours taking turns too. Only in a game of one dispatch, as
-            # tiles are (#art_of_one_scene?), and a step that would change nothing is passed over.
+            # scene's own sprite pictures' colours taking turns too; then :lists, a list the game changes that
+            # only some scenes draw with keeping its palette in those scenes alone (#scene_held_lists). Only
+            # in a game of one dispatch, as tiles are (#art_of_one_scene?), and a step that would change
+            # nothing is passed over.
             public def scene_colors_after(tried)
               backgrounds = one_dispatch? && @backgrounds.any? { |bg| scene_owning_background(bg) }
-              case tried
-              when false then (:backgrounds if backgrounds) || (:sprites if sprites_of_one_scene?)
-              when :backgrounds then :sprites if sprites_of_one_scene?
+              steps = [(:backgrounds if backgrounds), (:sprites if sprites_of_one_scene?),
+                       (:lists if one_dispatch? && !scene_held_lists.empty?)].compact
+              return steps.first unless tried
+
+              steps[steps.index(tried) + 1] if steps.include?(tried)
+            end
+
+            # A list the game changes whose palette only some scenes keep: the colours it starts with (15-bit,
+            # see-through left out), those scenes, and what a refusal calls it (ListPalette's +name+).
+            SceneHeldList = Data.define(:colors, :scenes, :name)
+
+            # EVERY LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH, by the key its palette is kept under
+            # (Art#reserve_held_palette): the lists every sprite picture, sprite and background drawing with it
+            # belongs to a scene of, with those scenes. A scene that draws nothing with such a list needs nothing
+            # of its palette, so built with :lists every other scene has that palette for its own pictures
+            # (Art#reserve_scene_held_palette). A list anything every screen shows draws with is kept for every
+            # scene, as before. A sprite belongs to a scene when every pose it shows does.
+            def scene_held_lists
+              @scene_held_lists ||= begin
+                found = {}
+                drawn = lambda do |key, colors, scene, name = nil|
+                  (found[key] ||= SceneHeldList.new(colors: colors, scenes: [], name: name)).scenes << scene
+                end
+                @objects.values.flat_map(&:poses).uniq.each do |name|
+                  list = followed_list_of(name)
+                  drawn.call([:sprites, list], own_colors(@cache.image(picture_named(name))), scene_owning_picture(name)) if list
+                end
+                @objects.each_value do |obj|
+                  changing_lists_of(obj).each { |entry, colors| drawn.call([:sprites, entry], colors, object_scene(obj, owned: true)) }
+                end
+                @backgrounds.each do |bg|
+                  bg.tiles.uniq.each do |tile|
+                    palette = held_list_palette_of_tile(bg, tile)
+                    drawn.call(palette.key, palette.colors, scene_owning_background(bg), palette.name) if palette&.key
+                  end
+                end
+                found.reject { |_, held| held.scenes.include?(nil) }
+                     .transform_values { |held| held.with(scenes: held.scenes.uniq.sort_by { |scene| @scenes.fetch(scene) }) }
               end
+            end
+
+            # The lists the game changes that +obj+ can be drawn with (`draw_with`, `recolor`), each with the
+            # colours it starts with.
+            def changing_lists_of(obj)
+              obj.recolors.filter_map do |entry|
+                next unless entry.is_a?(Symbol)
+
+                list = color_list_named(entry)
+                [entry, list.colors.drop(1).map { |color| color & 0x7FFF }] unless list.recolors.empty?
+              end
+            end
+
+            # The scene every pose of +obj+ belongs to, or nil where they do not all belong to one. +owned+ asks
+            # it of the scenes the poses belong to, whatever the build; without it, of the scenes whose colours
+            # the poses are cut in (#colors_scene_of_picture).
+            def object_scene(obj, owned: false)
+              scenes = obj.poses.map { |name| owned ? scene_owning_picture(name) : colors_scene_of_picture(name) }.uniq
+              scenes.first if scenes.length == 1
+            end
+
+            # Whether +obj+ can be drawn with a list of +scene_held+, whose palettes are allotted after those
+            # every screen keeps: so its table of palettes is made then too, in its scene's copy.
+            def object_draws_with_scene_held_list?(obj, scene_held)
+              changing_lists_of(obj).any? { |entry, _| scene_held.key?([:sprites, entry]) }
             end
 
             # THE ART OF A GAME WHOSE SCENES EACH KEEP THEIR OWN TILES (Art's +scene_tiles+): what every
@@ -483,9 +561,11 @@ module VBlank
             def own_colors(image) = image.colors.drop(1).map { |color| color & 0x7FFF }
 
             # The palette of each list +obj+ is drawn with, in the order the sprite is told them (`recolor` counts
-            # from 0 through them), kept for the table the runtime reads.
+            # from 0 through them), kept for the table the runtime reads. Worked out once for each sprite: a
+            # sprite drawing with a list only its scene keeps has them worked out in that scene's copy of the
+            # palettes (#allot_shared_colors).
             def recolor_palettes(obj)
-              return if obj.recolors.empty?
+              return if obj.recolors.empty? || @recolor_lines&.key?(obj)
 
               @recolor_lines ||= {}
               @recolor_lines[obj] = obj.recolors.map { |entry| palette_of_list(entry) }
@@ -514,11 +594,63 @@ module VBlank
               if backdrop_copied? && backdrop_list.name == node.name
                 runtime_call("rt_backdrop_hold", [LabelAddress.new(BACKDROP_COLORS), node.which])
               end
-              palette = @art.held_palette_of([:sprites, node.name]) or return
+              emit_held_list_write([:sprites, node.name], node.which)
+            end
 
-              list = color_list_named(node.name)
-              label = held_colors_label([:list, node.name], list.colors, list.recolors)
-              runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+            # The list kept under +key+ (Art#reserve_held_palette) holds the set +which+ names: written over its
+            # palette, where it has one. A list only some scenes keep (Art#reserve_scene_held_palette) has the set
+            # noted, and is written only while one of them is up, since another scene's own pictures may be in
+            # its palette; one of them taking over writes the set noted (#emit_scene_held_lists).
+            def emit_held_list_write(key, which)
+              palette = @art.held_palette_of(key) or return
+              table = LabelAddress.new(held_colors_table(key))
+              scenes = @art.scenes_holding(key)
+              return runtime_call("rt_colors_hold", [table, which, Build.int(palette)]) unless scenes
+
+              noted = @held_sets.fetch(key)
+              value(which)
+              store(noted)
+              not_up = fresh("held_list_not_up")
+              jump_unless(scenes.map { |scene| Build.binop(:==, Build.var_ref(@scene), Build.int(@scenes.fetch(scene))) }
+                                .reduce { |either, other| Build.binop(:or, either, other) }, not_up)
+              runtime_call("rt_colors_hold", [table, Build.var_ref(noted), Build.int(palette)])
+              @asm.label(not_up)
+            end
+
+            # A SCENE TAKING OVER that keeps the palette of a list the game changes (Art#reserve_scene_held_palette):
+            # the scene's own colours (#emit_scene_colors) wrote the colours the list starts with over it, so the
+            # set the game last told the list to hold, noted as it was told, is written again. The note of the set
+            # each palette holds (Runtime::Tint's SETS) is cleared first: another scene's own colours have been
+            # there since, and the write would take the same set as written already.
+            def emit_scene_held_lists(scene)
+              (@held_sets || {}).each do |key, noted|
+                next unless @art.scenes_holding(key).include?(scene)
+
+                palette = @art.held_palette_of(key)
+                @asm.clr(:l, runtime_at(Runtime::Tint::SETS, palette * 4))
+                runtime_call("rt_colors_hold", [LabelAddress.new(held_colors_table(key)), Build.var_ref(noted), Build.int(palette)])
+              end
+            end
+
+            # For each list only some scenes keep, a number of the game's own noting the set it was last told to
+            # hold: -1 at power-on, which names no set, so the colours it was declared with (Runtime::Tint's
+            # rt_colors_hold).
+            def keep_scene_held_sets
+              return @held_sets = {} unless lists_take_turns?
+
+              @held_sets = scene_held_lists.keys.select { |key| @art.scenes_holding(key) }.to_h { |key| [key, keep_local(:held_set, start: -1)] }
+            end
+
+            # The table rt_colors_hold reads for the list kept under +key+.
+            def held_colors_table(key)
+              if key.first == :sprites
+                list = color_list_named(key[1])
+                return held_colors_label([:list, key[1]], list.colors, list.recolors)
+              end
+
+              _, id, index = key
+              bg = @backgrounds.find { |candidate| candidate.object_id == id }
+              held_colors_label(key, bg.palettes.fetch(index), bg.recolors.map { |step| step.fetch(index) })
             end
 
             # A BACKDROP THAT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place). The video chip's register 7
@@ -538,10 +670,13 @@ module VBlank
               @backdrop_list = @program.walk.find { |node| node.kind == :color_list && node.backdrop_place }
             end
 
-            # Where in the colour memory the backdrop is pointed: a place of the list's own palette, or nil.
+            # Where in the colour memory the backdrop is pointed: a place of the list's own palette, or nil. A
+            # list only some scenes keep has its palette given to the other scenes' own pictures while they are
+            # up, so the backdrop is copied.
             def backdrop_pointed_at
               list = backdrop_list
               return nil unless tiled? && list && list.backdrop_place.positive?
+              return nil if @art.scenes_holding([:sprites, list.name])
 
               palette = @art.held_palette_of([:sprites, list.name]) or return nil
               (palette * Art::PLACES) + list.backdrop_place
@@ -575,11 +710,7 @@ module VBlank
               bg.drawn_lists.each_index do |index|
                 next if index == bg.followed_list_index
 
-                palette = @art.held_palette_of([:background, bg.object_id, index]) or next
-
-                steps = bg.recolors.map { |step| step.fetch(index) }
-                label = held_colors_label([:background, bg.object_id, index], bg.palettes.fetch(index), steps)
-                runtime_call("rt_colors_hold", [LabelAddress.new(label), node.which, Build.int(palette)])
+                emit_held_list_write([:background, bg.object_id, index], node.which)
               end
             end
 
@@ -730,13 +861,14 @@ module VBlank
             # it is see-through and no palette keeps it.
             def recolored_palette(bg, image)
               palette = list_palette_of(bg, image)
-              palette.key ? @art.reserve_held_palette(palette.key, palette.colors) : @art.ordered_palette(palette.colors)
+              palette.key ? @art.reserve_held_palette(palette.key, palette.colors, name: palette.name) : @art.ordered_palette(palette.colors)
             end
 
             # The palette a tile of +bg+ drawn with other colours is drawn from (#recolored_palette), before it is
             # allotted: +key+ is whose list keeps it to itself (Art#reserve_held_palette), or nil for a list in its
             # own order (Art#ordered_palette), and +colors+ the colours it starts with (15-bit, see-through left out).
-            ListPalette = Data.define(:key, :colors)
+            # +name+ is what a refusal calls a background's own list (Art#held_name), nil for a list the game named.
+            ListPalette = Data.define(:key, :colors, :name)
 
             def list_palette_of(bg, image)
               list = bg.recolored_list_of(image.list_drawn_from) or
@@ -744,9 +876,11 @@ module VBlank
               index = bg.drawn_lists.index(list)
               colors = bg.palettes.fetch(index).drop(1).map { |color| color & 0x7FFF }
               followed = bg.follows_several? ? bg.follows_each.fetch(index) : (bg.follows if index == bg.followed_list_index)
-              return ListPalette.new(key: nil, colors: colors) if !followed && unchanging_colors?(bg, index, colors)
+              return ListPalette.new(key: nil, colors: colors, name: nil) if !followed && unchanging_colors?(bg, index, colors)
+              return ListPalette.new(key: [:sprites, followed], colors: colors, name: nil) if followed
 
-              ListPalette.new(key: followed ? [:sprites, followed] : [:background, bg.object_id, index], colors: colors)
+              ListPalette.new(key: [:background, bg.object_id, index], colors: colors,
+                              name: "a list of colours of the background :#{bg.name}")
             end
 
             # Whether every set +bg+'s list number +index+ can be drawn with holds +colors+ (its own, place 0
@@ -989,6 +1123,7 @@ module VBlank
 
               emit_scene_tiles(scene)
               emit_scene_colors(scene)
+              emit_scene_held_lists(scene)
               return if @scene_layers.zero?
 
               arrival = @handover.arrival(scene)

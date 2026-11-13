@@ -143,7 +143,9 @@ module VBlank
           # the pictures every screen shows. Each scene then starts from a copy of them and allots its
           # own pictures' colours in what is left, even adding to a palette of theirs that has room
           # (#with_colors_of), and as it takes over it writes each palette its copy holds differently
-          # (#scene_palette_writes). What has to fit is one scene's colours with the shared ones.
+          # (#scene_palette_writes). What has to fit is one scene's colours with the shared ones. A list the
+          # game changes that only some scenes draw with can be kept in those scenes' copies alone
+          # (#reserve_scene_held_palette), so the others have its palette too.
           def initialize(backdrop: nil, exact: false, beside_painting: false, scene_tiles: false, scene_colors: false)
             @exact = exact
             @beside_painting = beside_painting
@@ -158,9 +160,13 @@ module VBlank
             @cuts = {} # a sprite picture's name => its Cut (#cut_sprite_picture)
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
+            @scene_held = {} # whose list => the scenes whose copies alone keep its palette (#reserve_scene_held_palette)
+            @held_names = {} # whose list => what a refusal calls it, where its key does not say (#held_name)
+            @shared_takers = Array.new(PALETTES) { [] } # what each palette every screen keeps holds, for a refusal's words
             if beside_painting
               @palettes[PAINTED_PALETTE] = []
               @held[:painted_screen] = PAINTED_PALETTE
+              @shared_takers[PAINTED_PALETTE] << "the painted screen"
             end
             @ordered = {} # a list of colours => the palette whose places are its (#ordered_palette)
             @shared_palettes = @palettes # the palettes every screen keeps; @palettes is those, or a scene's copy
@@ -187,7 +193,7 @@ module VBlank
 
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             colors = drawn.map { |at| word_of(image.color_at(at)) }.uniq
-            palette = palette_for(colors, "backgrounds")
+            palette = palette_for(colors, "backgrounds", taker: "the background :#{of}")
             places = Array.new(64) do |at|
               image.tile_see_through_at?(at) ? 0 : @palettes[palette].index(word_of(image.color_at(at))) + 1
             end
@@ -215,7 +221,7 @@ module VBlank
           # places at that colour's place in the palette (Lowering::TileRuns#emit_run_copy).
           def known_run_cell(name, drawn)
             words = drawn.map { |color| word_of(color) }
-            palette = palette_for(words.uniq, "backgrounds")
+            palette = palette_for(words.uniq, "backgrounds", taker: "the painted tiles :#{name}")
             KnownRunCell.new(cell: [allot_run_tile(name), palette], places: words.map { |word| @palettes[palette].index(word) + 1 })
           end
 
@@ -259,7 +265,7 @@ module VBlank
           # one screen can have their longest runs of tiles stored first (#store_piece_runs_longest_first).
           def cut_sprite_picture(name, image, palette: nil)
             @cuts[name] ||= begin
-              line = palette || palette_for(sprite_color_words(image), "sprites")
+              line = palette || palette_for(sprite_color_words(image), "sprites", taker: sprite_taker(name))
               blocks = image.piece_groups ? piece_blocks(image, line, palette) : cover_blocks(image, line, palette)
               Cut.new(name: name, width: image.width, height: image.height, blocks: blocks, pieced: !image.piece_groups.nil?)
             end
@@ -298,7 +304,8 @@ module VBlank
           # colours at those places, and the sprite is drawn from the one it is told. +colors+ (15-bit, see-through
           # left out) is the list. A palette that already begins with those colours serves, and one that has room
           # may be given more colours after them by pictures drawn in no list.
-          def ordered_palette(colors)
+          # +taker+ names whose colours they are, for a refusal's words.
+          def ordered_palette(colors, taker: "a list of colours a sprite is drawn with")
             words = colors.map { |color| word_of(color) }
             @ordered.fetch(words) do
               if words.length > OWN_COLORS
@@ -306,7 +313,7 @@ module VBlank
                                "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
               end
 
-              line = (0...PALETTES).find { |p| @palettes[p] && !@held.value?(p) && @palettes[p].first(words.length) == words } ||
+              line = (0...PALETTES).find { |p| @palettes[p] && !held_here?(p) && @palettes[p].first(words.length) == words } ||
                      (0...PALETTES).find { |p| @palettes[p].nil? }
               unless line
                 raise TooManyLists.new(scene_lists_full_message, scene: @colors_scene) if @colors_scene
@@ -317,6 +324,7 @@ module VBlank
               end
 
               @palettes[line] ||= words
+              note_shared_taker(line, taker)
               @ordered[words] = line
             end
           end
@@ -328,15 +336,15 @@ module VBlank
           #
           # In a game of +scene_colors+ the list's palette is one every screen keeps, since the game can change
           # the list whichever scene is up: so every list is given its palette before any scene takes its copy.
-          def reserve_held_palette(key, colors)
+          #
+          # +name+ says which list it is in a refusal's words, where +key+ alone cannot (a background's list).
+          def reserve_held_palette(key, colors, name: nil)
             @held.fetch(key) do
               unless @scene_palette_sets.empty?
                 raise LoweringError, "the list #{key.inspect} was given a palette after a scene took its copy of the palettes"
               end
-              if colors.length > OWN_COLORS
-                raise TooMuch, "A list of colours the game changes holds #{colors.length} colours, and a Genesis " \
-                               "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
-              end
+              refuse_long_held_list!(colors)
+              @held_names[key] = name if name
               free = (0...PALETTES).find { |p| @palettes[p].nil? }
               unless free
                 raise TooManyLists, "The lists of colours the game changes need more lists than a Genesis holds (#{PALETTES}, " \
@@ -345,9 +353,37 @@ module VBlank
               end
 
               @palettes[free] = colors.map { |color| word_of(color) }
+              note_shared_taker(free, held_taker(key))
               @held[key] = free
             end
           end
+
+          # A LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH keeps a palette in those scenes' copies
+          # alone (+scenes+), and every other scene has that palette for its own pictures, as a console game
+          # writes all four palettes when it changes screen. The list's palette has one number in every scene
+          # that draws with it, since the code that writes it names the number: the first that no palette
+          # every screen keeps and none of those scenes' copies holds yet. So two lists drawn in two scenes
+          # that are never up together can have one number. The lowering writes the list's colours into it
+          # only while one of +scenes+ is up, and again as one of them takes over
+          # (Lowering::Picture#emit_scene_held_lists). Allotted once every palette every screen keeps is, and
+          # before the scenes' own pictures, which allot around it.
+          def reserve_scene_held_palette(key, colors, scenes, name: nil)
+            @held.fetch(key) do
+              refuse_long_held_list!(colors)
+              @held_names[key] = name if name
+              copies = scenes.map { |scene| scene_palette_set(scene).palettes }
+              free = (0...PALETTES).find { |p| @shared_palettes[p].nil? && copies.all? { |palettes| palettes[p].nil? } }
+              raise TooManyLists.new(scene_lists_full_message(scenes.first), scene: scenes.first) unless free
+
+              copies.each { |palettes| palettes[free] = colors.map { |color| word_of(color) } }
+              @scene_held[key] = scenes
+              @held[key] = free
+            end
+          end
+
+          # The scenes whose copies alone keep the palette of +key+'s list (#reserve_scene_held_palette), or
+          # nil for a list whose palette every screen keeps.
+          def scenes_holding(key) = @scene_held[key]
 
           # The palette kept under +key+, or nil for a list nothing is drawn with.
           def held_palette_of(key) = @held[key]
@@ -390,8 +426,7 @@ module VBlank
           def with_colors_of(scene)
             return yield unless @scene_colors && scene
 
-            set = @scene_palette_sets[scene] ||= PaletteSet.new(palettes: @shared_palettes.map { |list| list&.dup },
-                                                                ordered: @shared_ordered.dup)
+            set = scene_palette_set(scene)
             @palettes = set.palettes
             @ordered = set.ordered
             @colors_scene = scene
@@ -494,6 +529,12 @@ module VBlank
           end
 
           private
+
+          # +scene+'s copy of the palettes every screen keeps, taken the first time it is asked for.
+          def scene_palette_set(scene)
+            @scene_palette_sets[scene] ||= PaletteSet.new(palettes: @shared_palettes.map { |list| list&.dup },
+                                                          ordered: @shared_ordered.dup)
+          end
 
           # The painted tile +name+'s number in the store being added to: a tile of its own, made the
           # first time it is asked for there.
@@ -610,23 +651,36 @@ module VBlank
 
           # The refusal for a scene whose own pictures need more palettes than the ones every screen keeps
           # leave it.
-          def scene_palettes_full_message
-            scene = Modes.strip_scene_prefix(@colors_scene)
-            kept = @shared_palettes.count(&:itself)
+          def scene_palettes_full_message(colors_scene = @colors_scene)
+            scene = Modes.strip_scene_prefix(colors_scene)
             "The pictures of the scene :#{scene} use more colours than a Genesis can show. A Genesis holds " \
-              "#{PALETTES} sets of #{OWN_COLORS} colours for the backgrounds and sprites together. The pictures " \
-              "and lists of colours that every scene shows use #{kept} of the sets, and the scene :#{scene} gets " \
-              "the other #{PALETTES - kept}. To fix this, use fewer colours in the pictures of the scene :#{scene}."
+              "#{PALETTES} sets of #{OWN_COLORS} colours for the backgrounds and sprites together. " \
+              "#{kept_sets_words(colors_scene)} To fix this, use fewer colours in the pictures of the scene :#{scene}. " \
+              "You can also move what a kept set holds into the scenes that show it."
           end
 
           # The same for the lists of colours a scene's own pictures are drawn with: what happened, for the
           # lowering to add why and what to do (Lowering::Picture#too_many_lists_message).
-          def scene_lists_full_message
-            scene = Modes.strip_scene_prefix(@colors_scene)
-            kept = @shared_palettes.count(&:itself)
+          def scene_lists_full_message(colors_scene = @colors_scene)
+            scene = Modes.strip_scene_prefix(colors_scene)
             "The scene :#{scene} draws its pictures with more lists of colours than a Genesis has for that scene. " \
-              "A Genesis holds #{PALETTES} sets of #{OWN_COLORS} colours. The pictures and lists of colours that every " \
-              "scene shows use #{kept} of the sets, and the scene :#{scene} gets the other #{PALETTES - kept}."
+              "A Genesis holds #{PALETTES} sets of #{OWN_COLORS} colours. #{kept_sets_words(colors_scene)}"
+          end
+
+          # How many sets every scene keeps and what each holds, and how many +colors_scene+ gets: a list the
+          # game changes that every scene can show, or the pictures every scene shows. So a game can move
+          # what it does not need everywhere into the scenes that show it.
+          def kept_sets_words(colors_scene)
+            scene = Modes.strip_scene_prefix(colors_scene)
+            kept = (0...PALETTES).select { |p| @shared_palettes[p] }
+            return "The scene :#{scene} gets all #{PALETTES} sets." if kept.empty?
+
+            listed = kept.map { |p| " Set #{p + 1} holds #{@shared_takers[p].join(' and ')}." }.join
+            held = @scene_held.select { |_, scenes| scenes.include?(colors_scene) }.keys
+            own = held.empty? ? "" : " This scene also shows lists of colours that the game changes. They use " \
+                                     "#{held.length} of its sets: #{held.map { |key| held_name(key) }.join(', ')}."
+            "Every scene keeps #{kept.length} of the sets. The scene :#{scene} gets the other #{PALETTES - kept.length}." \
+              "#{listed}#{own}"
           end
 
           # What a refusal says of the lists of colours the pictures have, beside a painted screen.
@@ -636,20 +690,21 @@ module VBlank
 
           # The palette that holds every one of +colors+, adding them to one with room where none does,
           # or starting another. +what+ names whose picture it is.
-          def palette_for(colors, what)
+          def palette_for(colors, what, taker:)
             if colors.length > OWN_COLORS
               raise TooMuch, "A picture of the #{what} uses #{colors.length} colours, and on a tiled screen a " \
                              "Genesis tile shows #{OWN_COLORS} and see-through. To fix this, draw it in #{OWN_COLORS} " \
                              "colours or fewer."
             end
 
-            used = (0...PALETTES).select { |p| @palettes[p] && !@held.value?(p) }
+            used = (0...PALETTES).select { |p| @palettes[p] && !held_here?(p) }
             found = used.find { |p| (colors - @palettes[p]).empty? }
-            return found if found
+            return found.tap { note_shared_taker(found, taker) } if found
 
             roomy = used.select { |p| (@palettes[p] | colors).length <= OWN_COLORS }.max_by { |p| (@palettes[p] & colors).length }
             if roomy
               @palettes[roomy] |= colors
+              note_shared_taker(roomy, taker)
               return roomy
             end
             unused = (0...PALETTES).find { |p| @palettes[p].nil? }
@@ -662,7 +717,38 @@ module VBlank
             end
 
             @palettes[unused] = colors.dup
+            note_shared_taker(unused, taker)
             unused
+          end
+
+          # Whether palette +p+ is a list's the game changes, in the palettes being added to: one every screen
+          # keeps, or one the scene whose copy is being added to keeps (#reserve_scene_held_palette).
+          def held_here?(p)
+            @held.any? { |key, held| held == p && (!@scene_held.key?(key) || @scene_held[key].include?(@colors_scene)) }
+          end
+
+          # Notes that palette +p+ holds +taker+'s colours, where +p+ is one every screen keeps.
+          def note_shared_taker(p, taker)
+            return unless @palettes.equal?(@shared_palettes)
+
+            @shared_takers[p] << taker unless @shared_takers[p].include?(taker)
+          end
+
+          # What a list the game changes is, for a refusal's words, from the key the lowering keeps it under.
+          def held_taker(key) = "#{held_name(key)}, which the game changes"
+
+          def held_name(key)
+            return "the list of colours :#{key[1]}" if key.is_a?(Array) && key.first == :sprites
+
+            @held_names.fetch(key, "a list of colours of a background")
+          end
+
+          # A list the game changes is refused where it holds more colours than a palette.
+          def refuse_long_held_list!(colors)
+            return if colors.length <= OWN_COLORS
+
+            raise TooMuch, "A list of colours the game changes holds #{colors.length} colours, and a Genesis " \
+                           "list shows #{OWN_COLORS} and see-through. To fix this, use #{OWN_COLORS} colours or fewer."
           end
         end
       end

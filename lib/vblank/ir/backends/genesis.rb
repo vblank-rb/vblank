@@ -98,9 +98,10 @@ module VBlank
         # with each scene's own colours written into the palettes as it takes over (+scene_colors+,
         # Art), so what has to fit is one scene's with what every screen keeps: :backgrounds first,
         # every sprite picture's colours kept for the whole game, then :sprites, a scene's own sprite
-        # pictures' colours taking turns too (Lowering::Picture#scene_colors_after). Those palettes are
-        # written through the game's own colours in work RAM (Runtime::Tint), so such a game carries
-        # that part of the runtime even if it never fades.
+        # pictures' colours taking turns too, then :lists, a list the game changes that only some scenes
+        # draw with keeping its palette in those scenes alone (Lowering::Picture#scene_colors_after).
+        # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
+        # a game carries that part of the runtime even if it never fades.
         #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.

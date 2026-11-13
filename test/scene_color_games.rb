@@ -163,4 +163,79 @@ module SceneColorGames
     b.finalize_program
     b.program
   end
+
+  # A TITLE AND A SCREEN AFTER IT THAT NEEDS ALL FOUR PALETTES, as a Genesis game's story screen does
+  # after its title. The title draws a sprite with each of two lists the game changes, and the
+  # backdrop follows the first list's second colour. The lair's four sprites are fifteen colours
+  # each, none another's. Nothing in the lair draws with either list, so on a Genesis the lair has the
+  # four palettes to itself while it is up, and the lists are shown again as the title comes back.
+  #
+  # The game tells both lists to hold their other set on DUSK_PASS, while the title is up, and tells
+  # the lights to hold their own again on LIGHTS_BACK_PASS, while the lair is up. So the title comes
+  # back with the screen's list in the set it held as the title went, and the lights' in a set they
+  # were told while the title was not up.
+  DUSK_PASS = 2
+  LAIR_PASS = 4
+  LIGHTS_BACK_PASS = 6
+  TITLE_AGAIN_PASS = 10
+  LAIR_PASSES_PLAYED = 14
+  TITLE_LISTS = {
+    screen: [widened([0, 0, 1]), widened([0, 0, 3]), widened([0, 0, 5])],
+    screen_dusk: [widened([1, 0, 1]), widened([3, 0, 3]), widened([5, 0, 5])],
+    lights: [:black, widened([5, 5, 0]), widened([7, 7, 0])],
+    lights_dim: [:black, widened([2, 2, 0]), widened([3, 3, 0])]
+  }.freeze
+  LOGO_AT = [10, 10].freeze
+  LAMP_AT = [30, 10].freeze
+  LAIR_SPRITES = 4
+
+  # Where lair sprite +which+ stands, and its fifteen colours: its own blue level tells them apart from
+  # the others'.
+  def self.lair_sprite_at(which) = [10 + (which * 16), 40]
+  def self.lair_picture(which) = Array.new(64) { |i| widened([i % 5, (i / 8) % 3, 2 + which]) }
+
+  # The colours list +list+ (:screen or :lights) holds after pass +pass+.
+  def self.list_after(list, pass)
+    return TITLE_LISTS.fetch(list) if pass < DUSK_PASS
+    return TITLE_LISTS.fetch(:screen_dusk) if list == :screen
+
+    TITLE_LISTS.fetch(pass < LIGHTS_BACK_PASS ? :lights_dim : :lights)
+  end
+
+  private def lair_game
+    b = VBlank::Builder.new
+    b.instance_eval do
+      TITLE_LISTS.each { |name, list| colors :"#{name}_colors", list }
+      screen :tiled, backdrop: :screen_colors, backdrop_place: 1
+      halves = ->(left, right) { Array.new(64) { |i| (i % 8) < 4 ? left : right } }
+      image :logo, width: 8, height: 8, data: halves.(TITLE_LISTS[:screen][1], TITLE_LISTS[:screen][2]), colors: :screen_colors
+      image :lamp, width: 8, height: 8, data: halves.(TITLE_LISTS[:lights][1], TITLE_LISTS[:lights][2]), colors: :lights_colors
+      LAIR_SPRITES.times { |which| image :"lair_#{which}", width: 8, height: 8, data: SceneColorGames.lair_picture(which) }
+      state = var :state, 0
+      pass = var :pass, 0
+      scene(:title) do
+        sprite(:logo, at: LOGO_AT).draw_with :screen_colors
+        sprite(:lamp, at: LAMP_AT).draw_with :lights_colors
+      end
+      scene(:lair) do
+        LAIR_SPRITES.times { |which| sprite :"lair_#{which}", at: SceneColorGames.lair_sprite_at(which) }
+      end
+      game_loop do
+        pass += 1
+        if pass == DUSK_PASS
+          recolor :screen_colors, %i[screen_dusk_colors], showing: 0
+          recolor :lights_colors, %i[lights_dim_colors], showing: 0
+        end
+        recolor :lights_colors, %i[lights_dim_colors], showing: 1 if pass == LIGHTS_BACK_PASS
+        state = 1 if pass == LAIR_PASS
+        state = 0 if pass == TITLE_AGAIN_PASS
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :lair
+        end
+      end
+    end
+    b.finalize_program
+    b.program
+  end
 end

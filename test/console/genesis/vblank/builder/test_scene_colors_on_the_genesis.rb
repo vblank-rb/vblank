@@ -66,4 +66,31 @@ class TestSceneColorsOnTheGenesis < Minitest::Test
       end
     end
   end
+
+  # The lair needs all four palettes, and the title the palettes of two lists the game changes on every
+  # pass. Played to the end, each pass held to the interpreter's picture.
+  def test_a_scene_gets_the_palettes_of_lists_only_another_scene_draws_with
+    program = lair_game
+    game_player.run(program, frames: LAIR_PASSES_PLAYED)
+
+    lair = screen_after(program, TITLE_AGAIN_PASS - 1)
+    LAIR_SPRITES.times do |which|
+      x, y = SceneColorGames.lair_sprite_at(which)
+      picture = SceneColorGames.lair_picture(which)
+      assert_equal [shown(picture[0]), shown(picture[4])], [lair.pixel(x, y), lair.pixel(x + 4, y)], "lair sprite #{which}"
+    end
+    assert_equal shown(SceneColorGames.list_after(:screen, TITLE_AGAIN_PASS - 1)[1]), lair.pixel(200, 150), "the backdrop in the lair"
+  end
+
+  # Back on the title, each list shows the set the game told it to hold while the lair was up.
+  def test_lists_another_scene_drew_with_show_what_they_hold_as_it_comes_back
+    program = lair_game
+    [TITLE_AGAIN_PASS, TITLE_AGAIN_PASS + 1].each do |pass|
+      title = screen_after(program, pass)
+      { screen: LOGO_AT, lights: LAMP_AT }.each do |list, (x, y)|
+        assert_equal shown(SceneColorGames.list_after(list, pass)[1]), title.pixel(x + 1, y + 1), "the #{list} list after pass #{pass}"
+      end
+      assert_equal shown(SceneColorGames.list_after(:screen, pass)[1]), title.pixel(200, 150), "the backdrop after pass #{pass}"
+    end
+  end
 end
