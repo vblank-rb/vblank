@@ -2265,9 +2265,11 @@ module VBlank
               @asm.call("rt_sprite_args_set")
             end
 
-            # Whether +operand+ is worked out without a runtime routine that takes numbers (#emit_sprite_call).
+            # Whether +operand+ is worked out without a runtime routine that takes numbers (#emit_sprite_call):
+            # a pool's sprite reads its place from one slot of a list (Lowering#fixed_slot).
             def read_without_args?(operand)
               return true if folded(operand) || variable_named(operand)
+              return true if operand.is_a?(Node) && operand.kind == :list_get && fixed_slot(operand)
 
               operand.is_a?(Entry) && read_without_args?(operand.index)
             end

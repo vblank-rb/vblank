@@ -1448,6 +1448,11 @@ module VBlank
               asm.jump(:z, "rt_bank_back")
               asm.load([memory[KeptSprites::PIECES_PLACED]], :a) if KeptSprites.any?(memory)
               asm.load(:c, :a) # how many pieces
+              # With the table full no piece can go in, so none is worked out: a crowd of more
+              # pieces than the table holds paid for every one past it.
+              asm.load(:a, [memory[NEXT_SPRITE]])
+              asm.cp_a(Console::GBCHardware::OAM_SIZE)
+              asm.jump(:nc, "rt_bank_back")
               asm.label("rt_sprite_piece")
               asm.push(:bc)
               asm.call("rt_gbc_place_piece")

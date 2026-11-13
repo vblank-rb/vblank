@@ -1249,6 +1249,10 @@ module VBlank
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
           def value_of_list_get(node)
             place, capacity, width = list_placed(node)
+            if (slot = fixed_slot(node))
+              @asm.load(:hl, slot)
+              return @asm.call(TABLE_KEPT.fetch([width, true]).last)
+            end
             if front_dropped_lists.include?(node.name)
               value(node.index)
               _push, item = NARROW_LIST_ROUTINES[width]
@@ -1260,7 +1264,7 @@ module VBlank
 
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_read")
-            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range)
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name))
             @asm.call(TABLE_KEPT.fetch([width, true]).last) # a slot reads back with its top bit as the sign
             @asm.jump(done)
             @asm.label(out_of_range)
@@ -1279,7 +1283,7 @@ module VBlank
             place, capacity, width = list_placed(node)
             out_of_range = fresh("list_index_out_of_range")
             done = fresh("list_item_written")
-            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range)
+            emit_list_slot_of_index(node.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(node.name))
             @asm.push(:hl)
             value(node.value)
             @asm.pop(:hl)
@@ -1297,21 +1301,29 @@ module VBlank
           # HL = the slot the index in BCDE names in the list at +place+, whose slots are +width+
           # bytes, a list whose first item is in its first slot; a jump to +out_of_range+, BCDE as
           # it was, for an index past 16 bits, below nought, or not below the length its header holds.
-          def emit_list_slot_address(place, width, out_of_range)
+          def emit_list_slot_address(place, width, out_of_range, length: nil)
             @asm.load(:a, :b)
             @asm.or_a(:c)
             @asm.jump(:nz, out_of_range)
-            emit_list_slot_of_de(place, width, out_of_range)
+            emit_list_slot_of_de(place, width, out_of_range, length: length)
           end
 
-          # The same for an index in DE alone.
-          def emit_list_slot_of_de(place, width, out_of_range)
-            @asm.load(:hl, place + Runtime::Lists::LENGTH)
-            @asm.load(:a, :e)
-            @asm.sub_a([:hl])
-            @asm.inc(:hl)
-            @asm.load(:a, :d)
-            @asm.sbc_a([:hl])
+          # The same for an index in DE alone. +length+ is the list's, for one that never changes
+          # it (#fixed_length_lists), or nil to read it from the list's header.
+          def emit_list_slot_of_de(place, width, out_of_range, length: nil)
+            if length
+              @asm.load(:a, :e)
+              @asm.sub_a(length & 0xFF)
+              @asm.load(:a, :d)
+              @asm.sbc_a(length >> 8)
+            else
+              @asm.load(:hl, place + Runtime::Lists::LENGTH)
+              @asm.load(:a, :e)
+              @asm.sub_a([:hl])
+              @asm.inc(:hl)
+              @asm.load(:a, :d)
+              @asm.sbc_a([:hl])
+            end
             @asm.jump(:nc, out_of_range)
             @asm.load(:h, :d)
             @asm.load(:l, :e)
@@ -1326,6 +1338,32 @@ module VBlank
             emit_list_index_and_place(place, *Runtime::Lists.set_places(@memory))
             @asm.call("rt_list_set_taken")
           end
+
+          # A LIST ALWAYS AS LONG AS IT CAN BE — declared full, and named by no step but a read, a
+          # write or its length — has every slot in range for good, so a read at an index written in
+          # the program is a read of one place in memory, with nothing to check: where the slot is,
+          # or nil for any other read. A pool's copy of its things in order is such a list, read by
+          # each of its sprites at a place of its own (DSL::Pool#stacked_list).
+          def fixed_slot(node)
+            index = folded(node.index)
+            return nil unless index && fixed_length_lists.include?(node.name)
+
+            place, capacity, width = list_placed(node)
+            place + Runtime::Lists::HEADER + (index * width) if index.between?(0, capacity - 1)
+          end
+
+          # The names of the lists #fixed_slot reads straight from.
+          def fixed_length_lists
+            @fixed_length_lists ||= begin
+              full = @program.walk.filter_map { |node| node.name if node.kind == :list_new && !node.full_of.nil? }
+              others = @program.walk.reject { |node| FIXED_LENGTH_STEPS.include?(node.kind) }
+              named = others.flat_map { |node| node.attrs.values.flat_map { |value| Array(value) } }.grep(Symbol)
+              full - named
+            end
+          end
+
+          # The steps that leave a list as long as it is.
+          FIXED_LENGTH_STEPS = %i[list_new list_get list_set list_len].freeze
 
           # The lists some reachable step takes an item from the front of.
           def front_dropped_lists
@@ -1695,6 +1733,9 @@ module VBlank
             elsif (equal = equality_of_two_kept(condition))
               compare_two_kept(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
+            elsif (equal = equality_of_byte_item(condition))
+              compare_byte_item_with_number(*equal)
+              @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (name = sign_tested_variable(condition))
               # A variable at or above nought, or below it, is its top bit, where it is kept.
               @asm.load(:a, [place_of(name) + (kept_bytes(name) || 4) - 1])
@@ -1767,6 +1808,41 @@ module VBlank
             return nil unless number && name
 
             [place_of(name), number & 0xFFFF_FFFF]
+          end
+
+          # An item of a list of bytes tested to equal (or not) a number a byte holds: [the read, the
+          # number], or nil for any other test. A pool asks this of every thing it walks (is the slot
+          # live?), and the item is a byte in memory: one compare, with no whole number made of it.
+          def equality_of_byte_item(condition)
+            return nil unless binop?(condition, :==) || binop?(condition, :!=)
+
+            left, right = condition.lhs, condition.rhs
+            left, right = right, left if folded(left)
+            number = folded(right)
+            return nil unless number&.between?(-0x80, 0x7F) && left.is_a?(Node) && left.kind == :list_get
+            return nil if front_dropped_lists.include?(left.name)
+
+            [left, number] if list_placed(left)[2] == 1
+          end
+
+          # The zero flag set when the item +item+ reads is +number+. An index out of range stops the
+          # game, as reading the item would.
+          def compare_byte_item_with_number(item, number)
+            if (slot = fixed_slot(item))
+              @asm.load(:a, [slot])
+            else
+              place, capacity, width = list_placed(item)
+              out_of_range = fresh("list_index_out_of_range")
+              read = fresh("list_item_read")
+              emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name))
+              @asm.load(:a, [:hl])
+              @asm.jump(read)
+              @asm.label(out_of_range)
+              value(item.index) if kept_list_index?(item.index, capacity)
+              list_get_through_routine(place)
+              @asm.label(read)
+            end
+            @asm.cp_a(number & 0xFF)
           end
 
           # The whole-number variable +node+ names, read where it is kept. One kept narrow is not one:

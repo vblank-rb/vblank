@@ -215,15 +215,17 @@ module VBlank
             # An index, in DE, in two bytes when it can be, and HL = its slot; a jump to
             # +out_of_range+ when it is outside the list. Otherwise as #emit_list_slot_address.
             # A two-byte index leaves no whole number in BCDE, so where that jump lands the index is
-            # worked out again for the game to stop on.
-            def emit_list_slot_of_index(index, place, capacity, width, out_of_range)
+            # worked out again for the game to stop on. +fixed+ means the list is always as long as it
+            # can be (Lowering#fixed_length_lists), so the index is held to its capacity.
+            def emit_list_slot_of_index(index, place, capacity, width, out_of_range, fixed: false)
+              length = (capacity if fixed)
               if kept_list_index?(index, capacity)
                 low_value(index, 2)
-                return emit_list_slot_of_de(place, width, out_of_range)
+                return emit_list_slot_of_de(place, width, out_of_range, length: length)
               end
 
               value(index)
-              emit_list_slot_address(place, width, out_of_range)
+              emit_list_slot_address(place, width, out_of_range, length: length)
             end
 
             # An ordering of two variables kept at the same width: [the one, the other, and
