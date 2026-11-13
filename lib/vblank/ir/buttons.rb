@@ -63,6 +63,11 @@ module VBlank
       # player before's.
       PLAYER_SHIFT = 16
 
+      # Every button of one player set, a bit each in NAMES's order: what a computer's runtime keeps
+      # of a player's number (Computer::ConsoleNumbers writes it ahead of each runtime), so a button
+      # added to NAMES is kept there too.
+      EVERY_BUTTON_MASK = (1 << NAMES.length) - 1
+
       # Whether +name+ is a button a program can read.
       def known?(name)
         NAMES.include?(name)

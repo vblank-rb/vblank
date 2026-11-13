@@ -78,6 +78,15 @@ class TestPlainRubyPartRefusals < Minitest::Test
     assert_includes error.message, "names_without_game_file.rb:6"
   end
 
+  def test_a_part_marking_game_variables_unsaved_brought_in_with_require_relative_is_refused_naming_the_fix
+    error = assert_raises(Refused) do
+      require_relative "../../../fixtures/game_parts_refused/names_unsaved_without_game_file"
+    end
+
+    assert_includes error.message, 'VBlank.require_game_file "names_unsaved_without_game_file"'
+    assert_includes error.message, "names_unsaved_without_game_file.rb:6"
+  end
+
   def test_a_part_naming_its_own_constants_and_a_later_parts_is_brought_in
     bring_in("own_constants")
 

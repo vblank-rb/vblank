@@ -68,11 +68,27 @@
  * holds is read in at the first frame boundary, after the game's first pass and before its second
  * frame begins, so the run goes on from there: its frame 1 is the frame after the one the state was
  * written at.
+ *
+ * With --final-state FILE nobody watches the run (Native::FinalStateRun): it plays as fast as the
+ * computer goes to its halt, or to the end of FRAMES, printing nothing of each frame and reading
+ * no buttons, and makes no sound. At the end it writes FILE: every variable as "var name value",
+ * a line each, then every list as "list", its name, a tab, its width in bytes and its count, a
+ * line's end, and then its items oldest first, each in its width with the low byte first. What a
+ * build plays this way is a port's unpacking, whose pack is one list of millions of bytes, which
+ * as printed numbers would be several times its size. With --list-file NAME PATH as well, the
+ * list called NAME is left out of FILE and its items alone, written the same way, are added to
+ * the end of PATH: a build hands the file it wants the pack in, already holding the pack's
+ * header, and the pack's bytes go straight there (Original::Unpacking#write_pack_as_c), never
+ * through the reader. So that a stuck routine can be told from a
+ * long one, it prints one "." on standard output at a frame boundary, at most every
+ * DOT_EVERY_CLOCKS of the processor's time, and the reader stops a run that has printed none
+ * for a while.
  */
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "rg_driver.h"
 #include "rg_list.h"
 #include "rg_runtime.h"
@@ -92,6 +108,11 @@ static const char *save_path; /* the file save memory is read from and written b
 static const char *state_out_path; /* where the state is written, if anywhere... */
 static long state_out_after = -1;  /* ...at the boundary after this frame */
 static char *state_in;             /* the state read in at the first boundary, until it is */
+static const char *final_state_path; /* where a run nobody watches writes its variables and lists */
+static FILE *final_state;            /* ...open while they are written */
+static clock_t last_dot_clock;       /* when such a run last printed a "." to show it is not stuck */
+static const char *list_file_name;   /* the list such a run adds to a file of its own... */
+static const char *list_file_path;   /* ...and that file */
 
 /* The whole of the file at +path+ as text, or NULL where it cannot be read. */
 static char *read_text_file(const char *path) {
@@ -354,12 +375,101 @@ static void headless_sound_logged(const char *line) { printf("sound %s\n", line)
 static void headless_dump_list(const rg_list *list) {
   if (asked_name && strcmp(list->name, asked_name) != 0) return;
   printf("list %s\t", list->name);
-  for (int32_t i = 0; i < list->length; i++) printf(i ? " %d" : "%d", (int)list->items[rg_list_slot(list, i)]);
+  for (int32_t i = 0; i < list->length; i++) printf(i ? " %d" : "%d", (int)rg_list_load(list, rg_list_slot(list, i)));
   fputc('\n', stdout);
 }
 
 static const rg_driver headless = {headless_wait_vblank, headless_halt, headless_fault, headless_dump_variable,
                                    headless_sound_logged, headless_dump_list};
+
+/* --- a run nobody watches (--final-state) --- */
+
+/* How much of the processor's time goes by between two "."s at most: a tenth of a second. */
+#define DOT_EVERY_CLOCKS (CLOCKS_PER_SEC / 10)
+
+/* Every variable and list written to the final state's file, and the run ended. */
+static _Noreturn void finish_final_state(void) {
+  final_state = fopen(final_state_path, "wb");
+  if (!final_state) {
+    fprintf(stderr, "the final state could not be written to %s\n", final_state_path);
+    exit(1);
+  }
+  rg_game_dump_state();
+  if (fclose(final_state) != 0) {
+    fprintf(stderr, "the final state could not be written to %s\n", final_state_path);
+    exit(1);
+  }
+  exit(0);
+}
+
+static void final_state_wait_vblank(void) {
+  if (frame >= frames_to_play) finish_final_state();
+  rg_frame_begins();
+  frame++;
+  clock_t now = clock();
+  if (now - last_dot_clock < DOT_EVERY_CLOCKS) return;
+  last_dot_clock = now;
+  fputc('.', stdout);
+  fflush(stdout);
+}
+
+static void final_state_halt(void) { finish_final_state(); }
+
+static void final_state_dump_variable(const char *name, int32_t value) { fprintf(final_state, "var %s %d\n", name, (int)value); }
+
+static void final_state_sound_logged(const char *line) { (void)line; }
+
+/* The items of +list+, oldest first, each in its width with the low byte first, written to +out+.
+ * A list of bytes is already that in memory, so it goes as the one or two runs of its ring; a
+ * wider one goes through a buffer of whole items, since a pack's list holds millions of them. */
+static void write_list_items(const rg_list *list, FILE *out) {
+  if (list->width == 1) {
+    const int8_t *items = list->items;
+    int32_t first_run = list->capacity - list->front;
+    if (first_run > list->length) first_run = list->length;
+    fwrite(items + list->front, 1, (size_t)first_run, out);
+    fwrite(items, 1, (size_t)(list->length - first_run), out);
+    return;
+  }
+  unsigned char buffer[4096];
+  size_t width = (size_t)list->width, held = 0;
+  for (int32_t i = 0; i < list->length; i++) {
+    uint32_t item = (uint32_t)rg_list_load(list, rg_list_slot(list, i));
+    for (size_t byte = 0; byte < width; byte++) buffer[held++] = (unsigned char)((item >> (8 * byte)) & 0xFFu);
+    if (held + width > sizeof buffer) {
+      fwrite(buffer, 1, held, out);
+      held = 0;
+    }
+  }
+  fwrite(buffer, 1, held, out);
+}
+
+/* The list --list-file names: its items added to the end of its file. */
+static void append_list_file(const rg_list *list) {
+  FILE *out = fopen(list_file_path, "ab");
+  int failed = !out;
+  if (out) {
+    write_list_items(list, out);
+    failed = ferror(out);
+    if (fclose(out) != 0) failed = 1;
+  }
+  if (failed) {
+    fprintf(stderr, "the list %s could not be written to %s\n", list->name, list_file_path);
+    exit(1);
+  }
+}
+
+static void final_state_dump_list(const rg_list *list) {
+  if (list_file_name && strcmp(list->name, list_file_name) == 0) {
+    append_list_file(list);
+    return;
+  }
+  fprintf(final_state, "list %s\t%d %d\n", list->name, (int)list->width, (int)list->length);
+  write_list_items(list, final_state);
+}
+
+static const rg_driver final_state_driver = {final_state_wait_vblank, final_state_halt, headless_fault, final_state_dump_variable,
+                                             final_state_sound_logged, final_state_dump_list};
 
 int rg_headless_main(int argc, char **argv) {
   if (argc < 2) {
@@ -417,7 +527,18 @@ int rg_headless_main(int argc, char **argv) {
         fprintf(stderr, "the file at %s could not be read\n", argv[i]);
         return 2;
       }
+    } else if (strcmp(argv[i], "--final-state") == 0 && i + 1 < argc) {
+      final_state_path = argv[++i];
+    } else if (strcmp(argv[i], "--list-file") == 0 && i + 2 < argc) {
+      list_file_name = argv[++i];
+      list_file_path = argv[++i];
     }
+  }
+  if (final_state_path) {
+    rg_active_driver = &final_state_driver;
+    last_dot_clock = clock();
+    rg_play_frames();
+    finish_final_state();
   }
   rg_active_driver = &headless;
   rg_play_frames();

@@ -235,7 +235,9 @@ module VBlank
               asm.bne("rt_show_pass_on")
               asm.jsl(asm.long("rt_upload_whole"))
               asm.jsr(asm.abs("rt_sleep_until_vblank"))
-              if dims
+              if Letterbox.named_band?(memory)
+                asm.jsr(asm.abs("rt_letterbox_show_band")) # the screen on for the band the game named alone
+              elsif dims
                 Tint.emit_brightness(asm, memory)
               else
                 asm.sep(0x20)
@@ -260,7 +262,7 @@ module VBlank
               # the picture it arrives with, as the colours do.
               if dims
                 Tint.emit_brightness(asm, memory)
-              elsif memory.reserved?(Picture::SCENE_BACKGROUND_TILES) # the picture was off for a scene's tiles
+              elsif memory.reserved?(Picture::SCENE_BACKGROUND_TILES) && !Letterbox.named_band?(memory) # the picture was off for a scene's tiles
                 asm.sep(0x20)
                 asm.lda(h::FULL_BRIGHTNESS)
                 asm.sta(asm.abs(h::INIDISP))

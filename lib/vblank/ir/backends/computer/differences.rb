@@ -35,7 +35,7 @@ module VBlank
                 File.binwrite(handed.last, start_file)
               end
               parse_snapshots(run_headless_program(program, mode, args: [frames, "--every-picture", *from_power_on, *handed],
-                                                                  input: input), program)
+                                                                  input: input), program, start_file: start_file)
             end
           end
 
@@ -76,8 +76,8 @@ module VBlank
           # The program's printed moments. A sound line belongs to the log as it grows, so each
           # moment holds the log up to its own heading — which is where the interpreter's
           # each_vblank reads it.
-          def parse_snapshots(text, program)
-            sound_log = SoundLog.new(program)
+          def parse_snapshots(text, program, start_file: nil)
+            sound_log = SoundLog.new(program, start_file: start_file)
             drawn = DrawnSprites.new(program)
             sounds = []
             moments = []

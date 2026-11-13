@@ -36,6 +36,15 @@
 #define RG_CONSOLE_TICKS_A_FRAME 280896
 #endif
 
+/* The rows of the screen the picture shows, the first and the one past the last; the rest are given
+ * up and show black (`screen :bitmap, shown_rows:`, Console::Description#shown_rows). */
+#ifndef RG_SHOWN_FIRST_ROW
+#define RG_SHOWN_FIRST_ROW 0
+#endif
+#ifndef RG_SHOWN_PAST_ROW
+#define RG_SHOWN_PAST_ROW RG_SCREEN_HEIGHT
+#endif
+
 /* Whether the console's display can mix the finished picture toward a colour as it draws it. One
  * that cannot has every fade and tint mixed into its colour tables instead
  * (Console::Description#blends). */
@@ -79,6 +88,13 @@
 #define RG_CONSOLE_PLAYS_BIOS_START_UP 0
 #endif
 
+/* Every button of one player, a bit each (IR::Buttons::EVERY_BUTTON_MASK): what the runtime keeps of
+ * a player's number. Every build writes it; this is the same number for a file of the runtime read
+ * on its own, and a test holds it to the one every build writes. */
+#ifndef RG_ONE_PLAYERS_BUTTONS
+#define RG_ONE_PLAYERS_BUTTONS 8191
+#endif
+
 /* Where each number of a picture's tile and colour layouts sits in
  * the rules a start-file fill is handed (Computer::StartFileNumbers, which writes them into every
  * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
@@ -95,7 +111,7 @@
  * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
  * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
-#define RG_FILL_POSE_HEADER_NUMBERS 16
+#define RG_FILL_POSE_HEADER_NUMBERS 15
 #define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
 #define RG_FRAME_ENTRY_BYTES 4
 #define RG_FRAME_HEADER_BYTES 4

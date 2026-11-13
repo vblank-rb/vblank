@@ -24,7 +24,8 @@ RG_MAX_BACKGROUNDS = 64
 # layer or RG_SOLID; whether it is bent; how far forward a placed fade's layer can be and still
 # leave it as drawn; how many tiles it has and how many steps of colors it can be told; whether
 # it goes into blocks and whether it can turn; and where its painted tiles and their colors are,
-# or RG_NOT_PAINTED.
+# or RG_NOT_PAINTED; the top of a status bar and the row a background is held above, each or
+# RG_NOT_A_BAR; and whether it is shown alone above that row.
 RG_BG_TILE_W = 0
 RG_BG_TILE_H = 1
 RG_BG_FIRST_MAP = 2
@@ -47,7 +48,14 @@ RG_BG_PAINTED = 18
 RG_BG_RUN_COLORS = 19
 RG_BG_BAR_TOP = 20
 RG_BG_ABOVE_ROW = 21
-RG_BG_FIELDS = 22
+RG_BG_ALONE = 22
+RG_BG_FIELDS = 23
+
+# What RG_BG_ALONE holds: shown with the other backgrounds above its row, alone there, or alone
+# without the sprites too.
+RG_SHOWN_WITH_OTHERS = 0
+RG_SHOWN_ALONE = 1
+RG_SHOWN_WITHOUT_SPRITES = 2
 
 # Each map is RG_MAP_FIELDS numbers in @rg_game_maps.
 RG_MAP_CELLS = 0
@@ -221,8 +229,10 @@ end
 
 # Reference#stamp_background: the whole map onto the picture, as many times as the screen sees it.
 def rg_background_stamp(background)
-  # Reference#stamp_background: a status bar is painted from its own top as the view is built.
-  return rg_request_repaint if rg_bar?(background) || rg_held_above_row?(background) || rg_held_to_box?(background)
+  # Reference#stamp_background: a status bar is painted from its own top as the view is built, a
+  # background held above a row stops at it, and one under a background shown alone starts there.
+  return rg_request_repaint if rg_bar?(background) || rg_held_above_row?(background) || rg_held_to_box?(background) ||
+                               rg_row_held_alone_by_another(background)
 
   rg_mix_as_layer(rg_background_field(background, RG_BG_SEE_THROUGH))
   map = rg_map_now(background)
@@ -423,6 +433,15 @@ end
 
 # Whether a background is held above a row of the screen.
 def rg_held_above_row?(background) = rg_background_field(background, RG_BG_ABOVE_ROW) != RG_NOT_A_BAR
+
+# Reference#row_held_alone_by_another: the row of a background up and shown alone above it,
+# where +background+ is another, or nil.
+def rg_row_held_alone_by_another(background)
+  alone = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times.find do |bg|
+    bg != background && rg_showing?(bg) && rg_background_field(bg, RG_BG_ALONE) != 0
+  end
+  alone && rg_background_field(alone, RG_BG_ABOVE_ROW)
+end
 
 # Reference#paint_status_bar_rows: from its top row to the bottom of the screen, its map from its own
 # corner, never scrolled; past the end of its map the backdrop stays. A row in a block that starts
@@ -848,9 +867,16 @@ def rg_paint_scenery_in_box(background, box)
 end
 
 # Reference#paint_scenery: a background held to a box with nothing in it paints nothing; one the
-# game has not left as drawn is painted in blocks while the blocks are bigger than a pixel.
+# game has not left as drawn is painted in blocks while the blocks are bigger than a pixel. Under a
+# background shown alone above its row, it is held to the rows from there down as if to a box
+# (Reference#box_shown_of).
 def rg_paint_scenery(background)
   box = @rg_boxes[rg_keeper_of(background)]
+  alone = rg_row_held_alone_by_another(background)
+  if alone
+    left, top, right, bottom = box || [0, 0, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT]
+    box = [left, [top, alone].max, right, bottom]
+  end
   return if box && (box[2] <= box[0] || box[3] <= box[1])
 
   block = rg_hook_block_size
@@ -953,18 +979,35 @@ def rg_tiled_paint_level(level)
   end
 end
 
-# Reference#paint_bar_over_sprites
-def rg_tiled_repaint_ending
-  bar = @rg_bar_in_rebuild
-  @rg_bar_in_rebuild = nil
-  return if !bar || !@rg_bar_covers[rg_keeper_of(bar)]
+# Reference#paint_held_over_sprites: a background shown alone without sprites painted again over
+# its rows, from the backdrop up.
+def rg_paint_held_over_sprites(held)
+  rg_mix_nothing
+  rg_fade_unless_left_as_drawn(RG_NO_LAYER)
+  rg_fill_cells(0, 0, RG_SCREEN_WIDTH, rg_rows_shown_of(held), @rg_backdrop)
+  rg_blend_as_background(held)
+  rg_paint_scenery(held)
+end
 
+# Reference#paint_bar_over_sprites
+def rg_paint_bar_over_sprites(bar)
   top = rg_bar_top_shown(bar)
   rg_mix_nothing
   rg_fade_unless_left_as_drawn(RG_NO_LAYER)
   rg_fill_cells(0, top, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT - top, @rg_backdrop)
   rg_blend_as_background(bar)
   rg_paint_status_bar(bar)
+end
+
+# The end of Reference#repaint_view
+def rg_tiled_repaint_ending
+  bar = @rg_bar_in_rebuild
+  @rg_bar_in_rebuild = nil
+  rg_paint_bar_over_sprites(bar) if bar && @rg_bar_covers[rg_keeper_of(bar)]
+  held = @rg_game_picture_sizes[RG_SIZE_BACKGROUNDS].times.find do |bg|
+    rg_showing?(bg) && rg_background_field(bg, RG_BG_ALONE) == RG_SHOWN_WITHOUT_SPRITES
+  end
+  rg_paint_held_over_sprites(held) if held
 end
 
 # Reference#scene_framebuffer: every background showing, stamped.

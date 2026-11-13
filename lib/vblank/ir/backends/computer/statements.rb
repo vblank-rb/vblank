@@ -123,9 +123,11 @@ module VBlank
           # (+type+ then the struct's). +exported+ is for the art the runtime reads by name (see
           # runtime/rg_screen.h). +writable+ is for numbers the program starts with that the runtime
           # overwrites in part from the start file as the game starts (a recording's samples), so
-          # they are written where they can be written.
-          ConstArray = Data.define(:name, :type, :values, :exported, :writable) do
-            def initialize(name:, type:, values:, exported: false, writable: false)
+          # they are written where they can be written. +grows+ is for one the runtime makes longer as
+          # the game starts, room for what the start file fills, held only by name (JavaScript
+          # declares it so it can be named again).
+          ConstArray = Data.define(:name, :type, :values, :exported, :writable, :grows) do
+            def initialize(name:, type:, values:, exported: false, writable: false, grows: false)
               super
             end
           end

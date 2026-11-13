@@ -174,7 +174,9 @@ module VBlank
     # consistency, not the developer's game, so a failure is a VBlank bug and
     # raises loudly rather than joining the friendly guardrail report below. It
     # runs before the guardrails and the backend so a malformed tree can't reach
-    # them and fail cryptically two passes downstream.
+    # them and fail cryptically two passes downstream. One mismatch is the author's: a
+    # number the game works out, handed to a verb that takes only a written one. That
+    # one is refused in plain words naming the line (see IR::Verifier).
     progress.step("Checking program")
     IR::Verifier.verify!(program)
 

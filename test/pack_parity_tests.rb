@@ -191,6 +191,8 @@ module PackParityTests
     when :computer_build_mixing_at_recording_rates
       console = VBlank::Console.described(game_console)
       VBlank::Testing.checked? && console.mixes_recordings && console.recording_voice_hz.nil?
+    when :computer_build_voices_reading_sound_memory
+      VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
     end
   end
 

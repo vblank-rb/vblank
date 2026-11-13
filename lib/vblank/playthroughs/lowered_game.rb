@@ -77,6 +77,7 @@ module VBlank
       def running_jit = (@run.running_jit if @run.respond_to?(:running_jit))
 
       def var(name) = @run.var(name)
+      def var?(name) = @run.var?(name)
       def raw_var(name) = @run.raw_var(name)
       def sprite(name) = @run.sprite(name)
       def background(name) = @run.background(name)

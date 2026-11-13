@@ -85,6 +85,8 @@ module VBlank
                            }),
         pixels: Shape.new(item_bytes: ->(_slot) { 1 }, decode: ->(_slot, bytes) { bytes.bytes }),
         notes: Shape.new(item_bytes: ->(_slot) { PackNote::BYTES }, decode: ->(_slot, bytes) { PackNote.list_in(bytes) }),
+        voiced_notes: Shape.new(item_bytes: ->(_slot) { PackNote::VOICED_BYTES },
+                                decode: ->(_slot, bytes) { PackNote.list_in(bytes, voiced: true) }),
         # Each cell read as one number, as a map of any console's cells is (MapCell::FORMAT).
         map_cells: Shape.new(item_bytes: ->(_slot) { MapCell::BYTES },
                              decode: ->(slot, bytes) { IR::FormatReading.numbers(bytes, slot.format, width: :word, signed: false) }),
@@ -122,6 +124,16 @@ module VBlank
       def self.notes(name, count:, at: nil, cost: 1)
         new(name: name.to_sym, shape: :notes, at: at, count: count, width: nil, signed: nil, format: nil, cost: cost)
       end
+
+      # +count+ notes of music each with its voice's settings, a PackNote record of VOICED_BYTES,
+      # for a part of a Score whose notes set their own pitch number, fade, duty, vibrato, slide or
+      # shade between the speakers, as a sound driver does for each note it strikes.
+      def self.voiced_notes(name, count:, at: nil, cost: 1)
+        new(name: name.to_sym, shape: :voiced_notes, at: at, count: count, width: nil, signed: nil, format: nil, cost: cost)
+      end
+
+      # The shapes a part of a Score reads its notes from.
+      NOTE_SHAPES = %i[notes voiced_notes].freeze
 
       # +count+ cells of a background's map, each a MapCell record, for a background's `map:`
       # (`background :title, tiles: pack[:video], map: pack[:title_map], ...`). The record is

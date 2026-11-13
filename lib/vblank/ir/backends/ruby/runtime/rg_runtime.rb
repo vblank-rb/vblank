@@ -3,11 +3,11 @@
 # whether there is a window: the driver is the methods named rg_driver_*, which the driver's own
 # file gives the game's class (rg_headless.rb, the one with no window).
 
-# Every button a program can name (IR::Buttons), a bit each. That is the same buttons on every
-# console: a console with fewer has a build that refuses the ones it lacks before there is a game
-# to play, so nothing here needs to know which console it is. Each connected player's buttons are
-# a number of their own, in a list, the first player's first (IR::Buttons.masks).
-RG_ONE_PLAYERS_BUTTONS = 0x1FFF # Thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last
+# Every button a program can name (IR::Buttons), a bit each, is RG_ONE_PLAYERS_BUTTONS, written
+# ahead of the runtime (Computer::ConsoleNumbers). That is the same buttons on every console: a
+# console with fewer has a build that refuses the ones it lacks before there is a game to play, so
+# nothing here needs to know which console it is. Each connected player's buttons are a number of
+# their own, in a list, the first player's first (IR::Buttons.masks).
 RG_MAX_TIMERS = 32
 RG_SECONDS_A_DAY = 86400
 RG_UNDATED_FIRST_DAY = 10957 # 1 January 2000, in days from the start of 1970
@@ -74,8 +74,8 @@ def rg_players_buttons(now)
   held + ([0] * [@rg_held.length - held.length, 0].max)
 end
 
-# A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in the
-# order the console's key register holds them: a, b, select, start, right, left, up, down, r, l.
+# A button's bit in +buttons+, or any of the first player's for -1. The buttons are numbered in
+# IR::Buttons::NAMES's order.
 def rg_button_down(buttons, button)
   return (buttons & RG_ONE_PLAYERS_BUTTONS) != 0 ? 1 : 0 if button < 0
 
@@ -349,6 +349,36 @@ def rg_start_file_walk_colors(colors, first, count, made)
   end
 end
 
+# rg_runtime.c's start_file_counted_walk_color.
+def rg_start_file_counted_walk_color(color, far, step, count, steps)
+  walked = 0
+  [0, 5, 10].each do |shift|
+    height = (color >> shift) & 31
+    level = (far >> shift) & 31
+    toward = height > level ? 1 : -1
+    (1..steps).each do |number|
+      now = [count - (step * number), 0].max
+      to_go = (height - level) * toward
+      if to_go.negative?
+        level -= toward * step
+        level = height if ((height - level) * toward).positive?
+      elsif to_go.positive? && to_go >= now
+        level = (level + (toward * step)).clamp(0, 31)
+      end
+    end
+    walked |= level << shift
+  end
+  walked
+end
+
+# Colours made by a walk that waits for a falling count (rg_runtime.h, rg_start_file_count_walk_colors).
+def rg_start_file_count_walk_colors(colors, first, count, made)
+  count.times do |entry|
+    at = entry * 5
+    colors[first + entry] = rg_start_file_counted_walk_color(colors[made[at]], made[at + 1], made[at + 2], made[at + 3], made[at + 4])
+  end
+end
+
 # rg_runtime.c's start_file_marked, of the sixteen bits +held+.
 def rg_start_file_marked(held) = held > RG_MARKED_COLOR && held != 0xFFFF
 
@@ -511,12 +541,12 @@ end
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
-  kind, _total, start, width, height, turn, colors_at, colors_count, swapped_count, entry_at, records_at, origin_x, origin_y,
+  kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
     tiles_at, tile_count, only_bank = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
-  swapped = held_colors + (colors_at.negative? ? colors_count : 0)
+  copy = held_colors + (colors_at.negative? ? colors_count : 0)
   count, first = rg_start_file_frame_pieces(entry_at, records_at)
   places = Array.new(width * height, 0)
   count.times do |piece|
@@ -532,25 +562,50 @@ def rg_start_file_fill_pose(rules)
     @rg_game_image_pixels = @rg_game_image_pixels.dup if @rg_game_image_pixels.frozen?
     pixels = @rg_game_image_pixels
   end
-  height.times do |row|
-    width.times do |column|
-      from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
-      from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
-      place = places[(from_row * width) + from_column]
-      color = if place.zero?
-                kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
-              elsif place < swapped_count
-                rules[swapped + place]
-              elsif place >= colors_count
-                0
-              elsif colors_at.negative?
-                rules[held_colors + place]
-              else
-                rg_start_file_color(colors_at, rules, color_format, place)
-              end
-      pixels[start + (row * width) + column] = color
+  # The frame painted once, written into each copy of the picture in that copy's colours.
+  copies.times do
+    start = rules[copy]
+    swapped_count = rules[copy + 1]
+    swapped = copy + 2
+    height.times do |row|
+      width.times do |column|
+        from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row
+        from_column = (turn & RG_TURN_MIRRORED).zero? ? column : width - 1 - column
+        place = places[(from_row * width) + from_column]
+        color = if place.zero?
+                  kind == RG_FILL_TILE ? RG_SEE_THROUGH : -1
+                elsif place < swapped_count
+                  rules[swapped + place]
+                elsif place >= colors_count
+                  0
+                elsif colors_at.negative?
+                  rules[held_colors + place]
+                else
+                  rg_start_file_color(colors_at, rules, color_format, place)
+                end
+        pixels[start + (row * width) + column] = color
+      end
     end
+    copy = swapped + swapped_count
   end
+end
+
+# A tile the game holds that draws something the file does not fill, put into the room made for its
+# background (rg_runtime.h, rg_start_file_put_tile_pixels).
+def rg_start_file_put_tile_pixels(_total, start, count, pixels)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  @rg_game_tile_pixels[start, count] = pixels.first(count)
+end
+
+# The pixels made +total+ long where the game holds the first +held+: room for what the file fills
+# whole, which the game is written without (rg_screen.h, rg_screen_tile_pixels_room and
+# rg_screen_image_pixels_room). Unfrozen, as a fill's copy is.
+def rg_screen_tile_pixels_room(total, held)
+  @rg_game_tile_pixels = @rg_game_tile_pixels.first(held) + Array.new(total - held, RG_SEE_THROUGH)
+end
+
+def rg_screen_image_pixels_room(total, held)
+  @rg_game_image_pixels = @rg_game_image_pixels.first(held) + Array.new(total - held, RG_NOT_DRAWN)
 end
 
 # How String#unpack reads the cells of a map in the file: a byte each (a map of tile numbers), two

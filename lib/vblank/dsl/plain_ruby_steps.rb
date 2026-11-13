@@ -281,7 +281,9 @@ module VBlank
 
         # What a name was given, kept as it is on this line, since something it was worked out from
         # changes before it is read. A number needs no keeping.
-        def kept_answer(value)
+        # +copy_variable+ false leaves a game variable itself as it is (Rewriter#kept_value_text).
+        def kept_answer(value, copy_variable: true)
+          return value if !copy_variable && variable?(value)
           return value.hidden_copy if value.is_a?(Value)
           return value unless value.is_a?(Condition)
 

@@ -198,6 +198,7 @@ module VBlank
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
       @variables_with_no_var_line = []
+      @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
       Ractor.current[:vblank_builder_in_use] = self
       @boolean_variables = {}   # the variables started with `true` or `false`
@@ -1218,6 +1219,13 @@ module VBlank
     attr_reader :variables_with_no_var_line
 
     def note_variable_with_no_var_line(name) = @variables_with_no_var_line |= [name]
+
+    # An unsaved variable: scratch a part named with `game_variables ..., saved: false`, which a
+    # save never keeps. `saves_keep_everything` passes it over, and a `save_data` record keeping
+    # it is refused.
+    def note_unsaved_variable(name) = @unsaved_variables << name
+
+    def unsaved_variable?(name) = @unsaved_variables.include?(name)
 
     # A hidden variable nothing came to need, which then takes no memory and is not reported.
     def forget_hidden_variable(name)

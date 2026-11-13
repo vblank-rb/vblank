@@ -71,6 +71,23 @@ class TestEffectsRegistry < Minitest::Test
     end
   end
 
+  # A pack whose check keeps a block, which no Ractor can share.
+  module KeepsABlock
+    def kept_verb = nil
+
+    def self.checks
+      @checks ||= [Check.new(-> { self })]
+    end
+
+    class Check
+      def initialize(block)
+        @block = block
+      end
+
+      def detect(_program) = []
+    end
+  end
+
   # Both registries are global. Snapshot the guardrail side and put it back, because
   # a loaded pack's checks live there too and clearing without restoring would switch
   # a shipped pack's guardrail off for every test that runs after this file.
@@ -230,6 +247,13 @@ class TestEffectsRegistry < Minitest::Test
 
     assert_match(/stopped/, ex.message)
     assert_match(/boom found/, err.string, "the pack's own explanation reached the person")
+  end
+
+  def test_a_pack_with_a_check_no_ractor_can_share_is_refused_whole
+    assert_raises(ArgumentError) { VBlank.register_effects(KeepsABlock) }
+
+    refute VBlank::Builder.method_defined?(:kept_verb), "no verb of the refused pack was added"
+    refute_includes Effects.packs, KeepsABlock
   end
 
   def test_a_packs_checks_go_away_with_the_pack

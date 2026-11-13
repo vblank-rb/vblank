@@ -19,6 +19,11 @@ module VBlank
       def var(name) = read_program ? read_program.var_in_game_units(name, raw_var(name)) : raw_var(name)
       def [](name) = var(name)
 
+      # Whether the game has a variable +name+: one its program names anywhere, the framework's own
+      # included. A script asks this before reading a variable only some builds of a game keep (a
+      # game of one floor has no tally screen), rather than rescuing the error #var raises.
+      def var?(name) = variables_named.include?(name)
+
       # A sprite by its name (`sprite :walker2, image: :walker`): an IR::SpriteState with its +x+,
       # +y+, whether it is #shown?, the +pose+ it is showing, its +angle+ and its +scale+.
       def sprite(name) = named_program("its sprites").sprite_state(name, self)
@@ -31,6 +36,21 @@ module VBlank
       def music_volume = named_program("its music").music_volume_from(self)
 
       private
+
+      # Every variable the program names, worked out once for each program this reader plays: a script
+      # can ask #var? on every frame, and the names are a walk of the whole tree. A frozen reader (a
+      # recorded frame) keeps nothing, and walks each time.
+      def variables_named
+        program = named_program("its variables")
+        return @variables_named.names if @variables_named&.program.equal?(program)
+
+        named = VariablesNamed.new(program: program, names: Reach.variables(program).to_set)
+        @variables_named = named unless frozen?
+        named.names
+      end
+
+      # The variables +program+ names, kept beside the program they were worked out from.
+      VariablesNamed = Data.define(:program, :names)
 
       # The program, refused in plain words where there is none to say +what+.
       def named_program(what)

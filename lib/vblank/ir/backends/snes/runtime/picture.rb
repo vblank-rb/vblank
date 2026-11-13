@@ -140,6 +140,13 @@ module VBlank
             # Kept in a game that holds a background above a row, whose runtime then makes the table
             # that way round (#emit_background_held_above).
             ROW_HELD = "rt row held"
+            # Kept in a game that shows a background alone above its row on BG1 or BG2, or one alone
+            # without sprites on any layer (Lowering::Picture.alone_flag_in_line_table?): how alone the
+            # one held now is (Nodes::Background#shown_above_row), which the line table reads as it is
+            # made: every layer above the row, its layer and the sprites (`alone: true`), or its layer
+            # alone (`alone: :without_sprites`, SHOWN_WITHOUT_SPRITES).
+            ROW_HELD_ALONE = "rt row held alone"
+            SHOWN_WITHOUT_SPRITES = Nodes::Background::SHOWN_WITHOUT_SPRITES
             BAR_CHANNEL = 0x10 # Channel 1's registers, past channel 0's
             # Which layers TM shows on a tiled screen: BG1 and BG2 (a bit each) and the sprites.
             LAYERS_SHOWN = 0x13
@@ -241,9 +248,10 @@ module VBlank
             # The maps of the layers a game uses: the third's too in a game with a bar there.
             def layer_maps(third_layer) = third_layer ? [*LAYER_MAPS, THIRD_LAYER_MAP] : LAYER_MAPS
 
-            def reserve(memory, bar: false, row_held: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
+            def reserve(memory, bar: false, row_held: false, alone_flag_in_line_table: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
                         tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false)
               memory.reserve(ROW_HELD, 2) if row_held
+              memory.reserve(ROW_HELD_ALONE, 2) if alone_flag_in_line_table
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
               memory.reserve(SCENE_BACKGROUND_TILES, SCENE_TILES_BYTES) if scene_background_tiles
               memory.reserve(TILE_SIZES, 2) if tile_sizes
@@ -280,9 +288,11 @@ module VBlank
             # layers drawn from 16×16 tiles (Lowering::Picture#big_tile_layers). +sprite_squares+ for a
             # game with sprites' squares of 16×16: each piece carries its size then (Art::Piece#big).
             # +banded+ means the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
+            # +held_hides_sprites+ for a game with a background shown alone without sprites
+            # (Lowering::Picture.held_hides_sprites?): the line table can leave the sprites out then.
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
-                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false)
+                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false)
               emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer)
               emit_see_through_math(asm, memory) if math_turns
               emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
@@ -293,7 +303,8 @@ module VBlank
               emit_bends_prepare(asm, memory, work, bent, banded) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
               emit_tile_run_straight(asm, memory, run_scratch) if straight_tile_runs
-              emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns, scene_bars, held_runs, third_layer)
+              emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns, scene_bars, held_runs, third_layer,
+                          held_hides_sprites)
               asm.label("rt_picture_prepare")
               if painted
                 asm.jml(asm.long("rt_paint_prepare"))
@@ -1002,13 +1013,18 @@ module VBlank
             # A BACKGROUND HELD ABOVE A ROW (`above_row:`) is the bar's line table turned over: every
             # layer shows above the row, and from it down that one layer is switched off, so what is
             # under it shows and nothing the layer's scroll does can reach those rows. No processor
-            # time goes on it once the table is made. rt_background_held_above(layer, row).
+            # time goes on it once the table is made. rt_background_held_above(layer, row), and in a
+            # game that keeps ROW_HELD_ALONE, rt_background_held_above(layer, row, alone).
             def emit_background_held_above(asm, memory, r, bar)
               asm.label("rt_background_held_above")
               asm.lda(asm.direct(r.call(1)))
               asm.sta(asm.abs(bar + BAR_TOP))
               asm.lda(asm.direct(r.call(0)))
               asm.sta(asm.abs(bar + BAR_LAYER))
+              if memory.reserved?(ROW_HELD_ALONE)
+                asm.lda(asm.direct(r.call(2)))
+                asm.sta(asm.abs(memory[ROW_HELD_ALONE]))
+              end
               asm.lda(1)
               asm.sta(asm.abs(bar + BAR_CHANGED))
               asm.rtl
@@ -1021,7 +1037,7 @@ module VBlank
             # With the bar on the third layer (+third_layer+), above it are the two layers TM shows
             # in any other game, and from it down the third alone, so the bar's own layer bit is
             # known while the game is built.
-            def emit_bar_table(asm, memory, work, scene_bars: false, third_layer: false)
+            def emit_bar_table(asm, memory, work, scene_bars: false, third_layer: false, held_hides_sprites: false)
               h = Console::SNESHardware
               bar = memory[BAR]
               table = bar + BAR_TABLE
@@ -1078,6 +1094,28 @@ module VBlank
                 # (Lowering::Picture#refuse_held_see_through! explains why it is alone).
                 asm.lda(third_layer ? THIRD_LAYER_SHOWN | SPRITES_SHOWN : LAYERS_SHOWN)
                 asm.sta(asm.direct(work + 2))
+                # ...and one on BG1 or BG2 the game shows alone (`alone: true`) shows alone there too,
+                # its layer and the sprites, so its see-through pixels show the backdrop; one shown
+                # alone without sprites (`alone: :without_sprites`), on any layer, shows its layer
+                # and nothing else. +work+ is the held layer's bit on both. (LDA leaves the carry the
+                # compare set.) The compare is only in a game with such a background, so a game with
+                # `alone: true` alone builds what it did before.
+                if memory.reserved?(ROW_HELD_ALONE)
+                  asm.lda(asm.abs(memory[ROW_HELD_ALONE]))
+                  asm.beq("rt_bar_table_not_alone")
+                  if held_hides_sprites
+                    asm.cmp(SHOWN_WITHOUT_SPRITES)
+                    asm.lda(asm.direct(work))
+                    asm.bcs("rt_bar_table_without_sprites")
+                    asm.ora(SPRITES_SHOWN)
+                    asm.label("rt_bar_table_without_sprites")
+                  else
+                    asm.lda(asm.direct(work))
+                    asm.ora(SPRITES_SHOWN)
+                  end
+                  asm.sta(asm.direct(work + 2))
+                  asm.label("rt_bar_table_not_alone")
+                end
               end
               # The lines above the bar, in one step or two; none for a bar at the top.
               asm.ldx(0)
@@ -1506,7 +1544,7 @@ module VBlank
             # for it. A painted screen's copy is Paint's rt_paint_upload. With the screen still off,
             # before the first pass is shown, everything goes at once.
             def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false, scene_bars = false, held_runs = {},
-                            third_layer = false)
+                            third_layer = false, held_hides_sprites = false)
               h = Console::SNESHardware
               layers = memory[LAYERS]
               # The first pass's, with the screen off (Frame switches it on), and every other's.
@@ -1652,7 +1690,8 @@ module VBlank
                 asm.dec
                 emit_scroll_register(asm, h::BG1VOFS + (layer * 2))
               end
-              emit_bar_table(asm, memory, work, scene_bars: scene_bars, third_layer: third_layer) if bar
+              emit_bar_table(asm, memory, work, scene_bars: scene_bars, third_layer: third_layer,
+                                                held_hides_sprites: held_hides_sprites) if bar
               emit_bends_shown(asm, memory, bent)
               emit_hdma_on(asm, memory) if bar || !bent.empty?
               asm.rts

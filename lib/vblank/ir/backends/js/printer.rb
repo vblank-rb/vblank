@@ -101,17 +101,21 @@ module VBlank
           # A small table is its numbers, sixteen a line, as the C writes it. A big one is its
           # bytes in base64, read back when the script starts (rg_table_from_base64 says why: a
           # browser runs out of memory reading millions of numbers written out as code).
+          #
+          # One the runtime makes longer as the game starts (ConstArray#grows) is declared with `let`,
+          # so the runtime can name a longer one by it.
           def print_const_array(item)
             type = ARRAYS.fetch(item.type) { raise LoweringError, "the printer has no array for C's #{item.type}" }
             values = item.values
+            declared = item.grows ? "let" : "const"
             if values.empty?
-              line(0, "const #{item.name.text} = new #{type}(1);")
+              line(0, "#{declared} #{item.name.text} = new #{type}(1);")
             elsif values.size > MOST_WRITTEN_AS_NUMBERS && @data == :separate
               print_table_in_data_file(item.name.text, type, values)
             elsif values.size > MOST_WRITTEN_AS_NUMBERS
-              print_table_as_base64(item.name.text, type, values)
+              print_table_as_base64(item.name.text, type, values, declared)
             else
-              line(0, "const #{item.name.text} = new #{type}([")
+              line(0, "#{declared} #{item.name.text} = new #{type}([")
               values.each_slice(16) { |row| line(1, "#{row.map { |v| integer(v) }.join(', ')},") }
               line(0, "]);")
             end
@@ -126,8 +130,8 @@ module VBlank
           # The table's bytes in a template string, 76 characters a line, so the file stays one a
           # person can scroll. Base64 holds no backtick and no `${`, so nothing in it is read as
           # anything but text.
-          def print_table_as_base64(name, type, values)
-            line(0, "const #{name} = rg_table_from_base64(#{type}, `")
+          def print_table_as_base64(name, type, values, declared)
+            line(0, "#{declared} #{name} = rg_table_from_base64(#{type}, `")
             [packed_bytes(type, values)].pack("m76").each_line { |row| @out << row }
             line(0, "`);")
           end

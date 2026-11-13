@@ -195,7 +195,7 @@ module VBlank
           # The sound's tables are made first, since making them is what finds the note rows.
           def build_start_file_sound_fills
             sound_tables
-            build_start_file_settings_fills + build_start_file_note_fills
+            build_start_file_settings_fills + build_start_file_wave_fills + build_start_file_note_fills
           end
 
           def takes_runtime_feature?(name) = runtime_features.any? { |feature| feature.name == name }
@@ -391,15 +391,18 @@ module VBlank
             @sound_log.recordings.any? { |sample| sample.settings_from_file&.envelope || sample.settings_from_file&.length }
           end
 
-          # rg_mix.h and rg_music.h declare each array const unless told it is written: the samples
+          # rg_mix.h, rg_music.h and rg_sound.h declare each array const unless told it is written: the samples
           # when a recording reads them from the start file, the table of recordings when one reads
-          # its shape from there, and the table of note rows when a row takes a number from there.
+          # its shape from there, the table of note rows when a row takes a number from there or
+          # a part reads its notes from there (whose notes between keys are rows written then), and
+          # the table of waveforms when a part reads its wave from there.
           # Must be asked once the sound's tables are made, which is what finds those rows.
           def written_sound_array_defines
             [("RG_RECORDING_SAMPLES_WRITABLE" if recordings_read_from_start_file?),
              ("RG_RECORDINGS_WRITABLE" if recordings_table_written_at_start?),
-             ("RG_NOTE_SOUNDS_WRITABLE" unless @start_file_note_rows.empty?),
-             ("RG_MUSIC_WRITABLE" unless @start_file_note_fills.empty?)].compact.map { |name| Statements::Define.new(name) }
+             ("RG_NOTE_SOUNDS_WRITABLE" unless @start_file_note_rows.empty? && @start_file_note_fills.empty?),
+             ("RG_MUSIC_WRITABLE" unless @start_file_note_fills.empty?),
+             ("RG_WAVEFORMS_WRITABLE" unless waves_from_start_file.empty?)].compact.map { |name| Statements::Define.new(name) }
           end
 
           # Each recording that reads its samples from the file, written into its place in the array of
@@ -476,10 +479,22 @@ module VBlank
           def spu_tables
             return [] unless @program.described_console.voices_read_sound_memory
 
+            refuse_pack_wave_in_sound_memory!
             memory = PS1::SoundMemory.new(@program)
             [sound_table("spu_rules", PS1::SPUTables.rules), sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms)),
              sound_table("spu_memory", PS1::SPUTables.memory(memory)),
              sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings))]
+          end
+
+          # Such a console plays each waveform from a loop made of it in sound memory, as the game is
+          # built (PS1::SoundMemory). No runtime makes that loop from a wave read as the game starts.
+          def refuse_pack_wave_in_sound_memory!
+            return if waves_from_start_file.empty?
+
+            raise LoweringError, "A part of a song plays a wave from the data pack, and this build reads the pack when the game " \
+                                 "starts. A #{@program.described_console.title} build makes the sound memory for each wave when " \
+                                 "the game is built. It cannot read a wave from the pack yet. To fix this, build the game " \
+                                 "all-in-one, or give the part a wave in the game, like `plays: :triangle`."
           end
 
           # +writable+ is for a table the routine that reads the start file writes into.
@@ -502,18 +517,45 @@ module VBlank
           end
 
           # Every different waveform the game can put on the wave voice, 32 steps each: the ones
-          # its `wave`s name and the ones its songs' parts play.
+          # its `wave`s name and the ones its songs' parts play, and after them one for each wave a
+          # part reads from the start file (#waves_from_start_file), held as its stand-in until
+          # rg_music_fill_wave writes it.
           def waveforms
             @waveforms ||= begin
               said = @sound_log.waves.map { |wave| wave.fetch(:shape) }
-              played = @sound_log.songs.flat_map { |song| song.voices.filter_map(&:wave) }
-              (said + played).map { |shape| VBlank::Audio::Sound.wavetable(shape) }.uniq
+              played = @sound_log.songs.flat_map { |song| song.voices.reject(&:wave_from_file).filter_map(&:wave) }
+              (said + played).map { |shape| VBlank::Audio::Sound.wavetable(shape) }.uniq +
+                waves_from_start_file.map { StartFile::WAVE_STAND_IN }
             end
           end
 
+          # Each different place in the start file a part reads its wave from (StartFile::Wave).
+          def waves_from_start_file = @waves_from_start_file ||= @sound_log.songs.flat_map { |song| song.voices.filter_map(&:wave_from_file) }.uniq
+
           def waveform_number(shape) = waveforms.index(VBlank::Audio::Sound.wavetable(shape))
 
-          def waveform_table = sound_table("waveforms", [waveforms.size, *waveforms.flatten])
+          # The waveform a part plays: its own, or the one its wave in the start file is written into.
+          def part_waveform_number(part)
+            return waveform_number(part.wave) unless part.wave_from_file
+
+            first_start_file_waveform + waves_from_start_file.index(part.wave_from_file)
+          end
+
+          # The number of the first waveform written from the start file, which come after the rest.
+          def first_start_file_waveform = waveforms.size - waves_from_start_file.size
+
+          def waveform_table = sound_table("waveforms", [waveforms.size, *waveforms.flatten], writable: !waves_from_start_file.empty?)
+
+          # A WAVE A PART READS FROM THE START FILE, written into its place in the table of waveforms
+          # (rg_music_fill_wave). None for a game with no music feature, which never plays the part.
+          def build_start_file_wave_fills
+            return [] unless takes_runtime_feature?(:music)
+
+            waves_from_start_file.each_with_index.map do |wave, number|
+              eval_call("rg_music_fill_wave", @names.own("waveforms"), Statements::Int.new(first_start_file_waveform + number),
+                        Statements::Int.new(wave.at))
+            end
+          end
 
           # How many beeps the game makes, and each as the runtime reads it: how long one wave
           # lasts, how much of it is high, the volume it starts at, and how long it holds each step
@@ -681,8 +723,9 @@ module VBlank
           # After the fifth number, the fifth for a note that names each speaker a record can
           # (Original::PackNote::SIDES: both, the left, the right), which a recorded part does not
           # take, and how many noise clocks the part takes (Original::PackNote::CLOCK_BYTES on the
-          # noise voice, else none); after the fourth for each key, the second and the fourth for
-          # each of those clocks (IR::StartFile::Notes#clock_events).
+          # noise voice, else none), and how many bytes a record is; after the fourth for each key,
+          # the second and the fourth for each of those clocks (IR::StartFile::Notes#clock_events),
+          # and for a voiced part #voiced_note_rules.
           def start_file_note_rules(part, kind, where)
             events = where.key_events
             clocks = where.clock_events
@@ -695,10 +738,75 @@ module VBlank
                     else
                       [events.map { |event| note_ticks(kind, event[1]) }]
                     end
-            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *sides, clocks.size, *heard,
+            [recorded ? -1 : 0, sounding[4], sounding[5], where.instruments.size, recorded ? 1 : 0, *sides, clocks.size,
+             where.record_bytes, *heard,
              *where.instruments.map { |name| where.instruments.index(name) },
              *events.map { |event| @sound_log.pitch_number(event[1]) }, *lasts.flatten,
-             *clocks.map { |event| @sound_log.pitch_number(event[1]) }, *clocks.map { |event| note_ticks(kind, event[1]) }]
+             *clocks.map { |event| @sound_log.pitch_number(event[1]) }, *clocks.map { |event| note_ticks(kind, event[1]) },
+             *voiced_note_rules(where, kind, part)]
+          end
+
+          # WHAT A VOICED RECORD'S SETTINGS COME TO ON THIS PART (IR::StartFile::Notes#takes), after the
+          # rest, for a part whose records are voiced: the bits of Original::PackNote::NAMES the part
+          # takes, how many pitch numbers it takes (all of them on a square or the wave, else none), and
+          # the second and the fourth number of a note for each (Notes#pitch_number_events). How each
+          # setting comes to a note's fifth and sixth numbers is the bits #encoded_note writes, so the
+          # runtime puts the record's own bits in their places.
+          def voiced_note_rules(where, kind, part)
+            return [] unless where.voiced
+
+            numbers = where.pitch_number_events
+            [where.takes.sum { |setting| Original::PackNote::NAMES.fetch(setting) }, numbers.size,
+             *numbers.map { |event| @sound_log.pitch_number(event[1]) }, *numbers.map { |event| note_ticks(kind, event[1]) },
+             *hz_note_rules(where, kind, part)]
+          end
+
+          # WHAT A PITCH BETWEEN KEYS COMES TO ON THIS PART (`hz:`, Original::PackNote's hz), which no
+          # list made here can hold, so the runtime works it out by the sums the build uses: the
+          # kind of sum (HZ_NONE, HZ_NOISE or HZ_RECORDED), then for the noise voice each rung of its
+          # ladder in Audio::Sound.noise_rung's order, its hz as two halves (#double_halves) and the
+          # fourth number of a note on it; for a recording, the mix's rate as two halves, the first
+          # of the rows of note_sounds the part's notes between keys are written into (one for each
+          # record, made here as room), how many instrument lists there are, and for each (the part's
+          # own, then each it names) the row of its note at key 60, which the runtime copies with a
+          # step of its own, the recording's rate (1 and where it is in the file, or 0, the rate as
+          # two halves and two noughts), and the hz its recording was made at as two halves
+          # (IR::Mixing.step's sum). A note's pitch number in the sound log is then minus one less
+          # its hz in 16ths (SoundLog#pitch_of).
+          HZ_NONE = 0
+          HZ_NOISE = 1
+          HZ_RECORDED = 2
+
+          # The key whose row a note between keys copies.
+          HZ_ROW_KEY = 60
+
+          def hz_note_rules(where, kind, part)
+            return [HZ_NONE] unless where.takes.include?(:hz)
+            return [HZ_NOISE, *noise_rung_rules] if kind == :noise
+
+            key_pitch = where.key_events.fetch(HZ_ROW_KEY)[1]
+            lists = [nil, *where.instruments].map do |name|
+              sample = @sound_log.recording(name || part.instrument)
+              rate = sample.settings_from_file&.rate
+              note = VBlank::Audio::Music::NOTE_FREQUENCIES.fetch(sample.note || :C4)
+              [note_sound_row([0, key_pitch, name, nil, nil], part),
+               *(rate ? [1, *start_file_number_rules(rate)] : [0, *double_halves(sample.rate), 0, 0]), *double_halves(note)]
+            end
+            first = note_sounds.size
+            where.count.times do |record|
+              note_sound_rows_kept << [:hz_room, where.at, record]
+              note_sounds << ([0] * NOTE_SOUND_NUMBERS)
+            end
+            [HZ_RECORDED, *double_halves(mix_clock.rate), first, lists.size, *lists.flatten]
+          end
+
+          # Every rung of the noise voice's ladder, in Audio::Sound.noise_rung's order: its hz as two
+          # halves, and the fourth number of a note on it.
+          def noise_rung_rules
+            sound = VBlank::Audio::Sound
+            sound::NOISE_DIVIDERS.product(sound::NOISE_HALVINGS).flat_map do |divider, halvings|
+              [*double_halves(sound.noise_rung_hz(divider, halvings)), sound.noise_step_ticks(divider, halvings)]
+            end
           end
 
           # An event at +pitch+ that names +side+ (:left, :right or :center) for its speaker.
@@ -744,7 +852,7 @@ module VBlank
             end
             lengths + @start_file_note_fills.map do |fill|
               frames, ticks = tick_frames_array(fill.where, fill.total_frames)
-              eval_call("rg_music_fill_notes", @names.own("music"),
+              eval_call("rg_music_fill_notes", @names.own("music"), @names.own("note_sounds"),
                         drawing_array("start_file_notes", "int32_t", [fill.notes_at, ticks, *fill.room, fill.song_at, *fill.rules]),
                         frames)
             end
@@ -762,7 +870,7 @@ module VBlank
             sound = VBlank::Audio::Sound
             case kind
             when :square then [sound::SQUARE_HIGH_EIGHTHS.fetch(part.duty), 0]
-            when :wave then [waveform_number(part.wave), 0]
+            when :wave then [part_waveform_number(part), 0]
             when :noise then [sound.noise_register_bits(part.metallic), sound.fade_step(part.decay)]
             when :recorded then [lane, 0]
             end
@@ -837,7 +945,9 @@ module VBlank
           def note_sound_rows_kept = @note_sound_rows_kept ||= []
 
           def note_sounds_table
-            sound_table("note_sounds", [note_sounds.size, *note_sounds.flatten], writable: !@start_file_note_rows.empty?)
+            # rg_music_fill_notes is handed the table to write a note between keys into.
+            sound_table("note_sounds", [note_sounds.size, *note_sounds.flatten],
+                        writable: !@start_file_note_rows.empty? || !@start_file_note_fills.empty?)
           end
 
           def note_ticks(kind, pitch)

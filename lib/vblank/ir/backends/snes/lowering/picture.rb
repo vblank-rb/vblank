@@ -84,6 +84,21 @@ module VBlank
             # Whether +program+ holds a background above a row, which takes the bar's line table.
             def self.background_rows_held?(program) = program.walk.any? { |node| node.kind == :background && node.above_row }
 
+            # Whether the line table reads, as it is made, how alone the background held now is
+            # (Runtime::Picture's ROW_HELD_ALONE, Nodes::Background#shown_above_row): in a game that shows one alone
+            # above its row (`alone: true`) on one of the two ordinary layers, or one without sprites
+            # (`alone: :without_sprites`) on any layer. One on the third layer shows alone with the
+            # sprites whatever it sets (#refuse_held_see_through!), so `alone: true` there needs
+            # nothing more.
+            def self.alone_flag_in_line_table?(program)
+              held_hides_sprites?(program) ||
+                (program.walk.any? { |node| node.kind == :background && node.alone } && !third_layer?(program))
+            end
+
+            # Whether +program+ shows a background alone without sprites (`alone: :without_sprites`),
+            # which the line table then leaves the sprites out above the row for.
+            def self.held_hides_sprites?(program) = program.walk.any? { |node| node.kind == :background && node.hides_sprites }
+
             # Whether +program+ changes colours as it runs, which the runtime then keeps a place for
             # (Runtime::Tint's rt_colors_hold).
             def self.changing_colors?(program) = program.walk.any? { |node| %i[background_colors color_list_holds].include?(node.kind) }
@@ -173,10 +188,11 @@ module VBlank
             def prepare_picture
               refuse_backdrops_of_its_own!
               @third_layer = Picture.third_layer?(@program)
+              @alone_flag_in_line_table = Picture.alone_flag_in_line_table?(@program)
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
                              background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
-                             third_layer: @third_layer, tile_memo: @tile_memo)
+                             third_layer: @third_layer, shared_held_lists: @shared_held_lists, tile_memo: @tile_memo)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1
               @pictures = by_kind(:bitmap)
@@ -525,26 +541,39 @@ module VBlank
 
             # What a background's palettes hold at its step +step+ (nil for its own colours): each list
             # it is drawn from, by place, as the list named for that step gives (Assets::Recolor).
+            #
+            # Lists that share a palette (Art#held_offset_of) are one set, each list's colours where
+            # it starts in the palette, so the write of one leaves none of the others' as zeros.
             def background_held_set(bg, step)
               swaps = step && bg.list_swaps(step)
-              ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
+              lists = ((@background_lists || {})[held_lists_key(bg)] || {}).map do |list, (palette, image)|
                 swapped = swaps && swaps[list]
                 colors = (1...image.colors.length).map { |place| (swapped && swapped[place]) || image.colors[place] }
-                [@art.background_palette_at(palette), colors]
+                [palette, @art.held_offset_of(held_list_key(bg, list)), colors]
+              end
+              lists.group_by(&:first).map do |palette, held|
+                [@art.background_palette_at(palette), held.sort_by { |_, offset, _| offset }.flat_map(&:last)]
               end
             end
 
             # The palette of the list +image+ is drawn from, in a background the game draws with other
-            # colours, and nil in any other.
+            # colours, and nil in any other. A list a tile painted from a list is drawn from keeps its
+            # palette's first place, since the game writes those tiles' places as they are in the list
+            # (Runtime::Picture's rt_tile_run_copy); any other may share its palette with the
+            # background's other lists (Art#held_background_palette).
             def held_background_palette(bg, image)
               return nil if Array(bg.recolors).empty?
 
               list = image.list_drawn_from
               colors = image.colors.drop(1).map { |color| color & 0x7FFF }
-              palette = @art.held_background_palette([:backgrounds, *held_lists_key(bg), list], colors, scene: colors_scene_of(bg))
+              owner = held_lists_key(bg) unless @tile_runs.any? { |run| run.list_drawn_from == list }
+              palette = @art.held_background_palette(held_list_key(bg, list), colors, scene: colors_scene_of(bg), owner: owner)
               ((@background_lists ||= {})[held_lists_key(bg)] ||= {})[list] = [palette, image]
               palette
             end
+
+            # What +bg+'s held +list+ is kept under in the Art.
+            def held_list_key(bg, list) = [:backgrounds, *held_lists_key(bg), list]
 
             # THE PALETTE OF A RUN ON A BACKGROUND THE GAME DRAWS WITH OTHER COLOURS: the one its list has
             # on that background, shared with the pictures drawn from the list, so a walk of colours
@@ -1108,7 +1137,10 @@ module VBlank
                 covers = @handover.bar_covers_on_put_up(bg)
                 runtime_call("rt_bar_covers", [covers]) if covers
               end
-              runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row)]) if bg.above_row
+              if bg.above_row
+                alone = @alone_flag_in_line_table ? [Build.int(bg.shown_above_row)] : []
+                runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row), *alone])
+              end
               [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
 
@@ -1216,8 +1248,13 @@ module VBlank
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row
 
-              refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
               refuse_unmade!("#{words} beside a see-through layer") unless SeeThrough.layers(@program).empty?
+              # One the game shows alone (`alone: true`) is drawn alone above its row by the
+              # interpreter too, so where it is in the stack and what its see-through pixels show
+              # are the same on both.
+              return if held.alone
+
+              refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
               refuse_held_see_through!(held)
             end
 
@@ -1243,21 +1280,23 @@ module VBlank
             # interpreter draws the backgrounds behind it there too, where it is see-through. So a held
             # background that can be see-through on its rows is refused: a tile with a see-through
             # pixel, or a cell left empty that can come into view. Without a scroll of its own the cells
-            # in view are the ones its corner shows; with one, every cell of its grid.
+            # in view are the ones its corner shows; with one, every cell of its grid. One the game
+            # shows alone (`alone: true`) is not asked: the interpreter shows the backdrop there too.
             def refuse_held_see_through!(held)
               subject = "The background :#{held.name} is held above a row beside two other backgrounds"
               why = "On a Super Nintendo, that background goes on a layer that shows alone above its row. " \
                     "The backgrounds behind it cannot show through it there."
+              alone = "Or, to show the backdrop there, give :#{held.name} `alone: true`."
               tile = held.tiles.find { |name| (0...64).any? { |at| @cache.image(picture_named(name)).tile_see_through_at?(at) } }
               if tile
                 raise Art::HeldArtSeeThrough, "#{subject}, and its tile :#{tile} has see-through pixels. #{why} " \
-                                              "To fix this, draw the tile :#{tile} with no see-through pixels."
+                                              "To fix this, draw the tile :#{tile} with no see-through pixels. #{alone}"
               end
               return unless held_cells_empty?(held)
 
               raise Art::HeldArtSeeThrough, "#{subject}, and its map has empty cells that can show above the row. #{why} " \
                                             "To fix this, put a tile in each cell of its map. If the game does not scroll " \
-                                            "it, only the cells above the row must have a tile."
+                                            "it, only the cells above the row must have a tile. #{alone}"
             end
 
             # Whether a cell of +held+'s maps that can come into view above its row is empty. (A
@@ -1376,7 +1415,8 @@ module VBlank
               @run_cells.fetch(name) do
                 image = @cache.image(picture_named(name))
                 held = held_background_palette(bg, image)
-                places = { held: held, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
+                offset = held ? @art.held_offset_of(held_list_key(bg, image.list_drawn_from)) : 0
+                places = { held: held, held_offset: offset, scene: colors_scene_of(bg), tile_scene: tiles_scene_of(bg) }
                 bg.tile_w == BIG_TILE ? @art.background_big_cell(image, **places) : @art.background_cell(image, **places)
               end
             end
@@ -1395,23 +1435,23 @@ module VBlank
 
             # Reference#exec_set_tile: a tile the background does not have changes nothing, and nor
             # does a place outside its map.
-            #
-            # A tile picked as the program runs is written as the tests it stands for
-            # (IR::PickedTile), each with a change of its own: this lowering keeps no table of a
-            # background's cells to index yet.
             def emit_set_tile(node)
-              return for_background(node) { |bg| emit_set_tile_on(node, bg) } unless node.picked?
-
-              tests = PickedTile.tests(node)
-              statement(tests) if tests
+              for_background(node) { |bg| node.picked? ? emit_set_picked_tile_on(node, bg) : emit_set_tile_on(node, bg) }
             end
 
             def emit_set_tile_on(node, bg)
               return if node.tile && node.tile >= bg.tiles.length
 
+              emit_cell_noted(node, bg) { |_outside| cell_word_of(bg, node.tile) }
+            end
+
+            # THE CELL AT +node+'s COLUMN AND ROW OF +bg+ CHANGED (rt_set_cell) to the word the block
+            # gives back, or, where it gives back nil, the one it leaves in A; the block is handed the
+            # label to jump to when the cell is to be left alone.
+            def emit_cell_noted(node, bg)
               columns, rows = TileMap.size_of(bg.every_map.first)
               # One pair for every cell the game changes, each used only until its cell is noted: a
-              # tile picked by a number is a line for each key, and a pair each ran a game out of memory.
+              # pair each ran a game of many changed cells out of memory.
               column = @cell_column ||= keep_local(:column)
               row = @cell_row ||= keep_local(:row)
               value(node.col)
@@ -1421,10 +1461,62 @@ module VBlank
               outside = fresh("cell_outside")
               emit_jump_unless_below(column, columns, outside)
               emit_jump_unless_below(row, rows, outside)
-              tile, palette = cell_of(bg, node.tile)
-              word = tile ? tile | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
+              word = yield outside
               emit_set_cell_call(layer_of(bg), column, row, word)
               @asm.label(outside)
+            end
+
+            # The word a cell of +bg+ showing its tile +tile+ holds in the layer's map: the tile's
+            # number in video memory, its palette and whether it is in front, and nought for no tile.
+            def cell_word_of(bg, tile)
+              number, palette = cell_of(bg, tile)
+              number ? number | (palette << Art::PALETTE_SHIFT) | (cells_in_front?(bg) ? Art::CELL_IN_FRONT : 0) : 0
+            end
+
+            # A word no cell holds, since a cell's word never has the bits that turn its tile (a
+            # picture is turned before it is stored): what an entry of a table of cells holds for a
+            # number that stands for no tile.
+            NO_CELL = 0xFFFF
+
+            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by) IS A WORD READ FROM A TABLE, as
+            # a console's own game writes its map: the number, less the one the list starts at, is a
+            # place in a table of the words those tiles' cells hold, kept in the cartridge. A number
+            # whose top half is not nought, or whose low half is past the table, is outside it (one
+            # below the first is far past the last, read with no sign). A number that stands for no
+            # tile reads NO_CELL, and the cell is left alone, as is a tile only another scene's
+            # background of the name has. The Genesis does the same (Genesis's
+            # Picture#emit_set_picked_tile_of); the halving tests IR::PickedTile writes cost a test
+            # and a branch for each told number on the way to one, four times over for a cell of four tiles.
+            def emit_set_picked_tile_on(node, bg)
+              words = node.picks.map { |tile| tile && tile < bg.tiles.length ? cell_word_of(bg, tile) : NO_CELL }
+              return if words.all?(NO_CELL)
+
+              table = @cell_tables[words] ||= "cells #{@cell_tables.length + 1}"
+              emit_cell_noted(node, bg) do |outside|
+                value(node.picked_by)
+                unless node.picks_from.zero?
+                  @asm.sec
+                  @asm.lda(@asm.direct(R0))
+                  @asm.sbc(node.picks_from & 0xFFFF)
+                  @asm.sta(@asm.direct(R0))
+                  @asm.lda(@asm.direct(R0 + 2))
+                  @asm.sbc((node.picks_from >> 16) & 0xFFFF)
+                  @asm.sta(@asm.direct(R0 + 2))
+                end
+                @asm.lda(@asm.direct(R0 + 2))
+                @asm.branch_long(:bne, outside)
+                @asm.lda(@asm.direct(R0))
+                @asm.cmp(words.length)
+                @asm.branch_long(:bcs, outside)
+                @asm.asl # two bytes a word
+                @asm.tax
+                @asm.lda(@asm.long_x(table))
+                if words.include?(NO_CELL)
+                  @asm.cmp(NO_CELL)
+                  @asm.branch_long(:beq, outside)
+                end
+                nil
+              end
             end
 
             # A BLAST CHANGES TWENTY CELLS A STEP, so this is written for what it is. A number from
@@ -1440,9 +1532,11 @@ module VBlank
               @asm.branch_long(:bcs, label)
             end
 
-            # rt_set_cell, which reads only the low half of each number.
+            # rt_set_cell, which reads only the low half of each number: its word +word+, or the one in
+            # A where that is nil.
             def emit_set_cell_call(layer, column, row, word)
-              [@asm.imm(layer), at_place(place_of(column)), at_place(place_of(row)), @asm.imm(word)].each_with_index do |from, i|
+              @asm.sta(@asm.direct(Memory.register(3))) unless word
+              [@asm.imm(layer), at_place(place_of(column)), at_place(place_of(row)), word && @asm.imm(word)].compact.each_with_index do |from, i|
                 @asm.lda(from)
                 @asm.sta(@asm.direct(Memory.register(i)))
               end

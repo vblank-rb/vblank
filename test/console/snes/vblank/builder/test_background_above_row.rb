@@ -38,6 +38,90 @@ class TestBackgroundAboveRow < Minitest::Test
     b.program
   end
 
+  # The bar scrolled once, on the third pass, to its blue rows, and never again.
+  private def scrolled_once(beside_two: false)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:field_tile, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:top_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:low_tile, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :field_set, "#" => :field_tile
+      tiles :bar_set, "t" => :top_tile, "l" => :low_tile
+      background :field, tiles: :field_set, map: Array.new(32) { "#" * 32 }
+      background :walls, tiles: :field_set, map: Array.new(32) { "#" * 32 } if beside_two
+      bar = background :bar, tiles: :bar_set, map: Array.new(32) { |row| (row / 4 == 1 ? "l" : "t") * 32 },
+                             above_row: ROWS
+      passes = var :passes, 0
+      game_loop do
+        passes += 1
+        bar.scroll_to 0, ROWS if passes == 3
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The same bar declared in a scene the game loop calls on every pass. With +top_scroll+, the
+  # scene's top gives it scroll 0 as well, outside any test.
+  private def scrolled_once_in_scene(top_scroll: false)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:field_tile, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      image(:top_tile, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:low_tile, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :field_set, "#" => :field_tile
+      tiles :bar_set, "t" => :top_tile, "l" => :low_tile
+      var :state, 0
+      passes = var :passes, 0
+      scene(:stage) do
+        background :field, tiles: :field_set, map: Array.new(32) { "#" * 32 }
+        bar = background :bar, tiles: :bar_set, map: Array.new(32) { |row| (row / 4 == 1 ? "l" : "t") * 32 },
+                               above_row: ROWS
+        bar.scroll_to 0, 0 if top_scroll
+        bar.scroll_to 0, ROWS if passes == 3
+      end
+      game_loop do
+        passes += 1
+        case_var(:state) { when_val 0, :stage }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Nine passes after the one scroll: the bar's blue rows above its row, the field under it.
+  private def assert_scroll_held(program)
+    screen = game_player.run(program, frames: 12).screen
+
+    assert_equal BLUE, screen.pixel(100, 0)
+    assert_equal BLUE, screen.pixel(100, ROWS - 1)
+    assert_equal GREEN, screen.pixel(100, ROWS)
+  end
+
+  # A scroll given on one pass holds on the passes after, as a plain background's does: on the
+  # first two layers, on the third beside two others, and in a scene. A line at a scene's top that
+  # gives a scroll runs on every pass the scene is up, and puts the bar back there each pass.
+  def test_a_scroll_given_once_holds_on_the_passes_after
+    assert_scroll_held(scrolled_once)
+  end
+
+  def test_a_scroll_given_once_holds_beside_two_backgrounds
+    assert_scroll_held(scrolled_once(beside_two: true))
+  end
+
+  def test_a_scroll_given_once_holds_in_a_scene
+    assert_scroll_held(scrolled_once_in_scene)
+  end
+
+  def test_a_scroll_at_the_scene_s_top_is_given_again_on_every_pass
+    program = scrolled_once_in_scene(top_scroll: true)
+
+    assert_equal BLUE, game_player.run(program, frames: 3).screen.pixel(100, 0), "the pass that scrolls"
+    assert_equal RED, game_player.run(program, frames: 12).screen.pixel(100, 0), "the passes after"
+  end
+
   # Only the first scene holds one, so the second has both layers on every row again.
   private def two_scenes
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
@@ -77,21 +161,47 @@ class TestBackgroundAboveRow < Minitest::Test
   WALLS_SCROLL = [8, -25].freeze
   WHITE = 0x7FFF
   YELLOW = 0x03FF
+  BLACK = 0x0000 # The backdrop, which no screen here sets
 
-  private def stage(size = 1)
+  # A red square that climbs a pixel a pass from row CROSSING_START across the bar's row.
+  CROSSING_X = 100
+  CROSSING_SIDE = 16
+  CROSSING_START = 40
+  # The frames the crossing test plays, and the rows the square covers then, a pass either way,
+  # above the bar's row and from it down.
+  CROSSING_FRAMES = 20
+  CROSSING_ROWS_ABOVE = ((CROSSING_START - CROSSING_FRAMES + 2)...STAGE_ROWS).freeze
+  CROSSING_ROWS_BELOW = (STAGE_ROWS...(CROSSING_START - CROSSING_FRAMES - 1 + CROSSING_SIDE)).freeze
+
+  # The stage in blocks of +size+. With +alone+ the bar is shown alone above its row
+  # (`alone: true` or `:without_sprites`), its steps' other half see-through and its first row of
+  # cells empty. With +crossing+ a sprite climbs across the bar's row (CROSSING_X).
+  private def stage(size = 1, alone: false, crossing: false)
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
     b.instance_eval do
       screen :tiled
+      if crossing
+        image(:crossing, "#" => :red) { Array.new(CROSSING_SIDE) { "#" * CROSSING_SIDE }.join("\n") }
+        climb = var :climb, 0
+        square = sprite :crossing, at: [CROSSING_X, CROSSING_START]
+      end
       image(:floor_art, "#" => :red, "." => :blue) { STRIPES.join("\n") }
       image(:wall_art, "#" => :green, "." => :transparent) { STEPS.join("\n") }
-      image(:bar_art, "#" => :white, "." => :yellow) { STEPS.join("\n") }
+      image(:bar_art, "#" => :white, "." => alone ? :transparent : :yellow) { STEPS.join("\n") }
       tiles :floor_tiles, "a" => :floor_art
       tiles :wall_tiles, "a" => :wall_art
       tiles :bar_tiles, "a" => :bar_art
       background(:floor, tiles: :floor_tiles, map: Array.new(32) { "a" * 32 }).scroll_to 0, 0
       background(:walls, tiles: :wall_tiles, map: Array.new(32) { "a" * 32 }).scroll_to(*WALLS_SCROLL)
-      background :bar, tiles: :bar_tiles, map: Array.new(4) { "a" * 32 }, above_row: STAGE_ROWS
-      game_loop { pixelate size, sprites: false }
+      bar_map = Array.new(4) { |row| (alone && row.zero? ? " " : "a") * 32 }
+      background :bar, tiles: :bar_tiles, map: bar_map, above_row: STAGE_ROWS, alone: alone
+      game_loop do
+        pixelate size, sprites: false
+        if crossing
+          climb += 1
+          square.move_to CROSSING_X, CROSSING_START - climb
+        end
+      end
     end
     b.finalize_program
     b.program
@@ -132,6 +242,40 @@ class TestBackgroundAboveRow < Minitest::Test
       left = x - (x % 6)
       top = y - (y % 6)
       expected = y >= STAGE_ROWS && top < STAGE_ROWS ? arena_pixel(left, top) : stage_pixel(left, top)
+      assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
+    end
+  end
+
+  # SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), on the third layer beside two
+  # backgrounds: a sprite climbing across the row is hidden above it, where the bar and the backdrop
+  # show, and shown from the row down. With `alone: true` it shows above the row too.
+  def test_a_bar_shown_alone_without_sprites_over_two_backgrounds_hides_a_sprite_above_its_row
+    { without_sprites: false, true => true }.each do |alone, sprite_above|
+      screen = game_player.run(stage(alone: alone, crossing: true), frames: CROSSING_FRAMES).screen
+
+      (CROSSING_X...(CROSSING_X + CROSSING_SIDE)).each do |x|
+        CROSSING_ROWS_ABOVE.each do |y|
+          expected = if sprite_above then RED
+                     else STEPS[y % 8][x % 8] == "#" ? WHITE : BLACK
+                     end
+          assert_equal expected, screen.pixel(x, y), "alone: #{alone.inspect} above the row at (#{x}, #{y})"
+        end
+        CROSSING_ROWS_BELOW.each { |y| assert_equal RED, screen.pixel(x, y), "alone: #{alone.inspect} below the row at (#{x}, #{y})" }
+      end
+    end
+  end
+
+  # SHOWN ALONE (`alone: true`), the bar's see-through pixels and its empty cells show the backdrop
+  # above its row, and the arena of two backgrounds shows from the row down as before.
+  def test_a_bar_shown_alone_over_two_backgrounds_shows_the_backdrop_through_it
+    screen = game_player.run(stage(alone: true), frames: 4).screen
+    spots = (0...240).step(3).flat_map { |x| (0...200).step(2).map { |y| [x, y] } }
+
+    spots.each do |x, y|
+      expected = if y >= STAGE_ROWS then arena_pixel(x, y)
+                 elsif y >= 8 && STEPS[y % 8][x % 8] == "#" then WHITE
+                 else BLACK
+                 end
       assert_equal expected, screen.pixel(x, y), "(#{x}, #{y})"
     end
   end

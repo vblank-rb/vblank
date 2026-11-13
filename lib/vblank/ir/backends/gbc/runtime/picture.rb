@@ -13,9 +13,10 @@ module VBlank
           # table (Memory::SHADOW_OAM), of the colours, of where the background is scrolled to —
           # and rt_upload copies them in, in the blank: the sprite table all at once by the
           # console's own copy (OAM DMA), the colours if they changed, the scroll. A background put
-          # up is a bigger copy, its whole grid of cells, which is done a few rows each blank until
-          # it is done; the pass is not counted as shown until it is, so a reader never sees a
-          # picture half put up (see Frame).
+          # up is a bigger copy, the rows of its grid that can differ, as many as the blank holds with
+          # the display on and the rest with it off for the end of that blank (#emit_map_rows); the
+          # pass is not counted as shown until it is, so a reader never sees a picture half put up
+          # (see Frame).
           #
           # Everything the game's pictures are made of — the tiles, the palettes, the pieces each
           # sprite picture is cut into, the grids — is worked out while the program is built
@@ -28,6 +29,8 @@ module VBlank
             SCROLL = "rt picture scroll" # X, then y
             NEXT_SPRITE = "rt picture next sprite" # The next free entry of the sprite table's copy (low byte)
             MAP_JOB = "rt picture map job" # The grid being put up: rows left, where from, where to, its bank
+            # 1 while a grid's rows are finished with the display off, until the blank's copies are done
+            MAP_DISPLAY_OFF = "rt picture map display off"
             # The display's switches the game wants, which the blank writes to the console's LCDC
             # register: the screen on or off, which grid the background is read from, and the
             # sprite layer on or off — all forty sprites at once, with the sprite table left as it
@@ -35,6 +38,11 @@ module VBlank
             LCDC_WANTED = "rt picture lcdc"
             OVERLAP = "rt picture overlap" # Two sprites' masks and where they meet, while they are tested
             GRID_UP = "rt picture grid up" # The number of the grid up, or being put up
+            # The rows of the console's grid that can hold cells, the rest of its rows empty: those
+            # of the grid last put up (the rows its maps reach, GBC::Art#grid), and those its put up
+            # reaches, which is more while it is still being copied in (#emit_background).
+            GRID_ROWS = "rt picture grid rows"
+            GRID_ROWS_REACHED = 1
             # The cells of the background changed during the pass, written in the blank after it:
             # how many, then for each where it is in the console's grid (16 bits), its tile and its
             # colours. A pass that fills it has the list written where it asks, each cell waiting
@@ -124,10 +132,14 @@ module VBlank
             # ...and the one that raises it as the display starts the line LYC names.
             STAT_LINE_MATCH = 0x40
             STAT_MODE = 0x03 # STAT's low two bits: nought between the lines' drawing
+            STAT_MODE_BLANK = 0x01 # ...and one in the blank, its last line too
 
-            # How many of the grid's 32 rows are copied in one blank: their tiles and their cells'
-            # colours, 512 bytes, which the console's own copy does in about a quarter of the blank.
-            MAP_ROWS_PER_BLANK = 8
+            # A GRID IS PUT UP AS FAST AS THE BLANK ALLOWS (#emit_map_rows). A row is its tiles and
+            # its cells' colours, 64 bytes, which the console's own copy does in under a third of a
+            # line of the display; so each go copies ROWS_A_LINE rows for every line left before
+            # LAST_COPY_LINE, and the blank's last line is spare for what a go costs besides.
+            ROWS_A_LINE = 3
+            LAST_COPY_LINE = 152 # The line of the blank a go of rows must be done by
 
             module_function
 
@@ -151,6 +163,7 @@ module VBlank
               memory.reserve(SCROLL, 2)
               memory.reserve(NEXT_SPRITE, 1)
               memory.reserve(MAP_JOB, 6)
+              memory.reserve(MAP_DISPLAY_OFF, 1)
               memory.reserve(CELLS, 1 + ((painting ? PAINTED_CELLS_ROOM : CELLS_KEPT) * CELL_BYTES))
               memory.reserve(BENDS, Console::GBCHardware::SCREEN_HEIGHT)
               memory.reserve(BENDS_FROM, 2)
@@ -159,6 +172,7 @@ module VBlank
               memory.reserve(LCDC_WANTED, 1)
               memory.reserve(OVERLAP, OVERLAP_BYTES)
               memory.reserve(GRID_UP, 1)
+              memory.reserve(GRID_ROWS, 2)
               memory.reserve(TINT, 5)
               memory.reserve(DRAWN, 1 + (MOST_DRAWN * DRAWN_BYTES))
             end
@@ -183,7 +197,7 @@ module VBlank
             # +tall_pieces+ means the console draws every sprite piece 8×16 (Art#tall_pieces?).
             # +bar_maps+ means a status bar has several maps to show (#emit_bar_show).
             def emit(asm, memory, sprite_tiles:, background_tiles:, runs: [], drawn_palettes: nil, lends: false,
-                     palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false, picture_rooms: false,
+                     palettes_in_use:, groups: false, bar_rows: nil, bar_maps: false, rooms: false,
                      room_colors: false, lent_families: false, backdrop: nil, banked_colors: false, first_kept_list: nil,
                      tall_pieces: false, sprites_over_picture: false, indexes_in_banks: false)
               emit_start(asm, memory, sprite_tiles: sprite_tiles, background_tiles: background_tiles,
@@ -200,9 +214,8 @@ module VBlank
               emit_lend_colors(asm, memory, drawn_palettes, families: lent_families,
                                                             first_kept: (first_kept_list if lends == :by_scene),
                                                             kept_in_bank: indexes_in_banks) if lends
-              paced = (memory[ROOMS] + ROOM_DISPLAY_OFF if picture_rooms)
-              emit_background(asm, memory, bar: !bar_rows.nil?, paced: paced, grids_in_bank: indexes_in_banks)
-              emit_bar(asm, memory, bar_rows, paced: paced, grids_in_bank: indexes_in_banks) if bar_rows
+              emit_background(asm, memory, bar: !bar_rows.nil?, grids_in_bank: indexes_in_banks)
+              emit_bar(asm, memory, bar_rows, grids_in_bank: indexes_in_banks) if bar_rows
               emit_bar_covers(asm, memory) if memory.reserved?(BAR_COVERS)
               emit_bar_show(asm, memory) if bar_maps
               emit_choices(asm, memory)
@@ -675,6 +688,12 @@ module VBlank
               background_tiles.times.each_slice(128).with_index do |slice, half|
                 chunks << ["art_background_tiles", slice.first, slice.length, half / 2, half.even? ? 0x9000 : 0x8800]
               end
+              # Each chunk of at most 128 tiles by the console's own copy (rt_gdma), as the display is
+              # off from power-on until the first frame. Every scene's tiles go in here, so with the
+              # processor copying them a byte at a time, the tiles a game's later scenes draw held
+              # its first picture back; the console's copy moves 16 bytes in the time the
+              # processor moves two. The tiles' sections start on 16 bytes (Art#data_section), as
+              # it needs.
               chunks.each do |label, first, count, bank, to|
                 asm.load(:a, bank)
                 asm.load_high(h::VBK, :a)
@@ -684,8 +703,8 @@ module VBlank
                 asm.load(:de, first * 16)
                 asm.add_hl(:de)
                 asm.load(:de, to)
-                asm.load(:bc, count * 16)
-                asm.call("rt_copy_bc")
+                asm.load(:c, count - 1) # blocks of 16, less one
+                asm.call("rt_gdma")
               end
               asm.xor_a(:a)
               asm.load_high(h::VBK, :a)
@@ -1013,8 +1032,8 @@ module VBlank
             end
 
             # IN THE BLANK: the sprite table, the colours if they changed, the scroll and the
-            # screen's switches; and a few more rows of a grid being put up. Carry set when a grid
-            # is still being put up, so the frame waits for another blank before it counts as shown.
+            # screen's switches; and the rows of a grid being put up. Carry set when a grid is still
+            # being put up, so the frame waits for another blank before it counts as shown.
             #
             # The sprite table is not copied while a painted screen is up: the sprite layer is off
             # there (Paint#emit_screen), so nothing would show it, and the copy takes a fair part of
@@ -1100,6 +1119,7 @@ module VBlank
               asm.call(:nc, "rt_picture_cells") # once the grid is all up, the cells changed since
               asm.call("rt_paint_upload")
               asm.call("rt_bends_copy")
+              asm.call("rt_picture_display_back_on")
               asm.jump_relative(:c, "rt_upload_more")
               if groups
                 asm.load(:a, [pending])
@@ -1113,9 +1133,26 @@ module VBlank
               asm.scf
               asm.ret
 
-              # MAP_ROWS_PER_BLANK more rows of a grid being put up, or all of them while the screen
-              # is off. Carry set when some are left.
+              # As many more rows of a grid being put up as the blank holds, or all of them while
+              # the screen is off. Carry set when some are left.
               emit_map_job(asm, memory[MAP_JOB], "rt_picture_map_job", "rt_picture_map_rows")
+
+              # The display back on once the blank's copies are all done, where a grid's rows were
+              # finished with it off (#emit_map_rows, MAP_DISPLAY_OFF): the cells changed, a status
+              # bar's rows and the bends went in with it off too. Flags as they were, for rt_upload.
+              asm.label("rt_picture_display_back_on")
+              asm.push(:af)
+              asm.load(:a, [memory[MAP_DISPLAY_OFF]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, "rt_picture_display_left_on")
+              asm.xor_a(:a)
+              asm.load([memory[MAP_DISPLAY_OFF]], :a)
+              asm.load_high(:a, h::LCDC)
+              asm.set(7, :a)
+              asm.load_high(h::LCDC, :a)
+              asm.label("rt_picture_display_left_on")
+              asm.pop(:af)
+              asm.ret
 
               # THE ROWS' BENDS FOR THE FRAME ABOUT TO BE DRAWN, from the scroll just set: the first
               # row's set now, and each row after it as the line before it ends
@@ -1654,7 +1691,15 @@ module VBlank
             # #emit_background_hardware) and the interpreter shows (Reference#put_up_background);
             # handing a background another of its maps keeps the view where it is (rt_big_show
             # likewise, beside rt_big_put_up).
-            def emit_background(asm, memory, bar: false, paced: nil, grids_in_bank: false)
+            #
+            # A GRID PUT UP COPIES THE ROWS THAT CAN DIFFER, not all 32. A screen's map is 18 rows,
+            # and the rows of the grid past it are empty, so a grid's put up copies the rows its maps
+            # reach and the rows the grid it replaces could have cells in (GRID_ROWS), and leaves the
+            # rest, empty in both. The 1152 bytes of a screen's 18 rows fit in a blank beside the
+            # sprite table, and what the blank has no time for goes in with the display off
+            # (#emit_map_rows): so a screen comes up in the frame it takes over, as a console's own
+            # games bring one in.
+            def emit_background(asm, memory, bar: false, grids_in_bank: false)
               h = Console::GBCHardware
               emit_background_cell(asm, memory)
               emit_cells_write_now(asm, memory)
@@ -1676,29 +1721,44 @@ module VBlank
               asm.load([memory[GRID_UP]], :a)
               asm.load(:hl, memory[BigMaps::STATE] + BigMaps::ON) # a big map is not up any more
               asm.load([:hl], 0)
-              asm.load(:e, :a) # its entry in the grids' table, three bytes
+              asm.load(:e, :a) # its entry in the grids' table
               asm.load(:d, 0)
               asm.load(:hl, "art_grids")
-              3.times { asm.add_hl(:de) }
+              Art::GRID_ENTRY_BYTES.times { asm.add_hl(:de) }
               emit_grids_bank_in_view(asm, grids_in_bank)
               asm.load(:a, [:hli])
               asm.load([memory[MAP_JOB] + 1], :a)
               asm.load(:a, [:hli])
               asm.load([memory[MAP_JOB] + 2], :a)
-              asm.load(:a, [:hl])
+              asm.load(:a, [:hli])
               asm.load([memory[MAP_JOB] + 5], :a)
+              asm.load(:b, [:hl]) # the rows its maps reach
               asm.call("rt_bank_back") if grids_in_bank
               asm.xor_a(:a) # the first row of the console's grid
               asm.load([memory[MAP_JOB] + 3], :a)
               asm.load(:a, h::TILE_MAP0 >> 8)
               asm.load([memory[MAP_JOB] + 4], :a)
-              asm.load(:a, 32)
+              # The rows that can hold cells now: the last grid's, once it was all in, or else
+              # all its put up reached.
+              asm.load(:a, [memory[MAP_JOB]])
+              asm.and_a(:a)
+              asm.load(:a, [memory[GRID_ROWS]])
+              asm.jump_relative(:z, "rt_picture_rows_known")
+              asm.load(:a, [memory[GRID_ROWS] + GRID_ROWS_REACHED])
+              asm.label("rt_picture_rows_known")
+              asm.cp_a(:b) # ...or this grid's, if more
+              asm.jump_relative(:nc, "rt_picture_rows_most")
+              asm.load(:a, :b)
+              asm.label("rt_picture_rows_most")
               asm.load([memory[MAP_JOB]], :a)
+              asm.load([memory[GRID_ROWS] + GRID_ROWS_REACHED], :a)
+              asm.load(:a, :b)
+              asm.load([memory[GRID_ROWS]], :a)
               asm.load_high(:a, h::LCDC) # with the screen off it goes in now
               asm.bit(7, :a)
               asm.ret(:nz)
 
-              emit_map_rows(asm, memory[MAP_JOB], "rt_picture_map_rows", paced: paced)
+              emit_map_rows(asm, memory[MAP_JOB], "rt_picture_map_rows", memory[MAP_DISPLAY_OFF])
 
               # A change of the kind of screen takes everything down: the grid with nothing in it
               # (GBC::Art's first) goes up, at the scroll's start.
@@ -1890,7 +1950,7 @@ module VBlank
             end
 
             # The table of where each grid is (art_grids) put in view, where it is kept in a bank
-            # (+in_bank+, GBC#build_in_view): the reader takes its three bytes and puts
+            # (+in_bank+, GBC#build_in_view): the reader takes its entry's bytes and puts
             # the game's bank back (rt_bank_back), since it returns to the game's code, which is in a
             # bank of its own. Keeps HL.
             def emit_grids_bank_in_view(asm, in_bank)
@@ -1900,10 +1960,10 @@ module VBlank
               asm.select_rom_bank
             end
 
-            # A GRID BEING PUT UP, a few rows a blank: +job+ is where it is kept — the rows left,
-            # where the next comes from, where it goes and the bank it is in (MAP_JOB, BAR_JOB).
-            # +label+ copies MAP_ROWS_PER_BLANK more rows, or all of them while the screen is off;
-            # +rows+ is that copy alone.
+            # A GRID BEING PUT UP, as many rows a blank as it holds: +job+ is where it is kept — the
+            # rows left, where the next comes from, where it goes and the bank it is in (MAP_JOB,
+            # BAR_JOB). +label+ copies more rows, or all of them while the screen is off; +rows+ is
+            # that copy alone.
             def emit_map_job(asm, job, label, rows)
               asm.label(label)
               asm.load(:a, [job])
@@ -1917,32 +1977,63 @@ module VBlank
               asm.ret
             end
 
-            # The next rows of the grid being put up, from where +job+ has got to — all of them
-            # while the screen is off, MAP_ROWS_PER_BLANK in a blank — each row's 32 tiles into
-            # bank 0 of the console's grid and its 32 cells' colours, 1024 bytes on, into bank 1.
+            # The next rows of the grid being put up, from where +job+ has got to, each row's 32
+            # tiles into bank 0 of the console's grid and its 32 cells' colours, 1024 bytes on, into
+            # bank 1. While the screen is off, all of them at once. While it is on, all of them if
+            # the lines of the blank left hold them (ROWS_A_LINE, LAST_COPY_LINE), whatever else the
+            # blank did first: a row written once the display draws again would be lost.
             #
-            # +paced+, where a game whose rooms bring only sprite pictures in keeps whether a room
-            # turned the screen off (ROOM_DISPLAY_OFF): a screen off for that alone puts up as many
-            # rows as a screen on does. Its background tiles are the ones from power-on, so the grid
-            # shown is right meanwhile, and the screen comes up on the frame it would with every
-            # picture in already.
-            def emit_map_rows(asm, job, label, paced: nil)
+            # ROWS THE BLANK HAS NO TIME FOR GO IN WITH THE DISPLAY OFF. Where they are more than
+            # the lines left hold, the display is switched off at once, with more than a line of
+            # the blank still to come, the rows copied, and the display left off until the
+            # blank's copies are all done (MAP_DISPLAY_OFF, rt_picture_display_back_on): so the
+            # screen is up in the frame it takes over, as a screen that brings its own tiles comes
+            # up (#emit_rooms), and as the console's own games bring a screen in. The one frame the
+            # display is off shows nothing, where waiting would have held the game and its picture
+            # a frame. A screen's 18 rows fill the blank beside the sprite table alone, so this is
+            # the screen whose colours change as it arrives (one fading in, or held white), and a
+            # grid of more rows than a screen. Deciding before the copy, not after part of it,
+            # keeps the switch off the blank's last line, whose LY reads nought, too near the
+            # display starting again: the rows a line holds are a guess, and the copy can run
+            # longer. Rows are copied only in the blank (STAT's mode), since the display is never
+            # switched off while it draws: started while it draws — a pass that ended late — or
+            # on the blank's last line, the rows wait for the next blank, and the frame with them.
+            def emit_map_rows(asm, job, label, display_off)
               h = Console::GBCHardware
               asm.label(label)
+              asm.load(:a, [job])
+              asm.and_a(:a)
+              asm.ret(:z) # none left
               asm.load_high(:a, h::LCDC)
               asm.bit(7, :a)
-              if paced
-                asm.load(:b, MAP_ROWS_PER_BLANK)
-                asm.jump_relative(:nz, "#{label}_counted") # on
-                asm.load(:a, [paced])
-                asm.and_a(:a)
-                asm.jump_relative(:nz, "#{label}_counted") # off for a room of pictures alone
-                asm.load(:b, 32)
-              else
-                asm.load(:b, 32)
-                asm.jump_relative(:z, "#{label}_counted")
-                asm.load(:b, MAP_ROWS_PER_BLANK)
-              end
+              asm.load(:b, Art::GRID_CELLS)
+              asm.jump_relative(:z, "#{label}_counted") # off: every row left
+              asm.load_high(:a, h::STAT)
+              asm.and_a(STAT_MODE)
+              asm.cp_a(STAT_MODE_BLANK)
+              asm.ret(:nz) # the display is drawing
+              asm.load_high(:a, h::LY)
+              asm.cp_a(h::SCREEN_HEIGHT)
+              asm.ret(:c) # the blank's last line, read as nought: too late to switch the display off
+              asm.cp_a(LAST_COPY_LINE)
+              asm.jump_relative(:nc, "#{label}_display_off") # no line left for a go
+              asm.load(:b, :a) # B = the lines left, times ROWS_A_LINE
+              asm.load(:a, LAST_COPY_LINE)
+              asm.sub_a(:b)
+              asm.load(:b, :a)
+              (ROWS_A_LINE - 1).times { asm.add_a(:b) }
+              asm.load(:b, :a)
+              asm.load(:a, [job])
+              asm.cp_a(:b)
+              asm.jump_relative(:c, "#{label}_counted") # every row left fits
+              asm.jump_relative(:z, "#{label}_counted")
+              asm.label("#{label}_display_off")
+              asm.load_high(:a, h::LCDC)
+              asm.res(7, :a)
+              asm.load_high(h::LCDC, :a)
+              asm.load(:a, 1)
+              asm.load([display_off], :a)
+              asm.load(:b, Art::GRID_CELLS)
               asm.label("#{label}_counted")
               asm.load(:a, [job])
               asm.cp_a(:b)
@@ -2015,7 +2106,7 @@ module VBlank
             # rt_place_bar(top): its top at +top+, kept between 0 and the bottom of the screen.
             # rt_bar_take_down: the window off, for a screen with no bar; and its grid forgotten too
             # when the kind of screen changes, since a painted screen keeps its own grid there.
-            def emit_bar(asm, memory, rows, paced: nil, grids_in_bank: false)
+            def emit_bar(asm, memory, rows, grids_in_bank: false)
               h = Console::GBCHardware
               top = Calls.arg(memory, 0, 1)
               asm.label("rt_bar_put_up")
@@ -2029,10 +2120,10 @@ module VBlank
               asm.cp_a([:hl])
               asm.jump_relative(:z, "rt_bar_on")
               asm.load([:hl], :a)
-              asm.load(:e, :a) # its entry in the grids' table, three bytes
+              asm.load(:e, :a) # its entry in the grids' table
               asm.load(:d, 0)
               asm.load(:hl, "art_grids")
-              3.times { asm.add_hl(:de) }
+              Art::GRID_ENTRY_BYTES.times { asm.add_hl(:de) }
               emit_grids_bank_in_view(asm, grids_in_bank)
               asm.load(:a, [:hli])
               asm.load([memory[BAR_JOB] + 1], :a)
@@ -2092,7 +2183,7 @@ module VBlank
               asm.ret
 
               emit_map_job(asm, memory[BAR_JOB], "rt_bar_map_job", "rt_bar_map_rows")
-              emit_map_rows(asm, memory[BAR_JOB], "rt_bar_map_rows", paced: paced)
+              emit_map_rows(asm, memory[BAR_JOB], "rt_bar_map_rows", memory[MAP_DISPLAY_OFF])
             end
 
             # A BAR THAT COVERS SPRITES (StatusBar#covers_sprites=). The Color's window has no say over

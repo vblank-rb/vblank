@@ -60,7 +60,53 @@ module VBlank
               pools: pools.to_h { |name| [name, pool_fields(name).to_h { |field| [field, pool(name, field)] }] } }
           end
 
+          # What the game's save_data records keep, as it stands now: #game_state holding only the
+          # variables, lists and pools some record keeps, read the same way, so a test compares the
+          # moment a game saved with the same game after a load and asks whether everything came back.
+          # Public for a game's own test of a save made in the middle of play. Working room a save
+          # never keeps is not in it: a scratch name starting with _, a part's `game_variables ...,
+          # saved: false`, a name saves_keep_everything leaves out.
+          #
+          # It is read from the records as the build laid them out (Program#save_data_records), not
+          # from a second copy of the rule, so it holds what the saves really keep. A pool kept one
+          # field at a time holds that field alone. A `save_var` saves itself and is in no record.
+          #
+          # NOT EVERYTHING A RECORD KEEPS IS HERE: only what #game_state holds. The random numbers a
+          # record keeps are the framework's own variable, and a pool's facing, animation and colours
+          # are kept beside its fields; #game_state holds none of them, so a load that lost one of
+          # them does not show in this reading.
+          def saved_state
+            kept = save_data_kept
+            state = game_state
+            fields_kept = kept.pool_fields.to_h { |pool, fields| [pool, state[:pools].fetch(pool).slice(*fields)] }
+            { vars: state[:vars].slice(*kept.vars),
+              lists: state[:lists].slice(*kept.lists),
+              pools: fields_kept.merge(state[:pools].slice(*kept.pools)) }
+          end
+
+          # The names the save_data records keep: +vars+, +lists+ and +pools+ (kept whole) as lists
+          # of names, and +pool_fields+ the fields kept one at a time, by the pool's name.
+          SavedNames = Data.define(:vars, :lists, :pools, :pool_fields)
+
           private
+
+          # The SavedNames of the program's save_data records. Each kept entry is one of
+          # Builder::Saves#laid_out_records's; the random numbers are passed over (see #saved_state).
+          def save_data_kept
+            records = named_program("what its saves keep").save_data_records
+            if records.empty?
+              raise ArgumentError, "This game declares no save_data record, so a save keeps nothing. " \
+                                   "Read game_state instead, or declare a record with save_data."
+            end
+
+            entries = records.flat_map(&:last)
+            names_of = ->(kind) { entries.filter_map { |one, name| name.to_sym if one == kind } }
+            fields = entries.select { |kind, _| kind == :pool_field }
+                            .group_by { |_, pool, _| pool.to_sym }
+                            .transform_values { |kept| kept.map { |_, _, field| field.to_sym } }
+            SavedNames.new(vars: names_of.call(:var), lists: names_of.call(:list), pools: names_of.call(:pool),
+                           pool_fields: fields)
+          end
 
           # A stored number, and a list's stored items, as the game's; as they are with no program.
           def var_in_game_units(name, stored) = read_program ? read_program.var_in_game_units(name, stored) : stored

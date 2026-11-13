@@ -132,8 +132,17 @@ module VBlank
       #
       # @example A first-person view drawn at half size
       #   screen :bitmap, tear_free: true, pixel_size: 2
+      #
+      # +shown_rows:+ gives up the rows of a painted screen outside a range: the picture stops
+      # early, and those rows show black whatever is painted there. A console that can copy to its
+      # video memory only while it is not drawing has those rows to copy in as well as the gap
+      # between pictures, so a picture that changes a lot each pass arrives sooner. It is the whole
+      # game's, so it goes on the game's first `screen` line, and every later screen is a painted one.
+      #
+      # @example A view 160 rows high, with more time each frame to send it
+      #   screen :bitmap, shown_rows: 32...192
       def screen(mode, tear_free: false, colors: nil, late: :wait, pace: 60, backdrop: nil, backdrop_place: nil,
-                 pixel_size: 1)
+                 pixel_size: 1, shown_rows: nil)
         case mode
         when Symbol
           unless SCREEN_NAMES.include?(mode)
@@ -158,6 +167,7 @@ module VBlank
         # hardware). A raw register value doesn't map to a friendly name, so it leaves
         # the mode unnamed.
         size_said = apply_pixel_size!(pixel_size, mode)
+        rows_kept = apply_shown_rows!(shown_rows, mode)
         @screen_line_written = true
         @screen_mode = mode if mode.is_a?(Symbol)
         @tear_free = tear_free
@@ -173,7 +183,8 @@ module VBlank
         node = record(Build.screen(mode, buffered: tear_free, colors: resolve_screen_colors(colors, tear_free),
                                          late: late_rows, late_pace: resolve_late_pace(pace, late_rows),
                                          backdrop: followed ? followed.color : resolve_backdrop(backdrop, mode),
-                                         pixel_size: size_said, backdrop_from_file: backdrop_from_file))
+                                         pixel_size: size_said, backdrop_from_file: backdrop_from_file,
+                                         shown_rows: rows_kept))
         @backdrop_list = followed.with(screen: node) if followed
         node
       end
@@ -209,6 +220,55 @@ module VBlank
         @program.pixel_size = size
         @console = @program.described_console
         size
+      end
+
+      # SETS THE ROWS THE GAME'S PICTURE SHOWS on the program, and returns them as the screen node
+      # keeps them: [first, past], or nil for every row. Like the pixel size it is the whole game's,
+      # set once on the game's first screen line (Program#shown_rows).
+      private def apply_shown_rows!(rows, mode)
+        refuse_unpainted_screen_with_shown_rows!(mode) if @program.shown_rows
+        return nil if rows.nil?
+
+        height = console.screen_height
+        unless rows.is_a?(Range) && rows.begin.is_a?(Integer) && rows.end.is_a?(Integer)
+          raise ArgumentError, "`shown_rows: #{rows.inspect}` is not a range of rows. To fix this, give the first " \
+                               "row and the row after the last, like `shown_rows: 32...192`."
+        end
+        first = rows.begin
+        past = rows.exclude_end? ? rows.end : rows.end + 1
+        if first.negative? || past > height
+          raise ArgumentError, "`shown_rows: #{rows.inspect}` goes past the screen. The screen has rows 0 to " \
+                               "#{height - 1} (#{height} rows). To fix this, keep the range inside them."
+        end
+        if past <= first
+          raise ArgumentError, "`shown_rows: #{rows.inspect}` shows no row. To fix this, give a range that holds " \
+                               "one row or more, like `shown_rows: 32...192`."
+        end
+        unless mode == :bitmap
+          raise ArgumentError, "`shown_rows:` works only with `screen :bitmap`. To fix this, write " \
+                               "`screen :bitmap, shown_rows: #{rows.inspect}`."
+        end
+        if @program.pixel_size
+          raise ArgumentError, "`shown_rows:` does not work with `pixel_size: #{@program.pixel_size}`. No console " \
+                               "that gives up rows shows big pixels. To fix this, remove one of the two."
+        end
+        if @screen_line_written || @building_scene
+          raise ArgumentError, "`shown_rows:` must be on the game's first `screen` line, outside any scene. It " \
+                               "sets the rows of the screen for the whole game. To fix this, move shown_rows: " \
+                               "to that line."
+        end
+        return nil if first.zero? && past == height
+
+        @program.shown_rows = [first, past]
+      end
+
+      # A game that gives up rows shows every one of its screens through the painted screen.
+      private def refuse_unpainted_screen_with_shown_rows!(mode)
+        return if mode == :bitmap
+
+        raise ArgumentError, "This game says `shown_rows:`, and this line asks for `screen #{mode.inspect}`. In " \
+                             "a game that gives up rows, every screen must be `screen :bitmap`. To fix this, " \
+                             "use `screen :bitmap` here, or remove shown_rows:."
       end
 
       # A game of big pixels shows every one of its screens through the painted screen.
@@ -344,13 +404,18 @@ module VBlank
 
       # Fill a rectangle in bitmap mode (MODE_3).
       #
-      # @param x [Integer] left edge (0-239)
-      # @param y [Integer] top edge (0-159)
-      # @param w [Integer] width in pixels
-      # @param h [Integer] height in pixels
+      # A place and size written in the program are drawn by the fill made for them, unrolled
+      # while building. Any of the four the game works out as it runs (a variable, an expression,
+      # a variable's name) makes it the rectangle `draw_rect_at` draws, which every console
+      # reads its numbers for as it runs: a game need not know which verb is which.
+      #
+      # @param x [Integer, Symbol, Value] left edge (0-239)
+      # @param y [Integer, Symbol, Value] top edge (0-159)
+      # @param w [Integer, Symbol, Value] width in pixels
+      # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def fill_rect(x, y, w, h, c)
-        record(Build.fill_rect(x, y, w, h, c))
+        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.fill_rect(*fixed, c) }
       end
 
       # Clear the entire screen to a solid color.
@@ -803,15 +868,16 @@ module VBlank
         record(Build.show_light_now)
       end
 
-      # Fill a rectangle at a fixed position and size.
+      # Fill a rectangle at a fixed position and size. A number the game works out makes it
+      # the rectangle `draw_rect_at` draws, as for #fill_rect.
       #
-      # @param x [Integer] left edge
-      # @param y [Integer] top edge
-      # @param w [Integer] width in pixels (must be even for the fast fill)
-      # @param h [Integer] height in pixels
+      # @param x [Integer, Symbol, Value] left edge
+      # @param y [Integer, Symbol, Value] top edge
+      # @param w [Integer, Symbol, Value] width in pixels (must be even for the fast fill)
+      # @param h [Integer, Symbol, Value] height in pixels
       # @param c [Symbol, String, Integer] fill color
       def dma_fill_rect(x, y, w, h, c)
-        record(Build.dma_fill_rect(x, y, w, h, c))
+        record_fixed_or_runtime_rect(x, y, w, h, c) { |*fixed| Build.dma_fill_rect(*fixed, c) }
       end
 
       # Draw ONE COLUMN of a picture, stretched to a height the game works out.
@@ -911,6 +977,16 @@ module VBlank
       end
 
       private
+
+      # Record the node the block builds from the rectangle's four numbers when each was
+      # written in the program (a bare number, or a handle standing for one), or a
+      # `draw_rect_at` when the game works any of them out as it runs.
+      def record_fixed_or_runtime_rect(x, y, w, h, c)
+        fixed = [x, y, w, h].map { |operand| DSL::Value.fixed_number(operand) }
+        return draw_rect_at(x, y, w, h, c) if fixed.include?(nil)
+
+        record(yield(*fixed))
+      end
 
       # A block is a whole number of pixels, and the console has sizes from one pixel, which
       # is the picture as drawn, to sixteen. A size written in the program outside those is

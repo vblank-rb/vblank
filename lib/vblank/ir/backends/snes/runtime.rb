@@ -51,13 +51,14 @@ module VBlank
             c = carries
             Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns) if c.painted
             Frame.reserve(memory, second_controller: c.second_controller)
-            Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, bends: c.bends, scene_bends: c.scene_bends,
+            Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
+                                    bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
                                     scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
-            Letterbox.reserve(memory) if c.letterboxes?
+            Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
@@ -96,14 +97,19 @@ module VBlank
                                       run_scratch: (Picture.run_scratch(memory) if run_count.positive?),
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
-                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer)
+                                      math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
+                                      held_hides_sprites: c.held_hides_sprites)
             Paint.emit(asm, memory, Paint.scratch(memory), chip: c.chip?, columns: lowering.paints_columns?) if c.painted
             Tint.emit(asm, memory, Tint.scratch(memory), colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
             Collide.emit(asm, memory, Collide.scratch(memory))
             Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
             Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
-            Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places) if c.letterboxes?
+            if c.letterboxes?
+              Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places)
+            elsif c.shown_band
+              Letterbox.emit_named_band(asm, memory, c.shown_band, dims: c.dims)
+            end
             if c.saves
               saving = Saving.scratch(memory)
               Saving.emit(asm, memory, saving, bank: c.board.save_bank)

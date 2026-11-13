@@ -925,12 +925,159 @@ RG_NOTES_INSTRUMENTS = 11
 RG_NOTES_RECORDED = 12
 RG_NOTES_SIDE_FLAGS = 13
 RG_NOTES_CLOCKS = 16
-RG_NOTES_HEADER_NUMBERS = 17
+RG_NOTES_RECORD_BYTES = 17
+RG_NOTES_HEADER_NUMBERS = 18
 RG_NOTE_SIDES = 3
 RG_NOTE_KEYS = 128
 RG_NOTE_VOLUMES = 16
-RG_NOTE_RECORD_BYTES = 12
+RG_NOTE_VOICED_BYTES = 32
 RG_NOTE_NUMBERS = 6
+# rg_music.c's voiced record settings and the bits they take in a note's fifth and sixth numbers.
+RG_NAMES_PITCH = 1
+RG_NAMES_FADE = 2
+RG_NAMES_DUTY = 4
+RG_NAMES_VIBRATO = 8
+RG_NAMES_SLIDE = 16
+RG_NAMES_SHADE = 32
+RG_NAMES_CARRIES = 64
+RG_NOTE_MOST_PITCH = 2047
+RG_NOTE_MOST_FADE = 15
+RG_NOTE_MOST_SLIDE = 127
+RG_NOTE_SHADE_WHOLE = 64
+RG_NOTE_SHADE_CODES = 4 + 64
+RG_FLAG_FADE_BITS = 0x1F
+RG_FLAG_HAS_FADE = 16
+RG_FLAG_SLIDE_BITS = 0x1FE0
+RG_FLAG_HAS_SLIDE = 32
+RG_FLAG_SLIDE_AT = 6
+RG_FLAG_HAS_VIBRATO = 1 << 13
+RG_FLAG_VIBRATO_AT = 14
+RG_SHAPE_DUTY_BITS = 0x1FF
+RG_SHAPE_HAS_DUTY = 1 << 8
+RG_SHAPE_CARRIES = 1 << 9
+RG_NAMES_HZ = 128
+RG_NAMES_GLIDES = 256
+RG_NOTE_MOST_HZ = 524_288 * 16
+RG_HZ_RECORDED = 2
+RG_NOISE_RUNGS = 8 * 14
+RG_NOTE_SOUND_NUMBERS = 8
+RG_HZ_LIST_NUMBERS = 8
+RG_NOTE_GLIDES = 1 << 10
+
+# rg_music.c's start_file_double.
+def rg_start_file_double(high, low) = [high, low].pack("l>l>").unpack1("G")
+
+# rg_music.c's start_file_hz_rules: where a voiced part's rules for a pitch between keys start.
+def rg_start_file_hz_rules(rules)
+  instruments = rules[RG_NOTES_INSTRUMENTS]
+  same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
+  clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED].zero? ? 1 : instruments + 1) * RG_NOTE_KEYS)
+  voiced = clock_pitches + (2 * rules[RG_NOTES_CLOCKS])
+  voiced + 2 + (2 * rules[voiced + 1])
+end
+
+# rg_music.c's start_file_noise_hz_ticks.
+def rg_start_file_noise_hz_ticks(rules, hz_rules, hz)
+  wanted = hz / 16.0
+  nearest = 0
+  ticks = 0
+  RG_NOISE_RUNGS.times do |r|
+    at = hz_rules + 1 + (r * 3)
+    away = (rg_start_file_double(rules[at], rules[at + 1]) - wanted).abs
+    if r.zero? || away < nearest
+      nearest = away
+      ticks = rules[at + 2]
+    end
+  end
+  ticks
+end
+
+# rg_music.c's start_file_hz_row: a recorded note between keys written into row +row+.
+def rg_start_file_hz_row(note_sounds, row, rules, hz_rules, list, hz)
+  entry = hz_rules + 5 + (list * RG_HZ_LIST_NUMBERS)
+  mix_rate = rg_start_file_double(rules[hz_rules + 1], rules[hz_rules + 2])
+  rate = if rules[entry + 1] != 0
+           width = rules[entry + 3]
+           number = @rg_start_file.byteslice(rules[entry + 2], width).unpack1(RG_LENGTH_NUMBER_READS.fetch(width)[rules[entry + 4]])
+           top = 1 << ((width * 8) - 1)
+           read = rules[entry + 5] == 1 && number >= top ? number - (top * 2) : number
+           [read, 1].max.to_f
+         else
+           rg_start_file_double(rules[entry + 2], rules[entry + 3])
+         end
+  ratio = (hz / 16.0) / rg_start_file_double(rules[entry + 6], rules[entry + 7])
+  step = ((rate / mix_rate) * ratio) * 65_536
+  into = 1 + (row * RG_NOTE_SOUND_NUMBERS)
+  from = 1 + (rules[entry] * RG_NOTE_SOUND_NUMBERS)
+  RG_NOTE_SOUND_NUMBERS.times { |i| note_sounds[into + i] = note_sounds[from + i] }
+  note_sounds[into + 1] = step < 1 ? 1 : [(step + 0.5).floor, 2_147_483_647].min
+end
+
+# rg_music.c's start_file_shade_side, start_file_shade_code and start_file_slide_named.
+def rg_start_file_shade_side(shade)
+  left = shade.negative? ? RG_NOTE_SHADE_WHOLE : RG_NOTE_SHADE_WHOLE - shade
+  right = shade.positive? ? RG_NOTE_SHADE_WHOLE : RG_NOTE_SHADE_WHOLE + shade
+  return 1 if left >= right * 2
+  return 2 if right >= left * 2
+
+  0
+end
+
+def rg_start_file_shade_code(shade)
+  return 0 if shade.zero?
+  return 1 if shade == -RG_NOTE_SHADE_WHOLE
+  return 2 if shade == RG_NOTE_SHADE_WHOLE
+
+  RG_NOTE_SHADE_CODES + shade
+end
+
+def rg_start_file_slide_named(slide) = slide.zero? || (slide <= RG_NOTE_MOST_SLIDE && (slide >> 4).positive? && (slide & 7).positive?)
+
+# rg_music.c's start_file_event_voice: a voiced +record+'s settings (its bytes) into +event+.
+def rg_start_file_event_voice(event, record, takes)
+  pitch, fade, duty, vibrato, slide, shade, all_names, hz_low, hz_high = record.byteslice(12, 13).unpack("vCCvCcvvC")
+  names = all_names & takes
+  if names.anybits?(RG_NAMES_PITCH) && pitch <= RG_NOTE_MOST_PITCH
+    event.pitch = pitch
+    event.key = 0
+  end
+  event.fade = fade if names.anybits?(RG_NAMES_FADE) && fade <= RG_NOTE_MOST_FADE
+  event.duty = duty if names.anybits?(RG_NAMES_DUTY)
+  event.vibrato = (vibrato & 0xF).zero? ? 0 : vibrato | (all_names.anybits?(RG_NAMES_CARRIES) ? 1 << 16 : 0) if names.anybits?(RG_NAMES_VIBRATO)
+  event.slide = slide if names.anybits?(RG_NAMES_SLIDE) && rg_start_file_slide_named(slide)
+  event.side = rg_start_file_shade_code(shade) if names.anybits?(RG_NAMES_SHADE) && shade.abs <= RG_NOTE_SHADE_WHOLE
+  hz = hz_low | (hz_high << 16)
+  if names.anybits?(RG_NAMES_HZ) && event.clock.negative? && hz.between?(1, RG_NOTE_MOST_HZ)
+    event.hz = hz
+    event.key = 0
+  end
+  return unless names.anybits?(RG_NAMES_GLIDES)
+
+  event.glides = 1
+  event.instrument = 0
+  event.recording = -1
+  event.volume = RG_NOTE_VOLUMES
+end
+
+# rg_music.c's start_file_voice_numbers: [fifth, sixth] with +event+'s settings in their places.
+def rg_start_file_voice_numbers(flags, shapes, event)
+  f = flags
+  s = shapes
+  f = (f & ~RG_FLAG_FADE_BITS) | RG_FLAG_HAS_FADE | event.fade if event.fade >= 0
+  f = (f & ~RG_FLAG_SLIDE_BITS) | RG_FLAG_HAS_SLIDE | (event.slide << RG_FLAG_SLIDE_AT) if event.slide >= 0
+  if event.vibrato >= 0
+    f = (f & ~(RG_FLAG_HAS_VIBRATO | (0xFFFF << RG_FLAG_VIBRATO_AT))) | RG_FLAG_HAS_VIBRATO | ((event.vibrato & 0xFFFF) << RG_FLAG_VIBRATO_AT)
+    s = (s & ~RG_SHAPE_CARRIES) | ((event.vibrato >> 16).positive? ? RG_SHAPE_CARRIES : 0)
+  end
+  s = (s & ~RG_SHAPE_DUTY_BITS) | RG_SHAPE_HAS_DUTY | event.duty if event.duty >= 0
+  slides = f.anybits?(RG_FLAG_HAS_SLIDE) && ((f >> RG_FLAG_SLIDE_AT) & 0x7F) != 0
+  wobbles = f.anybits?(RG_FLAG_HAS_VIBRATO) && ((f >> RG_FLAG_VIBRATO_AT) & 0xF) != 0
+  if slides && wobbles
+    f &= ~(0xFFFF << RG_FLAG_VIBRATO_AT)
+    s &= ~RG_SHAPE_CARRIES
+  end
+  [f, s]
+end
 RG_NOTE_ENDS_PART = 0xFFFF
 RG_NOTE_NO_LOUDNESS = 0xFFFF
 RG_NOTE_FULL_LOUDNESS = 512
@@ -951,7 +1098,8 @@ def rg_start_file_event_side(pan, recorded) = recorded.zero? && pan < RG_NOTE_SI
 def rg_start_file_event_clock(clock, key, clocks) = key >= 0 && clock < clocks ? clock : -1
 
 # An event of a part (rg_music.c's start_file_event).
-RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume, :side, :clock)
+RgStartFileEvent = Struct.new(:frame, :key, :instrument, :recording, :volume, :side, :clock, :pitch, :fade, :duty, :vibrato, :slide,
+                              :hz, :row, :glides)
 
 # rg_music.c's start_file_keep_event: +event+ after those in +events+.
 def rg_start_file_keep_event(events, event, total_frames)
@@ -971,50 +1119,80 @@ def rg_start_file_write_note(music, into, event, rules)
   lasts = pitches + RG_NOTE_KEYS
   clock_pitches = lasts + ((rules[RG_NOTES_RECORDED].zero? ? 1 : rules[RG_NOTES_INSTRUMENTS] + 1) * RG_NOTE_KEYS)
   clock_lasts = clock_pitches + rules[RG_NOTES_CLOCKS]
+  voiced = clock_lasts + rules[RG_NOTES_CLOCKS]
+  number_pitches = voiced + 2
+  # Only a voiced part's rules go on past the clocks.
+  number_lasts = number_pitches + (rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES ? rules[voiced + 1] : 0)
   rest = event.key.negative?
   clocked = event.clock >= 0
+  numbered = event.pitch >= 0
+  between = event.hz >= 0
   music[into] = event.frame
   music[into + 1] = if rest then 0
                     elsif clocked then rules[clock_pitches + event.clock]
+                    elsif numbered then rules[number_pitches + event.pitch]
+                    elsif between then -event.hz - 1
                     else rules[pitches + event.key]
                     end
   music[into + 2] = event.volume <= RG_NOTE_VOLUMES ? rules[heard + event.volume] : event.volume - RG_NOTE_VOLUMES - 1
   music[into + 3] = if rest then rules[RG_NOTES_REST_LAST]
                     elsif clocked then rules[clock_lasts + event.clock]
+                    elsif numbered then rules[number_lasts + event.pitch]
+                    elsif between
+                      rules[RG_NOTES_RECORDED].zero? ? rg_start_file_noise_hz_ticks(rules, rg_start_file_hz_rules(rules), event.hz) : event.row
                     else rules[lasts + (event.instrument * RG_NOTE_KEYS) + event.key]
                     end
+  side = event.side >= RG_NOTE_SHADE_CODES - RG_NOTE_SHADE_WHOLE ? rg_start_file_shade_side(event.side - RG_NOTE_SHADE_CODES) : event.side
   music[into + 4] = if rest then 0
-                    elsif event.side < RG_NOTE_SIDES then rules[RG_NOTES_SIDE_FLAGS + event.side]
+                    elsif side < RG_NOTE_SIDES then rules[RG_NOTES_SIDE_FLAGS + side]
                     else rules[RG_NOTES_FLAGS]
                     end
   music[into + 5] = rest ? 0 : rules[RG_NOTES_SHAPES]
+  return if rest
+
+  music[into + 4], music[into + 5] = rg_start_file_voice_numbers(music[into + 4], music[into + 5], event) if rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES
+  music[into + 5] |= RG_NOTE_GLIDES if event.glides == 1
 end
 
-def rg_music_fill_notes(music, rules, tick_frames)
+def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
   ticks = rules[RG_NOTES_TICKS]
   total_frames = music[rules[RG_NOTES_SONG_AT]]
   loop_frame = music[rules[RG_NOTES_SONG_AT] + 1]
   instruments = rules[RG_NOTES_INSTRUMENTS]
+  record_bytes = rules[RG_NOTES_RECORD_BYTES]
   same_recording = RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1
+  clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED].zero? ? 1 : instruments + 1) * RG_NOTE_KEYS)
+  takes = record_bytes == RG_NOTE_VOICED_BYTES ? rules[clock_pitches + (2 * rules[RG_NOTES_CLOCKS])] : 0
+  hz_rules = rg_start_file_hz_rules(rules) if takes != 0
   frame_of = ->(tick) { tick < ticks ? tick_frames[tick] : total_frames }
 
   # The records before the one that ends the part, in the order of their ticks; those on one tick
-  # stay in the file's order.
-  held_bytes = @rg_start_file.byteslice(rules[RG_NOTES_RECORDS_AT], rules[RG_NOTES_RECORDS] * RG_NOTE_RECORD_BYTES)
-  records = held_bytes.unpack("vvCCCCvCC" * rules[RG_NOTES_RECORDS]).each_slice(9).take_while { |record| record[0] != RG_NOTE_ENDS_PART }
+  # stay in the file's order. Each is its first twelve bytes read, and its bytes.
+  held_bytes = @rg_start_file.byteslice(rules[RG_NOTES_RECORDS_AT], rules[RG_NOTES_RECORDS] * record_bytes)
+  records = Array.new(rules[RG_NOTES_RECORDS]) do |at|
+    bytes = held_bytes.byteslice(at * record_bytes, record_bytes)
+    [*bytes.unpack("vvCCCCvC"), bytes, at]
+  end
+  records = records.take_while { |record| record[0] != RG_NOTE_ENDS_PART }
   records = records.each_with_index.sort_by { |record, place| [record[0], place] }.map(&:first)
 
   events = []
-  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1)
-  records.each_with_index do |(tick, length, key, instrument, volume, pan, loudness, clock_byte), n|
+  rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1, -1, -1, 0)
+  records.each_with_index do |(tick, length, key, instrument, volume, pan, loudness, clock_byte, bytes, place), n|
     named = instrument < instruments
     played = key < RG_NOTE_KEYS ? key : -1
     clock = rg_start_file_event_clock(clock_byte, played, rules[RG_NOTES_CLOCKS])
-    rg_start_file_keep_event(events, RgStartFileEvent.new(frame_of.call(tick), clock >= 0 ? 0 : played, named ? instrument + 1 : 0,
-                                                          named ? rules[same_recording + instrument] : -1,
-                                                          rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED]),
-                                                          rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock),
-                             total_frames)
+    event = RgStartFileEvent.new(frame_of.call(tick), clock >= 0 ? 0 : played, named ? instrument + 1 : 0,
+                                 named ? rules[same_recording + instrument] : -1,
+                                 rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED]),
+                                 rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0)
+    rg_start_file_event_voice(event, bytes, takes) if takes != 0 && played >= 0
+    # A recorded note between keys has a row of its own, one for each record.
+    if event.hz >= 0 && rules[hz_rules] == RG_HZ_RECORDED
+      event.row = rules[hz_rules + 3] + place
+      rg_start_file_hz_row(note_sounds, event.row, rules, hz_rules, event.instrument, event.hz)
+    end
+    rg_start_file_keep_event(events, event, total_frames)
     ends = tick + length
     next unless length.positive? && !(n + 1 < records.length && records[n + 1][0] <= ends)
 
@@ -1034,7 +1212,9 @@ def rg_music_fill_notes(music, rules, tick_frames)
       ending = events.last
       if held && held.key >= 0
         strike = !(ending.key == held.key && ending.recording == held.recording && ending.volume == held.volume &&
-                   ending.side == held.side && ending.clock == held.clock)
+                   ending.side == held.side && ending.clock == held.clock && ending.pitch == held.pitch &&
+                   ending.fade == held.fade && ending.duty == held.duty && ending.vibrato == held.vibrato &&
+                   ending.slide == held.slide && ending.hz == held.hz && ending.glides == held.glides)
       else
         silence = !ending.nil? && ending.key >= 0
       end
@@ -1079,4 +1259,14 @@ def rg_music_fill_song_length(music, rules, tick_frames)
   loop_frame = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LOOP + 1)) if rules[RG_LENGTH_LOOP] != 0
   music[song] = total
   music[song + 1] = loop_frame < total ? loop_frame : 0
+end
+
+# --- a part's wave in the file (rg_music.h, rg_music_fill_wave; rg_music.c says each step) ---
+
+RG_WAVE_FILL_BYTES = 16
+RG_WAVE_FILL_STEPS = 32
+
+def rg_music_fill_wave(waveforms, which, at)
+  steps = @rg_start_file.byteslice(at, RG_WAVE_FILL_BYTES).bytes.flat_map { |byte| [byte >> 4, byte & 0xF] }
+  waveforms[1 + (which * RG_WAVE_FILL_STEPS), RG_WAVE_FILL_STEPS] = steps
 end

@@ -232,7 +232,8 @@ module VBlank
         def outside_writes = @names.outside_writes
 
         def rewritten(node)
-          @names = LocalNames.new(node)
+          # Only VBlank's own files go without following instance variables (PlainRuby.library_file?).
+          @names = LocalNames.new(node, library_file: !@follows_instance_variables)
           @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
           rewritten_text(node)
         end
@@ -450,12 +451,14 @@ module VBlank
         end
 
         # In a method, `def self.setup` above all, it would run on whatever the method runs on, and
-        # name nothing a game reads, so it is refused there.
+        # name nothing a game reads, so it is refused there. The arguments are passed as written,
+        # so `saved: false` arrives as a keyword and a name given as `states: :lit_state` among the
+        # rest.
         def game_variables_text(node)
           return "#{INSTANCE_VARIABLES}.refuse_named_in_method!" if @in_method
 
-          names = node.arguments ? rewritten_text(node.arguments) : ""
-          "#{INSTANCE_VARIABLES}.name_game_variables(self, [#{names}])"
+          names = node.arguments ? ", #{rewritten_text(node.arguments)}" : ""
+          "#{INSTANCE_VARIABLES}.name_game_variables(self#{names})"
         end
 
         # What each of Ruby's attribute calls makes: a reader, a writer, or both.
@@ -809,7 +812,15 @@ module VBlank
         end
 
         def kept_value_text(value, write = nil)
-          return "#{STEPS}.kept_answer((#{value_text(value)}))" if write && @names.read_after_it_changes?(write)
+          if write && @names.read_after_it_changes?(write)
+            # A game variable the line hands back (`floors = routine_var(:floors)`, `col_x = @col_x`)
+            # is the variable itself, as the object a Ruby name is given is: kept only for a call,
+            # it stays that variable and follows its own `floors.increase!(1)`. A change the source
+            # writes to a name the line reads still copies one, as `old = hp` keeps hp's number.
+            handed_back = !@names.kept_for_named_change?(write)
+            copy_variable_text = handed_back ? ", copy_variable: false" : ""
+            return "#{STEPS}.kept_answer((#{value_text(value)})#{copy_variable_text})"
+          end
           return value_text(value) unless value.is_a?(Prism::LocalVariableReadNode) && @names.variable_read?(value)
 
           "#{STEPS}.copy_of_variable(#{rewritten_text(value)})"

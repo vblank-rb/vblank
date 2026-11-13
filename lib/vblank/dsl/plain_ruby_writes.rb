@@ -39,6 +39,7 @@ module VBlank
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
                   before_plain_start: 0, owner: nil, starting: false)
           if owner
+            InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)
             first = InstanceVariables.first_variable(owner, current, value, label)
             # A Hash or Array of game variables is a start wherever it is given: no line sets it whole.
             if first && (!Steps.variable?(first) || !InstanceVariables.first_number_set_where_reached?(starting))
@@ -142,8 +143,18 @@ module VBlank
         # the write changes it. +owner+ and +label+ name a game's own instance variable, as #write's do.
         # The variable a promotion makes is the place's own too, so a later line giving the place
         # another game variable (`@held = @states[0]`) copies the number into it.
+        #
+        # A named instance variable still holding nil is left as it is. The line that sets it may be
+        # one this build skips, under a test decided while building (`@secret = called if
+        # @secret_floor`, with `@secret_floor` false), and then no game code reads or writes it, so
+        # it has no variable. Where the line does run, its write decides
+        # (InstanceVariables.refuse_nil_written_under_game_test!).
         def promote_place(value, test, *outer, may_stay_nil: false, owner: nil, label: nil)
-          value = InstanceVariables.promotion_target(owner, value, label, test) if owner
+          if owner
+            return value if value.nil? && InstanceVariables.followed?(owner, label)
+
+            value = InstanceVariables.promotion_target(owner, value, label, test)
+          end
           return value if Steps.variable?(value)
 
           promoted = promote(value, test, *outer, may_stay_nil: may_stay_nil)

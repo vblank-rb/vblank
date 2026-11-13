@@ -122,7 +122,7 @@ module VBlank
           def save_routine(record, piece) = Messages::MadeNames.make(:save_record, record: record, piece: piece)
 
           def save_record_named(program, record)
-            records = save_records_of(program)
+            records = program.save_data_records
             found = records.find { |one| one.first == record }
             return found if found
 
@@ -130,11 +130,6 @@ module VBlank
             raise ArgumentError,
                   "This program declares no save_data :#{record}. " +
                   (known.empty? ? "It declares no save_data records." : "Its save_data records are #{known.join(', ')}.")
-          end
-
-          def save_records_of(program)
-            node = program.walk.find { |one| one.kind == :save_memory }
-            (node&.records || []).reject { |one| one.first == SaveLayout::SAVE_VAR_RECORD }
           end
 
           def refuse_copy_out_of_range!(name, copy, copies)

@@ -104,15 +104,33 @@ module VBlank
 
             WORDS = [FIRST, LAST, WANT_FIRST, WANT_LAST, OWN_FIRST, OWN_END, VALID, OLD_FIRST, OLD_END, CLEARED,
                      NOW_LINE, NOW_IN, NOW_WINDOW, ENTRY_WINDOW, END_WINDOW].freeze
+            # The words a band the game named keeps (#emit_named_band): where it is and where the
+            # picture is, and none of the rows painted.
+            NAMED_BAND_WORDS = [FIRST, LAST, NOW_LINE, NOW_IN, NOW_WINDOW, ENTRY_WINDOW, END_WINDOW].freeze
 
             module_function
 
-            def reserve(memory)
-              WORDS.each { |name| memory.reserve(name, 2) }
+            # +band+ is the console's first and last line of a band the game named, or nil for one
+            # worked out from the rows painted.
+            def reserve(memory, band: nil)
+              (band ? NAMED_BAND_WORDS : WORDS).each { |name| memory.reserve(name, 2) }
               memory.reserve(TABLE, TABLE_BYTES)
             end
 
             def kept?(memory) = memory.reserved?(FIRST)
+
+            # Whether the band is worked out from the rows each pass paints, rather than named by the game.
+            def follows_rows?(memory) = memory.reserved?(OWN_FIRST)
+
+            # Whether the band is the one the game named (`screen :bitmap, shown_rows:`).
+            def named_band?(memory) = kept?(memory) && !follows_rows?(memory)
+
+            # The console's first and last line of the band +program+ names (Program#shown_rows), or
+            # nil for one that names none. The screen's row y is the console's line y + 1.
+            def band_of(program)
+              first, past = program.shown_rows
+              first && [first + 1, past]
+            end
 
             # At power-on (in rt_paint_start, A 16 bits wide): the whole screen on, and no rows painted.
             def emit_start(asm, memory)
@@ -120,8 +138,98 @@ module VBlank
               asm.sta(asm.abs(memory[FIRST]))
               asm.lda(WHOLE_LAST)
               asm.sta(asm.abs(memory[LAST]))
+              return unless follows_rows?(memory)
+
               asm.lda(Paint::ROWS)
               asm.sta(asm.abs(memory[OWN_FIRST]))
+            end
+
+            # A BAND THE GAME NAMED (`screen :bitmap, shown_rows:`): the same switching off and the
+            # same window as above, on lines that never change, so the line table is known when the
+            # game is built and nothing is worked out from the rows painted. +band+ is the console's
+            # first and last line shown. It goes in force as the first pass is shown
+            # (rt_letterbox_show_band, from Frame's rt_show_pass), and stays.
+            #
+            # A FADE TO BLACK IS THE DISPLAY'S BRIGHTNESS, the low bits of INIDISP, the register the
+            # table writes: the band's entries write the brightness in force, so the fade reaches the
+            # lines shown. With +dims+ it is Tint's (rt_letterbox_brightness, from Tint.emit_brightness),
+            # which never writes INIDISP itself here: the screen would come on below the band, where
+            # the copy is writing video RAM.
+            #
+            #   rt_letterbox_show_band   in the blank, as the first pass is shown (JSR): the band in force
+            #   rt_letterbox_brightness  (JSR) A's low byte the brightness the band is shown at
+            def emit_named_band(asm, memory, band, dims:)
+              emit_show_band(asm, memory, band, dims)
+              emit_band_brightness(asm, memory, band)
+              emit_now(asm, memory)
+              emit_waits(asm, memory, named: true)
+            end
+
+            # The line table for +band+, as [lines, value] entries: off above it, on for it (:band,
+            # the brightness in force), off for a line below it, which holds to the end of the frame.
+            def named_table(band)
+              h = Console::SNESHardware
+              first, last = band
+              entries = lines_in_entries(first - 1, h::FORCED_BLANK) + lines_in_entries(last - first + 1, :band)
+              entries + [[1, h::FORCED_BLANK]]
+            end
+
+            # +lines+ (none or more) of +value+ as entries of the table, MOST_LINES_AN_ENTRY at most each.
+            def lines_in_entries(lines, value)
+              Array.new((lines + MOST_LINES_AN_ENTRY - 1) / MOST_LINES_AN_ENTRY) do |at|
+                [[lines - (at * MOST_LINES_AN_ENTRY), MOST_LINES_AN_ENTRY].min, value]
+              end
+            end
+
+            def emit_show_band(asm, memory, band, dims)
+              h = Console::SNESHardware
+              table = memory[TABLE]
+              channel = h::DMA_BASE + (CHANNEL << 4)
+              asm.label("rt_letterbox_show_band")
+              asm.lda(band[0])
+              asm.sta(asm.abs(memory[FIRST]))
+              asm.lda(band[1])
+              asm.sta(asm.abs(memory[LAST]))
+              entries = named_table(band)
+              entries.each_with_index do |(lines, value), at|
+                asm.lda(lines | ((value == :band ? h::FULL_BRIGHTNESS : value) << 8))
+                asm.sta(asm.abs(table + (at * 2)))
+              end
+              asm.stz(asm.abs(table + (entries.length * 2)))
+              asm.lda(h::FULL_BRIGHTNESS)
+              if dims
+                asm.sec
+                asm.sbc(asm.abs(memory[Tint::DIMMED]))
+              end
+              asm.jsr(asm.abs("rt_letterbox_brightness"))
+              # The channel: one byte a line to INIDISP, from the table. The screen goes off now, in
+              # the blank, and the table puts it on for the band from the frame's first line.
+              asm.lda(table)
+              asm.sta(asm.abs(channel + h::A1TL))
+              asm.sep(0x20)
+              asm.stz(asm.abs(channel + h::DMAP))
+              asm.lda(h::INIDISP & 0xFF)
+              asm.sta(asm.abs(channel + h::BBAD))
+              asm.stz(asm.abs(channel + h::A1B))
+              asm.lda(h::FORCED_BLANK)
+              asm.sta(asm.abs(h::INIDISP))
+              asm.lda(1 << CHANNEL)
+              asm.sta(asm.abs(h::HDMAEN))
+              asm.rep(0x20)
+              asm.rts
+            end
+
+            # rt_letterbox_brightness: A's low byte into each entry of the band, which the table
+            # writes to INIDISP from the next frame on. A is kept.
+            def emit_band_brightness(asm, memory, band)
+              table = memory[TABLE]
+              asm.label("rt_letterbox_brightness")
+              asm.sep(0x20)
+              named_table(band).each_with_index do |(_, value), at|
+                asm.sta(asm.abs(table + (at * 2) + 1)) if value == :band
+              end
+              asm.rep(0x20)
+              asm.rts
             end
 
             # Where a pass clears the whole screen (A 16 bits wide; A is not kept).
@@ -359,8 +467,10 @@ module VBlank
               asm.rts
             end
 
-            def emit_waits(asm, memory)
+            # +named+ for a band the game named, which never changes, so nothing is put in force here.
+            def emit_waits(asm, memory, named: false)
               at = ->(name) { asm.abs(memory[name]) }
+              return emit_window_waits(asm, memory, at) if named
               # A band that is not the one in force is put in force first, in the next blank, and
               # the copy starts there. Otherwise the copy starts in a window whose interrupt had
               # not come as the wait began: the one opening below the band, or the next one if the
@@ -378,6 +488,12 @@ module VBlank
               asm.label("rt_letterbox_wait_changed")
               asm.jmp(asm.abs("rt_letterbox_apply"))
               asm.label("rt_letterbox_wait_same")
+              emit_window_waits(asm, memory, at)
+            end
+
+            # rt_letterbox_wait's wait for a window, then rt_letterbox_shown and rt_letterbox_next.
+            def emit_window_waits(asm, memory, at)
+              asm.label("rt_letterbox_wait") unless follows_rows?(memory)
               asm.lda(at.call(Frame::FRAMES))
               asm.sta(at.call(ENTRY_WINDOW))
               asm.label("rt_letterbox_wait_window")

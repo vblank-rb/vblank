@@ -17,11 +17,10 @@
 
 const rg_driver *rg_active_driver;
 
-#define ONE_PLAYERS_BUTTONS 0x1FFFu /* thirteen, as IR::Buttons::NAMES has: the Genesis's C is the last */
-
 /* EACH PLAYER'S BUTTONS, a number each, the first player's first (IR::Buttons.masks), a bit a
- * button. The lists are as long as the most players any build reads; only the first +connected+
- * can hold anything, and a player past them holds nothing. */
+ * button; RG_ONE_PLAYERS_BUTTONS (rg_console.h) has every button's bit set. The lists are as long
+ * as the most players any build reads; only the first +connected+ can hold anything, and a player
+ * past them holds nothing. */
 static uint32_t held[RG_MOST_PLAYERS];    /* buttons down now */
 static uint32_t seen[RG_MOST_PLAYERS];    /* ...and at the last frame boundary, to tell a press from a hold */
 static uint32_t pressed[RG_MOST_PLAYERS]; /* buttons that went down at the last frame boundary */
@@ -33,7 +32,7 @@ static void hold_players(int32_t count, const uint32_t *masks) {
   if (count > RG_MOST_PLAYERS) count = RG_MOST_PLAYERS;
   if (count > connected) connected = count;
   for (int32_t player = 0; player < RG_MOST_PLAYERS; player++)
-    held[player] = player < count ? masks[player] & ONE_PLAYERS_BUTTONS : 0;
+    held[player] = player < count ? masks[player] & RG_ONE_PLAYERS_BUTTONS : 0;
 }
 
 /* A button counts as pressed on the one frame it goes down, however long it is then held — the
@@ -373,7 +372,7 @@ void rg_dump_list(const struct rg_list *list) {
 
 /* A button's bit in +buttons+, or any of the first player's for -1. */
 static int32_t button_down(uint32_t buttons, int32_t button) {
-  if (button < 0) return (buttons & ONE_PLAYERS_BUTTONS) != 0;
+  if (button < 0) return (buttons & RG_ONE_PLAYERS_BUTTONS) != 0;
   return (int32_t)((buttons >> button) & 1u);
 }
 
@@ -417,9 +416,35 @@ void rg_start_file_hand(const uint8_t *bytes, int32_t size) {
   start_file_size = size;
 }
 
+/* The whole of +file+, whose size can be asked, read straight into the start file's room, so a
+ * copy of hundreds of megabytes is held once as it is read and not twice. 1 when it was read, 0
+ * when it could not be, and -1 when the file cannot say its size (a pipe), which is then read
+ * a piece at a time. */
+static int read_sized_start_file(FILE *file) {
+  if (fseek(file, 0, SEEK_END) != 0) return -1;
+  long size = ftell(file);
+  if (size < 0 || fseek(file, 0, SEEK_SET) != 0) return -1;
+  if (size > INT32_MAX) return 0;
+  uint8_t *bytes = malloc(size > 0 ? (size_t)size : 1);
+  if (!bytes) return 0;
+  if (fread(bytes, 1, (size_t)size, file) != (size_t)size || fgetc(file) != EOF) {
+    free(bytes);
+    return 0;
+  }
+  free(start_file);
+  start_file = bytes;
+  start_file_size = (int32_t)size;
+  return 1;
+}
+
 int rg_start_file_read(const char *path) {
   FILE *file = fopen(path, "rb");
   if (!file) return 0;
+  int sized = read_sized_start_file(file);
+  if (sized >= 0) {
+    fclose(file);
+    return sized;
+  }
   uint8_t *bytes = NULL;
   size_t size = 0;
   size_t room = 0;
@@ -539,6 +564,38 @@ static int32_t start_file_walked_color(int32_t color, int32_t far, int32_t steps
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made) {
   for (int32_t entry = 0; entry < count; entry++)
     colors[first + entry] = start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2]);
+}
+
+/* +color+ as a walk from +far+ that waits for a falling count shows it after +steps+ steps of
+ * +step+, the count starting at +count+ (Graphics::Color.counted_walk, which states the rule). */
+static int32_t start_file_counted_walk_color(int32_t color, int32_t far, int32_t step, int32_t count, int32_t steps) {
+  int32_t walked = 0;
+  for (int32_t shift = 0; shift <= 10; shift += 5) {
+    int32_t height = (color >> shift) & 31, level = (far >> shift) & 31;
+    int32_t toward = height > level ? 1 : -1;
+    for (int32_t number = 1; number <= steps; number++) {
+      int32_t now = count - (step * number);
+      if (now < 0) now = 0;
+      int32_t to_go = (height - level) * toward;
+      if (to_go < 0) {
+        level -= toward * step;
+        if ((height - level) * toward > 0) level = height;
+      } else if (to_go > 0 && to_go >= now) {
+        level += toward * step;
+        if (level < 0) level = 0;
+        if (level > 31) level = 31;
+      }
+    }
+    walked |= level << shift;
+  }
+  return walked;
+}
+
+void rg_start_file_count_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made) {
+  for (int32_t entry = 0; entry < count; entry++) {
+    const int32_t *its = made + (entry * 5);
+    colors[first + entry] = start_file_counted_walk_color(colors[its[0]], its[1], its[2], its[3], its[4]);
+  }
 }
 
 /* Is +held+, the sixteen bits a pixel or a colour is kept in, a marker (IR::StartFile, "MARKERS")?
@@ -682,13 +739,13 @@ int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
 }
 
 void rg_start_file_fill_pose(const int32_t *rules) {
-  int32_t kind = rules[0], total = rules[1], start = rules[2], width = rules[3], height = rules[4], turn = rules[5];
-  int32_t colors_at = rules[6], colors_count = rules[7], swapped_count = rules[8], entry_at = rules[9], records_at = rules[10];
-  int32_t origin_x = rules[11], origin_y = rules[12], tiles_at = rules[13], tile_count = rules[14], only_bank = rules[15];
+  int32_t kind = rules[0], total = rules[1], copies = rules[2], width = rules[3], height = rules[4], turn = rules[5];
+  int32_t colors_at = rules[6], colors_count = rules[7], entry_at = rules[8], records_at = rules[9];
+  int32_t origin_x = rules[10], origin_y = rules[11], tiles_at = rules[12], tile_count = rules[13], only_bank = rules[14];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
-  const int32_t *swapped = held_colors + (colors_at < 0 ? colors_count : 0);
+  const int32_t *copy = held_colors + (colors_at < 0 ? colors_count : 0);
   int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first);
   int32_t *places = calloc((size_t)(width * height), sizeof *places);
   if (!places) rg_fault("there is no room to paint a pose of %d by %d pixels", (int)width, (int)height);
@@ -699,25 +756,34 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   }
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
-  for (int32_t row = 0; row < height; row++) {
-    for (int32_t column = 0; column < width; column++) {
-      int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
-      int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
-      int32_t place = places[(from_row * width) + from_column];
-      uint16_t color = 0xFFFFu;
-      if (place != 0) {
-        color = 0;
-        if (place < swapped_count) {
-          color = (uint16_t)swapped[place];
-        } else if (place < colors_count) {
-          color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+  for (int32_t each = 0; each < copies; each++) {
+    int32_t start = copy[0], swapped_count = copy[1];
+    const int32_t *swapped = copy + 2;
+    for (int32_t row = 0; row < height; row++) {
+      for (int32_t column = 0; column < width; column++) {
+        int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;
+        int32_t from_column = (turn & RG_TURN_MIRRORED) ? width - 1 - column : column;
+        int32_t place = places[(from_row * width) + from_column];
+        uint16_t color = 0xFFFFu;
+        if (place != 0) {
+          color = 0;
+          if (place < swapped_count) {
+            color = (uint16_t)swapped[place];
+          } else if (place < colors_count) {
+            color = colors_at < 0 ? (uint16_t)held_colors[place] : start_file_color(colors_at, color_format, place);
+          }
         }
+        if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
+        else image_pixels[start + (row * width) + column] = (int16_t)color;
       }
-      if (tile_pixels) tile_pixels[start + (row * width) + column] = color;
-      else image_pixels[start + (row * width) + column] = (int16_t)color;
     }
+    copy = swapped + swapped_count;
   }
   free(places);
+}
+
+void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels) {
+  memcpy(rg_screen_tile_pixels_to_fill(total) + start, pixels, (size_t)count * sizeof *pixels);
 }
 
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks) {

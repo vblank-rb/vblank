@@ -23,6 +23,8 @@ require "pack_place_games"
 require "m4a_answers"
 require "brr_recordings"
 
+VBlank.require_game_file "plain_ruby_flagged_bytes_part"
+
 # EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
 # (`pack_at_start: true`), the pack handed as a file as the game starts, which is what a shell
@@ -64,8 +66,11 @@ module PackGames
 
   # WHICH RUNS REFUSE A GAME BUILT WITH ITS PACK LEFT OUT. The builder refuses on every run. A
   # lowering refuses only where a build for a computer is made, so the interpreter plays the game,
-  # and must play it as the all-in-one build.
-  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates].freeze
+  # and must play it as the all-in-one build. A build for a computer refuses some games only as a
+  # console whose sound chip does what the Advance's does not: mixing recordings at their own
+  # rates, or playing every voice from sound memory (the PlayStation).
+  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates
+                  computer_build_voices_reading_sound_memory].freeze
 
   # A refusal: a phrase its words hold besides the fix, and who refuses (one of REFUSED_BY).
   # +names_fix+ is false for a refusal whose words do not say yet that building all-in-one works;
@@ -892,6 +897,9 @@ module PackGames
       game(:list_from_the_pack_walked_up_from_white, passes: WALK_STEPS + 2) do |folder, options|
         built(*walking_game_and_file(layout_original(folder, GENESIS), options: options))
       end,
+      game(:list_from_the_pack_walked_up_by_a_falling_count, passes: COUNTED_WALK_STEPS + 2) do |folder, options|
+        built(*walking_game_and_file(layout_original(folder, GENESIS), options: options, counted: true))
+      end,
       game(:picture_drawn_in_a_list_from_the_pack_blitted, passes: 2) do |folder, options|
         built(*blitting_game_and_file(layout_original(folder, GENESIS), options: options))
       end,
@@ -1132,6 +1140,11 @@ module PackGames
           recolor :palette_2, :other
         end
       end,
+      # Several sprites sharing poses, each following the list its pose's frame picks, two of
+      # those lists recoloured through sets of their own.
+      game(:actors_sharing_poses_whose_lists_are_recolored, passes: 6) do |folder, options|
+        built_by(recolored_actors_builder(folder, size: SIZE, options: options))
+      end,
       # Only the pieces of the bank given are painted, the file saying which those are.
       game(:pose_of_one_banks_pieces, passes: 3) do |folder, options|
         built_by(game_builder_of(folder, options: options) do |pack|
@@ -1241,6 +1254,7 @@ module PackGames
       parts.each_value.with_index { |notes, place| copy[place * MOST * PackNote::BYTES, MOST * PackNote::BYTES] = records(notes) }
       copy[SETTINGS_AT, SHAPE.length + 1] = [*SHAPE, HOLDS_FROM].pack("C*")
       copy[TIMING_AT, TIMING.length * 2] = TIMING.pack("v*")
+      copy[WAVES_AT, WAVES.flatten.length] = WAVES.flatten.pack("C*")
       path = File.join(folder, "made_up_songs.bin")
       File.binwrite(path, copy)
       VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -1250,7 +1264,9 @@ module PackGames
 
     # A game whose songs and sound effects the block makes, handed a way to get a part's notes by
     # slot name and the instrument settings of the pack. It plays song 0 on A and effect 0 on B.
-    private def scores_game(folder, options, parts, instruments: {}, &scores)
+    # With +waves+ the pack has a slot of the copy's waves, and the block is handed a way to get
+    # one for a part's `plays:` too.
+    private def scores_game(folder, options, parts, instruments: {}, waves: false, &scores)
       from = score_original(folder, parts)
       b = VBlank::Builder.new(options: options)
       b.instance_eval do
@@ -1260,6 +1276,7 @@ module PackGames
           parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
           slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
           slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+          slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
         end
         # A part takes the slot's handle itself too, where its notes name no instrument.
         # A word for the notes written by hand (`recorded:`) means nothing to the pack's.
@@ -1268,7 +1285,9 @@ module PackGames
         end
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
         timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
-        made = instance_exec(notes_of, settings, timing, &scores)
+        wave_of = ->(index) { pack[:waves].wave(index) }
+        # A block may be a lambda, which takes only the arguments it names.
+        made = instance_exec(notes_of, settings, timing, *(wave_of if waves), &scores)
         music = songs :music, made.fetch(:songs)
         effects = (sound_effects :sfx, made[:effects] if made[:effects])
         game_loop do
@@ -1326,6 +1345,17 @@ module PackGames
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low)),
                                       Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
                               tempo: 150, longest: 300, **timing)] }
+        end
+      end,
+      # A song's wave part and a sound effect's, each playing a wave of the copy's, as a sound
+      # driver keeps its wave voice's patterns; the effect's notes are written in the game.
+      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] },
+                                           refused: Refusal.new(phrase: "sound memory", by: :computer_build_voices_reading_sound_memory)) do |folder, options|
+        scores_game(folder, options, { lead: LEAD, wave: WAVE }, waves: true) do |notes_of, _settings, _timing, wave_of|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
+                              tempo: 150, length: 84, loop_from: 36)],
+            effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)],
+                                                 plays: wave_of.(0))], tempo: 150, length: 24)] }
         end
       end,
       # A length from the pack with no most it can be leaves the build no room to make.
@@ -1623,12 +1653,52 @@ module PackGames
       end,
       game(:tile_of_a_scene_in_colours_of_its_own_taking_turns_through_pack_pictures, passes: 10) do |folder, options|
         built(*lair_game_and_file(folder, options: options))
+      end,
+      game(:tile_taking_turns_on_a_background_of_many_cells_in_two_banks, passes: 8) do |folder, options|
+        built(*title_belt_game_and_file(folder, words: PackTilePictureGames.title_belt_words(24), options: options))
+      end,
+      game(:cell_written_with_set_cell_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
+        built(*written_cell_game_and_file(folder, options: options))
+      end
+    ].freeze
+  end
+
+  # BYTES UNPACKED BY A ROUTINE WRITTEN IN A GAME FILE (FlaggedBytes, test/plain_ruby_flagged_bytes_part.rb),
+  # whose locals hold the bytes read before the place moves on, drawn as a row of marks a pass.
+  class FlaggedBytesUnpacked < Kit
+    private def flagged_original(folder)
+      copy = FlaggedBytes::PACKED.pack("C*")
+      path = File.join(folder, "made_up_flagged.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    end
+
+    GAMES = [
+      game(:bytes_unpacked_by_a_routine_in_a_game_file, passes: FlaggedBytes::UNPACKED_COUNT + 2) do |folder, options|
+        from = flagged_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          clear_screen :black
+          pack = flagged_bytes_pack(self, from, by_method: true)
+          unpacked = table :unpacked_bytes, pack[:unpacked]
+          step = var :step, 0
+          game_loop do
+            draw_rect_at unpacked[step] * 2, step * 8, 4, 4, :white if step < FlaggedBytes::UNPACKED_COUNT
+            step += 1
+          end
+        end
+        b.finalize_program
+        built_by(b)
       end
     ].freeze
   end
 
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures].freeze
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
+          FlaggedBytesUnpacked].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

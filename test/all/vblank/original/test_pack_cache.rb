@@ -39,11 +39,23 @@ class TestPackCache < Minitest::Test
   private def kept_entries(cache) = Dir.glob(File.join(cache, "**", "*.pack"))
 
   # What was kept, its walls made blank, so a build that reads it draws something else.
-  private def blank_the_kept_walls(cache)
+  private def blank_the_cached_walls(cache)
     kept_entries(cache).each do |path|
-      slots = Marshal.load(File.binread(path)) # rubocop:disable Security/MarshalLoad -- the test's own file
-      File.binwrite(path, Marshal.dump(slots.merge(walls: "\0".b * slots.fetch(:walls).bytesize)))
+      kept = Pack.read(path)
+      Pack.holding(kept.slots.merge(walls: "\0".b * kept.bytes_of(:walls).bytesize), sha1: kept.rom_sha1,
+                                                                                     build_version: kept.build_version).write(path)
     end
+  end
+
+  Pack = VBlank::Original::Pack
+  CACHED_SHA1 = "0123456789abcdef0123456789abcdef01234567"
+
+  # The pack the cache keeps for +unpacking+, the block's walls written by the block it is handed.
+  private def cached_walls(cache, unpacking)
+    made = cache.pack(unpacking, sha1: CACHED_SHA1, build_version: "1") do |path|
+      Pack.holding({ walls: yield }, sha1: CACHED_SHA1, build_version: "1").write(path)
+    end
+    made.bytes_of(:walls)
   end
 
   def test_a_second_build_with_the_same_copy_and_routine_reads_what_the_first_kept
@@ -54,7 +66,7 @@ class TestPackCache < Minitest::Test
       assert_equal 1, kept_entries(cache).size
       assert_equal first, picture(cached_game(folder, cache)), "a pack read back plays as the one it was made from"
 
-      blank_the_kept_walls(cache)
+      blank_the_cached_walls(cache)
 
       refute_equal first, picture(cached_game(folder, cache)), "the second build reads the kept pack, not the routine"
     end
@@ -64,7 +76,7 @@ class TestPackCache < Minitest::Test
     Dir.mktmpdir do |folder|
       cache = File.join(folder, "packs")
       first = picture(cached_game(folder, cache))
-      blank_the_kept_walls(cache)
+      blank_the_cached_walls(cache)
 
       assert_equal first, picture(cached_game(folder, cache, swapped: true))
       assert_equal 2, kept_entries(cache).size
@@ -78,11 +90,25 @@ class TestPackCache < Minitest::Test
       cache = File.join(folder, "packs")
       program = halting_program
       kept = VBlank::Original::PackCache.new(cache)
-      first = kept.slot_bytes(UnpackingOfCopy.new(program: program, copy_bytes: "one copy")) { { walls: "first" } }
-      second = kept.slot_bytes(UnpackingOfCopy.new(program: program, copy_bytes: "another copy")) { { walls: "second" } }
+      first = cached_walls(kept, UnpackingOfCopy.new(program: program, copy_bytes: "one copy")) { "first" }
+      second = cached_walls(kept, UnpackingOfCopy.new(program: program, copy_bytes: "another copy")) { "second" }
 
-      assert_equal [{ walls: "first" }, { walls: "second" }], [first, second]
+      assert_equal %w[first second], [first, second]
       assert_equal 2, kept_entries(cache).size
+    end
+  end
+
+  # A game's own test that plays its routine itself keeps the slots it wrote, and reads them back
+  # the next time without playing it.
+  def test_slots_a_test_kept_are_read_back_without_playing_the_routine_again
+    Dir.mktmpdir do |folder|
+      kept = VBlank::Original::PackCache.new(folder)
+      unpacking = UnpackingOfCopy.new(program: halting_program, copy_bytes: "a copy")
+      first = kept.slot_bytes(unpacking) { { walls: "first".b, heights: "\1\2".b } }
+      second = kept.slot_bytes(unpacking) { flunk "the routine played again" }
+
+      assert_equal({ walls: "first", heights: "\1\2" }, first)
+      assert_equal first, second
     end
   end
 
@@ -141,10 +167,10 @@ class TestPackCache < Minitest::Test
     go = Queue.new
     threads = Array.new(THREADS_STORING) do
       Thread.new do
-        cache.slot_bytes(unpacking) do
+        cached_walls(cache, unpacking) do
           missed << true
           go.pop
-          { walls: "\1".b * 65_536 }
+          "\1".b * 65_536
         end
       end
     end

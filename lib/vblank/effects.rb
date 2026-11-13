@@ -125,6 +125,7 @@ module VBlank
         verbs = pack.public_instance_methods(false)
         helpers = pack.private_instance_methods(false)
         (verbs + helpers).each { |name| refuse_taken_verb!(name, pack) }
+        pack_checks(pack).each { |check| IR::Guardrails.refuse_unshareable_check!(check) }
 
         verbs.each { |name| VERBS.define_method(name, pack.instance_method(name)) }
         # A helper comes along too, or the verb that calls it breaks. It is copied

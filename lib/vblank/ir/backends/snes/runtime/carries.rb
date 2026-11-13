@@ -20,7 +20,10 @@ module VBlank
           # +recording_voices+. +holds_music+, +wobbles+, +steps_shapes+, +swells+, +slides+ and +sides+
           # are the parts of the player its songs use. +status_bar+ has a status bar (Picture's
           # rt_bar_place), on the third layer with +third_layer+ (a screen shows it beside two other
-          # backgrounds), and +row_held+ a background held above a row, which takes the same line table.
+          # backgrounds), and +row_held+ a background held above a row, which takes the same line table;
+          # +alone_flag_in_line_table+ has the line table read how alone the held background is
+          # (Lowering::Picture.alone_flag_in_line_table?), and +held_hides_sprites+ shows one alone
+          # without sprites.
           # +bends+ bends a background row by row, a scene's own with +scene_bends+. +tile_runs+ is the
           # bytes of each run of tiles painted from lists, staged for the blank, +straight_tile_runs+ that
           # one of them keeps the console's own form, and +held_runs+ those with pictures held in the
@@ -35,13 +38,15 @@ module VBlank
           # +paint_turns+ keeps a second painted picture to swap with (PaintTurns). +chip_envelopes+
           # has a recording shaped by the sound chip's own envelope bytes (Recordings). +mosaic+ shows
           # its backgrounds in blocks (Mosaic). +recorded_pans+ has a recorded note that sits off the
-          # middle of the speakers (Recordings::SIDES).
+          # middle of the speakers (Recordings::SIDES). +shown_band+ is the console's first and last
+          # line the game's picture shows (`screen :bitmap, shown_rows:`), the screen switched off on
+          # the rest (Letterbox), or nil where it gives up none.
           Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
-                                :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
+                                :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
                                 :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
-                                :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans) do
+                                :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -58,7 +63,9 @@ module VBlank
                   wobbles: SNES::Music.wobbles?(program), steps_shapes: SNES::Music.steps_shapes?(program),
                   swells: SNES::Music.swells_under_level?(program), slides: SNES::Music.slides?(program),
                   sides: SNES::Music.sides_under_level?(program), status_bar: picture.status_bar?(program),
-                  row_held: picture.background_rows_held?(program), bends: picture.bends?(program),
+                  row_held: picture.background_rows_held?(program), alone_flag_in_line_table: picture.alone_flag_in_line_table?(program),
+                  held_hides_sprites: picture.held_hides_sprites?(program),
+                  bends: picture.bends?(program),
                   scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) ||
@@ -73,16 +80,21 @@ module VBlank
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
                   third_layer: picture.third_layer?(program),
                   chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
-                  recorded_pans: IR::Tunes.recorded_pans?(program))
+                  recorded_pans: IR::Tunes.recorded_pans?(program), shown_band: Letterbox.band_of(program))
             end
 
             # A Super FX on the board (Chip).
             def chip? = board.name == :super_fx
 
-            # A painted screen on a Super FX switched off above and below its picture (Letterbox).
-            # Not where the game changes its colours as it runs or fades to black: the black of the
-            # bars would have to follow, and the display's brightness is the fade's to set.
-            def letterboxes? = chip? && painted && !dims && !changing_colors
+            # A painted screen on a Super FX switched off above and below its picture (Letterbox),
+            # where the picture's rows painted decide the lines. Not where the game changes its
+            # colours as it runs or fades to black: the black of the bars would have to follow, and
+            # the display's brightness is the fade's to set. Not where the game named its rows.
+            def letterboxes? = chip? && painted && !dims && !changing_colors && shown_band.nil?
+
+            # The screen switched off above and below the picture on lines the game named
+            # (Letterbox, with a band of its own), or where the rows painted decide them.
+            def screen_off_round_picture? = letterboxes? || !shown_band.nil?
 
             # A line table for TM to carry: a status bar's, or the same for a background held above a row.
             def bar? = status_bar || row_held

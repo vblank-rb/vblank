@@ -66,7 +66,35 @@ from that copy. The game's code says each piece's shape and size; it never depen
     each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
     with a driver of its own writes these in its unpacking routine and needs nothing more (worked
     example: `test_a_port_with_a_sound_driver_of_its_own_plays_its_song_through_the_pack` in
-    `test/pack_scores_at_start_tests.rb`). An instrument's numbers can come
+    `test/pack_scores_at_start_tests.rb`).
+  - `slots.voiced_notes :title_0, count: 200` — **notes with their voice's settings, thirty-two bytes
+    each**: the twelve above, then what a `Score::Note` can say of its voice, each the note's only where
+    the names (bytes 20 and 21, a bit each, `Original::PackNote::NAMES`) name it: **a pitch number**
+    0 to 2047 in place of the key (bytes 12-13, `pitch_number:`, the Color's period; the key byte must
+    still be 127 or less), **a fade** (byte 14, the envelope register's four bits, 8 for a swell:
+    `decay:`/`swell:`), **a duty** (byte 15, two bits a frame for four frames: `duty:`), **vibrato**
+    (bytes 16-17, depth, speed less one and wait as `Audio::Vibrato#bits`; depth 0 is `:none`; the
+    names' CARRIES bit is `carries: true`), **a slide** (byte 18, the sweep register: `slide_up:` or
+    `slide_down:`, 0 for `:none`), and **a shade between the speakers** (byte 19, a signed byte in 64ths
+    from the middle, -64 the left alone to 64 the right: `pan: shade / 64r`, so `pan: -0.6875` is -44),
+    which is the note's in place of the speaker byte on any part, a recorded part too; and **a pitch
+    between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
+    the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
+    `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
+    where the console glides at all: the Super Nintendo and the PlayStation). A setting the
+    part's voice lacks (a duty off the squares, a fade on the wave, a slide off the song's first square,
+    a pitch number off the squares and the wave), or one past its range, is refused all-in-one as a note
+    written by hand is, and from the player's file is the part's own; a note whose slide and vibrato
+    would both move holds its vibrato still (`vibrato: :none`) from the file. `PackNote.bytes_of(notes,
+    count:, voiced: true)` writes them for a test, each note's ninth a Hash of its settings by name
+    (worked examples: `test_notes_with_their_voices_settings_from_the_pack_play_as_written_by_hand` in
+    `test/all/vblank/builder/test_pack_scores.rb`, and its twin read as the game starts in
+    `test/pack_scores_at_start_tests.rb`).
+  - `pack[:waves].wave(1)` — **a wave of the wave voice**: sixteen bytes of a slot of bytes from wave 1 on,
+    two steps a byte, the earlier in the high four bits (as the Game Boy's wave memory keeps them), for a
+    Score part's `plays:` in place of its 32 steps. Read where the game is built; a build that reads its
+    pack as the game starts reads the wave then, the part playing silence until it does. A PlayStation
+    build for a computer refuses that, since it makes each wave's sound memory as it is built. An instrument's numbers can come
     from slots too: `rate: pack[:tuning].number(3)`, `holds_from: pack[:loops].number(3)`, and
     `envelope: pack[:shapes].envelope(3)`, four bytes of a slot of bytes in an `Audio::Envelope`'s order.
     **An envelope kept as a Super Nintendo's sound chip keeps it** is `envelope:
@@ -164,10 +192,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
 
   A game has one `data_pack`. A slot with no `at:` is filled by the unpacking routine (below); a slot with
   no `at:` and no routine is refused.
-- **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack. It is **game
+- **The unpacking routine**: `slots.fill_from_copy do |copy, pack| … end`, one per pack, or given in named
+  parts, `slots.fill_from_copy :floors do … end` then `slots.fill_from_copy :music do … end`, which run in
+  that order as one routine would (each part named, no name twice; the cache below keeps them apart). It is **game
   code**, a program of its own (`Original::Unpacking`), so the same routine fills the pack as the game is
-  built (played to its `halt` on the interpreter) and on the player's machine (see "With the pack left
-  out" below). The
+  built (played to its `halt` the fastest way the machine has, below) and on the player's machine (see
+  "With the pack left out" below). The
   slots with `at:` are copied first, then the routine runs. Inside it, normal Ruby works as in a game block
   (`while` on a number read from the copy is a loop in the routine), and:
   - `copy.byte(at)` (0 to 255), `copy.half(at)`, `copy.word(at)`: low byte first; `big_endian: true` for
@@ -188,7 +218,13 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
     that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a
-    fixed rate has). SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    fixed rate has); on the wave voice's VOICE it writes the voice's wave pattern instead, sixteen bytes,
+    which a Score part plays with `plays: pack[:pattern].wave(0)`. **The console voices' own settings**:
+    `copy.unpack_m4a_voiced_track` takes what `unpack_m4a_track` does and writes into a slot of
+    `voiced_notes`, each note with its voice's duty (the squares), sweep (the first square, as a slide) and
+    envelope (the squares and the noise: an attack swells from silence, a decay fades from the note's
+    volume past the driver's sustain level, and with neither the note holds at the sustain level),
+    as the driver sets the voice up for the note. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
     drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
     in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
     voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is
@@ -260,12 +296,30 @@ from that copy. The game's code says each piece's shape and size; it never depen
   as the all-in-one build is made, and the pack keeps the result. Never redo it each time the game
   plays. VBlank takes a format in only when many games use it.
 
+  **How an all-in-one build runs the routine**: the fastest way the machine has
+  (`Original::Unpacking#write_pack_fastest`): built as C and optimised where zig 0.17 is installed,
+  else built as Ruby, else on the interpreter. A byte-at-a-time copy of 300 MB takes seconds as C
+  and minutes as Ruby. As C the routine writes the pack file itself, so the build holds the pack
+  once, and a list of bytes costs a byte an item. The compiled routine is kept by its C, so a build
+  whose routine has not changed does not compile it again. Every way writes the same pack, byte for
+  byte. A game's test that makes the pack file as a build does calls
+  `unpacking.write_pack_fastest(path, sha1:, build_version:)`; one that reads the routine's lists
+  and variables calls `unpacking.run_fastest` (or `run_as_c`, `run_as_ruby` for one way).
+
   **Keep what the unpacking wrote between builds** with `data_pack from: ..., version: ..., cache:
-  ".cache/packs"`, a folder git ignores. An all-in-one build runs the routine on the interpreter,
-  which for a big port takes most of a minute; with `cache:` a later build with the same copy, the
-  same routine, the same slots and the same VBlank reads the bytes back instead
-  (`Original::PackCache`). Leave it out and every build runs the routine. A build that leaves the
-  pack out never runs the routine, so it keeps nothing.
+  ".cache/packs"`, a folder git ignores. With `cache:` a later build with the same copy, the same
+  routine, the same slots, the same version and the same VBlank reads the pack file back instead
+  (`Original::PackCache`).
+  The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
+  in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
+  the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a
+  slot the other writes, or both name one variable, list or routine. Hand nothing from one part to
+  another in Ruby (an instance variable, a local both blocks share) or through `copy.bytes_done`:
+  the cache cannot see it, so pass it through a slot. The pack is the whole routine's,
+  byte for byte. A part that cannot be built alone (it calls a routine another part defines) keeps the
+  whole routine as one entry. `pack.unpacking_parts` gives the parts to a game's own test. Leave it out and
+  every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
+  nothing.
 
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines
@@ -438,17 +492,21 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   voice reads the recording, how far back a held note reads, the shape's four numbers), so the program holds a
   stand-in for each number worked out and the runtime writes it again from the file at power-on
   (`IR::StartFile::RecordingSettings`, the mix feature's `rg_mix_fill_steps`, `_holds` and `_shapes`). It sounds as the
-  all-in-one build does, played by the game, a song or a sound effect. **Nothing the file holds stops the game**,
-  where the all-in-one build refuses the same numbers: a rate below 1 plays as 1, so the recording all but stands
-  still, and a hold outside the recording is its first sample or its last. **A hold with every bit set is none**
+  all-in-one build does, played by the game, a song or a sound effect. **Nothing the pack holds stops the game**,
+  built either way: a rate below 1 plays as 1, so the recording all but stands still, and a hold outside the
+  recording is its first sample or its last. Built all-in-one the numbers are held by the same rules
+  (`IR::StartFile.rate_held`, `.hold_held`), so the two builds sound alike. The same numbers written in the game
+  are a friendly error. **A hold with every bit set is none**
   (255 in a byte, 65535 in two, 4294967295 in four, -1 where the slot goes below zero; `IR::StartFile.no_hold?`):
   the recording does not loop, and sounds as one written without `holds_from:`, built all-in-one too, so one slot
   of holds can say which recordings loop and which play once. **`length: pack[:lengths].number(3)`**
   is how many of the slot's samples the recording plays: the slot holds the most a recording can be, and a
   recording that reads back to an earlier sample does so from its own end, not through the rest of the slot.
   The build holds the whole slot's room and the runtime writes the length at power-on (`rg_mix_fill_length`,
-  `rg_mix_fill_backs`); one below 1 is 1 and one past the slot is all of it. Built all-in-one, a length past
-  the recording is a friendly error. **`rate:` from the pack on the Advance
+  `rg_mix_fill_backs`); one below 1 is 1 and one past the slot is all of it. Built all-in-one, the length is
+  held the same way (`IR::StartFile.length_held`), so a recording the player's copy does not have, written as
+  nought, builds both ways and plays one sample; a hold the game wrote past that length is the last sample. A
+  length the game writes itself outside the recording is a friendly error. **`rate:` from the pack on the Advance
   needs the game to name the rate its sound is mixed at**, `enable_sound mix_rate: 13379` (`sound.md`): there the
   sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
   rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose
@@ -512,11 +570,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   runtime reads the colours at power-on into the same array a backdrop's colour is in
   (`rg_start_file_fill_colors`) and puts each where a marker is (`rg_start_file_fill_marked_pixels`).
   **A marker names a recipe for one colour** (an entry of `IR::StartFile#colors`): a colour at a place of the file
-  (`Color`), a step of a walk of one (`WalkedColor`), or a colour of a list that a number in the file picks
+  (`Color`), a step of a walk of one (`WalkedColor`, or `CountedWalkColor` for a walk that waits for a falling count), or a colour of a list that a number in the file picks
   (`ChosenColor`). So whatever of a picture's colours is the player's data rides on markers, and no verb is taught it:
   the 256 colours of a picture of pixels, and the bank a pose's frame names, are these too.
   **`color_walk` of such a list makes its steps at power-on**, each colour from the file's by the sum the build
-  uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`). Place 0 keeps the slot's colour, as
+  uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`; for `step:` and `count:`,
+  `Graphics::Color.counted_walk`, `rg_start_file_count_walk_colors`). Place 0 keeps the slot's colour, as
   built all-in-one. **What the game paints from a list as it runs** (`image ..., from: list`, `tiles ..., from:
   list`, `canvas`, `sprite_tiles`) **takes such a list too**: a build for a computer draws those through tables of
   the colour each place shows, which it writes with their markers and fills at power-on

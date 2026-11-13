@@ -273,6 +273,7 @@ module VBlank
           def pixel(x, y)
             return nil unless on_screen?(x, y)
             return HELD_OFF if @held
+            return GIVEN_UP_ROW_COLOR unless row_shown?(y)
 
             over = @over_picture && @over_picture[(y * @width) + x]
             color = if over
@@ -338,6 +339,17 @@ module VBlank
 
           # What a display with its picture switched off shows: plain white.
           HELD_OFF = Graphics::Color.resolve(:white)
+
+          # WHERE THE PICTURE STOPS (`screen :bitmap, shown_rows:`): [first, past] of the rows it
+          # shows, or nil for every row. A row outside is given up: it shows black, after every fade,
+          # tint and light, whatever is stored there, as a console shows a row with its screen
+          # switched off. Like the camera it changes what you SEE and not what is stored.
+          attr_writer :shown_rows
+
+          # The colour a row given up shows: black.
+          GIVEN_UP_ROW_COLOR = 0
+
+          def row_shown?(y) = @shown_rows.nil? || (y >= @shown_rows[0] && y < @shown_rows[1])
 
           # The color stored at (x, y), ignoring where the window sits. This is what the
           # drawing engine reads — saving the pixels under a sprite has to see what is
@@ -471,7 +483,7 @@ module VBlank
           # no effect in force. The common case, and worth not walking the screen for.
           def plain?
             !@held && @camera_x.zero? && @camera_y.zero? && @tint_color.nil? && fade_steps.zero? && @block == 1 &&
-              @shade_steps.zero?
+              @shade_steps.zero? && @shown_rows.nil?
           end
 
           # Was a see-through layer mixed into cell +at+? A checked run asks, since the console's

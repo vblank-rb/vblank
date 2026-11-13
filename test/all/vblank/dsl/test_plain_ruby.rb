@@ -1231,9 +1231,9 @@ class TestPlainRuby < Minitest::Test
     assert_equal [5, 3], [player[:from_hp], player[:from_lives]]
   end
 
-  private def hidden_notes_of(&block)
+  private def hidden_notes_of(allow: [], &block)
     builder = Builder.new
-    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, allow: allow))
     builder.finalize_program
     builder.hidden_variable_notes
   end
@@ -1441,6 +1441,313 @@ class TestPlainRuby < Minitest::Test
     end
 
     assert_equal 5, player[:seen]
+  end
+
+  # A name set from an item of a table at a place the game moves on before the name is used: read
+  # again where it is used, `flags` and `byte` would be the next item. Each read here is the one
+  # before `at` moved: a flag of 0b0101 picks 10 and 30, where the next byte, 10, would pick 20.
+  # A place moved by `spot.increase!(1)` is moved as `+=` moves one.
+  def test_a_name_set_from_an_item_at_a_place_that_moves_on_keeps_that_item
+    player = played(frames: 2) do
+      packed = table :packed, [0b0101, 10, 20, 30, 40], width: :byte
+      @kept = table :kept, [7, 8], width: :byte
+      out = list :unpacked, capacity: 4, full_of: 0
+      first = var :first, 0
+      second = var :second, 0
+      spot = var :spot, 0
+      game_loop do
+        at = 0
+        flags = packed[at]
+        at += 1
+        4.times do |bit|
+          byte = packed[at]
+          at += 1
+          out[bit] = byte if flags & (1 << bit) != 0
+        end
+        place = 0
+        held = @kept[place]
+        place += 1
+        first = held
+        spot.store!(0)
+        spotted = packed[spot]
+        spot.increase!(1)
+        second = spotted
+        halt
+      end
+    end
+
+    assert_equal [10, 0, 30, 0], player.list(:unpacked)
+    assert_equal [7, 5], [player[:first], player[:second]]
+  end
+
+  # `out[j] = 99` writes the slot `held` was read from, since j is i: `held` keeps the 5 it read.
+  # A slot read at a key written out is changed by a write at a key worked out the same way.
+  def test_a_name_set_from_a_slot_keeps_it_when_the_slot_is_written_at_another_key
+    player = played(frames: 2) do
+      out = list :out, capacity: 2, full_of: 5
+      first = var :first, 0
+      second = var :second, 0
+      game_loop do
+        i = 0
+        j = 0
+        i += 0
+        j += 0
+        held = out[i]
+        out[j] = 99
+        first = held
+        out[1] = 5
+        fixed = out[1]
+        out[j + 1] = 77
+        second = fixed
+        halt
+      end
+    end
+
+    assert_equal [5, 5], [player[:first], player[:second]]
+  end
+
+  # `bump(at)` moves `at` on inside a method of the game, between the line that sets `flags` and
+  # the line that uses it: `flags` holds the 10 read before, where the next item would be 20.
+  def test_a_name_set_from_an_item_keeps_it_when_a_method_moves_the_place_on
+    player = played(frames: 2) do
+      def bump(place) = place.increase!(1)
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        flags = packed[at]
+        bump(at)
+        seen = flags
+        halt
+      end
+    end
+
+    assert_equal [10, 1], [player[:seen], player[:at]]
+  end
+
+  # `mover.move_place_on(at)` moves `at` on through a method of an object of the game's, defined in
+  # another file (test/plain_ruby_helper_part.rb): `flags` holds the 10 read before, not the 20.
+  def test_a_name_set_from_an_item_keeps_it_when_an_objects_method_moves_the_place_on
+    player = played(frames: 2, allow: %w[PlainRubyPlaceMover]) do
+      mover = PlainRubyPlaceMover.new
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      seen = var :seen, 0
+      game_loop do
+        at.store!(0)
+        flags = packed[at]
+        mover.move_place_on(at)
+        seen = flags
+        halt
+      end
+    end
+
+    assert_equal [10, 1], [player[:seen], player[:at]]
+  end
+
+  # `frame` is set while setting up from the count VBlank keeps up each frame, and read in the game
+  # loop after a method of another file that could change anything: it still follows the count, as
+  # a game reading it live wants. Copied there, it would hold the 0 it was set up on, and a game
+  # waiting on it would wait for ever.
+  def test_a_name_set_up_from_the_frame_count_follows_it_across_a_call_of_another_files_method
+    player = played(frames: 4) do
+      frame = frames_since_power_on
+      seen = var :seen, 0
+      game_loop do
+        plain_ruby_helper_pass_over(0)
+        seen = frame
+      end
+    end
+
+    assert_operator player[:seen], :>=, 2
+  end
+
+  # `start` is set while setting up from `hero`, which the routine called in the loop moves on, and
+  # the routine is made above it: `start` holds the 5 it was set to, as Ruby's would.
+  def test_a_name_set_up_from_a_number_a_called_routine_moves_holds_its_start
+    player = played(frames: 2) do
+      hero = var :hero, 5
+      func(:move_hero) { hero += 1 }
+      start = hero + 0
+      seen = var :seen, 0
+      game_loop do
+        call :move_hero
+        seen = start
+        halt
+      end
+    end
+
+    assert_equal [5, 6], [player[:seen], player[:hero]]
+  end
+
+  # A call that cannot write what `flags` was read from leaves `flags` a working-out, which costs
+  # no variable: a method that writes nothing, a routine that writes another name, an object's
+  # method handed another name, and a method that moves `at` on the other side of an `if` from the
+  # read. Each `flags` still holds the 10 it read.
+  def test_a_name_read_across_calls_that_cannot_change_it_takes_no_copy
+    game = proc do
+      def tile_of(code) = code + 1
+      def bump(place) = place.increase!(1)
+      mover = PlainRubyPlaceMover.new
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      other = var :other, 0
+      seen = var :seen, 0
+      sided = var :sided, 0
+      func(:step_other) { other += 1 }
+      game_loop do
+        flags = packed[at]
+        tile_of(3)
+        call :step_other
+        mover.move_place_on(other)
+        seen = flags
+        held = packed[at]
+        if other > 100
+          bump(at)
+        else
+          sided = held
+        end
+        halt
+      end
+    end
+
+    assert_empty hidden_notes_of(allow: %w[PlainRubyPlaceMover], &game)
+    player = played(frames: 2, allow: %w[PlainRubyPlaceMover], &game)
+
+    assert_equal [10, 10, 2], [player[:seen], player[:sided], player[:other]]
+  end
+
+  # `floors` is the game variable a method hands back, as a port's unpacking keeps its counts:
+  # counted up with `increase!` across calls of another file's method, it is that variable, so
+  # `counted` ends at 3 and so does the slot it is written into. A copy would count up apart.
+  # `before`, read from `floors` and handed to a method that counts it on, keeps the 0 it read.
+  def test_a_variable_a_method_hands_back_counts_itself_across_calls
+    player = played(frames: 2) do
+      def count_on(count) = count.increase!(1)
+      counted = var :counted, 0
+      counts = list :counts, capacity: 2, full_of: 0
+      game_loop do
+        floors = plain_ruby_helper_pass_over(counted)
+        floors.store!(0)
+        before = floors + 0
+        repeat(2) do
+          plain_ruby_helper_pass_over(0)
+          floors.increase!(1)
+        end
+        count_on(floors)
+        counts[0] = floors
+        counts[1] = before
+        halt
+      end
+    end
+
+    assert_equal [3, [3, 0]], [player[:counted], player.list(:counts)]
+  end
+
+  # A song reader of another file (PlainRubySongReader, test/plain_ruby_helper_part.rb) reads and
+  # moves each channel's place only through its own methods, `get` and `set`, on lists it reaches
+  # through a Hash. `at` holds the place before `set` moves it, and `high` the byte before the
+  # second read: channel 0's pitch offset is 0x0001, from bytes 0x00 then 0x01, and its place
+  # ends two bytes on. Read late, each byte would be the next one (0x0102).
+  def test_a_name_read_through_a_method_keeps_it_when_another_method_moves_the_place_on
+    player = played(frames: 2, allow: %w[PlainRubySongReader]) do
+      bytes = table :song_bytes, [0x00, 0x01, 0x02, 0x03, 0x04], width: :byte
+      reader = PlainRubySongReader.new(self, bytes)
+      game_loop do
+        reader.read_pitch_offset(0)
+        halt
+      end
+    end
+
+    assert_equal [0x0001, 0], player.list(:song_pitch_offset)
+    assert_equal [2, 0], player.list(:song_at)
+  end
+
+  # The same reader's drum step: `envelope` and `noise` are read at places worked out from `at`,
+  # itself read through `get`, and `set` moves the drum place on before they are written. They
+  # hold the bytes after the step's first, 0x11 and 0x12, where the next step's would be 0x14 and
+  # 0x15.
+  def test_a_name_read_through_another_name_keeps_it_when_a_method_moves_the_place_on
+    player = played(frames: 2, allow: %w[PlainRubySongReader]) do
+      bytes = table :song_bytes, [0x10, 0x11, 0x12, 0x13, 0x14, 0x15], width: :byte
+      reader = PlainRubySongReader.new(self, bytes)
+      game_loop do
+        reader.read_drum_step(0)
+        halt
+      end
+    end
+
+    assert_equal [[0x11, 0], [0x12, 0], [3, 0]],
+                 [player.list(:song_envelope), player.list(:song_noise), player.list(:song_drum)]
+  end
+
+  # `bump(at)` moves `at` on later in the line that sets `f`: the `f` read after it holds the 10
+  # read before, so the line adds 10, 0 and 10. Read late, both would be 20.
+  def test_a_name_set_inside_a_line_keeps_it_when_a_call_later_in_the_line_moves_the_place_on
+    player = played(frames: 2) do
+      def bump(place)
+        place.increase!(1)
+        0
+      end
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = var :at, 0
+      total = var :total, 0
+      game_loop do
+        at.store!(0)
+        total = (f = packed[at]) + bump(at) + f
+        halt
+      end
+    end
+
+    assert_equal [20, 1], [player[:total], player[:at]]
+  end
+
+  # `call :step_on` runs a routine that moves `at` on, between the line that sets `flags` and the
+  # line that uses it: `flags` holds the 10 read before, where the next item would be 20.
+  def test_a_name_set_from_an_item_keeps_it_when_a_called_routine_moves_the_place_on
+    player = played(frames: 2) do
+      packed = table :packed, [10, 20, 30], width: :byte
+      at = 0
+      seen = var :seen, 0
+      func(:step_on) { at += 1 }
+      game_loop do
+        at = 0
+        flags = packed[at]
+        call :step_on
+        seen = flags
+        halt
+      end
+    end
+
+    assert_equal [10, 1], [player[:seen], player[:at]]
+  end
+
+  # A method that reads the item at a place kept in a list reached through a Hash, then moves the
+  # place on, as an unpacking routine reads its next byte. `at` holds the place before the move, so
+  # each call hands back the next item: 1, then 2 and 3 joined into 0x0203. Read late, `at` would
+  # be the moved place, and `high` would be read again after the second call moved it. The same
+  # routine in a game file, reading a copy, is FlaggedByteReader (test/plain_ruby_flagged_bytes_part.rb).
+  def test_a_name_set_from_a_place_kept_in_a_list_holds_it_when_the_place_moves_on
+    player = played(frames: 2) do
+      def next_item(state, packed, channel)
+        at = state.fetch(:at)[channel]
+        state.fetch(:at)[channel] = at + 1
+        packed[at]
+      end
+      packed = table :packed, [1, 2, 3, 4], width: :byte
+      state = { at: list(:places, capacity: 2, full_of: 0) }
+      first = var :first, 0
+      pair = var :pair, 0
+      game_loop do
+        first = next_item(state, packed, 0)
+        high = next_item(state, packed, 0)
+        pair = (high << 8) | next_item(state, packed, 0)
+        halt
+      end
+    end
+
+    assert_equal [1, 0x0203], [player[:first], player[:pair]]
   end
 
   def test_an_ivar_made_by_var_copies_another_variable
@@ -2708,6 +3015,15 @@ class TestPlainRuby < Minitest::Test
     end
 
     assert_match(/`@score` and `@best` the same variable name/, error.message)
+  end
+
+  def test_saved_given_something_but_true_or_false_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played { game_variables :score, saved: :points }
+    end
+
+    assert_match(/takes `saved: false` or `saved: true`/, error.message)
+    assert_match(/game_variables\(\{ saved: :points \}\)/, error.message)
   end
 
   def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused

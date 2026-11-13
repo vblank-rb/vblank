@@ -33,7 +33,13 @@
 /* The rules the voices keep and every sound the game makes itself, as numbers (the lowering writes
  * them; see rg_sound.c for the layouts). */
 extern const int32_t rg_game_sound_rules[];
+/* A game with a part that reads its wave from the start file writes it into this table as it
+ * starts (rg_music_fill_wave, rg_music.h), and says so before this header (RG_WAVEFORMS_WRITABLE). */
+#ifdef RG_WAVEFORMS_WRITABLE
+extern int32_t rg_game_waveforms[];
+#else
 extern const int32_t rg_game_waveforms[];
+#endif
 extern const int32_t rg_game_beeps[];
 extern const int32_t rg_game_waves[];
 extern const int32_t rg_game_hits[];

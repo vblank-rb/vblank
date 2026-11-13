@@ -42,6 +42,13 @@ module VBlank
         super
       end
 
+      # Whether the game keeps a variable +name+, so #var can read it.
+      def var?(name) = state.vars.key?(name.to_s)
+
+      # How many passes of the game loop have finished, as a playthrough's script reads them: the pass
+      # just ended.
+      def passes = pass
+
       # A variable's stored number, as the game's runtime keeps it: 0 for one it has not written.
       def raw_var(name) = state.vars.fetch(name.to_s, 0)
 

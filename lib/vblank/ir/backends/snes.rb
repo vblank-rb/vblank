@@ -118,7 +118,10 @@ module VBlank
         # those, a game of sprites in several lists of colours is built with one set of their
         # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
-        # given up if the lists do not fit that way.
+        # given up if the lists do not fit that way. A game whose backgrounds still need more than
+        # eight sets with each scene's colours its own, some of them held by lists the game changes, is
+        # built again with the short lists one background changes sharing a set (+shared_held_lists+,
+        # Art): a background from the data pack of four-colour tiles walks a bank of three colours each.
         #
         # A game whose recordings all together do not fit the sound unit's memory, some of them
         # played by one scene alone, is built again with each scene sending its own across as it
@@ -143,7 +146,7 @@ module VBlank
         # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
         def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
                            sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
-                           scene_recordings: false, far_tables: false, cache:)
+                           scene_recordings: false, shared_held_lists: false, far_tables: false, cache:)
           board = board_for(program)
           memory = Memory.new(far_tables: far_tables)
           carries = cache.facts.carries(board, screen_colors: screen_colors, sprite_colors: sprite_colors,
@@ -153,13 +156,17 @@ module VBlank
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
                                                 background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
-                                                scene_recordings: scene_recordings, cache: cache)
+                                                scene_recordings: scene_recordings, shared_held_lists: shared_held_lists,
+                                                cache: cache)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
                       small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
-                      scene_recordings: scene_recordings, far_tables: far_tables, cache: cache }
+                      scene_recordings: scene_recordings, shared_held_lists: shared_held_lists, far_tables: far_tables,
+                      cache: cache }
           begin
             game = lowering.sections + lowering.art_sections
+          rescue Art::TooManyHeldBackgroundLists
+            return build(program, title: title, **choices, shared_held_lists: true)
           rescue Art::ScreenSpritesFull => e
             built = build_with_one_sprite_tile_set(program, title, choices, lowering)
             return built if built

@@ -72,14 +72,13 @@ module VBlank
             raise Error, "#{File.basename(exe)} stopped (#{status}):\n#{complaint}"
           end
 
-          # Ends a program that may already have ended.
+          # Ends a program that may already have ended. Public for Native::FinalStateRun, which
+          # starts its program itself.
           def kill_if_running(pid)
             Process.kill(:KILL, pid)
           rescue Errno::ESRCH
             nil
           end
-
-          private_class_method :kill_if_running
         end
       end
     end

@@ -7,6 +7,12 @@
  * how the console keeps a list it shifts. A narrow list (`width: :byte` or `:half`) keeps
  * each number the way the console's narrow stores do, so 200 in a byte reads back as -56.
  *
+ * Each item takes the room its width says, as on the console: a list of bytes is an array of
+ * int8_t, a byte an item, so a port's pack of hundreds of megabytes costs its own size and not
+ * four times it. rg_list_load and rg_list_store are what know the width.
+ *
+ * Must: read and write +items+ only through rg_list_load and rg_list_store.
+ *
  * What the interpreter refuses — pushing onto a full list, dropping from an empty one,
  * reading past the last item — stops the program here with the same plain message, through
  * rg_fault. The interpreter is the answer key, and a run that carried on past one of those
@@ -20,7 +26,7 @@
 #include "rg_runtime.h"
 
 typedef struct rg_list {
-  int32_t *items;     /* capacity of them, used as a ring */
+  void *items;        /* capacity of them, used as a ring: int8_t, int16_t or int32_t by +width+ */
   int32_t capacity;
   int32_t width;      /* 1, 2 or 4 bytes a slot */
   int32_t front;      /* where the oldest item is */
@@ -28,10 +34,22 @@ typedef struct rg_list {
   const char *name;   /* the game's name for it, for the messages */
 } rg_list;
 
-static inline int32_t rg_list_fit(const rg_list *list, int32_t value) {
-  if (list->width == 1) return rg_to_byte(value);
-  if (list->width == 2) return rg_to_half(value);
-  return value;
+/* The number in slot +slot+ of the ring, read back sign and all. */
+static inline int32_t rg_list_load(const rg_list *list, int32_t slot) {
+  switch (list->width) {
+  case 1: return ((const int8_t *)list->items)[slot];
+  case 2: return ((const int16_t *)list->items)[slot];
+  default: return ((const int32_t *)list->items)[slot];
+  }
+}
+
+/* +value+ kept in slot +slot+ of the ring; a narrow slot keeps its low bits. */
+static inline void rg_list_store(rg_list *list, int32_t slot, int32_t value) {
+  switch (list->width) {
+  case 1: ((int8_t *)list->items)[slot] = rg_to_byte(value); break;
+  case 2: ((int16_t *)list->items)[slot] = rg_to_half(value); break;
+  default: ((int32_t *)list->items)[slot] = value; break;
+  }
 }
 
 /* Where item +index+ sits in the ring. */
@@ -56,7 +74,7 @@ static inline void rg_list_empty(rg_list *list) {
 static inline void rg_list_full(rg_list *list, int32_t value) {
   list->front = 0;
   list->length = list->capacity;
-  for (int32_t i = 0; i < list->capacity; i++) list->items[i] = rg_list_fit(list, value);
+  for (int32_t i = 0; i < list->capacity; i++) rg_list_store(list, i, value);
 }
 
 static inline int32_t rg_list_length(const rg_list *list) { return list->length; }
@@ -65,7 +83,7 @@ static inline void rg_list_push(rg_list *list, int32_t value) {
   if (list->length >= list->capacity)
     rg_fault("list :%s is full (capacity %d): drop an item first, or give it a larger capacity", list->name,
              (int)list->capacity);
-  list->items[rg_list_slot(list, list->length)] = rg_list_fit(list, value);
+  rg_list_store(list, rg_list_slot(list, list->length), value);
   list->length++;
 }
 
@@ -78,12 +96,12 @@ static inline void rg_list_drop(rg_list *list, int32_t front) {
 
 static inline int32_t rg_list_get(const rg_list *list, int32_t index) {
   rg_list_check_index(list, index);
-  return list->items[rg_list_slot(list, index)];
+  return rg_list_load(list, rg_list_slot(list, index));
 }
 
 static inline void rg_list_set(rg_list *list, int32_t index, int32_t value) {
   rg_list_check_index(list, index);
-  list->items[rg_list_slot(list, index)] = rg_list_fit(list, value);
+  rg_list_store(list, rg_list_slot(list, index), value);
 }
 
 /* Every item from +from+ for +count+ items set to +value+; both ends are checked before
@@ -92,7 +110,7 @@ static inline void rg_list_fill(rg_list *list, int32_t from, int32_t count, int3
   if (count <= 0) return;
   rg_list_check_index(list, from);
   rg_list_check_index(list, rg_add(from, count - 1));
-  for (int32_t i = 0; i < count; i++) list->items[rg_list_slot(list, from + i)] = rg_list_fit(list, value);
+  for (int32_t i = 0; i < count; i++) rg_list_store(list, rg_list_slot(list, from + i), value);
 }
 
 /* Every item put in order by the number +by+ holds at it, the smallest first (the biggest when
@@ -102,17 +120,17 @@ static inline void rg_list_fill(rg_list *list, int32_t from, int32_t count, int3
  * is not a place in +by+ stops the program in the interpreter's words. */
 static inline void rg_list_sort(rg_list *list, const rg_list *by, int32_t descending) {
   for (int32_t at = 1; at < list->length; at++) {
-    int32_t item = list->items[rg_list_slot(list, at)];
+    int32_t item = rg_list_load(list, rg_list_slot(list, at));
     int32_t key = rg_list_get(by, item);
     int32_t to = at;
     while (to > 0) {
-      int32_t before = list->items[rg_list_slot(list, to - 1)];
+      int32_t before = rg_list_load(list, rg_list_slot(list, to - 1));
       int32_t other = rg_list_get(by, before);
       if (descending ? other >= key : other <= key) break;
-      list->items[rg_list_slot(list, to)] = before;
+      rg_list_store(list, rg_list_slot(list, to), before);
       to--;
     }
-    list->items[rg_list_slot(list, to)] = item;
+    rg_list_store(list, rg_list_slot(list, to), item);
   }
 }
 
@@ -144,7 +162,7 @@ static inline void rg_list_copy(rg_list *list, const void *table, int32_t kept, 
   int32_t start = rg_clamp(at, 0, table_length - count);
   list->front = 0;
   list->length = count;
-  for (int32_t i = 0; i < count; i++) list->items[i] = rg_list_fit(list, rg_table_entry(table, kept, start + i));
+  for (int32_t i = 0; i < count; i++) rg_list_store(list, i, rg_table_entry(table, kept, start + i));
 }
 
 #endif

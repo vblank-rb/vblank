@@ -96,6 +96,24 @@ int16_t *rg_screen_image_pixels_to_fill(int32_t count) {
   return image_pixels_filled;
 }
 
+void rg_screen_tile_pixels_room(int32_t total, int32_t held) {
+  free(tile_pixels_filled);
+  tile_pixels_filled = malloc((size_t)(total > 0 ? total : 1) * sizeof *tile_pixels_filled);
+  if (!tile_pixels_filled) rg_fault("there is no room for the %d pixels of the background tiles", (int)total);
+  memcpy(tile_pixels_filled, rg_game_tile_pixels, (size_t)held * sizeof *tile_pixels_filled);
+  for (int32_t at = held; at < total; at++) tile_pixels_filled[at] = RG_SEE_THROUGH;
+  tile_pixels_drawn = tile_pixels_filled;
+}
+
+void rg_screen_image_pixels_room(int32_t total, int32_t held) {
+  free(image_pixels_filled);
+  image_pixels_filled = malloc((size_t)(total > 0 ? total : 1) * sizeof *image_pixels_filled);
+  if (!image_pixels_filled) rg_fault("there is no room for the %d pixels of the pictures", (int)total);
+  memcpy(image_pixels_filled, rg_game_image_pixels, (size_t)held * sizeof *image_pixels_filled);
+  for (int32_t at = held; at < total; at++) image_pixels_filled[at] = RG_NOT_DRAWN;
+  image_pixels_drawn = image_pixels_filled;
+}
+
 static int32_t held;            /* switched off until the first frame (Framebuffer#held=) */
 static int32_t frames_begun;    /* a frame boundary has been reached (Reference @uses_frames) */
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
@@ -941,6 +959,15 @@ static void keep_console_colors(void) {
   }
 }
 
+/* Framebuffer#row_shown?: the rows the game gave up (`shown_rows:`) black, after everything else,
+ * as a console shows a row with its screen off. A display switched off shows white there too. */
+static void black_rows_given_up(void) {
+  if (held) return;
+  for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++)
+    if (y < RG_SHOWN_FIRST_ROW || y >= RG_SHOWN_PAST_ROW)
+      memset(&shown[y * RG_SCREEN_WIDTH], 0, RG_SCREEN_WIDTH * sizeof shown[0]);
+}
+
 /* Does the filter's row say it changes the pixel at column +x+? The row is [from, to, inverted]: a
  * pixel is changed when inverted XOR from <= x < to. */
 static int32_t filter_row_covers(const int32_t *row, int32_t x) { return row[2] ^ (x >= row[0] && x < row[1]); }
@@ -970,6 +997,7 @@ const uint16_t *rg_screen_shown(void) {
     if (front)
       for (int32_t at = 0; at < CELLS; at++)
         if (front[at] != RG_NOTHING_IN_FRONT) shown[at] = front[at];
+    black_rows_given_up();
     keep_console_colors();
     return shown;
   }
@@ -1000,6 +1028,7 @@ const uint16_t *rg_screen_shown(void) {
       shown[y * RG_SCREEN_WIDTH + x] = held ? (uint16_t)0x7FFF : color;
     }
   }
+  black_rows_given_up();
   keep_console_colors();
   return shown;
 }

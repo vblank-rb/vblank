@@ -4,8 +4,9 @@ module VBlank
   module IR
     # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by), AS THE TESTS IT STANDS FOR.
     #
-    # A backend that keeps a table of its console's cells indexes it with the number. One that
-    # does not writes this instead: tests that halve the numbers standing for a tile, and under
+    # A backend that keeps a table of its console's cells indexes it with the number (the
+    # Genesis's and the Super Nintendo's lowerings). One that does not writes this instead (the
+    # Advance's, the Color's and the computer builds'): tests that halve the numbers standing for a tile, and under
     # each the same change with that tile written in, which it writes as it writes any other. A
     # number standing for no tile matches none, and the cell is left alone.
     #

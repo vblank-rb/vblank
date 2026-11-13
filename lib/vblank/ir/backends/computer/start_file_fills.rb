@@ -55,9 +55,10 @@ module VBlank
           def build_start_file_routines
             return [] unless reads_start_file?
 
-            # The colours first: the pixels filled after them are put in those colours last.
+            # The room for the pictures first, then the colours: the pixels filled after them are put
+            # in those colours last.
             [Statements::Function.new(name: start_file_routine,
-                                      body: build_start_file_color_fills + build_start_file_table_fills +
+                                      body: build_start_file_pixel_room + build_start_file_color_fills + build_start_file_table_fills +
                                             build_start_file_picture_fills + build_start_file_background_fills +
                                             build_start_file_marked_pixel_fills + build_start_file_marked_number_fills +
                                             build_start_file_recording_fills +
@@ -179,6 +180,8 @@ module VBlank
               when IR::StartFile::WalkedColor
                 made = drawing_array("start_file_walked_colors", "int32_t", run.flat_map { |walked, _| [walked.of, walked.far, walked.steps] })
                 eval_call("rg_start_file_walk_colors", *filled, made)
+              when IR::StartFile::CountedWalkColor
+                eval_call("rg_start_file_count_walk_colors", *filled, start_file_counted_walk_numbers(run))
               when IR::StartFile::ChosenColor
                 eval_call("rg_start_file_choose_colors", *filled, drawing_array("start_file_chosen_colors", "int32_t", chosen_color_rules(where)))
               else
@@ -192,9 +195,18 @@ module VBlank
           def start_file_colors_in_one_run?(before, after)
             case before
             when IR::StartFile::WalkedColor then after.is_a?(IR::StartFile::WalkedColor)
+            when IR::StartFile::CountedWalkColor then after.is_a?(IR::StartFile::CountedWalkColor)
             when IR::StartFile::ChosenColor then after == before.with(place: before.place + 1)
             else after.is_a?(IR::StartFile::Color) && after.format == before.format && after.at == before.at + START_FILE_COLOR_BYTES
             end
+          end
+
+          # The numbers rg_start_file_count_walk_colors reads for a run of colours made by a walk that
+          # waits for a falling count (IR::StartFile::CountedWalkColor): five for each, the entry it is
+          # made from, the colour walked from, the step, where the count starts and how many steps.
+          def start_file_counted_walk_numbers(run)
+            numbers = run.flat_map { |made, _| [made.of, made.far, made.step, made.count, made.steps] }
+            drawing_array("start_file_counted_walk_colors", "int32_t", numbers)
           end
 
           # The numbers rg_start_file_choose_colors reads for a run of colours of a list the file
@@ -464,6 +476,46 @@ module VBlank
             end
           end
 
+          # ROOM FOR THE PIXELS THE PROGRAM IS WRITTEN WITHOUT. A picture read from the file, and
+          # every tile of a background whose map is, is filled whole as the game starts, so the
+          # program holds none of their pixels: they come after those it holds (Picture#image_arrays,
+          # Picture#lay_out_background_tiles), and the routine's first work is to make that room,
+          # see-through, where the pixels can be written (rg_screen_tile_pixels_room,
+          # rg_screen_image_pixels_room). A size, not bytes: a title's poses in every set of
+          # colours they are drawn in would otherwise be most of what a player downloads. Then
+          # each tile of such a background that draws something the file does not fill is put in
+          # its place (#record_start_file_tile_writes). Nothing for a program whose pixels are all
+          # written.
+          def build_start_file_pixel_room
+            room = [["rg_screen_tile_pixels_room", @tile_pixel_count, @tile_pixels_held],
+                    ["rg_screen_image_pixels_room", @image_pixel_count, @image_pixels_held]].filter_map do |function, total, held|
+              eval_call(function, Statements::Int.new(total), Statements::Int.new(held)) if total > held
+            end
+            room + build_start_file_tile_writes
+          end
+
+          # A TILE OF A BACKGROUND READ FROM THE FILE THAT THE GAME HOLDS AND THE FILE DOES NOT FILL
+          # (a Picture::TileChunk): a bank's stand-in, drawn in that bank's colours. Its pixels are
+          # put into the room as the game starts; one that is see-through all over is the room as it
+          # is made, and is not written at all.
+          def record_start_file_tile_writes(chunk)
+            return if chunk.pixels.all?(Picture::TILE_SEE_THROUGH)
+
+            last = @start_file_tile_writes.last
+            if last && last.start + last.pixels.length == chunk.start
+              @start_file_tile_writes[-1] = last.with(pixels: last.pixels + chunk.pixels)
+            else
+              @start_file_tile_writes << chunk
+            end
+          end
+
+          def build_start_file_tile_writes
+            @start_file_tile_writes.map do |chunk|
+              eval_call("rg_start_file_put_tile_pixels", Statements::Int.new(@tile_pixel_count), Statements::Int.new(chunk.start),
+                        Statements::Int.new(chunk.pixels.length), drawing_array("start_file_tile_pixels", "uint16_t", chunk.pixels))
+            end
+          end
+
           # What the routine reading the start file writes into the pixels of one picture: the pixels
           # start at +start+ in the +kind+ of pixels (:tile or :image), the picture is +from+ the
           # file (IR::StartFile::Picture) of +width+ by +height+, +colors+ and +places+ are the lists
@@ -491,12 +543,13 @@ module VBlank
           end
 
           def build_start_file_picture_fills
-            @start_file_fills.map do |fill|
+            poses, pictures = @start_file_fills.partition { |fill| fill.from.is_a?(IR::StartFile::Pose) }
+            pose_fills = poses.group_by { |fill| fill.with(start: nil, swapped: nil) }.map do |_, copies|
+              total = copies.first.kind == :tile ? @tile_pixel_count : @image_pixel_count
+              eval_call("rg_start_file_fill_pose", drawing_array("start_file_pose", "int32_t", start_file_pose_rules(copies, total)))
+            end
+            pose_fills + pictures.map do |fill|
               total = fill.kind == :tile ? @tile_pixel_count : @image_pixel_count
-              if fill.from.is_a?(IR::StartFile::Pose)
-                next eval_call("rg_start_file_fill_pose", drawing_array("start_file_pose", "int32_t", start_file_pose_rules(fill, total)))
-              end
-
               eval_call("rg_start_file_fill_picture", drawing_array("start_file_fill", "int32_t", start_file_fill_rules(fill, total)))
             end
           end
@@ -509,21 +562,30 @@ module VBlank
           # (Original::FrameRecord), so the runtime is told where it is and nothing of how an
           # original keeps one.
           #
+          # THE FRAME IS PAINTED ONCE, however many lists of colours the pose is drawn in. +copies+
+          # are the pose's fills that differ only in where their pixels start and the list they are
+          # drawn in instead (StartFileFill#start and #swapped); a title's pose followed through
+          # sixty sets of colours is one painting and sixty copies.
+          #
           # The numbers rg_start_file_fill_pose reads (rg_runtime.h has what each is).
-          def start_file_pose_rules(fill, total)
+          def start_file_pose_rules(copies, total)
+            fill = copies.first
             where = fill.from
             turn = TURN_BITS.sum { |way, bit| where.turns.count(way).odd? ? bit : 0 }
-            swapped = fill.swapped || []
-            header = [FILL_KINDS.fetch(fill.kind), total, fill.start, fill.width, fill.height, turn,
-                      where.colors_at || -1, where.colors_count, swapped.length, where.entry_at, where.records_at,
+            header = [FILL_KINDS.fetch(fill.kind), total, copies.length, fill.width, fill.height, turn,
+                      where.colors_at || -1, where.colors_count, where.entry_at, where.records_at,
                       where.origin_x, where.origin_y, where.tiles_at, where.tile_count, where.bank || -1]
             unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
               raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."
             end
 
+            each_copy = copies.flat_map do |copy|
+              swapped = copy.swapped || []
+              [copy.start, swapped.length, *swapped]
+            end
             [*header, *tile_format_rules(where.tile_format), *color_format_rules(where.color_format),
-             *(fill.colors unless where.colors_at), *swapped]
+             *(fill.colors unless where.colors_at), *each_copy]
           end
 
           # The numbers rg_start_file_fill_picture reads (rg_runtime.h has what each is).

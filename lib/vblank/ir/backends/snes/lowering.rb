@@ -228,11 +228,13 @@ module VBlank
           # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
           # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
-          # into the sound unit (Runtime::Sound, "Each scene's recordings").
+          # into the sound unit (Runtime::Sound, "Each scene's recordings"). +shared_held_lists+ has the
+          # short lists one background changes share a set of colours (Art).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         scene_recordings: false, cache: BuildCache.for(SNES, program))
+                         scene_recordings: false, shared_held_lists: false, cache: BuildCache.for(SNES, program))
             @program = program
+            @shared_held_lists = shared_held_lists
             @scene_recordings = scene_recordings
             @cache = cache
             @tile_memo = cache.facts.tile_memo
@@ -261,6 +263,7 @@ module VBlank
             @locals = {} # a routine's own numbers, by the name the lowering gave each
             @starts = [] # [address, value] for a place that does not start at nought
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
+            @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_on) -> their table's label
             @section_routines = {}
             @cuts = RoutineCuts.for(self, cache)
             prepare_picture
@@ -342,7 +345,8 @@ module VBlank
           # --- the data ---
 
           # The places that do not start at nought, each list's place, capacity and slot (the
-          # runtime's start reads them), and the tables of routines a call picks from by number.
+          # runtime's start reads them), the tables of routines a call picks from by number, and the
+          # tables of cell words a tile picked as the game runs is read from.
           def data_section
             asm = W65816.new("game data", holds: DATA)
             asm.label("game_starts")
@@ -359,6 +363,10 @@ module VBlank
             @routine_tables.each do |targets, label|
               asm.label(label)
               asm.data_longs(targets.map { |name| self.class.routine_label(name) })
+            end
+            @cell_tables.each do |words, label|
+              asm.label(label)
+              asm.data_words(words)
             end
             asm.section
           end

@@ -15,6 +15,8 @@ module VBlank
       #   copy.unpack_m4a_length at: SONG, into: pack[:title_length]               # length, loop frame
       #   copy.unpack_m4a_recording at: VOICE, into: pack[:piano]                  # a recording's samples
       #   copy.unpack_m4a_voice at: VOICE, into: pack[:piano_settings]             # its rate, hold (or none), length, envelope
+      #   copy.unpack_m4a_voice at: WAVE_VOICE, into: pack[:pattern]               # the wave voice's pattern, sixteen bytes
+      #   copy.unpack_m4a_voiced_track at: SONG, into: pack[:lead], track: 1       # notes with their voices' settings
       #
       # SONG is where the song's header is in the copy, and VOICE where a voice's twelve bytes are (the
       # song's voice group, then 12 bytes a voice, or a voice of a drum kit or key split; a routine
@@ -82,8 +84,10 @@ module VBlank
       # note sounds (each note keeps what it was struck with); LFOS, LFODL, MOD and MODT (vibrato);
       # PRIO and which notes the driver's channels drop when too many sound; XCMD's changes to the
       # track's voice; PORT's sound register writes; a console voice's length byte, which cuts its
-      # notes short. The settings of a console voice (a square's duty, its envelope, the wave's
-      # pattern) are not read: the port gives its part those. A track sounds one note at a time as a
+      # notes short. A console voice's own settings are read by unpack_m4a_voiced_track into a slot of
+      # `voiced_notes`, each note with its voice's duty, slide and fade (Walk#emit_voice_settings
+      # says how the driver's envelope is matched), and the wave voice's pattern by unpack_m4a_voice;
+      # unpack_m4a_track leaves them to the part. A track sounds one note at a time as a
       # part, so of two struck on one frame the part plays the later. More than MOST_SOUNDING notes of
       # one track sounding at once: the later ones last until the next note. With `kind:`, EOT lets go
       # of the newest kept note on its key, where the driver looks at all of the track's.
@@ -112,6 +116,9 @@ module VBlank
         VOICE_BYTES = 12
 
         KIND_RECORDING = 0
+        KIND_FIRST_SQUARE = 1
+        KIND_SECOND_SQUARE = 2
+        KIND_WAVE = 3
         KIND_NOISE = 4
         ANY_KIND = 255
         # The loop frame of a song that ends (unpack_m4a_length).
@@ -188,8 +195,11 @@ module VBlank
         # are given; all four are nil for a walk that writes no notes. +watch+ is a walk that finds
         # where the song comes round: it stops on the tick the track +watch_track+ first reaches the
         # place +watch_place+, keeping that frame in +found_frame+.
+        #
+        # +voiced+ writes each record as a voiced Original::PackNote, with its console voice's own
+        # settings from the voice's twelve bytes (VoicedTrack says which).
         class Walk
-          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, watch: false)
+          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, watch: false, voiced: false)
             @block = block
             @lists = lists
             @track = track
@@ -197,6 +207,7 @@ module VBlank
             @kit_from = kit_from
             @split_from = split_from
             @watch = watch
+            @voiced = voiced
           end
 
           def var(name) = @block.variable(:"m4a_#{name}")
@@ -683,8 +694,84 @@ module VBlank
               emit_console_fields(channel, key, right, left)
             end
             @block.write(0)
+            emit_voice_settings(channel, at) if @voiced
             emit_sounding(t, at)
           end
+
+          # A VOICED RECORD'S SETTINGS (Original::PackNote's bytes 12 on), from the voice's twelve
+          # bytes as the driver sets a console voice up for a note (ply_note, CgbSound, CgbModVol):
+          #
+          # - a square's duty, the low two bits of its fifth byte (NRx1's top two), every frame;
+          # - the first square's slide, its fourth byte, the sweep register (NR10), where it moves
+          #   (bits 4 to 6 and 0 to 2 each set, bit 7 clear); where it does not (ply_note writes 8)
+          #   the note names none, so a part that cannot slide takes the track as well;
+          # - the envelope (bytes 8 to 10, attack, decay and sustain), the nearest the voice's own
+          #   counting makes of the driver's (CgbSound, CgbModVol). The driver swells a note from
+          #   silence to its volume at the attack's step, falls at the decay's step to the sustain
+          #   level (the volume times the sustain over 16, rounded up) and holds there; at a sustain
+          #   of 0 it falls to silence. The voice can only count all the way up or down, so: a note at
+          #   full volume with an attack swells from silence; a note with a decay and a sustain of 0
+          #   fades at the decay's step; any other note holds at the sustain level, which its volume
+          #   byte is rewritten to (a short swell or fall is not heard). The wave voice counts nothing,
+          #   so its note only holds at the sustain level.
+          #
+          # A recording's note names none of them (the wave's pattern is its voice's,
+          # unpack_m4a_voice).
+          def emit_voice_settings(channel, at)
+            voice = var(:sounding_voice)
+            names = var(:voiced_names)
+            duty = var(:voiced_duty)
+            slide = var(:voiced_slide)
+            fade = var(:voiced_fade)
+            [names, duty, slide, fade].each { |each| each.store!(0) }
+            if channel == KIND_FIRST_SQUARE || channel == KIND_SECOND_SQUARE
+              duty.store!((@block.byte(voice + 4) & 3) * DUTY_EVERY_FRAME)
+              names.store!(PackNote::NAMES.fetch(:duty))
+            end
+            if channel == KIND_FIRST_SQUARE
+              sweep = var(:voiced_sweep)
+              sweep.store!(@block.byte(voice + 3))
+              if (sweep & 0x80) == 0 && (sweep & 0x70) != 0 && (sweep & 7) != 0
+                slide.store!(sweep & 0x7F)
+                names.store!(names | PackNote::NAMES.fetch(:slide))
+              end
+            end
+            emit_voice_envelope(channel, at, fade, names) if channel != KIND_RECORDING
+            # The pitch number, the fade, the duty, the vibrato, the slide, the shade, the names.
+            [0, 0, fade, duty, 0, 0, slide, 0, names, names >> 8].each { |byte| @block.write(byte) }
+            @block.repeat(PackNote::VOICED_BYTES - PackNote::BYTES - 10) { @block.write(0) }
+          end
+
+          # The envelope of a note on +channel+ into +fade+ (emit_voice_settings), and its volume
+          # byte, at +at+ + 6, rewritten where the note holds at the sustain level.
+          def emit_voice_envelope(channel, at, fade, names)
+            voice = var(:sounding_voice)
+            attack = var(:voiced_attack)
+            decay = var(:voiced_decay)
+            sustain = var(:voiced_sustain)
+            volume = var(:cgb_volume)
+            attack.store!(@block.byte(voice + 8) & 7)
+            decay.store!(@block.byte(voice + 9) & 7)
+            sustain.store!(@block.byte(voice + 10) & 15)
+            if channel != KIND_WAVE && attack != 0 && volume == 15
+              fade.store!(SWELLS | attack)
+              names.store!(names | PackNote::NAMES.fetch(:fade))
+              @block.rewrite(at + 6, 0)
+            elsif channel != KIND_WAVE && decay != 0 && sustain == 0
+              fade.store!(decay)
+              names.store!(names | PackNote::NAMES.fetch(:fade))
+            else
+              held = var(:voiced_held)
+              held.store!(((volume * sustain) + 15) >> 4)
+              @block.rewrite(at + 6, held)
+              names.store!(names | PackNote::NAMES.fetch(:fade)) if channel != KIND_WAVE
+            end
+          end
+
+          # A duty's number on each of four frames (Audio::Duty#bits), and a fade's swell bit
+          # (Audio::NoteFade#bits).
+          DUTY_EVERY_FRAME = 0x55
+          SWELLS = 8
 
           # TrkVolPitSet's keyM added to +key+, held to 0 and up: KEYSH whole, and TUNE plus BEND
           # times BENDR in 64ths of a key, taken down to the whole key below.
@@ -808,14 +895,29 @@ module VBlank
           unpacks :m4a_track, track: 0, kind: ANY_KIND, kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM
           called "MusicPlayer2000 track"
 
-          def self.routine(block)
-            Walk.new(block, {}, track: block.setting(:track), kind: block.setting(:kind), kit_from: block.setting(:kit_from),
-                                split_from: block.setting(:split_from)).emit
-            if block.room >= PackNote::BYTES
-              block.write(PackNote::END_OF_PART)
-              block.write(PackNote::END_OF_PART >> 8)
-              block.repeat(PackNote::BYTES - 2) { block.write(0) }
-            end
+          def self.routine(block) = M4A.emit_track(block, voiced: false)
+        end
+
+        # One track's notes as voiced Original::PackNote records, for a slot of `voiced_notes`: as
+        # Track writes them, each with its console voice's duty, slide and fade (Walk#emit_voice_settings).
+        module VoicedTrack
+          extend Format
+          unpacks :m4a_voiced_track, track: 0, kind: ANY_KIND, kit_from: KIT_AND_SPLIT_NUMBERS_FROM,
+                                     split_from: KIT_AND_SPLIT_NUMBERS_FROM
+          called "MusicPlayer2000 track with its voices' settings"
+
+          def self.routine(block) = M4A.emit_track(block, voiced: true)
+        end
+
+        # The walk of a track writing its records, +voiced+ or not, then the record that ends the part.
+        def self.emit_track(block, voiced:)
+          record_bytes = voiced ? PackNote::VOICED_BYTES : PackNote::BYTES
+          Walk.new(block, {}, track: block.setting(:track), kind: block.setting(:kind), kit_from: block.setting(:kit_from),
+                              split_from: block.setting(:split_from), voiced: voiced).emit
+          if block.room >= record_bytes
+            block.write(PackNote::END_OF_PART)
+            block.write(PackNote::END_OF_PART >> 8)
+            block.repeat(record_bytes - 2) { block.write(0) }
           end
         end
 
@@ -900,6 +1002,23 @@ module VBlank
 
           def self.routine(block)
             wave = block.variable(:m4a_wave)
+            if (block.byte(block.from) & (KEY_SPLIT | DRUM_KIT | CONSOLE_VOICE_BITS)) == KIND_WAVE
+              emit_wave_pattern(block, wave)
+            else
+              emit_recording_settings(block, wave)
+            end
+          end
+
+          # THE WAVE VOICE'S PATTERN (a voice of KIND_WAVE): the sixteen bytes its second word
+          # points at, two steps a byte, the earlier in the high four bits, as CgbSound copies them
+          # into the wave memory, for a Score part's `plays: pack[:slot].wave(0)` (DSL::PackWave).
+          def self.emit_wave_pattern(block, wave)
+            wave.store!(M4A.word_at(block, block.from + 4) & ADDRESS_BITS)
+            block.expect_size(DSL::PackWave::BYTES)
+            block.repeat(DSL::PackWave::BYTES, stop_when: block.finished) { |i| block.write(block.byte(wave + i)) }
+          end
+
+          def self.emit_recording_settings(block, wave)
             M4A.emit_recording_place(block, wave)
             unless block.finished
               rate = block.variable(:m4a_rate)
@@ -919,7 +1038,8 @@ module VBlank
           end
         end
 
-        FORMATS = [Track, Length, Recording, Voice].freeze
+        # The voiced track last, so the others keep the numbers a fault names them by.
+        FORMATS = [Track, Length, Recording, Voice, VoicedTrack].freeze
       end
     end
   end

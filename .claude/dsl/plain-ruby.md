@@ -77,6 +77,16 @@ instance variables.
   states: :cave_light_state`. A subclass can give its parent's instance variable another name.
   Refused: two instance variables of one class given one name, one given two names in one class,
   and a name another variable of the game has already.
+- **`game_variables :damage, :bonus, saved: false` marks them working room a save never keeps**:
+  `saves_keep_everything` passes them over, as it does a `var` whose name starts with `_`
+  (`variables.md`), and a `save_data` record that keeps one is refused. Their names do not change
+  (`screen_flash_damage`), and they play exactly as unmarked ones do. The mark covers every name on
+  its line, those given a name of their own too (`game_variables :damage, bonus: :flash_bonus,
+  saved: false`); a name marked on any line, in the class or a parent, stays marked. The mark counts
+  for a variable made after the line runs, so it goes in the class's body (or, in the game block,
+  above the first `@flash = 0`), as `game_variables` always does. It works in the game block too. `saved:` takes only `true` or `false`; to name an instance variable `@saved`, write
+  `game_variables({ saved: :its_name })`. Worked example:
+  `test/all/vblank/builder/test_saves_keep_everything.rb`.
 - **A named value given another game value copies its number**: `@held = @states[0]`, `@best =
   @score`, `@phase = start_phase` and `@level = other.level` set the named value's own variable,
   in game code and while setting up, and never make it share the other's. So a rotation through a
@@ -115,7 +125,29 @@ instance variables.
   only `false` or `nil`: a number is truthy, so `x ||= 2` leaves `x = 0` alone, as in Ruby.
 - `a, b = b, a` and splats work, on every pass.
 - **A name holds a value, as in Ruby.** `old = hp` in game code keeps hp's number from that line;
-  `d = hp + 1` keeps its line's answer.
+  `d = hp + 1` keeps its line's answer. So does `flags = packed[at]` when a line below it, before
+  `flags` is used, changes `at` (`at += 1`, `at.increase!(1)`) or writes `packed` at a key worked
+  out as the game plays: it holds the item read before, in a game block, a game file and a method a
+  routine calls alike. A call of game code between the two lines counts as a change of what that
+  code can write, so `flags` keeps the item it read there too, and so does `high` in
+  `high = next_byte(c); (high << 8) | next_byte(c)` and `f` in `(f = t[at]) + bump(at) + f`.
+  A method the same file defines changes the instance variables it writes and what it is handed
+  when it writes through an argument; `call :step_on` changes what that `func`'s block writes; a
+  method of the game's own object from another file (`reader.next_byte(0)`) changes that object and
+  what it is handed. A method of another file called on nothing, a `func` made elsewhere,
+  `case_var` and `start_over` change everything. A call on one side of an `if` changes nothing
+  read on its other side. A write through a worked-out place (`state.fetch(:at)[c] = at + 1`)
+  changes everything read from `state`. A call that cannot reach what the name was read from
+  costs nothing. Calls count only for a name set in game code or a method: one set while setting
+  up and read by game code follows what it was read from, so `frame = frames_since_power_on` reads
+  the count live. A name set from a method's answer reads what that method reads: `at = get(:at, c)`
+  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`; and a name set
+  from another name reads what that one reads, so `envelope = @copy.byte(at + 1)` keeps its byte
+  too. A game variable a method hands back (`floors = routine_var(:floors)`) is that variable, as
+  the object a Ruby method hands back is, and counts itself up with `floors.increase!(1)` across
+  any call. One limit: an object of the game's that shares a variable with the code calling it
+  (handed it when the object was made) can change that variable unseen; read it into a `var` with
+  `store!` there.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.
@@ -189,6 +221,7 @@ Each is a friendly error naming the line.
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
 | an instance variable nobody named that holds another part's game variable, given another game variable in game code | `game_variables :held` in the class's body: then the line copies the number |
 | two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
+| `game_variables :busy, saved: :x` (`saved:` given something but `true` or `false`) | `saved: false`, or `game_variables({ saved: :x })` to name `@saved` |
 | `game_variables` in a method (`def self.setup` too) | a `game_variables` line in the class's body |
 | `game_variables` in a file loaded with `require` or `require_relative` | `VBlank.require_game_file` |
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |

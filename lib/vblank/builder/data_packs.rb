@@ -66,7 +66,7 @@ module VBlank
     # a player's machine, where nothing but the shipped game runs. It is built into a program of
     # its own (#unpacking_program; Original::Unpacking says why one of its own, and what a shell
     # build must still add to play it there). Built all-in-one, that program is played to its end
-    # here, built as Ruby (#play_unpacking), and the pack is made from what it wrote; every backend
+    # here, built as C or as Ruby (#play_unpacking), and the pack is made from what it wrote; every backend
     # plays the same program and is held to the interpreter's pack byte for byte. Either way the
     # game holds handles and reads the pack, as above.
     #
@@ -99,16 +99,30 @@ module VBlank
         copy_release_slots = slots_in_release(slots, copy_release.name)
         # Every slot copied as it is must lie inside the copy, whichever way the pack is made.
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
-        unpacking = (unpacking_program(bytes, copy_release_slots, slots.routine, reading, release: copy_release) if slots.routine)
-        slot_bytes = unpacking ? unpacked_slot_bytes(unpacking, cache) : copied
-        @data_pack_contents = Original::Pack.from_bytes(Original::Pack.holding(slot_bytes, sha1: copy.sha1, build_version: version).to_bytes)
+        routines = slots.routines
+        unpacking = (unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release) unless routines.empty?)
+        # Built once, the first time the cache or a test asks; nil is an answer too.
+        parts_built = false
+        parts = nil
+        make_parts = lambda do
+          unless parts_built
+            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release) if routines.size > 1)
+            parts_built = true
+          end
+          parts
+        end
+        @data_pack_contents = if unpacking
+                                unpacked_pack(unpacking, cache, sha1: copy.sha1, build_version: version, make_parts: make_parts)
+                              else
+                                Original::Pack.from_bytes(Original::Pack.holding(copied, sha1: copy.sha1, build_version: version).to_bytes)
+                              end
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = { Original::FrameRecord::Section.new(sources: []) => unpacking }
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
-                                       slots: slots.list, platform: from.platform,
+                                       slots: slots.list, platform: from.platform, make_unpacking_parts: make_parts,
                                        make_unpacking: lambda { |_release|
                                          frames = pack_frame_section
-                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, slots.routine, reading,
+                                         made[frames] ||= unpacking_program(bytes, copy_release_slots, routines, reading,
                                                                             release: copy_release, frames: frames)
                                        })
       end
@@ -162,7 +176,7 @@ module VBlank
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
                                          frames = pack_frame_section
-                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routine,
+                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines,
                                                                                        reading, release: release, frames: frames)
                                        })
       end
@@ -487,9 +501,11 @@ module VBlank
 
       # THE UNPACKING PROGRAM (Original::Unpacking says why it is a program of its own): the copy
       # read from the file the program is handed as it starts, the pack's bytes as one list, each of
-      # +slots+ copied as it is or filled by +routine+, the game's `slots.fill_from_copy` block, run
-      # as game code on a builder of its own. A pack with no routine has one too, which only copies:
-      # it is what a shell runs for any pack. The program holds none of the copy however it is built.
+      # +slots+ copied as it is or filled by +routines+, the game's `slots.fill_from_copy` blocks
+      # (DSL::PackSlots::Routine) run one after another as game code on a builder of its own. A
+      # pack with no routine has one too, which only copies: it is what a shell runs for any pack.
+      # The program holds none of the copy however it is built. +slot_uses+, by part name, records
+      # which slots each part reads and writes as it is built (#unpacking_parts).
       #
       # Built all-in-one, +bytes+ is the copy the build read: the program is built for a copy of
       # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
@@ -501,7 +517,8 @@ module VBlank
       #
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
-      def unpacking_program(bytes, slots, routine, reading, release:, frames: Original::FrameRecord::Section.new(sources: []))
+      def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
+                            slot_uses: {})
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
@@ -527,7 +544,11 @@ module VBlank
           slots.reject(&:filled_by_routine?).each do |slot|
             reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
           end
-          maker.instance_exec(reader, pack, release.name, &routine) if routine
+          routines.each do |routine|
+            pack.record_uses_in(slot_uses[routine.part])
+            maker.instance_exec(reader, pack, release.name, &routine.block)
+          end
+          pack.record_uses_in(nil)
           wait = lambda do
             maker.call(progress) if progress
             maker.wait_vblank
@@ -631,44 +652,54 @@ module VBlank
                              "`pack.unpacking(release: release)`."
       end
 
-      # How far a routine may go on the interpreter before it is taken to be stuck. A routine reads
-      # each byte of the copy and writes each byte of the pack a few times at most, and waits for
-      # the next frame at most once a byte; so the frames it can need, and the steps one frame can
-      # take, follow from the two sizes. A routine past either is in a loop that does not end.
-      UNPACKING_STEPS_A_BYTE = 64
-      UNPACKING_SPARE_FRAMES = 100
-      UNPACKING_SPARE_STEPS = 100_000
-
-      def most_unpacking_frames(unpacking) = unpacking.copy_size + unpacking.byte_size + UNPACKING_SPARE_FRAMES
-
-      def most_unpacking_steps_a_frame(unpacking)
-        ((unpacking.copy_size + unpacking.byte_size) * UNPACKING_STEPS_A_BYTE) + UNPACKING_SPARE_STEPS
-      end
-
-      # The routine's slots, read back from +cache+ (a folder, or nil for none) where they are kept.
-      def unpacked_slot_bytes(unpacking, cache)
-        return play_unpacking(unpacking) if cache.nil?
-
-        Original::PackCache.new(cache).slot_bytes(unpacking) { play_unpacking(unpacking) }
-      end
-
-      # Each slot's bytes as +unpacking+ writes them. It is played built as Ruby, as a shell plays it
-      # on a player's machine (Original::Unpacking#run_as_ruby): the interpreter is plain and slow on
-      # purpose, many times slower on a port's loops. The interpreter stays the answer key:
-      # every run of the tests holds the Ruby lowering to it frame by frame, unpackings among them
-      # (test/copy_reader_tests.rb, the packing tests), and it plays a routine the Ruby runtime
-      # cannot play yet. The first fault the routine met (a block not packed the way it declares, a
-      # read past the copy's end, a write past a slot) stops the build here, as a slot past the
-      # copy's end does.
-      def play_unpacking(unpacking)
-        most_frames = most_unpacking_frames(unpacking)
-        ran = begin
-          unpacking.run_as_ruby(frames: most_frames)
-        rescue IR::Backends::Ruby::RuntimeGap
-          unpacking.run_on(IR::Backends::Reference.new, frames: most_frames, max_steps: most_unpacking_steps_a_frame(unpacking))
+      # The pack the routine writes, for the copy whose SHA-1 is +sha1+ and the build
+      # +build_version+, read back from +cache+ (a folder, or nil for none) where it is kept, part by
+      # part where the routine is in parts (+make_parts+ makes its Original::UnpackingParts).
+      def unpacked_pack(unpacking, cache, sha1:, build_version:, make_parts:)
+        play = lambda do |path, played = unpacking, _part_names = nil|
+          play_unpacking(played, path, sha1: sha1, build_version: build_version)
         end
-        refuse_faulted_or_unfinished_unpacking!(unpacking, ran, most_frames)
-        unpacking.slot_bytes_in(ran)
+        return Original::Pack.read_from_temporary_file(&play) if cache.nil?
+
+        Original::PackCache.new(cache).pack(unpacking, sha1: sha1, build_version: build_version, parts: make_parts.call, &play)
+      end
+
+      # THE ROUTINE'S PARTS (Original::UnpackingParts), for the pack cache: each part of
+      # +routines+ built alone after the slots copied as they are, to record which slots it reads
+      # and writes and which names it holds, and a way to build the program of any of the parts.
+      # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
+      # cannot be built alone: one that calls a routine another part defines, say. The whole
+      # routine is then cached as one, as a routine of one part is.
+      def unpacking_parts(bytes, slots, routines, reading, release)
+        parts = routines.map do |routine|
+          uses = Original::SlotUses.new
+          alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses })
+          Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
+                                             names: Original::UnpackingParts.names_in(alone.program))
+        end
+        make = lambda do |played|
+          unpacking_program(bytes, slots, routines.select { |routine| played.include?(routine.part) }, reading, release: release)
+        end
+        Original::UnpackingParts.new(parts: parts, make_unpacking: make)
+      rescue ArgumentError, BuildError
+        # A part that builds only after another (it calls a routine the other defines) is no
+        # fault: the whole routine built already.
+        nil
+      end
+
+      # The pack file +unpacking+ writes, written to +path+, played the fastest way this machine has
+      # (Original::Unpacking#write_pack_fastest): built as C where zig is installed, else as Ruby, as a
+      # shell plays it on a player's machine. The interpreter is plain and slow on purpose, many
+      # times slower on a port's loops. It stays the answer key: every run of the tests holds the C
+      # and Ruby lowerings to it frame by frame, unpackings among them (test/copy_reader_tests.rb,
+      # the packing tests), the C run that plays an unpacking to its end is held to it byte for byte
+      # (test/lowering/native/vblank/original/test_unpacking_as_c.rb), and it plays a routine
+      # neither can play yet. The first fault the routine met (a block not packed the way it
+      # declares, a read past the copy's end, a write past a slot) stops the build here, as a slot
+      # past the copy's end does.
+      def play_unpacking(unpacking, path, sha1:, build_version:)
+        ran = unpacking.write_pack_fastest(path, sha1: sha1, build_version: build_version)
+        refuse_faulted_or_unfinished_unpacking!(unpacking, ran, unpacking.most_frames)
       rescue IR::ProgramError => e
         raise ArgumentError, "The data pack's unpacking routine went wrong as it ran. #{e.message}"
       end
@@ -710,7 +741,7 @@ module VBlank
       def slots_in_release(slots, release_name) = slots.list.map { |slot| slot.in_release(release_name) }
 
       def refuse_unfilled_slots!(slots)
-        return if slots.routine
+        return unless slots.routines.empty?
 
         unfilled = slots.list.select(&:filled_by_routine?).map { |slot| ":#{slot.name}" }
         return if unfilled.empty?

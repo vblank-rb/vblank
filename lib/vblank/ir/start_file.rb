@@ -39,6 +39,8 @@ module VBlank
     #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
     # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
     #   that a port's unpacking writes. The program holds no event for it.
+    # - the wave a part of a song plays on the wave voice (Audio::Music::Part#wave_from_file, a
+    #   Wave): sixteen bytes, two steps a byte. The program holds WAVE_STAND_IN until the file is read.
     # - a background (Nodes::Background#from_file, a Background): its map, a record of VBlank's own
     #   a cell (Original::MapCell, four bytes), one number of two bytes a cell in the layout the
     #   original's console keeps a map in, or one byte a cell that is a tile's number
@@ -55,9 +57,10 @@ module VBlank
     #   shows wherever nothing is drawn. The program holds no colour for it.
     # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
     #   walk of either, the colours of a picture of pixels, the bank a pose's frame names):
-    #   +colors+ names each colour of it once (a Color in the file, a WalkedColor made from one,
-    #   or a ChosenColor, whose list a number in the file picks), and wherever the program would
-    #   hold the colour it holds a MARKER naming that entry (.marker_of). See "MARKERS" below.
+    #   +colors+ names each colour of it once (a Color in the file, a WalkedColor or a
+    #   CountedWalkColor made from one, or a ChosenColor, whose list a number in the file picks),
+    #   and wherever the program would hold the colour it holds a MARKER naming that entry
+    #   (.marker_of). See "MARKERS" below.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -249,15 +252,19 @@ module VBlank
       # WHAT OF A RECORDING'S SETTINGS IS IN THE FILE, each nil where the game wrote it: +rate+ and
       # +holds_from+ a Number, +envelope+ an EnvelopeBytes.
       #
-      # The file is the player's, so nothing in it stops the game, where the build that holds the
-      # same numbers refuses them (.rate_held, .hold_held): a rate below 1 plays as 1, so the
-      # recording all but stands still, and a held note that would read back to a sample outside
-      # the recording reads back to its first sample or its last.
+      # The file is the player's, so nothing in it stops the game (.rate_held, .hold_held): a rate
+      # below 1 plays as 1, so the recording all but stands still, and a held note that would read
+      # back to a sample outside the recording reads back to its first sample or its last. The
+      # all-in-one build holds the same numbers read from its pack by these rules
+      # (Builder::SampledAudio#sample), so both builds play them alike; only a number the game
+      # wrote itself is refused.
       #
       # +length+ is how many of its samples the recording plays, a Number: the rest of what the
       # build made room for is left out, so a recording that reads back to an earlier sample does
       # so from its own end. One below 1 is 1 and one past the room is all of it, and a hold the
-      # game wrote past the end is the last sample.
+      # game wrote past the end is the last sample. The all-in-one build holds a length from the
+      # pack by the same rule (Builder::SampledAudio#recording_length): a copy without a sound
+      # writes nought for it, and that must build both ways.
       #
       # A HOLD WITH EVERY BIT SET IS NONE (.no_hold?): 255 in a byte, 65535 in two, 4294967295 in
       # four, and -1 in a slot that goes below zero. That is how a pack says a recording does not
@@ -310,9 +317,54 @@ module VBlank
       # +recorded+ is whether the part plays a recording, which alone takes a record's loudness in
       # 512ths; a part on a voice of the console's takes its volume, and a loudness in the file means
       # nothing there.
-      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded) do
+      #
+      # +voiced+ is a part whose records carry their voice's settings (Original::PackNote's voiced
+      # record), each the note's where the part's voice has that setting: a pitch number on a square
+      # or the wave, a fade on a square or the noise, a duty on a square, vibrato on a square or the
+      # wave, a slide on the song's first square part (+takes_slide+), and a shade between the
+      # speakers on any part; a pitch between keys (`hz:`) on a part that plays a recording or the
+      # noise voice and is not moved in pitch (a transpose or an offset of the part's could not move
+      # it), and a glide on a part that plays a recording. A note given a slide that moves and
+      # vibrato that moves, by itself or its part, holds its pitch still for the vibrato (`vibrato:
+      # :none`), where a build holding the record refuses it; a gliding note's instrument and volume
+      # are the part's own, as it carries on the note sounding; and a noise clock is played in
+      # place of a pitch between keys.
+      Notes = Data.define(:at, :count, :instruments, :part, :tempo, :ticks_per_beat, :who, :recorded, :voiced, :takes_slide) do
+        def initialize(voiced: false, takes_slide: false, **) = super
+
         # The frame each tick falls on (an Audio::Score::Timing).
         def timing = Audio::Score::Timing.new(self)
+
+        # How many bytes each record is.
+        def record_bytes = voiced ? Original::PackNote::VOICED_BYTES : Original::PackNote::BYTES
+
+        # The kind of voice the part plays (Audio::Music.kind_played).
+        def kind = Audio::Music.kind_played(Audio::Music.resolve_plays(part.plays))
+
+        # WHICH OF A VOICED RECORD'S SETTINGS THE PART TAKES, by Original::PackNote::NAMES' names.
+        def takes
+          return [] unless voiced
+
+          taken = [:shade]
+          taken.push(:pitch_number, :vibrato) if %i[square wave].include?(kind)
+          taken.push(:fade) if %i[square noise].include?(kind)
+          taken.push(:duty) if kind == :square
+          taken.push(:slide) if kind == :square && takes_slide
+          taken.push(:hz) if %i[recorded noise].include?(kind) && part.transpose.to_i.zero? && part.pitch_offset.to_i.zero?
+          taken.push(:glides) if kind == :recorded
+          taken
+        end
+
+        # WHAT EACH PITCH NUMBER COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
+        # each from 0 to Original::PackNote::MOST_PITCH_NUMBER makes, or none for a part that takes
+        # none. An event's frame is its number.
+        def pitch_number_events
+          return [] unless takes.include?(:pitch_number)
+
+          most = Original::PackNote::MOST_PITCH_NUMBER
+          notes = (0..most).map { |number| Audio::Score::Note.new(at: number, pitch_number: number) }
+          part.with(notes: notes).to_voice(TicksAsFrames, most + 1, who).events
+        end
 
         # The most events the records can make: a note and the rest it ends in, for each.
         def most_events = count * 2
@@ -371,6 +423,17 @@ module VBlank
         end
       end
 
+      # A WAVE OF THE WAVE VOICE IN THE FILE (Audio::Music::Part#wave_from_file), given as a Score
+      # part's `plays:` in place of its steps: Audio::Sound::WAVE_BYTES bytes from +at+ on, kept as
+      # Audio::Sound.wave_steps_of_bytes reads them. Every byte is two steps, so nothing in the file
+      # is out of range. Until the file is read the part plays WAVE_STAND_IN, silence.
+      Wave = Data.define(:at) do
+        # The 32 steps the wave's bytes in +bytes+, the file, come to.
+        def steps_in(bytes) = Audio::Sound.wave_steps_of_bytes(bytes.byteslice(at, Audio::Sound::WAVE_BYTES).bytes)
+      end
+
+      WAVE_STAND_IN = Array.new(Audio::Sound::WAVE_SAMPLES, 0).freeze
+
       # Whether a record's noise clock is its note's pitch on +part+ (an Audio::Score::Part), built
       # all-in-one or from the file: on a part on the noise voice that is not transposed, since a
       # transpose cannot move the voice's own setting.
@@ -390,16 +453,47 @@ module VBlank
       # The notes +where+ (a Notes) names in +bytes+, the file, in the records' order, with what
       # no part can play held as Notes says.
       def self.notes_in(bytes, where)
-        records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * Original::PackNote::BYTES))
+        records = Original::PackNote.list_in(bytes.byteslice(where.at, where.count * where.record_bytes), voiced: where.voiced)
+        takes = where.takes
         records.map do |note|
           key = note.key if note.key <= MOST_KEY
           clock = note.clock if key && where.takes_clock?
+          settings = key ? voice_settings_of(note, takes, where.part) : {}
+          settings.delete(:hz) if clock
+          pitch = settings.delete(:pitch_number)
+          pan = settings.key?(:pan) ? settings.delete(:pan) : (note.side if where.takes_side?)
+          glides = settings[:glides]
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
-                                 key: (key unless clock), volume: volume_of(note, where.recorded),
-                                 instrument: where.instruments[note.instrument], pan: (note.side if where.takes_side?),
-                                 noise_clock: clock)
+                                 key: (key unless clock || pitch || settings[:hz]),
+                                 volume: (volume_of(note, where.recorded) unless glides),
+                                 instrument: (where.instruments[note.instrument] unless glides), pan: pan,
+                                 noise_clock: clock, pitch_number: pitch, **settings)
         end
       end
+
+      # The settings of a voiced +note+ (an Original::PackNote) the part takes (+takes+, Notes#takes),
+      # in the words a Score::Note is given them: one past its range is the part's own, and vibrato
+      # that would move with a slide that moves is `:none` (Notes says why).
+      def self.voice_settings_of(note, takes, part)
+        out = note.settings_out_of_range
+        settings = note.score_settings.select do |word, _|
+          setting = SETTING_OF_WORD.fetch(word)
+          takes.include?(setting) && !out.include?(setting)
+        end
+        own_slide = settings.slice(:slide_up, :slide_down)
+        slide = if own_slide.empty?
+                  Audio::PitchSlide.said(up: part.slide_up, down: part.slide_down, where: "A part")
+                else
+                  Audio::PitchSlide.said(up: own_slide[:slide_up], down: own_slide[:slide_down], where: "A note")
+                end
+        wobble = Audio::Vibrato.said(settings.fetch(:vibrato, part.vibrato), where: "A part")
+        settings[:vibrato] = :none if Audio::PitchSlide.moves?(slide) && Audio::Vibrato.moves?(wobble)
+        settings
+      end
+
+      # Which of Original::PackNote::NAMES each word of Original::PackNote#score_settings is.
+      SETTING_OF_WORD = { pitch_number: :pitch_number, decay: :fade, swell: :fade, duty: :duty, vibrato: :vibrato,
+                          slide_up: :slide, slide_down: :slide, pan: :shade, hz: :hz, glides: :glides }.freeze
 
       # The volume of +note+ (an Original::PackNote) on a part that plays a recording or not: its
       # loudness as a volume with a fraction where it gives one on a recorded part, held to the
@@ -415,7 +509,7 @@ module VBlank
 
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
-      # nothing (.place_in_file); a song reads the notes of the parts that keep theirs there.
+      # nothing (.place_in_file); a song reads the notes and the waves of the parts that keep theirs there.
       READ_KINDS = %i[table bitmap sample background screen song shading].freeze
 
       # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
@@ -425,7 +519,7 @@ module VBlank
         case node.kind
         when :screen then node.backdrop_from_file
         when :sample then node.from_file || node.settings_from_file
-        when :song then node.length_from_file || node.voices.filter_map(&:from_file).first
+        when :song then node.length_from_file || node.voices.filter_map { |part| part.from_file || part.wave_from_file }.first
         when :table then node.from_file || node.painted_from_file
         else node.from_file
         end
@@ -437,6 +531,12 @@ module VBlank
       # a walk of a list read from the file (Builder#color_walk), whose colours the build cannot
       # work out. +of+ always names an entry before this one, so the entries are made in order.
       WalkedColor = Data.define(:of, :far, :steps)
+
+      # A COLOUR MADE FROM ANOTHER AS THE GAME STARTS BY A WALK THAT WAITS FOR A FALLING COUNT:
+      # entry +of+ as the walk from +far+ shows it after +steps+ steps of +step+, the count starting
+      # at +count+ (Graphics::Color.counted_walk). A WalkedColor's sibling, for Builder#color_walk's
+      # count:; +of+ names an entry before this one too.
+      CountedWalkColor = Data.define(:of, :far, :step, :count, :steps)
 
       # A COLOUR OF A LIST THE FILE CHOOSES: the colour at +place+ of one of +lists+ lists of
       # +list_colors+ colours each, kept one after another as +format+ from byte +at+ on. Which
@@ -497,6 +597,8 @@ module VBlank
                   when Color then StartFile.color_in(bytes, source)
                   when ChosenColor then StartFile.chosen_color_in(bytes, source)
                   when WalkedColor then Graphics::Color.walked_toward(held.fetch(source.of), source.far, source.steps)
+                  when CountedWalkColor
+                    Graphics::Color.counted_walk(held.fetch(source.of), source.far, step: source.step, count: source.count, steps: source.steps)
                   else raise ArgumentError, "#{source.inspect} is not a colour read from the file"
                   end
         end
@@ -634,8 +736,9 @@ module VBlank
         end
       end
 
-      # A song's parts that keep their notes in the file, each the part a Score makes of those
-      # notes when the game is built holding them.
+      # A song's parts that keep their notes or their wave in the file, each the part a Score makes
+      # of those notes and that wave when the game is built holding them. A part made of its notes
+      # takes its wave from its Score part, so the wave is put in after.
       def self.fill_song(node, bytes)
         if (length = node.length_from_file)
           total, from = length.frames_in(bytes, node.total_frames, written_total: node.total_frames,
@@ -646,7 +749,9 @@ module VBlank
         end
         node.voices = node.voices.map do |part|
           where = part.from_file
-          where ? where.voice_playing(notes_in(bytes, where), node.total_frames) : part
+          part = where.voice_playing(notes_in(bytes, where), node.total_frames) if where
+          wave = part.wave_from_file
+          wave ? part.with(wave: wave.steps_in(bytes), wave_from_file: nil) : part
         end
       end
 

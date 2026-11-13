@@ -31,7 +31,10 @@ module VBlank
                       "`tear_free: true` keeps one picture, because the picture is copied to the " \
                       "console whole before it shows. `screen :rotozoom` is refused: the build does " \
                       "not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the " \
-                      "build does not show a painted screen bigger yet."),
+                      "build does not show a painted screen bigger yet. `shown_rows:` works: the rows " \
+                      "outside the range are black. The screen is off on those rows, so the build " \
+                      "copies the picture to video memory on those rows and in the gap after each " \
+                      "picture. Then a picture that changes many tiles in each pass shows sooner."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),
@@ -151,11 +154,14 @@ module VBlank
                           "them. Three backgrounds with neither among them are refused: this build does not make " \
                           "that yet. The backgrounds are scrolled and changed as on the Advance. `above_row:` " \
                           "keeps a background to the rows above that row, and takes no processor time as the " \
-                          "screen is drawn. A game with it cannot have a status bar yet. Beside two other " \
+                          "screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the " \
+                          "console shows only that background and the sprites above the row, so its see-through " \
+                          "pixels show the backdrop. With `alone: :without_sprites`, the console shows only that " \
+                          "background above the row, and no sprite. Beside two other " \
                           "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
-                          "see-through. It must be in front of the other backgrounds, its tiles must have no " \
-                          "see-through pixel, and each cell of its map that can show must have a tile. If not, or " \
-                          "if a layer is see-through, the build refuses the game. `show_only_inside` is " \
+                          "see-through. Without `alone:`, it must be in front of the other backgrounds. Its " \
+                          "tiles must have no see-through pixel. Each cell of its map that can show must have " \
+                          "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` is " \
                           "refused: this build does not make it yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \

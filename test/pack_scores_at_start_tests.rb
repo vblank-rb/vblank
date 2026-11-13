@@ -73,19 +73,30 @@ module PackScoresAtStartTests
   TIMING = [84, 36].freeze
   TIMING_AT = 2064
 
+  # Two waves of the wave voice, sixteen bytes each, two steps a byte with the earlier in the high
+  # four bits, as a sound driver keeps its wave voice's patterns; a part plays one with
+  # `plays: pack[:waves].wave(1)`.
+  WAVES = [(0...16).map { |at| at * 17 }, (0...16).map { |at| ((15 - at) << 4) | (at % 7) }].freeze
+  WAVES_AT = 2096
+
+  # Wave +index+ of WAVES as the 32 steps a part written by hand plays.
+  private def wave_steps(index) = WAVES.fetch(index).flat_map { |byte| [byte >> 4, byte & 0xF] }
+
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
-  # +timing+ is what its song's length and loop hold.
-  private def pack_file(parts, timing: TIMING)
+  # +timing+ is what its song's length and loop hold, and with +waves+ it holds WAVES.
+  private def pack_file(parts, timing: TIMING, waves: false)
     slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"),
                                                                     timing: timing.pack("v*"))
+    slots[:waves] = WAVES.flatten.pack("C*") if waves
     VBlank::Original::Pack.holding(slots, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
   end
 
   # A game whose songs and sound effects are made by the block, which is handed a way to get a
   # part's notes by slot name: the slot's handle with the pack left out (+folder+ given), or the
   # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
-  # declares them and plays neither.
-  private def scored_game(parts, folder: nil, instruments: {}, plays: true, &scores)
+  # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
+  # handed a way to get one of them for a part's `plays:`, the same way.
+  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
@@ -96,7 +107,9 @@ module PackScoresAtStartTests
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
         slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+        slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
       end
+      wave_of = ->(index) { pack ? pack[:waves].wave(index) : test.wave_steps_by_hand(index) }
       notes_of = lambda do |name, recorded: false|
         named = instruments.fetch(name, [])
         pack ? pack[name].notes(instruments: named) : test.written_notes(parts.fetch(name), named, recorded)
@@ -109,7 +122,8 @@ module PackScoresAtStartTests
                  end
       # A song's length and loop from the pack, or the same numbers written by hand.
       timing = pack ? { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) } : { length: TIMING[0], loop_from: TIMING[1] }
-      made = instance_exec(notes_of, settings, timing, &scores)
+      # A block may be a lambda, which takes only the arguments it names.
+      made = instance_exec(notes_of, settings, timing, *(wave_of if waves), &scores)
       music = songs :music, made.fetch(:songs)
       effects = (sound_effects :sfx, made[:effects] if made[:effects])
       game_loop do
@@ -125,16 +139,19 @@ module PackScoresAtStartTests
   # Called back from the game's block, so it is public.
   def written_notes(notes, instruments, recorded) = written(notes, instruments, recorded: recorded)
 
+  # Called back from the game's block, so it is public.
+  def wave_steps_by_hand(index) = wave_steps(index)
+
   # The game with its pack left out, handed its pack, is heard as the game written by hand is: the
   # same sound log and the same mixed samples, on each of +buttons+ pressed once.
-  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, &scores)
+  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
     Dir.mktmpdir do |folder|
-      by_hand = scored_game(parts, instruments: instruments, &scores)
-      left_out = scored_game(parts, folder: folder, instruments: instruments, &scores)
+      by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
+      left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
       buttons.each do |button|
         once = ->(frame) { frame == 1 ? [button] : [] }
         wanted = game_player.input_each_frame(&once).run(by_hand, frames: frames)
-        played = game_player.hand_file(pack_file(parts)).input_each_frame(&once).run(left_out, frames: frames)
+        played = game_player.hand_file(pack_file(parts, waves: waves)).input_each_frame(&once).run(left_out, frames: frames)
 
         refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes on #{button}"
         assert_equal wanted.audio, played.audio, "the sound log on #{button}"
@@ -179,6 +196,30 @@ module PackScoresAtStartTests
       { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter, transpose: 2), Part.new(notes: notes_of.(:low), volume: 9),
                                   Part.new(notes: notes_of.(:drum), plays: :noise), Part.new(notes: notes_of.(:wave), plays: :wave)],
                           tempo: 150, length: 84, loop_from: 36)] }
+    end
+  end
+
+  # A WAVE OF THE PACK'S, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
+  # part reads its notes from the pack too, and the sound effect's, written in the game, plays the
+  # other wave. Each is heard as the same wave's 32 steps written by hand. A build for a computer
+  # playing as a console whose voices read sound memory (the PlayStation) makes that memory as the
+  # game is built, and refuses the wave in plain words.
+  def test_a_wave_part_playing_a_wave_from_the_pack_read_as_the_game_starts_plays_as_written_by_hand
+    parts = { lead: LEAD, wave: WAVE }
+    scores = lambda do |notes_of, _settings, _timing, wave_of|
+      { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
+                          tempo: 150, length: 84, loop_from: 36)],
+        effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)], plays: wave_of.(0))],
+                            tempo: 150, length: 24)] }
+    end
+    unless VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
+      return assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
+    end
+
+    Dir.mktmpdir do |folder|
+      left_out = scored_game(parts, folder: folder, waves: true, &scores)
+      error = assert_raises(VBlank::BuildError) { game_player.hand_file(pack_file(parts, waves: true)).run(left_out, frames: 1) }
+      assert_includes error.message, "sound memory"
     end
   end
 
@@ -574,6 +615,197 @@ module PackScoresAtStartTests
     { songs: [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:tune, recorded: true), volume: 13)], tempo: 150, length: 72,
                         loop_from: 48)],
       effects: [Score.new(parts: [Part.new(plays: :bell, notes: notes_of.(:blip, recorded: true))], tempo: 150, length: 24)] }
+  end
+
+  # NOTES WITH THEIR VOICE'S SETTINGS (`slots.voiced_notes`), as a Game Boy sound driver sets them
+  # for each note it strikes: a pitch number in place of a key, a fade, a duty, vibrato, a slide on
+  # the first square, a shade between the speakers. Each record is [at, length, key, volume, its
+  # settings by Original::PackNote::NAMES' names, each the number its byte keeps], and beside it
+  # the note written by hand for it. A setting a part's voice does not have, or one out of its
+  # range, is the part's own; a note whose slide and vibrato would both move holds its vibrato.
+  EIGHTHS = %i[eighth eighth eighth eighth].freeze
+  VOICED_LEAD = [
+    [[0, 10, 0, OWN, { pitch_number: 1750, fade: 3, duty: 0 }], { pitch_number: 1750, decay: 3, duty: EIGHTHS }],
+    [[12, 10, 72, 9, { vibrato: 4 | (2 << 4) | (2 << 8) }], { key: 72, volume: 9, vibrato: { depth: 4, speed: 3, after: 2 } }],
+    [[24, 10, 0, OWN, { pitch_number: 1800, slide: 0x23 }], { pitch_number: 1800, slide_up: { every: 2, shift: 3 } }],
+    [[36, 10, 74, OWN, { slide: 0x1A, vibrato: 3, carries: true }], { key: 74, slide_down: { every: 1, shift: 2 }, vibrato: :none }],
+    [[48, 10, 76, 4, { fade: 0x0A, duty: 0x88 }], { key: 76, volume: 4, swell: 2, duty: %i[eighth half eighth half] }],
+    [[60, 0, 77, OWN, { pitch_number: 3000, fade: 20, slide: 0x05 }], { key: 77 }],
+    [[72, 12, 79, OWN, { vibrato: 0x30, shade: -32 }], { key: 79, vibrato: :none, pan: Rational(-1, 2) }]
+  ].freeze
+  VOICED_LOW = [
+    [[0, 20, 48, OWN, { shade: 40 }], { key: 48, pan: Rational(40, 64) }],
+    [[24, 20, 50, OWN, { shade: -64 }], { key: 50, pan: -1 }],
+    [[48, 20, 52, OWN, { slide: 0x23 }], { key: 52 }],
+    [[72, 0, 53, OWN, { duty: 0xFF, shade: 100 }], { key: 53, duty: %i[three_quarter] * 4 }]
+  ].freeze
+  VOICED_WAVE = [
+    [[0, 30, 0, OWN, { pitch_number: 1500, vibrato: 2 }], { pitch_number: 1500, vibrato: { depth: 2, speed: 1, after: 0 } }],
+    [[36, 30, 60, 8, { fade: 3, duty: 0x55, shade: 20 }], { key: 60, volume: 8, pan: Rational(20, 64) }],
+    [[72, 0, 0, OWN, { pitch_number: 1700 }], { pitch_number: 1700 }]
+  ].freeze
+  VOICED_DRUM = [
+    [[0, 6, 60, OWN, { fade: 9 }], { key: 60, swell: 1 }],
+    [[12, 6, 64, OWN, { fade: 2, shade: 64 }], { key: 64, decay: 2, pan: 1 }],
+    [[24, 6, 64, OWN, { pitch_number: 1000, vibrato: 2 }], { key: 64 }],
+    [[36, 6, PackNote::REST, OWN, { fade: 2 }], {}]
+  ].freeze
+
+  # A part's voiced records as a slot's bytes, ended, with filler after that no part may play.
+  private def voiced_records(notes)
+    tuples = notes.map { |(at, length, key, volume, settings), _| [at, length, key, OWN, volume, nil, nil, nil, settings] }
+    filler = [5, 7, 64, OWN, 15, nil, 1, nil, { pitch_number: 1000, fade: 4 }]
+    ending = [[PackNote::END_OF_PART, 0, 0, 0, 0, nil, nil, nil, {}]]
+    PackNote.bytes_of([*tuples, *ending, *([filler] * (MOST - tuples.length - 1))], count: MOST, voiced: true)
+  end
+
+  # The notes written by hand beside +notes+' records.
+  private def voiced_written(notes)
+    notes.map { |(at, length, *), words| Note.new(at: at, length: (length unless length.zero?), **words) }
+  end
+
+  # A game of a song of those four parts, its notes read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand.
+  private def voiced_game(parts, folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        parts.each_key.with_index { |name, place| slots.voiced_notes name, at: place * MOST * PackNote::VOICED_BYTES, count: MOST }
+      end
+      notes_of = ->(name) { pack ? pack[name].notes : test.voiced_notes_by_hand(parts.fetch(name)) }
+      music = songs :music, [Score.new(parts: [Part.new(notes: notes_of.(:lead), duty: :quarter),
+                                               Part.new(notes: notes_of.(:low), volume: 10),
+                                               Part.new(notes: notes_of.(:wave), plays: :wave),
+                                               Part.new(notes: notes_of.(:drum), plays: :noise)],
+                                       tempo: 150, length: 96, loop_from: 30)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Called back from the game's block, so it is public.
+  def voiced_notes_by_hand(notes) = voiced_written(notes)
+
+  def test_notes_with_their_voices_settings_read_as_the_game_starts_play_as_written_by_hand
+    parts = { lead: VOICED_LEAD, low: VOICED_LOW, wave: VOICED_WAVE, drum: VOICED_DRUM }
+    Dir.mktmpdir do |folder|
+      by_hand = voiced_game(parts)
+      left_out = voiced_game(parts, folder: folder)
+      file = VBlank::Original::Pack.holding(parts.transform_values { |notes| voiced_records(notes) },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 150)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 150)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
+    end
+  end
+
+  # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
+  # name hz in 16ths and glides, the first shaded between the speakers, one naming an instrument and a volume as it glides (the part's
+  # own, from the file), one out of range (its key), and a noise part whose hits name hz, one
+  # beside a noise clock (the clock). The horn's rate is read from the file too.
+  GLIDING = [
+    [[0, 0, 60, OWN, { hz: 4186, shade: -44 }], { hz: Rational(4186, 16), pan: -0.6875 }],
+    [[4, 0, 60, OWN, { hz: 4410, glides: true }], { hz: Rational(4410, 16), glides: true }],
+    [[8, 0, 60, 7, { hz: 4700, glides: true }], { hz: Rational(4700, 16), glides: true }],
+    [[14, 0, 0, 9, { hz: 3333 }], { hz: Rational(3333, 16), volume: 9 }],
+    [[20, 10, 64, OWN, { hz: 0 }], { key: 64 }],
+    [[34, 0, 62, OWN, { hz: 5000, glides: true }], { hz: Rational(5000, 16), glides: true }]
+  ].freeze
+  HISSED = [
+    [[0, 6, 60, OWN, { hz: 120_000 * 16 }], { hz: 120_000 }],
+    [[10, 6, 60, OWN, { hz: 7777 }], { hz: Rational(7777, 16) }],
+    [[20, 6, 60, OWN, { hz: 7777 }, 0x21], { noise_clock: [1, 2] }]
+  ].freeze
+  HORN_RATE_AT = 2080
+
+  # +notes+ (GLIDING or HISSED) for this run's console: a console whose recorded notes cannot
+  # glide (Console::Description#glides_recordings) strikes each instead, in the records and by hand.
+  private def for_console(notes)
+    return notes if VBlank::Console.described(game_console).glides_recordings
+
+    notes.map do |(record, words)|
+      # A note that named an instrument and a volume as it glided strikes with them.
+      struck = record[4][:glides] && record[3] != OWN ? { volume: record[3], instrument: :bell } : {}
+      [[*record.first(4), record[4].except(:glides), *record.drop(5)], words.except(:glides).merge(struck)]
+    end
+  end
+
+  private def gliding_records(notes)
+    tuples = notes.map do |(at, length, key, volume, settings, clock), _|
+      kept = VBlank::Console.described(game_console).glides_recordings ? settings : settings.except(:glides)
+      [at, length, key, (settings[:glides] && volume != OWN ? 0 : OWN), volume, nil, nil, clock, kept]
+    end
+    ending = [[PackNote::END_OF_PART, 0, 0, 0, 0, nil, nil, nil, {}]]
+    PackNote.bytes_of([*tuples, *ending], count: MOST, voiced: true)
+  end
+
+  # A game of a sound effect of those two parts, read from voiced slots with the pack left out
+  # (+folder+ given), or written by hand, played on A.
+  private def gliding_game(folder: nil)
+    test = self
+    b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
+    from = folder && original_nowhere(folder)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound mix_rate: 13_379
+      pack = from && data_pack(from: from, version: "1") do |slots|
+        slots.voiced_notes :glide, at: 0, count: MOST
+        slots.voiced_notes :hiss, at: MOST * PackNote::VOICED_BYTES, count: MOST
+        slots.numbers :horn_rate, at: HORN_RATE_AT, count: 1, width: :half, signed: false
+      end
+      instrument :horn, pcm: PCM, note: :C4, rate: pack ? pack[:horn_rate].number(0) : 9000
+      instrument :bell, pcm: PCM.rotate(9), rate: 8000, note: :C5
+      notes_of = ->(name) { pack ? pack[name].notes(instruments: %i[bell]) : test.gliding_notes_by_hand(name) }
+      effects = sound_effects :sfx, [Score.new(parts: [Part.new(plays: :horn, notes: notes_of.(:glide), volume: 13),
+                                                       Part.new(plays: :noise, notes: notes_of.(:hiss))],
+                                               tempo: 150, length: 48)]
+      game_loop do
+        wait_vblank
+        effects.play 0 if pressed(:a)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  GLIDING_PARTS = { glide: GLIDING, hiss: HISSED }.freeze
+
+  # Called back from the game's block, so it is public.
+  def gliding_notes_by_hand(name) = voiced_written(for_console(GLIDING_PARTS.fetch(name)))
+
+  def test_pitches_between_keys_that_glide_read_as_the_game_starts_play_as_written_by_hand
+    Dir.mktmpdir do |folder|
+      # The Color, which has no instruments, refuses the effect.
+      unless VBlank::Console.for(game_console).answers.answer(:instrument).works?
+        left_out = gliding_game(folder: folder)
+        next assert_raises(VBlank::IR::Guardrails::ValidationError) { game_player.run(left_out, frames: 1) }
+      end
+
+      by_hand = gliding_game
+      left_out = gliding_game(folder: folder)
+      file = VBlank::Original::Pack.holding({ glide: gliding_records(GLIDING), hiss: gliding_records(HISSED),
+                                              horn_rate: [9000].pack("v") },
+                                            sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 60)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 60)
+
+      refute_empty wanted.audio.select { |entry| entry.first == :note }, "the effect written by hand plays notes"
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
+    end
   end
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in

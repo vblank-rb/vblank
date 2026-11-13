@@ -1886,7 +1886,7 @@ static void sdl_sound_logged(const char *line) { (void)line; }
 static void sdl_dump_list(const rg_list *list) {
   if (!part_result) return;
   fprintf(part_result, "list %s %d", list->name, (int)list->length);
-  for (int32_t i = 0; i < list->length; i++) fprintf(part_result, " %d", (int)list->items[rg_list_slot(list, i)]);
+  for (int32_t i = 0; i < list->length; i++) fprintf(part_result, " %d", (int)rg_list_load(list, rg_list_slot(list, i)));
   fputc('\n', part_result);
 }
 

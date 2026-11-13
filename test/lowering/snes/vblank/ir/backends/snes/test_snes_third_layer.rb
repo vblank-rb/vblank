@@ -72,10 +72,22 @@ class TestSNESThirdLayer < Minitest::Test
     refute_nil SNES.new.build(game_with_held([0x001F, 0x03E0]))
   end
 
+  def test_the_see_through_refusal_names_alone
+    error = assert_raises(SNES::Art::HeldArtSeeThrough) { SNES.new.build(game_with_held([0x001F, 0x0000])) }
+
+    assert_match(/alone: true/, error.message)
+  end
+
+  # SHOWN ALONE (`alone: true`), the interpreter draws nothing else above the row either, so see-through
+  # pixels, empty cells and a place behind the arena all build.
+  def test_a_held_background_shown_alone_builds_see_through_scrolled_and_behind_the_arena
+    refute_nil SNES.new.build(game_with_held([0x001F, 0x0000], scrolls: true, first: true, alone: true))
+  end
+
   # The arena of game_with_bar and a background of four rows held above row 32, its one tile in
-  # stripes of +colors+; +scrolls+ moves it every pass, and +first+ declares it before the arena,
-  # behind it.
-  private def game_with_held(colors, scrolls: false, first: false)
+  # stripes of +colors+; +scrolls+ moves it every pass, +first+ declares it before the arena,
+  # behind it, and +alone+ shows it alone above its row.
+  private def game_with_held(colors, scrolls: false, first: false, alone: false)
     b = Builder.new
     b.instance_eval do
       screen :tiled
@@ -86,10 +98,10 @@ class TestSNESThirdLayer < Minitest::Test
       tiles :arena_tiles, "#" => :ground
       tiles :cloud_tiles, "o" => :cloud
       tiles :top_tiles, "t" => :top_art
-      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32 if first
+      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32, alone: alone if first
       background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
       background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
-      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32 unless first
+      top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32, alone: alone unless first
       game_loop { top.scroll_by 0, 1 if scrolls }
     end
     b.finalize_program

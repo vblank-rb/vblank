@@ -43,28 +43,54 @@ class TestTestTask < Minitest::Test
   # YJIT slows a run in Ractors down rather than speeding it up, so such a run is played without
   # it even when the Ruby options ask for it.
   def test_a_run_in_ractors_is_played_without_yjit_even_when_asked_for
-    assert_equal "false", yjit_in_a_run_of(:gba, test_options: "--ractor", ruby_options: "--yjit")
+    assert_equal "false", yjit_enabled_in_run(:gba, test_options: "--ractor", ruby_options: "--yjit")
   end
 
   def test_a_gba_run_without_ractors_is_played_with_yjit
-    assert_equal "true", yjit_in_a_run_of(:gba, test_options: nil)
+    assert_equal "true", yjit_enabled_in_run(:gba, test_options: nil)
   end
 
   def test_a_run_yjit_speeds_up_is_played_with_it
-    assert_equal "true", yjit_in_a_run_of(:js, test_options: nil)
+    assert_equal "true", yjit_enabled_in_run(:js, test_options: nil)
   end
 
   def test_a_run_yjit_slows_down_is_played_without_it
-    assert_equal "false", yjit_in_a_run_of(:gbc, test_options: nil, ruby_options: "--yjit")
+    assert_equal "false", yjit_enabled_in_run(:gbc, test_options: nil, ruby_options: "--yjit")
   end
 
-  # Plays a run of +lowering+ over one file that writes down whether YJIT is on in the Ruby
-  # playing it. +ruby_options+ stands for whatever YJIT switch the caller's RUBYOPT has.
-  private def yjit_in_a_run_of(lowering, test_options:, ruby_options: nil)
+  # A checked run's processes, the one rake starts and the ones it plays its tests in, require
+  # the process runner, which requires minitest, from Ruby's command line. Ruby 4.1 no longer
+  # sets bundler up while RubyGems loads, so that line runs before RUBYOPT's bundler/setup, and
+  # minitest would be the newest one installed, not the Gemfile's: bundler then stops the
+  # process before a test plays. The probe is a test, so it is played in one of those processes.
+  # It can only fail where a minitest newer than the Gemfile's is installed, as Ruby 4.1 brings.
+  def test_a_checked_run_plays_with_the_minitest_this_process_has
+    written = record_from_run(:js, test_options: nil) do |record|
+      <<~RUBY
+        require "minitest/autorun"
+        class TestProbe < Minitest::Test
+          def test_minitest_version = File.write(#{record.inspect}, Gem.loaded_specs["minitest"].version.to_s)
+        end
+      RUBY
+    end
+
+    assert_equal Gem.loaded_specs["minitest"].version.to_s, written
+  end
+
+  private def yjit_enabled_in_run(lowering, test_options:, ruby_options: nil)
+    record_from_run(lowering, test_options: test_options, ruby_options: ruby_options) do |record|
+      "File.write(#{record.inspect}, RubyVM::YJIT.enabled?.to_s)\n"
+    end
+  end
+
+  # Plays a run of +lowering+ over one file, the source the block gives for the path it is handed,
+  # which writes down something about the Ruby playing it at that path, and returns what it wrote.
+  # +ruby_options+ stands for whatever YJIT switch the caller's RUBYOPT has.
+  private def record_from_run(lowering, test_options:, ruby_options: nil)
     Dir.mktmpdir do |dir|
-      record = File.join(dir, "yjit")
+      record = File.join(dir, "written")
       probe = File.join(dir, "probe.rb")
-      File.write(probe, "File.write(#{record.inspect}, RubyVM::YJIT.enabled?.to_s)\n")
+      File.write(probe, yield(record))
       # TEST and TESTOPTS name the outer run's files and options, which rake's task would take
       # over its own.
       their_options = ENV.fetch("RUBYOPT", "").split.grep_v(/yjit/)

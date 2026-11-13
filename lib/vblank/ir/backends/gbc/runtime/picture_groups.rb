@@ -35,8 +35,8 @@ module VBlank
           # - a chunk: where its tiles are in the bank, the bank of picture memory they go to, where
           #   they go, and how many blocks of 16 bytes less one, as the console's own copy takes it.
           module PictureGroups
-            # The most tiles in a chunk, and the most chunks copied in one blank: 512 bytes, as many as
-            # the blank copies of a grid being put up (Picture::MAP_ROWS_PER_BLANK rows of it).
+            # The most tiles in a chunk, and the most chunks copied in one blank: 512 bytes, about a
+            # quarter of the blank, the rest left to a grid being put up (Picture#emit_map_rows).
             CHUNK_TILES = 8
             CHUNKS_A_BLANK = 4
 

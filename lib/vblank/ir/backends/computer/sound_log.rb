@@ -15,8 +15,12 @@ module VBlank
         # not carry it. Both sides number the game's beeps, songs, waves and hits here, the
         # lowering to write the numbers in and the run to read them back, which is what keeps the
         # two in step.
+        #
+        # +start_file+ is the file the program was handed as it starts (IR::StartFile), or nil: a
+        # part that reads its wave from there is read back with the wave the file holds.
         class SoundLog
-          def initialize(program)
+          def initialize(program, start_file: nil)
+            @start_file = start_file
             defined = program.walk.select { |node| node.kind == :define_sound }.to_h { |node| [node.name, node.effect] }
             @effects = program.walk.select { |node| node.kind == :beep }.map { |node| effect_of(node, defined) }.uniq
             @defined = defined
@@ -26,9 +30,10 @@ module VBlank
             @hits = program.walk.select { |node| node.kind == :noise }.map { |node| hit_of(node) }.uniq
             # A part that reads its notes from the start file may play any key, so every key's pitch
             # on its voice is one of the songs' (IR::StartFile::Notes#key_events).
-            # So is every noise clock's, on a part that takes one (#clock_events).
+            # So is every noise clock's, on a part that takes one (#clock_events), and every pitch
+            # number's, on a part whose records name them (#pitch_number_events).
             read_at_start = @songs.flat_map { |song| song.voices.filter_map(&:from_file) }
-                                  .flat_map { |where| where.key_events + where.clock_events }
+                                  .flat_map { |where| where.key_events + where.clock_events + where.pitch_number_events }
             @pitches = [0, *@songs.flat_map { |song| song.voices.flat_map { |part| part.events.map { |event| event[1] } } },
                         *read_at_start.map { |event| event[1] }].uniq
             # A name declared twice is the last declaration's, as the interpreter gathers them.
@@ -48,6 +53,15 @@ module VBlank
           # the log reads it back as the pitch itself. 0 is a rest.
           def pitch_number(pitch)
             @pitches.index(pitch) or raise LoweringError, "a note's pitch #{pitch.inspect} is not among the songs' pitches"
+          end
+
+          # The pitch a printed pitch number names: one of the songs' pitches, or for a note read as
+          # the game starts at a pitch between keys (Original::PackNote's hz), minus one less its hz
+          # in 16ths (Computer::Sound#hz_note_rules), which no list made as the game is built holds.
+          def pitch_of(number)
+            return @pitches.fetch(number) unless number.negative?
+
+            Rational(-number - 1, Original::PackNote::HZ_SIXTEENTHS)
           end
 
           # Every song the game has, and every different beep it makes (an Audio::Sound::Effect
@@ -82,14 +96,14 @@ module VBlank
             case kind
             when "enabled" then [:enabled]
             when "beep" then [:beep, @effects.fetch(numbers[0])]
-            when "note" then [:note, @songs.fetch(numbers[0]).name, @pitches.fetch(numbers[1])]
+            when "note" then [:note, @songs.fetch(numbers[0]).name, pitch_of(numbers[1])]
             when "voice"
               # A fade, a slide or a wobble of -1 is none, set before one that came after it. The
               # speaker is its bits (Audio::Pan.bits_of), and a note on both prints none.
               fade = Audio::NoteFade.from_bits(numbers[4]) if numbers[4] && numbers[4] >= 0
               slide = Audio::PitchSlide.from_bits(numbers[5]) if numbers[5] && numbers[5] >= 0
               vibrato = Audio::Vibrato.from_bits(numbers[6]) if numbers[6] && numbers[6] >= 0
-              Tunes.voice_entry(numbers[0], @songs.fetch(numbers[1]).name, @pitches.fetch(numbers[2]), numbers[3],
+              Tunes.voice_entry(numbers[0], @songs.fetch(numbers[1]).name, pitch_of(numbers[2]), numbers[3],
                                 fade: fade, slide: slide, vibrato: vibrato, side: Audio::Pan.side_from_bits(numbers[7]),
                                 duty: (Audio::Duty.from_bits(numbers[8]) if numbers[8]))
             when "wobble" then [:wobble, numbers[0], numbers[1]]
@@ -104,8 +118,8 @@ module VBlank
             when "stop_wave" then [:stop_wave]
             when "noise" then [:noise, @hits.fetch(numbers[0])]
             when "noise_rest" then [:noise, nil]
-            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), @pitches.fetch(numbers[2]))]
-            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), @pitches.fetch(numbers[2]))]
+            when "part_wave" then [:wave, wave_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
+            when "part_noise" then [:noise, hit_of_part(part_at(numbers[0], numbers[1]), pitch_of(numbers[2]))]
             when "sample" then [:sample, @recordings.fetch(numbers[0]).name]
             when "stop_sample" then [:stop_sample]
             else raise ArgumentError, "the program printed a sound line nobody reads: #{line}"
@@ -133,8 +147,11 @@ module VBlank
 
           # A note of a song's part on the wave voice or the noise voice, as the interpreter's
           # player logs one (Reference::Player#log_wave_or_noise). The C prints the note's pitch;
-          # the rest is the part's.
-          def wave_of_part(part, pitch) = { shape: part.wave, frequency: pitch, volume: part.volume }
+          # the rest is the part's, its wave read from the start file where it keeps it there.
+          def wave_of_part(part, pitch)
+            shape = part.wave_from_file ? part.wave_from_file.steps_in(@start_file.b) : part.wave
+            { shape: shape, frequency: pitch, volume: part.volume }
+          end
 
           def hit_of_part(part, pitch)
             { pitch: pitch, decay: part.decay, volume: part.volume, metallic: part.metallic }

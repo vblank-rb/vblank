@@ -116,7 +116,7 @@ module VBlank
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,
-                                      bar_maps: bar_maps, rooms: art.rooms.any?, picture_rooms: art.rooms_bring_only_pictures?,
+                                      bar_maps: bar_maps, rooms: art.rooms.any?,
                                       room_colors: art.room_colors?, lent_families: art.lent_families?,
                                       backdrop: art.first_screen_backdrop, banked_colors: banked_colors,
                                       first_kept_list: art.first_kept_list, tall_pieces: art.tall_pieces?,

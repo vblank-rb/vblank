@@ -88,8 +88,13 @@ module PackColorListGames
   # and with a list that holds each step of the walk in turn, a pass a step. The steps are made
   # from the list's colours, which a build that leaves its pack out learns as the game starts.
   WALK_STEPS = 6
+  # A walk up from black whose channels wait for a count that starts at 32 and falls by 2 a step
+  # (Builder#color_walk's count:), and how many steps it takes.
+  COUNTED_WALK = { from: :black, step: 2, count: 32 }.freeze
+  COUNTED_WALK_STEPS = 17
 
-  private def walking_game_and_file(from, options: VBlank::Cartridge::Options.new)
+  # +counted+ walks by COUNTED_WALK in place of WALK_STEPS steps from white.
+  private def walking_game_and_file(from, options: VBlank::Cartridge::Options.new, counted: false)
     test = self
     builder = Builder.new(options: options)
     builder.instance_eval do
@@ -100,7 +105,7 @@ module PackColorListGames
       image :ship, width: 8, height: 8, colors: :shown, places: SHIP
       ship = sprite :ship, at: SHIP_AT
       ship.draw_with :shown
-      walk = color_walk(:bank_2, from: :white, steps: WALK_STEPS)
+      walk = counted ? color_walk(:bank_2, **COUNTED_WALK) : color_walk(:bank_2, from: :white, steps: WALK_STEPS)
       step = var :step, 0
       game_loop do
         recolor :shown, walk, showing: step

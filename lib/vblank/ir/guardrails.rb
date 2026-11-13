@@ -152,12 +152,39 @@ module VBlank
       class << self
         # Register a whole-program check so it runs in every validation pass from
         # now on. Idempotent for the same check instance. Returns the check.
-        # The list is replaced rather than added to, so what it holds can never change under
-        # a reader. That is what lets a game build from a Ractor: a worker may read a list
-        # kept on a module only while nothing in it can still change.
+        #
+        # A game built in a Ractor reads this list too, and a worker may read a list kept on
+        # a module only while it is shareable: frozen all the way down, the checks in it
+        # included. A frozen list of one plain object is not, and every worker building a
+        # game while it is registered stops with Ractor::IsolationError. So the check is
+        # frozen all the way down here (Ractor.make_shareable, in place: the caller's object
+        # is the one registered, and whatever it holds is frozen with it), and the list is
+        # replaced rather than added to. A check is stateless by contract (detect is handed
+        # the program and returns findings), so freezing it changes nothing a check may do;
+        # one that keeps a cache of its own raises FrozenError when it first writes it. One
+        # that holds what cannot be frozen, a block that carries its surroundings, is refused
+        # before anything of it is frozen.
         def register(check)
-          @registered_checks = (@registered_checks + [check]).freeze unless @registered_checks.include?(check)
+          return check if @registered_checks.include?(check)
+
+          refuse_unshareable_check!(check)
+          @registered_checks = Ractor.make_shareable(@registered_checks + [check])
           check
+        end
+
+        # Raises an ArgumentError naming +check+ if it cannot be frozen all the way down, and
+        # changes nothing of it. Public for Effects.register_pack, which asks it of each of a
+        # pack's checks before it adds any of the pack.
+        def refuse_unshareable_check!(check)
+          # A deep copy is frozen first, so a check that is refused is left as it was given. A
+          # thing that cannot be copied (a block) raises TypeError rather than Ractor::Error.
+          Ractor.make_shareable(check, copy: true)
+        rescue Ractor::Error, TypeError => e
+          raise ArgumentError,
+                "The guardrail check #{check.class} cannot be registered. It keeps something that " \
+                "cannot be frozen (#{e.message}). A check must keep no state: it gets the program " \
+                "and returns findings. To fix this, remove the state from the check. If the check " \
+                "keeps a block, make the block with Ractor.shareable_proc."
         end
 
         # The checks registered so far — a copy, so the registry stays visible data

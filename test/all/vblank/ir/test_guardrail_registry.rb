@@ -41,6 +41,34 @@ class TestGuardrailRegistry < Minitest::Test
     end
   end
 
+  # A check that keeps something no other Ractor may touch: a block that carries the test
+  # it was written in.
+  class KeepsABlock
+    def initialize(block)
+      @block = block
+    end
+
+    def detect(_program) = []
+  end
+
+  # A game that trips BoomCheck, built where a Ractor's block can reach it: a block runs with
+  # a self of its own and cannot see a test's methods.
+  module BoomGame
+    module_function
+
+    # The build's error message, or nil if it built.
+    def build_error_message
+      VBlank.build("BOOM", console: :gba, out: StringIO.new, err: StringIO.new) do
+        screen :bitmap
+        var :boom, 1
+        halt
+      end
+      nil
+    rescue VBlank::ROMError => e
+      e.message
+    end
+  end
+
   # Global registry — clear it after every test so one test can't leak into the
   # next (or into other files' builds). A loaded effect pack's checks live in this
   # same registry, so snapshot what was there and put it back; clearing without
@@ -78,8 +106,8 @@ class TestGuardrailRegistry < Minitest::Test
   end
 
   def test_a_registered_checks_fix_is_applied_like_any_builtin
-    replacement = program(set(:fixed, 1))
-    fix = Guardrails::Fix.new(message: "fixed it", apply: ->(_prog) { replacement })
+    replacement = Ractor.make_shareable(program(set(:fixed, 1)))
+    fix = Guardrails::Fix.new(message: "fixed it", apply: Ractor.shareable_lambda { |_prog| replacement })
     Guardrails.register(StubCheck.new([Guardrails::Finding.new(check: :stub, severity: :error,
                                                                message: "boom", node: :program, fix: fix)]))
 
@@ -88,6 +116,25 @@ class TestGuardrailRegistry < Minitest::Test
     assert report.ok?, "a fixed problem should not leave an error"
     assert_equal ["fixed it"], report.warnings.map(&:message)
     assert_same replacement, report.program
+  end
+
+  # A game built in a Ractor reads the same registry. The test suite builds most of its games
+  # in Ractors while this file registers checks on the main one, so a check a worker could
+  # not read stopped every build in that window.
+  def test_a_registered_check_runs_for_a_game_built_in_a_ractor
+    Guardrails.register(BoomCheck.new)
+    message = without_experimental_warning { Ractor.new { BoomGame.build_error_message }.value }
+
+    assert_match(/stopped/, message.to_s, "the check registered on the main Ractor stopped the worker's build")
+  end
+
+  def test_a_check_no_ractor_can_share_is_refused
+    check = KeepsABlock.new(-> { self })
+    err = assert_raises(ArgumentError) { Guardrails.register(check) }
+
+    assert_match(/KeepsABlock/, err.message)
+    assert_empty Guardrails.registered_checks - @already_registered, "the refused check is not registered"
+    refute_predicate check, :frozen?, "the refused check is left as it was given"
   end
 
   def test_registering_the_same_check_twice_keeps_a_single_copy
@@ -150,5 +197,14 @@ class TestGuardrailRegistry < Minitest::Test
       halt
     end
     assert_operator rom.size, :>, 0
+  end
+
+  # Ruby prints a warning that Ractors are experimental every time one is made.
+  private def without_experimental_warning
+    was = Warning[:experimental]
+    Warning[:experimental] = false
+    yield
+  ensure
+    Warning[:experimental] = was
   end
 end

@@ -43,6 +43,8 @@ module VBlank
 
           # The grid a background is drawn on: 32 cells each way, wrapping round.
           GRID_CELLS = 32
+          # An entry of the grids' table (art_grids): where the grid is, its bank, and its rows.
+          GRID_ENTRY_BYTES = 4
 
           # The widest and tallest picture a sprite can show: the mask a collision reads is kept a
           # byte for every eight pixels of a row, and the runtime walks it in byte-sized steps.
@@ -237,9 +239,10 @@ module VBlank
             @run_tile_numbers = {} # a painted tile's name -> its tile number
             @run_tile_of = {} # [a painted tile's name, the room it is in] -> [tile number, palette number]
             @grids = []               # 2048 bytes each: the cells' tiles, then their attributes
+            @grid_rows = []           # each grid's rows its maps reach, the rest of it empty
             @big_maps = []            # [bytes, columns, rows] of each map bigger than the grid
             background_tile_number(Array.new(16, 0)) # tile 0: nothing but the backdrop, for an empty cell
-            grid(Array.new(GRID_CELLS) { Array.new(GRID_CELLS) }) # grid 0: nothing up
+            grid(Array.new(GRID_CELLS) { Array.new(GRID_CELLS) }, rows: 0) # grid 0: nothing up
           end
 
           def painting? = !@square_colors.nil?
@@ -393,9 +396,6 @@ module VBlank
 
           # Whether +room+, or a room it carries, brings sprite pictures in.
           def brings_pictures_in?(room) = room.chain.any? { |link| @room_scenes.key?(link.id) }
-
-          # Whether every room brings sprite pictures and nothing else: no background's tiles or colours.
-          def rooms_bring_only_pictures? = @rooms.any? && @rooms.none?(&:brings_in?)
 
           # THE FIRST TILE EVERY SCENE'S OWN ARE NUMBERED FROM: past the tiles every screen keeps and
           # the groups' rooms, once every picture is known, at an even number where pieces are tall.
@@ -1008,8 +1008,11 @@ module VBlank
           end
 
           # The number of a grid of 32×32 cells, each [tile number, palette number] or nil for a
-          # cell with nothing in it, which shows the backdrop.
-          def grid(cells)
+          # cell with nothing in it, which shows the backdrop. +rows+ is how many of its rows a map
+          # reaches, counting from the top, the rows a cell the game changes can be in; every row
+          # past them is empty. Putting the grid up copies those rows alone, and the empty rows past
+          # them only where the grid up before had cells there (Runtime::Picture, GRID_ROWS).
+          def grid(cells, rows:)
             tiles = cells.flatten(1).map { |cell| cell ? cell.first : 0 }
             attributes = cells.flatten(1).map do |cell|
               next 0 unless cell
@@ -1018,7 +1021,9 @@ module VBlank
               palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
             end
             bytes = tiles.map { |tile| tile & 0xFF } + attributes
-            @grids.index(bytes) || (@grids << bytes).length - 1
+            number = @grids.index(bytes) || (@grids << bytes).length - 1
+            @grid_rows[number] = [@grid_rows[number] || 0, rows.clamp(0, GRID_CELLS)].max
+            number
           end
 
           # The number of a map bigger than the grid (Runtime::BigMaps), kept whole: +cells+ is its
@@ -1141,10 +1146,12 @@ module VBlank
               indexes.data_words("art_mask_#{picture.number}")
               indexes.data_bank_of("art_mask_#{picture.number}")
             end
+            # Where each grid is, its bank, and the rows its maps reach (GRID_ENTRY_BYTES).
             indexes.label("art_grids")
             @grids.each_index do |i|
               indexes.data_words("art_grid_#{i}")
               indexes.data_bank_of("art_grid_#{i}")
+              indexes.data_bytes(@grid_rows[i])
             end
             # Each map bigger than the grid as Runtime::BigMaps reads it: where its table of rows is
             # (each row's place and bank), a byte unused, and its size.

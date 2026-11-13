@@ -15,7 +15,7 @@ verb has one of two answers there, decided once in `Console::PS1Answers`:
 This file is `Console::PS1Answers.reference` written out (`ruby tools/console_answers.rb`), and
 a test fails when the two differ. The Advance's answers are in `.claude/dsl/game-boy-advance.md`.
 
-- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from `screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen bits in each pixel, the same colours as on the Advance. `tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` works too: the chip draws the turned background as a textured shape. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet.
+- `screen` — works: `screen :bitmap` and `screen :tiled` work: the graphics chip draws both into video RAM. The game's screen is the PlayStation's whole picture, 320 × 240, so a game laid out from `screen_width` and `screen_height` fills it, and a painted picture has a colour of fifteen bits in each pixel, the same colours as on the Advance. `tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` works too: the chip draws the turned background as a textured shape. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet. `shown_rows:` is refused: a PlayStation can write its video memory at any time, so rows that do not show give it no more time.
 - `setting` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a PlayStation.
 - `built_for?` — works: true when asked about :ps1.

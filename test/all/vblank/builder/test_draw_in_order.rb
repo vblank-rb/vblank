@@ -43,7 +43,8 @@ module DrawInOrderGames
   end
 
   # The same two, in one order with a crowd of +crowd+ things that never come out, so the enemy
-  # and the hero are past the 128th thing the order holds.
+  # and the hero are past the 128th thing the order holds (or, given a smaller +crowd+, last of a
+  # run of that many and two).
   private def crowded_program(hero_y, crowd: 130)
     block = BLOCK
     enemy_at = ENEMY_AT
@@ -134,6 +135,14 @@ class TestDrawInOrder < Minitest::Test
   def test_the_console_draws_the_same_order
     assert_backends_agree(two_program(54), frames: 2)
     assert_backends_agree(two_program(66), frames: 2)
+  end
+
+  # AN ORDER AS LONG AS THE GAME BOY COLOR KEEPS PLACES FOR (forty), the fewest of any console, so a
+  # crowd every console keeps: a pool of all but two, and the enemy and the hero.
+  def test_an_order_as_long_as_the_smallest_console_keeps_is_drawn
+    crowd = VBlank::Console.described(:gbc).sprite_places - 2
+    assert_equal RED, shown(crowded_program(54, crowd: crowd)), "the hero stands higher, so the enemy covers him"
+    assert_equal GREEN, shown(crowded_program(66, crowd: crowd)), "the hero stands lower, so he covers the enemy"
   end
 
   # The hero walks down a pixel a frame from above the enemy to below it, and the two swap

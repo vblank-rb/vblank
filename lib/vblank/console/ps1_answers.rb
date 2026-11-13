@@ -34,7 +34,9 @@ module VBlank
                       "bits in each pixel, the same colours as on the Advance. " \
                       "`tear_free: true` keeps two pictures, one drawn while the other shows. `screen :rotozoom` " \
                       "works too: the chip draws the turned background as a textured shape. `pixel_size: 2` " \
-                      "is refused: the build does not show a painted screen bigger yet."),
+                      "is refused: the build does not show a painted screen bigger yet. `shown_rows:` is " \
+                      "refused: a PlayStation can write its video memory at any time, so rows that do not " \
+                      "show give it no more time."),
         setting: works,
         built_for_computer?: works("false on a PlayStation."),
         built_for?: works("true when asked about :ps1."),

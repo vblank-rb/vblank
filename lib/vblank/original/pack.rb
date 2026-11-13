@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "tmpdir"
+
 module VBlank
   module Original
     # A FILE THAT CANNOT BE READ AS A DATA PACK: it is not one, it is cut short, or it is written in
@@ -57,6 +59,24 @@ module VBlank
 
       # The pack in the file at +path+.
       def self.read(path) = from_bytes(File.binread(path))
+
+      # The pack the block writes to the file at the path it is handed, in a folder of its own that
+      # is gone once the pack is read.
+      def self.read_from_temporary_file
+        Dir.mktmpdir("vblank-pack") do |folder|
+          path = File.join(folder, "made.pack")
+          yield path
+          read(path)
+        end
+      end
+
+      # #header_bytes for a pack of slots of +sizes+ (bytes, by name, in the pack's order), checked
+      # as a pack is checked when it is made, for a writer that adds the slots' bytes after it
+      # (Unpacking#write_pack_as_c).
+      def self.checked_header_bytes(sizes, sha1:, build_version:)
+        checked = holding(sizes.transform_values { "" }, sha1: sha1, build_version: build_version)
+        header_bytes(sha1: checked.rom_sha1, build_version: checked.build_version, sizes: sizes)
+      end
 
       # WHERE EVERYTHING IS IN THE FILE of a pack of +slots+ (Original::Slot), made for
       # +build_version+, worked out from the slots' names, shapes and sizes alone: a game built with

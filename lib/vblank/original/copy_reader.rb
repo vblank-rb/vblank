@@ -79,6 +79,7 @@ module VBlank
       def copy_bytes(at:, count:, into:, start: 0)
         refuse_unless_slot!(into, "copy_bytes")
         refuse_outside_slot!(into, start, count)
+        into.record_write
         emit_block_call(:copy, at: at, slot: into, start: start, count: count, format_number: 0) do
           emit_copy_routine
         end
@@ -167,6 +168,7 @@ module VBlank
         start = settings.fetch(:start, 0)
         refuse_unless_slot!(into, verb)
         refuse_outside_slot!(into, start, 0)
+        into.record_write
         format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
                                                          format_number: @formats.index(format)) do
@@ -355,6 +357,15 @@ module VBlank
       # The Slot this writes, and its place in the pack's order.
       attr_reader :slot, :number
 
+      # The SlotUses this slot's reads and writes are recorded in as the routine is built, or nil
+      # for none (UnpackingSlots#record_uses_in).
+      attr_writer :uses
+
+      # Record that the routine reads this slot, or writes it (a copy's verb given it as into:
+      # writes it too).
+      def record_read = @uses&.record_read(@slot.name)
+      def record_write = @uses&.record_write(@slot.name)
+
       def byte_size = @slot.byte_size
 
       # Item +index+ of the slot. A slot of numbers wider than a byte reads number +index+, put
@@ -363,6 +374,7 @@ module VBlank
       # game's number, so it reads as one whether the slot is signed or not: above 2147483647 it
       # reads below zero, as any game number does.
       def [](index)
+        record_read
         refuse_item_outside_slot!(index) if index.is_a?(Integer)
         return @list[place(index)] & 0xFF unless wide_numbers?
 
@@ -376,6 +388,7 @@ module VBlank
       # +index+, written over its bytes in the slot's layout; any other slot takes the low 8 bits
       # into byte +index+. A copy's formats write bytes, from #place, whatever the slot holds.
       def []=(index, value)
+        record_write
         return write_number(index, value) if wide_numbers?
         return write_fixed_place(index, value) if index.is_a?(Integer)
 
@@ -393,6 +406,7 @@ module VBlank
       # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
       # keep only its low bits. One the routine works out keeps them.
       def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false)
+        record_write
         refuse_cell_of_another_shape!
         cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
         MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
@@ -419,6 +433,7 @@ module VBlank
       # A channel written as a number past +bits+ is refused. One the routine works out keeps its
       # low +bits+ bits.
       def write_color(index, red:, green:, blue:, bits: 8)
+        record_write
         refuse_color_of_another_shape!
         refuse_channel_bits_out_of_range!(bits)
         refuse_channels_past_bits!(index, bits, red: red, green: green, blue: blue)
@@ -559,6 +574,9 @@ module VBlank
     # a SlotBytes for each slot, by name.
     class UnpackingSlots
       def initialize(writers) = @writers = writers
+
+      # Record every slot's reads and writes from here on in +uses+ (a SlotUses, or nil for none).
+      def record_uses_in(uses) = @writers.each_value { |writer| writer.uses = uses }
 
       def [](name)
         @writers.fetch(name.to_sym) do

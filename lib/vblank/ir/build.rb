@@ -170,8 +170,9 @@ module VBlank
       # (and the cost estimator) can tell the two apart. Absent when off, so an
       # ordinary screen node is unchanged.
       def screen(mode, buffered: false, colors: nil, late: nil, late_pace: nil, backdrop: nil, pixel_size: nil,
-                 backdrop_from_file: nil)
+                 backdrop_from_file: nil, shown_rows: nil)
         attrs = { mode: mode }
+        attrs[:shown_rows] = shown_rows if shown_rows
         attrs[:buffered] = true if buffered
         attrs[:colors] = colors if colors
         attrs[:late] = late if late
@@ -713,12 +714,13 @@ module VBlank
       # that hold which of them is showing (see Nodes::Background).
       def background(name, tiles:, map:, tile_w:, tile_h:, maps: [], choice: [], layer: nil, scene: nil,
                      affine: false, recolors: [], palettes: [], sets: [], set_starts: [], map_sets: [],
-                     bar_top: nil, above_row: nil)
+                     bar_top: nil, above_row: nil, alone: false, hides_sprites: false)
         Nodes.build(:background, name: name, tiles: tiles, map: map, maps: maps, choice: choice,
                                  recolors: recolors, palettes: palettes,
                                  tile_w: tile_w, tile_h: tile_h, affine: affine, scene: scene,
                                  **layer_field(layer), **tile_set_fields(sets, set_starts, map_sets),
-                                 **(bar_top ? { bar_top: bar_top } : {}), **(above_row ? { above_row: above_row } : {}))
+                                 **(bar_top ? { bar_top: bar_top } : {}), **(above_row ? { above_row: above_row } : {}),
+                                 **(alone ? { alone: true } : {}), **(hides_sprites ? { hides_sprites: true } : {}))
       end
 
       # The status bar +name+'s top at row +top+ (see Nodes::PlaceBar).

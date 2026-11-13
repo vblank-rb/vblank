@@ -118,25 +118,69 @@ module VBlank
       # its colours, so each step's colours are made as the game starts, from the file's, by the
       # same sum (Graphics::Color.walked_toward; #walked_color).
       #
+      # A WALK THAT WAITS FOR A FALLING COUNT (`count:`, with `step:`) is the other rule a console's
+      # own fade routine takes:
+      #
+      #   walk = color_walk :bar, from: :black, step: 2, count: 32   # 18 lists, black first
+      #
+      # A count starts at +count+ and falls by +step+ each step. A channel waits until what it has to
+      # go is at least the count, then moves by +step+, and one that passes its height comes back on
+      # the next step. So every channel of any height arrives on the last step together, in
+      # +count+ / +step+ + 1 steps (Graphics::Color.counted_walk states the rule exactly). `steps:`
+      # sets another number of steps.
+      #
       # @param name [Symbol] a list declared with `colors`
       # @param from [Symbol, String, Integer] the colour the walk starts at
-      # @param steps [Integer] how many steps from there to the list itself
+      # @param steps [Integer, nil] how many steps from there to the list itself
+      # @param step [Integer, nil] how far a channel moves on a step of a walk with +count+
+      # @param count [Integer, nil] where the falling count starts, for a walk that waits for it
       # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
-      def color_walk(name, from:, steps: Graphics::Color::CHANNEL_STEPS)
+      def color_walk(name, from:, steps: nil, step: nil, count: nil)
         own = @color_lists.fetch(name) do
           raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
                                "To fix this, declare it first with `colors :#{name}, [:transparent, ...]`."
         end
-        unless steps.is_a?(Integer) && steps.positive?
-          raise ArgumentError, "color_walk :#{name} needs a positive whole number of steps. `steps:` is #{steps.inspect}."
+        far = Graphics::Color.resolve(from)
+        named = "#{name}_walk_#{from.to_s.delete_prefix('#')}"
+        if step || count
+          refuse_counted_walk_settings!(name, step: step, count: count)
+          steps ||= (count / step) + 1
+          refuse_walk_setting_not_positive!(name, :steps, steps)
+          return declare_walk_lists("#{named}_by_#{step}_count_#{count}", own, steps) do |color, taken|
+            counted_walk_color(color, far, step: step, count: count, steps: taken)
+          end
         end
 
-        far = Graphics::Color.resolve(from)
-        (0..steps).map do |step|
-          walked = :"#{name}_walk_#{from.to_s.delete_prefix('#')}_#{steps}_#{step}"
-          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : walked_color(color, far, steps - step) }
+        steps ||= Graphics::Color::CHANNEL_STEPS
+        refuse_walk_setting_not_positive!(name, :steps, steps)
+        declare_walk_lists(named, own, steps) { |color, taken| walked_color(color, far, steps - taken) }
+      end
+
+      # Declare a list for each step of a walk of +own+, from step 0 to +steps+, named from
+      # +named+, and hand back their names. Place 0 keeps +own+'s colour; each other colour is what
+      # the block makes of it at that step.
+      private def declare_walk_lists(named, own, steps)
+        (0..steps).map do |taken|
+          walked = :"#{named}_#{steps}_#{taken}"
+          @color_lists[walked] = own.each_with_index.map { |color, at| at.zero? ? color : yield(color, taken) }
           walked
         end
+      end
+
+      # A walk that waits for a falling count needs both its settings, each a positive whole number.
+      private def refuse_counted_walk_settings!(name, step:, count:)
+        unless step && count
+          raise ArgumentError, "color_walk :#{name} was given #{step ? 'step:' : 'count:'} alone. A walk that waits " \
+                               "for a falling count needs both. To fix this, give it step: and count:, like " \
+                               "`color_walk :#{name}, from: :black, step: 2, count: 32`."
+        end
+        { step: step, count: count }.each { |setting, number| refuse_walk_setting_not_positive!(name, setting, number) }
+      end
+
+      private def refuse_walk_setting_not_positive!(name, setting, number)
+        return if number.is_a?(Integer) && number.positive?
+
+        raise ArgumentError, "color_walk :#{name} needs a positive whole number for #{setting}:. It is #{number.inspect}."
       end
 
       # +color+ with each of its three channels moved +steps+ toward +far+'s, and no further. A
@@ -147,6 +191,17 @@ module VBlank
         return color if steps.zero?
 
         start_file_color_marker(IR::StartFile::WalkedColor.new(of: IR::StartFile.entry_of(color), far: far, steps: steps))
+      end
+
+      # +color+ as a walk from +far+ that waits for a falling count shows it after +steps+ steps
+      # (Graphics::Color.counted_walk). Its first step is +far+ itself whatever the colour, so a
+      # colour read from the data pack is a marker only after that (IR::StartFile::CountedWalkColor).
+      private def counted_walk_color(color, far, step:, count:, steps:)
+        return far if steps.zero?
+        return Graphics::Color.counted_walk(color, far, step: step, count: count, steps: steps) unless IR::StartFile.marker?(color)
+
+        made = IR::StartFile::CountedWalkColor.new(of: IR::StartFile.entry_of(color), far: far, step: step, count: count, steps: steps)
+        start_file_color_marker(made)
       end
 
       # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
