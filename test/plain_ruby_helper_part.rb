@@ -22,3 +22,13 @@ class PlainRubyHelperPart
     end
   end
 end
+
+# A method of the game's defined in a file of its own, so a game block calling it cannot see what
+# it does: it changes nothing.
+def plain_ruby_helper_pass_over(value) = value
+
+# An object of the game's whose method moves a place it is handed on by one, defined in a file of
+# its own so a game block calling it through the object cannot see the method.
+class PlainRubyPlaceMover
+  def move_place_on(place) = place.increase!(1)
+end

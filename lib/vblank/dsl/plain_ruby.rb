@@ -232,7 +232,8 @@ module VBlank
         def outside_writes = @names.outside_writes
 
         def rewritten(node)
-          @names = LocalNames.new(node)
+          # Only VBlank's own files go without following instance variables (PlainRuby.library_file?).
+          @names = LocalNames.new(node, library_file: !@follows_instance_variables)
           @heredoc_parts = heredoc_parts_in(node).sort_by { |part| part.location.start_offset }
           rewritten_text(node)
         end
