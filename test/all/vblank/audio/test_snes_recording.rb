@@ -87,6 +87,17 @@ class TestSNESRecording < Minitest::Test
                  decoded.pcm.unpack("c*")
   end
 
+  # The answer key the runtimes' decoders are held to (BRRRecordings.chip_bytes_round_loop) is this
+  # decoder's answer, worked out from fullsnes's arithmetic alone.
+  def test_the_answer_key_for_a_loop_decodes_as_this_decoder_does
+    never_back = BRRRecordings::LOUD.dup.tap { |bytes| bytes[36] = 0x7F }
+    [[BRRRecordings::QUIET, 18], [BRRRecordings::TAKING_TURNS, 18], [never_back, 36]].each do |bytes, loop_at|
+      decoded = SNESRecording.new(bytes: bytes, loop_at: loop_at).decoded
+
+      assert_equal [decoded.pcm.unpack("c*"), decoded.holds_from], BRRRecordings.chip_bytes_round_loop(bytes, loop_at: loop_at)
+    end
+  end
+
   def test_bytes_given_as_a_list_or_a_string_are_the_same_recording
     assert_equal SNESRecording.new(bytes: BRRRecordings::LOUD),
                  SNESRecording.new(bytes: BRRRecordings::LOUD.pack("C*"))

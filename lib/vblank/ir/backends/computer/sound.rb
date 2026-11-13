@@ -130,7 +130,7 @@ module VBlank
                    end
             back = if !node.loop
                      Statements::Int.new(0)
-                   elsif settings&.holds_from || settings&.length
+                   elsif settings&.holds_from || settings&.length || settings&.brr
                      start_file_sound_number(StartFileHold.new(recording: sample.name))
                    else
                      Statements::Int.new(info.loop_length.positive? ? info.loop_length : info.length)
@@ -174,9 +174,12 @@ module VBlank
 
           # The array's declaration, which goes with the tables; nothing for a game with no such number.
           def start_file_sound_number_arrays
-            return [] if @start_file_sound_numbers.empty?
-
-            [Statements::StartFileArray.new(name: start_file_sound_numbers_name, type: "int32_t", count: @start_file_sound_numbers.length)]
+            [*(unless @start_file_sound_numbers.empty?
+                 Statements::StartFileArray.new(name: start_file_sound_numbers_name, type: "int32_t", count: @start_file_sound_numbers.length)
+               end),
+             *(unless brr_recordings_decoded.empty?
+                 Statements::StartFileArray.new(name: brr_decoded_name, type: "int32_t", count: brr_recordings_decoded.length * BRR_DECODED_NUMBERS)
+               end)]
           end
 
           # A row of the table of note rows that takes a number from the start file: the row of
@@ -190,11 +193,12 @@ module VBlank
           NOTE_SOUND_BACK_AT = 2
           NOTE_SOUND_SHAPE_AT = 3
           RECORDING_NUMBERS = 7
+          RECORDING_LENGTH_AT = 1
           RECORDING_SHAPE_AT = 2
 
           # How each runtime's rg_mix_fill_shapes is told an envelope is kept
           # (IR::StartFile::EnvelopeBytes#kept_as).
-          ENVELOPES_KEPT_AS = Ractor.make_shareable({ envelope: 0 })
+          ENVELOPES_KEPT_AS = Ractor.make_shareable({ envelope: 0, snes_envelope: 1 })
 
           def recordings_with_settings_in_start_file = @sound_log.recordings.select(&:settings_from_file)
 
@@ -212,7 +216,9 @@ module VBlank
             recordings_with_settings_in_start_file.flat_map do |sample|
               settings = sample.settings_from_file
               rows = @start_file_note_rows.select { |row| row.recording == sample.name }
-              backs = if settings.length
+              backs = if settings.brr
+                        start_file_brr_fills(sample, rows)
+                      elsif settings.length
                         start_file_length_fills(sample, rows)
                       elsif settings.holds_from
                         start_file_hold_fills(sample, rows)
@@ -230,7 +236,7 @@ module VBlank
             settings = sample.settings_from_file
             length = [*start_file_number_rules(settings.length), sample.bytes.bytesize]
             hold = settings.holds_from ? [1, *start_file_number_rules(settings.holds_from), -1] : [0, 0, 0, 0, 0, sample.holds_from || -1]
-            entry = 1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + 1
+            entry = 1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + RECORDING_LENGTH_AT
             plays = @start_file_sound_numbers.each_index.select { |at| @start_file_sound_numbers[at] == StartFileHold.new(recording: sample.name) }
             in_rows = rows.map { |row| 1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT }
             [eval_call("rg_mix_fill_length", @names.own("recordings"), drawing_array("start_file_lengths", "int32_t", [*length, 1, entry])),
@@ -238,6 +244,53 @@ module VBlank
                next if entries.empty?
 
                eval_call("rg_mix_fill_backs", array, drawing_array("start_file_backs", "int32_t", [*length, *hold, whole, entries.size, *entries]))
+             end]
+          end
+
+          # A RECORDING IN THE SUPER NINTENDO CHIP'S FORMAT IN THE FILE (IR::StartFile::BRR). Its samples,
+          # how many there are and the sample it holds from are all what the chip decodes from the
+          # file's bytes, so the routine decodes each such recording once, into its place in the array
+          # of every recording's samples (rg_mix_fill_brr, #build_start_file_recording_fills), and
+          # keeps the length and the hold it came to in an array of the game's own, two numbers for
+          # each (BRR_DECODED_NUMBERS: the length, then the sample held from or -1 for none). Then,
+          # for each recording declared from it, the length its entry in the table of recordings
+          # holds (rg_mix_fill_decoded_length) and how far back each play and each note's row reads
+          # at its end (rg_mix_fill_decoded_backs): a looping play that holds from no sample reads it
+          # all again, a note's row nothing.
+          BRR_DECODED_NUMBERS = 2
+
+          def brr_decoded_name = @names.own("brr_decoded")
+
+          # The recordings decoded as the game starts: one of each that start at one place.
+          def brr_recordings_decoded = kept_recordings.select { |sample| sample.settings_from_file&.brr }
+
+          # Where +sample+'s two numbers start in the array of decoded recordings.
+          def brr_decoded_entry(sample)
+            start = recording_starts.fetch(sample.name)
+            brr_recordings_decoded.index { |kept| recording_starts.fetch(kept.name) == start } * BRR_DECODED_NUMBERS
+          end
+
+          # The call that decodes +sample+ (rg_mix.h has what its rules are).
+          def brr_decode_fill(sample)
+            where = sample.settings_from_file.brr
+            loop_rules = where.loop_at.is_a?(IR::StartFile::Number) ? [1, 0, *start_file_number_rules(where.loop_at)] : [0, where.loop_at, 0, 0, 0, 0]
+            rules = [recording_starts.fetch(sample.name), sample.bytes.bytesize, where.at, where.count, brr_decoded_entry(sample),
+                     VBlank::Audio::SNESRecording::MOST_PASSES, *loop_rules]
+            eval_call("rg_mix_fill_brr", recording_samples_name, brr_decoded_name, drawing_array("start_file_brr", "int32_t", rules))
+          end
+
+          def start_file_brr_fills(sample, rows)
+            entry = brr_decoded_entry(sample)
+            length_at = 1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + RECORDING_LENGTH_AT
+            plays = @start_file_sound_numbers.each_index.select { |at| @start_file_sound_numbers[at] == StartFileHold.new(recording: sample.name) }
+            in_rows = rows.map { |row| 1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_BACK_AT }
+            [eval_call("rg_mix_fill_decoded_length", @names.own("recordings"), brr_decoded_name,
+                       drawing_array("start_file_decoded_lengths", "int32_t", [entry, 1, length_at])),
+             *{ start_file_sound_numbers_name => [plays, 1], @names.own("note_sounds") => [in_rows, 0] }.filter_map do |array, (entries, whole)|
+               next if entries.empty?
+
+               eval_call("rg_mix_fill_decoded_backs", array, brr_decoded_name,
+                         drawing_array("start_file_decoded_backs", "int32_t", [entry, whole, entries.size, *entries]))
              end]
           end
 
@@ -283,7 +336,8 @@ module VBlank
           # whose part set none, which takes the recording's (#note_sound_row).
           def start_file_shape_fills(sample, rows)
             where = sample.settings_from_file.envelope
-            head = [where.at, ENVELOPES_KEPT_AS.fetch(where.kept_as), VBlank::Audio::Envelope::MOST]
+            envelope = VBlank::Audio::Envelope
+            head = [where.at, ENVELOPES_KEPT_AS.fetch(where.kept_as), envelope::MOST, envelope::SCALE, envelope::FRAME_RATE]
             recording = [[1 + (@sound_log.recording_number(sample.name) * RECORDING_NUMBERS) + RECORDING_SHAPE_AT]]
             in_rows = rows.select(&:recording_shape).map { |row| [1 + (row.row * NOTE_SOUND_NUMBERS) + NOTE_SOUND_SHAPE_AT] }
             [eval_call("rg_mix_fill_shapes", @names.own("recordings"),
@@ -397,7 +451,7 @@ module VBlank
               at = 0
               starts = {}
               @sound_log.recordings.to_h do |sample|
-                kept = [sample.bytes, sample.full_samples, sample.from_file]
+                kept = [sample.bytes, sample.full_samples, sample.from_file, sample.settings_from_file&.brr]
                 unless starts.key?(kept)
                   starts[kept] = at
                   at += sample.bytes.bytesize
@@ -413,14 +467,18 @@ module VBlank
 
           def recording_samples_name = @names.own("recording_samples")
 
-          # Whether a recording takes its samples from the file the program is handed as it starts. Its
-          # samples are then zeros in the array above, which the runtime overwrites in place.
-          def recordings_read_from_start_file? = @sound_log.recordings.any?(&:from_file)
+          # Whether a recording takes its samples from the file the program is handed as it starts,
+          # as they are or decoded from the Super Nintendo chip's format. Its samples are then zeros
+          # in the array above, which the runtime overwrites in place.
+          def recordings_read_from_start_file? = @sound_log.recordings.any? { |sample| sample.from_file || sample.settings_from_file&.brr }
 
           # Whether a recording takes its shape or its length from that file, which the routine
           # writes into the table of recordings.
           def recordings_table_written_at_start?
-            @sound_log.recordings.any? { |sample| sample.settings_from_file&.envelope || sample.settings_from_file&.length }
+            @sound_log.recordings.any? do |sample|
+              settings = sample.settings_from_file
+              settings&.envelope || settings&.length || settings&.brr
+            end
           end
 
           # rg_mix.h, rg_music.h and rg_sound.h declare each array const unless told it is written: the samples
@@ -438,9 +496,11 @@ module VBlank
           end
 
           # Each recording that reads its samples from the file, written into its place in the array of
-          # every recording's samples, as long as the zeros it holds.
+          # every recording's samples, as long as the zeros it holds; or decoded there from the chip's
+          # format (#brr_decode_fill).
           def build_start_file_recording_fills
             kept_recordings.filter_map do |sample|
+              next brr_decode_fill(sample) if sample.settings_from_file&.brr
               next unless sample.from_file
 
               start = recording_starts.fetch(sample.name)

@@ -58,7 +58,9 @@ module VBlank
         end
         # A setting may be a number of the data pack, read here (PackScores), or, in a build that
         # leaves its pack out, read as the game starts: the recording then holds a stand-in for it.
-        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length)
+        brr_from_file = brr_in_start_file(name, brr, brr_loop) if brr
+        settings_from_file = recording_settings_in_start_file(rate: rate, holds_from: holds_from, envelope: envelope, length: length,
+                                                              brr: brr_from_file)
         # Must be worked out before pack_setting_value turns the pack's numbers into plain ones.
         # A length, a hold or a rate read here from the pack is the player's, held as the runtime
         # holds it as the game starts (#recording_length, #holds_point, #pack_rate_value), so the
@@ -75,9 +77,15 @@ module VBlank
         envelope = chip_envelope.closest_envelope if chip_envelope
         # A recording in the Super Nintendo sound chip's format is played everywhere else as the
         # samples the chip decodes from it, round its own loop.
-        chip_recording = snes_recording(name, brr, brr_loop) if brr
+        chip_recording = snes_recording(name, brr, brr_loop) if brr && !brr_from_file
         full_samples = nil
-        if chip_recording
+        if brr_from_file
+          # Decoded as the game starts (IR::StartFile::BRR): zeros of the most it can come to.
+          loop_written = brr_from_file.loop_at if brr_from_file.loop_at.is_a?(Integer)
+          bytes = "\0".b * IR::StartFile.brr_room(brr_from_file.count, loop_written)
+          rate ||= DEFAULT_SAMPLE_RATE
+          holds_from = nil
+        elsif chip_recording
           decoded = chip_recording.decoded
           bytes = decoded.pcm
           rate ||= DEFAULT_SAMPLE_RATE
@@ -166,30 +174,64 @@ module VBlank
 
       # THE RECORDING +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
       # that loops back +brr_loop+ bytes in (a number of the pack, or the game's own). The chip's
-      # decoding is worked out here, as the game is built, from bytes a build that leaves its pack
-      # out does not hold.
+      # decoding is worked out here, as the game is built. What the pack gives is the player's, so
+      # it is held as a runtime holds it as the game starts (IR::StartFile.brr_held); what the game
+      # wrote itself is refused where it is wrong.
       def snes_recording(name, brr, brr_loop)
+        from_pack = brr.is_a?(DSL::PackSlot) || brr_loop.is_a?(DSL::PackNumber)
         if brr.is_a?(DSL::PackSlot)
-          refuse_slot_from_elsewhere!(brr, "sample :#{name}'s brr:")
-          refuse_slot_read_wrongly!(brr, :samples, "sample :#{name}'s brr:")
-          refuse_brr_left_out!(name)
+          refuse_brr_slot!(name, brr)
+          refuse_brr_not_blocks!(name, brr.count, brr_loop.is_a?(DSL::PackNumber) ? 0 : brr_loop)
           brr = @data_pack_contents.bytes_of(brr.layout.name).byteslice(brr.first_pixel, brr.count)
         end
-        refuse_brr_left_out!(name) if brr_loop.is_a?(DSL::PackNumber)
         loop_at = pack_setting_value(brr_loop, "sample :#{name}'s brr_loop:", nil)
         begin
-          Audio::SNESRecording.new(bytes: brr, loop_at: loop_at)
+          from_pack ? IR::StartFile.brr_held(brr, loop_at) : Audio::SNESRecording.new(bytes: brr, loop_at: loop_at)
         rescue ArgumentError => e
           raise ArgumentError, "sample :#{name}: #{e.message}"
         end
       end
 
-      def refuse_brr_left_out!(name)
-        return unless pack_left_out?
+      # Where a recording in the chip's format is in the start file (an IR::StartFile::BRR), for one
+      # read from the pack with the pack left out; nil for any other. The slot's size and a loop
+      # point the game wrote are the game's own words, so they are refused here where they are not
+      # a recording's, as Audio::SNESRecording refuses them, on bytes of that size.
+      def brr_in_start_file(name, brr, brr_loop)
+        return nil unless pack_left_out? && (brr.is_a?(DSL::PackSlot) || brr_loop.is_a?(DSL::PackNumber))
 
-        raise ArgumentError, "sample :#{name} reads a BRR recording from the data pack, and this build reads its pack as the " \
-                             "game starts. A BRR recording from the pack is not made that way yet. To fix this, build the " \
-                             "game all-in-one."
+        refuse_brr_written_with_pack_loop!(name) unless brr.is_a?(DSL::PackSlot)
+        refuse_brr_slot!(name, brr)
+        loop_at = pack_number_in_start_file(brr_loop) if brr_loop.is_a?(DSL::PackNumber)
+        if loop_at
+          refuse_slot_from_elsewhere!(brr_loop.slot, "sample :#{name}'s brr_loop:")
+        else
+          refuse_brr_not_blocks!(name, brr.count, brr_loop)
+        end
+        IR::StartFile::BRR.new(at: @pack_slot_starts.fetch(brr.layout.name) + brr.first_pixel, count: brr.count, loop_at: loop_at || brr_loop)
+      end
+
+      def refuse_brr_slot!(name, slot)
+        refuse_slot_from_elsewhere!(slot, "sample :#{name}'s brr:")
+        refuse_slot_read_wrongly!(slot, :samples, "sample :#{name}'s brr:")
+      end
+
+      # What Audio::SNESRecording refuses of +count+ bytes that loop back +loop_at+ bytes in, made
+      # of blocks of nought whose last ends the recording.
+      def refuse_brr_not_blocks!(name, count, loop_at)
+        recording = Audio::SNESRecording
+        blank = "\0".b * count
+        blank.setbyte(count - recording::BLOCK_BYTES, recording::END_BIT) if count >= recording::BLOCK_BYTES
+        recording.new(bytes: blank, loop_at: loop_at)
+      rescue ArgumentError => e
+        raise ArgumentError, "sample :#{name}: #{e.message}"
+      end
+
+      # A recording the game wrote, with its loop point in the pack: the bytes are not in the file,
+      # so the runtime has nothing to decode them from.
+      def refuse_brr_written_with_pack_loop!(name)
+        raise ArgumentError, "sample :#{name} has BRR bytes written in the game and brr_loop: from the data pack. This build " \
+                             "reads its pack as the game starts. A loop point from the pack is read only with its " \
+                             "recording from the pack. To fix this, give brr: from the pack too, or build the game all-in-one."
       end
 
       # +holds_from+ as a sample number, read here where it is a number of the pack

@@ -13,7 +13,8 @@ require "tmpdir"
 # What a game can tell of a note, which voice it holds and how far through its shape it is, follows
 # the ordinary envelope nearest the chip's bytes on every build, the Super Nintendo's too. So the
 # answer key is the same game given that Audio::Envelope by hand. What the Super Nintendo's chip is
-# told is test/lowering/snes/vblank/ir/backends/snes/test_snes_chip_envelopes.rb.
+# told is test/lowering/snes/vblank/ir/backends/snes/test_snes_chip_envelopes.rb. The bytes read
+# from a pack left out, worked into that envelope as the game starts, are test/pack_sound_tests.rb's.
 module SNESEnvelopeGames
   # A slow climb, a fall to half and a hold there: attack 5, decay 3, sustain level 3, sustain rate 0.
   ADSR = VBlank::Audio::SNESEnvelope.new(adsr1: 0xB5, adsr2: 0x60, gain: 0x00)
@@ -160,20 +161,6 @@ module SNESEnvelopeTests
       error = assert_raises(ArgumentError) { pack[:shapes].snes_envelope(2) }
 
       assert_includes error.message, "no envelope 2"
-    end
-  end
-
-  def test_a_build_reading_its_pack_as_it_starts_is_told_it_is_not_made_yet
-    Dir.mktmpdir do |folder|
-      b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true))
-      pack = b.data_pack(from: original_with_shapes(folder), version: "1") do |slots|
-        slots.numbers :shapes, at: SHAPES_AT, count: 6, width: :byte, signed: false
-      end
-      error = assert_raises(ArgumentError) do
-        b.instrument :tone, pcm: RECORDING, rate: 8000, envelope: pack[:shapes].snes_envelope(1)
-      end
-
-      assert_includes error.message, "not made that way yet"
     end
   end
 end

@@ -36,7 +36,9 @@ module VBlank
     #   zeros of its bytes; the program holds zeros until the file is read.
     # - a recording's settings (Nodes::Sample#settings_from_file, a RecordingSettings): the rate it
     #   was recorded at, the sample a held note reads back to and its envelope, each a number or
-    #   four bytes of the file. The program holds a stand-in for each (.recording_stand_ins).
+    #   bytes of the file. The program holds a stand-in for each (.recording_stand_ins). Or the
+    #   whole recording in the Super Nintendo sound chip's format (a BRR), decoded as the game
+    #   starts; the program holds zeros of the most it can decode to.
     # - a part of a song (Audio::Music::Part#from_file, a Notes): its notes, records of VBlank's own
     #   that a port's unpacking writes. The program holds no event for it.
     # - the wave a part of a song plays on the wave voice (Audio::Music::Part#wave_from_file, a
@@ -236,17 +238,25 @@ module VBlank
       end
 
       # AN ENVELOPE IN THE FILE: the bytes from +at+ on, kept as +kept_as+ names. :envelope is the
-      # four bytes an Audio::Envelope keeps, in its order (attack, decay, sustain, release); another
-      # way of keeping one is another name here and a branch in .envelope_in and in each runtime's
-      # rg_mix_fill_shapes.
+      # four bytes an Audio::Envelope keeps, in its order (attack, decay, sustain, release).
+      # :snes_envelope is the three the Super Nintendo's sound chip keeps (Audio::SNESEnvelope:
+      # adsr1, adsr2, gain), played as the nearest ordinary envelope (#closest_envelope), which
+      # each runtime works out again as the game starts (rg_mix_fill_shapes). Another way of
+      # keeping one is another name here and a branch in .envelope_in and in each runtime's
+      # rg_mix_fill_shapes. Every byte is a setting, so nothing in the file is out of range.
       EnvelopeBytes = Data.define(:at, :kept_as)
 
       # The Audio::Envelope +where+ (an EnvelopeBytes) names in +bytes+, the file.
       def self.envelope_in(bytes, where)
-        raise ArgumentError, "an envelope kept as #{where.kept_as.inspect} is not read from the file" unless where.kept_as == :envelope
-
-        attack, decay, sustain, release = bytes.byteslice(where.at, 4).bytes
-        Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
+        case where.kept_as
+        when :envelope
+          attack, decay, sustain, release = bytes.byteslice(where.at, 4).bytes
+          Audio::Envelope.new(attack: attack, decay: decay, sustain: sustain, release: release)
+        when :snes_envelope
+          adsr1, adsr2, gain = bytes.byteslice(where.at, 3).bytes
+          Audio::SNESEnvelope.new(adsr1: adsr1, adsr2: adsr2, gain: gain).closest_envelope
+        else raise ArgumentError, "an envelope kept as #{where.kept_as.inspect} is not read from the file"
+        end
       end
 
       # WHAT OF A RECORDING'S SETTINGS IS IN THE FILE, each nil where the game wrote it: +rate+ and
@@ -270,8 +280,62 @@ module VBlank
       # four, and -1 in a slot that goes below zero. That is how a pack says a recording does not
       # loop, which a sample number cannot: the recording sounds as one written without
       # `holds_from:`. The all-in-one build reads it the same way (Builder::SampledAudio#sample).
-      RecordingSettings = Data.define(:rate, :holds_from, :envelope, :length) do
-        def initialize(rate: nil, holds_from: nil, envelope: nil, length: nil) = super
+      #
+      # +brr+ is the recording itself kept as the Super Nintendo's sound chip keeps it (a BRR): its
+      # samples, its length and the sample it holds from are then all what the chip decodes, worked
+      # out as the game starts.
+      RecordingSettings = Data.define(:rate, :holds_from, :envelope, :length, :brr) do
+        def initialize(rate: nil, holds_from: nil, envelope: nil, length: nil, brr: nil) = super
+      end
+
+      # A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S FORMAT IN THE FILE (Audio::SNESRecording):
+      # +count+ bytes from +at+ on, a whole number of the chip's blocks, whose loop starts +loop_at+
+      # bytes in, a whole number the game wrote or a Number of the file. Every backend but the Super
+      # Nintendo's cartridge plays the samples the chip decodes from it, which only the file's bytes
+      # say, so the program holds zeros of the most samples it can decode to (.brr_room) and a
+      # runtime decodes it as the game starts: its samples, how many there are, and the sample a
+      # held note reads back to. The decoder is written again in each runtime (rg_mix_fill_brr in
+      # rg_mix.c, .js and .rb), held to Audio::SNESRecording#decoded.
+      #
+      # The file is the player's, so nothing in it stops the game (.brr_held): the recording is its
+      # blocks up to the first whose header ends it, or all of them, ending without a loop, where
+      # none does; and a loop point below nought is nought, one inside a block is that block's
+      # start, and one past the last block is the last block's start. The all-in-one build holds
+      # the same bytes and loop point by the same rules (Builder::SampledAudio#snes_recording), so
+      # both builds sound alike.
+      BRR = Data.define(:at, :count, :loop_at)
+
+      # The most samples a recording of +count+ bytes that loops back +loop_at+ bytes in can decode
+      # to (Audio::SNESRecording#decoded): its blocks before the loop once, and the rest
+      # SNESRecording::MOST_PASSES times. +loop_at+ nil is a loop point the file holds, which can be
+      # the first block.
+      def self.brr_room(count, loop_at)
+        recording = Audio::SNESRecording
+        blocks = count / recording::BLOCK_BYTES
+        before = loop_at ? [loop_at / recording::BLOCK_BYTES, blocks - 1].min : 0
+        (before + (recording::MOST_PASSES * (blocks - before))) * recording::BLOCK_SAMPLES
+      end
+
+      # +bytes+, a recording in the chip's format read from the player's file, as the
+      # Audio::SNESRecording a runtime decodes, looping back +loop_at+ bytes in: held as BRR says.
+      def self.brr_held(bytes, loop_at)
+        recording = Audio::SNESRecording
+        blocks = bytes.bytes.each_slice(recording::BLOCK_BYTES).select { |block| block.size == recording::BLOCK_BYTES }
+        ends = blocks.index { |block| block.first.allbits?(recording::END_BIT) }
+        if ends
+          blocks = blocks.first(ends + 1)
+        else
+          last = blocks.last
+          blocks[-1] = [(last.first | recording::END_BIT) & ~recording::LOOP_BIT, *last.drop(1)]
+        end
+        loop_block = ([loop_at, 0].max / recording::BLOCK_BYTES).clamp(0, blocks.size - 1)
+        recording.new(bytes: blocks.flatten.pack("C*"), loop_at: loop_block * recording::BLOCK_BYTES)
+      end
+
+      # The Audio::SNESRecording +where+ (a BRR) names in +bytes+, the file, held as BRR says.
+      def self.brr_in(bytes, where)
+        loop_at = where.loop_at.is_a?(Number) ? number_in(bytes, where.loop_at) : where.loop_at
+        brr_held(bytes.byteslice(where.at, where.count), loop_at)
       end
 
       def self.rate_held(rate) = [rate, 1].max
@@ -794,7 +858,8 @@ module VBlank
       # program holds for them.
       #
       # Then its settings, each read from the place it names and held as RecordingSettings says:
-      # the numbers a `sample` keeps when the game is built holding its data.
+      # the numbers a `sample` keeps when the game is built holding its data. A recording in the
+      # Super Nintendo chip's format is decoded first, into its samples and the sample it holds from.
       def self.fill_recording(node, bytes)
         if node.from_file
           node.bytes = bytes.byteslice(node.from_file, node.bytes.bytesize)
@@ -802,6 +867,11 @@ module VBlank
         end
         settings = node.settings_from_file or return
 
+        if settings.brr
+          decoded = brr_in(bytes, settings.brr).decoded
+          node.bytes = decoded.pcm
+          node.holds_from = decoded.holds_from
+        end
         if settings.length
           node.bytes = node.bytes.byteslice(0, length_held(number_in(bytes, settings.length), node.bytes.bytesize))
           node.full_samples = node.full_samples.byteslice(0, node.bytes.bytesize * 2) if node.full_samples

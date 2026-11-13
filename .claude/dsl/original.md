@@ -36,9 +36,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `test/pack_sound_tests.rb`. **A recording kept in the Super Nintendo sound chip's own format** (BRR)
     takes the slot as `brr:`, and its loop point can be a number of the pack: `sample :horn, brr:
     pack[:horn], brr_loop: pack[:loops].number(3), rate: 16_000` (`sound.md`), so the unpacking routine
-    copies the original's bytes and converts nothing. It is built all-in-one only for now: the build
-    decodes it, and a build that leaves its pack out refuses it at the line. Worked example:
-    `test/all/vblank/builder/test_brr_recordings.rb`.
+    copies the original's bytes and converts nothing. Built all-in-one, the build decodes it. With the pack
+    left out, the program holds zeros of the most samples it can decode to and the runtime decodes it at
+    power-on (`IR::StartFile::BRR`, `rg_mix_fill_brr`), so it works in a shell. **Nothing the pack holds
+    stops the game**, built either way: the blocks after one that ends the recording are not played, a
+    recording no block ends plays once to its last block, and a loop point inside a block or past the last
+    block is that block's start or the last block's. A slot that is not whole blocks, and a loop point the
+    game writes that is not a block's start, are friendly errors both ways; bytes the game writes with
+    `brr_loop:` from the pack are refused with the pack left out. Worked examples:
+    `test/all/vblank/builder/test_brr_recordings.rb`, `test/pack_sound_tests.rb`.
   - `slots.notes :title_0, count: 200` — **notes of music, twelve bytes each in a record of VBlank's own**
     (`Original::PackNote`, whose `LAYOUT` and `bytes_of` a port's tests can use): the tick it starts on and
     how many it lasts (two bytes each, low byte first, 0 for until the next note), a MIDI key (255 a rest),
@@ -519,8 +525,10 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   sound is mixed at the rate most recordings have unless the game names one, and a build that does not know the
   rates cannot work that out, so without `mix_rate:` it is refused naming the recording. A console whose
   recordings play at one rate (the Super Nintendo, the PlayStation) needs nothing. `holds_from:` and `envelope:`
-  work everywhere. `envelope: pack[:adsr].snes_envelope(3)` and `brr: pack[:horn]` are refused at the line for
-  now. Worked example: `test/pack_sound_tests.rb`.
+  work everywhere. `envelope: pack[:adsr].snes_envelope(3)`, three bytes as the Super Nintendo's sound chip keeps
+  them, is worked into the nearest ordinary envelope at power-on (`Audio::SNESEnvelope#closest_envelope`, written
+  again in each runtime's `rg_mix_fill_shapes`), and `brr: pack[:horn]` is decoded at power-on (above). Worked
+  example: `test/pack_sound_tests.rb`.
 - `Score::Part.new(notes: pack[:title_0].notes(instruments: %i[horn bass]), ...)` in `songs` and `sound_effects` — a
   part's notes. **The Score must give `length:`**, in ticks, since where the last note ends is in the pack; one
   without it is refused at the line. **A `length:` (and a `loop_from:`) that is a number of the pack** comes with

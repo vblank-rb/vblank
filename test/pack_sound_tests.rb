@@ -2,6 +2,7 @@
 
 require "made_up_original"
 require "pack_at_start_tests"
+require "brr_recordings"
 
 # RECORDED SOUND FROM THE DATA PACK. A recording (`sample`, `instrument`) can take its samples from a
 # slot of samples of the pack (`slots.samples`), where `pcm: pack[:bang]` is the whole slot and
@@ -624,6 +625,126 @@ module PackSoundTests
         end
       end
       assert_match(/slot of samples/, error.message)
+    end
+  end
+
+  # A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S FORMAT FROM THE PACK (`brr: pack[:clip]`): with
+  # the pack left out the runtime decodes it as the game starts, with a decoder of its own, so each
+  # is held here to the answer key (BRRRecordings, fullsnes's arithmetic) through a game given the
+  # answer's samples by hand, and the all-in-one build with them. +by_hand+ is [samples, the
+  # sample held from], or nil for the recording from the pack.
+  private def brr_game(folder, bytes, loop_point:, options:, by_hand: nil)
+    from = BRRRecordings.original_with(folder, bytes, loop_point: loop_point)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") { |slots| BRRRecordings.declare_slots_of(slots, bytes.size) }
+      clip = if by_hand
+               sample :clip, pcm: by_hand[0], holds_from: by_hand[1], rate: SOUND_RATE
+             else
+               sample :clip, brr: pack[:clip], brr_loop: pack[:loops].number(0), rate: SOUND_RATE
+             end
+      clip.play(loop: true)
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b
+  end
+
+  BRR_FRAMES = 12
+
+  # The recording +bytes+ looping back +loop_point+ bytes in, from the pack: all-in-one and with the
+  # pack left out, it sounds as +by_hand+ given by hand.
+  private def assert_brr_sounds_as(folder, bytes, loop_point, by_hand, why)
+    whole = brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new)
+    left_out = brr_game(folder, bytes, loop_point: loop_point, options: PACK_AT_START).program
+    return assert_console_refuses(left_out, whole.made_data_pack_file) unless console_mixes_recordings?
+
+    wanted = game_player.run(brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new,
+                                                     by_hand: by_hand).program, frames: BRR_FRAMES)
+    all_in_one = game_player.run(whole.program, frames: BRR_FRAMES)
+    heard = game_player.hand_file(whole.made_data_pack_file).run(left_out, frames: BRR_FRAMES)
+
+    assert wanted.mixed_sound.flatten.any? { |level| level != 0 }, "#{why}: the recording sounds"
+    assert_equal [wanted.audio, wanted.mixed_sound], [all_in_one.audio, all_in_one.mixed_sound], "#{why}, built all-in-one"
+    assert_equal [wanted.audio, wanted.mixed_sound], [heard.audio, heard.mixed_sound], "#{why}, with the pack left out"
+  end
+
+  def test_brr_recordings_read_as_the_game_starts_decode_as_the_chip_does
+    Dir.mktmpdir do |folder|
+      assert_brr_sounds_as(folder, BRRRecordings::LOUD, 0, [BRRRecordings.chip_bytes(BRRRecordings::LOUD), nil],
+                           "every filter and shift, played once")
+      { "a loop the same each time round" => BRRRecordings::QUIET, "a loop that takes turns" => BRRRecordings::TAKING_TURNS }
+        .each do |why, bytes|
+        assert_brr_sounds_as(folder, bytes, BRRRecordings::QUIET_LOOP,
+                             BRRRecordings.chip_bytes_round_loop(bytes, loop_at: BRRRecordings::QUIET_LOOP), why)
+      end
+      never_back = BRRRecordings::LOUD.dup.tap { |bytes| bytes[36] = 0x7F } # the last block loops to itself
+      assert_brr_sounds_as(folder, never_back, 36, BRRRecordings.chip_bytes_round_loop(never_back, loop_at: 36),
+                           "a loop that never comes back to where it started")
+    end
+  end
+
+  # What the player's file holds does not stop the game: the blocks past one that ends the
+  # recording are not played, a recording no block ends plays once to its last, and a loop point
+  # inside a block or past the last is that block's start or the last block's
+  # (IR::StartFile::BRR). The all-in-one build holds the same bytes the same way.
+  def test_a_brr_recording_the_players_file_holds_wrongly_plays_as_held
+    Dir.mktmpdir do |folder|
+      turns = BRRRecordings::TAKING_TURNS
+      assert_brr_sounds_as(folder, BRRRecordings::LOUD.first(36), 0, [BRRRecordings.chip_bytes(BRRRecordings::LOUD.first(36)), nil],
+                           "no block ends it")
+      assert_brr_sounds_as(folder, turns + BRRRecordings::LOUD.first(9), 18, BRRRecordings.chip_bytes_round_loop(turns, loop_at: 18),
+                           "a block after its end")
+      assert_brr_sounds_as(folder, turns, 20, BRRRecordings.chip_bytes_round_loop(turns, loop_at: 18), "a loop point inside a block")
+      assert_brr_sounds_as(folder, turns, 200, BRRRecordings.chip_bytes_round_loop(turns, loop_at: 27), "a loop point past the end")
+    end
+  end
+
+  # An instrument's envelope as the Super Nintendo's sound chip keeps it, from the pack
+  # (`pack[:chip_envelopes].snes_envelope(n)`): with the pack left out each runtime works the nearest
+  # ordinary envelope out as the game starts, by an arithmetic of its own, held here to the same
+  # bytes written in the game (Audio::SNESEnvelope#closest_envelope). A song plays each envelope's
+  # instrument in turn, long enough to rise, fall and be let go.
+  private def chip_envelopes_game(folder, options:, written: false)
+    from = BRRRecordings.original_with(folder, BRRRecordings::QUIET, loop_point: 0)
+    count = BRRRecordings::CHIP_ENVELOPES.size
+    score = VBlank::Audio::Score
+    notes = Array.new(count) { |at| score::Note.new(at: at * 16, key: :C4, length: 12, instrument: :"tone_#{at}") }
+    song = score.new(tempo: 150, length: count * 16, plays_once: true, parts: [score::Part.new(plays: :tone_0, notes: notes)])
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") { |slots| BRRRecordings.declare_slots_of(slots, BRRRecordings::QUIET.size) }
+      BRRRecordings::CHIP_ENVELOPES.each_with_index do |(adsr1, adsr2, gain), at|
+        envelope = written ? VBlank::Audio::SNESEnvelope.new(adsr1: adsr1, adsr2: adsr2, gain: gain) : pack[:chip_envelopes].snes_envelope(at)
+        instrument :"tone_#{at}", pcm: [0, 60, 100, 60, 0, -60, -100, -60] * 4, rate: SOUND_RATE, holds_from: 0, envelope: envelope
+      end
+      music = songs :music, [song]
+      music.play 0
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b
+  end
+
+  CHIP_ENVELOPE_FRAMES = 240
+
+  def test_chip_envelopes_read_as_the_game_starts_shape_notes_as_the_same_bytes_written
+    Dir.mktmpdir do |folder|
+      whole = chip_envelopes_game(folder, options: VBlank::Cartridge::Options.new)
+      left_out = chip_envelopes_game(folder, options: PACK_AT_START).program
+      return assert_console_refuses(left_out, whole.made_data_pack_file) unless console_mixes_recordings? && console_plays_instruments?
+
+      wanted = game_player.run(chip_envelopes_game(folder, options: VBlank::Cartridge::Options.new, written: true).program,
+                               frames: CHIP_ENVELOPE_FRAMES)
+      heard = game_player.hand_file(whole.made_data_pack_file).run(left_out, frames: CHIP_ENVELOPE_FRAMES)
+
+      assert wanted.mixed_sound.flatten.any? { |level| level != 0 }, "the song sounds"
+      assert_equal wanted.audio, heard.audio
+      assert_equal wanted.mixed_sound, heard.mixed_sound
     end
   end
 end

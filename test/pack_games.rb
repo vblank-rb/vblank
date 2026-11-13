@@ -1197,8 +1197,7 @@ module PackGames
       game(:instrument_length_from_the_pack, passes: 80, presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[holds_from envelope length], options: options), settings_pack_file)
       end,
-      game(:instrument_chip_envelope_from_the_pack, passes: 20, presses: { 1 => [:a] },
-                                                    refused: refused_by_builder("chip envelope")) do |folder, options|
+      game(:instrument_chip_envelope_from_the_pack, passes: 20, presses: { 1 => [:a] }) do |folder, options|
         from = original(folder)
         b = VBlank::Builder.new(options: options)
         b.instance_eval do
@@ -1219,8 +1218,7 @@ module PackGames
       end,
       # A recording in the Super Nintendo sound chip's own format and its loop point, from the pack
       # of a made-up Super Nintendo original (BRRRecordings).
-      game(:recording_in_brr_from_the_pack, passes: 10, presses: { 1 => [:a] },
-                                            refused: refused_by_builder("BRR recording")) do |folder, options|
+      game(:recording_in_brr_from_the_pack, passes: 10, presses: { 1 => [:a] }) do |folder, options|
         from = BRRRecordings.original_holding(folder)
         b = VBlank::Builder.new(options: options)
         b.instance_eval do
@@ -1231,6 +1229,40 @@ module PackGames
           game_loop do
             wait_vblank
             clip.play(loop: true) if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built(b.program, b.made_data_pack_file)
+      end,
+      # Instruments in BRR from the pack as a port of a Super Nintendo game writes them: each loop
+      # point and rate written in the game, the chip's own envelope bytes, played by a song, by a
+      # sound effect and by the game. One recording loops and takes turns round its loop, and one
+      # plays once; the looping one is three instruments, one of them looping from its start.
+      game(:instruments_in_brr_from_the_pack_with_written_loops, passes: 70,
+                                                                 presses: { 1 => [:a], 20 => [:b], 40 => [:up], 55 => [:down] }) do |folder, options|
+        from = BRRRecordings.original_holding(folder)
+        score = VBlank::Audio::Score
+        held = score.new(tempo: 150, length: 60, plays_once: true,
+                         parts: [score::Part.new(plays: :horn, notes: [score::Note.new(at: 0, key: :C4, length: 48)])])
+        blip = score.new(tempo: 150, length: 12, parts: [score::Part.new(plays: :drum, notes: [score::Note.new(at: 0, key: :E4)])])
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound
+          pack = data_pack(from: from, version: "1") { |slots| BRRRecordings.declare_loud_slots(slots) }
+          chip = VBlank::Audio::SNESEnvelope.new(adsr1: 0x8E, adsr2: 0xE0)
+          instrument :horn, brr: pack[:turns], brr_loop: BRRRecordings::QUIET_LOOP, rate: 8000, note: :C4, envelope: chip
+          instrument :drum, brr: pack[:loud], rate: SOUND_RATE, note: :C4
+          bell = instrument :bell, brr: pack[:turns], brr_loop: BRRRecordings::QUIET_LOOP, rate: 12_000, note: :A4
+          gong = instrument :gong, brr: pack[:turns], brr_loop: 0, rate: 12_000, note: :A4
+          music = songs :music, [held]
+          effects = sound_effects :sfx, [blip]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+            effects.play 0 if pressed(:b)
+            bell.play(:C5) if pressed(:up)
+            gong.play(:C5) if pressed(:down)
           end
         end
         b.finalize_program

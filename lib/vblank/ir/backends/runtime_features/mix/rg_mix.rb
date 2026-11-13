@@ -520,9 +520,205 @@ end
 def rg_mix_fill_shapes(into, rules)
   at = rules[0]
   full = rules[2]
-  attack, decay, sustain, release = @rg_start_file.byteslice(at, 4).bytes
+  attack, decay, sustain, release = if rules[1] == 1
+                                      rg_chip_closest_envelope(*@rg_start_file.byteslice(at, 3).bytes, full, rules[3], rules[4])
+                                    else
+                                      @rg_start_file.byteslice(at, 4).bytes
+                                    end
   shaped = !(attack == full && sustain == full && release.zero?)
-  rules[3].times do |i|
-    into[rules[4 + i], 5] = shaped ? [1, attack, decay, sustain, release] : [0, 0, 0, 0, 0]
+  rules[5].times do |i|
+    into[rules[6 + i], 5] = shaped ? [1, attack, decay, sustain, release] : [0, 0, 0, 0, 0]
   end
+end
+
+# --- the nearest ordinary envelope to the Super Nintendo chip's three bytes (rg_mix.c's
+# chip_closest_envelope, Audio::SNESEnvelope#closest_envelope) ---
+
+RG_CHIP_SAMPLE_RATE = 32_000
+RG_CHIP_TOP = 0x7FF
+RG_CHIP_ADSR_ON = 0x80
+RG_CHIP_BENDS_AT = 0x600
+RG_CHIP_MOST_FRAMES = 4096
+RG_CHIP_ATTACK = 0
+RG_CHIP_DECAY = 1
+RG_CHIP_SUSTAIN = 2
+RG_CHIP_RATE_SAMPLES = Ractor.make_shareable([0, 2048, 1536, 1280, 1024, 768, 640, 512, 384, 320, 256, 192, 160, 128, 96, 80, 64,
+                                              48, 40, 32, 24, 20, 16, 12, 10, 8, 6, 5, 4, 3, 2, 1])
+
+# rg_mix.c's chip_heard.
+def rg_chip_heard(level, full) = (((level >> 4) * full * 2) + 127) / 254
+
+def rg_chip_fallen_by_part(level) = level - 1 - ((level - 1) >> 8)
+
+# rg_mix.c's chip_step: [the level moved to, the rate, the part of the note after].
+def rg_chip_step(adsr1, adsr2, gain, level, phase)
+  after = phase
+  if adsr1.nobits?(RG_CHIP_ADSR_ON)
+    mode = gain >> 5
+    return [gain * 0x10, 31, phase] if mode < 4
+
+    moved = case mode
+            when 4 then level - 0x20
+            when 5 then rg_chip_fallen_by_part(level)
+            when 6 then level + 0x20
+            else level + (level + 0x20 >= RG_CHIP_BENDS_AT ? 0x08 : 0x20)
+            end
+    rate = gain & 0x1F
+  else
+    if phase == RG_CHIP_ATTACK
+      rate = ((adsr1 & 0x0F) * 2) + 1
+      moved = level + (rate < 31 ? 0x20 : 0x400)
+    else
+      moved = rg_chip_fallen_by_part(level)
+      rate = phase == RG_CHIP_DECAY ? ((adsr1 >> 3) & 0x0E) + 0x10 : adsr2 & 0x1F
+    end
+    after = RG_CHIP_SUSTAIN if phase == RG_CHIP_DECAY && (moved >> 8) == (adsr2 >> 5)
+    after = RG_CHIP_DECAY if phase == RG_CHIP_ATTACK && moved > RG_CHIP_TOP
+  end
+  [moved.clamp(0, RG_CHIP_TOP), rate, after]
+end
+
+# rg_mix.c's chip_levels: [the levels frame by frame, whether it settled].
+def rg_chip_levels(adsr1, adsr2, gain, full, frame_rate)
+  frames = []
+  record = lambda do |level, now|
+    frames << rg_chip_heard(level, full) while frames.size < RG_CHIP_MOST_FRAMES && ((frames.size + 1) * RG_CHIP_SAMPLE_RATE / frame_rate) < now
+  end
+  level = 0
+  phase = RG_CHIP_ATTACK
+  now = 0
+  settled = false
+  while frames.size < RG_CHIP_MOST_FRAMES
+    moved, rate, after = rg_chip_step(adsr1, adsr2, gain, level, phase)
+    wait = RG_CHIP_RATE_SAMPLES[rate]
+    if after != phase
+      now += 1
+      phase = after
+      record.call(level, now)
+      level = moved if wait.positive? && (now % wait).zero?
+      next
+    end
+    if wait.zero? || moved == level
+      settled = true
+      break
+    end
+    now = ((now / wait) + 1) * wait
+    record.call(level, now)
+    level = moved
+  end
+  frames << rg_chip_heard(level, full) if settled && frames.size < RG_CHIP_MOST_FRAMES
+  [frames, settled]
+end
+
+# rg_mix.c's chip_closest_attack. Array#sum is the sum the build picks the number by.
+def rg_chip_closest_attack(climb, peak, full)
+  wanted = climb.map { |level| level * full / peak.to_f }
+  levels = ->(number) { (1..wanted.size).map { |frame| [number * frame, full].min } }
+  rg_chip_nearest_number(1, full, wanted, levels)
+end
+
+# rg_mix.c's chip_closest_decay.
+def rg_chip_closest_decay(fall, floor, full, scale)
+  return 0 if fall.empty?
+
+  levels = lambda do |number|
+    level = full
+    fall.map { level = [(level * number) >> scale, floor].max }
+  end
+  rg_chip_nearest_number(0, full, fall, levels)
+end
+
+# The number from +least+ to +most+ whose +levels+ come nearest +wanted+ (Audio::SNESEnvelope#nearest_number).
+def rg_chip_nearest_number(least, most, wanted, levels)
+  over = (least..most).bsearch { |number| levels.call(number).sum >= wanted.sum } || most
+  [over - 1, over].select { |number| number >= least }.min_by do |number|
+    levels.call(number).zip(wanted).sum { |level, want| (level - want)**2 }
+  end
+end
+
+# rg_mix.c's chip_closest_envelope: [attack, decay, sustain, release].
+def rg_chip_closest_envelope(adsr1, adsr2, gain, full, scale, frame_rate)
+  frames, settled = rg_chip_levels(adsr1, adsr2, gain, full, frame_rate)
+  peak = frames.max
+  return [0, 0, full, 0] if peak.zero?
+
+  climb = frames.index(peak) + 1
+  floor = settled ? frames.last : 0
+  [rg_chip_closest_attack(frames.first(climb), peak, full), rg_chip_closest_decay(frames.drop(climb), floor, full, scale), floor, 0]
+end
+
+# --- a recording in the Super Nintendo chip's format, decoded as the game starts (rg_mix.c's
+# rg_mix_fill_brr, Audio::SNESRecording#decoded) ---
+
+RG_BRR_BLOCK_BYTES = 9
+RG_BRR_BLOCK_SAMPLES = 16
+RG_BRR_END_BIT = 0x01
+RG_BRR_LOOP_BIT = 0x02
+RG_BRR_MOST_SHIFT = 12
+
+# rg_mix.c's brr_decode_blocks: +state+ is [older, last, made].
+def rg_brr_decode_blocks(at, first, past, state, samples, start, room)
+  (first...past).each do |block|
+    header, *packed = @rg_start_file.byteslice(at + (block * RG_BRR_BLOCK_BYTES), RG_BRR_BLOCK_BYTES).bytes
+    shift = header >> 4
+    filter = (header >> 2) & 3
+    packed.flat_map { |byte| [byte >> 4, byte & 0xF] }.each do |nibble|
+      sample = nibble >= 8 ? nibble - 16 : nibble
+      sample = shift <= RG_BRR_MOST_SHIFT ? (sample << shift) >> 1 : (sample.negative? ? -2048 : 0)
+      last = state[1]
+      older = state[0] >> 1
+      sample += case filter
+                when 1 then (last >> 1) + ((-last) >> 5)
+                when 2 then last - older + (older >> 4) + ((last * -3) >> 6)
+                when 3 then last - older + ((last * -13) >> 7) + ((older * 3) >> 4)
+                else 0
+                end
+      kept = (((sample.clamp(-0x8000, 0x7FFF) * 2) + 0x8000) & 0xFFFF) - 0x8000
+      state[0] = state[1]
+      state[1] = kept
+      samples[start + state[2]] = kept >> 8 if state[2] < room
+      state[2] += 1
+    end
+  end
+end
+
+def rg_mix_fill_brr(samples, decoded, rules)
+  start, room, at, count, entry, most_passes = rules[0, 6]
+  loop_at = rules[6] == 1 ? rg_start_file_setting(rules, 8) : rules[7]
+  blocks = count / RG_BRR_BLOCK_BYTES
+  ends = (0...blocks).find { |block| @rg_start_file.getbyte(at + (block * RG_BRR_BLOCK_BYTES)).anybits?(RG_BRR_END_BIT) }
+  taken = ends ? ends + 1 : blocks
+  loops = !ends.nil? && @rg_start_file.getbyte(at + (ends * RG_BRR_BLOCK_BYTES)).anybits?(RG_BRR_LOOP_BIT)
+  loop_block = ([loop_at, 0].max / RG_BRR_BLOCK_BYTES).clamp(0, taken - 1)
+  state = [0, 0, 0]
+  hold = -1
+  rg_brr_decode_blocks(at, 0, loops ? loop_block : taken, state, samples, start, room)
+  if loops
+    starts = {}
+    loop do
+      if starts.key?(state[0, 2])
+        hold = starts.fetch(state[0, 2])
+        break
+      end
+      if starts.size == most_passes
+        hold = state[2] - ((taken - loop_block) * RG_BRR_BLOCK_SAMPLES)
+        break
+      end
+      starts[state[0, 2]] = state[2]
+      rg_brr_decode_blocks(at, loop_block, taken, state, samples, start, room)
+    end
+  end
+  decoded[entry] = [state[2], room].min
+  decoded[entry + 1] = hold
+end
+
+def rg_mix_fill_decoded_length(into, decoded, rules)
+  rules[1].times { |i| into[rules[2 + i]] = decoded[rules[0]] }
+end
+
+def rg_mix_fill_decoded_backs(into, decoded, rules)
+  length = decoded[rules[0]]
+  hold = decoded[rules[0] + 1]
+  back = rg_start_file_back(hold, hold.negative?, length, rules[1])
+  rules[2].times { |i| into[rules[3 + i]] = back }
 end
