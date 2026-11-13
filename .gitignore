@@ -1,6 +1,9 @@
 *.gba
 *.gbc
 *.sfc
+# The Genesis cartridge, and the PlayStation and DOS programs a build writes beside its game
+*.gen
+*.exe
 *.srm
 # Cartridge save memory, written by the emulator beside the ROM it belongs to
 *.sav
