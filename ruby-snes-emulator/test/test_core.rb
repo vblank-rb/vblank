@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "weakref"
 
 class TestCore < Minitest::Test
   # Native mode, the screen off, colour 0 set to pure red ($001F), $1234 stored in work RAM at
@@ -124,5 +125,34 @@ class TestCore < Minitest::Test
     refute_equal 0x1234, @core.wram_read16(0x0100)
     refute_equal 0x001F, @core.cgram.unpack1("v")
     refute_equal 0xA5, @core.vram.getbyte(0)
+  end
+
+  # A console nobody destroyed is collected by Ruby in the end, and its copy of the core is handed
+  # out again. The cartridge it held must go with it. bsnes takes a cartridge still in the console
+  # out as the next one goes in, and writes that cartridge's RAM to the save file of the next one:
+  # the new console would start from a save it was never given.
+  def test_a_console_left_without_destroy_hands_its_save_to_nobody
+    @core.destroy
+    @core = nil
+    dropped = Thread.new { drop_console_with_save("\x5A".b * 2048) }.value
+    3.times { GC.start(full_mark: true, immediate_sweep: true) }
+    refute dropped.weakref_alive?, "the dropped console was collected, so its copy is free for the next"
+
+    fresh = Dir.mktmpdir
+    @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(fresh, [0x80, 0xFE], **HandMadeCartridge::BATTERY),
+                                       save_dir: fresh)
+    refute_equal [0x5A], @core.save_ram.bytes.uniq, "the new console started from the dropped console's save"
+  end
+
+  # Opened on a thread of its own and let go of there: Ruby looks for what is still held on every
+  # stack, and a word left on the test's own could keep the console from being collected. Hands
+  # back a weak reference, which says whether the console is still alive without keeping it so.
+  private def drop_console_with_save(bytes)
+    dir = Dir.mktmpdir
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(dir, [0x80, 0xFE], **HandMadeCartridge::BATTERY),
+                                      save_dir: dir)
+    core.save_ram = bytes
+    core.run_frame
+    WeakRef.new(core)
   end
 end

@@ -15,11 +15,15 @@ require "ruby_snes_emulator"
 module HandMadeCartridge
   module_function
 
-  def bytes(code)
+  # A cartridge with battery-backed RAM: the kind byte $02 (ROM, RAM and a battery) and a RAM of
+  # 2^1 kilobytes.
+  BATTERY = { kind: 0x02, ram_size: 0x01 }.freeze
+
+  def bytes(code, kind: 0x00, ram_size: 0x00)
     rom = ("\0".b * 0x8000)
     rom[0, code.size] = code.pack("C*")
     rom[0x7FC0, 21] = "PROBE TEST".ljust(21, " ")
-    rom[0x7FD5, 7] = [0x20, 0x00, 0x05, 0x00, 0x01, 0x00, 0x00].pack("C*")
+    rom[0x7FD5, 7] = [0x20, kind, 0x05, ram_size, 0x01, 0x00, 0x00].pack("C*")
     rom[0x7FFC, 2] = [0x8000].pack("v") # reset, in emulation mode
     rom[0x7FDC, 4] = [0xFFFF, 0x0000].pack("v2")
     sum = rom.sum(16)
@@ -28,9 +32,9 @@ module HandMadeCartridge
   end
 
   # Writes the cartridge into +dir+ and gives back its path.
-  def write(dir, code)
+  def write(dir, code, **header)
     path = File.join(dir, "test.sfc")
-    File.binwrite(path, bytes(code))
+    File.binwrite(path, bytes(code, **header))
     path
   end
 end

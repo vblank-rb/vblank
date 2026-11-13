@@ -84,6 +84,15 @@ module VBlank
       # A Super Nintendo cartridge here has no motor.
       def motor_on? = false
 
+      # Shut the core now (Verifier#close), not when Ruby collects it: bsnes writes the cartridge's
+      # save as it shuts, and the copy of the core goes back for the next console to use.
+      def close
+        @core.destroy
+        @closed = true
+      end
+
+      def closed? = @closed == true
+
       private
 
       def widened(channel) = (channel << 3) | (channel >> 2)

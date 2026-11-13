@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "weakref"
 
 # The one reader over a running cartridge plays a Super Nintendo cartridge in bsnes and answers
 # the questions it answers for the other consoles.
@@ -24,6 +25,48 @@ class TestSNESVerifier < Minitest::Test
       end
     end
   end
+
+  # A game that keeps a number in save memory and counts it up each pass.
+  private def saving_rom
+    VBlank.build("SAVER", console: :snes, out: StringIO.new, err: StringIO.new) do
+      best = save_var :best, 5
+      game_loop { best += 3 }
+    end
+  end
+
+  # What a reader left open saved, and a weak reference that says whether Ruby has collected it.
+  LeftOpen = Data.define(:save, :reader)
+
+  # A reader nobody closed is collected by Ruby in the end, and the cartridge read next in this
+  # process starts with its save memory as the console leaves it: the one cartridge's save is
+  # never the other's. Most tests never close a reader, so this is the usual case.
+  #
+  # Readers earlier tests left open are collected first, so the copy of the core the open reader
+  # takes is the one the next reader takes after it.
+  def test_a_reader_left_open_hands_its_save_to_no_other_cartridge
+    collect_readers_left_open
+    left_open = Thread.new { play_reader_left_open }.value
+    collect_readers_left_open
+    refute left_open.reader.weakref_alive?, "the reader left open was collected"
+
+    fresh = Verifier.new(saving_rom, frames: 0)
+    fresh_save = fresh.save_bytes
+    fresh.close
+
+    refute_nil fresh_save
+    # The first bytes are the save's own mark and the saved number.
+    refute_equal left_open.save.byteslice(0, 16), fresh_save.byteslice(0, 16),
+                 "the cartridge read next started from the open reader's save"
+  end
+
+  # Played on a thread of its own and let go of there: Ruby looks for what is still held on
+  # every stack, and a word left on the test's own could keep the reader from being collected.
+  private def play_reader_left_open
+    reader = Verifier.new(saving_rom, frames: 10)
+    LeftOpen.new(save: reader.save_bytes, reader: WeakRef.new(reader))
+  end
+
+  private def collect_readers_left_open = 3.times { GC.start(full_mark: true, immediate_sweep: true) }
 
   def test_it_reads_the_picture_at_the_consoles_size
     reader = Verifier.new(rom, frames: 8)

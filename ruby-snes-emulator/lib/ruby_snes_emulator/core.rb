@@ -86,6 +86,8 @@ module RubySNESEmulator
       load_library
       hand_over_callbacks
       @call[:retro_init].call
+      @shutdown = Shutdown.new(@call, @handle, @copy, @dir, @save_dir)
+      ObjectSpace.define_finalizer(self, @shutdown)
       load_cartridge(rom_path)
     end
 
@@ -198,12 +200,80 @@ module RubySNESEmulator
     def destroy
       return unless @call
 
-      @call[:retro_unload_game].call
-      @call[:retro_deinit].call
-      @handle.close
-      @copy.give_back
+      ObjectSpace.undefine_finalizer(self)
+      @shutdown.call
       @call = nil
-      FileUtils.rm_rf(@dir)
+    end
+
+    # Each callback the core is handed, by the function that hands it over: what it returns, and
+    # what it is given.
+    CALLBACK_TYPES = {
+      retro_set_environment: [Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]],
+      retro_set_video_refresh: [Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_SIZE_T]],
+      retro_set_audio_sample: [Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]],
+      retro_set_audio_sample_batch: [Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]],
+      retro_set_input_poll: [Fiddle::TYPE_VOID, []],
+      retro_set_input_state: [Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT]]
+    }.freeze
+
+    # +block+ as a C function the core can call, of the kind +setter+ hands over (CALLBACK_TYPES).
+    def self.closure(setter, &block)
+      result, args = CALLBACK_TYPES.fetch(setter)
+      Fiddle::Closure::BlockCaller.new(result, args, &block)
+    end
+
+    # A CONSOLE NOBODY DESTROYED IS SHUT BY RUBY when it collects the Core, the same way #destroy
+    # shuts it. It must not be left as it is. Ruby closes the copy's lock when it collects it,
+    # and the copy is handed to the next console made in this process, while the library is
+    # still open here with the old cartridge in it. bsnes takes a cartridge still in the console
+    # out as the next one goes in, and writes its RAM to the new cartridge's save file, which the
+    # new one then reads: the new console starts from the old one's save.
+    #
+    # The finalizer must hold nothing that holds the Core, or the Core is never collected. The
+    # callbacks the Core handed over call its methods, so they hold it. So a shutdown first hands
+    # the core callbacks of its own: they answer where saves go and ignore everything else.
+    class Shutdown
+      def initialize(call, handle, copy, dir, save_dir)
+        @call = call
+        @handle = handle
+        @copy = copy
+        @dir = dir
+        @save_dir = Fiddle::Pointer.malloc(save_dir.bytesize + 1, Fiddle::RUBY_FREE)
+        @save_dir[0, save_dir.bytesize + 1] = "#{save_dir}\0".b
+      end
+
+      # Takes the cartridge out (writing its .srm), shuts the core, closes the library and gives
+      # the copy back. A finalizer is handed the Core's object id, which is not needed here.
+      def call(_object_id = nil)
+        return unless @call
+
+        hand_over_own_callbacks
+        @call[:retro_unload_game].call
+        @call[:retro_deinit].call
+        @handle.close
+        @copy.give_back
+        @call = nil
+        FileUtils.rm_rf(@dir)
+      end
+
+      private
+
+      def hand_over_own_callbacks
+        @callbacks = {
+          retro_set_environment: Core.closure(:retro_set_environment) do |cmd, data|
+            next false unless cmd & 0xFFFF == GET_SAVE_DIRECTORY
+
+            Fiddle::Pointer.new(data.to_i, 8)[0, 8] = [@save_dir.to_i].pack("J")
+            true
+          end,
+          retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { nil },
+          retro_set_audio_sample: Core.closure(:retro_set_audio_sample) { nil },
+          retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) { |_data, frames| frames },
+          retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
+          retro_set_input_state: Core.closure(:retro_set_input_state) { 0 }
+        }
+        @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
+      end
     end
 
     private
@@ -270,26 +340,22 @@ module RubySNESEmulator
 
     def hand_over_callbacks
       @callbacks = {
-        retro_set_environment: closure(Fiddle::TYPE_BOOL, [Fiddle::TYPE_UINT, Fiddle::TYPE_VOIDP]) { |cmd, data| environment(cmd, data) },
-        retro_set_video_refresh: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
-                                                             Fiddle::TYPE_SIZE_T]) { |*args| take_picture(*args) },
-        retro_set_audio_sample: closure(Fiddle::TYPE_VOID, [Fiddle::TYPE_INT16_T, Fiddle::TYPE_INT16_T]) do |left, right|
+        retro_set_environment: Core.closure(:retro_set_environment) { |cmd, data| environment(cmd, data) },
+        retro_set_video_refresh: Core.closure(:retro_set_video_refresh) { |*args| take_picture(*args) },
+        retro_set_audio_sample: Core.closure(:retro_set_audio_sample) do |left, right|
           @audio << [left, right].pack("s<2")
         end,
-        retro_set_audio_sample_batch: closure(Fiddle::TYPE_SIZE_T, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T]) do |data, frames|
+        retro_set_audio_sample_batch: Core.closure(:retro_set_audio_sample_batch) do |data, frames|
           @audio << Fiddle::Pointer.new(data.to_i)[0, frames * 4]
           frames
         end,
-        retro_set_input_poll: closure(Fiddle::TYPE_VOID, []) { nil },
-        retro_set_input_state: closure(Fiddle::TYPE_INT16_T, [Fiddle::TYPE_UINT, Fiddle::TYPE_UINT, Fiddle::TYPE_UINT,
-                                                              Fiddle::TYPE_UINT]) do |port, device, _index, id|
+        retro_set_input_poll: Core.closure(:retro_set_input_poll) { nil },
+        retro_set_input_state: Core.closure(:retro_set_input_state) do |port, device, _index, id|
           device == JOYPAD && @buttons.fetch(port, []).include?(id) ? 1 : 0
         end
       }
       @callbacks.each { |setter, callback| @call.fetch(setter).call(callback) }
     end
-
-    def closure(result, args, &block) = Fiddle::Closure::BlockCaller.new(result, args, &block)
 
     # What the core asks of its frontend. Anything not answered here is answered "no", which a
     # core takes as the frontend not having it.
