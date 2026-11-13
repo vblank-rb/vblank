@@ -139,6 +139,42 @@ class TestCanvas < Minitest::Test
     assert_equal WHITE, screen(b.program, 3).pixel(39, 31)
   end
 
+  # A picture stamped with black at a place past the first draws black there. Place 0 is
+  # see-through, so a black pixel that took its place would be left out of the stamp, and the
+  # white under it would stay.
+  def test_a_stamped_black_pixel_is_drawn_black
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled, backdrop: :blue
+      image(:dot, "." => :transparent, "#" => :black) { "##\n#." }
+      board = canvas :board, width: 16, height: 8, colors: %i[transparent white black]
+      background :front, tiles: :board, map: board.cells
+      game_loop do
+        board.clear :white
+        board.blit :dot, 2, 2
+      end
+    end
+    b.finalize_program
+    picture = screen(b.program, 4)
+
+    assert_equal [0, 0, 0, WHITE], [picture.pixel(2, 2), picture.pixel(3, 2), picture.pixel(2, 3), picture.pixel(3, 3)]
+  end
+
+  # A canvas of a list by name holds place 0 see-through, as every picture of that list does,
+  # whatever colour the list keeps there. So that colour is none the canvas draws, and a picture
+  # stamped in it is refused rather than left out of the stamp.
+  def test_a_canvas_of_a_named_list_does_not_draw_the_colour_at_its_first_place
+    message = refusal do
+      colors :ink, %i[red white black]
+      image(:dot, "." => :transparent, "#" => :red) { "#." }
+      board = canvas :board, width: 16, height: 8, colors: :ink
+      background :front, tiles: :board, map: board.cells
+      board.blit :dot, 2, 2
+    end
+
+    assert_match(/does not have \(:?red\)/, message)
+  end
+
   # A letter hands back where it ended, and a game that has no use for that must still build:
   # the whole build, guardrails and all, not only the tree.
   def test_drawing_words_whose_answer_nobody_reads_build
