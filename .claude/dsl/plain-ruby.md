@@ -145,9 +145,15 @@ instance variables.
   from another name reads what that one reads, so `envelope = @copy.byte(at + 1)` keeps its byte
   too. A game variable a method hands back (`floors = routine_var(:floors)`) is that variable, as
   the object a Ruby method hands back is, and counts itself up with `floors.increase!(1)` across
-  any call. One limit: an object of the game's that shares a variable with the code calling it
-  (handed it when the object was made) can change that variable unseen; read it into a `var` with
-  `store!` there.
+  any call. A method that answers a name's number (`@seed` named by `game_variables`, or `hp`
+  after `hp = 10`) hands on that number, so `noise = advance; noise -= advance` takes two
+  different draws, as in Ruby, and so does `noise = advance; repeat(2) { total += noise - advance }`.
+  A name set straight from an instance variable (`setting = @sound_setting`) is that variable
+  across a call, so the objects it is handed to move it, and a routine's block that reads it
+  (`col_x = @col_x` read in a `func`) reads it as the game plays; where the old number is wanted,
+  `store!` it into a `var`. One limit: an object of the game's that
+  shares a variable with the code calling it (handed it when the object was made) can change that
+  variable unseen; read it into a `var` with `store!` there.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

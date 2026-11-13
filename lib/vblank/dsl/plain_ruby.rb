@@ -813,14 +813,34 @@ module VBlank
 
         def kept_value_text(value, write = nil)
           if write && @names.read_after_it_changes?(write)
-            # A game variable the line hands back (`floors = routine_var(:floors)`, `col_x = @col_x`)
-            # is the variable itself, as the object a Ruby name is given is: kept only for a call,
-            # it stays that variable and follows its own `floors.increase!(1)`. A change the source
-            # writes to a name the line reads still copies one, as `old = hp` keeps hp's number.
-            handed_back = !@names.kept_for_named_change?(write)
-            copy_variable_text = handed_back ? ", copy_variable: false" : ""
-            return "#{STEPS}.kept_answer((#{value_text(value)})#{copy_variable_text})"
+            "#{STEPS}.kept_answer((#{value_text(value)}), copy: :#{kept_answer_copy(value, write)})"
+          else
+            copied_local_read_text(value)
           end
+        end
+
+        # Steps.kept_answer's +copy:+ setting: how it treats a game variable the line hands back,
+        # kept for a change:
+        #
+        # - for a change the source writes to a name the line reads, copied, as `old = hp` keeps
+        #   hp's number;
+        # - kept only for a call, a method's answer is copied when it is a name's number
+        #   (`noise = advance`, `advance` answering `@seed`), as Ruby hands on a number, while a
+        #   variable a `var` line made (`floors = routine_var(:floors)`) stays that variable and
+        #   follows its own `floors.increase!(1)`;
+        # - kept only for a call, a variable the line reads itself (`setting = @sound_setting`,
+        #   `col_x = @col_x`) stays that variable: a game hands it to the objects that move it, or
+        #   reads it in a routine's block, where it is read as the game plays.
+        def kept_answer_copy(value, write)
+          return :always if @names.kept_for_named_change?(write)
+          return :never unless value.is_a?(Prism::CallNode)
+
+          :numbers
+        end
+
+        # `b = a`, where `a` is a local holding a game variable: a copy of a's number, as Ruby
+        # hands on a number.
+        def copied_local_read_text(value)
           return value_text(value) unless value.is_a?(Prism::LocalVariableReadNode) && @names.variable_read?(value)
 
           "#{STEPS}.copy_of_variable(#{rewritten_text(value)})"

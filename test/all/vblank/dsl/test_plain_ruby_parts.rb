@@ -539,13 +539,65 @@ class TestPlainRubyParts < Minitest::Test
   end
 
   # Plays +block+, rewritten as a game's block is, and hands back the player.
-  private def played_game(frames: 4, &block)
+  private def played_game(frames: 4, allow: [], &block)
     builder = Builder.new
-    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, allow: allow))
     builder.finalize_program
     player = game_player
     player.run(builder.program, frames: frames)
     player
+  end
+
+  # A local given a method's answer (DitherPart#difference, test/plain_ruby_game_parts.rb) keeps
+  # that number when the next call changes the instance variable it came from, as Ruby's does:
+  # the seed goes 5, 16, 49, and the difference is 16 - 49.
+  def test_a_name_given_a_methods_answer_keeps_it_when_a_later_call_changes_its_source
+    player = played_game(frames: 3, allow: %w[DitherPart]) do
+      dither = DitherPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          dither.difference
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [49, -33], [player[:dither_part_seed], player[:dither_part_got]]
+  end
+
+  # The same, with the second answer taken inside a `repeat` (DitherPart#difference_in_repeat).
+  def test_a_name_given_a_methods_answer_keeps_it_across_a_call_in_a_repeat
+    player = played_game(frames: 3, allow: %w[DitherPart]) do
+      dither = DitherPart.new
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          dither.difference_in_repeat(self)
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [49, -33], [player[:dither_part_seed], player[:dither_part_got]]
+  end
+
+  # A name set straight from an instance variable (ColumnPart#make_shower) is that variable across
+  # a call, so the routine's block reads it as it is when the routine runs: @col is 5 when the
+  # routine is made, and 6 once #nudge has run.
+  def test_a_name_set_from_an_instance_variable_is_that_variable_in_a_routines_block
+    player = played_game(frames: 3, allow: %w[ColumnPart]) do
+      ColumnPart.new(self)
+      done = var(:done, 0)
+      game_loop do
+        if done == 0
+          call :column_show
+          done = 1
+        end
+      end
+    end
+
+    assert_equal [6, 6], [player[:column_part_col], player[:column_part_seen]]
   end
 
   # The answer key is the same lines written in the game loop: nil, read as a number, is 0.

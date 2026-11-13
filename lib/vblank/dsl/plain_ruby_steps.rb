@@ -281,9 +281,12 @@ module VBlank
 
         # What a name was given, kept as it is on this line, since something it was worked out from
         # changes before it is read. A number needs no keeping.
-        # +copy_variable+ false leaves a game variable itself as it is (Rewriter#kept_value_text).
-        def kept_answer(value, copy_variable: true)
-          return value if !copy_variable && variable?(value)
+        # +copy+ chooses whether +value+, when it is a game variable, gets a copy
+        # (Rewriter#kept_answer_copy): :always, :never, or :numbers to copy only one normal Ruby
+        # made for a name's number (`@seed`, named by `game_variables`), leaving one a `var` line
+        # made, which the game passes around to change.
+        def kept_answer(value, copy: :always)
+          return value if variable?(value) && !copies_variable?(value, copy)
           return value.hidden_copy if value.is_a?(Value)
           return value unless value.is_a?(Condition)
 
@@ -291,6 +294,14 @@ module VBlank
           kept.mark_boolean!
           Writes.store_answer(kept, value)
           kept
+        end
+
+        def copies_variable?(variable, copy)
+          case copy
+          in :always then true
+          in :never then false
+          in :numbers then variable.made_with_no_var_line?
+          end
         end
 
         # `old = hp`. While the game plays that must keep hp's number as it is now, where a plain

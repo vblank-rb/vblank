@@ -111,6 +111,11 @@ module VBlank
 
       def note_made_with_no_var_line = @builder.note_variable_with_no_var_line(@name)
 
+      # Was this variable made by normal Ruby with no `var` line: a name given a number (`hp = 10`,
+      # `@seed = 5` named by `game_variables`)? Such a variable is that name's number, which Ruby
+      # hands on as a number, where one `var` made is a handle a game passes about to change.
+      def made_with_no_var_line? = @builder.variable_with_no_var_line?(@name)
+
       # Mark this variable as scratch no save keeps (`game_variables ..., saved: false`).
       def note_unsaved = @builder.note_unsaved_variable(@name)
 

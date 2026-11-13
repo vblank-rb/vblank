@@ -1220,6 +1220,8 @@ module VBlank
 
     def note_variable_with_no_var_line(name) = @variables_with_no_var_line |= [name]
 
+    def variable_with_no_var_line?(name) = @variables_with_no_var_line.include?(name)
+
     # An unsaved variable: scratch a part named with `game_variables ..., saved: false`, which a
     # save never keeps. `saves_keep_everything` passes it over, and a `save_data` record keeping
     # it is refused.

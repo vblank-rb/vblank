@@ -188,6 +188,60 @@ class SeedWithVarPart
   end
 end
 
+# A dither: #advance moves @seed on and answers it, and #difference takes one answer from the
+# next. `noise` holds the first answer, a number, so the second #advance changing @seed leaves it
+# alone: 16 - 49 is -33. #difference_in_repeat takes the second answer inside a `repeat`, whose
+# block runs right where it is written.
+class DitherPart
+  game_variables :seed, :got
+
+  def initialize
+    @seed = 5
+    @got = 0
+  end
+
+  def advance
+    @seed = (@seed * 3) + 1
+    @seed
+  end
+
+  def difference
+    noise = advance
+    noise -= advance
+    @got = noise
+  end
+
+  def difference_in_repeat(builder)
+    noise = advance
+    builder.repeat(1) { @got = noise - advance }
+  end
+end
+
+# A column a routine shows: `col` is set straight from @col, so it is that variable, and the
+# routine's block reads @col as it is when the routine runs, after #nudge moves it on.
+class ColumnPart
+  game_variables :col, :seen
+
+  def initialize(builder)
+    @col = 5
+    @seen = 0
+    make_shower(builder)
+  end
+
+  # Written above #make_shower, so @col changes there only through the call.
+  def nudge
+    @col += 1
+  end
+
+  def make_shower(builder)
+    col = @col
+    builder.func(:column_show) do
+      nudge
+      @seen = col
+    end
+  end
+end
+
 # Two of one part, each counting in an instance variable of its own.
 class TickerPart
   game_variables :ticks
