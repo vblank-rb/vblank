@@ -113,6 +113,8 @@ module VBlank
           elsif node.pixel_size
             Question.new(:screen, "This game shows its pixels bigger (`pixel_size: #{node.pixel_size}`)",
                          console.shows_bigger_pixels)
+          elsif node.shown_rows
+            Question.new(:screen, "This game gives up rows of the screen (`shown_rows:`)", console.gives_up_rows)
           end
         when :object
           if turns?(node)

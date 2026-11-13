@@ -783,7 +783,7 @@ module VBlank
               # its planes, kept for making tiles ready, and its 64 bytes, for the blank to send.
               asm.label("rt_paint_clear_whole")
               asm.inc(asm.abs(memory[CLEARS]))
-              Letterbox.emit_cleared(asm, memory) if Letterbox.kept?(memory)
+              Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory)
               PaintLog.emit_clear_deferred(asm, memory) if logged
               asm.jsr(asm.abs("rt_paint_layer_clear_all")) if TextLayer.kept?(memory)
               asm.lda(asm.direct(R.call(0)))
@@ -1900,7 +1900,7 @@ module VBlank
                 asm.rtl
                 asm.label("rt_paint_prepare_cleared")
               end
-              asm.jsr(asm.abs("rt_letterbox_rows")) if Letterbox.kept?(memory) # before the rows are marked unchanged
+              asm.jsr(asm.abs("rt_letterbox_rows")) if Letterbox.follows_rows?(memory) # before the rows are marked unchanged
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.lda(MOST_RUNS * 4)
               asm.sta(asm.abs(memory[IN_PLACE_START]))
@@ -2339,7 +2339,7 @@ module VBlank
               asm.lda(MOST_RUNS * 4)
               asm.sta(asm.abs(memory[IN_PLACE_START]))
               whole = [[CLEAR_CHANGED, CLEAR_TILE_COPY, CLEAR_TILE_AT, TILE_BYTES]]
-              if Letterbox.kept?(memory)
+              if Letterbox.follows_rows?(memory)
                 emit_map_rows_upload(asm, memory, s)
               elsif !logged
                 whole << [MAP_CHANGED, MAP_COPY, MAP, MAP_BYTES]

@@ -92,6 +92,10 @@ module VBlank
               asm.lda(h::FULL_BRIGHTNESS)
               asm.sec
               asm.sbc(asm.abs(memory[DIMMED]))
+              # Where the screen is off round a band the game named, the band's line table writes
+              # the brightness (Letterbox).
+              return asm.jsr(asm.abs("rt_letterbox_brightness")) if Letterbox.named_band?(memory)
+
               asm.sep(0x20)
               asm.sta(asm.abs(h::INIDISP))
               asm.rep(0x20)

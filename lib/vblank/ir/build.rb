@@ -170,8 +170,9 @@ module VBlank
       # (and the cost estimator) can tell the two apart. Absent when off, so an
       # ordinary screen node is unchanged.
       def screen(mode, buffered: false, colors: nil, late: nil, late_pace: nil, backdrop: nil, pixel_size: nil,
-                 backdrop_from_file: nil)
+                 backdrop_from_file: nil, shown_rows: nil)
         attrs = { mode: mode }
+        attrs[:shown_rows] = shown_rows if shown_rows
         attrs[:buffered] = true if buffered
         attrs[:colors] = colors if colors
         attrs[:late] = late if late

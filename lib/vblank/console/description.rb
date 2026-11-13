@@ -145,7 +145,8 @@ module VBlank
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
-                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles) do
+                              :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
+                              :shown_rows, :gives_up_rows) do
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -195,9 +196,17 @@ module VBlank
       # as well as 8x8 (the Super Nintendo's, BGMODE's size bits), so a cell of 16x16 is one entry of
       # its map. A background from the data pack whose cells are 16x16 is built from pictures of that
       # size there (Builder::PackBackgrounds#big_pack_cells?), as the original's map is.
+      #
+      # +shown_rows+ is [first, past] of the rows of the screen a game's picture shows
+      # (`screen :bitmap, shown_rows:`, #with_shown_rows), or nil for every row: the rows outside
+      # are given up and show black. +gives_up_rows+ marks a console that gains from it: one whose
+      # video memory takes writes only while it is not drawing, and that can switch the screen off
+      # for those rows, so the copy has them as well as the blank (the Super Nintendo's forced
+      # blank, written line by line: Backends::SNES::Runtime::Letterbox).
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
                      pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
-                     voices_read_sound_memory: false, big_background_tiles: false, **rest) = super
+                     voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
+                     gives_up_rows: false, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -216,6 +225,14 @@ module VBlank
         with(screen_width: screen_width / size, screen_height: screen_height / size, pixel_size: size,
              plays_bios_start_up: false)
       end
+
+      # This console showing only the rows [first, past] of +rows+ (see +shown_rows+); the console
+      # as it is for nil.
+      def with_shown_rows(rows) = rows ? with(shown_rows: rows) : self
+
+      # The first row the picture shows and the one past its last: the whole screen where the game
+      # gives up none.
+      def shown_row_bounds = shown_rows || [0, screen_height]
 
       # Whether a pixel of the game's picture is shown bigger than one of the console's.
       def bigger_pixels? = pixel_size > 1
@@ -443,6 +460,9 @@ module VBlank
                                      # and none for the sprites.
                                      sprites_in_blocks: false,
                                      big_background_tiles: true,
+                                     # Video memory takes writes only in the blank or with the screen
+                                     # off, and the screen can be switched off line by line.
+                                     gives_up_rows: true,
                                      extension: ".sfc")
 
     # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no

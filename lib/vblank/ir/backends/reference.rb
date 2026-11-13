@@ -381,6 +381,7 @@ module VBlank
             @screen = Framebuffer.new(width: width, height: height, color_bits: @console.color_bits)
           end
           @screen.dims = @console.fades_by_brightness
+          @screen.shown_rows = @console.shown_rows
         end
 
         # A picture the size of the screen, for painting part of the scene onto by itself.

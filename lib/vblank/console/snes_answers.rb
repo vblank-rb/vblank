@@ -31,7 +31,10 @@ module VBlank
                       "`tear_free: true` keeps one picture, because the picture is copied to the " \
                       "console whole before it shows. `screen :rotozoom` is refused: the build does " \
                       "not use the one layer a Super Nintendo can turn. `pixel_size: 2` is refused: the " \
-                      "build does not show a painted screen bigger yet."),
+                      "build does not show a painted screen bigger yet. `shown_rows:` works: the rows " \
+                      "outside the range are black. The screen is off on those rows, so the build " \
+                      "copies the picture to video memory on those rows and in the gap after each " \
+                      "picture. Then a picture that changes many tiles in each pass shows sooner."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),

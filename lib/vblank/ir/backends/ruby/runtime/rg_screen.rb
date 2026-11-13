@@ -954,7 +954,16 @@ end
 # (rg_hook_shown_plain) — every row is the stored row moved by the window, and is copied as one,
 # which is most frames of most games.
 def rg_screen_shown
-  rg_keep_console_colors(rg_screen_shown_in_five_bits)
+  rg_keep_console_colors(rg_black_rows_given_up(rg_screen_shown_in_five_bits))
+end
+
+# rg_screen.c's black_rows_given_up: the rows the game gave up (`shown_rows:`) black, unless the
+# display is switched off.
+def rg_black_rows_given_up(shown)
+  return shown if @rg_screen_held != 0 || (RG_SHOWN_FIRST_ROW.zero? && RG_SHOWN_PAST_ROW == RG_SCREEN_HEIGHT)
+
+  shown.fill(0, 0, RG_SHOWN_FIRST_ROW * RG_SCREEN_WIDTH)
+  shown.fill(0, RG_SHOWN_PAST_ROW * RG_SCREEN_WIDTH, (RG_SCREEN_HEIGHT - RG_SHOWN_PAST_ROW) * RG_SCREEN_WIDTH)
 end
 
 # Framebuffer#displayed: +shown+ as a console that keeps fewer than five bits of a channel shows it.

@@ -44,7 +44,9 @@ module VBlank
                       "names a list) is not made yet: the build refuses it and says so. " \
                       "`screen :rotozoom` is refused: " \
                       "a Game Boy Color cannot turn or resize a background. " \
-                      "`pixel_size: 2` is refused: a Game Boy Color cannot show a pixel bigger."),
+                      "`pixel_size: 2` is refused: a Game Boy Color cannot show a pixel bigger. " \
+                      "`shown_rows:` is refused: a Game Boy Color cannot switch its screen off for some " \
+                      "rows only."),
         setting: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gbc."),

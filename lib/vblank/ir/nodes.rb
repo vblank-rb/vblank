@@ -1439,6 +1439,12 @@ module VBlank
       # program's: the game is laid out and played on a screen that many times smaller
       # (#described_console), and each console's build shows that picture bigger.
       #
+      # +shown_rows+ is [first, past] of the rows of the screen the picture shows
+      # (`screen :bitmap, shown_rows: 32...192`), or nil for every row. The rows outside are given
+      # up: they show black on every backend, and a console that copies to its video memory only
+      # while it is not drawing has them for its copy as well as the blank. It is the whole game's,
+      # so it is the program's (#described_console).
+      #
       # +verbs_written+ is the names of the verbs the game wrote that are written in other verbs
       # and leave no step of their own: a `pulse` is a sprite's size walked every frame, an iris a
       # light's. The steps say what the program does, which is all a backend needs, but not which
@@ -1453,7 +1459,7 @@ module VBlank
                  fraction_vars: :list, fraction_lists: :list, sprite_readings: :list, background_readings: :list,
                  players: :list, verbs_written: :list,
                  for_computer: :flag, for_unpacking: :flag, border: :text, border_size: :list, pixel_size: :int,
-                 start_file: :start_file, mix_rate: :int, computer_controls: :list
+                 shown_rows: :list, start_file: :start_file, mix_rate: :int, computer_controls: :list
 
         # +computer_controls+ is the keys and gamepad buttons the game adds to VBlank's layout on a
         # computer, as [button, :key or :pad, name] triples (IR::ComputerControls), or absent for a
@@ -1544,7 +1550,7 @@ module VBlank
         # What the console this program was built for can do: its screen, buttons, sprites — the
         # screen as the game sees it, so with the game's pixel size (#pixel_size) it is that many
         # times smaller than the console's.
-        def described_console = console_description.with_pixel_size(pixel_size)
+        def described_console = console_description.with_pixel_size(pixel_size).with_shown_rows(shown_rows)
 
         # The console this program was built for, with its variant, as it is whatever the game's
         # pixel size. A program that names none cannot be laid out, and no console is assumed for
@@ -1766,8 +1772,11 @@ module VBlank
         # +pixel_size+: on the game's first screen, how many of the console's pixels across and down
         # one of the game's is shown as; nil is one. The program carries it for the whole game
         # (Program#pixel_size); here it is the line that asked, for a console that cannot.
+        # +shown_rows+: on the game's first screen, [first, past] of the rows the picture shows, the
+        # rest given up and black; nil is every row. The program carries it for the whole game
+        # (Program#shown_rows); here it is the line that asked, for a console that cannot.
         operands mode: :mode, buffered: :flag, colors: :list, late: :int, late_pace: :int, backdrop: :int,
-                 pixel_size: :int, backdrop_from_file: :file_color
+                 pixel_size: :int, backdrop_from_file: :file_color, shown_rows: :list
 
         # The backdrop this screen names in either form: its colour, where in the start file its
         # colour is (a StartFile::Color), or nil for a screen that names none.

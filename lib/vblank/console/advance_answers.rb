@@ -21,7 +21,10 @@ module VBlank
         # --- building, the screen and settings ---
         screen: works("`screen :bitmap, pixel_size: 2` shows each pixel of the game's 120×80 picture as a " \
                       "square of four. The console draws the painted screen through a background that can " \
-                      "resize. It shows that background bigger, and the build copies nothing."),
+                      "resize. It shows that background bigger, and the build copies nothing. " \
+                      "`shown_rows:` is refused: a Game Boy Advance can write its painted screen at any " \
+                      "time, so rows that do not show give it no more time. To give up rows on a Super " \
+                      "Nintendo only, write `shown_rows:` when `built_for?(:snes)` is true."),
         setting: works, built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gba."),
         screen_width: works("240 on a Game Boy Advance. 120 with `pixel_size: 2`. 160 on a game built with " \

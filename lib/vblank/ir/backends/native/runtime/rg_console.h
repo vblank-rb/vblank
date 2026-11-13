@@ -36,6 +36,15 @@
 #define RG_CONSOLE_TICKS_A_FRAME 280896
 #endif
 
+/* The rows of the screen the picture shows, the first and the one past the last; the rest are given
+ * up and show black (`screen :bitmap, shown_rows:`, Console::Description#shown_rows). */
+#ifndef RG_SHOWN_FIRST_ROW
+#define RG_SHOWN_FIRST_ROW 0
+#endif
+#ifndef RG_SHOWN_PAST_ROW
+#define RG_SHOWN_PAST_ROW RG_SCREEN_HEIGHT
+#endif
+
 /* Whether the console's display can mix the finished picture toward a colour as it draws it. One
  * that cannot has every fade and tint mixed into its colour tables instead
  * (Console::Description#blends). */
