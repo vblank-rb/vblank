@@ -27,7 +27,7 @@ module VBlank
       class Failed < StandardError; end
 
       PASSES_WITHOUT_TAPE = 300         # Passes played with nothing pressed, when no tape is given
-      MENU_PRESSES = { 2 => [:a] }.freeze # A on the menu's second pass: LOAD ROM, the line it starts on
+      MENU_PRESSES = Ractor.make_shareable({ 2 => [:a] }) # A on the menu's second pass: LOAD ROM, the line it starts on
       MOST_UNPACKING_PASSES = 1_000_000 # The menu and the unpacking together, before the check gives up
 
       # What one run of a game showed and sounded: each pass's picture's pixels, and each pass's
