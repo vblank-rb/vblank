@@ -63,8 +63,27 @@ module VBlank
                                             build_start_file_marked_pixel_fills + build_start_file_marked_number_fills +
                                             build_start_file_recording_fills +
                                             build_start_file_sound_fills + start_file_pose_list_choices +
-                                            start_file_shading_fills)]
+                                            start_file_shading_fills + start_file_tile_pose_fills)]
           end
+
+          # A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE A FRAME OF THE FILE (IR::StartFile::TilePose):
+          # +array+ is the pieces a load of the set hands the runtime, written with stand-ins
+          # (IR::StartFile.tile_pose_stand_ins) where the routine can write, and the routine writes
+          # the frame's pieces over them, those the pose can draw, and a piece that draws nothing in
+          # each place left (rg_start_file_fill_tile_pose, which IR::StartFile.tile_pose_pieces_in
+          # says in Ruby). Its rules: where the frame's entry is and where the records start, where
+          # the object's place is in the picture, across and down, the number the frames give the
+          # set's first tile, how many tiles the set holds, the picture's width and height, and how
+          # many pieces the array has room for.
+          def record_start_file_tile_pose_fill(array, pose)
+            where = pose.from_file
+            rules = [where.entry_at, where.records_at, where.origin_x, where.origin_y, where.first_tile, where.tile_count,
+                     pose.width, pose.height, pose.pieces.length]
+            start_file_tile_pose_fills << eval_call("rg_start_file_fill_tile_pose", array,
+                                                    drawing_array("start_file_tile_pose", "int32_t", rules))
+          end
+
+          def start_file_tile_pose_fills = @start_file_tile_pose_fills ||= []
 
           # A SHADING READ FROM THE FILE (IR::StartFile::Shading), in the array a lit fill hands the
           # runtime (Picture#shading_array): written with zeros where its colours and its levels'

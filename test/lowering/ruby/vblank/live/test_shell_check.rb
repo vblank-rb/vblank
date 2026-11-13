@@ -4,6 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "vblank/live"
 require "shell_tests"
+require "all/vblank/builder/test_pack_tile_poses"
 
 # THE CHECK EVERY PORT RUNS ON ITS SHELL (Live::ShellCheck), on the made-up port the shell tests
 # share. The answer key is the port's all-in-one build: its pack, and its play over the tape.
@@ -96,6 +97,20 @@ class TestShellCheck < Minitest::Test
 
       assert_match "not the all-in-one build's pack", failed.message
       assert_match "first at byte", failed.message
+    end
+  end
+
+  # A Color port whose ball's poses are pieces of a set of sprite tiles read from the original's
+  # frames (PackTilePoseGames): the shell writes the frames' pieces in as it starts.
+  def test_a_port_whose_tile_poses_are_frames_of_the_pack_passes_every_step
+    Dir.mktmpdir do |folder|
+      said = []
+      made = PackTilePoseGames.ball_game(PackTilePoseGames.original_in(folder)) do |pack, at|
+        PackTilePoseGames.frame_pose(pack, at, size: PackTilePoseGames::SIZE)
+      end
+      check(VBlank.game("MADE UP", consoles: %i[gbc], &made), said)
+
+      assert_match "plays as its all-in-one build does", said.last
     end
   end
 

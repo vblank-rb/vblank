@@ -374,12 +374,17 @@ module VBlank
       # the picture's 8-pixel grid. Places no piece covers are see-through. The picture is
       # +width+ by +height+, as far as its pieces reach. It shows what the set's tiles hold
       # now, so it has no pixels of its own.
+      #
+      # +from_file+ is where in the file the program is handed as it starts (StartFile) the frame
+      # is whose pieces these are (a StartFile::TilePose), for a pose of one of the original's
+      # frames built with its pack left out; +pieces+ are stand-ins until then. Absent on every
+      # other pose.
       class TilePose
         include Node
         kind :tile_pose
         declaration!
         category :data
-        operands name: :name, tiles: :name, pieces: :list, width: :int, height: :int
+        operands name: :name, tiles: :name, pieces: :list, width: :int, height: :int, from_file: :file_tile_pose
       end
 
       # Load +count+ tiles of a SpriteTiles set from the cartridge: tiles +to+ onwards of the set

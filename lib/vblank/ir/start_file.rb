@@ -32,6 +32,9 @@ module VBlank
     #   and the tiles they name. How many pieces there are and what each is is known only once the
     #   file is read, so the program holds a picture of the size the game gave, and each piece is
     #   painted into it.
+    # - the pieces of a pose of a set of sprite tiles (Nodes::TilePose#from_file, a TilePose): the
+    #   same record of a frame, read as which of the set's tiles go where. The program holds a
+    #   stand-in piece for each place of the picture's grid, and none of them draws.
     # - a recording (Nodes::Sample#from_file): its samples, one byte each, 8-bit signed, as many as the
     #   zeros of its bytes; the program holds zeros until the file is read.
     # - a recording's settings (Nodes::Sample#settings_from_file, a RecordingSettings): the rate it
@@ -140,6 +143,78 @@ module VBlank
 
         # The same pose turned +way+ once it is painted.
         def turned(way) = with(turns: [*turns, way].freeze)
+      end
+
+      # Where the frame is whose pieces a pose of a set of sprite tiles draws
+      # (Nodes::TilePose#from_file, Builder::SpriteTiles): the frame's record found as a Pose finds
+      # its own, from the four bytes at +entry_at+ and where the records start, +records_at+. A
+      # piece sits from the object's place, which is +origin_x+ and +origin_y+ in the picture, and
+      # names tiles as the original numbers them: tile +first_tile+ is the set's tile 0, and the set
+      # holds +tile_count+.
+      #
+      # The pose draws no pixel of the file. Its pieces say which of the set's tiles go where, and
+      # the set's tiles are what the game loads. So the program holds the pose's pieces as stand-ins
+      # (.tile_pose_stand_ins) and each backend puts the frame's in their place as it starts
+      # (.tile_pose_pieces_in).
+      TilePose = Data.define(:entry_at, :records_at, :origin_x, :origin_y, :first_tile, :tile_count)
+
+      # One tile of a frame's piece as a pose of a set places it: its top left in the picture
+      # (+dx+, +dy+), the set's tile it shows, and whether the piece is turned.
+      TilePoseCell = Data.define(:dx, :dy, :tile, :turned)
+
+      TILE_SIDE = 8
+
+      # Each tile of +piece+ (an Original::FrameRecord::Piece), row by row, as a pose of a set whose
+      # object's place is (+origin_x+, +origin_y+) in the picture and whose tile 0 the frames call
+      # +first_tile+ places it. The build that holds the pack reads the same cells, and refuses a
+      # frame of any it cannot draw (Builder::SpriteTiles#tile_pose_pieces_of_frame).
+      def self.tile_pose_cells(piece, origin_x:, origin_y:, first_tile:)
+        Array.new(piece.rows) do |row|
+          Array.new(piece.columns) do |column|
+            TilePoseCell.new(dx: origin_x + piece.x + (column * TILE_SIDE), dy: origin_y + piece.y + (row * TILE_SIDE),
+                             tile: piece.tile_at(column, row) - first_tile, turned: !piece.turns.zero?)
+          end
+        end.flatten
+      end
+
+      # THE PIECES A POSE OF A SET DRAWS, read from the frame +where+ (a TilePose) names in +bytes+,
+      # each [dx, dy, tile] for a picture +width+ by +height+. The file is the player's, so nothing
+      # in it stops the game: a tile that is turned, off the picture's 8-pixel grid, outside the
+      # picture or outside the set draws nothing, and of two tiles at one place the earlier is drawn,
+      # as the earlier piece of a frame is in front. The C, JavaScript and Ruby runtimes keep the
+      # same (rg_start_file_fill_tile_pose).
+      def self.tile_pose_pieces_in(bytes, where, width, height)
+        frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
+        taken = {}
+        frame.pieces.flat_map do |piece|
+          tile_pose_cells(piece, origin_x: where.origin_x, origin_y: where.origin_y, first_tile: where.first_tile)
+        end.filter_map do |cell|
+          next unless tile_pose_cell_drawn?(cell, where.tile_count, width, height) && !taken[[cell.dx, cell.dy]]
+
+          taken[[cell.dx, cell.dy]] = true
+          [cell.dx, cell.dy, cell.tile]
+        end
+      end
+
+      # Whether a pose of a set of +tile_count+ tiles, +width+ by +height+, can draw +cell+.
+      def self.tile_pose_cell_drawn?(cell, tile_count, width, height)
+        !cell.turned && [cell.dx, cell.dy].all? { |side| side >= 0 && (side % TILE_SIDE).zero? } &&
+          cell.dx + TILE_SIDE <= width && cell.dy + TILE_SIDE <= height && cell.tile.between?(0, tile_count - 1)
+      end
+
+      # THE PIECES A PROGRAM HOLDS FOR SUCH A POSE until the file is read: one for each place of the
+      # 8-pixel grid of a picture +width+ by +height+, which is the most the frame can draw, each
+      # naming a tile below zero, which no set holds, so none draws. The C, JavaScript and Ruby
+      # builds write the frame's pieces over them as they start. Down each column the tiles are
+      # numbered as a piece two tiles tall numbers its own (top even, the one under it one more),
+      # so a console that counts its sprites on a line in pieces two tiles tall counts the picture
+      # as such pieces (SpriteLines.tile_pose_places).
+      def self.tile_pose_stand_ins(width, height)
+        rows = height / TILE_SIDE
+        pairs = (rows + 1) / 2
+        Array.new(width / TILE_SIDE) do |column|
+          Array.new(rows) { |row| [column * TILE_SIDE, row * TILE_SIDE, (-2 * ((column * pairs) + (row / 2) + 1)) + (row % 2)] }
+        end.flatten(1)
       end
 
       # Where a background's map, tiles and colours are in the file, as the original keeps them.
@@ -592,7 +667,7 @@ module VBlank
       # The kinds of node that read from the file. Each has a branch in .fill_node: a new kind is one
       # name here and one branch there. A screen reads only its backdrop, and most screens read
       # nothing (.place_in_file); a song reads the notes and the waves of the parts that keep theirs there.
-      READ_KINDS = %i[table bitmap sample background screen song shading].freeze
+      READ_KINDS = %i[table bitmap sample background screen song shading tile_pose].freeze
 
       # Where in the file +node+ reads from, or nil for a node that reads nothing from it.
       def self.place_in_file(node)
@@ -814,6 +889,7 @@ module VBlank
         when :screen then fill_backdrop(node, bytes)
         when :song then fill_song(node, bytes)
         when :shading then fill_shading(node, bytes)
+        when :tile_pose then fill_tile_pose(node, bytes)
         else raise ArgumentError, "a #{node.kind} is not read from the file (READ_KINDS names the kinds that are)"
         end
       end
@@ -835,6 +911,13 @@ module VBlank
           wave = part.wave_from_file
           wave ? part.with(wave: wave.steps_in(bytes), wave_from_file: nil) : part
         end
+      end
+
+      # A pose of a set of sprite tiles whose pieces are a frame of the file's: the pieces the build
+      # that holds the pack gives it, where that build draws the frame at all (.tile_pose_pieces_in).
+      def self.fill_tile_pose(node, bytes)
+        node.pieces = tile_pose_pieces_in(bytes, node.from_file, node.width, node.height)
+        node.from_file = nil
       end
 
       # A shading's colours and levels, read from the places it names: the shading the game keeps
@@ -1074,7 +1157,7 @@ module VBlank
       end
       private_class_method :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
-                           :paint_pose_piece
+                           :paint_pose_piece, :fill_tile_pose
     end
   end
 end

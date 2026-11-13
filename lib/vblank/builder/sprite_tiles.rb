@@ -74,6 +74,8 @@ module VBlank
                                "sprite_tiles has that name. Declare the set first with " \
                                "`sprite_tiles :#{set_name}, count: ..., colors: ...`."
         end
+        return define_tile_pose_of_frame(name, set_name, set, opts) if opts.key?(:frame)
+
         extra = opts.keys - %i[tiles_from pieces]
         unless extra.empty?
           raise ArgumentError, "image :#{name} gets its tiles from :#{set_name}, so its pixels and its colours are " \
@@ -82,14 +84,107 @@ module VBlank
         end
         pieces = opts[:pieces]
         refuse_bad_tile_pose_pieces!(name, set_name, set[:count], pieces)
-        width = pieces.map { |dx, _, _| dx + 8 }.max
-        height = pieces.map { |_, dy, _| dy + 8 }.max
+        record_tile_pose(name, set_name, set, pieces, tile_pose_reach(pieces))
+      end
+
+      def tile_pose_reach(pieces) = [pieces.map { |dx, _, _| dx + 8 }.max, pieces.map { |_, dy, _| dy + 8 }.max]
+
+      # The pose +name+ of the set +set_name+, +pieces+ in a picture +size+ ([width, height]),
+      # its frame in the file the program is handed as it starts where +from_file+ is one.
+      def record_tile_pose(name, set_name, set, pieces, size, from_file: nil)
+        width, height = size
         @images[name] = [width, height]
         @tile_pose_sets[name] = set_name
         @painted_colors[name] = set[:colors]
         @painted_colors_names[name] = set[:colors_name]
-        record(Build.tile_pose(name, tiles: set_name, pieces: pieces.map(&:dup), width: width, height: height))
+        node = Build.tile_pose(name, tiles: set_name, pieces: pieces.map(&:dup), width: width, height: height)
+        node.from_file = from_file
+        record(node)
         name
+      end
+
+      TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze
+
+      # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME),
+      # first_tile: 0x40, origin: [8, 16]`: A POSE OF THE SET WHOSE PIECES ARE ONE OF THE ORIGINAL'S
+      # FRAMES. A retail game's frame names tiles of sprite memory, and the set is a run of them:
+      # +first_tile+ is the number the frames give the set's first tile, so a frame's tile 0x42 is
+      # the set's tile 2. A piece sits from the object's place, which is +origin+ in the picture, as
+      # a pose of the pack's tiles places its pieces (PackPoses). A piece of several tiles is each
+      # of them, on the picture's 8-pixel grid.
+      #
+      # BUILT ALL-IN-ONE the frame is read here, and the pose is the pose of pieces a port would have
+      # written by hand: every console draws it as any pose of the set. A frame the set cannot draw
+      # is refused: a piece naming a tile outside the set, a piece turned (a pose of the set does
+      # not turn its tiles), off the grid, or left of or above the picture.
+      #
+      # WITH THE PACK LEFT OUT nothing of the frame is known here, so the game gives `size:`, and
+      # the pose holds stand-in pieces (IR::StartFile.tile_pose_stand_ins) and where its frame's
+      # record is (IR::StartFile::TilePose). Each backend that plays such a program puts the frame's
+      # pieces in their place as it starts. The file is the player's: a piece the build that holds
+      # the pack refuses draws nothing there (IR::StartFile.tile_pose_pieces_in).
+      def define_tile_pose_of_frame(name, set_name, set, opts)
+        refuse_tile_pose_of_frame_options!(name, set_name, opts)
+        frame = opts[:frame]
+        refuse_slot_from_elsewhere!(frame.slot, "image :#{name}'s frame:")
+        origin = refuse_bad_origin!(name, opts[:origin])
+        size = refuse_bad_pieced_size!(name, opts[:size])
+        first_tile = opts[:first_tile]
+        if pack_left_out?
+          refuse_pose_without_size!(name) unless size
+          record = pack_frame_number(frame_source(name, frame))
+          from_file = IR::StartFile::TilePose.new(entry_at: @pack_frames_at + (record * Original::FrameRecord::ENTRY_BYTES),
+                                                  records_at: @pack_frames_at, origin_x: origin[0], origin_y: origin[1],
+                                                  first_tile: first_tile, tile_count: set[:count])
+          return record_tile_pose(name, set_name, set, IR::StartFile.tile_pose_stand_ins(*size), size, from_file: from_file)
+        end
+
+        pieces = tile_pose_pieces_of_frame(name, set_name, set, frame_pieces(name, frame), origin, first_tile)
+        refuse_bad_tile_pose_pieces!(name, set_name, set[:count], pieces)
+        reach = tile_pose_reach(pieces)
+        record_tile_pose(name, set_name, set, pieces, size ? refuse_pieces_past_size!(name, reach, size) : reach)
+      end
+
+      # Each tile of the frame's +read+ pieces (Original::FrameRecord::Piece) as a piece of the
+      # pose, [dx, dy, tile], refusing one the set cannot draw.
+      def tile_pose_pieces_of_frame(name, set_name, set, read, origin, first_tile)
+        cells = read.flat_map do |piece|
+          IR::StartFile.tile_pose_cells(piece, origin_x: origin[0], origin_y: origin[1], first_tile: first_tile)
+        end
+        cells.map do |cell|
+          refuse_turned_frame_piece!(name) if cell.turned
+          refuse_frame_tile_outside_set!(name, set_name, set[:count], first_tile, cell.tile) unless cell.tile.between?(0, set[:count] - 1)
+          refuse_piece_left_of_origin!(name, [[cell.dx, cell.dy]])
+          [cell.dx, cell.dy, cell.tile]
+        end
+      end
+
+      def refuse_tile_pose_of_frame_options!(name, set_name, opts)
+        others = opts.keys - TILE_POSE_OF_FRAME_OPTIONS
+        unless others.empty? && opts[:frame].is_a?(DSL::PackFrame)
+          raise ArgumentError, "image :#{name} gets its tiles from :#{set_name} and its pieces from a frame of the data " \
+                               "pack. It takes tiles_from:, frame:, first_tile:, origin: and size:, like `image :#{name}, " \
+                               "tiles_from: :#{set_name}, frame: pack[:frames].frame(0, layout: FRAME), first_tile: 0x40, " \
+                               "origin: [8, 16]`."
+        end
+        return if opts[:first_tile].is_a?(Integer) && !opts[:first_tile].negative?
+
+        raise ArgumentError, "image :#{name} gets its pieces from a frame of the data pack, and needs first_tile:, the " \
+                             "number the frames give the first tile of sprite_tiles :#{set_name}, like `first_tile: 0x40`. " \
+                             "Got #{opts[:first_tile].inspect}."
+      end
+
+      def refuse_turned_frame_piece!(name)
+        raise ArgumentError, "image :#{name} reads a frame with a piece that is turned round or upside down. A pose of " \
+                             "sprite tiles draws each tile as the set holds it. To fix this, give a frame whose pieces " \
+                             "are not turned, or make the pose with `image ..., tiles:, frame:` from the pack's tiles."
+      end
+
+      def refuse_frame_tile_outside_set!(name, set_name, count, first_tile, tile)
+        raise ArgumentError, "image :#{name} reads a frame with a piece that names tile #{tile + first_tile}. " \
+                             "sprite_tiles :#{set_name} holds tiles #{first_tile} to #{first_tile + count - 1} " \
+                             "(first_tile: #{first_tile} and count: #{count}). To fix this, give the first_tile: the " \
+                             "frames give the set's first tile, or give the set a larger count:."
       end
 
       # The table a load reads +source+ from: a picture's tiles kept the way painted tiles are,

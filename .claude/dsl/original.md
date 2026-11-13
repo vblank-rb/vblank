@@ -651,6 +651,20 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   source does not change: the
   slot is still a slot of bytes and the frame still `frame(at, layout:)`. Worked example:
   `test/frame_record_unpacking_tests.rb`.
+- `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME), first_tile: 0x40, origin: [8,
+  16], size: [16, 16]` — **a pose of a set of sprite tiles whose pieces are one of the original's frames**
+  (`sprites.md`, `sprite_tiles`): a retail game whose sprite memory holds a few tiles it rewrites, and whose frames name
+  them. `first_tile:` is the number the frames give the set's first tile, so a frame's tile 0x42 is the set's tile 2;
+  each tile of each piece is a piece of the pose, its top left from `origin:` as a pack pose places them. The pose draws
+  no pixel of the pack: its pieces say which of the set's tiles go where, and the tiles are what the game loads with
+  `copy_from`. Built all-in-one the frame is read as the game is built and the pose is the pose of pieces a port would
+  write by hand, so every console that draws a set's poses draws it; a frame the set cannot draw is refused at the line
+  (a piece naming a tile outside the set, a piece turned, off the 8-pixel grid, or left of or above the picture). With
+  the pack left out the game gives `size:`, the program holds a stand-in piece for each place of the pose's grid and
+  where the frame's record is (`IR::StartFile::TilePose`), and the runtime writes the frame's pieces over them at power-on
+  (`rg_start_file_fill_tile_pose`). Nothing the file holds stops the game: a tile the all-in-one build refuses draws
+  nothing, and of two tiles at one place the earlier is drawn. Worked example:
+  `test/all/vblank/builder/test_pack_tile_poses.rb`, and `test/pack_tile_pose_at_start_tests.rb` with the pack left out.
 
 - `place :mine, points: pack[:points], faces: pack[:faces], faces_used: pack[:sizes].number(0), pictures: [...]`,
   `shading :fade, colors: pack[:palette], levels: pack[:fades]` and `viewer :eye, at: ..., facing: ...` given

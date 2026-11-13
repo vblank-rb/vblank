@@ -782,6 +782,44 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   free(places);
 }
 
+void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules) {
+  int32_t entry_at = rules[0], records_at = rules[1], origin_x = rules[2], origin_y = rules[3], first_tile = rules[4];
+  int32_t tile_count = rules[5], width = rules[6], height = rules[7], room = rules[8];
+  int32_t first = 0, count = start_file_frame_pieces(entry_at, records_at, &first), kept = 0;
+  for (int32_t piece = 0; piece < count; piece++) {
+    int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
+    int32_t left = origin_x + (int16_t)start_file_number(at + RG_PIECE_X_AT, 2, 0);
+    int32_t top = origin_y + (int16_t)start_file_number(at + RG_PIECE_Y_AT, 2, 0);
+    int32_t tile = (int32_t)start_file_number(at + RG_PIECE_TILE_AT, 2, 0);
+    int32_t column_step = (int32_t)start_file_number(at + RG_PIECE_COLUMN_STEP_AT, 2, 0);
+    int32_t row_step = (int32_t)start_file_number(at + RG_PIECE_ROW_STEP_AT, 2, 0);
+    int32_t columns = start_file[at + RG_PIECE_COLUMNS_AT], rows = start_file[at + RG_PIECE_ROWS_AT];
+    int32_t turned = start_file[at + RG_PIECE_TURNS_AT] & (RG_PIECE_MIRRORED | RG_PIECE_UPSIDE_DOWN);
+    for (int32_t row = 0; row < rows; row++) {
+      for (int32_t column = 0; column < columns; column++) {
+        int32_t dx = left + (column * RG_FILL_TILE_SIDE), dy = top + (row * RG_FILL_TILE_SIDE);
+        int32_t shown = tile + (column * column_step) + (row * row_step) - first_tile;
+        if (turned || dx < 0 || dy < 0 || dx % RG_FILL_TILE_SIDE || dy % RG_FILL_TILE_SIDE || dx + RG_FILL_TILE_SIDE > width ||
+            dy + RG_FILL_TILE_SIDE > height || shown < 0 || shown >= tile_count || kept >= room)
+          continue;
+        int32_t taken = 0;
+        for (int32_t before = 0; before < kept; before++)
+          if (pieces[3 * before] == dx && pieces[(3 * before) + 1] == dy) taken = 1;
+        if (taken) continue;
+        pieces[3 * kept] = dx;
+        pieces[(3 * kept) + 1] = dy;
+        pieces[(3 * kept) + 2] = shown;
+        kept++;
+      }
+    }
+  }
+  for (; kept < room; kept++) {
+    pieces[3 * kept] = 0;
+    pieces[(3 * kept) + 1] = 0;
+    pieces[(3 * kept) + 2] = -1;
+  }
+}
+
 void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels) {
   memcpy(rg_screen_tile_pixels_to_fill(total) + start, pixels, (size_t)count * sizeof *pixels);
 }

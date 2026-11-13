@@ -656,6 +656,39 @@ def rg_start_file_frame_bank(entry_at, records_at)
   pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
 end
 
+# The pieces of a pose of sprite tiles whose pieces are a frame in the file (rg_runtime.h,
+# rg_start_file_fill_tile_pose).
+def rg_start_file_fill_tile_pose(pieces, rules)
+  entry_at, records_at, origin_x, origin_y, first_tile, tile_count, width, height, room = rules
+  count, first = rg_start_file_frame_pieces(entry_at, records_at)
+  kept = 0
+  count.times do |piece|
+    at = first + (piece * RG_FRAME_PIECE_BYTES)
+    left = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
+    top = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
+    tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
+    column_step = rg_start_file_half(at + RG_PIECE_COLUMN_STEP_AT)
+    row_step = rg_start_file_half(at + RG_PIECE_ROW_STEP_AT)
+    turned = @rg_start_file.getbyte(at + RG_PIECE_TURNS_AT).anybits?(RG_PIECE_MIRRORED | RG_PIECE_UPSIDE_DOWN)
+    @rg_start_file.getbyte(at + RG_PIECE_ROWS_AT).times do |row|
+      @rg_start_file.getbyte(at + RG_PIECE_COLUMNS_AT).times do |column|
+        dx = left + (column * 8)
+        dy = top + (row * 8)
+        shown = tile + (column * column_step) + (row * row_step) - first_tile
+        next if turned || dx.negative? || dy.negative? || dx % 8 != 0 || dy % 8 != 0 || dx + 8 > width || dy + 8 > height ||
+                shown.negative? || shown >= tile_count || kept >= room
+        next if (0...kept).any? { |before| pieces[3 * before] == dx && pieces[(3 * before) + 1] == dy }
+
+        pieces[3 * kept] = dx
+        pieces[(3 * kept) + 1] = dy
+        pieces[(3 * kept) + 2] = shown
+        kept += 1
+      end
+    end
+  end
+  (kept...room).each { |left| pieces[3 * left, 3] = [0, 0, -1] }
+end
+
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)

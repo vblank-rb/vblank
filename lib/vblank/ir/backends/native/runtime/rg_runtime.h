@@ -243,6 +243,18 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * holds: pieces are read while they end inside the file, a piece or the part of one outside the
  * picture is not painted, and a tile past the file's paints nothing.
  *
+ * rg_start_file_fill_tile_pose: the pieces of a pose of a set of sprite tiles whose pieces are one
+ * of the original's frames (IR::StartFile::TilePose), into +pieces+, three numbers a piece (where
+ * its tile's top left is in the picture, across and down, and which of the set's tiles), the array
+ * a load of the set hands rg_tile_pose_load. The frame is the same record rg_start_file_fill_pose
+ * reads. +rules+ are where the frame's entry is and where the records start; where the object's
+ * place is in the picture, across and down; the number the frames give the set's first tile; how
+ * many tiles the set holds; the picture's width and height; and how many pieces +pieces+ has room
+ * for. Each tile of each piece, row by row, is a piece of the pose, and the file is the player's:
+ * a tile that is turned, off the picture's 8-pixel grid, outside the picture or outside the set
+ * draws nothing, nor one at a place an earlier one took. Each place left names tile -1, which no
+ * set holds. IR::StartFile.tile_pose_pieces_in says the same in Ruby.
+ *
  * rg_start_file_put_tile_pixels: +count+ of the game's own pixels, +pixels+, into the background
  * tiles' pixels from +start+ on, of which there are +total+: a tile the game holds for a
  * background whose map is in the file that draws something the file does not fill (a bank's
@@ -316,6 +328,7 @@ void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, 
 void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
+void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);
 void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, const uint16_t *pixels);
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);

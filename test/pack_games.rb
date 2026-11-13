@@ -19,6 +19,7 @@ require "pack_pose_read_by_the_game_games"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/dsl/test_pack_background_set_cell"
 require "all/vblank/builder/test_pack_tile_pictures"
+require "all/vblank/builder/test_pack_tile_poses"
 require "pack_place_games"
 require "m4a_answers"
 require "brr_recordings"
@@ -1809,6 +1810,18 @@ module PackGames
     ].freeze
   end
 
+  # A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES
+  # (PackTilePoseGames): a ball spinning through two frames of pieces two tiles tall.
+  class TilePosesOfFrames < Kit
+    include PackTilePoseGames
+
+    GAMES = [
+      game(:tile_poses_of_an_originals_frames, passes: 6) do |folder, options|
+        built_by(ball_game_builder(original(folder), options: options))
+      end
+    ].freeze
+  end
+
   # BYTES UNPACKED BY A ROUTINE WRITTEN IN A GAME FILE (FlaggedBytes, test/plain_ruby_flagged_bytes_part.rb),
   # whose locals hold the bytes read before the place moves on, drawn as a row of marks a pass.
   class FlaggedBytesUnpacked < Kit
@@ -1844,7 +1857,7 @@ module PackGames
 
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
-          FlaggedBytesUnpacked].freeze
+          TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 
   # Every registered game.
   ALL = KITS.flat_map { |kit| kit::GAMES }.freeze

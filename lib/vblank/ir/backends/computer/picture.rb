@@ -346,12 +346,27 @@ module VBlank
             end.reduce { |both, each| call("rg_both", both, each) }
             kept = Lowering::TABLE_KEPT_AS.fetch(table_type(table))
             loads = @tile_poses.each_value.select { |pose| pose.tiles == node.name }.map do |pose|
-              pieces = drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
+              pieces = tile_pose_pieces_array(pose)
               eval_call("rg_tile_pose_load", Statements::Int.new(@run_numbers.fetch(pose.name)), pieces, Statements::Int.new(pose.pieces.length),
                         @names.of(:table, node.table), Statements::Int.new(kept), from, to, Statements::Int.new(node.count))
             end
             [Statements::Block.new([Statements::Local.new(name: from, value: value(node.at)), Statements::Local.new(name: to, value: value(node.to)),
                            Statements::If.new(condition: fits, body: [*loads, eval_call("rg_screen_request_rebuild")], otherwise: [])])]
+          end
+
+          # The array of a pose's pieces a load hands the runtime, three numbers a piece. A pose whose
+          # pieces are a frame of the file the program is handed as it starts holds its stand-ins
+          # where the routine reading the file can write them, and that routine writes the frame's
+          # pieces over them (StartFileFills#record_start_file_tile_pose_fill).
+          def tile_pose_pieces_array(pose)
+            (@tile_pose_pieces_arrays ||= {})[pose.name] ||=
+              if pose.from_file
+                drawing_array("pose_pieces", "int32_t", pose.pieces.flatten, writable: true).tap do |array|
+                  record_start_file_tile_pose_fill(array, pose)
+                end
+              else
+                drawing_array("pose_pieces", "int32_t", pose.pieces.flatten)
+              end
           end
 
           # A sprite picture's pixels as the interpreter draws them (Reference#blit_image): the
