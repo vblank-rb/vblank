@@ -41,6 +41,10 @@ extern int32_t rg_game_waveforms[];
 #else
 extern const int32_t rg_game_waveforms[];
 #endif
+/* On a console whose voices read sound memory, the wave numbered +which+ (just written from the
+ * start file into +waveforms+) written into its loop of +memory+, the game's sound memory
+ * (rg_spu.c). */
+void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which);
 extern const int32_t rg_game_beeps[];
 extern const int32_t rg_game_waves[];
 extern const int32_t rg_game_hits[];

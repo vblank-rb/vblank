@@ -571,26 +571,22 @@ module VBlank
           # WHERE THE CONSOLE'S VOICES READ SOUND MEMORY (the PlayStation), what its sound chip plays them
           # from (runtime/rg_spu.c): the chip's numbers, where each loop starts, and the loops, the same
           # sound memory the console's own build makes (PS1::SPUTables). None for any other console.
+          #
+          # A wave read from the start file has a loop of its own there, made of its stand-in, which the
+          # runtime writes again from the file as the game starts (#build_start_file_wave_fills), so that
+          # table is written then.
           def spu_tables
-            return [] unless @program.described_console.voices_read_sound_memory
+            return [] unless voices_read_sound_memory?
 
-            refuse_pack_wave_in_sound_memory!
-            memory = PS1::SoundMemory.new(@program)
-            [sound_table("spu_rules", PS1::SPUTables.rules), sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms)),
-             sound_table("spu_memory", PS1::SPUTables.memory(memory)),
+            count = waves_from_start_file.size
+            memory = PS1::SoundMemory.new(@program, waveforms: waveforms[0...first_start_file_waveform], waves_from_file: count)
+            [sound_table("spu_rules", PS1::SPUTables.rules),
+             sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms, waves_from_file: count)),
+             sound_table("spu_memory", PS1::SPUTables.memory(memory), writable: count.positive?),
              sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings))]
           end
 
-          # Such a console plays each waveform from a loop made of it in sound memory, as the game is
-          # built (PS1::SoundMemory). No runtime makes that loop from a wave read as the game starts.
-          def refuse_pack_wave_in_sound_memory!
-            return if waves_from_start_file.empty?
-
-            raise LoweringError, "A part of a song plays a wave from the data pack, and this build reads the pack when the game " \
-                                 "starts. A #{@program.described_console.title} build makes the sound memory for each wave when " \
-                                 "the game is built. It cannot read a wave from the pack yet. To fix this, build the game " \
-                                 "all-in-one, or give the part a wave in the game, like `plays: :triangle`."
-          end
+          def voices_read_sound_memory? = @program.described_console.voices_read_sound_memory
 
           # +writable+ is for a table the routine that reads the start file writes into.
           def sound_table(name, values, writable: false)
@@ -636,13 +632,16 @@ module VBlank
           def waveform_table = sound_table("waveforms", [waveforms.size, *waveforms.flatten], writable: !waves_from_start_file.empty?)
 
           # A WAVE A PART READS FROM THE START FILE, written into its place in the table of waveforms
-          # (rg_music_fill_wave). None for a game with no music feature, which never plays the part.
+          # (rg_music_fill_wave), and on a console whose voices read sound memory into its loop there
+          # too (rg_spu_fill_wave). None for a game with no music feature, which never plays the part.
           def build_start_file_wave_fills
             return [] unless takes_runtime_feature?(:music)
 
-            waves_from_start_file.each_with_index.map do |wave, number|
-              eval_call("rg_music_fill_wave", @names.own("waveforms"), Statements::Int.new(first_start_file_waveform + number),
-                        Statements::Int.new(wave.at))
+            waves_from_start_file.each_with_index.flat_map do |wave, number|
+              which = Statements::Int.new(first_start_file_waveform + number)
+              filled = [eval_call("rg_music_fill_wave", @names.own("waveforms"), which, Statements::Int.new(wave.at))]
+              filled << eval_call("rg_spu_fill_wave", @names.own("spu_memory"), @names.own("waveforms"), which) if voices_read_sound_memory?
+              filled
             end
           end
 

@@ -76,11 +76,16 @@ module VBlank
 
           # Where each loop of +memory+ (a SoundMemory) starts, in 8-byte steps: the four squares by how
           # many eighths they are high, the hiss and the rattle (nought where the game makes no noise), and
-          # the loop of each of +waveforms+ (each 32 steps), in their order.
-          def loops(memory, waveforms)
+          # the loop of each of +waveforms+ (each 32 steps), in their order. The last +waves_from_file+ of
+          # them are the stand-ins of the waves read from the start file, each in its own loop.
+          def loops(memory, waveforms, waves_from_file: 0)
             squares = SoundMemory::SQUARE_EIGHTHS.map { |eighths| memory.start_of([:square, eighths]) }
             noise = %i[hiss rattle].map { |name| memory.loops.key?(name) ? memory.start_of(name) : 0 }
-            [*squares, *noise, waveforms.size, *waveforms.map { |steps| memory.start_of([:wave, steps]) }]
+            written = waveforms.size - waves_from_file
+            waves = waveforms.each_with_index.map do |steps, number|
+              memory.start_of(number < written ? [:wave, steps] : SoundMemory.wave_from_file(number - written))
+            end
+            [*squares, *noise, waveforms.size, *waves]
           end
 
           # The halfwords of +memory+'s loops, after how many there are.

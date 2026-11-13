@@ -51,12 +51,23 @@ module VBlank
           attr_reader :loops
 
           # The loops +program+ plays: every square width, each waveform it or its songs name, and the noise
-          # when it or a song makes any.
-          def initialize(program)
+          # when it or a song makes any. A desktop, web or Ruby build that reads a song's notes or waves
+          # from its start file hands what the program alone does not show: +waveforms+, the 32 steps of
+          # each waveform it plays (the ones those notes name included), and +waves_from_file+, how many
+          # waves it reads from the file, each given a loop of its own, made of the stand-in steps
+          # (IR::StartFile.wave_stand_in) and written again from the file as the game starts
+          # (rg_spu_fill_wave). A console's own build reads neither.
+          def initialize(program, waveforms: [], waves_from_file: 0)
             @loops = {}
             @next_free = Console::PS1Hardware::SPU_FIRST_FREE
             @kept_as = {} # a recording's name and read-back -> the loop that holds its samples
             made(program).each { |name, samples| keep(name, ADPCM.encode(samples, loop: true)) }
+            waveforms.each do |steps|
+              keep([:wave, steps], ADPCM.encode(self.class.wave_samples(steps), loop: true)) unless @loops.key?([:wave, steps])
+            end
+            waves_from_file.times do |number|
+              keep(self.class.wave_from_file(number), ADPCM.encode(self.class.wave_samples(StartFile.wave_stand_in), loop: true))
+            end
             # RECORDINGS ALIKE ARE KEPT ONCE. What sound memory keeps of a recording is its samples and where
             # it reads back to; the rate it was made at, the note it plays and its shape are the voice's pitch
             # and loudness, set for each play (Runtime::Recordings' row). So recordings declared under several
@@ -127,6 +138,9 @@ module VBlank
           # The name of the loop of the waveform +shape+ (a name, or its 32 steps).
           def self.wave(shape) = [:wave, Audio::Sound.wavetable(shape)]
 
+          # The name of the loop of wave +number+ of those read from the start file, in their order.
+          def self.wave_from_file(number) = [:wave_from_file, number]
+
           def self.noise(metallic) = metallic ? :rattle : :hiss
 
           # One wave of a square high for +eighths+.
@@ -175,8 +189,12 @@ module VBlank
             end
             # A song's recorded note reads back to where its recording holds from (SongTable, recorded_note_row).
             notes = IR::Tunes.declared_songs(program).flat_map(&:voices).select { |part| IR::Tunes.part_kind(part) == :recorded }.flat_map do |part|
-              part.events.select { |event| event[1].positive? }.filter_map do |event|
-                sample = declared[event[2] || part.instrument] or next
+              # A part reading its notes from the start file (a desktop, web or Ruby build's) can play
+              # any instrument it names, its own included, which are known before its notes are.
+              named = part.from_file ? [part.instrument, *part.from_file.instruments] : []
+              written = part.events.select { |event| event[1].positive? }.map { |event| event[2] || part.instrument }
+              (named + written).filter_map do |name|
+                sample = declared[name] or next
                 [[sample.name, Assets::Sample.of(sample).loop_length], nil]
               end
             end

@@ -144,18 +144,29 @@ module PackScoresAtStartTests
 
   # The game with its pack left out, handed its pack, is heard as the game written by hand is: the
   # same sound log and the same mixed samples, on each of +buttons+ pressed once.
-  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
+  # +player+ keeping what each speaker plays, where it can: a game built as C, JavaScript or Ruby,
+  # whose speakers are the voices as the console's own chip plays them (the PlayStation's reads them
+  # out of sound memory), which the sound log and the recordings' mix do not show.
+  private def speakers_kept(player) = player.respond_to?(:recording_sound) ? player.recording_sound : player
+
+  # +speakers+ false leaves the speakers out, for a game whose recording's hold point is read from
+  # the file: the PlayStation's sound memory lays a held recording out as the game is built, and no
+  # runtime lays it out again from the file's hold point yet.
+  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, speakers: true, &scores)
     Dir.mktmpdir do |folder|
       by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
       left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
       buttons.each do |button|
         once = ->(frame) { frame == 1 ? [button] : [] }
-        wanted = game_player.input_each_frame(&once).run(by_hand, frames: frames)
-        played = game_player.hand_file(pack_file(parts, waves: waves)).input_each_frame(&once).run(left_out, frames: frames)
+        wanted = speakers_kept(game_player).input_each_frame(&once).run(by_hand, frames: frames)
+        played = speakers_kept(game_player.hand_file(pack_file(parts, waves: waves))).input_each_frame(&once).run(left_out, frames: frames)
 
         refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes on #{button}"
         assert_equal wanted.audio, played.audio, "the sound log on #{button}"
         assert_equal wanted.mixed_sound, played.mixed_sound, "the mixed sound on #{button}"
+        next unless speakers && wanted.respond_to?(:recording_sound)
+
+        assert_equal [wanted.sound, wanted.sound_right], [played.sound, played.sound_right], "the speakers on #{button}"
       end
     end
   end
@@ -202,8 +213,8 @@ module PackScoresAtStartTests
   # A WAVE OF THE PACK'S, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
   # part reads its notes from the pack too, and the sound effect's, written in the game, plays the
   # other wave. Each is heard as the same wave's 32 steps written by hand. A build for a computer
-  # playing as a console whose voices read sound memory (the PlayStation) makes that memory as the
-  # game is built, and refuses the wave in plain words.
+  # playing as a console whose voices read sound memory (the PlayStation) writes the wave into its
+  # loop there as the game starts (rg_spu_fill_wave).
   def test_a_wave_part_playing_a_wave_from_the_pack_read_as_the_game_starts_plays_as_written_by_hand
     parts = { lead: LEAD, wave: WAVE }
     scores = lambda do |notes_of, _settings, _timing, wave_of|
@@ -212,15 +223,7 @@ module PackScoresAtStartTests
         effects: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, length: 8, key: 69), Note.new(at: 12, key: 76)], plays: wave_of.(0))],
                             tempo: 150, length: 24)] }
     end
-    unless VBlank::Testing.checked? && VBlank::Console.described(game_console).voices_read_sound_memory
-      return assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
-    end
-
-    Dir.mktmpdir do |folder|
-      left_out = scored_game(parts, folder: folder, waves: true, &scores)
-      error = assert_raises(VBlank::BuildError) { game_player.hand_file(pack_file(parts, waves: true)).run(left_out, frames: 1) }
-      assert_includes error.message, "sound memory"
-    end
+    assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
   end
 
   # A NOTE'S SPEAKER AND ITS NOISE CLOCK, as a sound driver sets them for each note it strikes. A
@@ -574,7 +577,7 @@ module PackScoresAtStartTests
       end
     end
 
-    assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, &scores)
+    assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, speakers: false, &scores)
   end
 
   # A RECORDED PART'S LOUDNESS IN 512THS, as a cartridge's sound engine mixes it: a quiet note, two

@@ -105,6 +105,29 @@ def rg_spu_memory_at(address)
   at >= 0 && at < @rg_game_spu_memory[0] ? @rg_game_spu_memory[1 + at] : 0
 end
 
+# A wave read from the start file, written into its loop of sound memory (rg_spu.c says each step).
+RG_SPU_WAVE_LOOP_BLOCKS = 8
+RG_SPU_BLOCK_SAMPLES = 28
+RG_SPU_BLOCK_HALFWORDS = 8
+
+def rg_spu_fill_wave(memory, waveforms, which)
+  wave_samples = @rg_game_spu_rules[8]
+  steps = 1 + (which * wave_samples)
+  loop_at = 1 + (@rg_game_spu_loops[RG_SPU_WAVEFORMS_AT + 1 + which] * 4) - @rg_game_spu_rules[9]
+  RG_SPU_WAVE_LOOP_BLOCKS.times do |block|
+    header = loop_at + (block * RG_SPU_BLOCK_HALFWORDS)
+    memory[header] &= 0xFF00
+    (1...RG_SPU_BLOCK_HALFWORDS).each do |half|
+      coded = 0
+      4.times do |i|
+        sample = (block * RG_SPU_BLOCK_SAMPLES) + ((half - 1) * 4) + i
+        coded |= ((waveforms[steps + (sample % wave_samples)] - 8) & 0xF) << (4 * i)
+      end
+      memory[header + half] = coded
+    end
+  end
+end
+
 def rg_held_to_16_bits(sample)
   if sample < -32_768 then -32_768
   elsif sample > 32_767 then 32_767

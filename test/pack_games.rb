@@ -67,10 +67,8 @@ module PackGames
   # WHICH RUNS REFUSE A GAME BUILT WITH ITS PACK LEFT OUT. The builder refuses on every run. A
   # lowering refuses only where a build for a computer is made, so the interpreter plays the game,
   # and must play it as the all-in-one build. A build for a computer refuses some games only as a
-  # console whose sound chip does what the Advance's does not: mixing recordings at their own
-  # rates, or playing every voice from sound memory (the PlayStation).
-  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates
-                  computer_build_voices_reading_sound_memory].freeze
+  # console whose sound chip does what the Advance's does not: mixing recordings at their own rates.
+  REFUSED_BY = %i[builder computer_build computer_build_mixing_at_recording_rates].freeze
 
   # A refusal: a phrase its words hold besides the fix, and who refuses (one of REFUSED_BY).
   # +names_fix+ is false for a refusal whose words do not say yet that building all-in-one works;
@@ -1483,8 +1481,7 @@ module PackGames
       end,
       # A song's wave part and a sound effect's, each playing a wave of the copy's, as a sound
       # driver keeps its wave voice's patterns; the effect's notes are written in the game.
-      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] },
-                                           refused: Refusal.new(phrase: "sound memory", by: :computer_build_voices_reading_sound_memory)) do |folder, options|
+      game(:wave_parts_playing_pack_waves, passes: 120, presses: { 1 => [:a], 60 => [:b] }) do |folder, options|
         scores_game(folder, options, { lead: LEAD, wave: WAVE }, waves: true) do |notes_of, _settings, _timing, wave_of|
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:wave), plays: wave_of.(1))],
                               tempo: 150, length: 84, loop_from: 36)],

@@ -203,6 +203,34 @@ static int32_t spu_memory_at(int32_t address) {
   return at >= 0 && at < rg_game_spu_memory[0] ? rg_game_spu_memory[1 + at] : 0;
 }
 
+/* A WAVE READ FROM THE START FILE, written into its loop of sound memory (rg_sound.h). The loop was
+ * made of a stand-in as the game was built (PS1::SoundMemory, waves_from_file:): the waveform's 32
+ * steps seven times over, in 8 blocks of 28 samples. Each step is a four-bit level at shift 0 and
+ * filter 0, as SoundMemory makes every waveform, so each block's samples are the steps less 8 as they
+ * are, four to a halfword with the first in the lowest bits; a block's header keeps its flags (where
+ * the loop starts and ends) and is set to shift 0 and filter 0. +memory+ is the game's own,
+ * written as it starts; +waveforms+ already holds the steps (rg_music_fill_wave). */
+#define SPU_WAVE_LOOP_BLOCKS 8
+#define SPU_BLOCK_SAMPLES 28
+#define SPU_BLOCK_HALFWORDS 8
+
+void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which) {
+  const int32_t *steps = waveforms + 1 + (which * SPU_WAVE_SAMPLES);
+  int32_t *loop = memory + 1 + ((rg_game_spu_loops[SPU_WAVEFORMS_AT + 1 + which] * 4) - SPU_MEMORY_BASE);
+  for (int32_t block = 0; block < SPU_WAVE_LOOP_BLOCKS; block++) {
+    int32_t *halves = loop + (block * SPU_BLOCK_HALFWORDS);
+    halves[0] &= 0xFF00;
+    for (int32_t half = 1; half < SPU_BLOCK_HALFWORDS; half++) {
+      int32_t coded = 0;
+      for (int32_t i = 0; i < 4; i++) {
+        int32_t sample = (block * SPU_BLOCK_SAMPLES) + ((half - 1) * 4) + i;
+        coded |= ((steps[sample % SPU_WAVE_SAMPLES] - 8) & 0xF) << (4 * i);
+      }
+      halves[half] = coded;
+    }
+  }
+}
+
 /* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */
 
 static const int32_t filter_weights[16][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
