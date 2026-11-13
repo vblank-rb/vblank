@@ -55,8 +55,9 @@ VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 # saying so, and taking the mark off makes the test hold the two builds alike.
 #
 # A GAME THE TWO BUILDS SHOW DIFFERENTLY TODAY, a fault not yet mended, is marked `differs:` with
-# what differs. The test then requires that they differ, so it fails when the fault is mended and
-# the mark comes off. It is not a skip: the game is built and played both ways on every run.
+# what differs (a Difference), and the consoles it differs on where not all. The test then requires
+# that they differ there, so it fails when the fault is mended and the mark comes off. It is not a
+# skip: the game is built and played both ways on every run.
 #
 # test/interpreter/vblank/builder/test_pack_parity_coverage.rb fails when a line of the builder
 # that takes a pack handle, or asks whether the pack is left out, is reached by no game here.
@@ -75,6 +76,13 @@ module PackGames
   # the test fails once they do, and the mark comes off.
   Refusal = Data.define(:phrase, :by, :names_fix) do
     def initialize(phrase:, by:, names_fix: true) = super
+  end
+
+  # What a game marked `differs:` shows differently: +what+, in words, on +consoles+, the runs
+  # playing as those consoles, or on every run where nil.
+  Difference = Data.define(:what, :consoles) do
+    def initialize(what:, consoles: nil) = super
+    def shown_on?(console) = consoles.nil? || consoles.include?(console)
   end
 
   # One registered game. +kit+ is the class its block runs on an instance of.
@@ -1151,11 +1159,18 @@ module PackGames
 
   # A POSE WHOSE FRAME'S PIECES ARE EVERY SHAPE AND SIZE OF THE ADVANCE'S (PackPoseOfShapesGames):
   # each piece's size read through the console's table, as game code with the pack left out.
+  #
+  # On the Color it is more pieces than the console's sprite table holds, so the pieces furthest
+  # back are not drawn (Backends::SpriteLines). All-in-one the pose keeps its frame's pieces, in the
+  # frame's order; read as the game starts it is painted into a picture of no pieces
+  # (IR::StartFile.fill_pose), cut into squares row by row, so other pieces are the ones left out.
   class PosesOfShapes < Kit
     include PackPoseOfShapesGames
 
     GAMES = [
-      game(:pose_of_every_advance_shape_and_size, passes: 3) do |folder, options|
+      game(:pose_of_every_advance_shape_and_size, passes: 3,
+                                                  differs: Difference.new(what: "the pieces a full sprite table leaves out",
+                                                                          consoles: %i[gbc])) do |folder, options|
         built_by(pose_of_shapes_builder(original(folder), options: options))
       end
     ].freeze

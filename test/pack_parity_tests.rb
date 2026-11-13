@@ -195,13 +195,13 @@ module PackParityTests
   end
 
   private def assert_alike_or_registered_difference(game, difference)
-    unless game.differs
+    unless game.differs&.shown_on?(game_console)
       return assert_nil difference, "#{game.name}: built with its pack left out and handed its pack, the game does not " \
                                     "play as its all-in-one build. #{difference}"
     end
 
     refute_nil difference, "#{game.name} is registered as a game its two builds show differently today " \
-                           "(#{game.differs}), and they now play alike. Take `differs:` off its line in test/pack_games.rb."
+                           "(#{game.differs.what}), and they now play alike. Take `differs:` off its line in test/pack_games.rb."
   end
 
   # THE BUILD WITH ITS PACK LEFT OUT, WRITTEN OUT, HOLDS NONE OF THE NUMBERS THE FILE PUTS INTO IT.
