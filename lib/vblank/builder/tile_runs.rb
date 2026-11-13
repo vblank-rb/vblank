@@ -87,6 +87,12 @@ module VBlank
         end
         colors = tile_run_colors(name, given)
         colors_name = given if given.is_a?(Symbol)
+        # Tiles of a list given by name hold it as a background's other tiles of that list do
+        # (#declared_colors): place 0 see-through, whatever colour the list keeps there. So one
+        # name is one list to the background, and `draw_with` recolours every tile drawn from it.
+        # Otherwise it finds two lists of that name and recolours only the first: a bank read from
+        # the data pack as the game starts keeps a marker at place 0, which is never black.
+        colors = [0, *colors.drop(1)] if colors_name
         refuse_tile_run_on_bitmap_screen!(name)
         refuse_bad_tile_run_count!(name, count)
         refuse_tile_run_list_unfit!(name, list, count * ((side / 8)**2), own_form: own_form)

@@ -497,6 +497,80 @@ module PackGames
       built(b.program, b.made_data_pack_file)
     end
 
+    # A SUPER NINTENDO BACKGROUND OF FOUR BANKS: a quarter of its big cells takes turns through
+    # pictures, banks 1 and 2 are walked up from black, and banks 0 and 3 are left out of the walk,
+    # after a fade in. Each bank's place 0 is black in the copy, so the all-in-one build holds one
+    # list for each bank; built with the pack left out, a bank holds a marker at place 0 instead,
+    # and its tiles that take turns must still be drawn from the bank's one list.
+    ARENA_BANKS = 4
+    ARENA_COLORS_AT = 0x40
+    ARENA_TILES_AT = ARENA_COLORS_AT + (ARENA_BANKS * 32)
+    ARENA_WORDS = [SNES_CELL.(0), SNES_CELL.(2, bank: 1), SNES_CELL.(0, bank: 2), SNES_CELL.(2, bank: 3),
+                   SNES_CELL.(2, bank: 2, mirrored: true), SNES_CELL.(0, bank: 1), SNES_CELL.(2), SNES_CELL.(0, bank: 3)].freeze
+    # Two big cells of four tiles each: tiles 0, 1, 16 and 17, and 2, 3, 18 and 19.
+    ARENA_VIDEO = Array.new(20) { PLACES[0] }.tap do |video|
+      video[0] = PLACES[1]
+      video[1] = PLACES[2]
+      video[16] = PLACES[3]
+      video[17] = PLACES[1]
+      video[2] = PLACES[3]
+      video[3] = PLACES[1]
+      video[18] = PLACES[2]
+      video[19] = PLACES[3]
+    end.freeze
+    # The pictures tile 1 takes turns through, kept after the tiles.
+    ARENA_TURNS = [PLACES[2], PLACES[3], PLACES[1]].freeze
+    ARENA_TURNS_AT = ARENA_TILES_AT + (ARENA_VIDEO.length * 32)
+    ARENA_WALKED_BANKS = [1, 2].freeze
+    # Cells the game writes later, one in a walked bank and one in a bank left out of the walk.
+    ARENA_WRITTEN = [SNES_CELL.(2, bank: 2), SNES_CELL.(0, bank: 3)].freeze
+
+    private def arena_original(folder)
+      tiles = [*ARENA_VIDEO, *ARENA_TURNS].map(&MadeUpOriginalLayouts::FOUR_PLANES).join
+      copy = "\0".b * (ARENA_TILES_AT + tiles.bytesize)
+      copy[MAP_AT, ARENA_WORDS.length * 2] = ARENA_WORDS.pack("v*")
+      banks = Array.new(ARENA_BANKS) { |bank| [0, *MadeUpOriginalLayouts::PALETTE.rotate(1 + (bank * 3)).drop(1)] }
+      copy[ARENA_COLORS_AT, ARENA_BANKS * 32] = banks.flatten.pack("v*")
+      copy[ARENA_TILES_AT, tiles.bytesize] = tiles
+      path = File.join(folder, "made_up.bin")
+      File.binwrite(path, copy)
+      VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
+                                 settings_file: File.join(folder, "made_up.yml"),
+                                 releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+    end
+
+    private def arena_walked_up_game(folder, options)
+      from = arena_original(folder)
+      b = VBlank::Builder.new(options: options)
+      b.instance_eval do
+        screen :tiled
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :arena_video, at: ARENA_TILES_AT, count: ARENA_VIDEO.length, colors: 16
+          slots.tiles :arena_turns, at: ARENA_TURNS_AT, count: ARENA_TURNS.length, colors: 16
+          slots.numbers :arena_map, at: MAP_AT, count: ARENA_WORDS.length, width: :half, signed: false
+          slots.colors :arena_colors, at: ARENA_COLORS_AT, count: ARENA_BANKS * 16
+        end
+        flowers = tile_pictures :flowers, tiles: { pack[:arena_video].tile(1) => pack[:arena_turns].tiles(0, across: ARENA_TURNS.length) }
+        arena = background :arena, tiles: pack[:arena_video], map: pack[:arena_map], colors: pack[:arena_colors], across: 4, cell: 16,
+                                   set_cells: ARENA_WRITTEN
+        walks = ARENA_WALKED_BANKS.to_h do |bank|
+          list = :"arena_colors_#{bank}"
+          [list, color_walk(list, from: :black, steps: WALK_STEPS) + [list]]
+        end
+        step = var :step, 0
+        fade_in frames: 1
+        game_loop do
+          arena.draw_with(walks, showing: step)
+          flowers.show 1 if step == 2
+          ARENA_WRITTEN.each_with_index { |cell, at| arena.set_cell at, 1, cell } if step == 3
+          wait_vblank
+          step.store!(step + 1)
+        end
+      end
+      b.finalize_program
+      built(b.program, b.made_data_pack_file)
+    end
+
     GAMES = [
       game(:background_of_an_advance_original, passes: 3) do |folder, options|
         words = [ADVANCE_CELL.(1), ADVANCE_CELL.(1, mirrored: true), ADVANCE_CELL.(2, bank: 1, upside_down: true),
@@ -608,6 +682,10 @@ module PackGames
             step.store!(step + 1)
           end
         end
+      end,
+      # Banks 0 and 3 are left out of the walk, and every bank has a quarter that takes turns.
+      game(:background_banks_walked_up_beside_a_tile_taking_turns, passes: WALK_STEPS + 4) do |folder, options|
+        arena_walked_up_game(folder, options)
       end,
       game(:background_of_a_genesis_original_walked, passes: WALK_STEPS + 3) do |folder, options|
         words = [GENESIS_CELL.(1), GENESIS_CELL.(2, bank: 1, upside_down: true), GENESIS_CELL.(3, bank: 1, mirrored: true)]
