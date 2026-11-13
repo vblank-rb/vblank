@@ -215,6 +215,27 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
+  # A ROUTINE OF ONE BLOCK IS BUILT ONCE in a build with a cache, through to the pack file, and the
+  # pack's handle hands a game's test that same unpacking rather than building it again.
+  def test_a_routine_of_one_block_is_built_once
+    Dir.mktmpdir do |folder|
+      built = 0
+      builder = VBlank::Builder.new
+      pack = builder.data_pack(from: original(folder), version: "1", cache: File.join(folder, "packs")) do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy do |copy, into|
+          built += 1
+          copy.unpack_rle at: RLE_AT, into: into[:heights]
+        end
+      end
+      builder.finalize_program
+      builder.made_data_pack_file
+      pack.unpacking
+
+      assert_equal 1, built
+    end
+  end
+
   # A part that calls a routine an earlier part defines cannot be built alone, so the routine is
   # cached whole, as a routine of one part is.
   def test_a_part_calling_a_routine_of_another_keeps_the_routine_whole
