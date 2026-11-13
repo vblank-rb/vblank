@@ -45,6 +45,26 @@ module PackColorListAtStartTests
     end
   end
 
+  # A walk whose channels wait for a falling count, its steps made as the game starts: each step
+  # shows what the all-in-one build's does, whose steps the build worked out, and the last is the
+  # list's own colours.
+  def test_a_counted_walk_of_a_list_read_at_start_shows_the_all_in_one_steps
+    Dir.mktmpdir do |folder|
+      from = layout_original(folder, GENESIS)
+      whole, file = walking_game_and_file(from, counted: true)
+      left_out, = walking_game_and_file(from, options: LEFT_OUT, counted: true)
+      stripes = ->(screen) { STRIPES.map { |column| screen.pixel(SHIP_AT.first + column, SHIP_AT.last + 1) } }
+
+      [1, 9, 15, 16].each do |step|
+        frames = step + 1 + framework_drawing_lag
+        assert_equal stripes.(game_player.run(whole, frames: frames).screen),
+                     stripes.(game_player.hand_file(file).run(left_out, frames: frames).screen), "step #{step}"
+      end
+      last = game_player.hand_file(file).run(left_out, frames: COUNTED_WALK_STEPS + 1 + framework_drawing_lag).screen
+      assert_equal BANKS.fetch(2).drop(1).map { |color| shown(color) }, stripes.(last), "the walk's last step is the list's own colors"
+    end
+  end
+
   def test_a_picture_drawn_in_a_list_read_at_start_is_blitted_in_the_lists_colors
     Dir.mktmpdir do |folder|
       from = layout_original(folder, GENESIS)

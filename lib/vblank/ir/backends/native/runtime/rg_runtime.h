@@ -266,6 +266,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * moved toward that colour's, and no further. It is one step of a walk of a list read from the
  * file, which the build works out itself for a list it holds (Graphics::Color.walked_toward).
  *
+ * rg_start_file_count_walk_colors: the same for a walk that waits for a falling count
+ * (IR::StartFile::CountedWalkColor): +made+ holds five numbers for each, the entry it is made from,
+ * the colour walked from, the step, where the count starts and how many steps
+ * (Graphics::Color.counted_walk).
+ *
  * rg_start_file_choose_colors: +count+ entries of +colors+ from entry +first+ on, each a colour of
  * a list the file chooses (IR::StartFile::ChosenColor). +rules+ are RG_CHOSEN_COLORS_HEADER_NUMBERS
  * numbers: where a frame's entry is in the file and where the frames' records start, as
@@ -315,6 +320,7 @@ void rg_start_file_put_tile_pixels(int32_t total, int32_t start, int32_t count, 
 void rg_start_file_fill_colors(int32_t *colors, int32_t first, int32_t count, int32_t at, const int32_t *format);
 void rg_start_file_fill_places(int32_t *numbers, int32_t first, int32_t count, int32_t at, int32_t places);
 void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
+void rg_start_file_count_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made);
 void rg_start_file_choose_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *rules);
 int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at);
 void rg_start_file_fill_marked_pixels(const int32_t *colors, int32_t kind, int32_t total, int32_t start, int32_t count);

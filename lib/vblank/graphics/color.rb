@@ -141,6 +141,41 @@ module VBlank
         end
       end
 
+      # +color+ as a walk from +far+ that WAITS FOR A FALLING COUNT shows it after +steps+ steps:
+      # the rule of a fade routine of the console's own games, where every channel of any height
+      # arrives on the last step together (Builder#color_walk's count:). Each channel starts at
+      # +far+'s. On step n the count is +count+ less +step+ n times, and never below 0. A channel
+      # that has passed its height (+color+'s) moves +step+ back toward it and no further; one at
+      # its height stays; one whose distance still to go is less than the count waits; any other
+      # moves +step+ toward its height, held to the channel's range, and so can pass it, coming back
+      # on the next step. A walk of +count+ / +step+ + 1 steps brings every channel home when
+      # +step+ divides +count+.
+      #
+      # It is the one statement of the rule: the build works a walk's steps out with it, and so
+      # does the interpreter for a list it reads from the data pack as it starts
+      # (IR::StartFile::CountedWalkColor), which the runtimes for a computer write again as
+      # rg_start_file_count_walk_colors.
+      def counted_walk(color, far, step:, count:, steps:)
+        [0, 5, 10].sum do |shift|
+          height = (color >> shift) & CHANNEL_STEPS
+          level = (far >> shift) & CHANNEL_STEPS
+          # 1 for a walk up, -1 for one down. A channel past its height is on the far side of it
+          # from where it started, so what it has to go is below 0.
+          toward = height > level ? 1 : -1
+          (1..steps).each do |number|
+            now = [count - (step * number), 0].max
+            to_go = (height - level) * toward
+            if to_go.negative?
+              level -= toward * step
+              level = height if ((height - level) * toward).positive?
+            elsif to_go.positive? && to_go >= now
+              level = (level + (toward * step)).clamp(0, CHANNEL_STEPS)
+            end
+          end
+          level << shift
+        end
+      end
+
       # A color as a person would name it — :magenta where there is a name for it, and
       # the raw value where there is not. For messages: an author reading about a color
       # in their own art wants the word they typed, not a number they never saw.

@@ -523,11 +523,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   runtime reads the colours at power-on into the same array a backdrop's colour is in
   (`rg_start_file_fill_colors`) and puts each where a marker is (`rg_start_file_fill_marked_pixels`).
   **A marker names a recipe for one colour** (an entry of `IR::StartFile#colors`): a colour at a place of the file
-  (`Color`), a step of a walk of one (`WalkedColor`), or a colour of a list that a number in the file picks
+  (`Color`), a step of a walk of one (`WalkedColor`, or `CountedWalkColor` for a walk that waits for a falling count), or a colour of a list that a number in the file picks
   (`ChosenColor`). So whatever of a picture's colours is the player's data rides on markers, and no verb is taught it:
   the 256 colours of a picture of pixels, and the bank a pose's frame names, are these too.
   **`color_walk` of such a list makes its steps at power-on**, each colour from the file's by the sum the build
-  uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`). Place 0 keeps the slot's colour, as
+  uses (`Graphics::Color.walked_toward`, `rg_start_file_walk_colors`; for `step:` and `count:`,
+  `Graphics::Color.counted_walk`, `rg_start_file_count_walk_colors`). Place 0 keeps the slot's colour, as
   built all-in-one. **What the game paints from a list as it runs** (`image ..., from: list`, `tiles ..., from:
   list`, `canvas`, `sprite_tiles`) **takes such a list too**: a build for a computer draws those through tables of
   the colour each place shows, which it writes with their markers and fills at power-on

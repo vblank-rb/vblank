@@ -55,9 +55,10 @@ module VBlank
     #   shows wherever nothing is drawn. The program holds no colour for it.
     # - a list of colours (`colors :name, pack[:slot]`, a bank of a background from the pack, a
     #   walk of either, the colours of a picture of pixels, the bank a pose's frame names):
-    #   +colors+ names each colour of it once (a Color in the file, a WalkedColor made from one,
-    #   or a ChosenColor, whose list a number in the file picks), and wherever the program would
-    #   hold the colour it holds a MARKER naming that entry (.marker_of). See "MARKERS" below.
+    #   +colors+ names each colour of it once (a Color in the file, a WalkedColor or a
+    #   CountedWalkColor made from one, or a ChosenColor, whose list a number in the file picks),
+    #   and wherever the program would hold the colour it holds a MARKER naming that entry
+    #   (.marker_of). See "MARKERS" below.
     #
     # A table read from the file holds no entries in the program, and a picture holds zeros; nothing
     # the build works out may depend on them. Each backend that plays such a program reads the file
@@ -438,6 +439,12 @@ module VBlank
       # work out. +of+ always names an entry before this one, so the entries are made in order.
       WalkedColor = Data.define(:of, :far, :steps)
 
+      # A COLOUR MADE FROM ANOTHER AS THE GAME STARTS BY A WALK THAT WAITS FOR A FALLING COUNT:
+      # entry +of+ as the walk from +far+ shows it after +steps+ steps of +step+, the count starting
+      # at +count+ (Graphics::Color.counted_walk). A WalkedColor's sibling, for Builder#color_walk's
+      # count:; +of+ names an entry before this one too.
+      CountedWalkColor = Data.define(:of, :far, :step, :count, :steps)
+
       # A COLOUR OF A LIST THE FILE CHOOSES: the colour at +place+ of one of +lists+ lists of
       # +list_colors+ colours each, kept one after another as +format+ from byte +at+ on. Which
       # list is a number the file holds, named by +choice+ (a FrameBank). It is what a marker
@@ -497,6 +504,8 @@ module VBlank
                   when Color then StartFile.color_in(bytes, source)
                   when ChosenColor then StartFile.chosen_color_in(bytes, source)
                   when WalkedColor then Graphics::Color.walked_toward(held.fetch(source.of), source.far, source.steps)
+                  when CountedWalkColor
+                    Graphics::Color.counted_walk(held.fetch(source.of), source.far, step: source.step, count: source.count, steps: source.steps)
                   else raise ArgumentError, "#{source.inspect} is not a colour read from the file"
                   end
         end

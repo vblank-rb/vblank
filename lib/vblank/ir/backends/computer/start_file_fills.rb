@@ -180,6 +180,8 @@ module VBlank
               when IR::StartFile::WalkedColor
                 made = drawing_array("start_file_walked_colors", "int32_t", run.flat_map { |walked, _| [walked.of, walked.far, walked.steps] })
                 eval_call("rg_start_file_walk_colors", *filled, made)
+              when IR::StartFile::CountedWalkColor
+                eval_call("rg_start_file_count_walk_colors", *filled, start_file_counted_walk_numbers(run))
               when IR::StartFile::ChosenColor
                 eval_call("rg_start_file_choose_colors", *filled, drawing_array("start_file_chosen_colors", "int32_t", chosen_color_rules(where)))
               else
@@ -193,9 +195,18 @@ module VBlank
           def start_file_colors_in_one_run?(before, after)
             case before
             when IR::StartFile::WalkedColor then after.is_a?(IR::StartFile::WalkedColor)
+            when IR::StartFile::CountedWalkColor then after.is_a?(IR::StartFile::CountedWalkColor)
             when IR::StartFile::ChosenColor then after == before.with(place: before.place + 1)
             else after.is_a?(IR::StartFile::Color) && after.format == before.format && after.at == before.at + START_FILE_COLOR_BYTES
             end
+          end
+
+          # The numbers rg_start_file_count_walk_colors reads for a run of colours made by a walk that
+          # waits for a falling count (IR::StartFile::CountedWalkColor): five for each, the entry it is
+          # made from, the colour walked from, the step, where the count starts and how many steps.
+          def start_file_counted_walk_numbers(run)
+            numbers = run.flat_map { |made, _| [made.of, made.far, made.step, made.count, made.steps] }
+            drawing_array("start_file_counted_walk_colors", "int32_t", numbers)
           end
 
           # The numbers rg_start_file_choose_colors reads for a run of colours of a list the file

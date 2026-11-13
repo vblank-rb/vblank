@@ -349,6 +349,36 @@ def rg_start_file_walk_colors(colors, first, count, made)
   end
 end
 
+# rg_runtime.c's start_file_counted_walk_color.
+def rg_start_file_counted_walk_color(color, far, step, count, steps)
+  walked = 0
+  [0, 5, 10].each do |shift|
+    height = (color >> shift) & 31
+    level = (far >> shift) & 31
+    toward = height > level ? 1 : -1
+    (1..steps).each do |number|
+      now = [count - (step * number), 0].max
+      to_go = (height - level) * toward
+      if to_go.negative?
+        level -= toward * step
+        level = height if ((height - level) * toward).positive?
+      elsif to_go.positive? && to_go >= now
+        level = (level + (toward * step)).clamp(0, 31)
+      end
+    end
+    walked |= level << shift
+  end
+  walked
+end
+
+# Colours made by a walk that waits for a falling count (rg_runtime.h, rg_start_file_count_walk_colors).
+def rg_start_file_count_walk_colors(colors, first, count, made)
+  count.times do |entry|
+    at = entry * 5
+    colors[first + entry] = rg_start_file_counted_walk_color(colors[made[at]], made[at + 1], made[at + 2], made[at + 3], made[at + 4])
+  end
+end
+
 # rg_runtime.c's start_file_marked, of the sixteen bits +held+.
 def rg_start_file_marked(held) = held > RG_MARKED_COLOR && held != 0xFFFF
 

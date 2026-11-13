@@ -567,6 +567,38 @@ void rg_start_file_walk_colors(int32_t *colors, int32_t first, int32_t count, co
     colors[first + entry] = start_file_walked_color(colors[made[entry * 3]], made[(entry * 3) + 1], made[(entry * 3) + 2]);
 }
 
+/* +color+ as a walk from +far+ that waits for a falling count shows it after +steps+ steps of
+ * +step+, the count starting at +count+ (Graphics::Color.counted_walk, which states the rule). */
+static int32_t start_file_counted_walk_color(int32_t color, int32_t far, int32_t step, int32_t count, int32_t steps) {
+  int32_t walked = 0;
+  for (int32_t shift = 0; shift <= 10; shift += 5) {
+    int32_t height = (color >> shift) & 31, level = (far >> shift) & 31;
+    int32_t toward = height > level ? 1 : -1;
+    for (int32_t number = 1; number <= steps; number++) {
+      int32_t now = count - (step * number);
+      if (now < 0) now = 0;
+      int32_t to_go = (height - level) * toward;
+      if (to_go < 0) {
+        level -= toward * step;
+        if ((height - level) * toward > 0) level = height;
+      } else if (to_go > 0 && to_go >= now) {
+        level += toward * step;
+        if (level < 0) level = 0;
+        if (level > 31) level = 31;
+      }
+    }
+    walked |= level << shift;
+  }
+  return walked;
+}
+
+void rg_start_file_count_walk_colors(int32_t *colors, int32_t first, int32_t count, const int32_t *made) {
+  for (int32_t entry = 0; entry < count; entry++) {
+    const int32_t *its = made + (entry * 5);
+    colors[first + entry] = start_file_counted_walk_color(colors[its[0]], its[1], its[2], its[3], its[4]);
+  }
+}
+
 /* Is +held+, the sixteen bits a pixel or a colour is kept in, a marker (IR::StartFile, "MARKERS")?
  * The sixteenth bit alone and all sixteen each mark a pixel that is not drawn. */
 static int start_file_marked(uint16_t held) { return held > RG_MARKED_COLOR && held != 0xFFFFu; }

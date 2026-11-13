@@ -16,13 +16,14 @@ class TestColorWalk < Minitest::Test
     b.program
   end
 
-  # The list a walk names at +step+, as the builder declared it.
-  private def walk_lists(own, from:, steps:)
+  # The lists a walk of +own+ names, step by step, as the builder declared them; +walk+ is
+  # color_walk's settings.
+  private def walk_lists(own, **walk)
     b = Builder.new
     names = nil
     b.instance_eval do
       colors :city, own
-      names = color_walk(:city, from: from, steps: steps)
+      names = color_walk(:city, **walk)
     end
     names.map { |name| b.declared_colors(name) }
   end
@@ -140,6 +141,107 @@ class TestColorWalk < Minitest::Test
 
     assert_equal shown(rgb5(24, 24, 24)), seen.screen.pixel(10, 10), "four steps of eight on from white"
     assert_equal shown(gray), seen.screen.pixel(26, 10), "the other sprite is as drawn"
+  end
+
+  # A WALK WHOSE CHANNELS WAIT FOR A FALLING COUNT, the rule of a retail fade routine: a count
+  # starts at 32 and falls by the step, 2, on each step; a channel waits until what it has to go is
+  # at least the count, then moves by the step, and one that passes its height comes back on the
+  # next step. Each channel's trail below is worked by hand from that rule, one number a step.
+  COUNTED_TRAILS = {
+    31 => [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 31, 31],
+    30 => [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 30, 30],
+    17 => [0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 17],
+    5 => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 6, 5],
+    2 => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2],
+    1 => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
+    0 => Array.new(18, 0)
+  }.freeze
+
+  # The colour each step of a counted walk from black shows for +red+, +green+ and +blue+.
+  private def counted_colors(red, green, blue)
+    COUNTED_TRAILS.fetch(red).zip(COUNTED_TRAILS.fetch(green), COUNTED_TRAILS.fetch(blue)).map { |channels| rgb5(*channels) }
+  end
+
+  private def counted_walk_lists(own, from:) = walk_lists(own, from: from, step: 2, count: 32)
+
+  def test_a_counted_walk_holds_every_step_to_the_rule_worked_by_hand
+    lists = counted_walk_lists([:transparent, rgb5(31, 17, 0), rgb5(5, 30, 1), rgb5(2, 0, 17)], from: :black)
+
+    assert_equal 18, lists.length, "black, then 17 steps"
+    assert_equal counted_colors(31, 17, 0), lists.map { |list| list[1] }
+    assert_equal counted_colors(5, 30, 1), lists.map { |list| list[2] }
+    assert_equal counted_colors(2, 0, 17), lists.map { |list| list[3] }
+  end
+
+  # Down from white the rule is the same turned over: 20 is 11 below, so it waits until the count
+  # is 10, falls by 2 to 19, and comes back to 20 on the last step.
+  def test_a_counted_walk_from_white_comes_down_with_the_count
+    lists = counted_walk_lists([:transparent, rgb5(20, 0, 31)], from: :white)
+
+    reds = [31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 29, 27, 25, 23, 21, 19, 20]
+    greens = [31, 29, 27, 25, 23, 21, 19, 17, 15, 13, 11, 9, 7, 5, 3, 1, 0, 0]
+    assert_equal reds.zip(greens).map { |red, green| rgb5(red, green, 31) }, lists.map { |list| list[1] }
+  end
+
+  def test_every_height_arrives_on_the_last_step_of_a_counted_walk
+    (0..31).map { |level| rgb5(level, 31 - level, level) }.each_slice(15) do |colors|
+      own = [:transparent, *colors]
+
+      assert_equal colors, counted_walk_lists(own, from: :black).last.drop(1)
+      assert_equal colors, counted_walk_lists(own, from: :white).last.drop(1)
+    end
+  end
+
+  # The walk played: a background brought up from black by the counted rule, a step a pass, as far
+  # as step +last+ and held there.
+  private def counted_walking_game(last)
+    color = rgb5(31, 17, 0)
+    built do
+      screen :tiled
+      colors :bar, [:transparent, color]
+      image(:bar_art, colors: :bar, width: 8, height: 8, places: Array.new(64, 1))
+      tiles :bar_tiles, "#" => :bar_art
+      bar = background :bar_layer, tiles: :bar_tiles, map: Array.new(4) { "#" * 32 }
+      walk = color_walk(:bar, from: :black, step: 2, count: 32)
+      step = 0
+      game_loop do
+        bar.draw_with walk, showing: step
+        step += 1 if step < last
+      end
+    end
+  end
+
+  def test_a_background_walks_up_by_the_counted_rule
+    trail = counted_colors(31, 17, 0)
+    [9, 16, 17].each do |last|
+      seen = game_player.run(counted_walking_game(last), frames: 24)
+
+      assert_equal shown(trail.fetch(last)), seen.screen.pixel(4, 4), "step #{last}"
+    end
+  end
+
+  def test_a_counted_walk_needs_a_positive_step_and_count
+    %i[step count].each do |setting|
+      error = assert_raises(ArgumentError) do
+        Builder.new.instance_eval do
+          colors :city, %i[transparent red]
+          color_walk(:city, from: :black, step: 2, count: 32, setting => 0)
+        end
+      end
+
+      assert_match(/#{setting}:/, error.message)
+    end
+  end
+
+  def test_a_step_without_a_count_is_a_friendly_error
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        colors :city, %i[transparent red]
+        color_walk(:city, from: :black, step: 2)
+      end
+    end
+
+    assert_match(/count:/, error.message)
   end
 
   def test_a_colour_a_walk_does_not_know_is_a_friendly_error

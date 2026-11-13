@@ -892,6 +892,9 @@ module PackGames
       game(:list_from_the_pack_walked_up_from_white, passes: WALK_STEPS + 2) do |folder, options|
         built(*walking_game_and_file(layout_original(folder, GENESIS), options: options))
       end,
+      game(:list_from_the_pack_walked_up_by_a_falling_count, passes: COUNTED_WALK_STEPS + 2) do |folder, options|
+        built(*walking_game_and_file(layout_original(folder, GENESIS), options: options, counted: true))
+      end,
       game(:picture_drawn_in_a_list_from_the_pack_blitted, passes: 2) do |folder, options|
         built(*blitting_game_and_file(layout_original(folder, GENESIS), options: options))
       end,
