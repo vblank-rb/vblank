@@ -32,7 +32,20 @@ module PackSiteCoverage
   Site = Data.define(:file, :line, :method_name, :text) do
     def key = "#{file}:#{line}"
     def in_words = "#{key} in #{method_name}: #{text}"
+    def unreachable_reason = UNREACHABLE.fetch([file, method_name], nil)
   end
+
+  # THE SITES NO REGISTERED GAME CAN REACH, by file and method, each with why. Where a pack
+  # handle is answered with a refusal that every build gives, all-in-one too, there is no build of
+  # the game to hold another to, so the registry has no place for it; the refusal's own test is
+  # what holds it.
+  UNREACHABLE = Ractor.make_shareable(
+    {
+      ["lib/vblank/builder/sampled_audio.rb", "refuse_bits_without_pcm!"] =>
+        "The pack keeps 8 bits a sample, so bits: beside a slot of it is refused however the game is " \
+        "built (PackSoundTests#test_bits_beside_samples_of_the_pack_is_a_friendly_error)."
+    }
+  )
 
   module_function
 

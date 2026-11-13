@@ -147,9 +147,10 @@ module VBlank
       # `bits:` says how deep the samples given as `pcm:` are, so it means nothing for any other
       # source: a WAV file and a BRR recording say their own, and a data pack's samples are bytes.
       def refuse_bits_without_pcm!(name, pcm)
-        return if pcm && !pcm.is_a?(DSL::PackSlot)
+        source = "takes its samples from the data pack, which keeps 8 bits a sample" if pcm.is_a?(DSL::PackSlot)
+        source ||= "has no pcm:" unless pcm
+        return unless source
 
-        source = pcm ? "takes its samples from the data pack, which keeps 8 bits a sample" : "has no pcm:"
         raise ArgumentError, "sample :#{name} has bits: and #{source}. bits: is for samples given as pcm:. A WAV file " \
                              "says its own bits. To fix this, remove bits:."
       end

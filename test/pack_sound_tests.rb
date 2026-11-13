@@ -545,6 +545,23 @@ module PackSoundTests
     end
   end
 
+  # The pack keeps eight bits a sample, so `bits:` beside a slot of it is refused however the game is built.
+  def test_bits_beside_samples_of_the_pack_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      [VBlank::Cartridge::Options.new, PACK_AT_START].each do |options|
+        from = options.pack_at_start ? original_nowhere(folder) : original(folder)
+        b = VBlank::Builder.new(options: options)
+        error = assert_raises(ArgumentError) do
+          b.instance_eval do
+            pack = data_pack(from: from, version: "1") { |slots| slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT }
+            sample :bang, pcm: pack[:bang], bits: 16, rate: SOUND_RATE
+          end
+        end
+        assert_includes error.message, "takes its samples from the data pack"
+      end
+    end
+  end
+
   def test_a_cartridge_build_cannot_leave_the_pack_with_samples_out
     Dir.mktmpdir do |folder|
       from = original_nowhere(folder)
