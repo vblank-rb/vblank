@@ -1028,7 +1028,7 @@ def rg_screen_shown_in_five_bits
     if whole_rows && from_y >= 0 && from_y < RG_SCREEN_HEIGHT
       from = from_y * RG_SCREEN_WIDTH
       # A mixed cell (marked 1, and every other cell 0) is mixed again through the table, a pixel at a time below.
-      unless remix && mixed_cells[from, RG_SCREEN_WIDTH].sum != 0
+      unless remix && rg_row_has_mixed_cell?(mixed_cells, from)
         rg_screen_shown_row_through(shown, row, viewed, from, lookup, fade_table)
         next
       end
@@ -1074,10 +1074,30 @@ end
 # How many colours a cell can hold: sixteen bits.
 RG_CELL_COLORS = 0x10000
 
+# NO SLICES OF THE SCREEN'S ARRAYS. A slice of a long Array (viewed[from, RG_SCREEN_WIDTH]) is not a
+# copy: it shares the Array's storage, and the next write to the Array then copies the whole screen's
+# worth of storage first, since the slice still looks at the old one. Reading the picture a row at a
+# time that way copied each page several times a pass, and the memory those copies took made Ruby
+# collect garbage often and, every few seconds, mark every object the process holds, which stopped
+# the game for several frames. So the picture is read here by index, and copied whole with
+# Array#[]= (which copies the elements and shares nothing).
+
+# Whether the row of +mixed_cells+ that starts at +from+ marks any cell mixed.
+def rg_row_has_mixed_cell?(mixed_cells, from)
+  at = from
+  last = from + RG_SCREEN_WIDTH
+  while at < last
+    return true if mixed_cells[at] != 0
+
+    at += 1
+  end
+  false
+end
+
 # A fade's or tint's +table+ (a Hash that works a colour out the first time it is asked) kept again
 # as an Array, a place for every colour a cell can hold, nil until the colour is first asked, so a
-# row is turned through it as one (Array#values_at) where the Hash takes a call a colour. Made again
-# when the filter hands over another table, which it does as the fade or tint moves.
+# pixel is turned through it by an index where the Hash takes a call a colour. Made again when the
+# filter hands over another table, which it does as the fade or tint moves.
 def rg_colors_through(table)
   return @rg_colors_through if @rg_colors_through_table.equal?(table)
 
@@ -1087,38 +1107,44 @@ end
 
 # One row of the picture: the stored row from +from+, through +lookup+ (rg_colors_through of
 # +table+) where a fade or tint is over it, into +shown+ at +row+. A colour not asked before is
-# worked out by the table first; a colour no cell holds goes through the table a pixel at a time.
+# worked out by the table first; a colour no cell holds goes through the table itself.
 def rg_screen_shown_row_through(shown, row, viewed, from, lookup, table)
-  stored = viewed[from, RG_SCREEN_WIDTH]
-  return shown[row, RG_SCREEN_WIDTH] = stored unless lookup
-
-  low, high = stored.minmax
-  if low.negative? || high >= RG_CELL_COLORS
-    stored.each_with_index { |color, x| shown[row + x] = table[color] }
-    return
+  x = 0
+  while x < RG_SCREEN_WIDTH
+    color = viewed[from + x]
+    shown[row + x] = if !lookup
+                       color
+                     elsif color >= 0 && color < RG_CELL_COLORS
+                       lookup[color] || (lookup[color] = table[color])
+                     else
+                       table[color]
+                     end
+    x += 1
   end
-
-  colors = lookup.values_at(*stored)
-  # Array#compact finds a nil without a call an element, where include?(nil) makes one.
-  if colors.compact.length < RG_SCREEN_WIDTH
-    stored.each { |color| lookup[color] ||= table[color] }
-    colors = lookup.values_at(*stored)
-  end
-  shown[row, RG_SCREEN_WIDTH] = colors
 end
 
 # rg_screen_shown with nothing over the picture: each row the stored row the window sits over, and
-# off the picture the backdrop, which is nought.
+# off the picture the backdrop, which is nought. A window moved only up or down is the picture copied
+# whole (no slice: see rg_row_has_mixed_cell?), turned round by the rows it moved, and the rows that
+# came round from the other edge filled with the backdrop.
 def rg_screen_shown_plain(shown, viewed)
   camera_x = @rg_camera_x
   camera_y = @rg_camera_y
+  if camera_x == 0
+    shown[0, RG_SCREEN_CELLS] = viewed
+    return shown if camera_y == 0
+    return shown.fill(0) if camera_y.abs >= RG_SCREEN_HEIGHT
+
+    shown.rotate!(camera_y * RG_SCREEN_WIDTH)
+    off = camera_y.abs * RG_SCREEN_WIDTH
+    return camera_y.positive? ? shown.fill(0, RG_SCREEN_CELLS - off) : shown.fill(0, 0, off)
+  end
+
   RG_SCREEN_HEIGHT.times do |y|
     row = y * RG_SCREEN_WIDTH
     from_y = y + camera_y
     if from_y < 0 || from_y >= RG_SCREEN_HEIGHT
       shown.fill(0, row, RG_SCREEN_WIDTH)
-    elsif camera_x == 0
-      shown[row, RG_SCREEN_WIDTH] = viewed[from_y * RG_SCREEN_WIDTH, RG_SCREEN_WIDTH]
     else
       from_row = from_y * RG_SCREEN_WIDTH
       x = 0
