@@ -158,7 +158,7 @@ module PackPoseBankColorGames
   # +colors+ as a `colors` list, its first place see-through.
   private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 end
 
 class TestPackPoseBankColors < Minitest::Test

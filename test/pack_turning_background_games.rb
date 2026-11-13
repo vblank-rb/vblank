@@ -37,7 +37,7 @@ module PackTurningBackgroundGames
   PIVOT = [100, 60].freeze
   MIDDLE = [128, 128].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up original, for +platform+: the table, the map and the tiles, each as its bytes.
   private def turning_original(folder, platform: :gba)

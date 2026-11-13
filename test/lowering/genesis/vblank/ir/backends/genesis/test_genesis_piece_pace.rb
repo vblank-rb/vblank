@@ -116,7 +116,7 @@ module PiecePaceGames
   MAP_AT = 0x400
   TILES_AT = MAP_AT + (MAP.length * 2)
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up original, written into +folder+.
   def self.original(folder)

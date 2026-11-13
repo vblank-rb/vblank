@@ -40,7 +40,7 @@ module PackPoseGames
   # The picture the frame's pieces reach: two tiles across and three down.
   REACH = [16, 24].freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up original, its frames the bytes +frame_bytes+.
   private def original(folder, frame_bytes: FRAME_BYTES)

@@ -69,7 +69,7 @@ module PackPoseOfShapesGames
   # One tile of sixteen colours as the Advance keeps it: two pixels a byte, the left in the low half.
   LOW_HALF_FIRST = ->(places) { places.each_slice(2).map { |left, right| left | (right << 4) }.pack("C*") }
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def frame_bytes
     records = PIECES.each_with_index.map do |piece, at|

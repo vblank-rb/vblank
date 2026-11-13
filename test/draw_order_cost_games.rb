@@ -9,7 +9,7 @@ require "stringio"
 # height every frame for a few instructions a sprite, so the order must cost a few lines of the
 # picture at most, not a tenth of the frame.
 module DrawOrderCostGames
-  BLOCK = Ractor.make_shareable(Array.new(16) { "#" * 16 }.join("\n"))
+  BLOCK = VBlank::Testing::InRactors.shareable(Array.new(16) { "#" * 16 }.join("\n"))
 
   # The game for +console+, with its order or without. +sprites+ walk; the pool's three stand.
   def self.game(console, ordered:, sprites: 4)

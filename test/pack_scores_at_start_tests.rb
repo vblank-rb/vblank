@@ -879,7 +879,7 @@ module PackScoresAtStartTests
 
   # Shareable, as a test class's own constants are made (test_helper.rb), since a test may run in
   # a Ractor and these are a module's.
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # A game that declares a song and never plays one is built without the music player (the music
   # runtime feature), which is what makes a part's notes from the file. It starts all the same.

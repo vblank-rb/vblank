@@ -1705,7 +1705,7 @@ module PackGames
 
   # Shareable, since a test may run in a Ractor: each game with its block, and each kit's constants.
   Ractor.make_shareable(ALL)
-  KITS.each { |kit| kit.constants(false).each { |name| Ractor.make_shareable(kit.const_get(name)) } }
+  KITS.each { |kit| VBlank::Testing::InRactors.share_constants(kit) }
 
   # The game registered as +name+.
   def self.named(name) = ALL.find { |game| game.name == name } || raise(KeyError, "no pack game is registered as #{name.inspect}")

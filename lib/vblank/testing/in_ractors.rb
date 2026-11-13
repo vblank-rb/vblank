@@ -74,13 +74,58 @@ module VBlank
       # together. Ruby copies the bytes of an interned String instead of moving them, so an
       # interned fixture is never changed by a write.
       #
-      # Only a String that is the constant itself is interned; one inside an Array, a Hash or a
-      # Data is frozen as it was. So a fixture a test writes to a file must be a constant of its own.
+      # A String inside an Array, a plain Hash or a plain Data is interned too, the fixture built
+      # again around it, since a test may write one of those as well (#rebuildable? says which can
+      # be built again unchanged). One inside any other object is frozen as it was, so a fixture a
+      # test writes to a file is a String, or held in one of those.
       def self.shareable(value)
-        return Ractor.make_shareable(-value) if value.instance_of?(String)
+        return value if Ractor.shareable?(value) && !holds_string_to_intern?(value)
 
-        Ractor.shareable?(value) ? value : Ractor.make_shareable(value)
+        Ractor.make_shareable(with_strings_interned(value))
       end
+
+      # +value+ with every String in it, and in the Arrays, Hashes and Data in it, interned. +seen+
+      # holds the containers already walked, so a fixture that holds itself is walked once.
+      def self.with_strings_interned(value, seen = {}.compare_by_identity)
+        return internable?(value) ? -value : value if value.is_a?(String)
+        return value if seen.key?(value) || !rebuildable?(value)
+
+        seen[value] = true
+        case value
+        when Array then value.map { |item| with_strings_interned(item, seen) }
+        when Hash then value.to_h { |key, item| [with_strings_interned(key, seen), with_strings_interned(item, seen)] }
+        else value.with(**value.to_h.transform_values { |item| with_strings_interned(item, seen) })
+        end
+      end
+
+      # Whether +value+ holds a String that is not interned, where #with_strings_interned would find it.
+      def self.holds_string_to_intern?(value, seen = {}.compare_by_identity)
+        return internable?(value) && !value.equal?(-value) if value.is_a?(String)
+        return false if seen.key?(value) || !rebuildable?(value)
+
+        seen[value] = true
+        parts = value.is_a?(Array) ? value : value.to_h.to_a.flatten(1)
+        parts.any? { |part| holds_string_to_intern?(part, seen) }
+      end
+
+      # Whether +value+ is a container #with_strings_interned can build again with nothing changed
+      # but its Strings: an Array; a Hash with no default and keys compared by value, since `to_h`
+      # loses the rest; a Data whose class keeps Data's own initialize, since `with` hands one of
+      # its own keywords it may not take, and it may copy the Strings it is given.
+      def self.rebuildable?(value)
+        case value
+        when Array then true
+        when Hash then value.default.nil? && value.default_proc.nil? && !value.compare_by_identity?
+        when Data then value.class.instance_method(:initialize).owner == Data
+        else false
+        end
+      end
+
+      # Whether +string+ is one `-` interns: a plain String with no instance variables. Ruby hands
+      # back a fresh copy of any other each time, which is never the interned one.
+      def self.internable?(string) = string.instance_of?(String) && string.instance_variables.empty?
+
+      private_class_method :with_strings_interned, :holds_string_to_intern?, :rebuildable?, :internable?
 
       # Every constant of +fixtures+, a module of fixtures shared by several test files, made
       # shareable as a test class's are: for the module's last line, once all are declared.

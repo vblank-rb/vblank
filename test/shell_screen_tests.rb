@@ -51,7 +51,7 @@ module ShellScreenTests
   CREDITS_LINE = 1
   SETTINGS_LINE = 2
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # Fails saying how many pixels differ and where the first is, not with two whole pictures.
   private def assert_same_pixels(want, got, moment)

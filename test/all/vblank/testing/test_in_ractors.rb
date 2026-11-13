@@ -66,6 +66,34 @@ class TestInRactors < Minitest::Test
     assert Ractor.shareable?(fixtures::SIZES)
   end
 
+  # A String INSIDE a fixture (an Array, a Hash, a Data) is safe to write too: six Ractors writing
+  # each one at once leave every fixture whole, and no write moves its bytes.
+  Pages = Data.define(:copy)
+
+  def test_strings_inside_a_fixture_stay_whole_written_from_six_ractors
+    bytes = Array.new(512) { |at| (at * 7) & 0xFF }
+    fixtures = Module.new
+    fixtures.const_set(:LISTED, [bytes.pack("C*")].freeze)
+    fixtures.const_set(:KEYED, { copy: bytes.pack("C*") }.freeze)
+    fixtures.const_set(:PAGES, Pages.new(copy: bytes.pack("C*")))
+    VBlank::Testing::InRactors.share_constants(fixtures)
+    nested = [fixtures::LISTED.first, fixtures::KEYED.fetch(:copy), fixtures::PAGES.copy]
+
+    Dir.mktmpdir do |folder|
+      writers = Array.new(6) do |nth|
+        Ractor.new(nested, folder, nth) do |strings, into, at|
+          strings.each_with_index { |string, which| File.binwrite(File.join(into, "#{at}-#{which}.bin"), string) }
+        end
+      end
+      writers.each(&:value)
+    end
+
+    nested.each_with_index do |string, which|
+      refute moved_to_hidden_string?(string), "the write moved fixture #{which}'s bytes"
+      assert_equal bytes, string.bytes, "fixture #{which}"
+    end
+  end
+
   # Whether +string+'s bytes are another String's now, as ObjectSpace's record of it says.
   private def moved_to_hidden_string?(string) = JSON.parse(ObjectSpace.dump(string)).fetch("shared", false)
 

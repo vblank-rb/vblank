@@ -221,7 +221,7 @@ module CopyReaderTests
   # ...and so does one whose test reads the copy at a place another read gives: the place is read
   # again each time round, in a `while` and in `stop_when:` alike. Bytes 0 to 7 are places of bytes
   # 8 to 15, and the byte at the place byte 5 gives is the first that is 0.
-  POINTED_COPY = Ractor.make_shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
+  POINTED_COPY = VBlank::Testing::InRactors.shareable(((8...16).to_a + [7, 6, 5, 4, 3, 0, 2, 1]).pack("C*"))
 
   private def first_pointing_at_nought(copy) = (0..).find { |at| copy.getbyte(copy.getbyte(at)).zero? }
 
@@ -272,9 +272,9 @@ module CopyReaderTests
   PIECE_BYTES = 4
   MOST_PIECES = 5
   PIECES_END = 0x80
-  PIECES_IN_EACH_FRAME = Ractor.make_shareable([3, 7, 1])
-  ORDINARY_PIECE_BYTES = Ractor.make_shareable([1, 2, 3, 4])
-  FRAME_END_PIECE_BYTES = Ractor.make_shareable([PIECES_END, 0, 0, 0])
+  PIECES_IN_EACH_FRAME = VBlank::Testing::InRactors.shareable([3, 7, 1])
+  ORDINARY_PIECE_BYTES = VBlank::Testing::InRactors.shareable([1, 2, 3, 4])
+  FRAME_END_PIECE_BYTES = VBlank::Testing::InRactors.shareable([PIECES_END, 0, 0, 0])
 
   private def piece_copy
     PIECES_IN_EACH_FRAME.flat_map { |pieces| (ORDINARY_PIECE_BYTES * pieces) + FRAME_END_PIECE_BYTES }.pack("C*")
@@ -344,7 +344,7 @@ module CopyReaderTests
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
-  RECORDS = Ractor.make_shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
+  RECORDS = VBlank::Testing::InRactors.shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
 
   private def record_copy
     bytes = (0...4096).map { |at| (at * 7) & 0xFF }.pack("C*")
@@ -390,7 +390,7 @@ module CopyReaderTests
   # ends with the header of a file longer than what is left, which ends every search: one that
   # never finds the name answers 0, and the bytes copied from there are the wrong ones, where a
   # search walking on would read past the end of the copy.
-  ARCHIVE_FILES = Ractor.make_shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
+  ARCHIVE_FILES = VBlank::Testing::InRactors.shareable([["wall", "bricks"], ["dour", "no"], ["door", "hinges!"], ["ship", "sail"]])
   ARCHIVE_END = ("tail".b + [0xFFFF].pack("V")).freeze
   ARCHIVE = ("MU1".b + ARCHIVE_FILES.map { |name, held| name.b + [held.bytesize].pack("V") + held.b }.join + ARCHIVE_END).freeze
   ARCHIVE_NAME = "door"
@@ -475,7 +475,7 @@ module CopyReaderTests
   # pairs of a count and a byte, the byte written that many times, until a count of 0. The
   # decoder says what it wrote with `count_written`, so the count of bytes done moves on, and the
   # routine waits for the next frame as the building blocks do.
-  OWN_FORMAT_RUNS = Ractor.make_shareable([[200, 7], [150, 9], [255, 3], [255, 1], [140, 4]])
+  OWN_FORMAT_RUNS = VBlank::Testing::InRactors.shareable([[200, 7], [150, 9], [255, 3], [255, 1], [140, 4]])
   OWN_FORMAT_BYTES = OWN_FORMAT_RUNS.flat_map { |many, byte| [byte] * many }.pack("C*").freeze
 
   def test_count_written_moves_progress_on_in_a_decoder_of_the_games_own

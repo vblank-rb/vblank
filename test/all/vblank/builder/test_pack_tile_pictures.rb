@@ -60,7 +60,7 @@ module PackTilePictureGames
   # The three lists the game changes, each a sprite's, and the set each is told to hold on even passes.
   CHANGING_LISTS = { sky: [5, 6], sea: [6, 6], sun: [7, 6] }.freeze
 
-  constants(false).each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up Genesis original of the lair and the title: their maps, their banks and the tiles.
   private def lair_original(folder)

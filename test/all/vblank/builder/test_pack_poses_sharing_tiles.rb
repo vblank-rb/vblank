@@ -87,7 +87,7 @@ module SharedSlotTilesGame
   FRAMES_AT = 0x100
   TILES_AT = 0x200
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   private def shared_slot_original(folder)
     tiles = TILES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join

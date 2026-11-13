@@ -78,7 +78,7 @@ module PackBackgroundSetCellGames
   MAP_CELLS_ATTRIBUTES_AT = 0x30
   MAP_CELLS_PALETTE = BANKS.flat_map { |bank| bank.first(4) }.freeze
 
-  constants.each { |name| Ractor.make_shareable(const_get(name)) }
+  VBlank::Testing::InRactors.share_constants(self)
 
   # The made-up Color-layout original, for +platform+ (:gbc, or :pc for a computer game kept in
   # the Color's layout).
