@@ -53,11 +53,12 @@ module VBlank
           # cover sprites (Lowering::Picture#bar_covers_sprites?). +tile_loads+ means it loads sprite
           # tiles from the cartridge (Lowering::SpriteTiles#loads_sprite_tiles?). +song_entries_in_banks+
           # means its songs' entries are kept in a bank, and copied out as each song starts
-          # (GBC::Music#entries_in_banks?).
+          # (GBC::Music#entries_in_banks?). +tune_plays_once+ means a song it plays as a tune plays once
+          # (GBC::Music#tune_plays_once?).
           def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false, tile_loads: false, song_entries_in_banks: false)
+                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false)
             SpriteTileLoads.reserve(memory) if tile_loads
             Clips.reserve(memory, laps: clip_laps) if clips
             Rumble.reserve(memory) if rumble
@@ -69,7 +70,7 @@ module VBlank
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
-                                  entries_in_banks: song_entries_in_banks)
+                                  entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.

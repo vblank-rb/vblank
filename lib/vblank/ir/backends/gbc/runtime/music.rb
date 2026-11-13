@@ -100,6 +100,20 @@ module VBlank
             # Whether the game holds its music (TUNE_HELD).
             def holds?(memory) = memory.reserved?(TUNE_HELD)
 
+            # A TUNE THAT PLAYS ONCE AND HAS REACHED ITS END, in a game that has one
+            # (IR::Tunes.plays_once?): its number, 1 up, as PLAYING had it, or 0 for none. Set at the
+            # end of its last frame; the next frame quiets it (rt_music_end), as the interpreter's
+            # player does (Reference::Player#advance_song_frame keeps @ended, and
+            # #switch_to_wanted_song quiets it on the step after). Quieted on the last frame itself,
+            # that frame is silent and the tune is one frame short.
+            #
+            # It stays ended while the game goes on naming it, even in a pass that names another tune
+            # first and then this one again, so the switch keeps it (rt_music_tick). Another tune
+            # taken up, or a stop, forgets it.
+            ENDED = "rt music ended"
+
+            def tune_plays_once?(memory) = memory.reserved?(ENDED)
+
             # SONGS' ENTRIES KEPT IN A BANK (GBC::Music#entries_in_banks?): the playing song's entry,
             # copied here from its bank as the song starts, which SONG then names. Every reading of the
             # song after that — its parts, its length, where it comes round from — reads this copy, so
@@ -109,10 +123,11 @@ module VBlank
             def entries_in_banks?(memory) = memory.reserved?(ENTRY_COPY)
 
             def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, waves: false, swells: false, noise_swells: false,
-                        banked: false, holds: false, effect_table: false, entries_in_banks: false)
+                        banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false)
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
               memory.reserve(TUNE_HELD, 1) if holds
+              memory.reserve(ENDED, 1) if tune_plays_once
               reserve_song_player(memory, banked)
               memory.reserve(WAVE_LOADED, 1) unless effects.empty? && !Clips.any?(memory) && !waves
               memory.reserve(NOTE_WAVE, 1) if waves
@@ -672,6 +687,7 @@ module VBlank
               Clips.emit_timer_let_in_around(asm, memory) do
                 if sharing
                   asm.call("rt_music_switch")
+                  asm.call("rt_music_end") if tune_plays_once?(memory)
                   asm.call("rt_music_tune_rank")
                   asm.call("rt_music_song_frame")
                 else
@@ -689,6 +705,7 @@ module VBlank
               Clips.emit_timer_let_in_around(asm, memory) { asm.call("rt_music_quiet") }
               asm.xor_a(:a)
               asm.load([memory[PLAYING]], :a)
+              asm.load([memory[ENDED]], :a) if tune_plays_once?(memory) # quiet already
               asm.reti
               return unless holds?(memory)
 
@@ -701,6 +718,26 @@ module VBlank
               asm.xor_a(:a)
               asm.load([memory[TUNE_HELD]], :a)
               asm.ret
+            end
+
+            # rt_music_end: a tune that ended on the frame before (ENDED, and still PLAYING) goes quiet,
+            # and nothing is playing; ENDED stays, so the game naming it again changes nothing. Run once
+            # the player has caught up with what the game named, as
+            # Reference::Player#switch_to_wanted_song looks at an ended tune: another tune taken up, or
+            # a stop, has cleared ENDED already.
+            # Must keep every register but A, HL and the flags, and those rt_music_quiet spends: the
+            # tick reads what it needs again after the call.
+            def emit_end(asm, memory)
+              asm.label("rt_music_end")
+              asm.load(:a, [memory[ENDED]])
+              asm.and_a(:a)
+              asm.ret(:z)
+              asm.load(:hl, memory[PLAYING])
+              asm.cp_a([:hl])
+              asm.ret(:nz) # quieted already
+              asm.xor_a(:a)
+              asm.load([:hl], :a)
+              asm.jump("rt_music_quiet")
             end
 
             def emit_no_songs(asm)
@@ -730,6 +767,7 @@ module VBlank
               end
               if sharing
                 asm.call("rt_music_switch")
+                asm.call("rt_music_end") if tune_plays_once?(memory)
                 asm.call("rt_music_tune_rank")
                 asm.call("rt_sfx_above")
                 asm.call("rt_music_song_frame")
@@ -747,8 +785,18 @@ module VBlank
               asm.load([memory[START]], :a)
               # The tune named last is the one playing — another named and then this one again in a
               # pass — so it carries on, as Reference::Player#switch_to_wanted_song has it. A stop
-              # leaves nothing playing, so a tune named after one starts over.
+              # leaves nothing playing, so a tune named after one starts over. A tune that has ended
+              # (ENDED) and is named last stays ended, quiet.
               asm.load(:a, [memory[NAMED]])
+              if tune_plays_once?(memory)
+                asm.load(:hl, memory[ENDED])
+                asm.cp_a([:hl])
+                if sharing
+                  asm.ret(:z)
+                else
+                  asm.jump_relative(:z, "rt_music_tick_playing")
+                end
+              end
               asm.load(:hl, memory[PLAYING])
               asm.cp_a([:hl])
               if sharing
@@ -794,6 +842,7 @@ module VBlank
                 asm.call("rt_music_waveform")
               end
               asm.label("rt_music_tick_playing")
+              asm.call("rt_music_end") if tune_plays_once?(memory) && !sharing # with effects, called before the rank is read
               asm.label("rt_music_song_frame")
               asm.load(:a, [memory[PLAYING]])
               asm.and_a(:a)
@@ -839,7 +888,8 @@ module VBlank
               asm.dec(:b)
               asm.jump_relative("rt_music_tick_part")
               asm.label("rt_music_tick_parts_done")
-              # The next frame; at the end, round to the loop point, or quiet for a tune that ends.
+              # The next frame; at the end, round to the loop point, or for a tune that ends, quiet on
+              # the frame after (ENDED).
               asm.load(:hl, memory[FRAME])
               asm.inc([:hl])
               asm.jump_relative(:nz, "rt_music_tick_counted")
@@ -862,9 +912,16 @@ module VBlank
               asm.load(:a, [:hl])
               asm.and_a(:a)
               asm.jump_relative(:z, "rt_music_tick_round")
-              asm.call("rt_music_quiet") # a tune that plays once: over
-              asm.xor_a(:a)
-              asm.load([memory[PLAYING]], :a)
+              if tune_plays_once?(memory) # a tune that plays once: over, and quiet on the next frame (ENDED)
+                asm.load(:a, [memory[PLAYING]])
+                asm.load([memory[ENDED]], :a)
+              else
+                # No tune here plays once (GBC::Music#tune_plays_once?), so this is never reached. It stays so a
+                # game without one builds the bytes it always did.
+                asm.call("rt_music_quiet")
+                asm.xor_a(:a)
+                asm.load([memory[PLAYING]], :a)
+              end
               asm.ret
               asm.label("rt_music_tick_round")
               asm.load(:a, :e)
@@ -874,6 +931,8 @@ module VBlank
               asm.load(:a, 1)
               asm.load([memory[AGAIN]], :a)
               asm.jump("rt_music_next_cleared")
+
+              emit_end(asm, memory) if tune_plays_once?(memory)
 
               # HL = the playing tune's place in the music table.
               asm.label("rt_music_song")
@@ -886,6 +945,7 @@ module VBlank
               asm.label("rt_music_from_the_top")
               asm.xor_a(:a)
               asm.load([memory[AGAIN]], :a)
+              asm.load([memory[ENDED]], :a) if tune_plays_once?(memory)
               asm.label("rt_music_next_cleared")
               asm.xor_a(:a)
               asm.load(:hl, memory[NEXT])

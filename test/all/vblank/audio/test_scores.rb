@@ -92,10 +92,93 @@ class TestScores < Minitest::Test
 
   # --- a song that plays once ---
 
+  # What the sound log took, by frame: the notes on each frame that had any, and the frames on
+  # which the music stopped.
+  Heard = Data.define(:notes, :stops)
+
   # Two notes ten frames apart in a song twenty frames long, which says it plays once.
   private def two_notes_once(**options)
     Score.new(tempo: 150, length: 20, plays_once: true, **options,
               parts: [Part.new(notes: [Note.new(at: 0, key: :C4), Note.new(at: 10, key: :E4)])])
+  end
+
+  # #two_notes_once named on the first pass and taken up as frame 2 starts: its twenty frames are 2
+  # to 21, and its part goes quiet on frame 22, the frame after its last — not on frame 21, which
+  # still sounds the note.
+  TWO_NOTES_ONCE_HEARD = Heard.new(notes: { 2 => [NOTES[:C4]], 12 => [NOTES[:E4]] }, stops: [22])
+
+  private def heard_by_frame(program, frames)
+    player = game_player
+    notes = {}
+    stops = []
+    logged = 0
+    player.each_vblank do |frame|
+      fresh = player.audio.drop(logged)
+      logged = player.audio.size
+      played = fresh.select { |entry| entry[0] == :note }.map(&:last)
+      notes[frame] = played unless played.empty?
+      stops << frame if fresh.include?([:stop_music])
+    end
+    player.run(program, frames: frames)
+    Heard.new(notes: notes, stops: stops)
+  end
+
+  # Named every pass after its end, it is not heard again.
+  def test_a_song_that_plays_once_named_every_pass_goes_quiet_the_frame_after_its_last
+    program = game([two_notes_once]) { |music, _| music.play 0 }
+
+    assert_equal TWO_NOTES_ONCE_HEARD, heard_by_frame(program, 40)
+  end
+
+  # The same when the game names it once and never again.
+  def test_a_song_that_plays_once_named_once_goes_quiet_the_frame_after_its_last
+    program = game([two_notes_once]) { |music, pass| music.play 0 if pass == 1 }
+
+    assert_equal TWO_NOTES_ONCE_HEARD, heard_by_frame(program, 40)
+  end
+
+  # Once it has ended it stays ended for as long as the game names it, even in a pass that names
+  # another song first and then this one again: the song named last is the one wanted, and that is
+  # the ended one.
+  def test_a_song_that_plays_once_stays_ended_when_another_is_named_before_it_in_a_pass
+    program = game([two_notes_once, notes_every_ten_ticks(:G4)]) do |music, pass|
+      music.play 1 if pass == 40
+      music.play 0
+    end
+
+    assert_equal TWO_NOTES_ONCE_HEARD, heard_by_frame(program, 60)
+  end
+
+  # Named to start where it is named (`this_frame: true`), its first frame is the first pass's own,
+  # read with that pass's sound at frame 2: so its twenty frames are 1 to 20, and it goes quiet on
+  # frame 21.
+  def test_a_song_that_plays_once_named_for_this_frame_goes_quiet_the_frame_after_its_last
+    program = game([two_notes_once]) { |music, _| music.play 0, this_frame: true }
+
+    assert_equal Heard.new(notes: { 2 => [NOTES[:C4]], 11 => [NOTES[:E4]] }, stops: [21]), heard_by_frame(program, 40)
+  end
+
+  # The same in a game that has a sound effect too, whose player takes the frame in turns with the
+  # song's: the effect sounds once, on pass 4, before the song ends.
+  def test_a_song_that_plays_once_beside_a_sound_effect_goes_quiet_the_frame_after_its_last
+    song = two_notes_once
+    effect = notes_every_ten_ticks(:G4)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      music = songs :music, [song]
+      sfx = sound_effects :sfx, { ping: effect }
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        music.play 0
+        sfx.play :ping if pass == 4
+      end
+    end
+    b.finalize_program
+
+    assert_equal TWO_NOTES_ONCE_HEARD.stops, heard_by_frame(b.program, 40).stops
   end
 
   # --- a note's length, instrument and loudness ---

@@ -135,6 +135,12 @@ module VBlank
 
           def any? = !@songs.empty?
 
+          # Whether any song the game plays as a tune plays once (IR::Tunes.plays_once?): only then does
+          # the player keep a tune that has reached its end, to quiet it on the frame after
+          # (Runtime::Music::ENDED). A sound effect that says it plays once is played by the effects'
+          # player, which plays every effect once, so it asks for nothing here.
+          def tune_plays_once? = @songs.any? { |song| Tunes.plays_once?(song) && !@effect_names.include?(song.name) }
+
           # The game's sound effects, in the order declared.
           def effects
             @effects ||= @effect_names.each_with_index.map do |name, number|

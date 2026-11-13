@@ -58,7 +58,6 @@ class TestMusicPlaying < Minitest::Test
   # named on every pass: it is playing for its ten frames, from frame 2, and none after though
   # the game goes on naming it.
   def test_a_song_that_plays_once_is_not_playing_after_its_end
-    skip_on_gbc "the Color's player quiets a song that plays once on the frame of its end, not the frame after"
     jingle = Score.new(tempo: 150, length: 10, plays_once: true,
                        parts: [Score::Part.new(notes: [Score::Note.new(at: 0, key: :C4)])])
     b = Builder.new

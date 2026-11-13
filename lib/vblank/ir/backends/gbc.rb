@@ -372,7 +372,7 @@ module VBlank
                                   dark: lowering.counts_dark_frames?, rumble: lowering.rumbles?,
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
-                                  song_entries_in_banks: lowering.music.entries_in_banks?,
+                                  song_entries_in_banks: lowering.music.entries_in_banks?, tune_plays_once: lowering.music.tune_plays_once?,
                                   cells_shown_now: lowering.cells_shown_now?,
                                   bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?)
           game = lowering.sections
