@@ -13,7 +13,6 @@ require_relative "dsl/value"
 require_relative "dsl/condition"
 require_relative "dsl/branch"
 require_relative "dsl/plain_ruby"          # A game block in normal Ruby, read with Prism and rewritten
-require_relative "dsl/plain_ruby_call_changes" # What a call of game code in that block can change
 require_relative "dsl/plain_ruby_names"    # What each local name in that block is
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs

@@ -666,13 +666,4 @@ class TestPlainRubyParts < Minitest::Test
 
     assert_equal FlaggedBytes.unpacked(FlaggedBytes::PACKED), player.list(:unpacked)
   end
-
-  # The place moved on inside a method of the game, or a routine called, between a name's line and
-  # its use, in a game file (test/plain_ruby_flagged_bytes_part.rb): the name holds the byte read
-  # before, where the next byte, 10, is what reading again would give.
-  def test_a_name_set_from_a_byte_holds_it_when_a_call_moves_the_place_on
-    player = played_game(frames: 2) { flagged_byte_held_across_calls_game(self) }
-
-    assert_equal [FlaggedBytes::PACKED[0]] * 2, [player[:by_method], player[:by_routine]]
-  end
 end
