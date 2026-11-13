@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module VBlank
   module Original
     # WHICH SLOTS A PART OF AN UNPACKING ROUTINE READS AND WRITES, by name, recorded as the part is
@@ -42,22 +44,34 @@ module VBlank
     # make a part build differently alone than after the others, and the count of bytes done
     # (CopyReader#bytes_done) runs on from one part to the next. A part that hands anything to
     # another this way must hand it through a slot instead.
+    #
+    # WHAT A PART'S CACHE KEY IS MADE OF (#key_source): the program of the part built alone, for each
+    # part played to make it (#played_for), as digests of IR::Dump's text of each. A part's blocks
+    # run as the same DSL calls however many parts are built with them, so the program of a part
+    # and those it needs changes only when one of their programs alone does. Building that program
+    # for each part's key instead built a port's routine again for every part, and for a port of
+    # many parts that cost more than playing it.
     class UnpackingParts
-      # A part: its name, the slot names it reads and writes (Sets), and the names of variables,
-      # lists, tables and routines it names besides the building blocks' (#names_in).
-      Part = Data.define(:name, :read, :written, :names)
+      # A part: its name, the slot names it reads and writes (Sets), the names of variables, lists,
+      # tables and routines it names besides the building blocks' (#names_in), and a digest of its
+      # program built alone (#key_source).
+      Part = Data.define(:name, :read, :written, :names, :program_digest)
 
       # Names a part's program holds that carry nothing from one part to the next: the building
       # blocks' own (Messages::MadeNames' :unpacking_part), and a `repeat`'s counter.
       UNSHARED_NAME_PATTERN = /\A__(unpacking__|repeat_\d+\z)/
 
       # +parts+ (each a Part) in the order they run; +make_unpacking+ makes the Unpacking of a
-      # list of part names, playing those parts in the order they run and no others.
-      def initialize(parts:, make_unpacking:)
+      # list of part names, playing those parts in the order they run and no others. +whole+ is the
+      # Unpacking of every part, where the caller has built it already, so it is not built again.
+      def initialize(parts:, make_unpacking:, whole: nil)
         @parts = parts
         @make_unpacking = make_unpacking
-        @unpackings = {}
+        @unpackings = whole ? { names => whole } : {}
       end
+
+      # The digest of a part's program built alone (+program+): what its Part keeps for #key_source.
+      def self.program_digest(program) = Digest::SHA256.hexdigest(IR::Dump.source(program))
 
       # Every name +program+ holds of a variable, list, table or routine, but UNSHARED_NAME_PATTERN: the
       # operands its kinds declare as names (IR::Node#named_operands).
@@ -97,6 +111,13 @@ module VBlank
 
       # The Unpacking playing the parts +played+ (names, in the order they run) and no others.
       def unpacking_of(played) = @unpackings[played] ||= @make_unpacking.call(played)
+
+      # The text a part's cache key holds for the programs that make its slots: each part played
+      # to make them (#played_for), in the order they run, by name and the digest of its program
+      # built alone. A change to any of them changes it.
+      def key_source(name)
+        played_for([name]).map { |each| "#{each} #{part_named(each).program_digest}\n" }.join
+      end
 
       # The names of the slots whose bytes in the pack are what the part +name+ wrote: those it is
       # the last part to write, in the pack's order of its record. A slot a later part writes too

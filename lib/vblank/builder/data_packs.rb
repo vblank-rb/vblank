@@ -106,7 +106,7 @@ module VBlank
         parts = nil
         make_parts = lambda do
           unless parts_built
-            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release) if routines.size > 1)
+            parts = (unpacking_parts(bytes, copy_release_slots, routines, reading, copy_release, unpacking) if routines.size > 1)
             parts_built = true
           end
           parts
@@ -669,18 +669,20 @@ module VBlank
       # and writes and which names it holds, and a way to build the program of any of the parts.
       # Built as #unpacking_program builds the whole routine, with no frames. nil where a part
       # cannot be built alone: one that calls a routine another part defines, say. The whole
-      # routine is then cached as one, as a routine of one part is.
-      def unpacking_parts(bytes, slots, routines, reading, release)
+      # routine is then cached as one, as a routine of one part is. +whole+ is the routine's
+      # Unpacking with every part, built already, which is the program of every part.
+      def unpacking_parts(bytes, slots, routines, reading, release, whole)
         parts = routines.map do |routine|
           uses = Original::SlotUses.new
           alone = unpacking_program(bytes, slots, [routine], reading, release: release, slot_uses: { routine.part => uses })
           Original::UnpackingParts::Part.new(name: routine.part, read: uses.read, written: uses.written,
-                                             names: Original::UnpackingParts.names_in(alone.program))
+                                             names: Original::UnpackingParts.names_in(alone.program),
+                                             program_digest: Original::UnpackingParts.program_digest(alone.program))
         end
         make = lambda do |played|
           unpacking_program(bytes, slots, routines.select { |routine| played.include?(routine.part) }, reading, release: release)
         end
-        Original::UnpackingParts.new(parts: parts, make_unpacking: make)
+        Original::UnpackingParts.new(parts: parts, make_unpacking: make, whole: whole)
       rescue ArgumentError, BuildError
         # A part that builds only after another (it calls a routine the other defines) is no
         # fault: the whole routine built already.

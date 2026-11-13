@@ -79,8 +79,9 @@ module VBlank
 
       # A ROUTINE IN PARTS (UnpackingParts) is cached a part at a time. A part's entry is a pack
       # holding the slots it is the last part to write (UnpackingParts#slots_of). Its key is the
-      # whole routine's, with the program of that part and every part it needs
-      # (UnpackingParts#inputs_of) in place of the whole program, the part's name, and the slots
+      # whole routine's, with the programs of that part and every part it needs
+      # (UnpackingParts#inputs_of), each built alone (UnpackingParts#key_source), in place of the
+      # whole program, the part's name, and the slots
       # its entry holds (a later part that stops writing a slot makes it this part's): so a change
       # to a part misses for it and for every part that needs it, and for no other. The parts that
       # missed are played in one program with all they need (UnpackingParts#played_for), and each
@@ -136,9 +137,8 @@ module VBlank
       end
 
       def part_entry_path(unpacking, parts, name, sha1, build_version)
-        program = parts.unpacking_of(parts.played_for([name])).program
         digest = key_digest(unpacking, sha1, build_version)
-        digest << "part " << name.to_s << "\0" << parts.slots_of(name).join(" ") << "\0" << IR::Dump.source(program)
+        digest << "part " << name.to_s << "\0" << parts.slots_of(name).join(" ") << "\0" << parts.key_source(name)
         File.join(@folder, "#{digest.hexdigest}#{ENTRY_EXTENSION}")
       end
 
