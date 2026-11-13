@@ -141,12 +141,13 @@ instance variables.
   costs nothing. Calls count only for a name set in game code or a method: one set while setting
   up and read by game code follows what it was read from, so `frame = frames_since_power_on` reads
   the count live. A name set from a method's answer reads what that method reads: `at = get(:at, c)`
-  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`. A game variable
-  a method hands back (`floors = routine_var(:floors)`) is that variable, as the object a Ruby
-  method hands back is, and counts itself up with `floors.increase!(1)` across any call.
-  One limit: an object of the game's that shares a variable with the code calling
-  it (handed it when the object was made) can change that variable unseen; read it into a `var`
-  with `store!` there.
+  keeps its place when `set(:at, c, at + 1)` moves it, where both reach `@state`; and a name set
+  from another name reads what that one reads, so `envelope = @copy.byte(at + 1)` keeps its byte
+  too. A game variable a method hands back (`floors = routine_var(:floors)`) is that variable, as
+  the object a Ruby method hands back is, and counts itself up with `floors.increase!(1)` across
+  any call. One limit: an object of the game's that shares a variable with the code calling it
+  (handed it when the object was made) can change that variable unseen; read it into a `var` with
+  `store!` there.
 - **A method's argument and a value taken from a Hash are copies.** `def hurt(hp) = hp -= 1` does not
   change the caller's `hp`, and `hp = ball[:hp]; hp = 0` leaves `ball[:hp]` alone. Write
   `ball[:hp] = 0`, pass the Hash, or return the number. The build warns about each such line.

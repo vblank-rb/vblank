@@ -38,7 +38,7 @@ end
 # #next_byte hands back the byte at a channel's place before it moves the place on, and
 # #read_pitch_offset joins two such bytes, high byte first.
 class PlainRubySongReader
-  FIELDS = %i[at pitch_offset].freeze
+  FIELDS = %i[at pitch_offset drum envelope noise].freeze
 
   def initialize(builder, bytes)
     @bytes = bytes
@@ -48,6 +48,17 @@ class PlainRubySongReader
   def read_pitch_offset(channel)
     high = next_byte(channel)
     set(:pitch_offset, channel, (high << 8) | next_byte(channel))
+  end
+
+  # A drum step of three bytes at the channel's drum place: the envelope and the noise are read
+  # at places worked out from `at`, then the place moves on before either is written.
+  def read_drum_step(channel)
+    at = get(:drum, channel)
+    envelope = @bytes[at + 1]
+    noise = @bytes[at + 2]
+    set(:drum, channel, at + 3)
+    set(:envelope, channel, envelope)
+    set(:noise, channel, noise)
   end
 
   private

@@ -305,7 +305,7 @@ module VBlank
           local = @locals_by_node[write]
           return false unless local&.plain_name? && write.is_a?(Prism::LocalVariableWriteNode)
 
-          read_after_any?(local, write, named_changes(write) + changes_by_calls(write) + changes_read_through_calls(write))
+          read_after_any?(local, write, changes_of_value(write) + changes_read_through_locals(write))
         end
 
         # Is the local +write+ sets kept (#read_after_it_changes?) for a change the source writes
@@ -393,6 +393,36 @@ module VBlank
         def variable_read?(read) = @locals_by_node[read]&.variable? || false
 
         private
+
+        # What can change what the value +write+ gives its local reads directly: a name, a place or
+        # a call in that value.
+        def changes_of_value(write) = named_changes(write) + changes_by_calls(write) + changes_read_through_calls(write)
+
+        # What can change what the value +write+ gives its local reads through the plain names it
+        # uses: `envelope = @copy.byte(at + 1)` reads what `at = get(:drum, c)` reads, the list
+        # behind `get`, since `at` is a working-out too and is worked out where `envelope` is read.
+        def changes_read_through_locals(write)
+          locals_worked_out_in(write.value).flat_map do |local|
+            value_writes(local).flat_map { |each_write| changes_of_value(each_write) }
+          end
+        end
+
+        # The plain names +node+ reads, and the plain names their values read, however deep: each
+        # a working-out read where +node+ is (a game variable or an argument holds its own number).
+        def locals_worked_out_in(node, found = {}.compare_by_identity)
+          if node.is_a?(Prism::LocalVariableReadNode)
+            local = @locals_by_node[node]
+            if local&.plain_name? && !local.parameter? && !found.key?(local)
+              found[local] = true
+              value_writes(local).each { |each_write| locals_worked_out_in(each_write.value, found) }
+            end
+          end
+          node.compact_child_nodes.each { |child| locals_worked_out_in(child, found) }
+          found.keys
+        end
+
+        # The lines that give +local+ a value outright (`at = get(:drum, c)`).
+        def value_writes(local) = local.writes.map(&:node).grep(Prism::LocalVariableWriteNode)
 
         # The places +node+ reads: a local, an instance variable, or one slot or attribute of one,
         # `ball[:hp]` or `hero.x`, as written. A change to `ball[:x]` is no change to `ball[:hp]`.

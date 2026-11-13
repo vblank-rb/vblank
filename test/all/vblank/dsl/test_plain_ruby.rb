@@ -1664,6 +1664,24 @@ class TestPlainRuby < Minitest::Test
     assert_equal [2, 0], player.list(:song_at)
   end
 
+  # The same reader's drum step: `envelope` and `noise` are read at places worked out from `at`,
+  # itself read through `get`, and `set` moves the drum place on before they are written. They
+  # hold the bytes after the step's first, 0x11 and 0x12, where the next step's would be 0x14 and
+  # 0x15.
+  def test_a_name_read_through_another_name_keeps_it_when_a_method_moves_the_place_on
+    player = played(frames: 2, allow: %w[PlainRubySongReader]) do
+      bytes = table :song_bytes, [0x10, 0x11, 0x12, 0x13, 0x14, 0x15], width: :byte
+      reader = PlainRubySongReader.new(self, bytes)
+      game_loop do
+        reader.read_drum_step(0)
+        halt
+      end
+    end
+
+    assert_equal [[0x11, 0], [0x12, 0], [3, 0]],
+                 [player.list(:song_envelope), player.list(:song_noise), player.list(:song_drum)]
+  end
+
   # `bump(at)` moves `at` on later in the line that sets `f`: the `f` read after it holds the 10
   # read before, so the line adds 10, 0 and 10. Read late, both would be 20.
   def test_a_name_set_inside_a_line_keeps_it_when_a_call_later_in_the_line_moves_the_place_on
