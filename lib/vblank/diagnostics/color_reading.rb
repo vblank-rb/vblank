@@ -75,11 +75,13 @@ module VBlank
 
       private def list_layout = IR::Backends::GBC::Runtime::Lists
 
-      # A VARIABLE THE GAME DECLARED NARROW is kept in a byte or two here, with the next variable
+      # A VARIABLE KEPT NARROW — one the game declared narrow, or one only ever holding a byte
+      # (IR::Backends::GBC::ByteVariables) — is kept in a byte or two here, with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
-        width = @rom.source_program&.kept_width_of(name) or return super
-        bytes = IR::KeptWidths::BYTES.fetch(width)
+        bytes = @rom.built&.variable_bytes(name)
+        return super if bytes.nil? || bytes == 4
+
         number = (0...bytes).sum { |i| mem8(address + i) << (8 * i) }
         number >= 1 << ((bytes * 8) - 1) ? number - (1 << (bytes * 8)) : number
       end
