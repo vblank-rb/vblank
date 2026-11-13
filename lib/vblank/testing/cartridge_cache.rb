@@ -256,16 +256,24 @@ module VBlank
         end
         expired_before = Time.now - (EXPIRE_DAYS * SECONDS_A_DAY)
         Dir.glob(File.join(@folder, "*.marshal")).each do |entry|
-          next unless File.mtime(entry) < expired_before
+          next unless modified_before?(entry, expired_before)
 
           FileUtils.rm_f(Dir.glob("#{entry.delete_suffix('.marshal')}.*").reject { it.end_with?(".lock") })
           remove_unheld_lock("#{entry}.lock")
         end
         # A cartridge a run stopped before renaming into place, a day or more ago.
         stale_before = Time.now - SECONDS_A_DAY
-        Dir.glob(File.join(@folder, "*.marshal.*.*")).each { |left| FileUtils.rm_f(left) if File.mtime(left) < stale_before }
+        Dir.glob(File.join(@folder, "*.marshal.*.*")).each { |left| FileUtils.rm_f(left) if modified_before?(left, stale_before) }
         # What a cartridge was last built from, for one no run has built for EXPIRE_DAYS.
-        Dir.glob(File.join(@base, "last", "*.json")).each { |last| FileUtils.rm_f(last) if File.mtime(last) < expired_before }
+        Dir.glob(File.join(@base, "last", "*.json")).each { |last| FileUtils.rm_f(last) if modified_before?(last, expired_before) }
+      end
+
+      # Whether +path+ was last written before +time+. Another process can rename or remove a file
+      # between the glob that found it and this read; a file gone is already tidied, so it is not old.
+      def modified_before?(path, time)
+        File.mtime(path) < time
+      rescue Errno::ENOENT
+        false
       end
 
       def remove_unheld_lock(path)

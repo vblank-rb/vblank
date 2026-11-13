@@ -209,6 +209,23 @@ class TestCartridgeCache < Minitest::Test
     end
   end
 
+  # Tidying after a build reads the age of every file it finds, and another process can rename or
+  # remove one between the finding and the reading. A link to nothing stands in for such a file:
+  # found by name, gone when its age is read.
+  def test_a_file_gone_before_the_tidying_reads_its_age_is_passed_over
+    Dir.mktmpdir do |folder|
+      ask(VBlank::Testing::CartridgeCache.new(folder), dot_game(:red))
+      library_folder = Dir.glob(File.join(folder, "*")).find { File.basename(it).match?(/\A\h{16}\z/) }
+      missing = File.join(folder, "missing")
+      %w[gone.marshal gone.marshal.1.1].each { File.symlink(missing, File.join(library_folder, it)) }
+      File.symlink(missing, File.join(folder, "last", "gone.json"))
+
+      cartridge = VBlank::Testing::CartridgeCache.new(folder).cartridge(dot_game(:blue), console: :gba)
+
+      assert_equal dot_game(:blue).build_rom(out: nil, err: nil, console: :gba).buffer, cartridge.buffer
+    end
+  end
+
   def test_a_cache_can_be_shared_with_every_ractor
     Dir.mktmpdir { |folder| assert Ractor.shareable?(VBlank::Testing::CartridgeCache.new(folder)) }
   end
