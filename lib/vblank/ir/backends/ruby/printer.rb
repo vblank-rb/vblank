@@ -37,6 +37,17 @@ module VBlank
         #   printed in parts (#print_part_call), each a method of its own, and no method is longer
         #   than that whatever the routine's length. A routine shorter than that is printed whole,
         #   as before, since a call costs a little each time.
+        # - MANY LOCALS STOP RUBY ITSELF. On an arm64 machine YJIT panics, and Ruby dies ("YJIT has
+        #   panicked", in yjit::asm::arm64::add), the first time it compiles a method of more than
+        #   about 490 locals: an add whose number does not fit the instruction, which holds up to
+        #   4095, and 8 bytes a local is about that many. Every sum a routine checks for coming
+        #   round keeps its answer in a local (w_1, w_2...), so a long unrolled routine (a data
+        #   pack's unpacking) reached that in one method, parts included. Two things keep every
+        #   method well under MOST_LOCALS_A_METHOD: a temporary is read only inside its own `? :`,
+        #   so the names are used again after MOST_TEMPORARIES_A_METHOD of them, and a routine whose
+        #   own locals would pass the limit keeps them as instance variables, as a routine in parts
+        #   does. A method printed with more all the same stops the build (#refuse_too_many_locals!)
+        #   rather than Ruby.
         class Printer
           Statements = Computer::Statements
           INDENT = "  "
@@ -61,6 +72,15 @@ module VBlank
           # The most branches one printed method holds (#branches_in counts them), well inside what
           # a Ractor's stack compiles (see the class's heading).
           MOST_BRANCHES_A_METHOD = 3_000
+
+          # The most locals one printed method has, well inside what YJIT compiles (see "MANY
+          # LOCALS" in the class's heading). A routine whose locals would pass it keeps them as
+          # instance variables (#print_function), as a routine printed in parts does.
+          MOST_LOCALS_A_METHOD = 400
+
+          # The most temporaries one printed method names (#operator_of_two): past it, the names
+          # are used again from the first.
+          MOST_TEMPORARIES_A_METHOD = 256
 
           # What a part of a routine hands back to the method that called it, besides nil (it ran
           # to its end, so the caller goes on) and the routine's own 0 or 1 (the routine hands that
@@ -129,6 +149,7 @@ module VBlank
             @temporaries = 0
             @routine = item.name.text
             @in_parts = list_branches(item.body) > MOST_BRANCHES_A_METHOD
+            @locals_in_instance_variables = @in_parts || whole_method_local_count(item.body) > MOST_LOCALS_A_METHOD
             @parts = []
             @part_count = 0
             print_method(item.name.text, item.body, part: false)
@@ -147,11 +168,29 @@ module VBlank
           def print_method(name, body, part:)
             @in_part = part
             @loops_open = 0
+            @method_locals = Set.new
             line(0, "def #{name}")
             statements(1, body)
             line(1, "nil") if part && !LEAVING_STATEMENTS.include?(body.last.class)
             line(0, "end")
             line(0, "")
+            refuse_too_many_locals!(name)
+          end
+
+          # +text+, a Ruby local of the method being printed, counted for #refuse_too_many_locals!.
+          def method_local(text)
+            @method_locals << text
+            text
+          end
+
+          # The build stops, rather than Ruby when YJIT compiles the method (see MANY LOCALS in the
+          # class's heading), if a method was printed with more locals than MOST_LOCALS_A_METHOD.
+          def refuse_too_many_locals!(name)
+            return if @method_locals.size <= MOST_LOCALS_A_METHOD
+
+            raise LoweringError, "the routine #{@routine} was written as a Ruby method (#{name}) with " \
+                                 "#{@method_locals.size} locals. YJIT can stop Ruby on a method with more than " \
+                                 "#{MOST_LOCALS_A_METHOD}, so the Ruby lowering cannot write this routine yet."
           end
 
           # A small table is its numbers, sixteen a line. A big one is its bytes in base64, read
@@ -234,7 +273,7 @@ module VBlank
             endings = endings_of(list, in_loop: false)
             return line(depth, name) if endings.empty?
 
-            line(depth, "rg_part_ended = #{name}")
+            line(depth, "#{method_local('rg_part_ended')} = #{name}")
             if @in_part
               line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break) && @loops_open.positive?
               line(depth, "return rg_part_ended unless rg_part_ended.nil?")
@@ -292,13 +331,65 @@ module VBlank
 
           def list_branches(list) = list.sum { |statement| branches_in(statement) }
 
+          # The locals a routine of +body+ would have printed whole as one method: its own, a
+          # temporary for each sum checked for coming round (MOST_TEMPORARIES_A_METHOD at most), and
+          # the most a RunToEnd keeps.
+          def whole_method_local_count(body)
+            own = Set.new
+            kept = 0
+            wrapped = 0
+            each_statement(body) do |statement|
+              own << statement.name.text if statement.is_a?(Statements::Local)
+              kept = [kept, statement.counters.size + statement.locals.size].max if statement.is_a?(Statements::RunToEnd)
+              wrapped += wrapped_operators_in_statement(statement)
+            end
+            own.size + kept + [wrapped, MOST_TEMPORARIES_A_METHOD].min
+          end
+
+          # Every statement in +list+ and in the statements it holds.
+          def each_statement(list, &block)
+            list.each do |statement|
+              yield statement
+              case statement
+              when Statements::If then each_statement(statement.body, &block)
+                                       each_statement(statement.otherwise, &block)
+              when Statements::While, Statements::Block then each_statement(statement.body, &block)
+              when Statements::Steps then statement.steps.each { |step| each_statement(step, &block) }
+              end
+            end
+          end
+
+          # The sums, differences and products +statement+ checks for coming round (#wrapped_operator?),
+          # not counting the statements it holds.
+          def wrapped_operators_in_statement(statement)
+            case statement
+            when Statements::Eval, Statements::Resume, Statements::RunToEnd then wrapped_operators_in(statement.call)
+            when Statements::Assign then wrapped_operators_in(statement.target) + wrapped_operators_in(statement.value)
+            when Statements::Local then wrapped_operators_in(statement.value)
+            when Statements::If, Statements::While then wrapped_operators_in(statement.condition)
+            else 0
+            end
+          end
+
+          def wrapped_operators_in(item)
+            case item
+            when Statements::Index then wrapped_operators_in(item.array) + wrapped_operators_in(item.index)
+            when Statements::Call then (wrapped_operator?(item) ? 1 : 0) + item.args.sum { |arg| wrapped_operators_in(arg) }
+            else 0
+            end
+          end
+
+          # Whether +call+ is printed as Ruby's own +, - or * with its check for coming round
+          # (#operator_of_two), which keeps its answer in a temporary.
+          def wrapped_operator?(call) = call.args.size == 2 && WRAPPED_OPERATORS.key?(call.function.text)
+
           def expression_branches(item)
             case item
             when Statements::Index then expression_branches(item.array) + expression_branches(item.index)
             when Statements::Call
               function = item.function.text
               own = if COMPARISONS.key?(function) then 1
-                    elsif WRAPPED_OPERATORS.key?(function) then 3
+                    elsif wrapped_operator?(item) then 3
                     else 0
                     end
               own + item.args.sum { |arg| expression_branches(arg) }
@@ -336,7 +427,7 @@ module VBlank
           # it can reach kept in Ruby locals, the counters set to 0, and all put back after.
           def print_run_to_end(depth, item)
             kept = item.counters + item.locals.map(&:name)
-            kept.each_with_index { |name, k| line(depth, "rg_kept_#{k} = #{expression(name)}") }
+            kept.each_with_index { |name, k| line(depth, "#{method_local("rg_kept_#{k}")} = #{expression(name)}") }
             item.counters.each { |counter| line(depth, "#{expression(counter)} = 0") }
             line(depth, "rg_wait_vblank_while_answering if #{expression(item.call)} == 1")
             kept.each_with_index { |name, k| line(depth, "#{expression(name)} = rg_kept_#{k}") }
@@ -359,10 +450,11 @@ module VBlank
             line(depth, "end")
           end
 
-          # A local is a Ruby local, or, in a routine printed in parts, where every part reads it, an
-          # instance variable (the lowering names each local for its routine alone).
+          # A local is a Ruby local, or, in a routine printed in parts, where every part reads it, or
+          # one with more locals than a method holds, an instance variable (the lowering names each
+          # local for its routine alone).
           def print_local(depth, item)
-            @locals << item.name.text unless @in_parts
+            @locals << method_local(item.name.text) unless @locals_in_instance_variables
             line(depth, "#{name(item.name)} = #{expression(item.value)}")
           end
 
@@ -435,7 +527,8 @@ module VBlank
               "(#{left} #{bits} #{right})"
             else
               @called << "rg_i32"
-              kept = "w_#{@temporaries += 1}"
+              kept = method_local("w_#{(@temporaries % MOST_TEMPORARIES_A_METHOD) + 1}") # see MANY LOCALS in the heading
+              @temporaries += 1
               "((#{kept} = #{left} #{WRAPPED_OPERATORS.fetch(function)} #{right}) > #{Int32::MAX} || " \
                 "#{kept} < #{Int32::MIN} ? rg_i32(#{kept}) : #{kept})"
             end

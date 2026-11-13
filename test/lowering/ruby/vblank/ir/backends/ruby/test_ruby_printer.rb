@@ -110,6 +110,45 @@ class TestRubyPrinter < Minitest::Test
     assert_equal (0...passes).sum { |pass| (0..(2 + pass)).sum { |round| ((round & 3) * SUMS_IN_A_LONG_LOOP) + (SUMS_IN_A_LONG_LOOP / 2) } }, v[:total]
   end
 
+  # A ROUTINE OF MANY SUMS keeps each sum in a local of its own while it checks it for coming
+  # round, and YJIT on arm64 stops Ruby itself (a panic in its assembler) on a method of more than
+  # about 490 locals once that method is called often enough to compile. So no printed method has
+  # more than MOST_LOCALS_A_METHOD, and the routine, called every frame, plays as it does on the
+  # interpreter: under YJIT on the Ruby run, which turns it on (Lowering::Run#yjit). Too few branches to be printed in parts, so the sums alone are long;
+  # its loops give it many locals of its own besides (each loop's count and index).
+  SUMS_IN_A_ROUTINE = 300
+  LOOPS_IN_A_ROUTINE = 150
+
+  def test_a_routine_of_many_sums_keeps_few_locals_and_plays
+    program = program_of do
+      total = var :total, 0
+      func(:many_sums) do
+        SUMS_IN_A_ROUTINE.times { |n| total += (n & 3) + 1 }
+        LOOPS_IN_A_ROUTINE.times { repeat(2) { |i| total += i * 0 } }
+      end
+      game_loop { call :many_sums }
+    end
+    most = VBlank::IR::Backends::Ruby::Printer::MOST_LOCALS_A_METHOD
+    locals = locals_by_method(printed_program(program))
+
+    assert_operator locals.values.max, :<=, most, "a printed method has more locals than YJIT compiles: #{locals.max_by(&:last)}"
+    a_call = SUMS_IN_A_ROUTINE.times.sum { |n| (n & 3) + 1 }
+    total = game_player.run(program, frames: 60)[:total]
+
+    assert_equal 0, total % a_call
+    assert_operator total / a_call, :>=, 50, "the routine should be called often enough for YJIT to compile it"
+  end
+
+  # Where InstructionSequence#to_a keeps a method's local table.
+  LOCAL_TABLE = 10
+
+  # How many locals each method of the printed game has, as Ruby's compiler counts them.
+  private def locals_by_method(text)
+    by_method = {}
+    RubyVM::InstructionSequence.compile(text).each_child { |method| by_method[method.label] = method.to_a[LOCAL_TABLE].size }
+    by_method
+  end
+
   private def program_of(&block)
     builder = Builder.new
     builder.instance_eval(&block)
