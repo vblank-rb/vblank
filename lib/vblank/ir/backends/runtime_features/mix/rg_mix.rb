@@ -292,8 +292,16 @@ end
 # Each voice told to the sound chip that plays recordings on voices of its own (rg_mix.c says when).
 def rg_mix_recordings_told
   @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
-    rg_spu_tell_recording(i, voice.sounding, voice.recording, voice.back, voice.step, voice.loudness, voice.level, voice.shaped)
+    rg_spu_tell_recording(i, voice.sounding, rg_mix_ran_out?(voice), voice.recording, voice.back, voice.step, voice.loudness, voice.level,
+                          voice.shaped)
   end
+end
+
+# rg_mix.c's ran_out: the voice stopped because its recording, played once through, ran out.
+def rg_mix_ran_out?(voice)
+  return false if voice.sounding || voice.back != 0 || voice.recording.negative? || voice.recording >= @rg_game_recordings[0]
+
+  voice.position >= @rg_game_recordings[rg_recording_numbers(voice.recording) + 1]
 end
 
 # One voice's frame added into +totals+. False when its recording ran out partway and it stopped.

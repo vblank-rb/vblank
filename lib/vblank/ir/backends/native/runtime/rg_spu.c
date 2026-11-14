@@ -156,8 +156,8 @@ static inline void spu_recording_struck(int32_t place, int32_t by_game) {
  * lets its voice go where the pass's wait ends, so the voice sounds on to the end of the frame. */
 static inline void spu_recording_stopped_by_game(int32_t place) { spu_stopped_by_game |= 1 << (SPU_GAME_VOICES + place); }
 
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level, int32_t shaped);
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped);
 
 #if RG_VOICES_READ_SOUND_MEMORY
 extern const int32_t rg_game_spu_rules[];
@@ -606,10 +606,19 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
  * the mix gives it, as Runtime::Recordings#emit_loudness sets it: a shaped note's loudness scaled by
  * the level (its top bit added back, so full is the whole loudness) to a whole number of 256ths; a
  * note with no shape, held at full, its loudness with its half a 256th kept. A way the game never
- * plays it (nowhere in sound memory) is silent. */
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level, int32_t shaped) {
+ * plays it (nowhere in sound memory) is silent.
+ *
+ * A recording played once through that +ran_out+ in the mix is not let go: its loop ends with a block
+ * that ends the sound, so the voice falls quiet there by itself, as the program's does
+ * (Runtime::Recordings#emit_frame). Struck at this frame boundary, it is started all the same, so a
+ * recording the mix was through inside a frame is heard. */
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped) {
   if (!sounding && ((spu_stopped_by_game >> (SPU_GAME_VOICES + place)) & 1)) return; /* let go a frame later */
+  if (ran_out) {
+    if (!(((spu_struck | spu_struck_waiting) >> (SPU_GAME_VOICES + place)) & 1)) return; /* playing to its end */
+    sounding = 1;
+  }
   int32_t loop = -1;
   if (sounding && recording >= 0 && recording < rg_game_spu_recordings[0]) {
     const int32_t *ways = &rg_game_spu_recordings[1 + (recording * 3)];
@@ -692,9 +701,9 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
   return count;
 }
 #else
-static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level, int32_t shaped) {
-  (void)place, (void)sounding, (void)recording, (void)back, (void)step, (void)loudness, (void)level, (void)shaped;
+static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t ran_out, int32_t recording, int32_t back,
+                                      int32_t step, int32_t loudness, int32_t level, int32_t shaped) {
+  (void)place, (void)sounding, (void)ran_out, (void)recording, (void)back, (void)step, (void)loudness, (void)level, (void)shaped;
 }
 #endif
 

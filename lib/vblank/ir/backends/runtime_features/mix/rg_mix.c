@@ -449,12 +449,20 @@ static void rg_mix_sound_frame_ended(void) {
   }
 }
 
+/* Whether +voice+ stopped because its recording, played once through, ran out: not stopped by the
+ * game, let go by a rest or fallen away. A chip that plays the recording on a voice of its own plays
+ * it to its end itself, however soon the mix got there. */
+static int32_t ran_out(const mix_voice *voice) {
+  if (voice->sounding || voice->back != 0 || voice->recording < 0 || voice->recording >= rg_game_recordings[0]) return 0;
+  return voice->position >= recording_numbers(voice->recording)[1];
+}
+
 /* rg_hook_recordings_told: each voice told to the sound chip that plays recordings on voices of its
  * own (rg_spu.c), as it stands where the frame's tune and shapes have played. */
 static inline void rg_mix_recordings_told(void) {
   for (int32_t i = 0; i < VOICES; i++) {
     const mix_voice *voice = &voices[i];
-    spu_tell_recording(i, voice->sounding, voice->recording, voice->back, voice->step, voice->loudness, voice->level,
+    spu_tell_recording(i, voice->sounding, ran_out(voice), voice->recording, voice->back, voice->step, voice->loudness, voice->level,
                        voice->shaped);
   }
 }

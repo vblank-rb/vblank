@@ -468,21 +468,16 @@ module PackSoundTests
     Dir.mktmpdir do |folder|
       whole = speaker_games(folder, VBlank::Cartridge::Options.new)
       left_out = speaker_games(folder, PACK_AT_START)
-      sounding = []
-      kept = false
       whole.each do |name, game|
         presses = ->(frame) { game.presses.fetch(frame, []) }
         wanted = speakers_kept(game_player).input_each_frame(&presses).run(game.program, frames: 80)
         heard = speakers_kept(game_player.hand_file(game.file)).input_each_frame(&presses).run(left_out.fetch(name).program, frames: 80)
         next unless wanted.respond_to?(:sound_right)
 
-        kept = true
+        # Every one sounds, the recordings over inside a frame too.
+        assert wanted.sound.any? { |level| level != 0 }, "#{name}: the all-in-one build sounds from the speakers"
         assert_equal [wanted.sound, wanted.sound_right], [heard.sound, heard.sound_right], "#{name}: the speakers"
-        sounding << name if wanted.sound.any? { |level| level != 0 }
       end
-      # A recording over inside a frame is not heard on every console's speakers, so a game playing
-      # only those can be silent there all-in-one; but not every game.
-      refute_empty sounding, "no game sounds from the speakers all-in-one, so there is nothing to compare" if kept
     end
   end
 

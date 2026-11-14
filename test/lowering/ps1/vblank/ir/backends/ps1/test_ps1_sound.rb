@@ -143,6 +143,16 @@ class TestPS1Sound < Minitest::Test
     assert_includes run.audio, [:sample, :clip]
   end
 
+  # Thirty samples are over inside a frame, by the interpreter's count, before the frame boundary
+  # that starts the chip's voice: the voice still plays them, to the block that ends the sound.
+  def test_a_recording_over_inside_a_frame_is_heard
+    run = PS1::HeadlessRun.new
+    run.run(recording_program(loop: false), frames: 10)
+
+    assert_operator run.loudest_each_frame.max, :>, 1000, "the thirty samples sound"
+    assert_operator run.loudest_each_frame.last(3).max, :<, 50, "and then the voice is quiet"
+  end
+
   def test_a_looping_recording_is_heard_at_the_rate_it_was_recorded
     run = PS1::CheckedRun.new.run(recording_program(loop: true), frames: 20)
 

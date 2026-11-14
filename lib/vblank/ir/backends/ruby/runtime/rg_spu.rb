@@ -535,10 +535,17 @@ def rg_spu_render_frame
   frame
 end
 
-# What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording).
-def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, level, shaped)
+# What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording):
+# one that +ran_out+ plays to its end, started all the same where it is struck now.
+def rg_spu_tell_recording(place, sounding, ran_out, recording, back, step, loudness, level, shaped)
   sounding = sounding && sounding != 0
   return if !sounding && @rg_spu_stopped_by_game[RG_SPU_GAME_VOICES + place] == 1
+
+  if ran_out
+    return unless (@rg_spu_struck | @rg_spu_struck_waiting)[RG_SPU_GAME_VOICES + place] == 1
+
+    sounding = true
+  end
 
   ways = @rg_game_spu_recordings
   loop = -1

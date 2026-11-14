@@ -449,7 +449,8 @@ module VBlank
             end
 
             # rt_recordings_frame: every place a frame on (Reference::Mixer#mix_voice): the fraction carried,
-            # the whole samples added; past the end, a play once through is over and its place free, and one
+            # the whole samples added; past the end, a play once through is over and its place free (its
+            # voice left to play to its end), and one
             # that holds reads back by its hold as many times as it takes, the game's own logging each time
             # round.
             def emit_frame(asm, _at, place)
@@ -477,7 +478,11 @@ module VBlank
                 asm.bne(:t2, :zero, next_place)
                 asm.lw(:t2, place.call(PLACE_BACK), :t9)
                 asm.bne(:t2, :zero, "rt_recordings_frame_round")
-                asm.jal("rt_recordings_free") # once through: over
+                # Once through: over, and its place free. Its voice is not let go: the chip's loop of it
+                # ends with a block that ends the sound (ADPCM, loop: false), so the voice falls quiet
+                # there by itself. Let go here, a recording over inside a frame would be let go at the
+                # same frame boundary that starts it, and never heard.
+                asm.sw(:zero, place.call(HELD), :t9)
                 asm.b(next_place)
                 asm.label("rt_recordings_frame_round")
                 asm.subu(:t0, :t0, :t2)
