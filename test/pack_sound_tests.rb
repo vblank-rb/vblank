@@ -99,10 +99,9 @@ module PackSoundTests
 
   # A game playing an instrument from the pack on the A button, its rate and the sample it holds
   # from read from the pack when +from_pack+, or given by hand as the numbers the copy holds there.
-  # A shape that strikes at full and falls to a little over a quarter: a note the game plays
-  # starts its shape as it is played, so even these 32 samples, over inside a frame, are heard.
+  # It has no shape, which the Genesis refuses: that a shaped note the game plays is heard though
+  # it is over inside a frame is test/note_envelope_tests.rb's, on each console that shapes one.
   private def instrument_settings_game(folder, from_pack:)
-    struck = VBlank::Audio::Envelope.new(attack: 255, decay: 36, sustain: 73, release: 110)
     rate = COPY.byteslice(SETTINGS_AT, 2).unpack1("v")
     holds = COPY.getbyte(HOLDS_AT)
     from = original(folder)
@@ -116,10 +115,9 @@ module PackSoundTests
         slots.numbers :holds, at: HOLDS_AT, count: 1, width: :byte, signed: false
       end
       tone = if from_pack
-               instrument :tone, pcm: pack[:bang], rate: pack[:tuning].number(0), holds_from: pack[:holds].number(0),
-                                 envelope: struck
+               instrument :tone, pcm: pack[:bang], rate: pack[:tuning].number(0), holds_from: pack[:holds].number(0)
              else
-               instrument :tone, pcm: pack[:bang], rate: rate, holds_from: holds, envelope: struck
+               instrument :tone, pcm: pack[:bang], rate: rate, holds_from: holds
              end
       game_loop do
         wait_vblank
