@@ -38,6 +38,7 @@ require_relative "original/packing"        # The packed formats an unpacking rou
 # The unpacking routine's handles do their work in game words, so they come in as a part of a game does.
 VBlank.require_game_file "original/copy_reader"  # The copy and the pack as the unpacking routine sees them
 VBlank.require_game_file "original/frame_rewrite"  # Each frame a game names, written again as a record of VBlank's own
+VBlank.require_game_file "original/unpacking_progress"  # The bar a shell shows while it unpacks
 require_relative "original/shell_facts"    # What every runtime is told about a shell
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history

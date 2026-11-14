@@ -517,7 +517,7 @@ module VBlank
       # its size, and the build hands it that copy when it plays it (Original::Unpacking#run_on).
       # With the pack left out there are no +bytes+: the program is built for a copy of the size of
       # +release+ (an Original::Release), the one it unpacks. That program is what a shell plays on
-      # the player's machine, so it shows how far it has got (#define_unpacking_progress). Both are
+      # the player's machine, so it shows how far it has got (Original::UnpackingProgress). Both are
       # built for the game's console. +reading+ (a CopyReading) says which packed formats the copy
       # offers the routine.
       #
@@ -540,7 +540,7 @@ module VBlank
                                                    slot_bytes_done: slot_bytes_done)
           if progress
             done = slot_bytes_done ? UnpackingWork.new(slots, slot_bytes_done) : UnpackingBytes.new(slots, reader.bytes_done)
-            define_unpacking_progress(maker, done, finished)
+            Original::UnpackingProgress.new(maker).define(done, finished)
           end
           places = Original::Unpacking.places_of(slots)
           writers = slots.each_with_index.to_h do |slot, number|
@@ -585,27 +585,6 @@ module VBlank
       # by every backend, which lays a program out for the console it names and refuses one naming none.
       def unpacking_options
         Cartridge::Options.new(console: @build_options.console, variant: @build_options.variant, for_computer: true)
-      end
-
-      # Where a shell's progress bar is, in pixels from the screen's edges, and how tall it is.
-      PROGRESS_BAR_SIDE = 16
-      PROGRESS_BAR_HEIGHT = 8
-
-      # THE PROGRESS BAR a shell shows while it unpacks: a routine on +maker+, called before every
-      # wait for the next frame (Original::CopyReader), drawing a bar as far along as +done+ (an
-      # UnpackingBytes or UnpackingWork) says, and the whole bar once +finished+ is 1. Game code, so
-      # every runtime draws it, and the interpreter is its answer key.
-      def define_unpacking_progress(maker, done, finished)
-        across = maker.screen_width - (2 * PROGRESS_BAR_SIDE)
-        top = (maker.screen_height - PROGRESS_BAR_HEIGHT) / 2
-        maker.screen :bitmap
-        maker.func(Original::Unpacking::PROGRESS) do
-          maker.clear_screen :black
-          maker.draw_text "UNPACKING", :center, top - 16, :white
-          maker.fill_rect PROGRESS_BAR_SIDE, top, across, PROGRESS_BAR_HEIGHT, :gray
-          shown = (done.pixels_shown(across) + (finished * across)).clamp(0, across)
-          maker.draw_rect_at PROGRESS_BAR_SIDE, top, shown, PROGRESS_BAR_HEIGHT, :white
-        end
       end
 
       # HOW FAR THE BAR IS, BY BYTES: the bytes written so far (+done+, the routine's count) of all

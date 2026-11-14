@@ -35,7 +35,7 @@ module VBlank
     #
     # +cost+ is how much work one of the slot's bytes takes to unpack, against a plain copy's 1: a
     # slot the routine renders or decompresses slowly names more, so a shell's bar gives it its
-    # share of the time rather than of the bytes (Builder::DataPacks#define_unpacking_progress). It
+    # share of the time rather than of the bytes (Original::UnpackingProgress). It
     # changes nothing in the pack.
     #
     # A VIEW OF A SLOT is some of a slot's bytes read in a shape of their own: +count+ items of that

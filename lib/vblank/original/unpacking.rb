@@ -239,6 +239,7 @@ module VBlank
       SLOT_BYTES_DONE = Messages::MadeNames.make(:unpacking_part, part: :slot_bytes_done)
       FINISHED = Messages::MadeNames.make(:unpacking_part, part: :finished)
       PROGRESS = Messages::MadeNames.make(:unpacking_part, part: :progress)
+      PAINTED_WIDTH = Messages::MadeNames.make(:unpacking_part, part: :painted_width)
       FAULT_KIND = Messages::MadeNames.make(:unpacking_part, part: :fault_kind)
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)

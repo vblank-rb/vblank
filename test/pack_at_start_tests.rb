@@ -471,15 +471,15 @@ module PackAtStartTests
   # Builder::DataPacks's bar: a gray strip in from each side, in the middle of the screen, white as
   # far as the unpacking has got. Measured until it is full, where gray is gone.
   private def bar_width(screen)
-    side = VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE
-    height = VBlank::Builder::DataPacks::PROGRESS_BAR_HEIGHT
+    side = VBlank::Original::UnpackingProgress::SIDE
+    height = VBlank::Original::UnpackingProgress::HEIGHT
     row = ((VBlank::Console.described(game_console).screen_height - height) / 2) + (height / 2)
     gray = screen.pixel(side + bar_across - 1, row)
     (0...bar_across).count { |x| screen.pixel(side + x, row) != gray }
   end
 
   private def bar_across
-    VBlank::Console.described(game_console).screen_width - (2 * VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE)
+    VBlank::Console.described(game_console).screen_width - (2 * VBlank::Original::UnpackingProgress::SIDE)
   end
 
   # With no cost named the bar is the bytes written of the pack's bytes: the copied slot is a

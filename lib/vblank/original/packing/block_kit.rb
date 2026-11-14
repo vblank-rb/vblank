@@ -124,7 +124,7 @@ module VBlank
         attr_reader :builder, :copy, :pack
 
         # +before_wait+ names a routine called before each wait for the next frame (a shell's
-        # progress bar, Builder::DataPacks#define_unpacking_progress), or is nil for none.
+        # progress bar, Original::UnpackingProgress), or is nil for none.
         # +slot_bytes_done+ is a list of the bytes written to each slot, by the slot's number, for a
         # pack whose slots name their costs, or nil for one that names none.
         def initialize(builder, copy:, pack:, faults:, before_wait: nil, slot_bytes_done: nil)
