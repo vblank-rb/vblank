@@ -218,10 +218,6 @@ module VBlank
           # of the routine the runtime runs at each frame boundary, or nil for a game with no timers.
           attr_reader :variables, :lists, :frame_begins
 
-          # Where variable +name+ is kept, for the runtime to read there whole (#place_of): the
-          # build hands it to the runtime's sections (GBC#lower).
-          def whole_place_of(name) = place_of(name)
-
           # Each variable kept narrower than four bytes, by its name, and its bytes (GBC::Places#kept_bytes).
           def kept_variable_bytes = @variables.keys.filter_map { |name| (bytes = kept_bytes(name)) && [name, bytes] }.to_h
 
@@ -694,31 +690,19 @@ module VBlank
               @sprite_pixels = {}
             end
 
+            # The tiles each background's `set_tile`s put in its cells, by the background's name.
             # The variables kept in a byte though the game never declared them narrow
             # (GBC::ByteVariables). A game loop's own numbers (IR::Frames::ConsoleLoop) are written
-            # by statements the program does not hold, and a variable whose place the lowering
-            # hands over (#handed_over) is read there whole, so they stay whole.
+            # by statements the program does not hold, and the clock's offset is added to in four
+            # bytes where it is kept (Clock), so they stay whole.
             def byte_variables
               @byte_variables ||= begin
                 plan = @cache.plan
                 loops = plan.game_loops.flat_map { |node| plan.console_loop(node).variables }
-                ByteVariables.new(@cache.program, also_whole: loops + handed_over.to_a).names
+                ByteVariables.new(@cache.program, also_whole: loops + IR::Clock::OFFSETS).names
               end
             end
 
-            # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
-            # routine that reads or writes them where they are kept, or to code reading all four
-            # bytes. Each is kept whole on every try after the one that found it, declared narrow
-            # or not.
-            def handed_over = @handed_over ||= Set.new
-
-            # Keep +name+ whole from the next try on (Lowering::VariableHandedOver).
-            def keep_whole(name)
-              handed_over << name
-              @byte_variables = nil
-            end
-
-            # The tiles each background's `set_tile`s put in its cells, by the background's name.
             def tiles_set_in
               @tiles_set_in ||= @cache.plan.reachable.select { |node| node.kind == :set_tile }.group_by(&:name)
                                       .transform_values { |nodes| nodes.flat_map(&:tiles_named) }
@@ -728,25 +712,9 @@ module VBlank
             def screen_modes = @screen_modes ||= Modes.resolve(@cache.program)
           end
 
-          # WHERE VARIABLE +name+ IS KEPT, for code that reads or writes all four of its bytes there,
-          # or hands the place to a runtime routine that does (rt_music_level reads the music's
-          # level so). A variable kept narrower (KeptVariables) has other variables straight after
-          # it, so it cannot be asked for here: it is kept whole from the next try on, and this
-          # try stops (VariableHandedOver, which GBC#build makes the next try for). So no site
-          # handing a place over has to remember to keep its variable whole. Code that reads and
-          # writes only the bytes a variable is kept in asks KeptVariables#kept_place_of.
           def place_of(name)
-            if kept_bytes(name)
-              @cache.facts.keep_whole(name)
-              raise VariableHandedOver, name
-            end
-
-            kept_place_of(name)
+            @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
           end
-
-          # A try asked for the place of a variable kept narrow (#place_of); the next try keeps it
-          # whole.
-          class VariableHandedOver < StandardError; end
 
           # --- statements ---
 
@@ -852,7 +820,7 @@ module VBlank
             amount = folded(operand)
             kept = kept_bytes(name)
             if amount
-              add_in_place(kept_place_of(name), op == :- ? Int32.neg(amount) : amount, kept || 4)
+              add_in_place(place_of(name), op == :- ? Int32.neg(amount) : amount, kept || 4)
               emit_sprites_changed(name) unless amount.zero?
               return
             end
@@ -924,7 +892,7 @@ module VBlank
           def jump(label) = @asm.jump(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
-          def emit_increment(name) = add_in_place(kept_place_of(name), 1, kept_bytes(name) || 4)
+          def emit_increment(name) = add_in_place(place_of(name), 1, kept_bytes(name) || 4)
           def loop_statements(node) = children_of(node).first
 
           def emit_store_zero(name)
@@ -1785,7 +1753,7 @@ module VBlank
               @asm.jump(condition.op == :== ? :nz : :z, label)
             elsif (name = sign_tested_variable(condition))
               # A variable at or above nought, or below it, is its top bit, where it is kept.
-              @asm.load(:a, [kept_place_of(name) + (kept_bytes(name) || 4) - 1])
+              @asm.load(:a, [place_of(name) + (kept_bytes(name) || 4) - 1])
               @asm.bit(7, :a)
               @asm.jump(condition.op == :>= ? :nz : :z, label)
             elsif (ordered = ordering_of_two_kept(condition))

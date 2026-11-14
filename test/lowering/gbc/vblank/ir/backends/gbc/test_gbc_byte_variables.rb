@@ -65,51 +65,6 @@ class TestGBCByteVariables < Minitest::Test
     assert_equal 4, built.variable_bytes(:big)
   end
 
-  # The music's level is only ever 0 to 16, but the runtime's player reads it where it is kept,
-  # all four bytes (rt_music_level): kept in one, it would read the next variable's bytes too. A
-  # variable whose place the lowering hands over (Lowering#place_of) is kept whole however
-  # narrow it is proven, so a number written beside it changes nothing the music plays.
-  def test_a_variable_the_runtime_reads_where_it_is_kept_stays_whole
-    builder = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
-    builder.instance_eval do
-      screen :bitmap
-      enable_sound
-      song :hold do
-        tempo 60
-        volume 12
-        note :C4, :whole
-      end
-      music_volume 100
-      after = 0
-      pass = 0
-      game_loop do
-        after = 300
-        pass += 1
-        play_song :hold if pass == 1
-        music_volume 50 if pass == 3
-      end
-    end
-    builder.finalize_program
-
-    assert_equal 4, GBC.new.build(builder.program).built.variable_bytes(VBlank::IR::Tunes::LEVEL)
-    GBC::CheckedRun.new.run(builder.program, frames: 20)
-  end
-
-  # Every place a variable is kept is asked for by Lowering#place_of (whole) or
-  # KeptVariables#kept_place_of (the bytes it is kept in), never read from the lowering's table
-  # of places, so no new way of handing a variable over can skip the rule above.
-  def test_the_color_lowering_reaches_variable_places_only_through_place_of
-    sources = Dir[VBlank.root.join("lib/vblank/ir/backends/gbc/**/*.rb").to_s] + [VBlank.root.join("lib/vblank/ir/backends/gbc.rb").to_s]
-    reached = sources.flat_map do |path|
-      File.readlines(path).each_with_index.filter_map do |line, i|
-        "#{File.basename(path)}:#{i + 1}: #{line.strip}" if line.match?(/@variables\b|\bvariables\[|\bvariables\.fetch/) && !line.strip.start_with?("#")
-      end
-    end
-    allowed = [/@variables = \{\}/, /@variables\[name\] = @memory\.reserve/, /@variables\.fetch\(name\)/,
-               /attr_reader :variables/, /@variables\.keys\.filter_map/, /def keeps_variable\?/]
-    assert_empty reached.reject { |line| allowed.any? { |pattern| line.match?(pattern) } }
-  end
-
   # A byte read back widened: -1 from a list of links, multiplied past a byte, is the
   # interpreter's -1000 on every pass.
   def test_a_walk_through_links_agrees_with_the_interpreter

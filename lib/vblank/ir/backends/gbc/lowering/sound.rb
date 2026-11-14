@@ -42,8 +42,7 @@ module VBlank
             attr_reader :sound_tables
 
             # Where the game keeps how loud its music is, or nil for a game that never sets it.
-            # rt_music_level reads all four of its bytes there, so it is kept whole (Lowering#place_of).
-            def music_level = (place_of(Tunes::LEVEL) if keeps_variable?(Tunes::LEVEL))
+            def music_level = @variables[Tunes::LEVEL]
 
             # Does a song's note swell by itself in a game that moves the music volume, and on which kinds
             # of voice? Asked before the variables have places, so the player can keep room to hold one

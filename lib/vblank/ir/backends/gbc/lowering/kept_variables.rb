@@ -26,23 +26,8 @@ module VBlank
             end
 
             # The width variable +name+ is kept at: the one the game declared, or :byte for one
-            # only ever holding a byte (GBC::ByteVariables), or nil for the whole number. One whose
-            # place the lowering hands over is whole (Lowering#place_of): a declared one still
-            # holds only its width's numbers, since the wrap after each write is in the program.
-            def kept_width(name)
-              return nil if @cache.facts.handed_over.include?(name)
-
-              @program.kept_width_of(name) || (:byte if byte_variables.include?(name))
-            end
-
-            # Whether the program keeps a variable named +name+.
-            def keeps_variable?(name) = @variables.key?(name)
-
-            # Where variable +name+ is kept, for code reading or writing only the bytes it is kept
-            # in (#kept_bytes), or all four of a whole one. Anything else asks Lowering#place_of.
-            def kept_place_of(name)
-              @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
-            end
+            # only ever holding a byte (GBC::ByteVariables), or nil for the whole number.
+            def kept_width(name) = @program.kept_width_of(name) || (:byte if byte_variables.include?(name))
 
             def byte_variables = @byte_variables ||= @cache.facts.byte_variables.to_set
 
@@ -59,7 +44,7 @@ module VBlank
 
             # BCDE = the number, its sign copied up from its top byte.
             def load_kept_variable(name)
-              place = kept_place_of(name)
+              place = place_of(name)
               if kept_bytes(name) == 1
                 @asm.load(:a, [place])
                 @asm.load(:e, :a)
@@ -81,7 +66,7 @@ module VBlank
 
             # E (and D) into the variable's bytes.
             def store_kept_bytes(name)
-              place = kept_place_of(name)
+              place = place_of(name)
               @asm.load(:a, :e)
               @asm.load([place], :a)
               if kept_bytes(name) == 2
@@ -103,12 +88,12 @@ module VBlank
               return low_value(node.value, bytes).then { store(name) } if bytes == 2
 
               emit_low_byte_in_a(node.value)
-              @asm.load([kept_place_of(name)], :a)
+              @asm.load([place_of(name)], :a)
               emit_sprites_changed(name) unless sprites_placed_from(name).empty?
             end
 
             def emit_written_number_kept(name, number)
-              place = kept_place_of(name)
+              place = place_of(name)
               @asm.load(:a, number & 0xFF)
               @asm.load([place], :a)
               if kept_bytes(name) == 2
@@ -143,7 +128,7 @@ module VBlank
 
             # The zero flag set when the variable's bytes are +number+'s.
             def compare_kept_with_number(name, number)
-              place = kept_place_of(name)
+              place = place_of(name)
               @asm.load(:a, [place])
               @asm.cp_a(number & 0xFF)
               return if kept_bytes(name) == 1
@@ -158,7 +143,7 @@ module VBlank
             # The carry set when the variable is below +number+, with their signs: the top byte's
             # sign bit turned over on both, so the negative numbers come below the rest.
             def emit_carry_when_kept_below(name, number)
-              place = kept_place_of(name)
+              place = place_of(name)
               number &= 0xFFFF
               if kept_bytes(name) == 1
                 @asm.load(:a, [place])
@@ -187,7 +172,7 @@ module VBlank
             # The zero flag set when the two variables' bytes are the same, leaving at the first
             # that differs.
             def compare_two_kept(one, other)
-              first, second = kept_place_of(one), kept_place_of(other)
+              first, second = place_of(one), place_of(other)
               done = fresh("compared")
               kept_bytes(one).times do |i|
                 @asm.jump_relative(:nz, done) unless i.zero?
@@ -202,7 +187,7 @@ module VBlank
             # `negate!` on a variable kept narrow: nought take its bytes away, where they are. Only
             # the low bytes of a number decide the low bytes of its negative.
             def emit_negate_kept(name)
-              @asm.load(:hl, kept_place_of(name))
+              @asm.load(:hl, place_of(name))
               @asm.xor_a(:a)
               @asm.sub_a([:hl])
               @asm.load([:hl], :a)
@@ -287,7 +272,7 @@ module VBlank
             # high byte is nought) checks both ends. Where the jump lands the index is worked out
             # again, as for any kept index (#kept_list_index?).
             def emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: nil)
-              @asm.load(:a, [kept_place_of(name)])
+              @asm.load(:a, [place_of(name)])
               if length
                 @asm.cp_a(length)
               else
@@ -320,7 +305,7 @@ module VBlank
 
             # The carry set when variable +one+ is below variable +other+, with their signs.
             def emit_carry_when_kept_below_kept(one, other)
-              first, second = kept_place_of(one), kept_place_of(other)
+              first, second = place_of(one), place_of(other)
               if kept_bytes(one) == 2
                 @asm.load(:a, [second + 1])
                 @asm.xor_a(0x80)
