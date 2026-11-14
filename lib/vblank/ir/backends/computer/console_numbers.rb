@@ -6,7 +6,9 @@ module VBlank
       module Computer
         # THE CONSOLE THE C IS BUILT AS, written where the runtime reads it: rg_console_numbers.h,
         # beside game.c, which runtime/rg_console.h includes. Its screen is the size of the
-        # runtime's buffers and window, and its clock sets how long a frame lasts. Everything else
+        # runtime's buffers, and its whole screen the size of its window: bigger where the game's
+        # screen is shown in a border (Console::Description#bordered?), whose corner is RG_GAME_LEFT
+        # and RG_GAME_TOP. Its clock sets how long a frame lasts. Everything else
         # the game does differently on one console than another is decided when the game is
         # lowered, from the same description.
         #
@@ -25,7 +27,10 @@ module VBlank
           # number keeps are every console's, since a build refuses a button its console lacks
           # before there is a game to play.
           def values(console, start_up: true)
+            whole = console.framed_screen_size
+            left, top = console.border_corner
             { "RG_SCREEN_WIDTH" => console.screen_width, "RG_SCREEN_HEIGHT" => console.screen_height,
+              "RG_WHOLE_WIDTH" => whole[0], "RG_WHOLE_HEIGHT" => whole[1], "RG_GAME_LEFT" => left, "RG_GAME_TOP" => top,
               "RG_CONSOLE_TICKS_A_SECOND" => console.cycles_a_second,
               "RG_CONSOLE_TICKS_A_FRAME" => console.cycles_a_frame,
               "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_DIMS" => console.fades_by_brightness,

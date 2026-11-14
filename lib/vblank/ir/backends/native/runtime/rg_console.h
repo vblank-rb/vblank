@@ -21,6 +21,23 @@
 #define RG_SCREEN_HEIGHT 160
 #endif
 
+/* The whole screen the window shows, and where the game's screen sits in it. They are the game's
+ * screen and (0, 0) but where the game's screen is shown in the middle of a bigger one, with a
+ * border round it (Console::Description#bordered?, a Game Boy Color's screen on the Advance). */
+#ifndef RG_WHOLE_WIDTH
+#define RG_WHOLE_WIDTH RG_SCREEN_WIDTH
+#endif
+#ifndef RG_WHOLE_HEIGHT
+#define RG_WHOLE_HEIGHT RG_SCREEN_HEIGHT
+#endif
+#ifndef RG_GAME_LEFT
+#define RG_GAME_LEFT 0
+#endif
+#ifndef RG_GAME_TOP
+#define RG_GAME_TOP 0
+#endif
+#define RG_SCREEN_BORDERED (RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT)
+
 /* How many bits of each colour channel the console shows, from the top. */
 #ifndef RG_COLOR_BITS
 #define RG_COLOR_BITS 5

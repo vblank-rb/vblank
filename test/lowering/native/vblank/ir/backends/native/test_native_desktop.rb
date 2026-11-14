@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
+require "border_frame_tests"
 require "fileutils"
 require "open3"
 require "tmpdir"
@@ -369,6 +370,25 @@ class TestNativeDesktop < Minitest::Test
       assert_operator played.printed[/^start_up_frames (\d+)$/, 1].to_i, :>, 200, "about four and a half seconds of it"
       assert_equal 10, played.variables[:frames], "and then the game's own frames"
       assert_empty played.said
+    end
+  end
+
+  # A GAME LAID OUT FOR THE GAME BOY COLOR, BUILT FOR THE ADVANCE IN A BORDER, fills the Advance's
+  # window: 240×160 three times over, the border round the game's screen (test/border_frame_tests.rb
+  # holds every pixel of it), and the game's red bar at its corner, (40, 8).
+  def test_a_color_game_in_a_border_fills_the_advances_window
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(BorderFrameTests::PLAIN, File.join(dir, "bordered"), console: :gba, err: nil)
+      window, = picture_of_window(exe, dir, [], frames: 5)
+      border = VBlank::Graphics::Border.default(whole: [240, 160], inner: [160, 144])
+      seen_at = ->(x, y) { window.pixels[(((y * 3) + 1) * window.width) + (x * 3) + 1] }
+      sum_of = ->(color) { [0, 5, 10].sum { |shift| ((color >> shift) & 0x1F).then { |level| (level << 3) | (level >> 2) } } }
+
+      assert_equal [720, 480], [window.width, window.height]
+      [[0, 0], [239, 159], [39, 80], [120, 7]].each do |x, y|
+        assert_equal sum_of.call(border[(y * 240) + x]), seen_at.call(x, y), "the border at (#{x}, #{y})"
+      end
+      assert_equal 255, seen_at.call(40, 8), "the game's red bar at its screen's corner"
     end
   end
 

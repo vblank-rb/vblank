@@ -973,6 +973,21 @@ def rg_screen_shown
   rg_keep_console_colors(rg_black_rows_given_up(rg_screen_shown_in_five_bits))
 end
 
+# rg_screen.c's rg_screen_framed: the picture as the window shows it, the whole screen. Where the
+# game's screen is shown in a border, the border with the picture as shown over its middle.
+def rg_screen_framed
+  return rg_screen_shown unless rg_screen_bordered?
+
+  framed = (@rg_framed ||= @rg_game_border_pixels.dup)
+  game = rg_screen_shown
+  RG_SCREEN_HEIGHT.times do |y|
+    framed[((y + RG_GAME_TOP) * RG_WHOLE_WIDTH) + RG_GAME_LEFT, RG_SCREEN_WIDTH] = game[y * RG_SCREEN_WIDTH, RG_SCREEN_WIDTH]
+  end
+  framed
+end
+
+def rg_screen_bordered? = RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT
+
 # rg_screen.c's black_rows_given_up: the rows the game gave up (`shown_rows:`) black, unless the
 # display is switched off.
 def rg_black_rows_given_up(shown)

@@ -207,16 +207,17 @@ module VBlank
       # plumbed through them. A game that names no variant builds the same bytes as before.
       #
       # What else changes: the border is drawn with the console's own sprites, so the game has
-      # that many fewer (BORDER_SPRITES); a background held to a box is refused, since the box and
-      # the border would both need the display's windows; and the desktop build plays no start-up,
-      # whose logo is drawn for the whole 240×160.
+      # that many fewer (BORDER_SPRITES); and a background held to a box is refused, since the box
+      # and the border would both need the display's windows. The desktop, web and Ruby builds show
+      # the whole 240×160 with the border round the game (rg_screen_framed), so the desktop build
+      # plays the Advance's start-up before it as for any Advance game.
       BORDER_SPRITES = 32
 
       COLOR_SCREEN = Ractor.make_shareable(
         Variant.new(name: :color_screen, title: "a Game Boy Color's screen in a border",
                     changes: { screen_width: COLOR.screen_width, screen_height: COLOR.screen_height,
                                sprites: ADVANCE.sprites - BORDER_SPRITES, background_box: nil,
-                               plays_bios_start_up: false, whole_screen_size: ADVANCE.screen_size.freeze },
+                               whole_screen_size: ADVANCE.screen_size.freeze },
                     build: {},
                     note: "a game laid out for the Game Boy Color's 160×144 screen, shown at its own size " \
                           "in the middle of the Advance's, with a border round it")

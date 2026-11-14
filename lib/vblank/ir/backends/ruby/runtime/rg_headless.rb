@@ -221,6 +221,7 @@ end
 def rg_headless_write_picture(shown)
   @rg_picture_out.rewind
   @rg_picture_out.write(shown.pack("v*"), rg_screen_stored.pack("v*"))
+  @rg_picture_out.write(rg_screen_framed.pack("v*")) if rg_screen_bordered? # rg_headless.c's write_picture
   @rg_picture_out.flush
 end
 

@@ -57,7 +57,8 @@
  *
  * With --picture-out FILE the picture of every moment is written to FILE, over the one before:
  * every pixel as shown and then every pixel as stored, row by row, each two bytes with the low
- * byte first. It is there before "buttons?" is asked, so whoever is feeding the buttons can read
+ * byte first, and for a game shown in a border then every pixel of the whole screen as the window
+ * shows it (rg_screen_framed). It is there before "buttons?" is asked, so whoever is feeding the buttons can read
  * that frame's picture, and need not when it has no use for it. The end then prints its
  * picture as a check number too, since the picture itself is in the file. A picture is far more
  * than a pipe holds at once, and a reader that takes it a pipeful at a time waits its turn for
@@ -244,6 +245,9 @@ static void write_picture(const uint16_t *shown) {
   rewind(picture_out);
   fwrite(shown, sizeof shown[0], pixels, picture_out);
   fwrite(rg_screen_stored(), sizeof shown[0], pixels, picture_out);
+#if RG_SCREEN_BORDERED
+  fwrite(rg_screen_framed(), sizeof shown[0], (size_t)RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT, picture_out);
+#endif
   fflush(picture_out);
 }
 

@@ -1050,6 +1050,28 @@ const uint16_t *rg_screen_shown(void) {
   return shown;
 }
 
+/* A GAME'S SCREEN IN A BORDER: the cartridge shows the game's screen in the middle of the console's
+ * and draws the border round it in front of everything (GBA::BorderSprites), so what the game draws
+ * past its own edges never shows and a fade leaves the border as it is. Here the border is the
+ * picture of the whole screen, and the picture as shown is copied over its middle. */
+const uint16_t *rg_screen_framed(void) {
+#if RG_SCREEN_BORDERED
+  static uint16_t framed[RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT];
+  static int32_t border_up;
+  if (!border_up) {
+    for (int32_t at = 0; at < RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT; at++) framed[at] = (uint16_t)rg_game_border_pixels[at];
+    border_up = 1;
+  }
+  const uint16_t *game = rg_screen_shown();
+  for (int32_t y = 0; y < RG_SCREEN_HEIGHT; y++)
+    memcpy(&framed[(y + RG_GAME_TOP) * RG_WHOLE_WIDTH + RG_GAME_LEFT], &game[y * RG_SCREEN_WIDTH],
+           RG_SCREEN_WIDTH * sizeof framed[0]);
+  return framed;
+#else
+  return rg_screen_shown();
+#endif
+}
+
 /* --- the screen's half of the state image (rg_state.h, Computer::StateFields) ---
  *
  * What the screen keeps from one frame to the next: both pages and which is which, the scenery kept

@@ -265,7 +265,7 @@ static long frames_held_by_clock; /* frames the monitor was pacing and the windo
  * window to be drawn (it was uncovered, resized, moved to another screen, or lost its drawing
  * surface), and +picture_due_ns+ is, where the monitor paces the game, when the picture handed over
  * last is due to be replaced. */
-static uint16_t texture_holds[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+static uint16_t texture_holds[RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT];
 static bool texture_has_picture;
 static bool window_owed_a_drawing = true;
 static Uint64 picture_due_ns;
@@ -848,7 +848,7 @@ static void apply_window_changes(void) {
     else rg_window_fullscreen_happened((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0);
   }
   if (size_owed && !rg_window_fullscreen()) {
-    SDL_SetWindowSize(window, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale());
+    SDL_SetWindowSize(window, RG_WHOLE_WIDTH * rg_window_scale(), RG_WHOLE_HEIGHT * rg_window_scale());
     size_owed = 0;
   }
 }
@@ -906,7 +906,7 @@ static double pixel_density(void) {
 static int largest_scale_that_fits(void) {
   SDL_Rect room;
   if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &room)) return RG_WINDOW_SCALE_MOST;
-  int fits = SDL_min(room.w / RG_SCREEN_WIDTH, room.h / RG_SCREEN_HEIGHT);
+  int fits = SDL_min(room.w / RG_WHOLE_WIDTH, room.h / RG_WHOLE_HEIGHT);
   return SDL_min(fits, RG_WINDOW_SCALE_MOST);
 }
 
@@ -1104,7 +1104,8 @@ static void wait_out_undrawn_picture(void) {
  * up, with nothing over it and nothing owed to the window, is neither uploaded nor drawn. */
 static void present_picture(const uint16_t *picture, bool game_is_ours);
 
-static void present(void) { present_picture(rg_screen_shown(), true); }
+/* The whole screen, with the border round a game shown in one (rg_screen_framed). */
+static void present(void) { present_picture(rg_screen_framed(), true); }
 
 /* ...+picture+, which is the game's own unless +game_is_ours+ is false: an unpacking plays on another
  * thread, and its variables are not this thread's to read. */
@@ -1118,7 +1119,7 @@ static void present_picture(const uint16_t *picture, bool game_is_ours) {
     return;
   }
   if (!same_picture) {
-    SDL_UpdateTexture(texture, NULL, picture, RG_SCREEN_WIDTH * (int)sizeof(uint16_t));
+    SDL_UpdateTexture(texture, NULL, picture, RG_WHOLE_WIDTH * (int)sizeof(uint16_t));
     memcpy(texture_holds, picture, sizeof texture_holds);
     texture_has_picture = true;
   }
@@ -1423,7 +1424,7 @@ static bool read_events(void) {
       break;
     case SDL_EVENT_WINDOW_RESIZED:
       window_owed_a_drawing = true;
-      rg_window_size_changed(event.window.data1, event.window.data2, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+      rg_window_size_changed(event.window.data1, event.window.data2, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
       break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
       window_owed_a_drawing = true;
@@ -2520,21 +2521,21 @@ int main(int argc, char **argv) {
    * window opens the size it was left at, and fullscreen if that is how it was left. */
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
   if (rg_window_fullscreen()) flags |= SDL_WINDOW_FULLSCREEN;
-  window = SDL_CreateWindow(rg_game_title, RG_SCREEN_WIDTH * rg_window_scale(), RG_SCREEN_HEIGHT * rg_window_scale(), flags);
+  window = SDL_CreateWindow(rg_game_title, RG_WHOLE_WIDTH * rg_window_scale(), RG_WHOLE_HEIGHT * rg_window_scale(), flags);
   if (!window) refuse_to_start("the window cannot be opened");
   note_window_opened();
-  SDL_SetWindowMinimumSize(window, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+  SDL_SetWindowMinimumSize(window, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
   rg_window_consume_changes(); /* the window opened as the settings ask: nothing is left to do to it */
   renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) refuse_to_start("nothing can draw into the window");
-  SDL_SetRenderLogicalPresentation(renderer, RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, RG_SCREEN_WIDTH,
-                              RG_SCREEN_HEIGHT);
+  SDL_SetRenderLogicalPresentation(renderer, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, RG_WHOLE_WIDTH,
+                              RG_WHOLE_HEIGHT);
   if (!texture) refuse_to_start("the picture cannot be made");
   SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-  rg_window_menu_reset(RG_SCREEN_WIDTH, RG_SCREEN_HEIGHT);
+  rg_window_menu_reset(RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
   /* If the windows of keys and variables cannot start the window says so, and the menu and the
    * hotkeys still work. */
   if (!rg_menu_start(window, renderer)) {

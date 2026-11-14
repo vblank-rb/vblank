@@ -1249,9 +1249,9 @@ module VBlank
                                                   progress: VBlank::Messages::Progress.to($stderr))
       require_relative "live"
       shell = VBlank::Live::Shell.from(built)
-      console = built.game.described_console
-      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
-                                     height: console.screen_height, menu: game.menu?,
+      width, height = built.game.described_console.framed_screen_size
+      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
+                                     height: height, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
       warn window.settings_problems_message if window.settings_problems_message
@@ -1472,8 +1472,9 @@ module VBlank
       return play_match_without_window(session, network) if network && options[:window] == false
 
       console = program.described_console
-      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: console.screen_width,
-                                     height: console.screen_height, menu: game.menu?,
+      width, height = console.framed_screen_size
+      window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
+                                     height: height, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
                                      config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))

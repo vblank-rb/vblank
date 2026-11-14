@@ -178,7 +178,27 @@ module VBlank
                      sprites_over_picture? ? 1 : 0]),
              runtime_array("always_up", "int32_t", @handover.always_up.scenery.map { |bg| entry_of(bg) }),
              runtime_array("sines", "int32_t", (0...450).map { |degrees| Affine.sine(degrees) }),
-             runtime_array("turn_rules", "int32_t", [Build::SCALE_ONE, Affine::ONE_TH, Affine::MAX, Affine::MIN_SCALE])]
+             runtime_array("turn_rules", "int32_t", [Build::SCALE_ONE, Affine::ONE_TH, Affine::MAX, Affine::MIN_SCALE]),
+             runtime_array("border_pixels", "int16_t", border_pixels)]
+          end
+
+          # THE BORDER ROUND THE GAME'S SCREEN, where the console shows that screen in the middle of a
+          # bigger one (Console::Description#bordered?): a picture of the whole screen, a colour a
+          # pixel row by row, which the window shows with the game's screen over its middle
+          # (rg_screen_framed). The game's own (`border`) or VBlank's, as the cartridge draws it
+          # (GBA::BorderSprites). Nothing for a game shown whole.
+          def border_pixels
+            console = @program.described_console
+            return [] unless console.bordered?
+
+            whole = console.whole_screen_size
+            pixels = if @program.border
+                       width, height = @program.border_size
+                       Graphics::Border.whole_picture(width: width, height: height, pixels: @program.border, whole: whole)
+                     else
+                       Graphics::Border.default(whole: whole, inner: console.screen_size)
+                     end
+            pixels.map { |color| color & MAX_COLOR }
           end
 
           # An array of numbers rg_screen.c reads by name (rg_game_ and +what+).

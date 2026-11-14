@@ -48,6 +48,13 @@ module VBlank
             def on_screen?(x, y) = x.between?(0, width - 1) && y.between?(0, height - 1)
           end
 
+          # The picture as the window shows it, the whole screen: the game's screen as shown, and
+          # where that is shown in a border, the border round it (rg_screen_framed). #pixel is nil
+          # off the screen.
+          Framed = Data.define(:pixels, :width, :height) do
+            def pixel(x, y) = x.between?(0, width - 1) && y.between?(0, height - 1) ? pixels[(y * width) + x] : nil
+          end
+
           # Where the game had got to at one frame boundary (RunComparison::Moment).
           Moment = RunComparison::Moment
 
@@ -112,6 +119,11 @@ module VBlank
           # The interpreter has no such count: it is what a test reads to see that a screen
           # standing still is not rebuilt every frame.
           attr_reader :repaints_painted
+
+          # The picture the run ended on as the window shows it (a Framed): for a game shown in a
+          # border, the whole screen with the border round the game's. The interpreter has no
+          # window, and plays the game's screen alone.
+          attr_reader :framed
 
           # The save memory the run was handed, holding what the last run left in it.
           attr_reader :save
@@ -526,6 +538,21 @@ module VBlank
                         camera_x: @camera[0], camera_y: @camera[1])
           end
 
+          # The whole screen in the program's file now, after the two pictures #picture_now reads,
+          # for a game shown in a border; the picture as shown for any other.
+          def framed_now
+            return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height) unless @console.bordered?
+
+            width, height = @console.whole_screen_size
+            each = width * height
+            pixels = @pictures.pread(each * 2, @console.screen_width * @console.screen_height * 4).to_s.unpack("v*")
+            unless pixels.length == each
+              raise Computer::Error, "the program's picture file holds #{pixels.length} pixels of the whole screen, where it is #{each}"
+            end
+
+            Framed.new(pixels: pixels, width: width, height: height)
+          end
+
           def play_frames(exe, frames, options)
             @moments = []
             Open3.popen3(*program_command(exe), frames.to_s, *options) do |stdin, stdout, stderr, waiter|
@@ -590,6 +617,7 @@ module VBlank
           def record_end(rows)
             read_state_from(rows)
             @screen = picture_now
+            @framed = framed_now
             @buffered = rows.include?("pages 2")
             @repaints_painted = Integer(rows.find { |row| row.start_with?("repaints ") }.split(" ").last)
             @moments << Moment.new(frame: :end, variables: @vars, picture: self.class.picture_check(@screen.shown),

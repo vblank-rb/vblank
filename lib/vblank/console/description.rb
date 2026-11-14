@@ -261,6 +261,10 @@ module VBlank
       # Whether the game's screen is shown in a border, inside a bigger screen (#whole_screen_size).
       def bordered? = !whole_screen_size.nil?
 
+      # The size of the picture a window shows the game in, [width, height]: the whole screen, with
+      # the border round the game's where it has one, or else the game's screen.
+      def framed_screen_size = whole_screen_size || screen_size
+
       # Where the game's screen starts inside the whole screen, [left, top] in pixels: the middle.
       # [0, 0] for a console showing the game's screen whole.
       def border_corner

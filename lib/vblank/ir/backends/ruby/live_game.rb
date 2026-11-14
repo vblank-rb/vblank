@@ -27,9 +27,10 @@ module VBlank
             @program = program
           end
 
-          # The size of the picture it shows.
-          def width = @game.class::RG_SCREEN_WIDTH
-          def height = @game.class::RG_SCREEN_HEIGHT
+          # The size of the picture it shows: the whole screen, with the border round a game's screen
+          # shown in one (rg_screen_framed).
+          def width = @game.class::RG_WHOLE_WIDTH
+          def height = @game.class::RG_WHOLE_HEIGHT
 
           # The file the game reads as it starts (IR::StartFile), +bytes+ a String, handed over before
           # #play. A game that reads one and is handed none stops at its first statement, in the sentence

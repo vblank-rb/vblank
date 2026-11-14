@@ -140,6 +140,12 @@ void rg_screen_frame_started(void);
  * RG_SCREEN_HEIGHT colors, row by row, with the fade or tint in force mixed in. */
 const uint16_t *rg_screen_shown(void);
 
+/* The picture as the window shows it: RG_WHOLE_WIDTH times RG_WHOLE_HEIGHT colors, row by row. The
+ * picture as shown, where the game's screen is the whole screen; and where it is shown in a border,
+ * the border (rg_game_border_pixels) with the picture as shown over its middle, at (RG_GAME_LEFT,
+ * RG_GAME_TOP). The fade and tint are the game's screen's alone, as on the cartridge. */
+const uint16_t *rg_screen_framed(void);
+
 /* The same page as it is STORED: no window moved over it, no fade or tint. What a test counts
  * drawn pixels in; a player never sees it. */
 const uint16_t *rg_screen_stored(void);
@@ -178,6 +184,9 @@ int16_t *rg_screen_image_pixels_to_fill(int32_t count);
 void rg_screen_image_pixels_room(int32_t total, int32_t held);
 extern const int32_t rg_game_images[];
 #define RG_IMAGE_FIELDS 3
+/* The border round the game's screen, as a picture of the whole screen, a colour a pixel; nothing
+ * where the game's screen is the whole screen (Computer::Picture#border_pixels). */
+extern const int16_t rg_game_border_pixels[];
 /* The most sprites a game may have; the build refuses more. */
 #define RG_MAX_SPRITES 512
 /* For each sprite, by its number: which see-through layer it was declared in, counting through

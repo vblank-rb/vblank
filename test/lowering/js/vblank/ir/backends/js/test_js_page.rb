@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "web_page"
+require "border_frame_tests"
 
 # A game built for the web is one page: the picture's canvas, the keys said in words, and the game
 # and its runtime in one script, with nothing fetched — so the page opens from a disk. Its script
@@ -35,6 +36,25 @@ class TestJSPage < Minitest::Test
         assert_match(/<canvas id="screen" width="#{width}" height="#{height}"/, File.read(path))
       end
     end
+  end
+
+  # A game laid out for the Color, built for the Advance in a border, fills the Advance's canvas:
+  # the border round it, and the game's picture at (40, 8).
+  def test_a_color_game_in_a_border_fills_the_advances_canvas
+    html = Dir.mktmpdir do |dir|
+      path = File.join(dir, "page.html")
+      JS.new.build_page(BorderFrameTests::PLAIN, path, console: :gba, err: StringIO.new)
+      File.read(path, encoding: Encoding::UTF_8)
+    end
+    picture = pictures_in(played_page(["play 3", "picture"], html: html)).first
+    border = VBlank::Graphics::Border.default(whole: [240, 160], inner: [160, 144])
+
+    assert_match(/<canvas id="screen" width="240" height="160"/, html)
+    assert_equal 240 * 160, picture.size
+    [[0, 0], [239, 159], [39, 80], [120, 7]].each do |x, y|
+      assert_equal border[(y * 240) + x], picture[(y * 240) + x], "the border at (#{x}, #{y})"
+    end
+    assert_equal VBlank::Graphics::Color.resolve(:red), picture[(8 * 240) + 40], "the game's red bar at (40, 8)"
   end
 
   # A console with no L and R, the Color, gets a page that names none: not in the keys said in

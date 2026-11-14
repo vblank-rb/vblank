@@ -25,7 +25,7 @@ def rg_live_main(player, match_seed = nil, local_player = nil)
     rg_play_frames
     nil
   end
-  stopped_by == :player ? nil : rg_screen_shown
+  stopped_by == :player ? nil : rg_screen_framed
 end
 
 # The sound of the frame the pass played is made first, before the next frame moves the music on.
@@ -37,7 +37,7 @@ def rg_driver_wait_vblank
   rg_live_mix_match_seed
   left, right = rg_sound_render_frame
   rg_frame_begins
-  buttons = @rg_live.buttons_after(rg_screen_shown, left, right)
+  buttons = @rg_live.buttons_after(rg_screen_framed, left, right)
   throw :rg_live_stop, :player if buttons.nil?
 
   rg_buttons_read(buttons)
