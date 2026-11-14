@@ -47,8 +47,10 @@ module VBlank
 
             # The lengths in words a command in the list can have, each with its routine: one word (a setting,
             # or the cache emptied), a fill or a flat rectangle (three), a textured rectangle or a copy inside
-            # video RAM (four). A place's triangles go to the port (Faces#emit_port_command).
-            COMMAND_WORDS = [1, 3, 4].freeze
+            # video RAM (four), a textured triangle (seven, Paint's rt_paint_numbers_shown). A place's triangles
+            # go to the port (Faces#emit_port_command).
+            COMMAND_WORDS = [1, 3, 4, 7].freeze
+            TRIANGLE_WORDS = 7
 
             # A node's header, before its command.
             HEADER_BYTES = 4
@@ -132,16 +134,18 @@ module VBlank
               asm.jal("rt_draw_command_#{words}", &slot)
             end
 
-            # +faces+ is whether the game fills faces (#face_window_offset_bytes).
-            def emit(asm, memory, faces:)
+            # +faces+ is whether the game fills faces (#face_window_offset_bytes). +triangles+ is whether it sends
+            # textured triangles, which only a painted screen drawn by number does, so only it carries their routine.
+            def emit(asm, memory, faces:, triangles: false)
               state = StatePlace.for_address(memory[STATE_BLOCK])
               face_window = faces ? face_window_offset_bytes(memory) : nil
               emit_start(asm, memory, state)
-              COMMAND_WORDS.each { |words| emit_command_routine(asm, state, face_window, words) }
+              COMMAND_WORDS.each do |words|
+                emit_command_routine(asm, state, face_window, words) unless words == TRIANGLE_WORDS && !triangles
+              end
               emit_send(asm, state)
               emit_kick(asm)
               emit_finish(asm, state)
-
             end
 
             # rt_draw_list_start: the first list to be filled, the DMA's channel for the chip on, and the chip

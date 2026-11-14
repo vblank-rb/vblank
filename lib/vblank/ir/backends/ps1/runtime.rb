@@ -80,7 +80,7 @@ module VBlank
             DrawList.reserve_late(memory)
             shown_by = Paint.shown_by(by_number: by_number, over_picture: over_picture)
             Boot.emit(asm, memory, main: main)
-            DrawList.emit(asm, memory, faces: faces)
+            DrawList.emit(asm, memory, faces: faces, triangles: by_number)
             Int32.emit(asm)
             Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by, ticks_paint_ahead: !frame_begins.nil?,
                                     crosses: tiled ? tiled.crosses : false)

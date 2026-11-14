@@ -195,8 +195,9 @@ module VBlank
               # everything, as the interpreter's picture of the pass has it.
               asm.jal("rt_tiles_draw") if tiles
               # The pass's drawing commands sent and drawn (Runtime::DrawList), before it counts as ended:
-              # its picture is whole by the time it is shown or read back.
-              asm.jal("rt_draw_list_finish")
+              # its picture is whole by the time it is shown or read back. A screen drawn by number is shown
+              # from a copy the chip makes after them, which is whole before it is shown (Paint's rt_paint_flip).
+              asm.jal("rt_draw_list_finish") unless shown_by == "rt_paint_numbers_shown"
               asm.label("rt_wait_published")
               # The page this pass drew, kept where a reader finds it while the game waits: the pages
               # may trade places before the game stops waiting.

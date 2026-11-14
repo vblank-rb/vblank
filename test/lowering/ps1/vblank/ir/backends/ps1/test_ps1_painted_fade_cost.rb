@@ -6,8 +6,9 @@ require "stringio"
 # What a fade on a painted screen costs the PlayStation, read from where Beetle PSX says the time went. A
 # game that fades its painted screen draws it by number (PS1::PaintedNumbers), and the graphics chip copies
 # the page onto the screen in its colours as each pass ends (Runtime::Paint's rt_paint_numbers_shown): the
-# processor sends ten triangles and waits for the chip to draw them. The same work on the processor, a
-# colour looked up for every pixel of the page, took it several frames a pass with nothing else to do.
+# processor puts twenty triangles in the list the DMA hands the chip, and goes on while the chip draws them.
+# The same work on the processor, a colour looked up for every pixel of the page, took it several frames a
+# pass with nothing else to do; sent to the chip's port, it kept the processor waiting a fifth of a frame.
 class TestPS1PaintedFadeCost < Minitest::Test
   FADING = VBlank.game("FADE COST", consoles: %i[ps1]) do
     screen :bitmap
@@ -27,6 +28,6 @@ class TestPS1PaintedFadeCost < Minitest::Test
     result = rom.profile(out: StringIO.new, frames: 20)
 
     assert_equal({ 1 => 20 }, result.passes_by_frames)
-    assert_operator result.idle_share, :>, 0.6, "the processor was left #{result.idle_share.round(4)} of each frame"
+    assert_operator result.idle_share, :>, 0.92, "the processor was left #{result.idle_share.round(4)} of each frame"
   end
 end

@@ -197,8 +197,13 @@ module VBlank
             end
 
             # rt_paint_numbers_shown: a0 = the top line of the page drawn by number to show. The colours walked
-            # if they changed (Colors' rt_colors_shown), everything sent drawn, and the page copied in its colours
-            # into the page shown from PAGE_X that is not up, which the blank shows (rt_paint_flip).
+            # if they changed (Colors' rt_colors_shown), and the page copied in its colours into the page shown
+            # from PAGE_X that is not up, which the blank shows (rt_paint_flip).
+            #
+            # THE COPY GOES IN THE LIST (Runtime::DrawList), after the pass's own commands, and is sent at once;
+            # the processor goes on to its wait while the chip draws it, and the blank waits for it to be drawn
+            # before showing it. Sent to the chip's port a word at a time, the processor waited on the chip for
+            # most of the copy, which kept it a fifth of every frame (rom.profile).
             #
             # THE COPY is the page read as a texture of a byte a pixel through the table in NUMBERS_TABLE, in
             # pieces NUMBERS_PIECE_PIXELS pixels wide, each a texture page of its own, as two triangles (GP0 25h,
@@ -222,7 +227,6 @@ module VBlank
               asm.sll(:s0, :s0, 4)
               asm.ori(:s0, :s0, TextureMemory::DEPTH_BITS.fetch(8))
               asm.jal("rt_colors_shown") { asm.sll(:s0, :s0, 16) }
-              asm.jal("rt_draw_list_finish")
               # s1: the page shown that is not up, its top line in a word's top half; s2: the piece's column.
               asm.lw(:s1, at.call(SHOWN_PAGE_Y), :gp)
               asm.xori(:s1, :s1, SECOND_PAGE_TOP_LINE)
@@ -232,7 +236,7 @@ module VBlank
               asm.lw(:s4, at.call(NUMBERS_TABLE), :gp)
               asm.sll(:s4, :s4, 16)
               asm.li(:s3, h::SCREEN_WIDTH / piece)
-              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
+              DrawList.emit_command(asm, 1) { asm.lui(:a0, h::GP0_CLEAR_CACHE >> 16) }
               asm.label("rt_paint_numbers_piece")
               # The top left, top right and bottom left corners, then the bottom right.
               asm.or(:t4, :s1, :s2)
@@ -240,33 +244,35 @@ module VBlank
               asm.lui(:t7, bottom)
               asm.addu(:t7, :t4, :t7)
               asm.addiu(:t8, :t7, piece)
-              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              stored = ->(register) { asm.sw(register, h::GP0 & 0xFFFF, :t1) }
-              stored.call(:t4)
-              stored.call(:s4) # the table, u 0, v 0
-              stored.call(:t5)
+              word = ->(index) { DrawList.word_offset_bytes(index) }
+              DrawList.emit_command(asm, DrawList::TRIANGLE_WORDS) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              asm.sw(:t4, word.call(1), :t1)
+              asm.sw(:s4, word.call(2), :t1) # the table, u 0, v 0
+              asm.sw(:t5, word.call(3), :t1)
               asm.ori(:t6, :s0, piece * 2)
-              stored.call(:t6) # the texture page, u at the piece's width in bytes, v 0
-              stored.call(:t7)
+              asm.sw(:t6, word.call(4), :t1) # the texture page, u at the piece's width in bytes, v 0
+              asm.sw(:t7, word.call(5), :t1)
               asm.li(:t6, bottom << 8)
-              stored.call(:t6)
-              asm.jal("rt_gp0_port_word") { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
-              stored.call(:t5)
+              asm.sw(:t6, word.call(6), :t1)
+              DrawList.emit_command(asm, DrawList::TRIANGLE_WORDS) { asm.lui(:a0, h::GP0_TEXTURED_TRIANGLE >> 16) }
+              asm.sw(:t5, word.call(1), :t1)
               asm.ori(:t6, :s4, piece * 2)
-              stored.call(:t6)
-              stored.call(:t7)
+              asm.sw(:t6, word.call(2), :t1)
+              asm.sw(:t7, word.call(3), :t1)
               asm.ori(:t6, :s0, bottom << 8)
-              stored.call(:t6)
-              stored.call(:t8)
+              asm.sw(:t6, word.call(4), :t1)
+              asm.sw(:t8, word.call(5), :t1)
               asm.li(:t6, (bottom << 8) | (piece * 2))
-              stored.call(:t6)
+              asm.sw(:t6, word.call(6), :t1)
               # The next piece: a column of the page shown on, a texture page of the page drawn on.
               asm.addiu(:s2, :s2, piece)
               asm.lui(:t0, 1)
               asm.addu(:s0, :s0, :t0)
               asm.addiu(:s3, :s3, -1)
               asm.bgtz(:s3, "rt_paint_numbers_piece")
-              asm.jal("rt_draw_list_finish")
+              # The copy sent, and drawn while the processor goes on: the blank waits for it before showing it
+              # (rt_paint_flip).
+              asm.jal("rt_draw_list_send")
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(SHOWN_COPY_PENDING), :gp)
               asm.lw(:ra, 0, :sp)
@@ -636,6 +642,13 @@ module VBlank
               asm.lw(:t1, at.call(SHOWN_COPY_PENDING), :gp)
               asm.beq(:t1, :zero, "rt_paint_screen_same")
               asm.sw(:zero, at.call(SHOWN_COPY_PENDING), :gp)
+              # The copy is drawn while the processor goes on (rt_paint_numbers_shown), so it is whole before it
+              # is shown. It is drawn long before the blank in all but a pass that ends at the blank.
+              asm.addiu(:sp, :sp, -4)
+              asm.sw(:ra, 0, :sp)
+              asm.jal("rt_draw_list_finish")
+              asm.lw(:ra, 0, :sp)
+              asm.addiu(:sp, :sp, 4)
               asm.lw(:t0, at.call(PASS_PAGE_Y), :gp)
               asm.b("rt_paint_show_t0")
             end

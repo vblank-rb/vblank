@@ -250,9 +250,15 @@ module VBlank
           # (Runtime::Paint::PASS_PAGE_Y). The graphics chip draws into video RAM the moment it is told
           # to, and on a screen of one page that is the page shown: by the time the reader finds the pass
           # on the screen, the game has gone on into the next pass and drawn some of it there.
+          #
+          # A screen shown from pages of its own (Runtime::Paint::PAGE_X) is the exception: the pass's page is
+          # the copy the chip makes as it ends, which may still be being drawn as the game is found waiting,
+          # and is whole before it is shown (Runtime::Paint's rt_paint_flip). Nothing draws on it until the
+          # pass after next, the next pass's copy going into the other page shown, so it is read once it is
+          # shown (#picture_of_pass).
           def read_picture_drawn
             top = read32(runtime_place(Runtime::Paint::PASS_PAGE_Y))
-            PageRead.new(top_line: top, colors: read_page_colors(top))
+            PageRead.new(top_line: top, colors: shown_apart? ? nil : read_page_colors(top))
           end
 
           # ...AND IT COUNTS ONLY IF IT IS THE PAGE SHOWN. As the pass went on the screen the runtime kept
@@ -269,7 +275,7 @@ module VBlank
             return picture_now(nil) unless state.fetch(:display_x) == page_x && state.fetch(:display_y) == told
 
             shown_top = read32(runtime_place(Runtime::Paint::PASS_SHOWN_PAGE_Y))
-            picture_of_colors(shown_top == drawn.top_line ? drawn.colors : read_page_colors(shown_top))
+            picture_of_colors(shown_top == drawn.top_line ? drawn.colors || read_page_colors(shown_top) : read_page_colors(shown_top))
           end
 
           # The sprites the pass placed, as the runtime keeps them (Runtime::Tiles::DRAWN): none on a painted
@@ -340,9 +346,10 @@ module VBlank
 
           # The column the pages shown start at: the left edge, or for a painted screen drawn by number the
           # column its own pages shown start at (Runtime::Paint::PAGE_X).
-          def page_x
-            @places.runtime.key?(Runtime::Paint::PAGE_X) ? read32(runtime_place(Runtime::Paint::PAGE_X)) : 0
-          end
+          def page_x = shown_apart? ? read32(runtime_place(Runtime::Paint::PAGE_X)) : 0
+
+          # Whether the painted screen is shown from pages of its own (Runtime::Paint::PAGE_X).
+          def shown_apart? = @places.runtime.key?(Runtime::Paint::PAGE_X)
 
           # The picture's check, worked out once for a picture shown frame after frame.
           def picture_check_of(shown)
