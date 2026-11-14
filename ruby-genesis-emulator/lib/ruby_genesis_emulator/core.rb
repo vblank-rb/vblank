@@ -128,7 +128,8 @@ module RubyGenesisEmulator
       return @colors if @colors && @colors_of == video_buffer
 
       @colors_of = video_buffer
-      @colors = video_buffer.unpack("v*").map { |pixel| PIXEL_COLORS.fetch(pixel) }.freeze
+      # A lookup Array#values_at makes in C for every pixel, not a Ruby block run for each.
+      @colors = PIXEL_COLORS.values_at(*video_buffer.unpack("v*")).freeze
     end
 
     # The last frame's picture as the core drew it: #width × #height pixels, two bytes each, row

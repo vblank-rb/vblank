@@ -111,6 +111,40 @@ class TestGenesisProbe < Minitest::Test
     end
   end
 
+  # Each of the console's 512 colours as the picture's four bytes: every three-bit channel widened
+  # to five (Console::GenesisHardware.widen), then to eight by repeating its top bits, red first.
+  def test_every_colour_of_the_console_is_the_picture_bytes_it_always_was
+    expected = Array.new(512) do |color|
+      levels = Array.new(3) { |channel| (color >> (channel * 3)) & 7 }
+      levels.map { |level| ((level << 2) | (level >> 1)).then { |five| (five << 3) | (five >> 2) } }.pack("C3x")
+    end
+
+    assert_equal expected.join, VBlank::Diagnostics::GenesisProbe.picture_bytes((0...512).to_a)
+  end
+
+  # The picture is read again only when the console drew a different one, and a different one is
+  # never missed: the box that moved is where it moved to.
+  def test_the_picture_follows_a_box_that_moves
+    built = VBlank.build("MOVING", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      image(:box, "#" => :white) { "########\n" * 8 }
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      background :field, tiles: :set, map: Array.new(32) { "." * 40 }
+      box = sprite :box, at: [40, 60]
+      game_loop { box.x += 1 if box.x < 160 }
+    end
+    reader = VBlank::Diagnostics::Verifier.new(built, frames: FRAMES)
+    before = reader.picture
+    reader.step(150)
+
+    refute_equal before, reader.picture
+    assert reader.white?(164, 64), "the box has moved right"
+    assert reader.blue?(41, 64), "the box has left where it was"
+  ensure
+    reader&.close
+  end
+
   def test_an_address_outside_work_ram_is_refused
     with_recorded_and_bare do |_recorded, probe, _ticks|
       assert_match "work RAM", assert_raises(ArgumentError) { probe.read(0x0100) }.message
