@@ -344,10 +344,7 @@ module VBlank
           # the screen does, so that setting up counts as it does on the Advance. The timer counts
           # them, and in a game that plays a recording the timer is the recording's, so such a game
           # counts from its first frame.
-          def counts_dark_frames?
-            @program.walk.any? { |node| node.kind == :var_ref && node.name == Frames::COUNT } &&
-              @program.walk.any? { |node| node.kind == :wait_vblank }
-          end
+          def counts_dark_frames? = Frames.counts_from_power_on?(@program)
 
           # Does the game fade or tint? On a Color every one walks the colours, so its runtime keeps
           # the tables a walk is looked up in (Runtime::Picture#emit_tint_tables), and a game that does

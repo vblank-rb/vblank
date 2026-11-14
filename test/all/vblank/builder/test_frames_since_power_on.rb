@@ -3,8 +3,8 @@
 require "test_helper"
 
 # The game these tests play, kept once for the interpreter's own tests
-# (test/interpreter/vblank/builder/test_frames_since_power_on_interpreter.rb) and the Advance's
-# cartridge's (test/lowering/gba/vblank/builder/test_frames_since_power_on_cartridge.rb).
+# (test/interpreter/vblank/builder/test_frames_since_power_on_interpreter.rb) and each console's
+# cartridge's (test/power_on_frame_games.rb).
 module FramesSincePowerOnGames
   include SharedConstants
 
@@ -50,6 +50,6 @@ class TestFramesSincePowerOn < Minitest::Test
 
   # A pass told to take several frames, and frames spent setting up with the screen off, are the
   # interpreter's to be told: test/interpreter/vblank/builder/test_frames_since_power_on_interpreter.rb.
-  # The console counting the frames it spent setting up is
-  # test/lowering/gba/vblank/builder/test_frames_since_power_on_cartridge.rb.
+  # The console counting the frames it spent setting up is each cartridge console's own test, the games
+  # and what it is held to in test/power_on_frame_games.rb.
 end

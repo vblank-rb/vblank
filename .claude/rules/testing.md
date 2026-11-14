@@ -169,6 +169,9 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
+`power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without
+a long setting up, and what each console's cartridge is held to as its emulator counts frames from
+power-on, for the Advance's, the Super Nintendo's, the Genesis's and the PlayStation's tests),
 `speakers.rb` (which speaker a cartridge's voice is heard from),
 `many_tiles.rb` (backgrounds of many different tiles, for what a console does when they are too many to
 hold at once), `scene_sprite_pictures.rb` (scenes whose sprite pictures together are more than a console
