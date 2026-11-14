@@ -97,6 +97,26 @@ class TestInRactors < Minitest::Test
   # Whether +string+'s bytes are another String's now, as ObjectSpace's record of it says.
   private def moved_to_hidden_string?(string) = JSON.parse(ObjectSpace.dump(string)).fetch("shared", false)
 
+  # A FAILING COMPARISON OF TWO LONG BINARY STRINGS IN A RACTOR SHOWS ITS DIFF. Minitest looks for
+  # a diff program the first time one is needed, reading RbConfig::CONFIG, which a Ractor may not
+  # read: the failure became a Ractor::IsolationError that hid what differed.
+  def test_a_failing_binary_comparison_in_a_ractor_shows_its_diff
+    message = Ractor.new do
+      expected = Array.new(200) { |at| at & 0xFF }.pack("C*")
+      actual = expected.dup
+      actual.setbyte(100, 7)
+      begin
+        TestInRactors.new("test_this_suite_plays_with_it").assert_equal(expected, actual)
+        "the comparison passed"
+      rescue Minitest::Assertion, Ractor::IsolationError => e
+        "#{e.class}: #{e.message}"
+      end
+    end.value
+
+    assert_match(/^Minitest::Assertion: --- expected\n\+\+\+ actual\n/, message)
+    refute_match(/IsolationError/, message)
+  end
+
   def test_a_fixture_read_once_is_made_once_in_a_ractor
     made = 0
     holder = Class.new.extend(VBlank::Testing::InRactors::ReadOnce)

@@ -24,10 +24,25 @@ module VBlank
     # class) or start a child process, which hangs inside a Ractor, writes minitest-ractor's own
     # `runs_on_the_main_ractor!` at the top, with a line saying why.
     #
-    # It needs a minitest-ractor that makes minitest's own state shareable (Minitest::Ractor::
-    # ShareableConstants, which covers Minitest::Assertions.diff): one before that crashes a test
-    # whose long comparison fails, looking for a diff program from inside a Ractor.
+    # minitest-ractor makes most of minitest's own state shareable (Minitest::Ractor::
+    # ShareableConstants), but not the diff program minitest shows a failing comparison with: see
+    # .share_diff_command.
     module InRactors
+      # MINITEST'S DIFF PROGRAM, FOUND ONCE HERE ON THE MAIN RACTOR. A failing assert_equal of two
+      # long strings (a cartridge's bytes, say) is shown as the output of `diff -u`, and minitest
+      # looks for that program the first time a failure needs it: it reads RbConfig::CONFIG to ask
+      # whether this is Windows, and keeps the answer on Minitest::Assertions. A test in a Ractor
+      # may do neither, so the failure became a Ractor::IsolationError that hid what differed.
+      # Found here and made shareable, it is only read in a Ractor. Running the program from a
+      # Ractor works, many Ractors at once included.
+      def self.share_diff_command
+        command = Minitest::Assertions.diff
+        Minitest::Assertions.diff = Ractor.make_shareable(command.dup) unless Ractor.shareable?(command)
+      end
+
+      share_diff_command
+
+
       def self.included(test_class)
         super
         test_class.extend(FrozenConstants)
