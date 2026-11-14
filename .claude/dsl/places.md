@@ -138,12 +138,20 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   front only**: the side from which its points go round clockwise. Settings: `near: 0.25` (the near
   limit, in wholes, more than 0 and not more than 16), `view_angle: 90` (degrees across, 10 to 170),
   `both_sides: true` (draw a face from behind as well), and **`perspective:`**: how a picture lies on
-  a face that leans away. `:every_8_pixels`, the default, works the place on the picture out exactly
-  every eight pixels across a row and steps straight between, so a wall's picture stays put as you
-  move; `:every_pixel` works it out at every pixel; `:none` stretches it straight between the
+  a face that leans away. `:every_16_pixels`, the default, works the place on the picture out exactly
+  every sixteen pixels across a row and steps straight between, so a wall's picture stays put as you
+  move, as other Advance 3D games did. Where a face leans away steeply close by, its distance changes
+  fast across a row, and stepping straight for sixteen pixels would put its picture off by a pixel or
+  more: there a stretch of sixteen is cut into two of eight. The rule: a stretch is cut when one over
+  the distance changes by more than a sixteenth of its value at the stretch's start over eight pixels
+  (`Reference#stretch_ends`). Measured across the place tests' faces and `examples/cube3d.rb` and
+  `examples/two_rooms.rb` standing, turning and flying, that keeps the picture as close to its exact
+  place as `:every_8_pixels` puts it: under a pixel, except on a face seen nearly edge on from very
+  near, where even every eight pixels is a few pixels off. `:every_8_pixels` works it out every eight
+  pixels, never cut; `:every_pixel` at every pixel; `:none` stretches it straight between the
   corners, cheaper, and it swims on a face that leans steeply. The choice is per call: a game of rooms
   can draw its near rooms in perspective and its far ones with `:none`, as the old games did. A
-  setting that is not one of these three is a friendly error. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
+  setting that is not one of these four is a friendly error. **Needs `screen :bitmap, tear_free: true`** (a friendly error on any
   other screen): a place is drawn over a whole frame, and on one page the player would see it drawn. It
   draws over what is there and clears nothing.
 
@@ -251,8 +259,8 @@ a corridor whose lamp flickers.
   takes room there.
 - **Each console**: the Advance looks each pixel up in a table the build makes from the shading, so
   every pixel is exactly the colour the shading gives. A lit pixel costs one load more than an unlit
-  one: about two thirds again the unlit fill's cost with `:none`, and about a third again with
-  `:every_8_pixels`. A game that lights no place carries none of it. The PlayStation lights a
+  one: about two thirds again the unlit fill's cost with `:none`, and about half again in
+  perspective. A game that lights no place carries none of it. The PlayStation lights a
   face the way its own games did: its graphics chip shades each triangle, carrying a colour at each
   corner from the corner's light and multiplying every texel's red, green and blue by the colour it
   steps across the triangle. So the light falls smoothly rather than in the shading's steps, and a lit face
@@ -303,11 +311,13 @@ hides. The Advance's fill makes that test itself; every other lowering makes it 
 as the cut hands each corner on (`IR::PlaceDrawing::OUTCODE_EDGES`). **What it
 costs on the Advance**, a face covering the whole screen with a picture with no see-through pixel:
 about 15 of the console's cycles a pixel with `perspective: :none` (two pixels worked out together
-and written as one pair; 30 pictures a second), about 21 with `:every_8_pixels` (each stretch of
-eight worked out exactly at its far end, then two pixels at a time; 20 a second), and about 70 with
-`:every_pixel`. A picture with see-through pixels reads each pixel's pair back first, about 37 without
-perspective. In perspective, `examples/cube3d.rb` runs at 60 a second as it starts and
-`examples/two_rooms.rb` at 12. **Perspective is the same everywhere**: one over each corner's distance travels with its
+and written as one pair; 30 pictures a second), about 19 with `:every_16_pixels` (each stretch of
+sixteen worked out exactly at its far end, then two pixels at a time; 20 a second), about 21 with
+`:every_8_pixels` (20 a second; each setting has a loop of its own, made only for a game that draws with it), and about 70 with `:every_pixel`. Most of a pixel's cost in
+perspective is the pixel itself; what a stretch costs on top is spread over its pixels. A picture with
+see-through pixels is drawn a stretch at a time in perspective, about 38 every sixteen pixels and 60
+every eight (each held by a cost test). In perspective, `examples/cube3d.rb` runs at 60 a second as it
+starts and `examples/two_rooms.rb` at 15. **Perspective is the same everywhere**: one over each corner's distance travels with its
 corner, and the place on the picture is found from it through one shared table (`IR::Reciprocals`),
 which every lowering reads, so all of them draw the same pixels. `rom.profile`
 names the fill "filling the faces of a place with their pictures".

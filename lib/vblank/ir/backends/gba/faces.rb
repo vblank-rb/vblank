@@ -134,6 +134,36 @@ module VBlank
             @shadings = program.walk.select { |node| node.kind == :shading }.to_h { |node| [node.name, node] }
             @palette = palette
             @lit = self.class.lights_faces?(program)
+            @runs = self.class.stretch_runs(program)
+            spans = self.class.perspectives_drawn(program)
+            @cuts_stretches = spans.nil? || spans.any? { |span| span > SPLIT_PIXELS }
+          end
+
+          # WHICH RUNS OF WHOLE STRETCHES THE ROUTINE HAS: 8 for :every_8_pixels
+          # (#emit_whole_stretches), 16 for :every_16_pixels (#emit_long_stretches), each only for
+          # a game that draws a place with it. A run is a thousand bytes and more of quick memory,
+          # and one run that served both would cost every turn the test of which it is. Without its
+          # run, a stretch is drawn the slow way, the same pixels.
+          def self.stretch_runs(program)
+            spans = perspectives_drawn(program)
+            spans ? STRETCH_RUNS & spans : STRETCH_RUNS
+          end
+
+          # The perspectives the program's faces are filled with (Nodes::FillFace::PERSPECTIVE_SPANS'
+          # numbers): each drawing of a place's, and each fill's given as a number of its own. Nil
+          # for a fill whose perspective is worked out as the game runs outside any drawing of a
+          # place, which could be any.
+          def self.perspectives_drawn(program)
+            nodes = program.walk.to_a
+            return nil if nodes.none? { |node| node.kind == :draw_place } &&
+                          nodes.any? { |node| node.kind == :fill_face && node.perspective.kind != :int }
+
+            nodes.filter_map do |node|
+              case node.kind
+              when :draw_place then Nodes::FillFace::PERSPECTIVE_SPANS.fetch(node.perspective)
+              when :fill_face then node.perspective.value if node.perspective.kind == :int
+              end
+            end.uniq
           end
 
           # Does this program fill a face? Then it needs the routine, and the divide it calls.
@@ -143,8 +173,15 @@ module VBlank
           # loops, and is that much bigger; a game that lights none carries none of them.
           def self.lights_faces?(program) = program.walk.any? { |node| node.kind == :fill_face && node.shading }
 
-          # The room the quick memory keeps for the routine, lit or not (see ROUTINE_BYTES).
-          def self.routine_bytes(lit:) = lit ? LIT_ROUTINE_BYTES : ROUTINE_BYTES
+          # The room the quick memory keeps for the routine, lit or not, with its runs of whole
+          # stretches (see ROUTINE_BYTES).
+          def self.routine_bytes(lit:, runs: STRETCH_RUNS)
+            room = lit ? LIT_ROUTINE_BYTES : ROUTINE_BYTES
+            return room unless runs.include?(LONG_STRETCH)
+
+            room -= lit ? LIT_RUN_BYTES : RUN_BYTES unless runs.include?(STRETCH)
+            room + (lit ? LIT_LONG_RUN_BYTES : LONG_RUN_BYTES)
+          end
 
           # The pictures a fill reads as the game runs, which the cartridge carries whatever else
           # draws them.
@@ -297,12 +334,20 @@ module VBlank
 
           # The room the quick memory keeps for the routine, and for its lit form. Every word it
           # names is one instruction away (Faces.words are named before any of the game's), so its
-          # size is the same in every game; each leaves a little to spare.
+          # size is the same in every game that has the same runs; each leaves a little to spare.
+          # The rooms are the routine's with the :every_8_pixels run and not the :every_16_pixels
+          # one, kept for a game with no :every_16_pixels run whichever it has. A game with that
+          # run has the room after them more, less the :every_8_pixels run's room where it has
+          # none of that (the lit routine has an unlit and a lit run of each).
           ROUTINE_BYTES = 6_144
           LIT_ROUTINE_BYTES = 9_728
+          RUN_BYTES = 1_328
+          LIT_RUN_BYTES = 2_884
+          LONG_RUN_BYTES = 1_788
+          LIT_LONG_RUN_BYTES = 3_760
 
           def refuse_oversized_routine!(size)
-            room = self.class.routine_bytes(lit: @lit)
+            room = self.class.routine_bytes(lit: @lit, runs: @runs)
             return if size <= room
 
             raise LoweringError, "The routine that fills a face came to #{size} bytes, and the quick memory keeps " \
@@ -1041,12 +1086,7 @@ module VBlank
             emit_branch_to_whole_stretches(fast)
             emit_near_place_of_first_stretch
             place_label(slow)
-            load_var(0, :_face_along)
-            load_var(3, :_face_perspective)
-            emit(ASM.add_reg(0, 0, 3))
-            load_var(2, :_face_span_count)
-            emit(ASM.cmp_reg(0, 2))
-            emit(ASM.mov_reg_cond(:gt, 0, 2))
+            emit_far_along
             store_var(0, :_face_far_along)
             emit_branch(:bl, SAMPLE_ROUTINE)
             store_var(0, :_face_far_u)
@@ -1102,13 +1142,73 @@ module VBlank
             emit(ASM.cmp_reg(0, 1))
             emit_branch(:bcond, stretch, cond: :lt)
             emit_branch(:b, next_row)
-            emit_whole_stretches(fast, slow, next_row, lit: false)
-            emit_every_pixel_run(every_pixel_label(fast), next_row, lit: false)
-            return unless @lit
-
-            emit_whole_stretches(lit_label(fast), slow, next_row, lit: true)
-            emit_every_pixel_run(every_pixel_label(lit_label(fast)), next_row, lit: true)
+            [false, *(@lit ? [true] : [])].each do |lit|
+              run = lit ? lit_label(fast) : fast
+              emit_whole_stretches(run, slow, next_row, lit: lit) if @runs.include?(STRETCH)
+              emit_long_stretches(long_label(run), slow, next_row, lit: lit) if @runs.include?(LONG_STRETCH)
+              emit_every_pixel_run(every_pixel_label(run), next_row, lit: lit)
+            end
           end
+
+          # r0 = where the stretch starting at along ends (Reference#stretch_ends): the next
+          # multiple of the perspective word, or the row's end, or SPLIT_PIXELS on for a long
+          # stretch cut in two. A stretch that starts off the multiples is the second part of a
+          # cut one, and is not cut again.
+          #
+          #   r1 along, r3 the perspective word, r2, r6, lr and the address register the sums
+          def emit_far_along
+            return emit_far_along_uncut unless @cuts_stretches
+
+            done = gensym
+            load_var(1, :_face_along)
+            load_var(3, :_face_perspective)
+            emit(ASM.rsb_imm(0, 3, 0))
+            emit(ASM.and_reg(0, 1, 0))
+            emit(ASM.add_reg(0, 0, 3))
+            load_var(2, :_face_span_count)
+            emit(ASM.cmp_reg(0, 2))
+            emit(ASM.mov_reg_cond(:gt, 0, 2))
+            emit(ASM.cmp_imm(3, SPLIT_PIXELS))
+            emit_branch(:bcond, done, cond: :le)
+            emit(ASM.sub_imm(6, 3, 1))
+            emit(ASM.tst_reg(1, 6))
+            emit_branch(:bcond, done, cond: :ne)
+            emit(ASM.add_imm(6, 1, SPLIT_PIXELS))
+            emit(ASM.cmp_reg(0, 6))
+            emit_branch(:bcond, done, cond: :le)
+            load_var(2, :_face_step_w)
+            emit(ASM.mul(14, 2, 1))
+            load_var(3, :_face_left_w)
+            emit(ASM.add_reg(3, 3, 14)) # one over the distance at the stretch's start
+            emit(ASM.lsl_imm(2, 2, 3)) # its change over SPLIT_PIXELS
+            emit_branch_unless_fast_change(done, 2, 3)
+            emit(ASM.mov_reg(0, 6))
+            place_label(done)
+          end
+
+          # #emit_far_along for a game whose stretches are never cut (none longer than
+          # SPLIT_PIXELS): along on by the perspective word, held to the row's end.
+          def emit_far_along_uncut
+            load_var(0, :_face_along)
+            load_var(3, :_face_perspective)
+            emit(ASM.add_reg(0, 0, 3))
+            load_var(2, :_face_span_count)
+            emit(ASM.cmp_reg(0, 2))
+            emit(ASM.mov_reg_cond(:gt, 0, 2))
+          end
+
+          # On to +slow+ unless one over the distance changes fast (Reference#fast_change?): +change+,
+          # its change over SPLIT_PIXELS pixels, more than a sixteenth of +w+ either way.
+          def emit_branch_unless_fast_change(slow, change, w)
+            fast = gensym
+            emit(ASM.cmp_reg_asr(change, w, 4))
+            emit_branch(:bcond, fast, cond: :gt)
+            emit(ASM.cmn_reg_asr(change, w, 4))
+            emit_branch(:bcond, slow, cond: :ge)
+            place_label(fast)
+          end
+
+          SPLIT_PIXELS = IR::Nodes::FillFace::SPLIT_PIXELS
 
           # The place at the near end of a row's first stretch, worked out for a stretch drawn
           # here. Only the first stretch needs it: each one after takes the far end of the one
@@ -1131,6 +1231,7 @@ module VBlank
           # #emit_branch_by_perspective reaches by this name.
           def lit_label(fast) = DerivedNames.sub_label(fast, :lit)
           def every_pixel_label(run) = DerivedNames.sub_label(run, :every_pixel)
+          def long_label(run) = DerivedNames.sub_label(run, :every_16_pixels)
 
           # The words the run of whole stretches keeps: u, v and w over the distance at the
           # stretch's start and each one's step over a whole stretch, which the run reads and
@@ -1141,8 +1242,11 @@ module VBlank
                                    _face_stretch_w _face_run_end].freeze
           STEPPED_WORDS = WHOLE_STRETCH_WORDS.first(6).freeze
 
-          # The pixels a whole stretch covers, worked out exactly at its ends: eight.
+          # The pixels a whole stretch covers, worked out exactly at its ends: eight, the turn of
+          # the run of whole stretches; and sixteen, two turns, for :every_16_pixels.
           STRETCH = 8
+          LONG_STRETCH = 16
+          STRETCH_RUNS = [STRETCH, LONG_STRETCH].freeze
 
           # On to +fast+ when the stretch about to be drawn starts at a drawn pixel, of a picture
           # with no see-through pixel, on the tear-free screen. Those rows take a loop of their own
@@ -1182,13 +1286,23 @@ module VBlank
             place_label(not_whole)
           end
 
-          # On to +fast+ for a stretch every eight pixels, or its every-pixel run for every pixel,
-          # by the perspective word in r3.
+          # On to +fast+ for a stretch every eight pixels, or its long twin (#long_label) for every
+          # sixteen from a multiple of sixteen (a stretch that starts between is the second part of
+          # one cut in two), or its every-pixel run for every pixel, by the perspective word in r3.
+          # r0 is along. Only to the runs the game has (Faces.stretch_runs): a game that did not
+          # name a setting has no run for it, and the slow way draws the same pixels.
           def emit_branch_by_perspective(fast)
             emit(ASM.cmp_imm(3, 1))
             emit_branch(:bcond, every_pixel_label(fast), cond: :eq)
-            emit(ASM.cmp_imm(3, STRETCH))
-            emit_branch(:bcond, fast, cond: :eq)
+            if @runs.include?(STRETCH)
+              emit(ASM.cmp_imm(3, STRETCH))
+              emit_branch(:bcond, fast, cond: :eq)
+            end
+            return unless @runs.include?(LONG_STRETCH)
+
+            emit(ASM.cmp_imm(3, LONG_STRETCH))
+            emit_if(:eq, ASM.tst_imm(0, LONG_STRETCH - 1))
+            emit_branch(:bcond, long_label(fast), cond: :eq)
           end
 
           # EVERY PIXEL IN PERSPECTIVE, the whole drawn part of the row in one loop: each pixel's
@@ -1302,37 +1416,41 @@ module VBlank
             emit(ASM.bx(14))
           end
 
-          # A ROW FROM A STRETCH'S START TO ITS END, in registers: the run of whole stretches, each
-          # eight pixels all drawn, and then the row's last stretch, the pixels left over. Entered
-          # with the stretch's start, along, in r0 and where the drawn part of the row ends in r2.
+          # A ROW FROM A STRETCH'S START TO ITS END, in registers: the run of whole stretches, and
+          # then the row's last stretch, the pixels left over. Entered with the stretch's start,
+          # along, in r0, where the drawn part of the row ends in r2 and the perspective word in r3.
+          # There is a run for :every_8_pixels (#emit_whole_stretches) and one for :every_16_pixels
+          # (#emit_long_stretches), each only in a game that draws with it (Faces.stretch_runs), so
+          # neither pays for telling the two apart.
           #
-          # Each whole stretch's far end is worked out exactly and its eight pixels stepped evenly
-          # from the near end, two at a time, as #emit_pixel_pairs does, the pairs written whole.
-          # The far end is then the next stretch's near end. The first near end is found by the
-          # same instructions, written once more ahead of the loop: the run starts a stretch before
-          # the row's, and that first far end is the first stretch's near end.
+          # THE RUN GOES ROUND ONCE FOR EVERY EIGHT PIXELS, all drawn: a turn. A turn's far end is
+          # worked out exactly and its eight pixels stepped evenly from the near end, two at a time,
+          # as #emit_pixel_pairs does, the pairs written whole. The far end is then the next turn's
+          # near end. The first near end is found by the same instructions, written once more ahead
+          # of the loop: the run starts a turn before the row's, and that first far end is the first
+          # turn's near end.
           #
-          # A stretch need not start on a pair: one that starts on the right half of a pair keeps
-          # its last pixel back, and the next stretch's first pixel makes up a pair with it. The
-          # first such pixel's other half, before the run, and the last kept back, after it, are
-          # read and written back with the half beside them. Every stretch of a row starts on the
-          # same half of a pair, so each half's pixels end with a jump back to the loop's top of
-          # their own, and no branch is taken past the other half's.
+          # A turn need not start on a pair: one that starts on the right half of a pair keeps its
+          # last pixel back, and the next turn's first pixel makes up a pair with it. The first such
+          # pixel's other half, before the run, and the last kept back, after it, are read and
+          # written back with the half beside them. Every turn of a row starts on the same half of a
+          # pair, so each half's pixels end with a jump back to the loop's top of their own, and no
+          # branch is taken past the other half's.
           #
-          # THE ROW'S LAST STRETCH is under eight pixels, to the row's end
-          # (#emit_last_stretch). A row held in at its right end has pixels past the drawn part
-          # that set its last stretch's length, so that one goes back to +slow+, a stretch at a
-          # time, with the near end in its words.
+          # THE ROW'S LAST STRETCH is under eight pixels, or under sixteen for :every_16_pixels, to
+          # the row's end (#emit_last_stretch). A row held in at its right end has pixels past the
+          # drawn part that set its last stretch's length, so that one goes back to +slow+, a
+          # stretch at a time, with the near end in its words.
           #
-          #   r8, r9 u and v at the stretch's start; r4 where it is in the screen's memory; r6 the
-          #   picture; r7 the pixel kept back, with its mark above its byte; r5 the whole stretches
-          #   left; r10 how far one over the distance was last moved down (#emit_distance_near_last);
+          #   r8, r9 u and v at the turn's start; r4 where it is in the screen's memory; r6 the
+          #   picture; r7 the pixel kept back, with its mark above its byte; r5 the turns left;
+          #   r10 how far one over the distance was last moved down (#emit_distance_near_last);
           #   r0-r3, r11, r12 and lr the sums
           #
           # +lit+, the shade starts at the run's first pixel and is kept in its word between
-          # stretches, and r8-r10 hold the shade, its step and the table while a stretch's pixels
-          # are drawn, so u and v at the far end wait in their words, and so does how far one over
-          # the distance was moved.
+          # turns, and r8-r10 hold the shade, its step and the table while a turn's pixels are
+          # drawn, so u and v at the far end wait in their words, and so does how far one over the
+          # distance was moved.
           def emit_whole_stretches(fast, slow, next_row, lit:)
             even = gensym
             top = gensym
@@ -1340,10 +1458,105 @@ module VBlank
             last = gensym
             place_label(fast)
             emit(ASM.sub_reg(5, 2, 0))
-            emit(ASM.lsr_imm(5, 5, 3)) # how many whole stretches
+            emit(ASM.lsr_imm(5, 5, 3)) # how many turns
             emit(ASM.lsl_imm(1, 5, 3))
             emit(ASM.add_reg(1, 0, 1))
             store_var(1, :_face_run_end)
+            emit_run_start(even, lit: lit)
+            if lit
+              # A second copy of the far end's instructions would make the lit routine bigger than
+              # it need be, so its loop's first turn is marked, works out the near end and draws
+              # nothing.
+              emit(ASM.orr_imm(7, 7, NEAR_END_UNKNOWN))
+            else
+              emit_first_near_end
+              emit(ASM.cmp_imm(5, 0))
+              emit_branch(:bcond, last, cond: :le)
+            end
+
+            place_label(top)
+            emit_far_end_of_whole_stretch(lit: lit)
+            near_end = gensym
+            if lit
+              emit(ASM.tst_imm(7, NEAR_END_UNKNOWN))
+              emit_branch(:bcond, near_end, cond: :ne)
+            end
+            emit_whole_stretch_steps(lit: lit, shift: 3)
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_branch(:bcond, odd, cond: :ne)
+            4.times { emit_pair(lit: lit) }
+            emit_next_whole_stretch(top, lit: lit)
+            emit_branch(:b, last)
+            emit_near_end_of_lit_run(near_end, top, last, cond: :gt) if lit
+            place_label(odd)
+            emit_odd_turn_pixels(lit: lit)
+            emit_next_whole_stretch(top, lit: lit)
+
+            place_label(last)
+            emit_last_stretch(slow, next_row, lit: lit)
+          end
+
+          # THE RUN FOR :every_16_pixels. A stretch of sixteen is two turns. The first works the far
+          # end out sixteen pixels on and steps a sixteenth of the way a pixel; the second goes on
+          # stepping from where the first stopped and works nothing out, which is what the longer
+          # stretch saves: the end of the first's pixels goes straight back to them. Where one over
+          # the distance changes fast the stretch is cut in two (Reference#stretch_ends), and each
+          # of its turns is one of eight (TURN_AFTER_CUT), as #emit_whole_stretches's are. The row's
+          # last stretch of sixteen, cut short by the row's end, is left to the last stretch, unless
+          # more than eight pixels of it are drawn and it is cut in two: its first part is then the
+          # run's last turn (#emit_run_turns).
+          #
+          # The registers are #emit_whole_stretches's, but r5, which holds the turns as
+          # #emit_run_turns says.
+          def emit_long_stretches(fast, slow, next_row, lit:)
+            even = gensym
+            top = gensym
+            odd = gensym
+            last = gensym
+            draw = gensym
+            cut_turn = gensym
+            loaded = gensym
+            place_label(fast)
+            emit_run_turns
+            emit_run_start(even, lit: lit)
+            if lit
+              # Its first turn too is marked (see #emit_whole_stretches), and is a turn of eight,
+              # which steps one turn on, onto the run's start.
+              emit(ASM.orr_imm(7, 7, NEAR_END_UNKNOWN))
+              emit(ASM.orr_imm(5, 5, TURN_AFTER_CUT))
+            else
+              emit_first_near_end
+              emit(ASM.cmp_imm(5, 0))
+              emit_branch(:bcond, last, cond: :lt)
+            end
+
+            place_label(top)
+            emit(ASM.tst_imm(5, TURN_AFTER_CUT))
+            emit_branch(:bcond, cut_turn, cond: :ne)
+            emit_long_turn(loaded, lit: lit)
+            place_label(draw)
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_branch(:bcond, odd, cond: :ne)
+            even_pixels = gensym
+            place_label(even_pixels)
+            4.times { emit_pair(lit: lit) }
+            emit_next_long_turn(top, even_pixels, lit: lit)
+            emit_branch(:b, last)
+            near_end = gensym
+            emit_cut_turn(cut_turn, loaded, near_end, draw, lit: lit)
+            emit_near_end_of_lit_run(near_end, top, last, cond: :ge) if lit
+            place_label(odd)
+            emit_odd_turn_pixels(lit: lit)
+            emit_next_long_turn(top, odd, lit: lit)
+
+            place_label(last)
+            emit_last_stretch(slow, next_row, lit: lit)
+          end
+
+          # What both runs do before their loop: the words their turns step, each a turn back (the
+          # first turn steps onto the run's start), the picture, where the first pixel is, and the
+          # other half of the pair a turn starting on its right half makes up. On to +even+.
+          def emit_run_start(even, lit:)
             emit_shade_along(0, 3, 1) if lit
             [%i[_face_over_u _face_left_u _face_step_u _face_stretch_u],
              %i[_face_over_v _face_left_v _face_step_v _face_stretch_v],
@@ -1352,8 +1565,8 @@ module VBlank
               emit(ASM.mul(3, 1, 0))
               load_var(2, left)
               emit(ASM.add_reg(3, 2, 3))
-              emit(ASM.lsl_imm(1, 1, 3)) # eight steps
-              emit(ASM.sub_reg(3, 3, 1)) # a stretch back: the first turn steps onto the run's start
+              emit(ASM.lsl_imm(1, 1, 3)) # eight steps, a turn's
+              emit(ASM.sub_reg(3, 3, 1)) # a turn back: the first turn steps onto the run's start
               store_var(3, over)
               store_var(1, stretch)
             end
@@ -1369,49 +1582,109 @@ module VBlank
             emit(ASM.and_imm(7, 7, 0xFF))
             emit(ASM.orr_imm(7, 7, KEPT_BACK))
             place_label(even)
-            if lit
-              # A second copy of the far end's instructions would make the lit routine bigger than
-              # LIT_ROUTINE_BYTES, so its loop's first turn is marked, works out the near end and
-              # draws nothing.
-              emit(ASM.orr_imm(7, 7, NEAR_END_UNKNOWN))
-            else
-              load_var(10, :_face_moved_w)
-              emit_far_end_of_whole_stretch(lit: lit)
-              emit(ASM.mov_reg(8, 12))
-              emit(ASM.mov_reg(9, 14))
-              emit(ASM.cmp_imm(5, 0))
-              emit_branch(:bcond, last, cond: :le)
-            end
+          end
 
-            place_label(top)
-            emit_far_end_of_whole_stretch(lit: lit)
-            near_end = gensym
-            if lit
-              emit(ASM.tst_imm(7, NEAR_END_UNKNOWN))
-              emit_branch(:bcond, near_end, cond: :ne)
-            end
-            emit_whole_stretch_steps(lit: lit)
-            emit(ASM.tst_imm(7, KEPT_BACK))
-            emit_branch(:bcond, odd, cond: :ne)
-            4.times { emit_pair(lit: lit) }
-            emit_next_whole_stretch(top, lit: lit)
-            emit_branch(:b, last)
-            emit_near_end_of_lit_run(near_end, top, last) if lit
-            place_label(odd)
+          # An unlit run's first near end, ahead of the loop, in r8 and r9.
+          def emit_first_near_end
+            load_var(10, :_face_moved_w)
+            emit_far_end_of_whole_stretch(lit: false)
+            emit(ASM.mov_reg(8, 12))
+            emit(ASM.mov_reg(9, 14))
+          end
+
+          # A turn starting on the right half of a pair: its first pixel makes up the pair kept
+          # back, and its last is kept back in turn.
+          def emit_odd_turn_pixels(lit:)
             emit_pair_pixel(14, lit: lit)
             emit(ASM.orr_reg_lsl(11, 7, 14, 8))
             emit(ASM.store_halfword_post(11, 4, 2))
             3.times { emit_pair(lit: lit) }
             emit_pair_pixel(7, lit: lit)
             emit(ASM.orr_imm(7, 7, KEPT_BACK))
-            emit_next_whole_stretch(top, lit: lit)
-
-            place_label(last)
-            emit_last_stretch(slow, next_row, lit: lit)
           end
 
-          # Back to +top+ while whole stretches are left; lit, the shade kept in its word and the
-          # far end taken back from its words first.
+          # THE TURNS OF AN :every_16_pixels RUN, COUNTED IN r5, with what kind of turn comes next
+          # in its low bits: the turns left less one, times TURN_COUNTED, and the TURN_ marks. So a
+          # run with no turn left is below nought, and taking a turn off is one subtract whose flags
+          # say whether one is left. r1 is where the turns end, along, which is kept in its word.
+          #
+          # Two turns for each whole stretch of sixteen, and one more for a last stretch with more
+          # than eight pixels drawn that is cut in two (#emit_branch_unless_fast_change, from one
+          # over the distance at its start).
+          #
+          #   r0 where the run starts, along; r2 where the drawn part ends; r3 and then the sums
+          #   with r6 and lr
+          def emit_run_turns
+            no_last_turn = gensym
+            emit(ASM.sub_reg(5, 2, 0))
+            emit(ASM.lsr_imm(5, 5, 4)) # how many whole stretches of sixteen
+            emit(ASM.lsl_imm(1, 5, 4))
+            emit(ASM.add_reg(1, 0, 1))
+            emit(ASM.lsl_imm(5, 5, TURN_SHIFT + 1)) # two turns each
+            emit(ASM.sub_reg(6, 2, 1))
+            emit(ASM.cmp_imm(6, SPLIT_PIXELS))
+            emit_branch(:bcond, no_last_turn, cond: :le)
+            load_var(6, :_face_step_w)
+            emit(ASM.mul(14, 6, 1))
+            load_var(3, :_face_left_w)
+            emit(ASM.add_reg(3, 3, 14)) # one over the distance where the whole stretches end
+            emit(ASM.lsl_imm(6, 6, 3)) # its change over SPLIT_PIXELS
+            emit_branch_unless_fast_change(no_last_turn, 6, 3)
+            emit(ASM.add_imm(1, 1, SPLIT_PIXELS))
+            emit(ASM.add_imm(5, 5, TURN_COUNTED))
+            place_label(no_last_turn)
+            emit(ASM.sub_imm(5, 5, TURN_COUNTED))
+            store_var(1, :_face_run_end)
+          end
+
+          # What r5 holds in an :every_16_pixels run (#emit_run_turns): the turns left less one,
+          # from bit TURN_SHIFT, and below them the marks for the next turn. TURN_STEPPED_ON marks a
+          # turn that goes on stepping from the last, the second of an uncut stretch of sixteen;
+          # TURN_AFTER_CUT a turn of eight, the second part of a stretch cut in two (or a lit run's
+          # first).
+          TURN_SHIFT = 3
+          TURN_COUNTED = 1 << TURN_SHIFT
+          TURN_STEPPED_ON = 2
+          TURN_AFTER_CUT = 4
+
+          # THE FIRST TURN OF A STRETCH OF SIXTEEN, at the loop's top (the second of an uncut one
+          # never comes back there: #emit_next_long_turn). It loads the stretch's words and asks
+          # whether the stretch is cut in two (#emit_branch_unless_fast_change, from its step and
+          # one over the distance at its start). Cut, it is a turn of eight, from +loaded+ in
+          # #emit_cut_turn, and the next is marked to be one too. Uncut, two turns' steps are added,
+          # the far end worked out and a sixteenth of the way a pixel stepped, and on into the
+          # pixels below it.
+          def emit_long_turn(loaded, lit:)
+            uncut = gensym
+            steps = stretch_step_registers(lit)
+            emit_load_stretch_words(lit)
+            emit_branch_unless_fast_change(uncut, steps.last, 3)
+            emit(ASM.orr_imm(5, 5, TURN_AFTER_CUT))
+            emit_branch(:b, loaded)
+            place_label(uncut)
+            [0, 2, 3].zip(steps).each { |over, step| emit(ASM.add_reg_lsl(over, over, step, 1)) }
+            emit(ASM.orr_imm(5, 5, TURN_STEPPED_ON))
+            emit_far_end_from_stepped_words(lit)
+            emit_whole_stretch_steps(lit: lit, shift: 4)
+          end
+
+          # A TURN OF EIGHT in an :every_16_pixels run, at +cut_turn+: the mark cleared, the far end
+          # a turn on, an eighth of the way a pixel, and on to +draw+. A lit run's first turn goes to
+          # +near_end+ instead.
+          def emit_cut_turn(cut_turn, loaded, near_end, draw, lit:)
+            place_label(cut_turn)
+            emit(ASM.bic_imm(5, 5, TURN_AFTER_CUT))
+            emit_far_end_of_whole_stretch(lit: lit, loaded: loaded)
+            if lit
+              emit(ASM.tst_imm(7, NEAR_END_UNKNOWN))
+              emit_branch(:bcond, near_end, cond: :ne)
+            end
+            emit_whole_stretch_steps(lit: lit, shift: 3)
+            emit_branch(:b, draw)
+          end
+
+          # Back to +top+ while turns are left; lit, the shade kept in its word and the far end
+          # taken back from its words first.
           def emit_next_whole_stretch(top, lit:)
             if lit
               store_var(8, :_face_shade)
@@ -1422,44 +1695,66 @@ module VBlank
             emit_branch(:bcond, top, cond: :gt)
           end
 
+          # The turn after the pixels just drawn, in an :every_16_pixels run. The second turn of an
+          # uncut stretch of sixteen (TURN_STEPPED_ON) is back to +pixels+, the same half's, at once:
+          # its steps, and lit its shade, go on in their registers, and an uncut stretch is whole,
+          # so that turn is always left. Any other is back to +top+ while turns are left; lit, the
+          # shade kept in its word and the far end taken back from its words first.
+          def emit_next_long_turn(top, pixels, lit:)
+            emit(ASM.tst_imm(5, TURN_STEPPED_ON))
+            emit_if(:ne, ASM.bic_imm(5, 5, TURN_STEPPED_ON))
+            emit_if(:ne, ASM.sub_imm(5, 5, TURN_COUNTED))
+            emit_branch(:bcond, pixels, cond: :ne)
+            if lit
+              store_var(8, :_face_shade)
+              load_var(8, :_face_far_u)
+              load_var(9, :_face_far_v)
+            end
+            emit(ASM.subs_imm(5, 5, TURN_COUNTED))
+            emit_branch(:bcond, top, cond: :ge)
+          end
+
           # A LIT RUN'S FIRST TURN, marked NEAR_END_UNKNOWN, at +near_end+: the far end just worked
-          # out is the first stretch's near end, so it is kept, the mark cleared, and on to +top+
-          # for the first stretch, or to +last+ for a row with none.
-          def emit_near_end_of_lit_run(near_end, top, last)
+          # out is the first turn's near end, so it is kept, the mark cleared, and on to +top+
+          # for the first turn, or to +last+ for a row with none. +cond+ is when r5 says a turn
+          # is left: above nought counting turns, at least nought counting them less one.
+          def emit_near_end_of_lit_run(near_end, top, last, cond:)
             place_label(near_end)
             emit(ASM.mov_reg(8, 12))
             emit(ASM.mov_reg(9, 14))
             emit(ASM.bic_imm(7, 7, NEAR_END_UNKNOWN))
             emit(ASM.cmp_imm(5, 0))
-            emit_branch(:bcond, top, cond: :gt)
+            emit_branch(:bcond, top, cond: cond)
             emit_branch(:b, last)
           end
 
           # The marks the run keeps above the kept-back pixel's byte in r7: that a pixel is kept
           # back, the left half of a pair waiting for its right half, and, lit, that the place at
-          # the stretch's near end is not worked out yet. A pair is written from its low sixteen
+          # the turn's near end is not worked out yet. A pair is written from its low sixteen
           # bits, so a mark never reaches the screen.
           KEPT_BACK = 0x10000
           NEAR_END_UNKNOWN = 0x20000
 
-          # The far end of the stretch: u, v and w over the distance each a stretch on, read and
-          # written back together, and from them u in r12 and v in lr, exactly. Those two are
-          # where #emit_whole_stretch_steps wants them, so nothing moves them on the way.
+          # The far end of the turn: u, v and w over the distance each a turn on, read and written
+          # back together, and from them u in r12 and v in lr, exactly. Those two are where
+          # #emit_whole_stretch_steps wants them, so nothing moves them on the way. A turn of
+          # sixteen's cut in two comes in at +loaded+ with the words read (#emit_long_turn), and an
+          # uncut one has a copy of its own of all but the first instructions.
           #
           #   r1 where the words are, r3 the distance; unlit, r11, r12 and lr the steps, and then
           #   r11 and r1 the sums; lit, r10-r12 the steps and then r10 and r11 the sums
-          def emit_far_end_of_whole_stretch(lit:)
+          def emit_far_end_of_whole_stretch(lit:, loaded: nil)
+            emit_load_stretch_words(lit)
+            place_label(loaded) if loaded
+            [0, 2, 3].zip(stretch_step_registers(lit)).each { |over, step| emit(ASM.add_reg(over, over, step)) }
+            emit_far_end_from_stepped_words(lit)
+          end
+
+          # The far end from the words stepped on in r0, r2 and r3, written back first (see
+          # #emit_far_end_of_whole_stretch).
+          def emit_far_end_from_stepped_words(lit)
             words = var_addr(STEPPED_WORDS.first)
-            if ASM.encode_rotated_immediate(words - IWRAM_START)
-              emit_number(1, IWRAM_START)
-              emit(ASM.add_imm(1, 1, words - IWRAM_START))
-            else
-              emit_number(1, words)
-            end
-            steps = lit ? [10, 11, 12] : [11, 12, 14]
             low, high = spare_pair(lit)
-            emit(ASM.ldmia(1, 0, 2, 3, *steps))
-            [0, 2, 3].zip(steps).each { |over, step| emit(ASM.add_reg(over, over, step)) }
             emit(ASM.stmia(1, 0, 2, 3))
             held = WordsBase.new(register: 1, address: words) unless lit
             emit_distance_near_last(3, 10, 11, held: held)
@@ -1471,15 +1766,33 @@ module VBlank
             emit(ASM.orr_reg_lsl(14, low, high, 18)) # v at the far end
           end
 
-          # What a whole stretch's eight pixels step from: u and v at its near end and an eighth of
-          # the way to its far end (r12 and lr), each moved up for the picture's repeat, in r0-r3
-          # as #emit_pair_pixel reads them. The far end is left as the next stretch's near end, in
-          # r8 and r9.
+          # The stepped words read: u, v and w over the distance at the turn's near end in r0, r2
+          # and r3, each one's step over a turn in the registers #stretch_step_registers names, and
+          # their address in r1.
+          def emit_load_stretch_words(lit)
+            words = var_addr(STEPPED_WORDS.first)
+            if ASM.encode_rotated_immediate(words - IWRAM_START)
+              emit_number(1, IWRAM_START)
+              emit(ASM.add_imm(1, 1, words - IWRAM_START))
+            else
+              emit_number(1, words)
+            end
+            emit(ASM.ldmia(1, 0, 2, 3, *stretch_step_registers(lit)))
+          end
+
+          # Where a turn's steps of u, v and w over the distance are read into.
+          def stretch_step_registers(lit) = lit ? [10, 11, 12] : [11, 12, 14]
+
+          # What a turn's eight pixels step from: u and v at its near end and an eighth of the way
+          # to its far end (r12 and lr; a sixteenth, +shift+ 4, for the first turn of an uncut
+          # stretch of sixteen), each moved up for the picture's repeat, in r0-r3 as
+          # #emit_pair_pixel reads them. The far end is left as the next turn's near end, in r8
+          # and r9.
           #
           # +lit+, the pixels are shaded as #emit_shaded_number does, so r8-r10 take the shade, its
           # step and the table, and the far end waits in its words. Their address is built in r1,
           # since r12 holds u.
-          def emit_whole_stretch_steps(lit:)
+          def emit_whole_stretch_steps(lit:, shift:)
             across, down = spare_pair(lit)
             if lit
               base = WordsBase.new(register: 1, address: IWRAM_START)
@@ -1487,8 +1800,8 @@ module VBlank
               emit(ASM.str_offset(12, 1, base.offset_to(var_addr(:_face_far_u))))
               emit(ASM.str_offset(14, 1, base.offset_to(var_addr(:_face_far_v))))
             end
-            emit_eighth(across, 12, 8)
-            emit_eighth(down, 14, 9)
+            emit_stretch_step(across, 12, 8, shift)
+            emit_stretch_step(down, 14, 9, shift)
             emit_moved_up(0, 8, :across)
             emit(ASM.mov_reg(8, 12))
             emit_moved_up(2, across, :across)
@@ -1524,7 +1837,7 @@ module VBlank
           end
 
           # THE ROW'S LAST STRETCH, after its whole ones: the pixels from where those ended to the
-          # row's end, under eight. Its far end is the row's end, worked out exactly
+          # row's end, under a stretch. Its far end is the row's end, worked out exactly
           # (SAMPLE_ROUTINE), and its step the way there divided by its length, so one pixel alone
           # needs neither: it is the near end's. Then on to +next_row+.
           #
@@ -1610,12 +1923,13 @@ module VBlank
             emit_if(:ne, ASM.store_halfword(14, 4))
           end
 
-          # +into+ = (+far+ - +near+) / 8, truncated toward nought as Int32.div does: a shift down,
-          # after adding seven to a number below nought, which the subtract's own flags tell.
-          def emit_eighth(into, far, near)
+          # +into+ = (+far+ - +near+) / 2**+shift+, truncated toward nought as Int32.div does: a shift
+          # down, after adding one less than 2**+shift+ to a number below nought, which the subtract's
+          # own flags tell.
+          def emit_stretch_step(into, far, near, shift)
             emit_setting_flags(ASM.sub_reg(into, far, near))
-            emit_if(:mi, ASM.add_imm(into, into, 7))
-            emit(ASM.asr_imm(into, into, 3))
+            emit_if(:mi, ASM.add_imm(into, into, (1 << shift) - 1))
+            emit(ASM.asr_imm(into, into, shift))
           end
 
           # +reg+ = the distance for one over it in +reg+ (IR::Reciprocals.distance): held to the

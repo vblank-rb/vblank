@@ -80,7 +80,7 @@ class TestPlaces < Minitest::Test
       game_loop { draw_place :room, seen_by: eye, perspective: :sometimes }
     end
 
-    assert_match(/The settings are :none, :every_8_pixels, :every_pixel/, message)
+    assert_match(/The settings are :none, :every_16_pixels, :every_8_pixels, :every_pixel/, message)
   end
 
   def test_a_point_further_than_a_place_reaches_is_refused

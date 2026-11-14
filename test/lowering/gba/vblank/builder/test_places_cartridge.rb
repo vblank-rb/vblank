@@ -78,9 +78,13 @@ class TestPlacesCartridge < Minitest::Test
   end
 
   def test_a_wall_leaning_away_agrees_in_each_perspective
-    %i[none every_8_pixels every_pixel].each do |perspective|
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
       assert_backends_agree(PlaceGames.wall_down_the_side(perspective), frames: 3, console_frames: 30, name: "WALL")
+      assert_backends_agree(PlaceGames.striped_wall(perspective), frames: 3, console_frames: 30, name: "STRIPES")
     end
+    # A game drawing every 8 pixels and every 16 has a run of whole stretches for each.
+    assert_backends_agree(PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels]), frames: 3, console_frames: 30,
+                                                                                         name: "BOTHRUNS")
   end
 
   SEE_THROUGH_OR_NOT = [false, true].freeze
@@ -88,7 +92,7 @@ class TestPlacesCartridge < Minitest::Test
   # A face lit from its corners: each pixel the shading's colour for its blended light, leaning
   # away in each perspective, with see-through pixels, and with light the game adds as it runs.
   def test_a_lit_face_agrees_in_each_perspective
-    %i[none every_8_pixels every_pixel].each do |perspective|
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
       SEE_THROUGH_OR_NOT.each do |see_through|
         program = PlaceGames.lit_square(left: 0.1, right: 0.95, perspective: perspective, see_through: see_through,
                                         far: 3.0)

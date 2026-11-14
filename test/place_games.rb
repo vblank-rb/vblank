@@ -206,6 +206,29 @@ module PlaceGames
     builder.program
   end
 
+  # A wall ahead filling most of the screen, two wholes ahead at its left and three at its right, so
+  # it leans away gently, with a picture of stripes a picture pixel wide laid across it eight times
+  # over, red and blue: where a stripe lands shows where the place on the picture was worked out to.
+  # Drawn with +perspective+, or with each of a list of them in turn, one over the last.
+  def self.striped_wall(perspective)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :stripes, width: 64, height: 8, data: (0...8).flat_map { (0...64).map { |across| across.even? ? 0x001F : 0x7C00 } }
+      place :wall do
+        face point(-1.5, 1.0, 2.0), point(1.5, 1.0, 3.0), point(1.5, -1.0, 3.0), point(-1.5, -1.0, 2.0),
+             picture: :stripes, on_picture: [[0, 0], [512, 0], [512, 8], [0, 8]]
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        Array(perspective).each { |each| draw_place :wall, seen_by: eye, perspective: each }
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # The four colours of a small shading, and its four levels, darkest first: white goes black at
   # the darkest level, then dark gray, then gray, and is itself at the brightest.
   SHADES = Ractor.make_shareable([0x7FFF, 0x4210, 0x2108, 0x0000])

@@ -75,8 +75,8 @@ class TestFaceFillCost < Minitest::Test
   # In perspective a picture with see-through pixels is still drawn a stretch of eight pixels at a
   # time, each a call of its own, where one with none runs whole stretches together: so it costs
   # twice that one's. The pairs are what this holds.
-  def test_a_grate_leaning_away_costs_under_sixty_four_cycles_a_pixel_in_perspective_every_8_pixels
-    assert_fill_under(64, whole_screen_face(:every_8_pixels, see_through: SEE_THROUGH, data: GRATE, far: 5.0),
+  def test_a_grate_leaning_away_costs_under_sixty_one_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(61, whole_screen_face(:every_8_pixels, see_through: SEE_THROUGH, data: GRATE, far: 5.0),
                       "a pixel at a time it cost 72")
   end
 
@@ -84,9 +84,24 @@ class TestFaceFillCost < Minitest::Test
   # pixels at a time as without perspective. What a stretch costs on top of its pixels is most of
   # the difference: its picture's shifts are written into its instructions, and how far one over
   # the distance was moved stays in a register for the row.
-  def test_a_face_leaning_away_costs_under_twenty_three_cycles_a_pixel_in_perspective_every_8_pixels
-    assert_fill_under(23, whole_screen_face(:every_8_pixels, far: 5.0),
+  def test_a_face_leaning_away_costs_under_twenty_two_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(22, whole_screen_face(:every_8_pixels, far: 5.0),
                       "a stretch at a time it cost 56; reading its shifts from memory, 24")
+  end
+
+  # Every sixteen pixels, the default: the second eight of each stretch go on stepping from where
+  # the first stopped, and only the first works the place on the picture out.
+  def test_a_face_leaning_away_costs_under_twenty_cycles_a_pixel_in_perspective_every_16_pixels
+    assert_fill_under(20, whole_screen_face(:every_16_pixels, far: 5.0), "every 8 pixels it costs under 22")
+  end
+
+  def test_a_grate_leaning_away_costs_under_thirty_nine_cycles_a_pixel_in_perspective_every_16_pixels
+    assert_fill_under(39, whole_screen_face(:every_16_pixels, see_through: SEE_THROUGH, data: GRATE, far: 5.0),
+                      "every 8 pixels it costs under 61")
+  end
+
+  def test_a_lit_face_leaning_away_costs_under_twenty_nine_cycles_a_pixel_in_perspective_every_16_pixels
+    assert_fill_under(29, whole_screen_face(:every_16_pixels, far: 5.0, lit: true), "every 8 pixels it costs under 33")
   end
 
   def test_a_face_leaning_away_costs_under_ninety_cycles_a_pixel_in_perspective_every_pixel
@@ -99,9 +114,9 @@ class TestFaceFillCost < Minitest::Test
     assert_fill_under(27, whole_screen_face(:none, lit: true), "unlit it costs under 17")
   end
 
-  def test_a_lit_face_leaning_away_costs_under_thirty_four_cycles_a_pixel_in_perspective_every_8_pixels
-    assert_fill_under(34, whole_screen_face(:every_8_pixels, far: 5.0, lit: true),
-                      "a stretch at a time it cost 71; reading its shifts from memory, 34; unlit it costs under 23")
+  def test_a_lit_face_leaning_away_costs_under_thirty_three_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(33, whole_screen_face(:every_8_pixels, far: 5.0, lit: true),
+                      "a stretch at a time it cost 71; reading its shifts from memory, 34; unlit it costs under 22")
   end
 
   private def assert_fill_under(most, program, before)

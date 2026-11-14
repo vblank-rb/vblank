@@ -862,7 +862,8 @@ module VBlank
           @top = TopOfQuickMemory.for(program, stack_room: @stack_room, divides: needs_divide_routine?(program),
                                                divides_fractions: needs_divide_fix_routine?(program),
                                                fills_faces: Faces.fills_faces?(program),
-                                               lights_faces: Faces.lights_faces?(program))
+                                               lights_faces: Faces.lights_faces?(program),
+                                               stretch_runs: Faces.stretch_runs(program))
           @memory.ceiling = @top.ceiling
           Faces.words.each { |name| var_addr(name) } if @top.fill_face_at
           variables_first.each { |name| var_addr(name) }

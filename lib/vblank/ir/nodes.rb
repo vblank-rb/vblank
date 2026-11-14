@@ -899,9 +899,13 @@ module VBlank
 
         # +perspective+ is how many pixels apart the place on the picture is worked out exactly
         # across a row: PERSPECTIVE_NONE for never (the picture is stretched straight between the
-        # row's ends), 8 or 1. Between, it steps straight.
+        # row's ends), 16, 8 or 1. Between, it steps straight. A stretch longer than SPLIT_PIXELS
+        # is cut in two where the distance changes fast across it (Reference#stretch_ends).
         PERSPECTIVE_NONE = 0
-        PERSPECTIVE_SPANS = Ractor.make_shareable({ none: PERSPECTIVE_NONE, every_8_pixels: 8, every_pixel: 1 })
+        PERSPECTIVE_SPANS = Ractor.make_shareable({ none: PERSPECTIVE_NONE, every_16_pixels: 16, every_8_pixels: 8,
+                                                    every_pixel: 1 })
+        SPLIT_PIXELS = 8
+        DEFAULT_PERSPECTIVE = :every_16_pixels # What `draw_place` draws with unless told
 
         # The edges nothing outside is drawn, [left, top, right, bottom].
         def edges = [left, top, right, bottom]

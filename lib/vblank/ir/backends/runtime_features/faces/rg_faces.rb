@@ -54,6 +54,17 @@ def rg_face_distance(w)
   RG_FACE_RECIPROCALS[(w >> moved) - 1024] >> (moved - 2)
 end
 
+# Nodes::FillFace::SPLIT_PIXELS: how far into a long stretch it is cut where the distance changes fast.
+RG_FACE_SPLIT_PIXELS = 8
+
+# Reference#fast_change?: whether one over the distance, +w+ at a stretch's start and stepping
+# +w_step+ a pixel, changes over RG_FACE_SPLIT_PIXELS pixels by more than a sixteenth of +w+.
+def rg_face_fast_change?(w, w_step)
+  change = rg_mul(w_step, RG_FACE_SPLIT_PIXELS)
+  limit = rg_shr(w, 4)
+  change > limit || change < rg_sub(0, limit)
+end
+
 # Reference::Shade#color_at: the colour +color+ becomes at +shade+ (its level in the top sixteen
 # bits). A colour not in the shading's list stays as it is. Where each colour stands in the list is
 # worked out once for each shading drawn with.
@@ -116,11 +127,19 @@ def rg_face_row(row, from, to, left, right, image, numbers, spans, shading)
       u = rg_add(from_u, rg_mul(step_u, along))
       v = rg_add(from_v, rg_mul(step_v, along))
     else
-      # Reference#place_between
+      # Reference#stretch_ends
       near_along = (along / spans) * spans
+      far_along = near_along + spans
+      far_along = count if far_along > count
+      cut = near_along + RG_FACE_SPLIT_PIXELS
+      if far_along > cut && rg_face_fast_change?(rg_add(from_w, rg_mul(step_w, near_along)), step_w)
+        if along < cut
+          far_along = cut
+        else
+          near_along = cut
+        end
+      end
       unless near_along == near_at
-        far_along = near_along + spans
-        far_along = count if far_along > count
         # Reference#place_in_perspective, at the stretch's near end and at its far one
         distance = rg_face_distance(rg_add(from_w, rg_mul(step_w, near_along)))
         near_u = rg_mul_fix(rg_add(from_u, rg_mul(step_u, near_along)), distance, 14)

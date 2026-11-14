@@ -3649,8 +3649,9 @@ module VBlank
         # Without perspective (+spans+ nought) the place on the picture steps by one equal amount a
         # pixel. In perspective, u, v and w are the place over the distance and one over the
         # distance (FaceEdges.in_perspective), which do step equally; every +spans+ pixels along
-        # the row, and at its end, the place is worked out from them (#place_in_perspective), and
-        # between it steps equally from one to the next.
+        # the row (or eight, where a long stretch is cut in two: #stretch_ends), and at its end, the
+        # place is worked out from them (#place_in_perspective), and between it steps equally from
+        # one to the next.
         #
         # Lit with +shade+ (a Shade), each pixel's colour is looked up at its level of light, the
         # shade stepping by one equal amount a pixel whatever the perspective.
@@ -3669,7 +3670,7 @@ module VBlank
             u, v = if spans == Nodes::FillFace::PERSPECTIVE_NONE
                      (0..1).map { |part| Int32.add(from[part + 1], Int32.mul(steps[part], along)) }
                    else
-                     place_between(along, spans, count, places) { |at| place_in_perspective(from, steps, at) }
+                     place_between(along, spans, count, places, from[3], steps[2]) { |at| place_in_perspective(from, steps, at) }
                    end
             across = Int32.bit_and(Int32.shift_right(u, 16), picture.width - 1)
             down = Int32.bit_and(Int32.shift_right(v, 16), picture.height - 1)
@@ -3683,17 +3684,45 @@ module VBlank
         end
 
         # [u, v] at +along+ pixels into a row in perspective: from the places worked out exactly
-        # at the last multiple of +spans+ before it and at the next (or the row's end, +count+
-        # along), one equal step a pixel between, each step the difference divided by how many
-        # pixels apart they are. +places+ keeps what the block worked out, by how far along.
-        def place_between(along, spans, count, places)
-          from = (along / spans) * spans
-          to = [from + spans, count].min
+        # at the stretch's two ends (#stretch_ends), one equal step a pixel between, each step the
+        # difference divided by how many pixels apart they are. +places+ keeps what the block
+        # worked out, by how far along. One over the distance is +w_left+ at the row's start and
+        # steps +w_step+ a pixel.
+        def place_between(along, spans, count, places, w_left, w_step)
+          from, to = stretch_ends(along, spans, count, w_left, w_step)
           near = (places[from] ||= yield(from))
           far = (places[to] ||= yield(to))
           near.zip(far).map do |start, finish|
             Int32.add(start, Int32.mul(Int32.div(Int32.sub(finish, start), to - from), along - from))
           end
+        end
+
+        # [near, far] along the row, the ends of the stretch +along+ is in: the last multiple of
+        # +spans+ at or before it and the next (or the row's end, +count+ along).
+        #
+        # A STRETCH LONGER THAN Nodes::FillFace::SPLIT_PIXELS IS CUT IN TWO, the first part that
+        # many pixels long, where one over the distance changes fast across it: by more than a
+        # sixteenth of its value at the stretch's start over SPLIT_PIXELS pixels, either way. Stepping
+        # straight across a stretch strays from the exact place most where that change is big, on a
+        # face seen at a slant close by; there the stretch is as short as :every_8_pixels's, and
+        # everywhere else as long as asked. How fast it changes is the row's step a pixel
+        # (+w_step+), so the test is the same for every stretch of a row but for the value at the
+        # start (+w_left+ stepped on). The second part is not tested again.
+        def stretch_ends(along, spans, count, w_left, w_step)
+          near = (along / spans) * spans
+          far = [near + spans, count].min
+          cut = near + Nodes::FillFace::SPLIT_PIXELS
+          return [near, far] unless far > cut && fast_change?(Int32.add(w_left, Int32.mul(w_step, near)), w_step)
+
+          along < cut ? [near, cut] : [cut, far]
+        end
+
+        # Whether one over the distance, +w+ at a stretch's start and stepping +w_step+ a pixel,
+        # changes over SPLIT_PIXELS pixels by more than a sixteenth of +w+, up or down.
+        def fast_change?(w, w_step)
+          change = Int32.mul(w_step, Nodes::FillFace::SPLIT_PIXELS)
+          limit = Int32.shift_right(w, 4)
+          change > limit || change < -limit
         end
 
         # [u, v] exactly +along+ pixels into a row whose left end is +from+ ([x, u/z, v/z, 1/z]) and

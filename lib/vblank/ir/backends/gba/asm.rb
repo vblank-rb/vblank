@@ -254,6 +254,30 @@ module VBlank
             [0xE0800000 | (rn << 16) | (rd << 12) | (shift << 7) | 0x20 | rm].pack("V")
           end
 
+          # ADD rd, rn, rm, LSL #shift — add a register shifted up on the way, so adding twice a
+          # step is one instruction. A shift of 0 is a plain ADD.
+          def add_reg_lsl(rd, rn, rm, shift)
+            raise ArgumentError, "shift must be 0-31" unless (0..31).cover?(shift)
+
+            [0xE0800000 | (rn << 16) | (rd << 12) | (shift << 7) | rm].pack("V")
+          end
+
+          # CMP rn, rm, ASR #shift — compare against a register shifted down keeping its sign, so
+          # "is this more than a sixteenth of that?" is one instruction.
+          def cmp_reg_asr(rn, rm, shift)
+            raise ArgumentError, "shift must be 1-31" unless (1..31).cover?(shift)
+
+            [0xE1500000 | (rn << 16) | (shift << 7) | 0x40 | rm].pack("V")
+          end
+
+          # CMN rn, rm, ASR #shift — compare +rn+ against minus a register shifted down keeping
+          # its sign (the flags of rn + rm ASR shift): "is this below minus a sixteenth of that?"
+          def cmn_reg_asr(rn, rm, shift)
+            raise ArgumentError, "shift must be 1-31" unless (1..31).cover?(shift)
+
+            [0xE1700000 | (rn << 16) | (shift << 7) | 0x40 | rm].pack("V")
+          end
+
           # ADD rd, rn, rm, ASR #shift — add a register shifted down on the way, keeping its sign
           # (the arithmetic shift copies the top bit in). Scaling a signed value down and adding it
           # to a total is then one instruction, which is what the sound mixer does to every sample.
@@ -284,6 +308,11 @@ module VBlank
             raise ArgumentError, "immediate #{imm} cannot be encoded as rotated 8-bit" unless encoding
             # TST = ANDS with rd=0 (result discarded), S bit set
             [0xE3100000 | (rn << 16) | encoding].pack("V")
+          end
+
+          # TST rn, rm — test the bits two registers share (AND, only setting the flags)
+          def tst_reg(rn, rm)
+            [0xE1100000 | (rn << 16) | rm].pack("V")
           end
 
           # MVN rd, rm — move NOT register (bitwise complement)

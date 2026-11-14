@@ -57,6 +57,17 @@ static void face_place_in_perspective(const int32_t *from, const int32_t *steps,
   place[1] = rg_mul_fix(over_v, distance, 14);
 }
 
+/* Nodes::FillFace::SPLIT_PIXELS: how far into a long stretch it is cut where the distance changes fast. */
+enum { FACE_SPLIT_PIXELS = 8 };
+
+/* Reference#fast_change?: whether one over the distance, +w+ at a stretch's start and stepping
+ * +w_step+ a pixel, changes over FACE_SPLIT_PIXELS pixels by more than a sixteenth of +w+. */
+static int face_fast_change(int32_t w, int32_t w_step) {
+  int32_t change = rg_mul(w_step, FACE_SPLIT_PIXELS);
+  int32_t limit = rg_shr(w, 4);
+  return change > limit || change < rg_sub(0, limit);
+}
+
 /* Reference::Shade's places: where each colour stands in a shading's list of colours, or -1 for a
  * colour not in it. Worked out again only when the shading drawn with changes. */
 static const int32_t *shading_placed = NULL;
@@ -124,9 +135,15 @@ static void face_row(int32_t row, int32_t *from, int32_t *to, int32_t left, int3
       u = rg_add(from[1], rg_mul(steps[0], along));
       v = rg_add(from[2], rg_mul(steps[1], along));
     } else {
-      /* Reference#place_between: exact at the multiple of +spans+ before and the next, or the end */
+      /* Reference#stretch_ends: exact at the multiple of +spans+ before and the next, or the end,
+       * and a long stretch cut in two where the distance changes fast */
       int32_t near_along = (along / spans) * spans;
       int32_t far_along = near_along + spans < count ? near_along + spans : count;
+      int32_t cut = near_along + FACE_SPLIT_PIXELS;
+      if (far_along > cut && face_fast_change(rg_add(from[3], rg_mul(steps[2], near_along)), steps[2])) {
+        if (along < cut) far_along = cut;
+        else near_along = cut;
+      }
       if (near_along != near_at) {
         face_place_in_perspective(from, steps, near_along, near);
         face_place_in_perspective(from, steps, far_along, far);

@@ -184,11 +184,12 @@ class TestPlacesOnTheAdvance < Minitest::Test
   def test_a_picture_on_a_wall_leaning_away_is_in_perspective_by_default
     red = shown(0x001F)
     blue = shown(0x7C00)
+    every_16 = game_player.run(PlaceGames.wall_down_the_side(:every_16_pixels), frames: 2).screen
     every_8 = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
     every_pixel = game_player.run(PlaceGames.wall_down_the_side(:every_pixel), frames: 2).screen
     none = game_player.run(PlaceGames.wall_down_the_side(:none), frames: 2).screen
 
-    [every_8, every_pixel].each do |screen|
+    [every_16, every_8, every_pixel].each do |screen|
       assert_equal red, screen.pixel(92, 80), "x 92 is under six wholes ahead"
       assert_equal blue, screen.pixel(104, 80), "x 104 is past six wholes ahead"
     end
@@ -244,11 +245,33 @@ class TestPlacesOnTheAdvance < Minitest::Test
     assert_equal((56..112).map { |x| alone.pixel(x, 80) }, (56..112).map { |x| after.pixel(x, 80) })
   end
 
-  def test_the_default_perspective_is_every_8_pixels
+  def test_the_default_perspective_is_every_16_pixels
     default = game_player.run(PlaceGames.wall_down_the_side(Builder::Places::PERSPECTIVE), frames: 2).screen
 
-    assert_equal :every_8_pixels, Builder::Places::PERSPECTIVE
+    assert_equal :every_16_pixels, Builder::Places::PERSPECTIVE
     assert_equal shown(0x001F), default.pixel(92, 80)
+  end
+
+  # The wall down the side goes from two wholes ahead to ten across 48 pixels, so its distance
+  # changes fast across every stretch of 16: each is cut in two, and the picture lands where every
+  # 8 pixels puts it.
+  def test_a_wall_leaning_away_steeply_is_drawn_in_stretches_of_8
+    every_16 = game_player.run(PlaceGames.wall_down_the_side(:every_16_pixels), frames: 2).screen
+    every_8 = game_player.run(PlaceGames.wall_down_the_side(:every_8_pixels), frames: 2).screen
+
+    assert_equal (0...160).map { |y| (56..112).map { |x| every_8.pixel(x, y) } },
+                 (0...160).map { |y| (56..112).map { |x| every_16.pixel(x, y) } }
+  end
+
+  # A wall that leans away gently, from two wholes ahead to three, is drawn in stretches of 16:
+  # its picture of narrow stripes lands a pixel off where every 8 pixels puts it, here and there.
+  def test_a_wall_leaning_away_gently_is_drawn_in_stretches_of_16
+    rows = %i[every_16_pixels every_8_pixels].map do |perspective|
+      screen = game_player.run(PlaceGames.striped_wall(perspective), frames: 2).screen
+      (0...160).map { |y| (0...240).map { |x| screen.pixel(x, y) } }
+    end
+
+    refute_equal rows[0], rows[1]
   end
 
   def test_listed_faces_are_drawn_in_the_order_the_list_gives
