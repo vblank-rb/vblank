@@ -160,6 +160,45 @@ class TestPS1FacePieces < Minitest::Test
     passes
   end
 
+  # A wall at a slant, near at its left and far at its right, so it is cut into many cells.
+  SLANTED_WALL = [[16 * 16, 16 * 16, 0, 0, 1 << 24, 0], [300 * 16, 100 * 16, 64 << 16, 0, 1 << 21, 0],
+                  [300 * 16, 140 * 16, 64 << 16, 64 << 16, 1 << 21, 0], [16 * 16, 220 * 16, 0, 64 << 16, 1 << 24, 0]].freeze
+
+  private def slanted_wall_triangles(edges)
+    FacePieces.triangles(corners: SLANTED_WALL, edges: edges, spans: 8, width: 16, height: 16).map(&:corners)
+  end
+
+  # Through a window, a face is sent as the triangles the whole screen sends it as that reach the window,
+  # corner for corner, so the chip draws each pixel there as on the whole screen; and the cells wholly
+  # outside the window are not made at all. The face is cut straight at the lines around the window, and
+  # a corner a cut makes is worked out from the edge it lies on, so it is the corner the cuts along every
+  # line before would make.
+  def test_a_face_through_a_window_is_sent_as_the_whole_screens_triangles_there
+    whole = slanted_wall_triangles([0, 0, 320, 240])
+
+    [[100, 90, 140, 150], [37, 13, 91, 77], [200, 0, 320, 240]].each do |window|
+      through = slanted_wall_triangles(window)
+
+      assert_empty through - whole, "triangles through #{window} the whole screen does not send"
+      assert_operator through.length, :<, whole.length / 3, "through #{window}"
+    end
+  end
+
+  # A corner a cut across the screen makes is the same, to the bit, whichever lines the piece was cut at
+  # before: cut down the slanted wall a line at a time, the part past each line is the wall cut straight
+  # at that line.
+  def test_a_cut_makes_the_same_corners_whichever_lines_were_cut_before
+    face = SLANTED_WALL.map { |corner| FacePieces.corner_from_list(*corner, 8, 0) }
+    rest = face
+    (30..210).step(7).each do |y|
+      line = y * 16
+      rest = FacePieces.cut(rest, FacePieces::Y, line, 8)[1]
+      straight = FacePieces.cut(face, FacePieces::Y, line, 8)[1]
+
+      assert_equal(straight.map { |corner| corner.first(FacePieces::NUMBERS) }, rest.map { |corner| corner.first(FacePieces::NUMBERS) }, "at y #{y}")
+    end
+  end
+
   # ModTexel: each channel times the colour over 80h, held to 1Fh; 80h is the texel as it is.
   def test_the_chip_multiplies_each_channel_by_the_colour
     color = 0x1F | (0x10 << 5) | (0x02 << 10)

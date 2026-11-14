@@ -110,8 +110,20 @@ module VBlank
             # The width and the height of its cells (FacePieces.cell_side_shifts), in sixteenths, in the same
             # order, so a number's offset in a corner is its side's offset from here too.
             CELL_SIDE_OFFSET_BYTES = CELL_START_OFFSET_BYTES + 8
+            # The line a cell's side past the face's right edge, and past its bottom, in sixteenths, a word
+            # each in the same order as CELL_START_OFFSET_BYTES's: where the lines rt_face_sweep_lines and
+            # rt_face_row_lines start end (FacePieces.past_edge?).
+            STOP_LINE_OFFSET_BYTES = CELL_SIDE_OFFSET_BYTES + 8
+            # Words rt_face_row keeps while it walks a strip: the strip's most x, and the corner of the
+            # strip each run reached last, which a crossing on the edge from it is stepped from
+            # (FacePieces::ChainWalk#cross).
+            ROW_MOST_OFFSET_BYTES = STOP_LINE_OFFSET_BYTES + 8
+            AHEAD_FROM_OFFSET_BYTES = ROW_MOST_OFFSET_BYTES + 4
+            BEHIND_FROM_OFFSET_BYTES = AHEAD_FROM_OFFSET_BYTES + 4
+            # rt_face_row_lines' return address, while it calls another routine.
+            SEEK_RETURN_OFFSET_BYTES = BEHIND_FROM_OFFSET_BYTES + 4
             # The caller's stack pointer while rt_fill_face runs on FILL_STACK.
-            CALLER_STACK_OFFSET_BYTES = CELL_SIDE_OFFSET_BYTES + 8
+            CALLER_STACK_OFFSET_BYTES = SEEK_RETURN_OFFSET_BYTES + 4
             # The chip's texture window and drawing area as the last face set them, a word each, the window
             # first; nought while the chip has its own (rt_face_chip_put_back). See CHIP_WORDS.
             CHIP_OFFSET_BYTES = CALLER_STACK_OFFSET_BYTES + 4
@@ -124,8 +136,13 @@ module VBlank
             CORNERS_OFFSET_BYTES = CORNERS_LIST_OFFSET_BYTES + Lists::HEADER
             BYTES = CORNERS_OFFSET_BYTES + (Nodes::FillFace::MOST_CORNERS * LIST_CORNER_BYTES)
 
-            # A corner in the pool: FacePieces::NUMBERS words.
-            CORNER_BYTES = FacePieces::NUMBERS * 4
+            # A corner in the pool: FacePieces::NUMBERS words, then the addresses of the two ends of the
+            # edge a cut across the screen worked it out from (FacePieces::EDGE_START, EDGE_END); a corner of
+            # the face has nought for its edge's end. A corner made otherwise leaves them as they were, and
+            # nothing reads them.
+            EDGE_START_OFFSET_BYTES = FacePieces::EDGE_START * 4
+            EDGE_END_OFFSET_BYTES = FacePieces::EDGE_END * 4
+            CORNER_BYTES = (FacePieces::EDGE_END + 1) * 4
 
             # A corner's light is held to LIGHTEST by testing its top half for nought (rt_fill_face), which
             # is right only while LIGHTEST is the whole bottom half.
@@ -242,10 +259,17 @@ module VBlank
             # hundreds of times a pass beside the game's own. The processor keeps the last 4 KB of code it ran
             # by address, so code that grows ahead of those routines moves them and the game's code against
             # each other, and a place's pass gains or loses a frame on where they fall: placed last, this
-            # routine moves nothing that runs often.
+            # routine moves nothing that runs often. Where a sweep's and a row's lines start and end
+            # (rt_face_sweep_lines, rt_face_row_lines, which walks a strip's runs straight to a face's left
+            # edge) are here for the same reason: once a sweep or a strip.
             def cells_section(memory)
               asm = R3000.new("runtime face cells")
-              emit_cell_sides_routine(asm, Memory.distance_from_scratchpad(memory[FACE]))
+              at = Memory.distance_from_scratchpad(memory[FACE])
+              emit_cell_sides_routine(asm, at)
+              emit_sweep_lines_routine(asm, at)
+              emit_sweep_ending_routine(asm, at)
+              emit_row_lines_routine(asm, at)
+              emit_row_ending_routine(asm, at)
               asm.section
             end
 
@@ -1276,6 +1300,7 @@ module VBlank
               asm.subu(:t0, :zero, :t0) # every bit, for a lit face
               asm.and(:t1, :t1, :t0)
               asm.sw(:t1, NUMBER_OFFSETS.fetch(FacePieces::SHADE), :s4)
+              asm.sw(:zero, EDGE_END_OFFSET_BYTES, :s4) # a corner of the face, on no edge of its own
               asm.addiu(:s1, :s1, 4)
               asm.addiu(:s4, :s4, CORNER_BYTES)
               asm.addiu(:s2, :s2, -1)
@@ -1300,30 +1325,13 @@ module VBlank
               asm.move(:s4, :t4)
               asm.jal("rt_face_extent") # a0 and a1 as handed in
               asm.move(:s5, :v1) # the most
-              # The first line: the face's cells' start that way, and whole cells' sides that way on to the
-              # one the least is in, then one more.
-              asm.addu(:t3, :s1, FACE_BASE)
-              asm.lw(:t2, at + CELL_START_OFFSET_BYTES, :t3)
-              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
-              asm.subu(:t1, :zero, :t0)
-              asm.subu(:t3, :v0, :t2)
-              asm.and(:t1, :t3, :t1)
-              asm.addu(:t1, :t1, :t2)
-              asm.addu(:s6, :t1, :t0) # the first line
+              # The lines (rt_face_sweep_lines): s6 the first, s5 where they end; none for a piece wholly
+              # before the face's left or top edge.
+              asm.jal("rt_face_sweep_lines")
+              asm.bne(:v0, :zero, "rt_face_sweep_done")
               asm.label("rt_face_sweep_line")
-              # Done at the first line a side past the face's right or bottom edge: what is left lies past
-              # it (FacePieces.past_edge?). The right edge is RIGHT_OFFSET_BYTES on from the number's offset,
-              # the bottom BOTTOM_OFFSET_BYTES, as the left and top are from LEFT_OFFSET_BYTES.
-              asm.addu(:t3, :s1, FACE_BASE)
-              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
-              asm.lw(:t1, at + RIGHT_OFFSET_BYTES, :t3)
-              asm.subu(:t0, :s6, :t0)
-              asm.sll(:t1, :t1, 4)
-              asm.slt(:t0, :t0, :t1)
-              asm.beq(:t0, :zero, "rt_face_sweep_done")
-              asm.label("rt_face_sweep_before_edge")
               asm.slt(:t0, :s6, :s5)
-              asm.beq(:t0, :zero, "rt_face_sweep_rest")
+              asm.beq(:t0, :zero, "rt_face_sweep_end")
               # The rest goes into whichever of the two it is not in now.
               asm.move(:s7, :s3)
               asm.bne(:s0, :s3, "rt_face_sweep_into")
@@ -1339,13 +1347,6 @@ module VBlank
               asm.lw(:t0, 0, :s2)
               asm.slti(:t0, :t0, 3)
               asm.bne(:t0, :zero, "rt_face_sweep_next")
-              # A part before the face's left or top edge is left out (FacePieces.before_edge?).
-              asm.label("rt_face_sweep_corners")
-              asm.addu(:t3, :s1, FACE_BASE)
-              asm.lw(:t1, at + LEFT_OFFSET_BYTES, :t3)
-              asm.sll(:t1, :t1, 4)
-              asm.slt(:t0, :t1, :s6)
-              asm.beq(:t0, :zero, "rt_face_sweep_next")
               # What the part takes of the pool is handed back once it is sent: the rest's corners were
               # all made before it.
               asm.label("rt_face_sweep_part")
@@ -1356,6 +1357,10 @@ module VBlank
               asm.addu(:t0, :s1, FACE_BASE)
               asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t0)
               asm.b("rt_face_sweep_line") { asm.addu(:s6, :s6, :t0) }
+              # Past the lines: done at the stop line, and otherwise the rest, which reaches the most
+              # (rt_face_sweep_ending).
+              asm.label("rt_face_sweep_end")
+              asm.j("rt_face_sweep_ending")
               asm.label("rt_face_sweep_rest")
               asm.lw(:t0, 0, :s0)
               asm.slti(:t0, :t0, 3)
@@ -1384,31 +1389,22 @@ module VBlank
               emit_keep_registers(asm)
               asm.move(:s0, :a0)
               emit_strip_runs(asm, at)
-              # Each run from its first corner.
+              # Each run from its first corner, then the lines (rt_face_row_lines).
               asm.lw(:s2, 0, :s1)
               emit_next_slot(asm, :s1, "rt_face_row_ahead_first")
               asm.lw(:s4, 0, :s3)
               emit_previous_slot(asm, :s3, "rt_face_row_behind_first")
+              asm.jal("rt_face_row_lines")
+              asm.bne(:v0, :zero, "rt_face_row_done")
               asm.label("rt_face_row_line")
-              # Done at the first line a side past the face's right edge (FacePieces.past_edge?).
-              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
-              asm.lw(:t1, at + RIGHT_OFFSET_BYTES, FACE_BASE)
-              asm.subu(:t0, :s5, :t0)
-              asm.sll(:t1, :t1, 4)
-              asm.slt(:t0, :t0, :t1)
-              asm.beq(:t0, :zero, "rt_face_row_done")
-              asm.label("rt_face_row_before_edge")
               asm.slt(:t0, :s5, :s6)
-              asm.beq(:t0, :zero, "rt_face_row_last")
+              asm.beq(:t0, :zero, "rt_face_row_end")
               emit_four_corner_cell(asm, at, x)
               # Any other square: put together in `square`, and sent as any piece is.
               asm.label("rt_face_row_any")
               asm.jal("rt_face_row_left")
-              emit_run_ahead(asm)
+              emit_run_ahead(asm, at)
               emit_run_behind(asm, at)
-              emit_line_past_left_edge(asm, at)
-              asm.beq(:t0, :zero, "rt_face_row_next")
-              asm.label("rt_face_row_any_inside")
               emit_send_square(asm, "rt_face_row_sent")
               asm.label("rt_face_row_next")
               asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
@@ -1421,6 +1417,10 @@ module VBlank
               emit_append(asm, :a3, :s4, "rt_face_row_left_behind")
               emit_append(asm, :a3, :s2, "rt_face_row_left_ahead")
               asm.jr(:ra)
+              # Past the lines: done at the stop line, and otherwise the last square, to the most
+              # (rt_face_row_ending).
+              asm.label("rt_face_row_end")
+              asm.j("rt_face_row_ending")
               emit_last_square(asm, x)
               emit_send_square(asm, "rt_face_row_done")
               emit_return_with_registers(asm)
@@ -1501,11 +1501,11 @@ module VBlank
               asm.slt(:t0, :s5, :t1)
               asm.beq(:t0, :zero, "rt_face_row_any")
               asm.label("rt_face_row_four")
-              asm.move(:a0, :s2)
+              asm.lw(:a0, at + AHEAD_FROM_OFFSET_BYTES, FACE_BASE)
               asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
               asm.sw(:v0, at + CROSSING_OFFSET_BYTES, FACE_BASE)
               asm.lw(:a1, 0, :s3)
-              asm.move(:a0, :s4)
+              asm.lw(:a0, at + BEHIND_FROM_OFFSET_BYTES, FACE_BASE)
               asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
               # [the run going back's last crossing, the other run's, this line's on the other run, and on
               # the run going back], each run's last crossing then this line's.
@@ -1514,20 +1514,183 @@ module VBlank
               asm.lw(:a2, at + CROSSING_OFFSET_BYTES, FACE_BASE)
               asm.move(:a3, :v0)
               asm.move(:s4, :v0)
-              # Left out before the face's left edge (FacePieces.before_edge?), its crossings kept.
-              emit_line_past_left_edge(asm, at)
-              asm.beq(:t0, :zero, "rt_face_row_next") { asm.move(:s2, :a2) }
-              asm.label("rt_face_row_four_send")
-              asm.jal("rt_face_quad")
+              asm.jal("rt_face_quad") { asm.move(:s2, :a2) }
               asm.b("rt_face_row_next")
             end
 
-            # t0 = 1 where the line s5 is past the face's left edge, so a square before it may draw inside
-            # the edges (FacePieces.before_edge?), nought where it is not. Changes t1.
-            def emit_line_past_left_edge(asm, at)
-              asm.lw(:t1, at + LEFT_OFFSET_BYTES, FACE_BASE)
-              asm.sll(:t1, :t1, 4)
-              asm.slt(:t0, :t1, :s5)
+            # rt_face_sweep_lines: for rt_face_sweep, v0 the piece's least and s5 its most on the number at s1
+            # (X or Y's offset). s6 = the first line (FacePieces.first_line). Where the line at or before the
+            # face's left or top edge is past it (FacePieces.line_at_or_before), the piece is cut there, the
+            # part before left out and the rest made s0, and s6 is the line after. s5 = the most, or the
+            # line a cell's side past the right or bottom edge where that comes first, which is kept for the
+            # sweep's end (STOP_LINE_OFFSET_BYTES, FacePieces.past_edge?). v0 = 1 for a piece wholly before
+            # the left or top edge's line, which gives nothing, and nought otherwise. A routine of the cells'
+            # section, run once a sweep, which keeps its return address in SEEK_RETURN_OFFSET_BYTES while
+            # it calls rt_face_cut. Changes t0 to t9, a0 to a3, v1 and s7.
+            def emit_sweep_lines_routine(asm, at)
+              asm.label("rt_face_sweep_lines")
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t2, at + CELL_START_OFFSET_BYTES, :t3)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
+              asm.subu(:t1, :zero, :t0)
+              asm.subu(:t4, :v0, :t2)
+              asm.and(:t4, :t4, :t1)
+              asm.addu(:t4, :t4, :t2)
+              asm.addu(:s6, :t4, :t0) # the first line
+              # The edges each way: the left (or top) at LEFT_OFFSET_BYTES on from the number's offset, the
+              # right (or bottom) at RIGHT_OFFSET_BYTES.
+              asm.lw(:t4, at + LEFT_OFFSET_BYTES, :t3)
+              asm.sll(:t4, :t4, 4)
+              asm.lw(:t5, at + RIGHT_OFFSET_BYTES, :t3)
+              asm.sll(:t5, :t5, 4)
+              asm.addu(:t5, :t5, :t0)
+              asm.sw(:t5, at + STOP_LINE_OFFSET_BYTES, :t3)
+              asm.subu(:t4, :t4, :t2)
+              asm.and(:t4, :t4, :t1)
+              asm.addu(:t4, :t4, :t2) # the line at or before the left edge
+              asm.slt(:t6, :t4, :s6)
+              asm.bne(:t6, :zero, "rt_face_sweep_lines_from_first")
+              asm.label("rt_face_sweep_lines_skip")
+              asm.slt(:t6, :t4, :s5)
+              asm.beq(:t6, :zero, "rt_face_sweep_lines_none")
+              # Cut there, the part before it not kept and the rest into whichever of the two pieces s0 is
+              # not in (as rt_face_sweep's loop puts it); then the line after.
+              asm.label("rt_face_sweep_lines_skip_inside")
+              asm.move(:s6, :t4)
+              asm.sw(:ra, at + SEEK_RETURN_OFFSET_BYTES, FACE_BASE)
+              asm.move(:s7, :s3)
+              asm.bne(:s0, :s3, "rt_face_sweep_lines_into")
+              asm.label("rt_face_sweep_lines_other")
+              asm.addiu(:s7, :s3, POLYGON_BYTES)
+              asm.label("rt_face_sweep_lines_into")
+              asm.move(:a0, :s0)
+              asm.move(:a1, :zero)
+              asm.move(:a2, :s7)
+              asm.move(:a3, :s1)
+              asm.jal("rt_face_cut") { asm.move(:t4, :s6) }
+              asm.move(:s0, :s7)
+              asm.lw(:ra, at + SEEK_RETURN_OFFSET_BYTES, FACE_BASE)
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
+              asm.lw(:t5, at + STOP_LINE_OFFSET_BYTES, :t3)
+              asm.addu(:s6, :s6, :t0)
+              asm.label("rt_face_sweep_lines_from_first")
+              asm.slt(:t6, :t5, :s5)
+              asm.beq(:t6, :zero, "rt_face_sweep_lines_made")
+              asm.label("rt_face_sweep_lines_stop_first")
+              asm.move(:s5, :t5)
+              asm.label("rt_face_sweep_lines_made")
+              asm.jr(:ra) { asm.move(:v0, :zero) }
+              asm.label("rt_face_sweep_lines_none")
+              asm.jr(:ra) { asm.li(:v0, 1) }
+            end
+
+            # rt_face_row_ending: rt_face_row past its lines (s5 the line it reached), on to rt_face_row_done
+            # at the stop line (STOP_LINE_OFFSET_BYTES, FacePieces.past_edge?), and otherwise to
+            # rt_face_row_last with s6 the strip's most again (ROW_MOST_OFFSET_BYTES). Changes t0 and t1.
+            def emit_row_ending_routine(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.label("rt_face_row_ending")
+              asm.lw(:t0, at + STOP_LINE_OFFSET_BYTES + x, FACE_BASE)
+              asm.slt(:t1, :s5, :t0)
+              asm.beq(:t1, :zero, "rt_face_row_ending_stopped")
+              asm.label("rt_face_row_ending_last")
+              asm.lw(:s6, at + ROW_MOST_OFFSET_BYTES, FACE_BASE)
+              asm.j("rt_face_row_last")
+              asm.label("rt_face_row_ending_stopped")
+              asm.j("rt_face_row_done")
+            end
+
+            # rt_face_sweep_ending: rt_face_sweep past its lines (s6 the line it reached), on to
+            # rt_face_sweep_done at the stop line (STOP_LINE_OFFSET_BYTES, FacePieces.past_edge?) and to
+            # rt_face_sweep_rest otherwise, the rest reaching the most. Changes t0, t1 and t3.
+            def emit_sweep_ending_routine(asm, at)
+              asm.label("rt_face_sweep_ending")
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t1, at + STOP_LINE_OFFSET_BYTES, :t3)
+              asm.slt(:t0, :s6, :t1)
+              asm.beq(:t0, :zero, "rt_face_sweep_ending_stopped")
+              asm.label("rt_face_sweep_ending_rest")
+              asm.j("rt_face_sweep_rest")
+              asm.label("rt_face_sweep_ending_stopped")
+              asm.j("rt_face_sweep_done")
+            end
+
+            # rt_face_row_lines: for rt_face_row, with the strip's runs from their first corners (s1 to s4), s5
+            # the first line and s6 the strip's most x. Each run's first corner made the one a crossing is
+            # stepped from (AHEAD_FROM_OFFSET_BYTES, BEHIND_FROM_OFFSET_BYTES). Where the line at or before
+            # the face's left edge is past s5 (FacePieces.each_cell_in_strip), each run walked straight to it
+            # without a square put together, its crossing there the next square's left side, and s5 the
+            # line after; v0 = 1 for a strip lying wholly before that line, which gives nothing. Then the
+            # strip's most kept (ROW_MOST_OFFSET_BYTES), and s6 the line a cell's width past the right edge
+            # where that comes first (STOP_LINE_OFFSET_BYTES, FacePieces.past_edge?); v0 = nought. A routine
+            # of the cells' section, run once a strip, which keeps its return address in
+            # SEEK_RETURN_OFFSET_BYTES while it calls rt_face_column_corner. Changes t0 to t9, a0 to a2, v0
+            # and v1.
+            def emit_row_lines_routine(asm, at)
+              x = NUMBER_OFFSETS.fetch(FacePieces::X)
+              asm.label("rt_face_row_lines")
+              asm.sw(:s2, at + AHEAD_FROM_OFFSET_BYTES, FACE_BASE)
+              asm.sw(:s4, at + BEHIND_FROM_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t1, at + CELL_START_OFFSET_BYTES + x, FACE_BASE)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
+              asm.lw(:t2, at + LEFT_OFFSET_BYTES, FACE_BASE)
+              asm.sll(:t2, :t2, 4)
+              asm.subu(:t2, :t2, :t1)
+              asm.subu(:t3, :zero, :t0)
+              asm.and(:t2, :t2, :t3)
+              asm.addu(:t2, :t2, :t1) # the line at or before the left edge
+              asm.slt(:t3, :t2, :s5)
+              asm.bne(:t3, :zero, "rt_face_row_lines_stop")
+              asm.label("rt_face_row_lines_skip")
+              asm.slt(:t3, :t2, :s6)
+              asm.beq(:t3, :zero, "rt_face_row_lines_none")
+              asm.label("rt_face_row_lines_seek")
+              asm.move(:s5, :t2)
+              asm.sw(:ra, at + SEEK_RETURN_OFFSET_BYTES, FACE_BASE)
+              [[:s1, :s2, AHEAD_FROM_OFFSET_BYTES, "ahead"], [:s3, :s4, BEHIND_FROM_OFFSET_BYTES, "behind"]].each do |slot, crossing, from, name|
+                label = "rt_face_row_seek_#{name}"
+                step = ->(suffix) { name == "ahead" ? emit_next_slot(asm, slot, "#{label}_#{suffix}") : emit_previous_slot(asm, slot, "#{label}_#{suffix}") }
+                asm.label(label)
+                asm.lw(:a1, 0, slot)
+                asm.lw(:t2, x, :a1)
+                asm.slt(:t0, :t2, :s5)
+                asm.beq(:t0, :zero, "#{label}_reached")
+                asm.label("#{label}_passed")
+                asm.sw(:a1, at + from, FACE_BASE)
+                step.call("next")
+                asm.b(label)
+                asm.label("#{label}_reached")
+                asm.bne(:t2, :s5, "#{label}_cross")
+                asm.label("#{label}_on_line")
+                asm.move(crossing, :a1)
+                asm.sw(:a1, at + from, FACE_BASE)
+                step.call("past_line")
+                asm.b("#{label}_crossed")
+                asm.label("#{label}_cross")
+                asm.lw(:a0, at + from, FACE_BASE)
+                asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
+                asm.move(crossing, :v0)
+                asm.label("#{label}_crossed")
+              end
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
+              asm.lw(:ra, at + SEEK_RETURN_OFFSET_BYTES, FACE_BASE)
+              asm.addu(:s5, :s5, :t0)
+              asm.label("rt_face_row_lines_stop")
+              asm.sw(:s6, at + ROW_MOST_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t0, at + RIGHT_OFFSET_BYTES, FACE_BASE)
+              asm.lw(:t1, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
+              asm.sll(:t0, :t0, 4)
+              asm.addu(:t0, :t0, :t1)
+              asm.sw(:t0, at + STOP_LINE_OFFSET_BYTES + x, FACE_BASE)
+              asm.slt(:t1, :t0, :s6)
+              asm.beq(:t1, :zero, "rt_face_row_lines_made")
+              asm.label("rt_face_row_lines_stop_first")
+              asm.move(:s6, :t0)
+              asm.label("rt_face_row_lines_made")
+              asm.jr(:ra) { asm.move(:v0, :zero) }
+              asm.label("rt_face_row_lines_none")
+              asm.jr(:ra) { asm.li(:v0, 1) }
             end
 
             # THE STRIP'S TWO RUNS (FacePieces.strip_chains), for the strip in s0: falls through with s5 the
@@ -1661,9 +1824,10 @@ module VBlank
             end
 
             # The run going on round across the line s5 (FacePieces::ChainWalk#cross): each corner it passes
-            # put on the end of `square` and made its last, then its crossing, the corner on the line or one
-            # made there (rt_face_column_corner), put on too.
-            def emit_run_ahead(asm)
+            # put on the end of `square` and made the corner it reached last (AHEAD_FROM_OFFSET_BYTES), then
+            # its crossing, the corner on the line or one made there from that corner (rt_face_column_corner),
+            # put on too.
+            def emit_run_ahead(asm, at)
               x = NUMBER_OFFSETS.fetch(FacePieces::X)
               asm.label("rt_face_row_ahead")
               asm.lw(:a1, 0, :s1)
@@ -1671,7 +1835,7 @@ module VBlank
               asm.slt(:t0, :t2, :s5)
               asm.beq(:t0, :zero, "rt_face_row_ahead_reached")
               asm.label("rt_face_row_ahead_passed")
-              asm.move(:s2, :a1)
+              asm.sw(:a1, at + AHEAD_FROM_OFFSET_BYTES, FACE_BASE)
               emit_append(asm, :a3, :a1, "rt_face_row_ahead_kept")
               emit_next_slot(asm, :s1, "rt_face_row_ahead_next")
               asm.b("rt_face_row_ahead")
@@ -1679,10 +1843,11 @@ module VBlank
               asm.bne(:t2, :s5, "rt_face_row_ahead_cross")
               asm.label("rt_face_row_ahead_on_line")
               asm.move(:s2, :a1)
+              asm.sw(:a1, at + AHEAD_FROM_OFFSET_BYTES, FACE_BASE)
               emit_next_slot(asm, :s1, "rt_face_row_ahead_past_line")
               asm.b("rt_face_row_ahead_crossed")
               asm.label("rt_face_row_ahead_cross")
-              asm.move(:a0, :s2)
+              asm.lw(:a0, at + AHEAD_FROM_OFFSET_BYTES, FACE_BASE)
               asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
               asm.move(:s2, :v0)
               asm.label("rt_face_row_ahead_crossed")
@@ -1701,7 +1866,7 @@ module VBlank
               asm.slt(:t0, :t2, :s5)
               asm.beq(:t0, :zero, "rt_face_row_behind_reached")
               asm.label("rt_face_row_behind_passed")
-              asm.move(:s4, :a1)
+              asm.sw(:a1, at + BEHIND_FROM_OFFSET_BYTES, FACE_BASE)
               asm.lw(:t0, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
               asm.addiu(:t0, :t0, 1)
               asm.sw(:t0, at + BACK_PASSED_OFFSET_BYTES, FACE_BASE)
@@ -1712,10 +1877,11 @@ module VBlank
               asm.bne(:t2, :s5, "rt_face_row_behind_cross")
               asm.label("rt_face_row_behind_on_line")
               asm.move(:s4, :a1)
+              asm.sw(:a1, at + BEHIND_FROM_OFFSET_BYTES, FACE_BASE)
               emit_previous_slot(asm, :s3, "rt_face_row_behind_past_line")
               asm.b("rt_face_row_behind_crossed")
               asm.label("rt_face_row_behind_cross")
-              asm.move(:a0, :s4)
+              asm.lw(:a0, at + BEHIND_FROM_OFFSET_BYTES, FACE_BASE)
               asm.jal("rt_face_column_corner") { asm.move(:a2, :s5) }
               asm.move(:s4, :v0)
               asm.label("rt_face_row_behind_crossed")
@@ -2210,6 +2376,20 @@ module VBlank
               asm.move(:t2, :t6)
               asm.move(:t3, :t5)
               asm.label("rt_face_cut_ends")
+              # A line across the screen: an end below it that a cut made, on the edge to the same far end,
+              # gives way to the end it was worked out from, how far that is past the line in t2
+              # (FacePieces.crossing_on_edge).
+              asm.sltiu(:t9, :s3, NUMBER_OFFSETS.fetch(FacePieces::U_SOURCE))
+              asm.beq(:t9, :zero, "rt_face_cut_from_edge")
+              asm.label("rt_face_cut_edge_end")
+              asm.lw(:t9, EDGE_END_OFFSET_BYTES, :t0)
+              asm.bne(:t9, :t1, "rt_face_cut_from_edge")
+              asm.label("rt_face_cut_edge_start")
+              asm.lw(:t0, EDGE_START_OFFSET_BYTES, :t0)
+              asm.addu(:t9, :t0, :s3)
+              asm.lw(:t2, 0, :t9)
+              asm.subu(:t2, :t2, :s4)
+              asm.label("rt_face_cut_from_edge")
               asm.subu(:t3, :t3, :t2)
               asm.subu(:t2, :zero, :t2)
               asm.sll(:t2, :t2, FacePieces::SHARE_BITS)
@@ -2276,7 +2456,9 @@ module VBlank
                 asm.sw(:zero, NUMBER_OFFSETS.fetch(number), :v0)
                 asm.label(done)
               end
-              asm.b("rt_face_cut_stepped")
+              # The two ends of the edge it was worked out from.
+              asm.sw(:t0, EDGE_START_OFFSET_BYTES, :v0)
+              asm.b("rt_face_cut_stepped") { asm.sw(:t1, EDGE_END_OFFSET_BYTES, :v0) }
             end
 
             # The corner a cut on the picture or between levels makes, at v0, from t0 the share t8 of the way

@@ -73,6 +73,11 @@ module VBlank
           TEXEL_V = 6
           SHADE = 7
           NUMBERS = 8
+          # After the numbers, a corner a cut across the screen made keeps the two ends of the edge it was
+          # worked out from (#crossing_on_edge): the end below its line and the other. A corner of the face
+          # has neither.
+          EDGE_START = NUMBERS
+          EDGE_END = NUMBERS + 1
           # The numbers a cut across the screen steps (#corner_between): x and y (the one cut on is then
           # the line), and what the texel is worked out from; the texel is worked out afresh.
           SCREEN_CUT_NUMBERS = [X, Y, U_SOURCE, V_SOURCE, NEARNESS, SHADE].freeze
@@ -368,11 +373,36 @@ module VBlank
               add_corner(above, from) unless from_side.negative?
               next unless (from_side.negative? && to_side.positive?) || (from_side.positive? && to_side.negative?)
 
-              made = corner_between(from, to, from_side, to_side, number, line, spans)
+              made = if [X, Y].include?(number)
+                       crossing_on_edge(from, to, from_side, number, line, spans)
+                     else
+                       corner_between(from, to, from_side, to_side, number, line, spans)
+                     end
               add_corner(below, made)
               add_corner(above, made)
             end
             [below, above]
+          end
+
+          # WHERE A CUT ACROSS THE SCREEN CROSSES THE EDGE FROM +from+ TO +to+, worked out from the edge it
+          # is part of, so the same wherever the cuts before it fell (#corner_between from the end below
+          # the line).
+          #
+          # A cut keeps the part of an edge past its line, from the corner it made to the edge's far end.
+          # Stepped from that corner, the next line's corner on the edge would carry the first one's
+          # rounding, and the corner a line makes would depend on every line cut before it: a face cut
+          # straight at a line around its window (#each_strip) would then not have the corners the whole
+          # screen's cuts give it. So each corner a cut makes keeps the two ends of the edge it was worked
+          # out from (EDGE_START, the end below its line, and EDGE_END), and an edge from it to that same
+          # far end is stepped from EDGE_START instead: whatever line it is cut at, after whatever cuts, a
+          # corner on one edge is worked out from the same two ends.
+          def crossing_on_edge(from, to, from_side, number, line, spans)
+            start, finish = from_side.negative? ? [from, to] : [to, from]
+            start = start[EDGE_START] if start[EDGE_END].equal?(finish)
+            made = stepped_corner(start, finish, Int32.sub(start[number], line), Int32.sub(finish[number], line), number, line, spans)
+            made[EDGE_START] = start
+            made[EDGE_END] = finish
+            made
           end
 
           def add_corner(piece, corner) = (piece << corner if piece.length < MOST_CORNERS)
@@ -387,6 +417,11 @@ module VBlank
           # (LATE_CUT_NUMBERS). Each multiply left out is one the runtime spares a corner.
           def corner_between(from, to, from_side, to_side, number, line, spans)
             start, finish, start_side, finish_side = from_side.negative? ? [from, to, from_side, to_side] : [to, from, to_side, from_side]
+            stepped_corner(start, finish, start_side, finish_side, number, line, spans)
+          end
+
+          # The corner #corner_between makes, stepped from +start+, the end below the line, to +finish+.
+          def stepped_corner(start, finish, start_side, finish_side, number, line, spans)
             share = Int32.div(Int32.shift_left(Int32.sub(0, start_side), SHARE_BITS), Int32.sub(finish_side, start_side))
             stepped = [X, Y].include?(number) ? SCREEN_CUT_NUMBERS : LATE_CUT_NUMBERS
             made = Array.new(NUMBERS) do |part|
@@ -409,10 +444,13 @@ module VBlank
           # same columns, so a corner made on the line between two strips is a corner of the pieces on
           # both sides, and the chip leaves no crack between them.
           #
-          # CELLS OUTSIDE THE FACE'S +edges+ ([left, top, right, bottom], in pixels) are cut as any other,
-          # so every corner is the one the whole screen makes, and left out rather than sent (#before_edge?,
-          # #past_edge?): the drawing area would throw away all of it. The cutting stops at the first line
-          # past the right or bottom edge.
+          # CELLS OUTSIDE THE FACE'S +edges+ ([left, top, right, bottom], in pixels) are not made at all. The
+          # cells' sides and their lines are the whole face's on the screen, whatever its edges, so every
+          # cell inside them is the one the whole screen makes. The face is cut straight at the last line
+          # at or before the left and the top edge (#line_at_or_before), which makes the corners the cuts
+          # along every line before it would (#crossing_on_edge, ChainWalk), and the cutting stops at the
+          # first line past the right or bottom edge (#past_edge?). The drawing area holds what is left to
+          # the edges, so through a window the chip draws each pixel as on the whole screen.
           def each_cell(face, spans, edges, &block)
             return yield(face) if spans == Nodes::FillFace::PERSPECTIVE_NONE
 
@@ -425,28 +463,40 @@ module VBlank
             end
           end
 
-          # Whether a part lying between +line+ less +side+ and +line+ on one number draws nothing between
-          # the edges +low+ and +high+ that way (in sixteenths), so is left out (#each_cell): it lies
-          # before +low+ (+line+ at or before it), or past +high+ (+line+ less +side+ at or past it). The
-          # chip rounds a corner to the nearest pixel and draws a pixel only where it lies strictly
-          # before a triangle's right or bottom side, so a part ending at or before +low+ draws only before
-          # it, and one starting at or past +high+ only at or past it, outside the drawing area.
-          def before_edge?(line, low) = line <= low
+          # Whether a part lying between +line+ less +side+ and +line+ on one number lies past the edge
+          # +high+ that way (in sixteenths), +line+ less +side+ at or past it, so draws nothing inside the
+          # edges and is left out (#each_cell). The chip rounds a corner to the nearest pixel and draws a
+          # pixel only where it lies strictly before a triangle's right or bottom side, so a part starting
+          # at or past +high+ draws only at or past it, outside the drawing area.
           def past_edge?(line, side, high) = Int32.sub(line, side) >= high
+
+          # The last line, +start+ and a multiple of +side+ on, at or before +low+ (in sixteenths): the line
+          # a part is cut straight at. The parts before it end at or before +low+, so draw only before it,
+          # outside the drawing area, as #past_edge? says of the other side.
+          def line_at_or_before(low, start, side) = Int32.add(start, Int32.bit_and(Int32.sub(low, start), Int32.sub(0, side)))
 
           # +piece+ cut along every line of +number+ +start+ and a multiple of +side+ on, strictly inside
           # it, the part before each line in turn, then the rest. +start+ is at or before the piece's
-          # least. A part of fewer than three corners is left out, and so is a part before the edge +low+
-          # or past +high+ (#before_edge?, #past_edge?), which ends the cutting.
+          # least. A part of fewer than three corners is left out. So is everything before the edge
+          # +low+: the piece is cut straight at the line at or before it, and the part before that line
+          # left out; a piece lying wholly before it gives nothing. The cutting ends at the first line past
+          # +high+ (#past_edge?).
           def each_strip(piece, number, side, start, spans, low, high)
             least, most = piece.map { |corner| corner[number] }.minmax
             line = first_line(least, start, side)
             rest = piece
+            skip = line_at_or_before(low, start, side)
+            if skip >= line
+              return if skip >= most
+
+              rest = cut(rest, number, skip, spans)[1]
+              line = Int32.add(skip, side)
+            end
             while line < most
               return if past_edge?(line, side, high)
 
               part, rest = cut(rest, number, line, spans)
-              yield part if part.length >= 3 && !before_edge?(line, low)
+              yield part if part.length >= 3
               line = Int32.add(line, side)
             end
             yield rest if rest.length >= 3 && !past_edge?(line, side, high)
@@ -466,10 +516,11 @@ module VBlank
           # (ChainWalk), each line's crossing made once, and each cell put together from them in the order
           # the strip's corners go round.
           #
-          # A crossing is the corner the cut along that line would make: stepped (#corner_between) from the
-          # last crossing on the same edge, or from the edge's first corner, to its other; a corner on the
-          # line is the crossing itself. So the pieces either side of a line share their corners, and the
-          # strips above and below, whose edges these are too, make the same ones.
+          # A crossing is stepped (#corner_between) from the strip's corner at one end of the edge to the
+          # one at its other, never from the last crossing on it, so it is the same whichever lines were
+          # crossed before; a corner on the line is the crossing itself. So the pieces either side of a line
+          # share their corners, and the strips above and below, whose edges these are too, make the same
+          # ones.
           #
           # Each cell's left side is the two runs' last crossings, the run going back's first, and the
           # first cell's is the two runs' first corners: the strip's two corners at its least x, or its
@@ -479,8 +530,10 @@ module VBlank
           # crosses is one cell, sent as it is; one whose runs do not both rise (it is not flat, and
           # doubles back), or with more than two corners at its least, is cut as #each_strip cuts it.
           #
-          # A cell before the edge +low+ or past +high+ (in sixteenths) is left out, and the walk stops at
-          # the first line past +high+ (#before_edge?, #past_edge?), as #each_strip's are.
+          # The cells before the edge +low+ (in sixteenths) are not made: the runs are walked straight to the
+          # line at or before it, and their crossings there are the next cell's left side; a strip lying
+          # wholly before it gives nothing. The walk stops at the first line past +high+ (#past_edge?), as
+          # #each_strip's does.
           def each_cell_in_strip(strip, side, left, spans, low, high)
             least, most = strip.map { |corner| corner[X] }.minmax
             line = first_line(least, left, side)
@@ -492,13 +545,21 @@ module VBlank
             forward = ChainWalk.new(chains.forward)
             backward = ChainWalk.new(chains.backward)
             left_side = [chains.backward[0], chains.forward[0]]
+            skip = line_at_or_before(low, left, side)
+            if skip >= line
+              return if skip >= most
+
+              ahead_crossing = forward.cross(skip, spans)[1]
+              left_side = [backward.cross(skip, spans)[1], ahead_crossing]
+              line = Int32.add(skip, side)
+            end
             while line < most
               return if past_edge?(line, side, high)
 
               ahead, ahead_crossing = forward.cross(line, spans)
               behind, behind_crossing = backward.cross(line, spans)
               cell = left_side + ahead + [ahead_crossing, behind_crossing] + behind.reverse
-              yield cell.first(MOST_CORNERS) if cell.length >= 3 && !before_edge?(line, low)
+              yield cell.first(MOST_CORNERS) if cell.length >= 3
               left_side = [behind_crossing, ahead_crossing]
               line = Int32.add(line, side)
             end
@@ -572,28 +633,25 @@ module VBlank
             def initialize(corners)
               @corners = corners
               @at = 1 # The first corner not yet passed
-              @start = corners[0] # Where the edge being crossed is stepped from
             end
 
             # The corners passed before +line+, and the corner the run crosses it at: the one on it, or one
-            # made on the edge reaching past it, stepped from the last crossing on that edge or its first
-            # corner (FacePieces.corner_between).
+            # made on the edge reaching past it, stepped from the corner the run reached last, at the
+            # edge's start, to the one at its end (FacePieces.corner_between).
             def cross(line, spans)
               passed = []
               while @corners[@at][X] < line
-                @start = @corners[@at]
-                passed << @start
+                passed << @corners[@at]
                 @at += 1
               end
               finish = @corners[@at]
               if finish[X] == line
                 @at += 1
-                @start = finish
-              else
-                @start = FacePieces.corner_between(@start, finish, Int32.sub(@start[X], line), Int32.sub(finish[X], line),
-                                                   X, line, spans)
+                return [passed, finish]
               end
-              [passed, @start]
+
+              from = @corners[@at - 1]
+              [passed, FacePieces.corner_between(from, finish, Int32.sub(from[X], line), Int32.sub(finish[X], line), X, line, spans)]
             end
 
             # The corners not yet passed, short of the last, which is at the strip's most.
