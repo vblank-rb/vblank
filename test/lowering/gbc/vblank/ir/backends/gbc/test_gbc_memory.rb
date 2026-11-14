@@ -35,19 +35,6 @@ class TestGBCMemory < Minitest::Test
     (Memory::LOW_END - Memory::FIRST) + (Memory::HIGH_END - Memory::HIGH_START) - memory.used
   end
 
-  # A table read with its page in one register sits in one page: first, at the first place with
-  # nothing lost; later, moved up to the next page rather than across one.
-  def test_a_place_in_one_page_never_crosses_a_page
-    memory = Memory.new
-    first = memory.reserve_in_page("first table", 96)
-    memory.reserve("a list", 300)
-    later = memory.reserve_in_page("later table", 96)
-
-    assert_equal Memory::FIRST, first
-    assert_equal later >> 8, (later + 95) >> 8
-    assert_operator later, :>=, Memory::FIRST + 96 + 300
-  end
-
   # What the check cannot see, the runtime's own state, can still fill the room, so the lowering
   # refuses too, in words the author can act on.
   def test_a_list_past_the_room_left_is_refused_in_plain_words

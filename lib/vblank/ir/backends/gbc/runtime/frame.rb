@@ -224,7 +224,6 @@ module VBlank
               asm.xor_a(:a)
               asm.load_high(vblank, :a)
               asm.call("rt_frame_begins_unless_last")
-              asm.call("rt_tint_owed") # the colours the pass changed, walked once (Picture#emit_tint)
               asm.call("rt_paint_scan")
               if songs
                 emit_wait_with_songs(asm, memory, count_at)
@@ -703,7 +702,6 @@ module VBlank
               asm.label("rt_stop_with_state")
               asm.load([memory[STATE]], :a)
               asm.call("rt_rumble_stop") if Rumble.any?(memory) # a game that has stopped shakes nothing
-              asm.call("rt_tint_owed")
               asm.call("rt_paint_scan")
               asm.load_high(:a, h::LCDC)
               asm.bit(7, :a)

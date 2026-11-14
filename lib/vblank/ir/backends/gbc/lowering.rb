@@ -341,11 +341,6 @@ module VBlank
               @program.walk.any? { |node| node.kind == :wait_vblank }
           end
 
-          # Does the game fade or tint? On a Color every one walks the colours, so its runtime keeps
-          # the tables a walk is looked up in (Runtime::Picture#emit_tint_tables), and a game that does
-          # neither builds without them.
-          def walks_colors? = @reachable.any? { |node| %i[fade tint].include?(node.kind) }
-
           # Whether the game divides by a byte written in it (Division#emit_divide_by_number), so its
           # runtime carries the routines that do that. Asked once the game's routines are made.
           def divides_by_written_bytes? = @divides_by_written_bytes || false
