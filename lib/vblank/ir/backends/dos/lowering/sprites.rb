@@ -28,7 +28,7 @@ module VBlank
           # list the game changes (`recolor`), whichever set that list holds now (SET_HELD). Drawing one
           # costs what drawing any picture costs.
           module Sprites
-            STATEMENT_KINDS = %i[present_objects color_list_holds hide_sprites].freeze
+            STATEMENT_KINDS = %i[present_objects color_list_holds hide_sprites load_sprite_tiles show_picture_group].freeze
 
             # Whether the next placing of the sprites places none (`hide_sprites`, Reference @sprites_hidden).
             HIDDEN = "sprites hidden"
@@ -230,6 +230,137 @@ module VBlank
               end
               emit_sprites_placed(sprites)
               @asm.label(placed)
+            end
+
+            # --- sprites drawn from tiles the game loads, and picture groups ---
+            #
+            # PICTURE GROUPS change nothing here: they say which of a game's pictures a console keeps in its sprite
+            # memory, and a DOS program keeps every picture in reach all the time. A picture shown while its group is
+            # not up stops the interpreter, which the checked run plays beside this, as on the builds for a computer.
+            #
+            # A POSE DRAWN FROM SPRITE TILES THE GAME LOADS (`sprite_tiles`, `tile_pose`) is a picture in the art
+            # segment like any other, see-through all over until the first load (Reference#store_tile_pose_picture),
+            # and a load writes the tiles it brings into each pose that draws them, a palette entry a pixel through the
+            # set's colours (rt_paint_sprite_tile), as the C build's rg_tile_pose_load does.
+
+            def sprite_tile_sets = (@sprite_tile_sets ||= @program.walk.select { |node| node.kind == :sprite_tiles }.to_h { |node| [node.name, node] })
+            def tile_poses = (@tile_poses ||= @program.walk.select { |node| node.kind == :tile_pose }.to_h { |node| [node.name, node] })
+
+            # A tile pose's picture before any load: see-through all over, in its set's colours, every pixel at place nought.
+            def tile_pose_image(name)
+              pose = tile_poses[name] or return
+              set = sprite_tile_sets.fetch(pose.tiles)
+              pixels = pose.width * pose.height
+              Assets::Image.new(width: pose.width, height: pose.height, transparent: Graphics::Image::TRANSPARENT,
+                                pixels: Array.new(pixels, Graphics::Image::TRANSPARENT).pack("v*"),
+                                colors: set.colors, places: Array.new(pixels, 0).pack("C*"), colors_name: set.colors_name)
+            end
+
+            # The colours a loaded tile of +set+ shows by place in a pose drawn with +swapped+ (nil for its own): the
+            # swapped list's colour at the place, or the set's own where it has none (Assets::Recolor, by place).
+            def tile_colors_by_place(set, swapped) = Array.new(16) { |place| (swapped && swapped[place]) || set.colors[place] }
+
+            # Every colour a loaded tile can draw, in its set's colours and in every list a sprite showing one of its poses
+            # is drawn with, for the palette.
+            def sprite_tile_colors
+              own = sprite_tile_sets.each_value.flat_map { |set| set.colors.drop(1).compact }
+              swapped = sprite_objects.each_value.flat_map do |sprite|
+                sprite.poses.filter_map { |name| tile_poses[name] }.flat_map do |pose|
+                  color_sets(sprite).compact.flat_map { |list| tile_colors_by_place(sprite_tile_sets.fetch(pose.tiles), list).drop(1).compact }
+                end
+              end
+              own + swapped
+            end
+
+            # Each copy of +pose+'s picture in the art segment, with where the colours its tiles are painted in are: its
+            # own, and one for each list a sprite showing it is drawn with (Lowering::Sprites#recolored_place). None for a
+            # pose no sprite shows, which has no picture.
+            def tile_pose_copies(pose)
+              return [] unless @art_places.key?(pose.name)
+
+              recolored = @art_places.each_key.select { |key| key.is_a?(Array) && key.first == :recolored && key[1] == pose.name }
+              [[@art_places.fetch(pose.name), nil], *recolored.map { |key| [@art_places.fetch(key), key[2]] }].map do |place, swapped|
+                [place, tile_colors_place(pose.tiles, swapped)]
+              end
+            end
+
+            # Where a set's colours drawn with +swapped+ are, as palette entries by place, place nought see-through: made the
+            # first time they are asked for.
+            def tile_colors_place(set_name, swapped)
+              @art_places[[:sprite_tile_colors, set_name, swapped]] ||= begin
+                colors = tile_colors_by_place(sprite_tile_sets.fetch(set_name), swapped)
+                place = @art.bytesize
+                @art << Array.new(16) { |at| at.zero? || colors[at].nil? ? Runtime::TRANSPARENT : palette_entry(colors[at]) }.pack("C*")
+                place
+              end
+            end
+
+            # Each table a load reads that nothing else reads, laid out as Lowering#make_tables lays them; and the colours
+            # every copy of every pose a load paints is painted in.
+            def make_sprite_tile_art
+              @program.walk.select { |node| node.kind == :load_sprite_tiles }.map(&:table).uniq.each do |name|
+                next if @art_places.key?(table_key(name))
+
+                table = @plan.tables.fetch(name)
+                bytes, = @plan.table_keeping(table)
+                @art_places[table_key(name)] = @art.bytesize
+                @art << table.values.flat_map { |entry| Array.new(bytes) { |i| (Int32.wrap(entry) >> (8 * i)) & 0xFF } }.pack("C*")
+              end
+              @tile_pose_copies = tile_poses.transform_values { |pose| tile_pose_copies(pose) }
+            end
+
+            # Reference#exec_load_sprite_tiles: where from and where to worked out, and nothing loaded unless the load
+            # fits the table and the set (LoweringPlan.sprite_tile_load_bounds); then each piece of each copy of each pose
+            # drawn from the set whose tile the load brings painted again, and every sprite drawn again.
+            def emit_load_sprite_tiles(node)
+              set = sprite_tile_sets.fetch(node.name)
+              table = @plan.tables.fetch(node.table)
+              bounds = LoweringPlan.sprite_tile_load_bounds(node, table_bytes: table.values.length, set_count: set.count) or return
+              bytes, = @plan.table_keeping(table)
+              from = keep_local(:load_from)
+              to = keep_local(:load_to)
+              done = fresh_label("tiles_not_loaded")
+              emit_values_into(%i[eax ecx], [value_node(node.at), value_node(node.to)])
+              @asm.cmp(:eax, bounds[0][1])
+              @asm.ja(done) # with no sign: below nought is past the end too
+              @asm.cmp(:ecx, bounds[1][1])
+              @asm.ja(done)
+              @asm.mov(number_at(from), :eax)
+              @asm.mov(number_at(to), :ecx)
+              load = TileLoad.new(node: node, table: table, bytes: bytes, from: from, to: to)
+              tile_poses.each_value.select { |pose| pose.tiles == node.name }.each do |pose|
+                @tile_pose_copies.fetch(pose.name).each do |picture, colors|
+                  pose.pieces.each { |dx, dy, tile| emit_tile_piece_loaded(load, picture + 4 + (dy * pose.width) + dx, pose.width, colors, tile) }
+                end
+              end
+              @asm.mov(X86.mem(nil, @memory[Runtime::Sprites::PLACED_BEFORE], size: 16), 0xFFFF) if sprite_count.positive?
+              @asm.call("rt_scenery_rebuild") if scenery_used?
+              @asm.label(done)
+            end
+
+            # One load of sprite tiles as it is written: the step, its table, the bytes an entry of the table takes, and the
+            # numbers that hold where it loads from and to.
+            TileLoad = Data.define(:node, :table, :bytes, :from, :to)
+
+            # One piece of a pose's picture painted from the table, its top left at +at+ in a picture +width+ pixels wide,
+            # through the colours at +colors+, where the load brings its tile.
+            def emit_tile_piece_loaded(load, at, width, colors, tile)
+              skip = fresh_label("piece_not_loaded")
+              @asm.mov(:eax, tile)
+              @asm.sub(:eax, number_at(load.to))
+              @asm.cmp(:eax, load.node.count)
+              @asm.jae(skip)
+              @asm.add(:eax, number_at(load.from))
+              @asm.mov(:ebx, Nodes::LoadSpriteTiles::TILE_BYTES * load.bytes)
+              @asm.imul(:eax, :ebx)
+              @asm.add(:ax, @art_places.fetch(table_key(load.table.name)))
+              @asm.mov(:si, :ax)
+              @asm.mov(:di, at)
+              @asm.mov(:bx, colors)
+              @asm.mov(:dx, width)
+              @asm.mov(:cx, load.bytes)
+              @asm.call("rt_paint_sprite_tile")
+              @asm.label(skip)
             end
 
             # Reference#exec_hide_sprites: the next placing places none.

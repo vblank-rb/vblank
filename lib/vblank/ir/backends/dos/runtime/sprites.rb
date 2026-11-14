@@ -287,6 +287,48 @@ module VBlank
               asm.label("#{tag}_next")
             end
 
+            # rt_paint_sprite_tile: one tile the game loads (Lowering::Sprites#emit_load_sprite_tiles) painted into a
+            # picture, all in the art segment: SI at the tile's first byte, its 32 a row of four after another (the
+            # left pixel in each byte's low four bits), CX bytes apart; DI at the pixel of the picture its top left
+            # lands on, the picture DX pixels wide; BX at its set's colours, a palette entry for each of the sixteen
+            # places, the see-through entry for place nought. Changes every register but the segment ones.
+            def emit_paint_tile(asm)
+              asm.label("rt_paint_sprite_tile")
+              asm.push(:ds)
+              asm.push(:es)
+              asm.mov_segment(:ax, :art)
+              asm.mov(:ds, :ax)
+              asm.mov(:es, :ax)
+              asm.sub(:dx, 8) # from a row's end to the next row's start
+              asm.mov(:bp, 8)
+              asm.label("rt_paint_sprite_tile_row")
+              4.times do
+                asm.mov(:al, X86.mem(:si, 0, size: 8))
+                asm.add(:si, :cx)
+                asm.push(:ax)
+                [0x0F, nil].each do |low|
+                  if low
+                    asm.and(:ax, low)
+                  else
+                    asm.pop(:ax)
+                    asm.shr(:al, 4)
+                    asm.xor(:ah, :ah)
+                  end
+                  asm.push(:bx)
+                  asm.add(:bx, :ax)
+                  asm.mov(:al, X86.mem(:bx, 0, size: 8))
+                  asm.pop(:bx)
+                  asm.stos(8)
+                end
+              end
+              asm.add(:di, :dx)
+              asm.dec(:bp)
+              asm.jne("rt_paint_sprite_tile_row")
+              asm.pop(:es)
+              asm.pop(:ds)
+              asm.ret
+            end
+
             # rt_sprites_at_level: each sprite placed whose level is AL drawn into the game's picture, in the table's
             # order, as the view is built. Changes every register but the segment ones and AL.
             def emit_at_level(asm, memory)

@@ -104,4 +104,44 @@ class TestDOSSprites < Minitest::Test
 
     assert_equal [color(:yellow), color(:blue)], [run.screen.pixel(319, 97), run.screen.pixel(319, 95)]
   end
+  # A ball drawn from sprite tiles the game loads, two kinds of tile side by side: loaded in its own colours, in
+  # another list of colours (each colour of the ball kept again for the list, Lowering::Sprites#tile_pose_copies),
+  # and beside a pose no sprite shows, which has no picture to paint.
+  KINDS = (Array.new(16) { [1, 2] * 4 } + Array.new(16) { [3, 1] * 4 }).flatten.freeze
+
+  private def loaded_ball(drawn_with: nil, unused_pose: false)
+    kinds = KINDS
+    program_of do
+      screen :tiled, backdrop: :black
+      image(:ground, "#" => :gray) { (["#" * 8] * 8).join("\n") }
+      tiles :plain, "#" => :ground
+      background :field, tiles: :plain, map: Array.new(4) { "#" * 8 }
+      colors :ball, %i[transparent red green white]
+      colors :hurt, %i[transparent blue yellow magenta]
+      image :kinds, width: 8, height: 32, colors: :ball, places: kinds
+      set = sprite_tiles :ball_tiles, count: 4, colors: :ball
+      image :a, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1]]
+      image :unused, tiles_from: :ball_tiles, pieces: [[0, 0, 1]] if unused_pose
+      ball = sprite :ball, at: [40, 20], facing: { a: :a }
+      frame = var :frame, 0
+      game_loop do
+        frame += 1
+        ball.draw_with drawn_with if drawn_with
+        set.copy_from :kinds, at: 0, count: 2, to: 0 if frame == 2
+      end
+    end
+  end
+
+  def test_tiles_loaded_into_a_sprite_show_in_its_own_colours
+    DOS::CheckedRun.new.run(loaded_ball, frames: 5)
+  end
+
+  def test_tiles_loaded_into_a_sprite_drawn_with_another_list_show_in_that_list
+    DOS::CheckedRun.new.run(loaded_ball(drawn_with: :hurt), frames: 5)
+  end
+
+  def test_a_load_beside_a_pose_no_sprite_shows_builds
+    DOS::CheckedRun.new.run(loaded_ball(unused_pose: true), frames: 5)
+  end
+
 end

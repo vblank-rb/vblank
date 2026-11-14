@@ -151,6 +151,7 @@ module VBlank
             emit_routines
             @frame_begins = emit_timer_routines
             @bends_routine = emit_bend_routine
+            Runtime::Sprites.emit_paint_tile(@asm) if @program.walk.any? { |node| node.kind == :load_sprite_tiles }
             emit_live_bend_routine
             emit_clock_routines
           end
@@ -225,6 +226,7 @@ module VBlank
             colors |= drawn_pictures.flat_map { |name| picture_colors(name) } - [0]
             colors |= recolored_sprite_colors - [0]
             colors |= scenery_colors - [0]
+            colors |= sprite_tile_colors - [0]
             if colors.size >= TRANSPARENT_ENTRY
               raise LoweringError, "This game paints with #{colors.size} colours besides black. DOS shows " \
                                    "#{TRANSPARENT_ENTRY - 1} at once, and every list a sprite is drawn with adds its colours. " \
@@ -296,7 +298,7 @@ module VBlank
 
           def text_key(node, color = node.color) = [:text, node.text, node.font, Graphics::Color.resolve(color)]
 
-          def picture_image(name) = (@images ||= {})[name] ||= @cache.image(picture_node(name))
+          def picture_image(name) = (@images ||= {})[name] ||= tile_pose_image(name) || @cache.image(picture_node(name))
 
           # The 15-bit colours a picture draws, not counting what it leaves transparent.
           def picture_colors(name)
@@ -321,6 +323,7 @@ module VBlank
             make_pose_tables
             make_sprite_tables
             make_tables
+            make_sprite_tile_art
             make_scenery_art
           end
 
@@ -402,6 +405,8 @@ module VBlank
             when :scroll_background then emit_scroll_background(node)
             when :place_bar then emit_place_bar(node)
             when :hide_sprites then emit_hide_sprites
+            when :load_sprite_tiles then emit_load_sprite_tiles(node)
+            when :show_picture_group then nil # every picture is in reach whatever group is up (Lowering::Sprites)
             when :scroll_rows then emit_scroll_rows
             when :affine_background then emit_affine_background(node)
             when :box_background then emit_box_background(node)
