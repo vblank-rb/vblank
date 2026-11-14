@@ -401,6 +401,7 @@ module VBlank
             when :background then emit_background(node)
             when :scroll_background then emit_scroll_background(node)
             when :place_bar then emit_place_bar(node)
+            when :hide_sprites then emit_hide_sprites
             when :scroll_rows then emit_scroll_rows
             when :affine_background then emit_affine_background(node)
             when :box_background then emit_box_background(node)

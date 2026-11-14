@@ -28,7 +28,10 @@ module VBlank
           # list the game changes (`recolor`), whichever set that list holds now (SET_HELD). Drawing one
           # costs what drawing any picture costs.
           module Sprites
-            STATEMENT_KINDS = %i[present_objects color_list_holds].freeze
+            STATEMENT_KINDS = %i[present_objects color_list_holds hide_sprites].freeze
+
+            # Whether the next placing of the sprites places none (`hide_sprites`, Reference @sprites_hidden).
+            HIDDEN = "sprites hidden"
 
             # The part of the build a game with such a sprite waits for, for a test run to count skips by.
             PART = "sprites put in order by a list"
@@ -43,7 +46,10 @@ module VBlank
             def self.color_lists_in(program) = program.walk.select { |node| node.kind == :color_list }.to_h { |node| [node.name, node] }
 
             # A place for each such list's number.
-            def self.reserve(memory, program) = color_lists_in(program).each_key { |name| memory.reserve(set_held_place(name), 4) }
+            def self.reserve(memory, program)
+              color_lists_in(program).each_key { |name| memory.reserve(set_held_place(name), 4) }
+              memory.reserve(HIDDEN, 4) if program.walk.any? { |node| node.kind == :hide_sprites }
+            end
 
             # How many sprites +program+ has: none for a game that needs none of the runtime's sprites.
             def self.count_in(program) = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
@@ -213,6 +219,25 @@ module VBlank
 
               @asm.mov(runtime_at(Runtime::Sprites::PLACED), 0)
               sprites = node.names.map { |name| sprite_objects.fetch(name) }
+              placed = fresh_label("sprites_placed")
+              if @memory.places.key?(HIDDEN)
+                shown = fresh_label("sprites_shown")
+                @asm.cmp(runtime_at(HIDDEN), 0)
+                @asm.je(shown)
+                @asm.mov(runtime_at(HIDDEN), 0) # this one placing, and the next places them all again
+                @asm.jmp(placed)
+                @asm.label(shown)
+              end
+              emit_sprites_placed(sprites)
+              @asm.label(placed)
+            end
+
+            # Reference#exec_hide_sprites: the next placing places none.
+            def emit_hide_sprites = @asm.mov(runtime_at(HIDDEN), 1)
+
+            # Each of +sprites+ put in the table, in the order they are drawn, or a level at a time in a game whose
+            # sprites are drawn at their levels.
+            def emit_sprites_placed(sprites)
               return sprites.each { |sprite| emit_sprite_placed(sprite) } unless sprites_stacked?
 
               emit_sprites_by_level(sprites)
