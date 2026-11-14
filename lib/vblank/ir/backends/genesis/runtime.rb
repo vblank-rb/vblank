@@ -77,7 +77,7 @@ module VBlank
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
             Int32.emit(asm, fractions: fractions)
-            Frame.emit(asm, memory, sound: sound)
+            Frame.emit(asm, memory, sound: sound, samples: !plays.nil?)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,

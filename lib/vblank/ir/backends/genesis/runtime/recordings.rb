@@ -178,10 +178,41 @@ module VBlank
               emit_frame(asm, at)
               emit_mail(asm, at)
               emit_kept_for_pass(asm, memory, at)
+              emit_bus_for_pad(asm)
             end
 
-            # The Z80's bus asked for and waited for, and given back. D0, D1 and A0 are left alone.
+            # STOPPING THE Z80. The 68000 stops it for three things: a copy by the video chip, a write into
+            # the Z80's memory, and a read of the controller's port, which the console's maker says must
+            # not come just before a Z80 read of the cartridge (S3 in docs/genesis/dma-and-the-sound-processor.md).
+            # The controller is read in the blank's interrupt, so the interrupt asks for the bus too
+            # (rt_z80_bus_for_pad), and the same bulletins say a request made in an interrupt breaks one
+            # the main program has made (S4). So the main program holds interrupts off from asking for the
+            # bus until it lets go: the interrupt never comes inside one of its stops, and a stop of the
+            # interrupt's own is over before the main program runs again.
+            #
+            # A STOP FOR EACH, NOT ONE FOR THE WHOLE BLANK. Sonic 3 & Knuckles stops its Z80 once in the
+            # blank and makes every copy and the controller's read inside that one stop. That was tried
+            # here and measured: the blank's work here is mostly the 68000 writing the picture's maps and
+            # tiles itself and playing the music, not copies, so one stop for all of it held the DAC still
+            # for some sixty samples a frame and lost waves of a recording playing alone. Each copy and
+            # each write into the Z80's memory is a stop of its own, a few instructions long.
+
+            # The Z80's bus asked for and waited for, with interrupts held off, the status register kept on
+            # the stack for #emit_bus_given_back. Every register is left alone.
             def emit_bus_taken(asm)
+              asm.move_from_sr(asm.pre(M68000::SP))
+              asm.ori_to_sr(Frame::INTERRUPTS_OFF_BITS)
+              emit_bus_requested(asm)
+            end
+
+            # The Z80 let go, and interrupts let in again as they were.
+            def emit_bus_given_back(asm)
+              emit_bus_released(asm)
+              asm.move_to_sr(asm.post(M68000::SP))
+            end
+
+            # The Z80's bus asked for and waited for, there and then.
+            def emit_bus_requested(asm)
               h = Console::GenesisHardware
               asm.move(:w, asm.imm(h::Z80_REQUEST), asm.abs_l(h::Z80_BUS_REQUEST))
               label = "rt_bus_wait_#{asm.here}"
@@ -190,10 +221,17 @@ module VBlank
               asm.branch(:ne, label)
             end
 
-            # The Z80 let go. The 68000 never touches the FM chip while the Z80 runs, so there is nothing
-            # of the chip's to put back.
-            def emit_bus_given_back(asm)
-              asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST))
+            # The Z80 let go, there and then.
+            def emit_bus_released(asm) = asm.clr(:w, asm.abs_l(Console::GenesisHardware::Z80_BUS_REQUEST))
+
+            # rt_z80_bus_for_pad: in the blank's interrupt, the controller read (Frame's rt_pad_read) with the
+            # Z80 stopped.
+            def emit_bus_for_pad(asm)
+              asm.label("rt_z80_bus_for_pad")
+              emit_bus_requested(asm)
+              asm.jsr(asm.abs_l("rt_pad_read"))
+              emit_bus_released(asm)
+              asm.rts
             end
 
             # rt_z80_queued(register, value, part in D3): an entry put in the Z80's queue, the bus held.
@@ -206,11 +244,11 @@ module VBlank
               asm.sub(:b, mail.call(QUEUE_WRITTEN), asm.d(2))
               asm.subq(:b, 1, asm.d(2))
               asm.branch(:ne, "rt_z80_queued_room") # the places free, less the one kept empty
-              emit_bus_given_back(asm)
+              emit_bus_released(asm)
               asm.move(:w, asm.imm(QUEUE_FULL_WAIT), asm.d(2))
               asm.label("rt_z80_queued_full")
               asm.dbra(asm.d(2), "rt_z80_queued_full")
-              emit_bus_taken(asm)
+              emit_bus_requested(asm)
               asm.bra("rt_z80_queued")
               asm.label("rt_z80_queued_room")
               asm.moveq(0, asm.d(2))

@@ -142,18 +142,57 @@ from samples it read ahead (`Z80_setBusProtection`, `inc/z80_ctrl.h`).
 (`Runtime::Boot#emit_sound_quiet`) and never reaches for the bus. It carries no bus request at its
 copies.
 
-**A game that plays recordings** asks for the Z80's bus and waits for it just before the word that
+**A game that plays recordings** asks for the Z80's bus and waits for it before the command that
 starts each copy, and gives it back after the copy (S1 step 1, as the games above do).
 
 **Every game** writes the command as two words read from work RAM, the stack (S1 step 2, S2).
 
 **Not done: S1's step 3**, the leading word written again after the copy. Neither game read does
-it, and nothing read says what it guards against.
+it, and nothing read says what it guards against, so it is left until a source does.
 
-**Not done: a bus request round the pad read** (S3). `Runtime::Frame`'s `rt_buttons_now` reads
-`$A10003` in the blank's interrupt with the Z80 running. By S3 a recording's byte can be misread at
-that moment, which would be heard as a click. Guarding it means a bus request inside an interrupt,
-which S4 says must then be kept apart from the main routine's requests.
+## The pad read
+
+Changed on 2026-11-14.
+
+**The controller is read with the Z80 stopped** (S3), in a game that plays recordings: the blank's
+interrupt asks for the bus, waits for it, reads the pad (`rt_pad_read`) and lets go
+(`Recordings#emit_bus_for_pad`). The version register, also at `$A100xx`, is read only with the
+Z80 stopped too (`rt_recordings_send`).
+
+**Every stop the main program makes holds interrupts off** from the request until it lets go
+(`Recordings#emit_bus_taken`, `#emit_bus_given_back`), which is S4's "interrupts go off before the
+request". So the interrupt never asks for the bus inside one of the main program's stops, and its
+own stop is over before the main program runs again. That covers each copy, each write into the
+Z80's queue and mailbox, and the version register's read.
+
+**One stop for the whole blank, as Sonic 3 & Knuckles makes, was tried and measured, and not
+taken.** The blank's interrupt asked for the bus and left it held through the copies, the buttons
+and the music, until the end of the pass's wait. The blank's work here is mostly the 68000 writing
+the picture's maps and tiles and playing the music, not copies, so the Z80 stood still for some
+sixty samples a frame: a recording playing alone, with nothing else going on, crossed its middle at
+422.0 Hz for 433.3, with gaps of two waves; with eighty sprites, 401.0; painted, 384.9. Sonic 3 &
+Knuckles makes its blank's work almost all copies. Here each copy and each write into the Z80's
+memory is a stop of its own, a few instructions long.
+
+**What it costs.** A game that plays recordings carries the interrupt's stop and three
+instructions more at each stop of the main program (the status register kept, interrupts held off,
+and the status register put back). A game with no recordings builds the same cartridge, byte for
+byte: every example built for the Genesis, a game of sprites, a painted one, and one with a song,
+a wave and a beep, each compared with the commit before.
+
+| | before | after |
+|---|---|---|
+| alone | 433.49 Hz | 433.49 Hz |
+| a wave part, a note every two frames | 433.68 Hz | 433.68 Hz |
+| 80 sprites | 433.46 Hz | 433.55 Hz |
+| painted, sixteen tiles a pass | 434.05 Hz | 434.14 Hz |
+
+`test_genesis_dma_guard.rb` holds the code: the pad read between the request and the release, and
+every copy's request with interrupts held off.
+
+**Not done:** nothing here ran on a console. The fault S3 describes is not modelled by Genesis Plus
+GX, so no test here can hear it; on a console, a game playing a long recording while a player
+presses buttons would click without the guard.
 
 ## What the guard costs
 
@@ -328,7 +367,7 @@ chip. That is what VBlank does now.
 - **A sample with an entry takes longer than a tick.** The tick it runs over is one the second
   timer finds missing, so the recording is held one sample longer and then passes over one.
 - **The 68000 still stops the Z80 for each entry**, for a few writes into its memory and no chip
-  waits. Gathering a frame's entries into one stop is the next change (see "The pad read").
+  waits ("The pad read" says why not one stop for a frame).
 - **PAL.** The chip's clock is a little slower there (53203424 / 7 Hz, `MCLOCK_PAL`), so a timer's
   ticks come further apart. `rt_recordings_send` reads the version register's PAL bit (with the Z80
   stopped, as S3 asks) and makes the step `PAL_STEP_EXTRA` 65536ths longer. Genesis Plus GX plays a
@@ -379,6 +418,11 @@ No emulator read can show the fault. On a real console:
 3. Leave each running and watch the sprites, for hours: a sprite in the wrong place or of the wrong
    shape for one frame is the fault. By Kabuto's figure an ordinary game shows it about once a day,
    so a short watch that shows nothing proves nothing.
+
+For the pad read: build a game that loops a long recording of a pure tone and does nothing else,
+put it on a console, and press and hold buttons while listening for clicks. For one without that
+guard, build from the commit before `Read the pad with the Z80 stopped in Genesis
+Recordings#emit_bus_for_pad`.
 
 What the suite can hold is the code the cartridge carries, and it does:
 `test/lowering/genesis/vblank/ir/backends/genesis/test_genesis_dma_guard.rb`.

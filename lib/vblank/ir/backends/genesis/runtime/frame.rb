@@ -112,10 +112,11 @@ module VBlank
 
             # The routines that end a pass and start the next: the interrupt, the wait, the buttons,
             # stopping and going wrong. +sound+ for a game that makes sound, whose wait ends in Sound's
-            # rt_sound_frame.
-            def emit(asm, memory, sound: false)
+            # rt_sound_frame; +samples+ for one that plays recordings, whose interrupt reads the buttons
+            # with the Z80 stopped (Recordings#emit_bus_holds).
+            def emit(asm, memory, sound: false, samples: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_interrupt(asm, at)
+              emit_interrupt(asm, at, samples)
               emit_wait(asm, at, sound)
               emit_show_pass(asm, at)
               emit_buttons(asm, memory, at)
@@ -124,11 +125,12 @@ module VBlank
 
             # The interrupt that signals a frame has been drawn. It keeps every register it touches, counts
             # the frame and reads the buttons, so a pass that spans several frames answers for each of
-            # them, as the interpreter's does. A5 is the game's own and is never changed.
-            def emit_interrupt(asm, at)
+            # them, as the interpreter's does. A5 is the game's own and is never changed. In a game that
+            # plays recordings the buttons are read with the Z80 stopped.
+            def emit_interrupt(asm, at, samples)
               asm.label("rt_vblank_interrupt")
               asm.movem_push(:l, :d0, :d1, :d2, :d3)
-              asm.jsr(asm.abs_l("rt_pad_read"))
+              asm.jsr(asm.abs_l(samples ? "rt_z80_bus_for_pad" : "rt_pad_read"))
               asm.addq(:l, 1, at.call(FRAMES))
               asm.move(:w, asm.imm(1), at.call(VBLANK))
               asm.movem_pop(:l, :d0, :d1, :d2, :d3)
