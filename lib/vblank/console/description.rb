@@ -331,7 +331,7 @@ module VBlank
     # The Game Boy Advance.
     ADVANCE = Description.new(name: :gba, title: "Game Boy Advance", screen_width: 240, screen_height: 160,
                               buttons: %i[a b select start right left up down r l].freeze, controllers: 1,
-                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: false, sets_main_volume: false, sprites: 128,
+                              holds_background_above_row: false, background_box: :shared_windows, glides_recordings: true, sets_main_volume: false, sprites: 128,
                               # Each shape is clipped against the area's edges as the ARM is
                               # written (Backends::GBA::Statements#emit_inside).
                               area_clips_called_routines: false,

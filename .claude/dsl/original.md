@@ -88,7 +88,7 @@ from that copy. The game's code says each piece's shape and size; it never depen
     between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
     the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
     `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
-    where the console glides at all: the Super Nintendo and the PlayStation), and **a rattle** (byte 25,
+    where the console glides at all: the Advance, the Super Nintendo and the PlayStation), and **a rattle** (byte 25,
     1 for a hit that rattles and 0 for one that does not, on the noise voice: `metallic:`) and **a wave**
     (byte 26, which of the part's waves, counting from 0, on the wave voice: `wave:`). A part names its
     waves as it names instruments, `pack[:pad].notes(waves: [pack[:waves].wave(0), :sine])`, each a

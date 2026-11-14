@@ -57,7 +57,11 @@ module VBlank
 
       # ...and what it does on a recorded part where every recording is mixed into one sound. Both
       # follow NEAREST_SIDE, so each starts a sentence.
-      RECORDINGS_FROM_BOTH = "A part that plays a recording plays from both speakers, wherever `pan` puts " \
+      # What a recorded note that glides does, on a console whose build makes it.
+      GLIDES_CARRY_ON = "A recorded note with `glides: true` carries on the note sounding at a new pitch: it " \
+                        "fades as it was, and the voice is not struck again."
+
+      RECORDINGS_FROM_BOTH ="A part that plays a recording plays from both speakers, wherever `pan` puts " \
                              "it: all recordings are mixed into one sound, and both speakers play it."
 
       # ...and where each voice of the sound chip has a volume for each speaker.

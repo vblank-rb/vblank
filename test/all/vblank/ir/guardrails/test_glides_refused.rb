@@ -19,7 +19,7 @@ class TestGlidesRefused < Minitest::Test
   end
 
   def test_a_console_that_cannot_do_it_refuses_in_plain_words
-    %i[gba gbc genesis].each do |console|
+    %i[gbc genesis].each do |console|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) { gliding_game(console, err: said) }
 

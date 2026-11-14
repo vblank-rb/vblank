@@ -434,8 +434,13 @@ module VBlank
         # wobbles (see #vibrato), +pan+ the speaker it plays from (see #pan), and +duty+ its shape,
         # or the shapes it steps through (see #duty). A note that sets nothing leaves the later slots
         # off its event (Music.without_trailing_nils).
+        #
+        # +glides: true+ BENDS THE NOTE SOUNDING rather than striking a new one: on a part that
+        # plays a recording, the note reads on from where it has got to at this pitch, its loudness
+        # and shape going on as they were (Score::Note's `glides:`, the same word). A run of them a
+        # few frames apart is a bend that sweeps.
         def note(pitch, duration, envelope: nil, volume: nil, decay: nil, swell: nil, slide_up: nil, slide_down: nil,
-                 vibrato: nil, pan: nil, duty: nil)
+                 vibrato: nil, pan: nil, duty: nil, glides: nil)
           where = "a note of the part #{part_label.inspect}"
           shape = Envelope.of(envelope, where)
           fade = NoteFade.said(decay: decay, swell: swell, where: where.capitalize)
@@ -444,8 +449,11 @@ module VBlank
           side = Pan.said(pan, where: where.capitalize)
           duties = Duty.said(duty, where: where.capitalize)
           refuse_volume_out_of_range!(volume) if volume
+          Score::Checks.refuse_bad_glide!(Score::Note.new(at: 0, key: pitch, volume: volume, envelope: envelope, glides: glides),
+                                          where.capitalize, @plays) unless glides.nil?
           @events << [@current_frame, resolve_pitch(pitch),
-                      *Music.without_trailing_nils([nil, volume, shape, fade, slide, wobble, side, duties])]
+                      *Music.without_trailing_nils([nil, volume, shape, fade, slide, wobble, side, duties, nil,
+                                                    glides || nil])]
           @current_frame += duration_frames(duration)
         end
 

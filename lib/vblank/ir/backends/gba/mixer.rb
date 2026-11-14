@@ -393,6 +393,10 @@ module VBlank
           # sounds, so it needs to find the voice the note is on.
           def music_follows_level! = @music_follows_level = true
 
+          # ...and that a recorded note can glide, bending the note its part has sounding, which
+          # finds that note's voice the same way (Audio#emit_glide).
+          def music_glides! = @music_glides = true
+
           # The routines that find a song's note a voice, stop it, and find the voice it is on
           # (#emit_music_voice_routines).
           MUSIC_VOICE = :__music_voice
@@ -820,7 +824,7 @@ module VBlank
           def emit_music_voice_routines
             emit_take_music_voice_routine
             emit_music_voice_off_routine
-            emit_music_voice_find_routine if @music_follows_level
+            emit_music_voice_find_routine if @music_follows_level || @music_glides
           end
 
           # A TUNE'S MARK COMES WITHOUT ITS RANK, and each routine below puts it on as it starts,

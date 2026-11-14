@@ -257,6 +257,9 @@ module VBlank
           # number into the score's own table of recordings, so a part can change instrument
           # from one note to the next.
           RECORDED_ROW = 12
+          # In the instrument's halfword, on a note that glides (`glides: true`): it bends the note
+          # sounding to the row's step rather than striking, and the rest of the row is not read.
+          GLIDES = 0x8000
 
           # One entry in that table: where the recording is in the cartridge, how long it is, the
           # four numbers that shape a note on it (0 for a note that starts and stops dead), and
@@ -516,6 +519,11 @@ module VBlank
             @entry_shift = (@entry_rank + (plays_sound_effects? ? 4 : 0) - 1).bit_length
             @mixer.songs_have_recorded_parts! if recorded.positive?
             @mixer.music_follows_level! if recorded.positive? && @scales
+            # A game whose recorded notes glide (`glides: true`) marks each such row and finds the
+            # voice its part's note sounds on, to bend it (#emit_glide); any other game emits none of it.
+            @glides = (recorded.positive? || Array(@effect_lanes).any? { |lane| lane.kind == :recorded }) &&
+                      IR::Backends::SongTable.glides?(program)
+            @mixer.music_glides! if @glides
           end
 
           # Put every tune the program plays in the cartridge, as one score.
@@ -2486,6 +2494,14 @@ module VBlank
             @emitter.emit(ASM.ldr_offset(ACC, at, 4))                         # how fast to read it
             @emitter.emit(ASM.cmp_imm(ACC, 0))
             @emitter.emit_branch(:bcond, rest, cond: :eq)                     # 0 is a rest
+            if @glides
+              struck = @emitter.gensym
+              @emitter.emit(ASM.load_halfword_offset(ACC, at, 8))
+              @emitter.emit(ASM.tst_imm(ACC, GLIDES))
+              @emitter.emit_branch(:bcond, struck, cond: :eq)                 # a note struck
+              emit_glide(at, sounded)
+              @emitter.place_label(struck)
+            end
             if follows_level
               @emitter.emit(ASM.load_halfword_offset(ACC, at, 10))            # how loud, kept for the lane
               @primitives.store_var(ACC, self.class.music_note(number))
@@ -2498,6 +2514,21 @@ module VBlank
             emit_clear_held_note(number) if follows_level
             @mixer.emit_music_voice_off
             @emitter.place_label(sounded)
+          end
+
+          # A NOTE THAT GLIDES BENDS THE ONE SOUNDING: the voice the part's note sounds on (its mark
+          # in r8), if it still has one, reads on from where it has got to at the row's step. Its
+          # place in the recording, its loudness and its shape go on as they were, so nothing but
+          # the speed it is read at changes, and the mix hears the new pitch from its next sample.
+          # A part whose note has run out, or is falling away, has nothing to bend, and the glide
+          # sounds nothing (Reference::Mixer#glide_music_note). Then on to +done+.
+          def emit_glide(at, done)
+            @mixer.emit_find_music_voice                                      # r7 = its voice, or 0
+            @emitter.emit(ASM.cmp_imm(NOTE_REG, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit(ASM.ldr_offset(ACC, at, 4))
+            @emitter.emit(ASM.str_offset(ACC, NOTE_REG, Mixer::SLOT_STEP))
+            @emitter.emit_branch(:b, done)
           end
 
           # The routines that start a recorded note, the second scaling its loudness by the music
@@ -2727,10 +2758,19 @@ module VBlank
           # loudness; one that does not plays the part's.
           def lane_rows(lane, part, events)
             if lane.kind == :recorded
-              rows = events.map do |frame, frequency, instrument, volume, envelope|
+              # The recording the part's note sounds on, for a glide's step: the last note struck.
+              struck = part.instrument || events.filter_map { |event| event[2] }.first
+              rows = events.map do |event|
+                frame, frequency, instrument, volume, envelope = event
+                if frequency.positive? && IR::Tunes.glides?(event)
+                  step = @mixer.step_at(@mixer.sample_info(struck), frequency)
+                  next [frame, step, GLIDES, 0].pack("VVvv")
+                end
+
                 sounding = IR::Tunes::Sounding.new(name: instrument || part.instrument,
                                                    envelope: envelope || part.envelope)
                 heard = loudness(volume || part.volume)
+                struck = sounding.name
                 # A note at volume 0 sounds nothing, so it is a rest: it takes no voice.
                 step = frequency.zero? || heard.zero? ? 0 : @mixer.step_at(@mixer.sample_info(sounding.name), frequency)
                 [frame, step, @sounding_numbers.fetch(sounding), heard].pack("VVvv")

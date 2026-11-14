@@ -50,8 +50,9 @@ module ConformanceFixture
       B.define_sound(:blip, frequency: 880),
       B.song(:tune, total_frames: 8, voices: [
                VBlank::Audio::Music::Part.new(events: [[0, 440], [4, 0]]),
-               # ...and a part that plays a recording rather than the square wave
-               VBlank::Audio::Music::Part.new(events: [[0, 262], [4, 0]], instrument: :clip),
+               # ...and a part that plays a recording rather than the square wave, its note bent
+               # up while it sounds (`glides: true`, in the event's GLIDE_SLOT)
+               VBlank::Audio::Music::Part.new(events: [[0, 262], [2, 330, *Array.new(9), true], [4, 0]], instrument: :clip),
              ]),
       # a song only a list names, which loops from frame 1 with a note held across it
       B.song(:theme, events: [[0, 330], [2, 392]], total_frames: 4, loop_frame: 1),
