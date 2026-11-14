@@ -87,8 +87,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
     which is the note's in place of the speaker byte on any part, a recorded part too; and **a pitch
     between keys** (bytes 22-24, in 16ths of a hertz: `hz: n / 16r`, on a part that plays a recording or
     the noise voice, as a driver's chip pitch word sets it) and **a glide** (the names' GLIDES bit:
-    `glides: true`, on a recorded part, its instrument, volume and loudness left as the part's own,
-    where the console glides at all: the Advance, the Super Nintendo and the PlayStation), and **a rattle** (byte 25,
+    `glides: true`, on a recorded part, its instrument the part's own and its volume, loudness and
+    shade its own or the part's, on every console that plays a recorded part), and **a rattle** (byte 25,
     1 for a hit that rattles and 0 for one that does not, on the noise voice: `metallic:`) and **a wave**
     (byte 26, which of the part's waves, counting from 0, on the wave voice: `wave:`). A part names its
     waves as it names instruments, `pack[:pad].notes(waves: [pack[:waves].wave(0), :sine])`, each a
@@ -249,10 +249,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
     volume past the driver's sustain level, and with neither the note holds at the sustain level),
     as the driver sets the voice up for the note; and each recording's note with where it sits between
     the speakers (its shade, from PAN and a drum kit voice's own pan), a pitch between keys where TUNE
-    and BEND leave one (its hz), and **a bend while it sounds** — a KEYSH, BEND, BENDR or TUNE while the
-    part's newest note sounds — as a record that glides (`glides: true`) to the new pitch on that frame,
-    one a frame at most, so a slot of voiced notes is sized for the glides as well as the notes. A VOL or
-    PAN while a note sounds, and a bend of a note on a console voice, are not kept. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    and BEND leave one (its hz), and **a change while it sounds** — a KEYSH, BEND, BENDR, TUNE, VOL or PAN
+    while the part's newest note sounds — as a record that glides (`glides: true`) to its pitch, loudness
+    and shade then, on that frame, one a frame at most, so a slot of voiced notes is sized for the glides
+    as well as the notes. A change of a note on a console voice is not kept. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
     drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
     in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
     voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is

@@ -119,7 +119,7 @@ module PackingGBATests
   end
 
   # A RECORDING'S NOTE, VOICED: where it sits between the speakers, a pitch between keys, and each
-  # bend while it sounds a record that glides, as the driver moves the pitch of a sounding note.
+  # bend, VOL or PAN while it sounds a record that glides, as the driver moves a sounding note.
   def test_each_recorded_note_voiced_keeps_its_side_and_its_bends
     song = M4AAnswers::BENDING_SONG_AT
     Dir.mktmpdir do |folder|
@@ -134,6 +134,9 @@ module PackingGBATests
       assert(notes.any?(&:glides), "a bend while a note sounds glides")
       assert(notes.any? { |note| note.hz && !note.glides }, "a note struck between keys names its hz")
       assert(notes.any? { |note| note.shade&.negative? }, "a note on the left names its shade")
+      assert(notes.any? { |note| note.glides && note.loudness < notes.first.loudness }, "a VOL while a note sounds glides quieter")
+      assert(notes.any? { |note| note.glides && note.shade&.negative? && note.at > notes.first.length },
+             "a PAN while a note sounds glides it to the left")
     end
   end
 

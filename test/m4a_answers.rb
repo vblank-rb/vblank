@@ -113,18 +113,20 @@ module M4AAnswers
                     [:label, :second], [:memacc, 0, 0, 0], [:note, 3, 67, 100], [:wait, 6], [:goto, :round]],
                    [[:voice, 2], [:vol, 100], [:note, 4, 50, 90], [:wait, 6], [:label, :round], [:note, 8, 72, 110],
                     [:wait, 9], [:note, 4, 76], [:wait, 9], [:goto, :round]]].freeze
-  # A song whose recorded notes sit off the middle and are bent while they sound, a tick a frame.
+  # A song whose recorded notes sit off the middle and are changed while they sound, a tick a frame.
   # The first track, left of the middle: a long note whose BEND moves it whole keys (BENDR 12 is
   # three keys a step of 16), then two BENDs on one tick, a TUNE between keys, a KEYSH; then a note
   # bent on the tick it is struck; a recording at a fixed rate, which no bend moves; a note on the
-  # right after a PAN; and a square note, bent too, which a glide cannot move. The second track is
-  # the drum kit, whose voices sit where their own pan puts them.
+  # right after a PAN, made quieter (VOL) and moved to the left (PAN) as it sounds; and a square
+  # note, bent too, which a glide cannot move. The second track is the drum kit, whose voices sit
+  # where their own pan puts them.
   BENDING_SONG_AT = 0x5E0
   BENDING_TRACKS = [[[:voice, 0], [:vol, 100], [:pan, 0x20], [:bendr, 12], [:note, 24, 60, 100], [:wait, 4], [:bend, 0x50],
                      [:wait, 4], [:bend, 0x60], [:bend, 0x58], [:wait, 4], [:tune, 0x44], [:wait, 4], [:keysh, 1], [:wait, 8],
                      [:bend, 0x40], [:tune, 0x40], [:keysh, 0], [:note, 6, 62, 100], [:bend, 0x41], [:wait, 6], [:bend, 0x40],
                      [:voice, 7], [:note, 6, 50], [:wait, 2], [:bend, 0x50], [:wait, 4], [:bend, 0x40], [:pan, 0x70], [:voice, 0],
-                     [:note, 6, 64], [:wait, 6], [:voice, 1], [:note, 6, 72], [:wait, 2], [:bend, 0x48], [:wait, 4], [:fine]],
+                     [:note, 6, 64], [:wait, 2], [:vol, 70], [:wait, 2], [:pan, 0x10], [:wait, 2], [:voice, 1], [:note, 6, 72],
+                     [:wait, 2], [:bend, 0x48], [:wait, 4], [:fine]],
                     [[:voice, 6], [:vol, 90], [:note, 4, 36, 120], [:wait, 6], [:note, 4, 1, 100], [:wait, 6], [:fine]]].freeze
 
   # The number a kit's or a split's first voice is given, past the 128 a VOICE names (Packing::M4A).
@@ -217,9 +219,9 @@ module M4AAnswers
                      :volume, :pan, :bend, :bend_range, :tune)
   # A note the walked track has sounding: its record, the frame it started, its gate's ticks left
   # (0 for a tie) and the key that lets go of it; and for a voiced walk, the key its voice was struck
-  # at before the track moved it, whether its pitch can move (a recording not at a fixed rate), its
-  # newest gliding record, and the settings its strike named but its hz.
-  Sounding = Struct.new(:record, :start, :gate, :key, :pitch_key, :bends, :glide, :strike_settings)
+  # at before the track moved it, whether it is a recording and one at a fixed rate, the velocity and
+  # the drum's own pan its sides are worked out from, and its newest gliding record.
+  Sounding = Struct.new(:record, :start, :gate, :key, :pitch_key, :recorded, :fixed, :velocity, :rhythm_pan, :glide)
 
   # The most rounds of the last track to come round that are kept to compare with
   # (Packing::M4A::MOST_ROUNDS_KEPT).
@@ -411,7 +413,7 @@ module M4AAnswers
         end
       else stop(track, n)
       end
-      bend_sounding(track) if @voiced && n == @walked && [0xBC, 0xC0, 0xC1, 0xC8].include?(command)
+      change_sounding(track) if @voiced && n == @walked && [0xBC, 0xBE, 0xBF, 0xC0, 0xC1, 0xC8].include?(command)
     end
 
     # GOTO, or REPT with no count, from +track+ to +place+. A jump back ends a round of the track:
@@ -491,10 +493,7 @@ module M4AAnswers
 
       pitch_key = key
       key = [key + ((((track.tune + (track.bend * track.bend_range)) * 4) + (track.shift * 256)) >> 8), 0].max
-      x = (track.volume * 64) >> 5
-      y = (track.pan * 2).clamp(-128, 127)
-      right = [((128 + rhythm_pan) * track.velocity * (((y + 128) * x) >> 8)) >> 14, 255].min
-      left = [((127 - rhythm_pan) * track.velocity * (((127 - y) * x) >> 8)) >> 14, 255].min
+      right, left = sides_of(track, track.velocity, rhythm_pan)
       record = if channel.zero?
                  [@frame, 0, kind.anybits?(0x08) ? 60 : [key, 127].min, instrument, OWN, right + left, OWN, OWN]
                else
@@ -505,19 +504,24 @@ module M4AAnswers
                  key = key.clamp(36, 127) unless channel == 4
                  [@frame, 0, [key, 127].min, OWN, [(right + left) >> 4, 15].min, nil, side, clock || OWN]
                end
-      bends = channel.zero? && kind.nobits?(0x08)
-      strike_settings = {}
-      if @voiced && channel.zero?
-        strike_settings = shade_of(right, left)
-        record << strike_settings.merge(bends ? pitch_of(track, pitch_key).except(:key) : {})
-      end
+      fixed = kind.anybits?(0x08)
+      record << shade_of(right, left).merge(fixed ? {} : pitch_of(track, pitch_key).except(:key)) if @voiced && channel.zero?
       @records << record
       @voices << voice
       @latest = nil
       return unless @sounding.length < 16
 
-      @latest = Sounding.new(record, @frame, gate, track.key, pitch_key, bends, nil, strike_settings)
+      @latest = Sounding.new(record, @frame, gate, track.key, pitch_key, channel.zero?, fixed, track.velocity, rhythm_pan, nil)
       @sounding << @latest
+    end
+
+    # Each side's loudness, 0 to 255, for a note of +velocity+ and a drum's own pan +rhythm_pan+ on
+    # +track+ as it is now (TrkVolPitSet, ChnVolSetAsm).
+    def sides_of(track, velocity, rhythm_pan)
+      x = (track.volume * 64) >> 5
+      y = (track.pan * 2).clamp(-128, 127)
+      [[((128 + rhythm_pan) * velocity * (((y + 128) * x) >> 8)) >> 14, 255].min,
+       [((127 - rhythm_pan) * velocity * (((127 - y) * x) >> 8)) >> 14, 255].min]
     end
 
     # --- voiced recordings ---
@@ -550,24 +554,25 @@ module M4AAnswers
 
     def key_hz(key) = (440 * (2**((key - 69) / 12r)) * 16).round
 
-    # A pitch command while the part's newest note sounds, on a recording that is not at a fixed
-    # rate: MPlayMain moves the pitch of every sounding note of the track, and the part plays its
-    # newest, so that one glides to its new pitch — the record of a glide or a strike on this frame
-    # given it, or a gliding record of its own.
-    def bend_sounding(track)
+    # A pitch, VOL or PAN command while the part's newest note sounds, on a recording: MPlayMain moves
+    # the pitch and the sides of every sounding note of the track, and the part plays its newest, so
+    # that one glides to what it plays now — its pitch (its own note at a fixed rate), the two sides
+    # added and its shade — the record of a glide or a strike on this frame given it, or a gliding
+    # record of its own.
+    def change_sounding(track)
       note = @latest
-      return unless note&.bends
+      return unless note&.recorded
 
-      pitch = pitch_of(track, note.pitch_key)
+      right, left = sides_of(track, note.velocity, note.rhythm_pan)
+      pitch = note.fixed ? { key: 60 } : pitch_of(track, note.pitch_key)
       key = [pitch.delete(:key), 127].min
+      settings = shade_of(right, left).merge(pitch)
       if note.glide && note.glide[0] == @frame
-        note.glide[2] = key
-        note.glide[8] = pitch.merge(glides: true)
+        note.glide[2], note.glide[5], note.glide[8] = key, right + left, settings.merge(glides: true)
       elsif note.glide.nil? && note.start == @frame
-        note.record[2] = key
-        note.record[8] = note.strike_settings.merge(pitch)
+        note.record[2], note.record[5], note.record[8] = key, right + left, settings
       else
-        note.glide = [@frame, 0, key, OWN, OWN, nil, nil, OWN, pitch.merge(glides: true)]
+        note.glide = [@frame, 0, key, OWN, OWN, right + left, nil, OWN, settings.merge(glides: true)]
         @records << note.glide
         @voices << @voices[@records.index { |record| record.equal?(note.record) }]
       end

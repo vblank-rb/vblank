@@ -108,18 +108,17 @@ module VBlank
       #   it sits and the Advance's one mix from both (Walk#emit_recorded_settings);
       # - a pitch between keys, where TUNE and BEND leave part of a key, as the record's hz, read as
       #   MidiKeyToFreq reads it, on a straight line between the two keys (Walk#emit_pitch_hz);
-      # - A BEND WHILE IT SOUNDS: a KEYSH, BEND, BENDR or TUNE while the part's newest note sounds
-      #   moves its pitch, as the driver moves every sounding note of the track, so the reader writes
-      #   a record that glides (`glides: true`) at the new pitch on that frame, one a frame at most
-      #   (Walk#emit_bend_sounding). A bend that sweeps is a glide a frame, so a port sizes a voiced
-      #   slot for the glides as well as the notes. A note on a console voice is bent by the driver
-      #   too, which the song model does not glide, so that is not kept.
+      # - A CHANGE WHILE IT SOUNDS: a KEYSH, BEND, BENDR, TUNE, VOL or PAN while the part's newest note
+      #   sounds moves its pitch or its sides, as the driver moves every sounding note of the track, so
+      #   the reader writes a record that glides (`glides: true`) at the note's pitch, loudness and
+      #   shade then, on that frame, one a frame at most (Walk#emit_change_sounding). A bend that
+      #   sweeps is a glide a frame, so a port sizes a voiced slot for the glides as well as the
+      #   notes. A note on a console voice is changed by the driver too, which the song model does
+      #   not glide, so that is not kept.
       #
-      # WHAT IS NOT KEPT, since the song model has no place for it: a VOL or PAN while a note sounds
-      # (each note keeps the loudness and the side it was struck with; a glide carries on the
-      # note's own), and a pitch command while a note sounds on a console voice or in a plain
-      # record; LFOS, LFODL, MOD and MODT (vibrato); PRIO and which notes the driver's channels drop
-      # when too many sound; XCMD's changes to the track's voice; PORT's sound register writes; a
+      # WHAT IS NOT KEPT, since the song model has no place for it: a change while a note sounds on
+      # a console voice or in a plain record; LFOS, LFODL, MOD and MODT (vibrato); PRIO and which
+      # notes the driver's channels drop when too many sound; XCMD's changes to the track's voice; PORT's sound register writes; a
       # console voice's length byte, which cuts its notes short. A console voice's own settings are read by unpack_m4a_voiced_track into a slot of
       # `voiced_notes`, each note with its voice's duty, slide and fade (Walk#emit_voice_settings
       # says how the driver's envelope is matched), and the wave voice's pattern by unpack_m4a_voice;
@@ -185,8 +184,8 @@ module VBlank
         TIE = 0xCF
         # The commands that read one byte and keep nothing the records hold.
         DROPPED_ONE_BYTE = [PRIO, LFOS, LFODL, MOD, MODT].freeze
-        # The commands that move the pitch of a track's notes, those sounding too (TrkVolPitSet).
-        PITCH_COMMANDS = [KEYSH, BEND, BENDR, TUNE].freeze
+        # The commands that move the pitch or the sides of a track's notes, those sounding too (TrkVolPitSet).
+        SOUNDING_CHANGE_COMMANDS = [KEYSH, BEND, BENDR, TUNE, VOL, PAN].freeze
         # A byte below this repeats the command before it, from VOICE on (the running status).
         RUNNING_STATUS_FROM = VOICE
         # The middle of PAN, BEND and TUNE, and BENDR at a track's start.
@@ -370,11 +369,11 @@ module VBlank
           TRACK_LISTS = %i[place wait status active level repeats key velocity shift voice voice_number volume pan bend
                            bend_range tune].freeze
           SOUNDING_LISTS = %i[used gate key record start sequence].freeze
-          # ...and in a voiced walk, what bends a sounding recorded note (#emit_bend_sounding): the
-          # key its voice was struck at before the track moved it, 1 where its pitch can move (a
-          # recording not played at a fixed rate), where its newest glide record is (-1 for none)
-          # and the frame that record starts, and the names its strike record gave (all but HZ).
-          VOICED_SOUNDING_LISTS = %i[pitch_key bends glide_record glide_start strike_names].freeze
+          # ...and in a voiced walk, what changes a sounding recorded note (#emit_change_sounding): the
+          # key its voice was struck at before the track moved it, 1 where it is a recording and 1
+          # where that recording plays at a fixed rate, the note's velocity and a drum's own pan, and
+          # where its newest glide record is (-1 for none) and the frame that record starts.
+          VOICED_SOUNDING_LISTS = %i[pitch_key recorded fixed velocity rhythm_pan glide_record glide_start].freeze
 
           # THE DRIVER AS KEPT, at the start of a frame: the tempo's count and the tempo, then each of
           # TRACK_LISTS for every track, the patterns' places, the driver's memory. The +rounds+ list
@@ -573,7 +572,7 @@ module VBlank
             else
               emit_fine(t)
             end
-            emit_bend_sounding(t) if @voiced && pitch_command_test(command, t)
+            emit_change_sounding(t) if @voiced && sounding_change_test(command, t)
           end
 
           # The test the routine makes of whether +command+ is one of +codes+.
@@ -584,9 +583,9 @@ module VBlank
           # ...of whether it is one of DROPPED_ONE_BYTE.
           def dropped_command_test(command) = command_in_test(command, DROPPED_ONE_BYTE)
 
-          # ...and of whether it moves the pitch of track +t+'s notes (TrkVolPitSet's keyM and pitM:
-          # KEYSH, BEND, BENDR, TUNE), on the walked track.
-          def pitch_command_test(command, t) = command_in_test(command, PITCH_COMMANDS) & (t == @track)
+          # ...and of whether it changes track +t+'s sounding notes (TrkVolPitSet's keyM, pitM, and the
+          # sides: KEYSH, BEND, BENDR, TUNE, VOL, PAN), on the walked track.
+          def sounding_change_test(command, t) = command_in_test(command, SOUNDING_CHANGE_COMMANDS) & (t == @track)
 
           # FINE (ply_fine): the track stops, and lets go of its notes.
           def emit_fine(t)
@@ -829,7 +828,10 @@ module VBlank
             key = var(:sounding_key)
             right = var(:right)
             left = var(:left)
-            var(:pitch_key).store!(key) if @voiced # before the track moves it, for #emit_bend_sounding
+            if @voiced # what the note was struck at before the track moves it, for #emit_change_sounding
+              var(:pitch_key).store!(key)
+              var(:struck_velocity).store!(track_list(:velocity)[t])
+            end
             emit_key_moved(t, key)
             emit_sides(t, right, left)
             at = var(:record_at)
@@ -847,7 +849,7 @@ module VBlank
             @block.write(0)
             emit_voice_settings(t, channel, at) if @voiced
             emit_sounding(t, at)
-            emit_bendable_note(channel) if @voiced
+            emit_changeable_note(channel) if @voiced
           end
 
           # A VOICED RECORD'S SETTINGS (Original::PackNote's bytes 12 on), from the voice's twelve
@@ -900,24 +902,29 @@ module VBlank
 
           # The bytes of a voiced record's settings #emit_voice_settings writes, up to the hz's last.
           VOICED_WRITTEN = 13
-          # Where in a voiced record its key, names and hz are (Original::PackNote).
+          # Where in a voiced record its key, loudness, shade, names and hz are (Original::PackNote).
           RECORD_KEY = 4
+          RECORD_LOUDNESS = 8
+          RECORD_SHADE = 19
           RECORD_NAMES = 20
           RECORD_HZ = 22
 
-          # A RECORDED NOTE'S SPEAKERS AND PITCH, into +shade+, +hz+ and +names+:
-          #
-          # - where it sits between the speakers, from the two sides ChnVolSetAsm works out
-          #   (#emit_sides): Audio::Pan keeps the near side whole and turns the far side down by
-          #   how far off the middle it sits, so the shade is the share of the near side the far
-          #   side lacks, in 64ths, rounded, to the left below 0. A note in the middle names none.
-          #   Its loudness stays the two sides added, as the Advance's one mix plays it;
-          # - a pitch between keys (#emit_pitch_hz) where TUNE and BEND leave one, or a key past
-          #   127, which the key byte cannot name. A recording played at a fixed rate has no pitch
-          #   to move.
+          # A RECORDED NOTE'S SPEAKERS AND PITCH, into +shade+, +hz+ and +names+: where it sits
+          # between the speakers (#emit_shade), and a pitch between keys (#emit_pitch_hz) where TUNE
+          # and BEND leave one, or a key past 127, which the key byte cannot name. A recording played
+          # at a fixed rate has no pitch to move.
           def emit_recorded_settings(t, shade, hz, names)
-            right = var(:right)
-            left = var(:left)
+            emit_shade(var(:right), var(:left), shade, names)
+            emit_pitch_hz(t, var(:pitch_key), hz, names) if (var(:voice_kind) & FIXED_RATE) == 0
+          end
+
+          # WHERE A RECORDED NOTE SITS between the speakers, into +shade+, with SHADE set in +names+,
+          # from the two sides ChnVolSetAsm works out (#emit_sides), +right+ and +left+: Audio::Pan
+          # keeps the near side whole and turns the far side down by how far off the middle it sits,
+          # so the shade is the share of the near side the far side lacks, in 64ths, rounded, to the
+          # left below 0. A note in the middle names none. Its loudness stays the two sides added, as
+          # the Advance's one mix plays it.
+          def emit_shade(right, left, shade, names)
             near = var(:near_side)
             far = var(:far_side)
             near.store!(right)
@@ -926,10 +933,8 @@ module VBlank
             if near > 0
               shade.store!((((near - far) * PackNote::MOST_SHADE) + (near >> 1)) / near)
               shade.store!(0 - shade) if left > right
-              names.store!(PackNote::NAMES.fetch(:shade)) if shade != 0
+              names.store!(names | PackNote::NAMES.fetch(:shade)) if shade != 0
             end
-            emit_pitch_hz(t, var(:pitch_key), hz, names) if (var(:voice_kind) & FIXED_RATE) == 0
-            var(:strike_names).store!(names)
           end
 
           # THE PITCH A NOTE OF TRACK +t+ STRUCK AT +raw+ PLAYS AT NOW, into +hz+, in 16ths of a hertz,
@@ -961,72 +966,98 @@ module VBlank
             end
           end
 
-          # The note just struck kept for bending, in the place #emit_sounding found it (var(:free)):
-          # it is the part's newest, which a pitch command bends (#emit_bend_sounding).
-          def emit_bendable_note(channel)
+          # The note just struck kept for changing as it sounds, in the place #emit_sounding found it
+          # (var(:free)): it is the part's newest, which a pitch, VOL or PAN command changes
+          # (#emit_change_sounding). What ChnVolSetAsm works its sides out from again is the note's own:
+          # its velocity and a drum's own pan.
+          def emit_changeable_note(channel)
             free = var(:free)
             var(:newest_sounding).store!(free)
             if free >= 0
               sounding_list(:pitch_key)[free] = var(:pitch_key)
-              bends = sounding_list(:bends)
-              bends[free] = 0
-              bends[free] = 1 if channel == KIND_RECORDING && (var(:voice_kind) & FIXED_RATE) == 0
+              recorded = sounding_list(:recorded)
+              recorded[free] = 0
+              recorded[free] = 1 if channel == KIND_RECORDING
+              fixed = sounding_list(:fixed)
+              fixed[free] = 0
+              fixed[free] = 1 if (var(:voice_kind) & FIXED_RATE) != 0
+              sounding_list(:velocity)[free] = var(:struck_velocity)
+              sounding_list(:rhythm_pan)[free] = var(:rhythm_pan)
               sounding_list(:glide_record)[free] = -1
-              sounding_list(:strike_names)[free] = var(:strike_names) & ~PackNote::NAMES.fetch(:hz)
             end
           end
 
-          # A PITCH COMMAND WHILE THE PART'S NOTE SOUNDS (KEYSH, BEND, BENDR, TUNE): the driver moves
-          # the pitch of the track's sounding notes too (MPlayMain calls MidiKeyToFreq for each of
-          # them after TrkVolPitSet), and a part sounds its newest, so that one is bent, with a
-          # gliding record (Original::PackNote's GLIDES: `glides: true`) at its new pitch: the key,
-          # and the hz where it is between keys; its instrument, volume and loudness are the part's
-          # own, as a glide carries on the note sounding. A glide already on this frame, or the note
-          # struck on it, is written again at the new pitch, so a part has one event a frame. Its
-          # length is given as the note is let go (#emit_release). A recording at a fixed rate, and a
-          # note on a console voice, have no pitch a glide can move (the song model glides only a
-          # recording), and are left as they were struck.
-          def emit_bend_sounding(t)
+          # A PITCH, VOL OR PAN COMMAND WHILE THE PART'S NOTE SOUNDS (KEYSH, BEND, BENDR, TUNE, VOL,
+          # PAN): the driver moves the track's sounding notes too (MPlayMain calls MidiKeyToFreq and
+          # ChnVolSetAsm for each of them after TrkVolPitSet), and a part sounds its newest, so that one
+          # is changed, with a gliding record (Original::PackNote's GLIDES: `glides: true`) at its pitch,
+          # loudness and side now: the key, the hz where it is between keys, the two sides added, and the
+          # shade. A recording at a fixed rate keeps its pitch (its own note, key 60). A glide already on
+          # this frame, or the note struck on it, is written again, so a part has one event a frame. Its
+          # length is given as the note is let go (#emit_release). A note on a console voice is changed
+          # by the driver too, which the song model does not glide, so it is left as it was struck.
+          def emit_change_sounding(t)
             s = var(:newest_sounding)
             if s >= 0
-              if sounding_list(:bends)[s] == 1
+              if sounding_list(:recorded)[s] == 1
+                right = var(:right)
+                left = var(:left)
                 hz = var(:glide_hz)
                 names = var(:glide_names)
-                hz.store!(0)
-                names.store!(0)
-                emit_pitch_hz(t, sounding_list(:pitch_key)[s], hz, names)
+                shade = var(:glide_shade)
                 key = var(:moved_key)
-                key.store!(MOST_KEY) if key > MOST_KEY
+                emit_sides_of(t, sounding_list(:velocity)[s], sounding_list(:rhythm_pan)[s], right, left)
+                [hz, names, shade].each { |each| each.store!(0) }
+                emit_shade(right, left, shade, names)
+                if sounding_list(:fixed)[s] == 1
+                  key.store!(OWN_KEY)
+                else
+                  emit_pitch_hz(t, sounding_list(:pitch_key)[s], hz, names)
+                  key.store!(MOST_KEY) if key > MOST_KEY
+                end
+                change = SoundingChange.new(key: key, loudness: var(:glide_loudness), shade: shade, hz: hz, names: names)
+                change.loudness.store!(right + left)
                 glide = sounding_list(:glide_record)[s]
                 if glide >= 0 && sounding_list(:glide_start)[s] == var(:frame)
-                  emit_repitch_record(glide, key, hz, names | PackNote::NAMES.fetch(:glides))
+                  emit_rewritten_record(glide, change, PackNote::NAMES.fetch(:glides))
                 elsif glide < 0 && sounding_list(:start)[s] == var(:frame)
-                  emit_repitch_record(sounding_list(:record)[s], key, hz, names | sounding_list(:strike_names)[s])
+                  emit_rewritten_record(sounding_list(:record)[s], change, 0)
                 else
-                  emit_glide_record(s, key, hz, names | PackNote::NAMES.fetch(:glides))
+                  emit_glide_record(s, change)
                 end
               end
             end
           end
 
-          # The record at +at+ written again at +key+, with +names+ and +hz+.
-          def emit_repitch_record(at, key, hz, names)
-            @block.rewrite(at + RECORD_KEY, key)
+          # What a sounding note plays now (#emit_change_sounding): its key, its loudness (the two
+          # sides added), its shade, its hz, and the names a voiced record gives them.
+          SoundingChange = Data.define(:key, :loudness, :shade, :hz, :names)
+
+          # The record at +at+ written again as +change+ says, its names those and +more_names+.
+          def emit_rewritten_record(at, change, more_names)
+            names = change.names | more_names
+            @block.rewrite(at + RECORD_KEY, change.key)
+            @block.rewrite(at + RECORD_LOUDNESS, change.loudness)
+            @block.rewrite(at + RECORD_LOUDNESS + 1, change.loudness >> 8)
+            @block.rewrite(at + RECORD_SHADE, change.shade)
             @block.rewrite(at + RECORD_NAMES, names)
             @block.rewrite(at + RECORD_NAMES + 1, names >> 8)
-            @block.rewrite(at + RECORD_HZ, hz)
-            @block.rewrite(at + RECORD_HZ + 1, hz >> 8)
-            @block.rewrite(at + RECORD_HZ + 2, hz >> 16)
+            @block.rewrite(at + RECORD_HZ, change.hz)
+            @block.rewrite(at + RECORD_HZ + 1, change.hz >> 8)
+            @block.rewrite(at + RECORD_HZ + 2, change.hz >> 16)
           end
 
-          # A gliding record for sounding note +s+ on this frame, at +key+ with +names+ and +hz+.
-          def emit_glide_record(s, key, hz, names)
+          # A gliding record for sounding note +s+ on this frame, as +change+ says: its instrument and
+          # volume the part's own, since it reads on the recording the note struck.
+          def emit_glide_record(s, change)
             at = var(:record_at)
             frame = var(:frame)
+            names = change.names | PackNote::NAMES.fetch(:glides)
             at.store!(@block.written)
-            [frame, frame >> 8, 0, 0, key, PackNote::PART_OWN, PackNote::PART_OWN, PackNote::PART_OWN,
-             PackNote::NO_LOUDNESS, PackNote::NO_LOUDNESS >> 8, PackNote::PART_OWN, 0,
-             0, 0, 0, 0, 0, 0, 0, 0, names, names >> 8, hz, hz >> 8, hz >> 16].each { |byte| @block.write(byte) }
+            [frame, frame >> 8, 0, 0, change.key, PackNote::PART_OWN, PackNote::PART_OWN, PackNote::PART_OWN,
+             change.loudness, change.loudness >> 8, PackNote::PART_OWN, 0,
+             0, 0, 0, 0, 0, 0, 0, change.shade, names, names >> 8, change.hz, change.hz >> 8,
+             change.hz >> 16].each { |byte| @block.write(byte) }
             @block.repeat(PackNote::VOICED_BYTES - RECORD_HZ - 3) { @block.write(0) }
             sounding_list(:glide_record)[s] = at
             sounding_list(:glide_start)[s] = frame
@@ -1075,15 +1106,16 @@ module VBlank
 
           # Each side's loudness, 0 to 255, as TrkVolPitSet and ChnVolSetAsm work them out from VOL,
           # PAN, the note's velocity and a drum's own pan.
-          def emit_sides(t, right, left)
+          def emit_sides(t, right, left) = emit_sides_of(t, track_list(:velocity)[t], var(:rhythm_pan), right, left)
+
+          # ...for a note of +velocity+ and a drum's own pan +side_pan+, on track +t+ as it is now.
+          def emit_sides_of(t, velocity, side_pan, right, left)
             x = var(:volume_x)
             y = var(:pan_y)
             x.store!((track_list(:volume)[t] * STARTING_VOLUME_X) >> 5)
             y.store!(track_list(:pan)[t] * 2)
             y.store!(-128) if y < -128
             y.store!(127) if y > 127
-            velocity = track_list(:velocity)[t]
-            side_pan = var(:rhythm_pan)
             right.store!(((((128 + side_pan) * velocity) * (((y + 128) * x) >> 8)) >> 14))
             left.store!(((((127 - side_pan) * velocity) * (((127 - y) * x) >> 8)) >> 14))
             right.store!(255) if right > 255
