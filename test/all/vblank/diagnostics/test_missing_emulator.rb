@@ -50,6 +50,15 @@ class TestMissingEmulator < Minitest::Test
     refute_includes said, "rake"
   end
 
+  # The Advance's emulator plays the Advance's and the Color's cartridges and no other console's, so
+  # every case says so: a game for the Genesis has no use for it, and is told nothing it must do.
+  def test_every_case_names_the_consoles_that_emulator_plays
+    said = [advice("ext.bundle libruby", bundled: false), advice("cannot load", bundled: true),
+            advice("cannot load", bundled: false), advice("cannot load", bundled: false, not_built: "no libmgba")]
+
+    said.each { |one| assert_includes one, "Game Boy Advance or Game Boy Color cartridge" }
+  end
+
   private
 
   def advice(detail, bundled:, not_built: nil)
