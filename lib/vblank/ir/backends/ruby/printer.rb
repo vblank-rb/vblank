@@ -19,8 +19,12 @@ module VBlank
         #   frame, and YJIT compiles an operator on small numbers to a few instructions but a
         #   runtime method only as a call: a `+` through rg_add was two calls. A sum, difference or
         #   product that can pass 32 bits keeps its answer in a temporary of its own and calls
-        #   rg_i32 to come round only when it has, which a game's numbers nearly never do. The
-        #   operands are worked out left to right, as the call worked them out.
+        #   rg_i32 to come round only when it has, which a game's numbers nearly never do. A shift
+        #   by a count written in the program is an operator too (SHIFTS). The operands are worked
+        #   out left to right, as the call worked them out.
+        # - A LIST ITEM IS READ IN ONE STEP (#list_item_call): the list's own method, or for a list
+        #   that is always full its Array's own `[]`, never the runtime's chain of small calls.
+        # - A RESUMABLE ROUTINE PICKS ITS STEP BY HALVING (#print_step_choice), not by a `case`.
         # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
         #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
@@ -66,6 +70,22 @@ module VBlank
           # ...and the ones that can pass 32 bits, and so come round (rg_i32) when they do.
           WRAPPED_OPERATORS = Ractor.make_shareable({ "rg_add" => "+", "rg_sub" => "-", "rg_mul" => "*" })
           OPERATORS_OF_TWO = Ractor.make_shareable(Set.new(COMPARISONS.keys + INLINE_OPERATORS.keys + WRAPPED_OPERATORS.keys))
+
+          # The most steps of a resumable routine tested for one after another, once halving has
+          # narrowed the counter down to them (#print_step_choice).
+          STEPS_TESTED_IN_TURN = 4
+
+          # The shifts, written as Ruby's operator when their count is written in the program
+          # (#written_shift_count?).
+          SHIFTS = Ractor.make_shareable({ "rg_shl" => "<<", "rg_shr" => ">>" })
+
+          # The runtime functions that read or write one item of a list, written as the list's own
+          # method (#list_item_call), by the method's name.
+          LIST_ITEM_METHODS = Ractor.make_shareable({ "rg_list_get" => "get", "rg_list_set" => "set" })
+
+          # The runtime functions that change how many items a list holds, or where its first is
+          # (#always_full_lists).
+          LIST_RESIZING = Ractor.make_shareable(Set["rg_list_empty", "rg_list_push", "rg_list_drop", "rg_list_copy"])
 
           # How each C type a table is kept in packs its numbers into bytes, for a big table
           # written as base64: little-endian, the width the type holds.
@@ -122,6 +142,7 @@ module VBlank
           # starting value, and then a method for every routine. +items+ is the top level.
           def print_file(items)
             @lists = items.grep(Statements::ListStorage).to_set { |list| list.name.text }
+            @always_full = always_full_lists(items)
             routines = +""
             @out = routines
             items.each { |item| print_top(item) }
@@ -145,13 +166,48 @@ module VBlank
             when Statements::StartFileArray then print_start_file_array(item)
             when Statements::Function then print_function(item)
             when Statements::FunctionTable then print_routine_table(item)
-            when Statements::ListStorage then add_starting_value("@#{item.name.text} = RgList.build(#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)})")
+            when Statements::ListStorage then print_list_storage(item)
             when Statements::Comment then nil # the tree's own heading; the file has Ruby::WRITTEN_BY
             else raise LoweringError, "the printer has no top-level form for #{item.class}"
             end
           end
 
           def add_starting_value(text) = @setup << "#{INDENT}#{text}\n"
+
+          # A list, made as the game starts. One that is always full (#always_full_lists) is an
+          # RgFullList, and the game keeps its Array too, under a name of its own (#items_name).
+          def print_list_storage(item)
+            name = item.name.text
+            made = "#{integer(item.capacity)}, #{integer(item.width)}, #{string(item.label)}"
+            return add_starting_value("@#{name} = RgList.build(#{made})") unless @always_full.include?(name)
+
+            add_starting_value("@#{name} = RgFullList.new(#{made})")
+            add_starting_value("#{items_name(name)} = @#{name}.items")
+          end
+
+          # The instance variable an always-full list's Array is kept in: no name the lowering gives
+          # a variable starts as the runtime's do.
+          def items_name(list) = "@rg_items_#{list}"
+
+          # THE LISTS THAT ARE ALWAYS FULL (runtime/rg_list.rb's RgFullList), each with the bytes its
+          # slot takes: lists of numbers wider than a byte that every declaration fills
+          # (rg_list_full), and nothing empties, pushes onto, drops from or copies into. The runtime
+          # changes a list's length only through those calls (and a state read in, which puts back
+          # what the game had), so such a list holds its whole capacity from its declaration on, its
+          # first item in its first slot.
+          def always_full_lists(items)
+            resized = Set.new
+            items.grep(Statements::Function).each do |function|
+              each_statement(function.body) do |statement|
+                next unless statement.is_a?(Statements::Eval) && LIST_RESIZING.include?(statement.call.function.text)
+
+                resized << statement.call.args.first.name.text
+              end
+            end
+            items.grep(Statements::ListStorage).filter_map do |list|
+              [list.name.text, list.width] if list.width != 1 && !resized.include?(list.name.text)
+            end.to_h
+          end
 
           # A table of routines picked by number (`call [:a, :b], number: n`): a block for each that
           # calls it by name, made in rg_game_setup so each calls the game's own (#call).
@@ -367,7 +423,7 @@ module VBlank
                 1 + expression_branches(statement.condition) + list_branches(statement.body) + list_branches(statement.otherwise)
               when Statements::While then 1 + expression_branches(statement.condition) + list_branches(statement.body)
               when Statements::Block then list_branches(statement.body)
-              when Statements::Steps then statement.steps.sum { |step| list_branches(step) }
+              when Statements::Steps then (2 * statement.steps.size) + statement.steps.sum { |step| list_branches(step) } # #print_step_choice's tests
               when Statements::Resume, Statements::RunToEnd then 1 + expression_branches(statement.call)
               else 0
               end
@@ -418,14 +474,24 @@ module VBlank
           def wrapped_operators_in(item)
             case item
             when Statements::Index then wrapped_operators_in(item.array) + wrapped_operators_in(item.index)
-            when Statements::Call then (wrapped_operator?(item) ? 1 : 0) + item.args.sum { |arg| wrapped_operators_in(arg) }
+            when Statements::Call
+              own = if wrapped_operator?(item) then 1
+                    elsif LIST_ITEM_METHODS.key?(item.function.text) then 2 # #list_item_in_place's index and number
+                    else 0
+                    end
+              own + item.args.sum { |arg| wrapped_operators_in(arg) }
             else 0
             end
           end
 
           # Whether +call+ is printed as Ruby's own +, - or * with its check for coming round
           # (#operator_of_two), which keeps its answer in a temporary.
-          def wrapped_operator?(call) = call.args.size == 2 && WRAPPED_OPERATORS.key?(call.function.text)
+          def wrapped_operator?(call)
+            return false unless call.args.size == 2
+
+            function = call.function.text
+            WRAPPED_OPERATORS.key?(function) || (function == "rg_shl" && written_shift_count?(call.args[1]))
+          end
 
           def expression_branches(item)
             case item
@@ -433,7 +499,7 @@ module VBlank
             when Statements::Call
               function = item.function.text
               own = if COMPARISONS.key?(function) then 1
-                    elsif wrapped_operator?(item) then 3
+                    elsif wrapped_operator?(item) || LIST_ITEM_METHODS.key?(function) then 3
                     else 0
                     end
               own + item.args.sum { |arg| expression_branches(arg) }
@@ -477,20 +543,44 @@ module VBlank
             kept.each_with_index { |name, k| line(depth, "#{expression(name)} = rg_kept_#{k}") }
           end
 
-          # A resumable routine's steps (Computer::Resumable): a loop round a case on its counter, each
-          # step going on to the next with `next`, and leaving the method with 1 or 0.
+          # A resumable routine's steps (Computer::Resumable): a loop that picks the step its counter
+          # names (#print_step_choice), each step going on to the next with `next`, and leaving the
+          # method with 1 or 0.
           def print_steps(depth, item)
             line(depth, "while true")
-            line(depth + 1, "case #{expression(item.counter)}")
-            item.steps.each_with_index do |step, number|
-              line(depth + 1, "when #{integer(number)}")
-              inner_statements(depth + 2, step, item)
+            line(depth + 1, "#{method_local('rg_step')} = #{expression(item.counter)}")
+            print_step_choice(depth + 1, item, 0, item.steps.size)
+            line(depth, "end")
+          end
+
+          # THE STEP THE COUNTER NAMES, from +first+ up to before +past+, picked by halving: a test
+          # of whether it is below the middle step, then the same again on that half, until a few
+          # steps are left, each then tested for in turn. So a routine of a thousand steps picks one in
+          # about ten tests.
+          #
+          # Not a `case` on the counter, though Ruby compiles one to a table it looks the step up
+          # in. YJIT compiles that look-up for the counter it saw as it compiled, a version for each
+          # of the first few, and past those it falls back to testing every `when` in order. A loop
+          # cut into steps (a port's unpacking writes a byte a step and waits every few hundred) comes
+          # to that look-up from steps hundreds apart, so each turn of it tested hundreds of `when`s
+          # before its own.
+          def print_step_choice(depth, item, first, past)
+            if past - first <= STEPS_TESTED_IN_TURN
+              (first...past).each do |number|
+                line(depth, "#{number == first ? 'if' : 'elsif'} rg_step == #{integer(number)}")
+                inner_statements(depth + 1, item.steps[number], item)
+              end
+              # A counter no step has (none the game writes) ends the routine, as the C does.
+              line(depth, "else")
+              line(depth + 1, "#{expression(item.counter)} = 0")
+              line(depth + 1, "return 0")
+            else
+              middle = (first + past) / 2
+              line(depth, "if rg_step < #{integer(middle)}")
+              print_step_choice(depth + 1, item, first, middle)
+              line(depth, "else")
+              print_step_choice(depth + 1, item, middle, past)
             end
-            # A counter no step has (none the game writes) ends the routine, as the C does.
-            line(depth + 1, "else")
-            line(depth + 2, "#{expression(item.counter)} = 0")
-            line(depth + 2, "return 0")
-            line(depth + 1, "end")
             line(depth, "end")
           end
 
@@ -555,13 +645,74 @@ module VBlank
           def call(item)
             function = item.function.text
             return "#{expression(item.args.first)}.call" if function == "rg_call_routine"
-            return operator_of_two(item) if item.args.size == 2 && OPERATORS_OF_TWO.include?(function)
+            return list_item_call(item) if LIST_ITEM_METHODS.key?(function)
+            return operator_of_two(item) if operator_of_two?(item)
 
             @called << function
             "#{function}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
           end
 
-          # A runtime function of two numbers written as Ruby's operator (see the class's heading).
+          # A read or write of one item of a list as the list's own method (see "A READ OR WRITE OF
+          # ONE ITEM" atop runtime/rg_list.rb), which gives nil for an index the list does not have:
+          # then rg_list_index_fault stops the game. The list is always an instance variable, so
+          # naming it twice reads nothing else.
+          #
+          # A list that is always full (#always_full_lists) is read and written in place instead
+          # (#list_item_in_place). Any other is not: measured on a port's unpacking, its Array read
+          # after asking the list for its length and its Array ran slower than the one call.
+          def list_item_call(item)
+            return list_item_in_place(item) if @always_full.include?(item.args.first.name.text)
+
+            list, *rest = item.args.map { |arg| expression(arg) }
+            @called << "rg_list_index_fault"
+            "(#{list}.#{LIST_ITEM_METHODS.fetch(item.function.text)}(#{rest.join(', ')}) || rg_list_index_fault(#{list}))"
+          end
+
+          # An item of an always-full list read or written as its Array's own (see RgFullList atop
+          # runtime/rg_list.rb), whose length is the list's: a read past the end gives nil, and one
+          # below nought is caught before the Array would count it from the end. The index, and for
+          # a write the number, are worked out first, each into a temporary, as the runtime's call
+          # worked them out (a list read in the number can stop the game first). A write is a run of
+          # statements in parentheses, not a test of its assignments, which Ruby warns of when one
+          # sets a number written in the program. Out of range, rg_list_index_fault_at stops the
+          # game in the interpreter's words.
+          def list_item_in_place(item)
+            name = item.args.first.name.text
+            list, index, value = item.args.map { |arg| expression(arg) }
+            slots = items_name(name)
+            @called << "rg_list_index_fault_at"
+            at = temporary
+            fault = "rg_list_index_fault_at(#{list}, #{at})"
+            return "(((#{at} = #{index}) >= 0 && #{slots}[#{at}]) || #{fault})" unless value
+
+            kept = temporary
+            fitted = @always_full.fetch(name) == 2 ? "((#{kept} & 0xFFFF) ^ 0x8000) - 0x8000" : kept
+            "(#{at} = #{index}; #{kept} = #{value}; #{at} >= 0 && #{at} < #{slots}.size ? " \
+              "(#{slots}[#{at}] = #{fitted}) : #{fault})"
+          end
+
+          # A temporary of the method being printed (see MANY LOCALS in the class's heading).
+          def temporary
+            kept = method_local("w_#{(@temporaries % MOST_TEMPORARIES_A_METHOD) + 1}")
+            @temporaries += 1
+            kept
+          end
+
+          # Whether +call+ is printed as Ruby's operator (#operator_of_two): one of OPERATORS_OF_TWO, or
+          # a shift by a count written in the program (#written_shift_count?).
+          def operator_of_two?(call)
+            return false unless call.args.size == 2
+
+            function = call.function.text
+            OPERATORS_OF_TWO.include?(function) || (SHIFTS.key?(function) && written_shift_count?(call.args[1]))
+          end
+
+          # A count of 0 to 31 written in the program, which shifts as Ruby's << and >> do. Any other
+          # count empties the number (rg_shl, rg_shr), so it is left to the runtime.
+          def written_shift_count?(count) = count.is_a?(Statements::Int) && count.value.between?(0, 31)
+
+          # A runtime function of two numbers written as Ruby's operator (see the class's heading). A
+          # shift right never leaves the range; a shift left can, and comes round as a sum does.
           def operator_of_two(item)
             function = item.function.text
             left, right = item.args.map { |arg| expression(arg) }
@@ -569,11 +720,13 @@ module VBlank
               "(#{left} #{compared} #{right} ? 1 : 0)"
             elsif (bits = INLINE_OPERATORS[function])
               "(#{left} #{bits} #{right})"
+            elsif function == "rg_shr"
+              "(#{left} >> #{right})"
             else
               @called << "rg_i32"
-              kept = method_local("w_#{(@temporaries % MOST_TEMPORARIES_A_METHOD) + 1}") # see MANY LOCALS in the heading
-              @temporaries += 1
-              "((#{kept} = #{left} #{WRAPPED_OPERATORS.fetch(function)} #{right}) > #{Int32::MAX} || " \
+              kept = temporary
+              operator = WRAPPED_OPERATORS[function] || SHIFTS.fetch(function)
+              "((#{kept} = #{left} #{operator} #{right}) > #{Int32::MAX} || " \
                 "#{kept} < #{Int32::MIN} ? rg_i32(#{kept}) : #{kept})"
             end
           end

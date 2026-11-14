@@ -188,4 +188,5 @@ def rg_state_list(name, list)
   list.front = front
   list.length = length
   list.capacity.times { |slot| list.set_item(slot, rg_list_fit(list, numbers[slot + 2])) }
+  list.state_read
 end
