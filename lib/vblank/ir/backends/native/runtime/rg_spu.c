@@ -267,14 +267,16 @@ static int64_t spu_try_block(const int32_t *samples, int32_t filter, int32_t shi
 }
 
 /* +count+ samples (a whole number of blocks) encoded into +halves+, the halfwords of sound memory
- * from where the loop starts, going round for ever from block +loop_block+ (PS1::ADPCM.encode): each
- * block at the filter and shift that come nearest, the first and the loop's first at filter 0. */
+ * from where the loop starts, going round for ever from block +loop_block+, or ending and going quiet
+ * after the last where it is -1 (PS1::ADPCM.encode): each block at the filter and shift that come
+ * nearest, the first and the loop's first at filter 0. */
 static void spu_encode(const int32_t *samples, int32_t count, int32_t loop_block, int32_t *halves) {
   int32_t history[2] = {0, 0};
   int32_t blocks = count / SPU_BLOCK_SAMPLES;
   for (int32_t b = 0; b < blocks; b++) {
     const int32_t *block = samples + (b * SPU_BLOCK_SAMPLES);
-    int32_t flags = (b == loop_block ? SPU_LOOP_START : 0) | (b == blocks - 1 ? SPU_LOOP_END | SPU_LOOP_REPEAT : 0);
+    int32_t ends = SPU_LOOP_END | (loop_block >= 0 ? SPU_LOOP_REPEAT : 0);
+    int32_t flags = (b == loop_block ? SPU_LOOP_START : 0) | (b == blocks - 1 ? ends : 0);
     int32_t filters = b == 0 || b == loop_block ? 1 : SPU_FILTERS;
     int64_t best_error = -1;
     int32_t best_filter = 0, best_shift = 0, best_nibbles[SPU_BLOCK_SAMPLES], best_after[2] = {0, 0};
@@ -306,9 +308,22 @@ static void spu_encode(const int32_t *samples, int32_t count, int32_t loop_block
 
 static int32_t spu_gcd(int32_t a, int32_t b) { return b == 0 ? a : spu_gcd(b, a % b); }
 
-void rg_spu_fill_held_recording(int32_t *memory, const int32_t *recordings, const int8_t *recording_samples, const int32_t *rules) {
-  int32_t number = rules[0], start = rules[1], length = rules[2], room = rules[3];
-  int32_t back = recordings[1 + (number * 3) + 1];
+/* The halfwords of +memory+ (the game's own, after its count) from where a loop starts, in 8-byte steps. */
+static int32_t *spu_loop_halves(int32_t *memory, int32_t room) { return memory + 1 + ((room * 4) - SPU_MEMORY_BASE); }
+
+/* A recording's +length+ samples played once through: padded with silence to a whole block, and ending
+ * there (PS1::ADPCM.encode, loop: false). */
+static void spu_fill_once(int32_t *memory, const int8_t *data, int32_t length, int32_t room) {
+  int32_t padded = ((length + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t *laid = calloc((size_t)padded, sizeof *laid);
+  if (!laid) rg_fault("there is no room to lay out a recording of %d samples", (int)padded);
+  for (int32_t i = 0; i < length; i++) laid[i] = data[i] * 256;
+  spu_encode(laid, padded, -1, spu_loop_halves(memory, room));
+  free(laid);
+}
+
+/* A recording's +length+ samples played holding, going +back+ samples at its end. */
+static void spu_fill_held(int32_t *memory, const int8_t *data, int32_t length, int32_t back, int32_t room) {
   if (back < 1) back = 1;
   if (back > length) back = length;
   /* PS1::SoundMemory.recording_samples: the samples up to where the hold starts, the held part from
@@ -321,7 +336,6 @@ void rg_spu_fill_held_recording(int32_t *memory, const int32_t *recordings, cons
   int32_t count = aligned + body, padded = ((count + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
   int32_t *laid = calloc((size_t)padded, sizeof *laid);
   if (!laid) rg_fault("there is no room to lay out a recording of %d samples", (int)padded);
-  const int8_t *data = recording_samples + start;
   int32_t turn = (aligned - from) % back;
   for (int32_t i = 0; i < count; i++) {
     int32_t held;
@@ -330,8 +344,21 @@ void rg_spu_fill_held_recording(int32_t *memory, const int32_t *recordings, cons
     else held = from + (((i - aligned) % back + turn) % back);
     laid[i] = data[held] * 256;
   }
-  spu_encode(laid, padded, aligned / SPU_BLOCK_SAMPLES, memory + 1 + ((room * 4) - SPU_MEMORY_BASE));
+  spu_encode(laid, padded, aligned / SPU_BLOCK_SAMPLES, spu_loop_halves(memory, room));
   free(laid);
+}
+
+/* Where a recording's length is among its numbers in the mixer's rg_game_recordings (Computer::Sound,
+ * RECORDING_NUMBERS and RECORDING_LENGTH_AT). */
+#define SPU_MIXER_RECORDING_NUMBERS 7
+#define SPU_MIXER_RECORDING_LENGTH_AT 1
+
+void rg_spu_fill_recording(int32_t *memory, const int32_t *recordings, const int32_t *spu_recordings, const int8_t *recording_samples,
+                           const int32_t *rules) {
+  int32_t number = rules[0], once = rules[2], held = rules[3];
+  const int8_t *data = recording_samples + rules[1];
+  int32_t length = recordings[1 + (number * SPU_MIXER_RECORDING_NUMBERS) + SPU_MIXER_RECORDING_LENGTH_AT];  if (once >= 0) spu_fill_once(memory, data, length, once);
+  if (held >= 0) spu_fill_held(memory, data, length, spu_recordings[1 + (number * 3) + 1], held);
 }
 
 /* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */

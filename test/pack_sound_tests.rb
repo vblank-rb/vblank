@@ -435,6 +435,59 @@ module PackSoundTests
     end
   end
 
+  # +player+ keeping what each speaker plays, where it can: a game built as C, JavaScript or Ruby,
+  # whose speakers are the voices as the console's own chip plays them. The PlayStation's read
+  # their recordings out of sound memory, which the sound log and the recordings' mix do not show.
+  private def speakers_kept(player) = player.respond_to?(:recording_sound) ? player.recording_sound : player
+
+  # One game of this file that plays recordings from the pack: the game, the buttons held on each
+  # frame that has any, and the pack file it is handed where its pack is left out.
+  SpeakerGame = Data.define(:program, :presses, :file)
+
+  # Each game of this file that plays recordings from the pack, by name, built as +options+ say.
+  private def speaker_games(folder, options)
+    pressed = { 1 => [:a], 8 => [:b] }
+    games = { sample_and_instrument: SpeakerGame.new(sound_game(folder, options: options), pressed, sound_pack_file),
+              two_stretches: SpeakerGame.new(two_stretches_game(folder, options: options), pressed, sound_pack_file) }
+    if console_plays_instruments?
+      games[:song_and_effect] = SpeakerGame.new(scored_sound_game(folder, options: options), { 1 => [:a], 40 => [:b] }, sound_pack_file)
+    end
+    return games unless console_mixes_recordings?
+
+    settings = { held: %i[holds_from], no_hold: %i[no_hold], length: %i[length], held_length: %i[holds_from length],
+                 no_hold_length: %i[no_hold length], rate_and_shape: %i[rate holds_from envelope] }
+    games.merge(settings.transform_values do |from_pack|
+      SpeakerGame.new(settings_at_start_game(folder, from_pack: from_pack, options: options, mix_rate: 13_379),
+                      { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }, settings_pack_file)
+    end)
+  end
+
+  # WHAT THE SPEAKERS PLAY, a recording read from the pack as the game starts: the same as built
+  # all-in-one, on a run whose player keeps them. The PlayStation's voices play a recording from
+  # its sound memory, so a build that left the stand-in there plays silence, or the hold the game
+  # was built with, where the all-in-one build plays the pack's samples.
+  def test_recordings_read_as_the_game_starts_sound_from_the_speakers_as_all_in_one
+    Dir.mktmpdir do |folder|
+      whole = speaker_games(folder, VBlank::Cartridge::Options.new)
+      left_out = speaker_games(folder, PACK_AT_START)
+      sounding = []
+      kept = false
+      whole.each do |name, game|
+        presses = ->(frame) { game.presses.fetch(frame, []) }
+        wanted = speakers_kept(game_player).input_each_frame(&presses).run(game.program, frames: 80)
+        heard = speakers_kept(game_player.hand_file(game.file)).input_each_frame(&presses).run(left_out.fetch(name).program, frames: 80)
+        next unless wanted.respond_to?(:sound_right)
+
+        kept = true
+        assert_equal [wanted.sound, wanted.sound_right], [heard.sound, heard.sound_right], "#{name}: the speakers"
+        sounding << name if wanted.sound.any? { |level| level != 0 }
+      end
+      # A recording over inside a frame is not heard on every console's speakers, so a game playing
+      # only those can be silent there all-in-one; but not every game.
+      refute_empty sounding, "no game sounds from the speakers all-in-one, so there is nothing to compare" if kept
+    end
+  end
+
   def test_a_hold_of_every_bit_set_read_as_the_game_starts_is_no_hold
     Dir.mktmpdir do |folder|
       left_out = settings_at_start_game(folder, from_pack: %i[no_hold], options: PACK_AT_START)
@@ -710,14 +763,17 @@ module PackSoundTests
     whole = brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new)
     left_out = brr_game(folder, bytes, loop_point: loop_point, options: PACK_AT_START).program
 
-    wanted = game_player.run(brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new,
-                                                     by_hand: by_hand).program, frames: BRR_FRAMES)
-    all_in_one = game_player.run(whole.program, frames: BRR_FRAMES)
-    heard = game_player.hand_file(whole.made_data_pack_file).run(left_out, frames: BRR_FRAMES)
+    wanted = speakers_kept(game_player).run(brr_game(folder, bytes, loop_point: loop_point, options: VBlank::Cartridge::Options.new,
+                                                                    by_hand: by_hand).program, frames: BRR_FRAMES)
+    all_in_one = speakers_kept(game_player).run(whole.program, frames: BRR_FRAMES)
+    heard = speakers_kept(game_player.hand_file(whole.made_data_pack_file)).run(left_out, frames: BRR_FRAMES)
 
     assert wanted.mixed_sound.flatten.any? { |level| level != 0 }, "#{why}: the recording sounds"
     assert_equal [wanted.audio, wanted.mixed_sound], [all_in_one.audio, all_in_one.mixed_sound], "#{why}, built all-in-one"
     assert_equal [wanted.audio, wanted.mixed_sound], [heard.audio, heard.mixed_sound], "#{why}, with the pack left out"
+    return unless wanted.respond_to?(:sound_right)
+
+    assert_equal [wanted.sound, wanted.sound_right], [heard.sound, heard.sound_right], "#{why}: the speakers, with the pack left out"
   end
 
   def test_brr_recordings_read_as_the_game_starts_decode_as_the_chip_does

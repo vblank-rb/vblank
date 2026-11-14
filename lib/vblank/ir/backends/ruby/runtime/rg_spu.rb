@@ -152,12 +152,12 @@ def rg_spu_try_block(samples, at, filter, shift, older, newer)
   [error, nibbles, older, newer]
 end
 
-# rg_spu.c's spu_encode
+# rg_spu.c's spu_encode: a +loop_block+ of -1 ends and goes quiet after the last block.
 def rg_spu_encode(samples, loop_block, memory, halves)
   older = newer = 0
   blocks = samples.size / RG_SPU_BLOCK_SAMPLES
   blocks.times do |b|
-    flags = (b == loop_block ? 4 : 0) | (b == blocks - 1 ? 3 : 0)
+    flags = (b == loop_block ? 4 : 0) | (b == blocks - 1 ? (loop_block >= 0 ? 3 : 1) : 0)
     filters = b.zero? || b == loop_block ? 1 : RG_SPU_ENCODE_WEIGHTS.size
     best = nil
     filters.times do |filter|
@@ -177,11 +177,32 @@ def rg_spu_encode(samples, loop_block, memory, halves)
   end
 end
 
-# A recording whose hold is read from the start file, laid out and encoded into its loop (rg_sound.h,
-# rg_spu_fill_held_recording).
-def rg_spu_fill_held_recording(memory, recordings, recording_samples, rules)
-  number, start, length, room = rules
-  back = recordings[1 + (number * 3) + 1].clamp(1, length)
+# The index in +memory+ of the first halfword of the loop starting at +room+, in 8-byte steps.
+def rg_spu_loop_halves(room) = 1 + (room * 4) - @rg_game_spu_rules[9]
+
+# rg_spu.c's spu_fill_once
+def rg_spu_fill_once(memory, recording_samples, start, length, room)
+  laid = Array.new(length.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES, 0)
+  length.times { |i| laid[i] = recording_samples[start + i] << 8 }
+  rg_spu_encode(laid, -1, memory, rg_spu_loop_halves(room))
+end
+
+# Where a recording's length is among its numbers in the mixer's table of recordings (rg_spu.c).
+RG_SPU_MIXER_RECORDING_NUMBERS = 7
+RG_SPU_MIXER_RECORDING_LENGTH_AT = 1
+
+# A recording whose samples, hold or length are read from the start file, encoded into its loops
+# (rg_sound.h, rg_spu_fill_recording).
+def rg_spu_fill_recording(memory, recordings, spu_recordings, recording_samples, rules)
+  number, start, once, held = rules
+  length = recordings[1 + (number * RG_SPU_MIXER_RECORDING_NUMBERS) + RG_SPU_MIXER_RECORDING_LENGTH_AT]
+  rg_spu_fill_once(memory, recording_samples, start, length, once) if once >= 0
+  rg_spu_fill_held(memory, recording_samples, start, length, spu_recordings[1 + (number * 3) + 1], held) if held >= 0
+end
+
+# rg_spu.c's spu_fill_held
+def rg_spu_fill_held(memory, recording_samples, start, length, way_back, room)
+  back = way_back.clamp(1, length)
   from = length - back
   aligned = from.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES
   times = RG_SPU_BLOCK_SAMPLES / back.gcd(RG_SPU_BLOCK_SAMPLES)
@@ -196,7 +217,7 @@ def rg_spu_fill_held_recording(memory, recordings, recording_samples, rules)
            end
     laid[i] = recording_samples[start + held] << 8
   end
-  rg_spu_encode(laid, aligned / RG_SPU_BLOCK_SAMPLES, memory, 1 + (room * 4) - @rg_game_spu_rules[9])
+  rg_spu_encode(laid, aligned / RG_SPU_BLOCK_SAMPLES, memory, rg_spu_loop_halves(room))
 end
 
 def rg_held_to_16_bits(sample)

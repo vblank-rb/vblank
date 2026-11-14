@@ -207,7 +207,7 @@ module VBlank
           # The sound's tables are made first, since making them is what finds the note rows.
           def build_start_file_sound_fills
             sound_tables
-            build_start_file_settings_fills + build_start_file_wave_fills + build_start_file_note_fills
+            build_start_file_settings_fills + build_start_file_spu_recording_fills + build_start_file_wave_fills + build_start_file_note_fills
           end
 
           def takes_runtime_feature?(name) = runtime_features.any? { |feature| feature.name == name }
@@ -329,7 +329,7 @@ module VBlank
               next if entries.empty?
 
               eval_call("rg_mix_fill_holds", array, drawing_array("start_file_holds", "int32_t", [*head, whole, entries.size, *entries]))
-            end + start_file_held_recording_fills(sample, head)
+            end
           end
 
           # THE SHAPE FROM THE FILE: the recording's own, and each row of a note that set none and
@@ -589,26 +589,57 @@ module VBlank
             count = waves_from_start_file.size
             memory = PS1::SoundMemory.new(@program, waveforms: waveforms[0...first_start_file_waveform], waves_from_file: count)
             @spu_memory = memory
-            held = !PS1::SoundMemory.holds_read_from_file(@program).empty?
+            laid_out = PS1::SoundMemory.laid_out_at_start(@program).values
             [sound_table("spu_rules", PS1::SPUTables.rules),
              sound_table("spu_loops", PS1::SPUTables.loops(memory, waveforms, waves_from_file: count)),
-             sound_table("spu_memory", PS1::SPUTables.memory(memory), writable: count.positive? || held),
-             sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings), writable: held)]
+             sound_table("spu_memory", PS1::SPUTables.memory(memory), writable: count.positive? || !laid_out.empty?),
+             sound_table("spu_recordings", PS1::SPUTables.recordings(memory, @sound_log.recordings),
+                         writable: laid_out.any? { |node| PS1::SoundMemory.back_read_at_start?(node) })]
           end
 
-          # A RECORDING WHOSE HOLD IS READ FROM THE START FILE, on a console whose voices read sound
-          # memory: its way back in the table of where each recording is (rg_mix_fill_holds, a
-          # looping play's way, reading it all again where it holds from none), then the recording
-          # laid out round that way back and encoded into the loop kept for it (rg_spu_fill_held_recording,
-          # PS1::SoundMemory.holds_read_from_file). None on any other console.
-          def start_file_held_recording_fills(sample, head)
-            room = voices_read_sound_memory? && @spu_memory&.held_from_file_start(sample.name) or return []
+          # A RECORDING LAID OUT AS THE GAME STARTS (PS1::SoundMemory.laid_out_at_start), on a console
+          # whose voices read sound memory: its samples, hold or length are in the start file. Where its
+          # hold or length is, its way back in the table of where each recording is, a looping play's
+          # way (reading it all again where it holds from none), worked out as the mixer's is
+          # (#start_file_spu_back_fill); then the recording, as long as the mixer's table of recordings
+          # has it, encoded into the loop it plays from once through and laid out round that way back
+          # into the one it plays from holding (rg_spu_fill_recording). Each comes after the fills of
+          # the recordings' samples and of the mixer's numbers, which it reads. None on any other console.
+          def build_start_file_spu_recording_fills
+            return [] unless voices_read_sound_memory?
 
-            number = @sound_log.recording_number(sample.name)
+            laid_out = PS1::SoundMemory.laid_out_at_start(@program)
+            @sound_log.recordings.select { |sample| laid_out.key?(sample.name) }.flat_map do |sample|
+              once = @spu_memory.laid_out_start(sample.name, :once)
+              held = @spu_memory.laid_out_start(sample.name, :held)
+              next [] unless once || held
+
+              number = @sound_log.recording_number(sample.name)
+              [*(start_file_spu_back_fill(sample, number) if held && PS1::SoundMemory.back_read_at_start?(sample)),
+               eval_call("rg_spu_fill_recording", @names.own("spu_memory"), @names.own("recordings"), @names.own("spu_recordings"),
+                         recording_samples_name,
+                         drawing_array("start_file_laid_out", "int32_t", [number, recording_starts.fetch(sample.name), once || -1, held || -1]))]
+            end
+          end
+
+          # How far back recording +sample+ (the mixer's +number+) reads played holding, in the table of
+          # where each recording is in sound memory: the fill the mixer's own numbers take, from the
+          # length and the hold in the file (rg_mix_fill_backs), the hold alone (rg_mix_fill_holds), or
+          # what a recording in the Super Nintendo chip's format decoded to (rg_mix_fill_decoded_backs).
+          def start_file_spu_back_fill(sample, number)
+            settings = sample.settings_from_file
             entry = 1 + (number * PS1_RECORDING_NUMBERS) + 1
-            [eval_call("rg_mix_fill_holds", @names.own("spu_recordings"), drawing_array("start_file_holds", "int32_t", [*head, 1, 1, entry])),
-             eval_call("rg_spu_fill_held_recording", @names.own("spu_memory"), @names.own("spu_recordings"), recording_samples_name,
-                       drawing_array("start_file_held", "int32_t", [number, recording_starts.fetch(sample.name), sample.bytes.bytesize, room]))]
+            if settings.brr
+              eval_call("rg_mix_fill_decoded_backs", @names.own("spu_recordings"), brr_decoded_name,
+                        drawing_array("start_file_decoded_backs", "int32_t", [brr_decoded_entry(sample), 1, 1, entry]))
+            elsif settings.length
+              length = [*start_file_number_rules(settings.length), sample.bytes.bytesize]
+              hold = settings.holds_from ? [1, *start_file_number_rules(settings.holds_from), -1] : [0, 0, 0, 0, 0, sample.holds_from || -1]
+              eval_call("rg_mix_fill_backs", @names.own("spu_recordings"), drawing_array("start_file_backs", "int32_t", [*length, *hold, 1, 1, entry]))
+            else
+              head = [*start_file_number_rules(settings.holds_from), sample.bytes.bytesize]
+              eval_call("rg_mix_fill_holds", @names.own("spu_recordings"), drawing_array("start_file_holds", "int32_t", [*head, 1, 1, entry]))
+            end
           end
 
           # How many numbers each recording has in the table of where each recording is in sound
