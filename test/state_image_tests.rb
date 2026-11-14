@@ -26,7 +26,7 @@ module StateImageTests
   # its picture says where it stands. It places its own waits (frame_sync: :manual), so the one in
   # spin is a frame of its own and not caught up with the loop's.
   private def state_game
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :bitmap
       best = save_var :best, 0
@@ -109,7 +109,7 @@ module StateImageTests
   # square is drawn held inside an area that a frame ends within, and a sprite walks over the
   # squares, putting back the patch it covered each time it moves.
   private def kept_picture_game(tear_free:)
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :bitmap, tear_free: tear_free
       image(:block, "#" => :green) { "####\n####\n####\n####" }
@@ -147,7 +147,7 @@ module StateImageTests
   # frames after the state the picture shows one the game set before it, which only the state's
   # copy of the drawing features brings back.
   private def effects_game(tear_free:)
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :bitmap, tear_free: tear_free
       n = var :n, 0
@@ -198,7 +198,7 @@ module StateImageTests
   private def scenery_game
     tile = Minitest::Test::SOLID_TILE
     boxed = game_console == :gba
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :tiled
       image(:red_t, "#" => :red) { tile }
@@ -253,7 +253,7 @@ module StateImageTests
   private def rare_scenery_game
     tile = Minitest::Test::SOLID_TILE
     halves = Array.new(64) { |i| (i % 8) < 4 ? :red : :green }
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :tiled
       image :bars, width: 8, height: 8, data: halves, colors: %i[transparent red green]
@@ -289,7 +289,7 @@ module StateImageTests
   # copy of the turn is needed.
   private def turned_scenery_game
     tile = Minitest::Test::SOLID_TILE
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :rotozoom
       image(:red_t, "#" => :red) { tile }
@@ -325,7 +325,7 @@ module StateImageTests
   # not the tiles copied for it (rg_background_follow), so the run read from it shows the lists'
   # colours only if it copies them again.
   def test_scenery_following_several_lists_comes_back_from_the_state
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant))
     program = several_lists_game(builder: builder) do |sets, title|
       pass = var :pass, 0
       game_loop do
@@ -349,7 +349,7 @@ module StateImageTests
   # sprites and the badge's picture as the pass left them.
   private def sprites_game
     tile = Minitest::Test::SOLID_TILE
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :tiled
       image(:sea_t, "#" => :blue) { tile }
@@ -397,7 +397,7 @@ module StateImageTests
   # mid-recording at the state, and changed again after it.
   private def sounding_game
     mixes = VBlank::Console.described(game_console).recordings_at_once.positive?
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, frame_sync: :manual))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
       screen :bitmap
       enable_sound
@@ -534,7 +534,7 @@ module StateImageTests
 
   # A small game with no save memory, of a variable that counts.
   private def counting_game
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant))
     builder.instance_eval do
       screen :bitmap
       other_x = var :other_x, 0

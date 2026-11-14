@@ -9,7 +9,7 @@ require "test_helper"
 module RepaintGames
   # A program built for this run's console, which the game is then played as.
   private def repaint_program(&block)
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant))
     builder.instance_eval(&block)
     builder.finalize_program
     builder.program
