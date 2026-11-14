@@ -247,6 +247,8 @@ module VBlank
       # PIECE_NUMBER_BYTES, low byte first, in its start file after the copy.
       PIECE_NUMBER = Messages::MadeNames.make(:unpacking_part, part: :piece_number)
       PIECE_NUMBER_BYTES = 2
+      # The variable that holds the piece's number as the program plays it.
+      PIECE_PLAYED = Messages::MadeNames.make(:unpacking_part, part: :piece_played)
 
       # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the five
       # below. For the first four, +at+ is a place in the copy for the first two, a byte outside the

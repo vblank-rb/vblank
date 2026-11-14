@@ -120,8 +120,8 @@ module VBlank
       # that part again, and what reads from it, and takes every other part's slots from the cache.
       #
       # A PART IN PIECES writes slots in pieces (`slots.samples :music, count: ..., pieces: rooms`)
-      # a piece at a time, and its block is built once for each piece, handed the piece's number,
-      # a plain Integer from 0, after the release:
+      # a piece at a time. Its block is built once, handed the piece's number after the release as
+      # a game value, 0 first, which the routine reads as it runs, as a `repeat`'s index is:
       #
       #   slots.fill_from_copy(:music, pieces: 27) do |copy, pack, release, song|
       #     pack[:music].piece(song)[i] = sample      # i counts from the piece's first item

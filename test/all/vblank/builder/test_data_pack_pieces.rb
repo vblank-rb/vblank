@@ -100,7 +100,7 @@ class TestDataPackPieces < Minitest::Test
   def test_a_part_in_pieces_writing_another_pieces_number_is_refused
     refused = refusal_of { |slots| slots.fill_from_copy(:music, pieces: 2) { |copy, pack| pack[:music].piece(1)[0] = copy.byte(0) } }
 
-    assert_match "writes piece 1 of slot :music while it makes piece 0", refused
+    assert_match "writes piece 1 of slot :music, and that is not the piece the block is given", refused
   end
 
   def test_a_part_in_pieces_reading_a_slot_another_part_writes_is_refused

@@ -205,7 +205,7 @@ module VBlank
           shell = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
           shell.parts.each { |part| refuse_console_only_steps!(part.program, err) }
           progress.step("Writing JavaScript")
-          functions = shell.parts.map do |part|
+          functions = shell.parts.reject { |part| split_unpacking?(shell, part) }.map do |part|
             factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part),
                                   code: game.identifying_code, states: part.keeps_states?).first
           end
@@ -266,11 +266,17 @@ module VBlank
         # createMenu, and createUnpacking0, 1... by the unpacking's number.
         def shell_factory_name(part) = { game: "createGame", menu: "createMenu", unpacking: "createUnpacking#{part.number}" }.fetch(part.role)
 
+        # Whether +part+ is an unpacking split in pieces, which the page plays as its split however
+        # many workers it has (rg_shell_unpack_on_workers), so its whole routine is not written.
+        def split_unpacking?(shell, part) = part.role == :unpacking && !shell.facts.pieces[part.number].nil?
+
         # The line that starts the page on the programs of +shell+, handed its facts as data
         # (Original::ShellFacts#to_plain), which the page's runtime reads, with the worker programs and
         # +unpack_workers+, the workers the build asked for.
         def shell_start_text(shell, unpack_workers)
-          unpackings = shell.parts.select { |part| part.role == :unpacking }.map { |part| shell_factory_name(part) }
+          unpackings = shell.parts.select { |part| part.role == :unpacking }.map do |part|
+            split_unpacking?(shell, part) ? "null" : shell_factory_name(part)
+          end
           workers = Array.new(shell.worker_programs.length) { |number| "createWorker#{number}" }
           "rg_mount_page(rg_shell_game(#{JSON.generate(shell.facts.to_plain)}, " \
             "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}], workers: [#{workers.join(', ')}], " \

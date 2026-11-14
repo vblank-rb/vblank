@@ -273,7 +273,8 @@ module VBlank
       end
 
       def refuse_outside_slot!(into, start, count)
-        return unless start.is_a?(Integer) && count.is_a?(Integer)
+        # A piece's size is known only as the routine runs (PieceBytes), which checks it then.
+        return unless start.is_a?(Integer) && count.is_a?(Integer) && into.byte_size.is_a?(Integer)
         return if start.between?(0, into.byte_size - 1) && start + count <= into.byte_size
 
         raise ArgumentError, "Slot :#{into.slot.name} holds #{into.byte_size} bytes. A write of #{count} bytes from " \
@@ -465,7 +466,7 @@ module VBlank
           return bytes.each_with_index { |byte, at| @list[@start + (index * MapCell::BYTES) + at] = byte }
         end
 
-        write_or_emit_fault(index, @slot.count, index * MapCell::BYTES) do
+        write_or_emit_fault(index, item_count, index * MapCell::BYTES) do
           bytes.each_with_index { |byte, at| @list[place((index * MapCell::BYTES) + at)] = byte }
         end
       end
@@ -496,7 +497,7 @@ module VBlank
           return bytes.each_with_index { |byte, at| @list[@start + (index * Slot::COLOR_BYTES) + at] = byte }
         end
 
-        write_or_emit_fault(index, @slot.count, index * Slot::COLOR_BYTES) do
+        write_or_emit_fault(index, item_count, index * Slot::COLOR_BYTES) do
           bytes.each_with_index { |byte, at| @list[place((index * Slot::COLOR_BYTES) + at)] = byte }
         end
       end
@@ -505,6 +506,9 @@ module VBlank
       def place(index) = index.is_a?(Integer) ? @start + index : DSL::Value.new(@builder, DSL::Value.node_for(index)) + @start
 
       private
+
+      # How many items the slot holds: its colours, cells or numbers (a piece's, as the routine runs).
+      def item_count = @slot.count
 
       # A numbers slot of halves or words: the routine writes and reads a number at a time.
       def wide_numbers? = @slot.shape == :numbers && @slot.item_bytes > 1
@@ -526,7 +530,7 @@ module VBlank
           return write_number_bytes(index, value)
         end
 
-        write_or_emit_fault(index, @slot.count, index * @slot.item_bytes) { write_number_bytes(index, value) }
+        write_or_emit_fault(index, item_count, index * @slot.item_bytes) { write_number_bytes(index, value) }
       end
 
       def write_number_bytes(index, value)
@@ -621,27 +625,45 @@ module VBlank
 
     # A SLOT IN PIECES, AS AN UNPACKING ROUTINE WRITES IT: `pack[:music]` inside
     # `slots.fill_from_copy :music, pieces: 27 do ... end`, which is written a piece at a time,
-    # `pack[:music].piece(song)[i] = sample`, each piece a SlotBytes of its own (PieceBytes) whose
+    # `pack[:music].piece(song)[i] = sample`, the piece a SlotBytes of its own (PieceBytes) whose
     # items count from the piece's first. The slot itself is never read or written whole: a part in
     # pieces writes the pieces, and no other part reads them (PiecedUnpacking says why).
     #
-    # +piece_places+ is where each piece the program holds starts in the pack's list, by the
-    # piece's number: every piece in the whole routine, and the one piece a program of one piece
-    # holds (Builder::DataPacks#unpacking_program).
+    # THE PIECE IS ONE THE ROUTINE WORKS OUT AS IT RUNS: the part's block is built once, handed the
+    # piece's number as a game value, so its code is in the program once however many pieces it
+    # has. Where each piece starts in the program's list, and how many items it holds, are two
+    # tables the piece's number reads (+piece_places+, a place for every piece, by its number; a
+    # number where every piece starts at the same place). The whole routine holds every piece; a
+    # program of a part's pieces holds one at a time, from its list's first byte
+    # (Builder::DataPacks#unpacking_program).
     class PiecedSlotBytes < SlotBytes
       def initialize(builder, list, slot, piece_places, number:, faults:, building:)
         super(builder, list, slot, nil, number: number, faults: faults, building: building)
         @piece_places = piece_places
-        @pieces = {}
+        @pieces = {}.compare_by_identity
       end
 
-      # PIECE +number+ of the slot (0 first), a PieceBytes, for the part in pieces whose block is
-      # built for that piece.
+      # THE PIECE the part's block is handed (+number+, the game value it is given), a PieceBytes.
       def piece(number)
         @building.refuse_piece_not_its_own!(@slot, number)
-        @pieces[number] ||= PieceBytes.new(@builder, @list, @slot.piece_slot(number), @piece_places.fetch(number),
-                                           number: @number, faults: @faults, whole: self)
+        @pieces[number] ||= PieceBytes.new(@builder, @list, @slot.piece_shape, read_by(:at, @piece_places, number),
+                                           read_by(:items, @slot.pieces, number), number: @number, faults: @faults,
+                                           whole: self)
       end
+
+      private
+
+      # The entry of +entries+ (one for each piece) for piece +number+: a number where every piece's
+      # is the same, else a read of a table of them, which the build makes once.
+      def read_by(what, entries, number)
+        return entries.first if entries.uniq.one?
+
+        table = @builder.table(Messages::MadeNames.make(:unpacking_part, part: :"piece_#{what}_#{@number}"), entries,
+                               width: :word, signed: false)
+        table[number]
+      end
+
+      public
 
       # The piece writes its own slot's name: a part writes the slot it writes a piece of.
       def record_piece_read = @uses&.record_read(@slot.name)
@@ -652,36 +674,67 @@ module VBlank
     end
 
     # ONE PIECE OF A SLOT IN PIECES (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
-    # numbered as its slot, so a fault or a count of bytes done names the slot. +whole+ is the
-    # PiecedSlotBytes whose piece it is, which records its reads and writes.
+    # numbered as its slot, so a fault or a count of bytes done names the slot. +slot+ is the
+    # piece's shape (Slot#piece_shape), +start+ where it starts in the list and +items+ how many
+    # it holds, each a number or a value the routine works out. +whole+ is the PiecedSlotBytes whose
+    # piece it is, which records its reads and writes.
+    #
+    # Pieces differ in size, so a place written as a number cannot be checked as the routine is
+    # built: every place is checked as it runs, and one outside the piece is the fault the build
+    # stops on, as a place worked out as the routine runs always is.
     class PieceBytes < SlotBytes
-      def initialize(builder, list, slot, start, number:, faults:, whole:)
+      def initialize(builder, list, slot, start, items, number:, faults:, whole:)
         super(builder, list, slot, start, number: number, faults: faults)
+        @items = items
         @whole = whole
       end
 
       def record_read = @whole.record_piece_read
       def record_write = @whole.record_piece_write
+
+      # How many bytes the piece holds, as the routine runs.
+      def byte_size = @items * @slot.item_bytes
+
+      def [](index) = super(as_value(index))
+      def []=(index, value)
+        super(as_value(index), value)
+      end
+
+      def write_cell(index, **) = super(as_value(index), **)
+      def write_color(index, **) = super(as_value(index), **)
+
+      private
+
+      def item_count = @items
+
+      # +index+ as a game value, so it is checked as the routine runs.
+      def as_value(index) = index.is_a?(Integer) ? DSL::Value.new(@builder, DSL::Value.node_for(index)) : index
     end
 
     # WHICH PART OF THE ROUTINE IS BEING BUILT, and for a part in pieces which piece: what a slot's
     # writer asks before it is read or written, so a part in pieces that reaches past its own
     # piece is refused as the routine is built, in plain words (PiecedUnpacking says why each is).
     class UnpackingPartBuilding
-      # The part being built (a DSL::PackSlots::Routine, or nil between parts) and the piece of it.
+      # The part being built (a DSL::PackSlots::Routine, or nil between parts) and the piece of it,
+      # the game value the part's block is handed.
+      Entered = Data.define(:routine, :piece)
+
+      # Must keep the piece inside a record: this file is read as game code, where a game value
+      # put in an instance variable is a write of the game's own.
       def enter(routine, piece = nil)
-        @routine = routine
-        @piece = piece
+        @entered = Entered.new(routine: routine, piece: piece)
       end
+
+      private def routine_entered = @entered&.routine
 
       # A slot used whole (+verb+ "reads" or "writes") in a part in pieces.
       def refuse_slot_in_pieced_part!(slot_name, verb)
-        return unless @routine&.pieced?
+        return unless routine_entered&.pieced?
 
         raise ArgumentError, "#{part_words} has pieces:, and it #{verb} slot :#{slot_name}. A part with pieces makes each " \
                              "piece on its own, so a piece can read the copy and write its own piece, and nothing else. " \
                              "To fix this, read the slot in a part without pieces, or write the piece: " \
-                             "`pack[:name].piece(#{@piece})[i] = value`."
+                             "`pack[:name].piece(piece)[i] = value`."
       end
 
       # A slot in pieces (+slot+) used whole.
@@ -693,28 +746,29 @@ module VBlank
 
       # Piece +number+ of +slot+ asked for where that is not the piece being built.
       def refuse_piece_not_its_own!(slot, number)
-        unless @routine&.pieced?
+        unless routine_entered&.pieced?
           raise ArgumentError, "#{part_words || 'The unpacking'} asks for a piece of slot :#{slot.name}. Only a part with " \
                                "pieces: writes a piece. To fix this, give the part pieces: #{slot.piece_count}."
         end
-        unless @routine.pieces == slot.piece_count
-          raise ArgumentError, "#{part_words} has pieces: #{@routine.pieces}, and slot :#{slot.name} is in " \
+        unless routine_entered.pieces == slot.piece_count
+          raise ArgumentError, "#{part_words} has pieces: #{routine_entered.pieces}, and slot :#{slot.name} is in " \
                                "#{slot.piece_count} pieces. A part writes slots of as many pieces as it has. To fix this, " \
                                "give them the same number of pieces."
         end
-        return if number == @piece
+        return if number.equal?(@entered.piece)
 
-        raise ArgumentError, "#{part_words} writes piece #{number.inspect} of slot :#{slot.name} while it makes piece " \
-                             "#{@piece}. Each piece is made on its own, so it can write only its own piece. To fix this, " \
+        given = number.is_a?(Integer) ? "piece #{number}" : "a piece"
+        raise ArgumentError, "#{part_words} writes #{given} of slot :#{slot.name}, and that is not the piece the block is " \
+                             "given. Each piece is made on its own, so it can write only its own piece. To fix this, " \
                              "use the piece number the block is given: `pack[:#{slot.name}].piece(piece)`."
       end
 
       private
 
       def part_words
-        return nil unless @routine
+        return nil unless routine_entered
 
-        @routine.part ? "Part :#{@routine.part} of the unpacking" : "The unpacking"
+        routine_entered.part ? "Part :#{routine_entered.part} of the unpacking" : "The unpacking"
       end
     end
 

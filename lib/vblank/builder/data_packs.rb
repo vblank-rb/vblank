@@ -101,8 +101,12 @@ module VBlank
         copied = copy_release_slots.reject(&:filled_by_routine?).to_h { |slot| [slot.name, slot.cut_from(bytes)] }
         routines = slots.routines
         whole_names = Original::BuiltNames.new
+        # The slots each part in pieces writes, as the whole routine's build records them, which
+        # the split for several workers is built from (#pieced_unpacking).
+        whole_uses = {}
         unless routines.empty?
-          unpacking = unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: whole_names)
+          unpacking = unpacking_program(bytes, copy_release_slots, routines, reading, release: copy_release, built_names: whole_names,
+                                                                                    slot_uses: whole_uses)
         end
         # Built once, the first time the cache or a test asks; nil is an answer too.
         parts_built = false
@@ -133,7 +137,8 @@ module VBlank
                                          frames = pack_frame_section_for_unpacking!
                                          pieced.fetch(frames) do
                                            pieced[frames] = pieced_unpacking(bytes, copy_release_slots, routines, reading,
-                                                                             release: copy_release, frames: frames)
+                                                                             release: copy_release, frames: frames,
+                                                                             whole_uses: whole_uses)
                                          end
                                        })
       end
@@ -183,21 +188,26 @@ module VBlank
         @data_pack_slots = slots.list.to_h { |slot| [slot.name, slot] }
         made = {}
         pieced = {}
+        # The slots each part in pieces writes, by release, as its whole routine's build records them.
+        uses_by_release = {}
+        make_unpacking = lambda do |release|
+          release = refuse_unsized_unpacking!(release)
+          frames = pack_frame_section_for_unpacking!
+          made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines, reading,
+                                                        release: release, frames: frames,
+                                                        slot_uses: uses_by_release[release.name] ||= {})
+        end
         @data_pack = DSL::DataPack.new(rom_sha1: nil, build_version: version.to_s, slots: slots.list, original: from,
-                                       platform: from.platform,
-                                       make_unpacking: lambda { |release|
-                                         release = refuse_unsized_unpacking!(release)
-                                         frames = pack_frame_section_for_unpacking!
-                                         made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines,
-                                                                                       reading, release: release, frames: frames)
-                                       },
+                                       platform: from.platform, make_unpacking: make_unpacking,
                                        make_pieced_unpacking: lambda { |release|
+                                         make_unpacking.call(release) # records the slots each part writes
                                          release = refuse_unsized_unpacking!(release)
                                          frames = pack_frame_section_for_unpacking!
                                          pieced.fetch([release, frames]) do
                                            pieced[[release, frames]] = pieced_unpacking(nil, slots_in_release(slots, release.name),
                                                                                         slots.routines, reading, release: release,
-                                                                                        frames: frames)
+                                                                                        frames: frames,
+                                                                                        whole_uses: uses_by_release.fetch(release.name))
                                          end
                                        })
       end
@@ -542,11 +552,14 @@ module VBlank
       # +frames+ (an Original::FrameRecord::Section) are the frames of sprites the game names, each
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
       #
-      # A PART IN PIECES (Original::PiecedUnpacking) has its block built once for each piece, in
-      # order, handed the piece's number. +piece+ (a PartPieces) builds the program of one part's
-      # pieces instead, which plays the one piece its start file names after the copy
-      # (Unpacking::PIECE_NUMBER): no slot copied as it is, no frames and no bar, and its list of
-      # bytes holds that piece of each slot the part writes and nothing else.
+      # A PART IN PIECES (Original::PiecedUnpacking) has its block built once, handed the piece's
+      # number as a game value: the whole routine plays it in a loop over its pieces, each in turn,
+      # so its code is in the program once, as a part that loops over them itself is. +piece+ (a
+      # PartPieces) builds the program of one part's pieces instead, which plays the one piece its
+      # start file names after the copy (Unpacking::PIECE_NUMBER): no slot copied as it is, no
+      # frames and no bar, and its list of bytes holds that piece of each slot the part writes and
+      # nothing else. A part in pieces with no SlotUses in +slot_uses+ is given one, so the caller
+      # learns which slots it writes (#pieced_unpacking).
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
                             slot_uses: {}, built_names: Original::BuiltNames.new, piece: nil)
         Builder.keeping_builder_in_use do
@@ -573,22 +586,20 @@ module VBlank
               reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
             end
           end
-          pieced_uses = {}
           routines.each do |routine|
-            uses = slot_uses[routine.part] || (pieced_uses[routine.part] = Original::SlotUses.new if routine.pieced?)
-            pack.record_uses_in(uses)
+            slot_uses[routine.part] ||= Original::SlotUses.new if routine.pieced?
+            pack.record_uses_in(slot_uses[routine.part])
             made_before = maker.variables
             if piece
               chosen = maker.table(Original::Unpacking::PIECE_NUMBER, DSL::StartFileEntries.new(at: copy_size, count: 1),
                                    width: :half, signed: false)
-              routine.pieces.times do |number|
-                (chosen[0] == number).record_branch do
-                  building.enter(routine, number)
-                  maker.instance_exec(reader, pack, release.name, number, &routine.block)
-                end
-              end
+              # Held in a variable, as a loop's index is, so each use reads a variable and not the file.
+              number = maker.var(Original::Unpacking::PIECE_PLAYED, 0)
+              number.store!(chosen[0])
+              building.enter(routine, number)
+              maker.instance_exec(reader, pack, release.name, number, &routine.block)
             elsif routine.pieced?
-              routine.pieces.times do |number|
+              maker.repeat(routine.pieces) do |number|
                 building.enter(routine, number)
                 maker.instance_exec(reader, pack, release.name, number, &routine.block)
               end
@@ -600,7 +611,7 @@ module VBlank
           end
           building.enter(nil)
           pack.record_uses_in(nil)
-          refuse_pieced_slot_shared!(slots, routines, slot_uses.merge(pieced_uses)) unless piece
+          refuse_pieced_slot_shared!(slots, routines, slot_uses) unless piece
           refuse_frames_of_pieced_slot!(frames)
           wait = lambda do
             maker.call(progress) if progress
@@ -649,12 +660,13 @@ module VBlank
                      Original::SlotBytes.new(maker, list, slot, piece ? 0 : places.fetch(slot.name), number: number, faults: faults,
                                                                                                building: building)
                    else
-                     piece_places = if !piece then slot.piece_starts.each_with_index.to_h { |start, at| [at, places.fetch(slot.name) + start] }
+                     # Where each piece starts in the list, by its number.
+                     piece_places = if !piece then slot.piece_starts.map { |start| places.fetch(slot.name) + start }
                                     elsif piece.slot_names.include?(slot.name)
                                       Array.new(piece.count) do |at|
-                                        [at, Original::Unpacking.places_of(piece.held_slots(slots, at)).fetch(slot.piece_slot(at).name)]
-                                      end.to_h
-                                    else {}
+                                        Original::Unpacking.places_of(piece.held_slots(slots, at)).fetch(slot.piece_slot(at).name)
+                                      end
+                                    else [0]
                                     end
                      Original::PiecedSlotBytes.new(maker, list, slot, piece_places, number: number, faults: faults, building: building)
                    end
@@ -694,13 +706,13 @@ module VBlank
       # THE ROUTINE SPLIT FOR SEVERAL WORKERS (Original::PiecedUnpacking), or nil where no part of
       # +routines+ is in pieces: the parts not in pieces as one program, with the frames, and the
       # pieces of each part in pieces as a program that plays any one of them. Built as
-      # #unpacking_program builds the whole routine, from the same +bytes+ or +release+; the
-      # whole routine is built once more to learn the slots each part in pieces writes.
-      def pieced_unpacking(bytes, slots, routines, reading, release:, frames:)
+      # #unpacking_program builds the whole routine, from the same +bytes+ or +release+.
+      # +whole_uses+ are the SlotUses the whole routine's build recorded, by part, which say the
+      # slots each part in pieces writes.
+      def pieced_unpacking(bytes, slots, routines, reading, release:, frames:, whole_uses:)
         return nil unless routines.any?(&:pieced?)
 
-        uses = routines.to_h { |routine| [routine.part, Original::SlotUses.new] }
-        unpacking_program(bytes, slots, routines, reading, release: release, slot_uses: uses)
+        uses = whole_uses
         main = unpacking_program(bytes, slots, routines.reject(&:pieced?), reading, release: release, frames: frames)
         places = Original::Unpacking.places_of(slots)
         part_programs = []

@@ -32,9 +32,11 @@ module VBlank
       # +unpackings+ (in the order of their numbers) are the programs as Ruby
       # (Backends::Ruby#live_source), each made a LiveGame afresh every time it plays.
       #
-      # +workers+ is how many Ractors an unpacking split in pieces plays on (ShellFacts#pieces):
-      # one plays the unpacking whole, as a shell always did. +worker_programs+ are the splits'
-      # programs as Ruby, in the order ShellFacts#pieces numbers them, needed only for more than one.
+      # +workers+ is how many Ractors an unpacking split in pieces plays on (ShellFacts#pieces);
+      # one plays the split's programs one after another. +worker_programs+ are the splits'
+      # programs as Ruby, in the order ShellFacts#pieces numbers them, and an unpacking that has a
+      # split is nil in +unpackings+. A shell given no worker programs (a Ruby script's) plays
+      # every unpacking whole.
       def initialize(facts:, game:, menu:, unpackings:, workers: 1, worker_programs: [])
         @facts = facts
         @releases = facts.original_releases
@@ -66,15 +68,18 @@ module VBlank
         game = ruby.live_source(shell.game)
         menu = ruby.live_source(shell.menu)
         progress.step("Writing unpacking as Ruby")
-        programs = shell.unpackings.map(&:program)
-        programs += shell.worker_programs.map(&:program) if workers > 1
+        # An unpacking split in pieces is played as its split however many workers there are, so
+        # its whole routine is not written: each part's code is written once.
+        whole = shell.unpackings.each_with_index.map { |unpacking, number| unpacking.program unless shell.facts.pieces&.fetch(number) }
+        programs = whole.compact + shell.worker_programs.map(&:program)
         written = programs.each_with_index.map do |program, number|
           progress.report_count(number, programs.size)
           ruby.live_source(program)
         end
         progress.report_count(programs.size, programs.size)
-        new(facts: shell.facts, game: game, menu: menu, unpackings: written.first(shell.unpackings.size),
-            workers: workers, worker_programs: written.drop(shell.unpackings.size))
+        whole_written = written.first(whole.compact.size)
+        new(facts: shell.facts, game: game, menu: menu, unpackings: whole.map { |program| whole_written.shift if program },
+            workers: workers, worker_programs: written.drop(whole.compact.size))
       end
 
       # Plays the shell on +device+ until the player stops it: the game, once there is a pack in
@@ -144,12 +149,12 @@ module VBlank
       # The unpacking plays in a Ractor of its own (BackgroundUnpacking), so the window keeps
       # showing frames however long the routine works between them.
       #
-      # An unpacking split in pieces plays on several workers instead (WorkerUnpacking), where
-      # this shell has more than one.
+      # An unpacking split in pieces plays as its split instead (WorkerUnpacking), on as many
+      # workers as this shell has.
       def unpack(named, sha1, bytes, device)
         number = @facts.release_with_sha1(sha1).unpacking
         plan = @facts.pieces&.fetch(number)
-        unpacking = if plan && @workers > 1 && !@worker_programs.empty?
+        unpacking = if plan && !@worker_programs.empty?
                       WorkerUnpacking.new(@worker_programs, bytes, @facts.unpacking, plan: plan, bar: @facts.bar, workers: @workers)
                     else
                       BackgroundUnpacking.new(@unpackings.fetch(number), bytes, @facts.unpacking)

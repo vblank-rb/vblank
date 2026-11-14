@@ -362,9 +362,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
   VBlank never works out what can run side by side (`Original::PiecedUnpacking` says why). A slot with
   no `at:` takes `pieces:`, a number of equal pieces or the items of each piece in order
   (`slots.samples :music, count: rooms.sum, pieces: rooms`; `slots.numbers :lengths, count: n, width:
-  :word, signed: false, pieces: n`). A part takes `pieces: n`, and its block is built once for each
-  piece, handed the piece's number, a plain Integer from 0, after the release:
-  `slots.fill_from_copy(:music, pieces: n) { |copy, pack, release, song| ... }`. It writes
+  :word, signed: false, pieces: n`). A part takes `pieces: n`, and its block is built once, handed the
+  piece's number after the release as a game value, 0 first, read as the routine runs as a `repeat`'s
+  index is: `slots.fill_from_copy(:music, pieces: n) { |copy, pack, release, song| ... }`. So the
+  part's code is in the program once, and it can use `song` as game code uses a number it works out
+  (a table's index, arithmetic), never in a plain Ruby `if` or as a Ruby Array's index. It writes
   `pack[:music].piece(song)[i] = sample`, `i` counted from the piece's first item and held to the piece
   as a write is held to a slot; `copy.count_written room, into: pack[:music].piece(song)` counts it. A
   piece the copy lacks counts its room as written and leaves it zeros. The pack is byte for byte the one
@@ -374,10 +376,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
   a slot in pieces written by two parts; a part whose `pieces:` is not the piece count of a slot it
   writes; a frame of a sprite from a slot in pieces. A piece must set every variable before it reads it:
   on several workers each piece plays on its own, so a number one piece leaves for the next is not
-  there. One worker plays the whole routine as one program, as it was before pieces: every build here,
-  every test, and the desktop program's shell. Several workers play the parts without pieces as one
-  program and each piece on its own (one program a part in pieces, handed the piece's number after the
-  copy), the pieces of most work first, and join them in the order declared. How many workers is the
+  there. The whole routine is one program, a part in pieces a loop over its pieces: every build here,
+  every test, the desktop program's shell and a Ruby script's play that. The Ruby shell of `vblank run`
+  and the web page play the parts without pieces as one program and each piece on its own (one program
+  a part in pieces, handed the piece's number after the copy), on as many workers as they have, one
+  too, the pieces of most work first, and join them in the order declared. How many workers is the
   player's machine's choice, not the game's: one a processor, never more; `vblank run --shell
   --unpack-workers N`; `vblank build --shell --format web --unpack-workers N`, the page's own number;
   and a page's address, `page.html?unpack-workers=N`. `pack.pieced_unpacking` gives the split to a

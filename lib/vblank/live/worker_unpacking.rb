@@ -107,7 +107,7 @@ module VBlank
                 results << [:facts, Facts.new(width: game.width, height: game.height, sound_rate: game.sound_rate,
                                               frame_seconds: game.frame_seconds)]
               end
-              sender = WorkSender.new(results, game, index, names.bytes_done, game.frame_seconds)
+              sender = WorkSender.new(results, game, index, names.bytes_done)
               last = game.play(sender)
               break if last.nil?
 
@@ -189,8 +189,12 @@ module VBlank
 
       # The main job's newest picture (black until it draws one) with the bar over it as far as
       # every job's work adds up to.
+      #
+      # Must not make a new picture each frame: every Ractor stops while Ruby collects garbage, so
+      # a window that made one a frame slowed the workers. One is kept and drawn over.
       def picture_shown
-        shown = @main_picture ? @main_picture.dup : Array.new(width * height, 0)
+        shown = (@shown ||= Array.new(width * height, 0))
+        shown.replace(@main_picture) if @main_picture
         across = width - (2 * @bar.side)
         top = (height - @bar.height) / 2
         filled = @plan.bar_width(@done, across)
@@ -226,18 +230,22 @@ module VBlank
         end
       end
 
-      # WHO PLAYS A JOB IN ITS WORKER: it holds no buttons, and at most once every +seconds+ sends
-      # how many bytes the job has done, and the main job (+index+ 0) its picture. Once the window
-      # has closed the way, it stops the play.
+      # WHO PLAYS A JOB IN ITS WORKER: it holds no buttons, and at most once every SEND_SECONDS
+      # sends how many bytes the job has done, and the main job (+index+ 0) its picture. Once the
+      # window has closed the way, it stops the play.
+      #
+      # Not every frame: reading the count reads every variable of the game (LiveGame#vars), and
+      # a picture is a copy for another Ractor, which in a long unpacking added up to a share of
+      # the work. A bar moved a few times a second looks no different.
       class WorkSender
         NO_BUTTONS = [].freeze
+        SEND_SECONDS = 0.1
 
-        def initialize(results, game, index, bytes_done, seconds)
+        def initialize(results, game, index, bytes_done)
           @results = results
           @game = game
           @index = index
           @bytes_done = bytes_done
-          @seconds = seconds
           @sent_at = nil
         end
 
@@ -245,7 +253,7 @@ module VBlank
 
         def buttons_after(pixels, _left, _right)
           now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          if @sent_at.nil? || now - @sent_at >= @seconds
+          if @sent_at.nil? || now - @sent_at >= SEND_SECONDS
             @results << [:progress, @index, @game.vars.fetch(@bytes_done)]
             @results << [:picture, pixels] if @index.zero?
             @sent_at = now

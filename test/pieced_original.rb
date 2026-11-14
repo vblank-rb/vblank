@@ -25,16 +25,22 @@ module PiecedOriginal
 
   VBlank::Testing::InRactors.share_constants(self)
 
+  # The tables a song is rendered from, by its number, on the routine's builder +b+: its room,
+  # where in the copy it reads from, and 1 for a song the copy holds, 0 for the one it lacks.
+  def self.song_tables(b)
+    [b.table(:song_rooms, ROOMS, width: :half, signed: false), b.table(:song_from, SONG_FROM, width: :half, signed: false),
+     b.table(:song_held, ROOMS.each_index.map { |song| song == ABSENT ? 0 : 1 }, width: :byte, signed: false)]
+  end
+
   # SONG +song+'s samples written into +samples+ (a slot, or one piece of it) from its item +at+
-  # on, and its length into item +length_at+ of +lengths+, on the routine's builder +b+.
-  def self.render(b, copy, song, samples:, at:, lengths:, length_at:)
-    room = ROOMS.fetch(song)
-    if song == ABSENT
-      lengths[length_at] = 0
-    else
-      b.repeat(room) { |i| samples[at + i] = copy.byte(((i * 7) + SONG_FROM.fetch(song)) & 0x1FF) + song }
-      lengths[length_at] = room
-    end
+  # on, and its length into item +length_at+ of +lengths+, on the routine's builder +b+. +song+ is a
+  # number, or one the routine works out as it runs (a piece's); the song the copy lacks is
+  # written as zeros, its length 0.
+  def self.render(b, copy, tables, song, samples:, at:, lengths:, length_at:)
+    rooms, from, held = tables
+    room = rooms[song]
+    b.repeat(room) { |i| samples[at + i] = (copy.byte(((i * 7) + from[song]) & 0x1FF) + song) * held[song] }
+    lengths[length_at] = room * held[song]
     copy.count_written room, into: samples
   end
 
@@ -52,15 +58,16 @@ module PiecedOriginal
     slots.fill_from_copy(:walls) { |copy, pack| copy.unpack_lz77 at: LZ77_AT, into: pack[:walls] }
     if pieces == :songs
       slots.fill_from_copy(:music, pieces: ROOMS.length) do |copy, pack, _release, song|
-        PiecedOriginal.render(self, copy, song, samples: pack[:music].piece(song), at: 0,
-                                                lengths: pack[:music_length].piece(song), length_at: 0)
+        PiecedOriginal.render(self, copy, PiecedOriginal.song_tables(self), song, samples: pack[:music].piece(song), at: 0,
+                                                                                   lengths: pack[:music_length].piece(song), length_at: 0)
       end
     else
-      slots.fill_from_copy(:music, pieces: count) do |copy, pack|
-        samples = pieces == 1 ? pack[:music].piece(0) : pack[:music]
-        lengths = pieces == 1 ? pack[:music_length].piece(0) : pack[:music_length]
+      slots.fill_from_copy(:music, pieces: count) do |copy, pack, _release, piece|
+        samples = pieces == 1 ? pack[:music].piece(piece) : pack[:music]
+        lengths = pieces == 1 ? pack[:music_length].piece(piece) : pack[:music_length]
+        tables = PiecedOriginal.song_tables(self)
         ROOMS.each_index do |song|
-          PiecedOriginal.render(self, copy, song, samples: samples, at: SONG_AT.fetch(song), lengths: lengths, length_at: song)
+          PiecedOriginal.render(self, copy, tables, song, samples: samples, at: SONG_AT.fetch(song), lengths: lengths, length_at: song)
         end
       end
     end

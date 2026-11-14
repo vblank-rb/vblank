@@ -13,9 +13,12 @@ module VBlank
     # PIECES, and VBlank never works out by itself what may run side by side. A slot is declared in
     # pieces (`slots.samples :music, count: rooms.sum, pieces: rooms`), and a part of the routine
     # given as many pieces writes it a piece at a time (`slots.fill_from_copy :music, pieces: 27 do
-    # |copy, pack, release, song| ... end`, its block built once for each piece, `pack[:music]
-    # .piece(song)[i] = sample`). What makes a piece safe to make on its own is checked as the
-    # routine is built, and refused in plain words (UnpackingPartBuilding, Builder::DataPacks):
+    # |copy, pack, release, song| ... end`, `pack[:music].piece(song)[i] = sample`). Its block is
+    # built once, handed the piece's number as a game value, which the program reads as it runs:
+    # so the part's code is in every program once, as a part that loops over its pieces itself
+    # is, and costs no more to build, to write out or to play than it did. What makes a piece safe
+    # to make on its own is checked as the routine is built, and refused in plain words
+    # (UnpackingPartBuilding, Builder::DataPacks):
     #
     # - a part in pieces writes only its own piece: not a whole slot, not another piece's number;
     # - a part in pieces reads only the copy and its own piece, never a slot another part writes;
@@ -29,13 +32,14 @@ module VBlank
     # numbers makes a different pack. The test of a port's own pack (one worker against several)
     # finds that.
     #
-    # HOW IT RUNS. One worker plays the whole routine as one program, exactly as before pieces
-    # (Builder::DataPacks#unpacking_program): every build that makes the pack here, and every test,
-    # plays that. Several workers play #main, the parts not in pieces as one program, and each
-    # piece on its own (#pieces): a program for each part in pieces (#part_programs) plays the one
-    # piece its start file names after the copy (Piece#start_file), and holds that piece's bytes
-    # alone. One program a part, not one a piece, so a runtime writes and starts the part's code
-    # once however many pieces it has (a port's songs number dozens). The pieces are
+    # HOW IT RUNS. The whole routine is one program, a part in pieces a loop over its pieces
+    # (Builder::DataPacks#unpacking_program): every build that makes the pack here, every test, and
+    # a shell that unpacks on one worker as it always did (the desktop program's, a Ruby script's)
+    # play that. A shell that can unpack on workers (Live::Shell, the web page) plays the split
+    # instead, on as many as it has, one too, so it holds each part's code once: #main, the parts
+    # not in pieces as one program, and each piece on its own (#pieces), a program for each part
+    # in pieces (#part_programs) playing the one piece its start file names after the copy
+    # (Piece#start_file) and holding that piece's bytes alone. The pieces are
     # handed out from a queue, the most work first (#queue_order), so the longest is not left to
     # start last. Once all have ended the pack is #main's bytes with each piece's copied over its
     # places, in the order the pieces are declared (#join), and the fault a run stops on is the

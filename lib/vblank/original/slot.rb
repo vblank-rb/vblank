@@ -330,6 +330,10 @@ module VBlank
       # and a name that says whose piece it is, which its errors name.
       def piece_slot(number) = with(name: :"#{name}_piece_#{number}", count: pieces.fetch(number), pieces: nil)
 
+      # The shape of any piece, for a piece the routine works out as it runs: the slot's shape and
+      # layout, as many items as its biggest piece, and a name that says it is a piece of the slot.
+      def piece_shape = with(name: :"#{name}_piece", count: pieces.max, pieces: nil)
+
       # Whether the slot names a cost other than a plain copy's.
       def costly? = cost != 1
 
