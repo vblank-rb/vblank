@@ -177,6 +177,11 @@ module VBlank
           # (GBC::SoundLog).
           def sounds_after_pass(pass) = @sound_log.any? ? @sound_log.size_after_pass(pass) : 0
 
+          # A pass's moment waits for its sounds to be counted, but for the moment the run ends on.
+          # The first pass's picture can be shown before then: the screen comes on showing it, and
+          # its first blank comes while the processor sleeps in the wait (Runtime::Frame).
+          def moment_ready?(pass, frames) = pass > frames || !@sound_log.any? || @sound_log.counted?(pass)
+
           # One frame of the emulator, with its buttons decided, and what the cartridge played in it
           # into the sound log.
           def play_frame

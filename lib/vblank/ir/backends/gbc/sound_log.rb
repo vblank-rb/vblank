@@ -115,6 +115,10 @@ module VBlank
           # the frame boundary after it included.
           def size_after_pass(pass) = @passes.fetch(pass - 1)
 
+          # Whether the log has taken pass +pass+'s sounds yet: its wait has reached the place the
+          # log is counted at.
+          def counted?(pass) = @passes.size >= pass
+
           # Whether the game makes any sound at all: a game that does not is not watched.
           def any? = !@tables.empty? || !@notes.empty?
 

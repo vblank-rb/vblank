@@ -233,6 +233,17 @@ class TestGBCPowerOn < Minitest::Test
     assert_empty misread_first_passes(song: true), "the first pass reads one less than the frame it is first seen on"
   end
 
+  # THE FIRST PASS'S MOMENT WAITS FOR ITS SOUNDS. The first frame's copy can meet a frame's end
+  # with the screen still off, and the reader then finds the first pass waiting; the screen's first
+  # blank after it comes on shows that pass while the processor sleeps, before the wait reaches the
+  # place the reader takes the pass's sounds at (GBC::SoundLog). Read there, the pass had no sounds
+  # to count. Wherever setting up ends, the run plays as the interpreter does.
+  def test_the_first_pass_plays_as_the_interpreter_wherever_setting_up_ends_in_a_game_with_a_song
+    (0..20).map { |step| 3_000 + (step * 100) }.each do |setting_up|
+      VBlank::IR::Backends::GBC::CheckedRun.new.run(counting_game_with_a_grid(setting_up, song: true), frames: 3)
+    end
+  end
+
   # A GAME THAT PLAYS A RECORDING COUNTS THEM TOO: the timer that counts the frames the screen is
   # off for plays the recording's samples once the screen is on, and a recording started while the
   # game sets up starts with its first frame, as the interpreter's mix does.
