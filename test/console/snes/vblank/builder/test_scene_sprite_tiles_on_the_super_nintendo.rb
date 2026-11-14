@@ -20,7 +20,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  private def two_scenes(shared: false)
+  private def two_scenes(shared: false, dispatch_inside_test: false)
     switch = SWITCH_AT
     test = self.class
     b = Builder.new
@@ -43,14 +43,29 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
         tick += 1
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
+        dispatch = lambda do
+          case_var(:state) do
+            when_val 0, :one
+            when_val 1, :two
+          end
+        end
+        if dispatch_inside_test
+          dispatch.call if tick >= 0
+        else
+          dispatch.call
         end
       end
     end
     b.finalize_program
     b.program
+  end
+
+  # A DISPATCH INSIDE A TEST notes the scene number as the pass starts (IR::Frames), so the frame
+  # that hands over shows the arriving scene's background with the leaving scene's sprite, in the
+  # leaving scene's own tiles.
+  def test_a_dispatch_inside_a_test_shows_the_leaving_sprite_in_its_own_tiles
+    game_player.run(two_scenes(dispatch_inside_test: true), frames: SWITCH_AT * 5)
+    pass
   end
 
   # The checked run holds every pass to the interpreter's picture, so a wrong tile in either scene

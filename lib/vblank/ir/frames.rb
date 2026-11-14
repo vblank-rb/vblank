@@ -140,7 +140,7 @@ module VBlank
         top_level = body.select { |node| scene_dispatch?(node) }
         deeper = body.flat_map { |node| dispatches_inside(node) }.reject { |node| top_level.any? { |top| top.equal?(node) } }
         scene_numbers = (top_level + deeper).map(&:var).uniq
-        read = ->(number) { :"__scene_read_#{number}" }
+        read = ->(number) { scene_read_name(number) }
         held = ->(number) { :"__scene_held_#{number}" }
         note = ->(number) { Build.set(read.call(number), Build.var_ref(number)) }
         noted = ->(nodes) { nodes.flat_map { |node| scene_dispatch?(node) ? [note.call(node.var), node] : [node] } }
@@ -161,6 +161,12 @@ module VBlank
         ConsoleLoop.new(before: [], each_time: [*noted_at_start, *noted.call(written_ahead), *pass_end, wait, *noted.call(written_after)],
                         placed: placed, pass_end: pass_end, variables: variables)
       end
+
+      # The variable a game loop in the console's order notes scene number +number+ in, for the
+      # boundary's writes to be placed with (#loop_in_console_order): read as a dispatch of the loop
+      # reads it, or, for one deeper in the loop, as the pass starts. A lowering compares it with the
+      # number itself to know whether the frame of the pass shows the scene a dispatch takes over.
+      def self.scene_read_name(number) = :"__scene_read_#{number}"
 
       # A game loop's order, knowing whether +node+ runs inside another pass: in another loop, or in
       # a routine or scene one calls.

@@ -953,6 +953,37 @@ module VBlank
 
               place = Runtime::Picture::SPRITE_TILES + (first * Art::TILE_BYTES / 2)
               runtime_call("rt_scene_sprite_tiles", [LongAddress.new(scene_sprite_tiles_label(scene)), Build.int(bytes.bytesize), Build.int(place)])
+              emit_scene_sprite_tiles_held(scene)
+            end
+
+            # A SCENE PICKED INSIDE A TEST, after the game changed the variable that picks it in the
+            # same pass: the frame of that pass shows the scene up as the pass started, with its
+            # sprites, since the loop notes the number for the frame's sprites as the pass starts
+            # (IR::Frames.loop_in_console_order). The arriving scene's tiles would go in under the
+            # leaving scene's sprites, so they are held for one blank (Runtime::Picture's
+            # SCENE_TILES_HELD) and go in after the next pass, the first to show the arriving scene's
+            # sprites. The note and the number differ only then: a dispatch at the top of the loop
+            # is noted as it reads the number. A scene picked by more than one variable is not held.
+            def emit_scene_sprite_tiles_held(scene)
+              vars = scene_dispatch_vars.fetch(scene, [])
+              return unless vars.one?
+
+              read = Frames.scene_read_name(vars.first)
+              return unless @variables.key?(read)
+
+              shown = fresh("scene_tiles_shown")
+              jump_unless(Build.binop(:!=, Build.var_ref(vars.first), Build.var_ref(read)), shown)
+              @asm.lda(1)
+              @asm.sta(@asm.abs(@memory[Runtime::Picture::SCENE_TILES] + Runtime::Picture::SCENE_TILES_HELD))
+              @asm.label(shown)
+            end
+
+            # The variables each scene is picked by, by the scene.
+            def scene_dispatch_vars
+              @scene_dispatch_vars ||= @program.walk.select { |node| Frames.scene_dispatch?(node) }
+                                               .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |node, vars|
+                node.clauses.each { |_, target| vars[target] |= [node.var] }
+              end
             end
 
             # What each scene brings in of its background tiles (#emit_scene_background_tiles).

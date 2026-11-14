@@ -223,13 +223,16 @@ module VBlank
             # A SCENE'S OWN SPRITE TILES, in a game whose sprites do not fit video memory all at once,
             # waiting for the next blank to go in: where they are on the cartridge (three bytes and
             # a spare), how many bytes are left, where the next goes in video memory, and the byte
-            # the sprite table is filled with while they go in.
+            # the sprite table is filled with while they go in. A scene whose sprites the frame of
+            # its first pass does not show yet has them HELD for that pass's blank: they go in with
+            # the next (Lowering::Picture#emit_scene_sprite_tiles).
             SCENE_TILES = "rt scene sprite tiles"
             SCENE_TILES_FROM = 0
             SCENE_TILES_LEFT = 4
             SCENE_TILES_PLACE = 6
             SCENE_TILES_FILL = 8
-            SCENE_TILES_BYTES = 10
+            SCENE_TILES_HELD = 10
+            SCENE_TILES_BYTES = 12
 
             # THE SAME FOR ITS BACKGROUND TILES, where they go, how many bytes and from where.
             SCENE_BACKGROUND_TILES = "rt scene background tiles"
@@ -407,6 +410,7 @@ module VBlank
               asm.sta(asm.abs(at + SCENE_TILES_PLACE))
               asm.lda(NO_SPRITE_FILL)
               asm.sta(asm.abs(at + SCENE_TILES_FILL))
+              asm.stz(asm.abs(at + SCENE_TILES_HELD))
               asm.rtl
             end
 
@@ -414,12 +418,18 @@ module VBlank
             # MAP_PIECE bytes at a time, however many blanks that takes (rt_blank_room waits for the
             # next), which is a pass that runs late. The sprites shown meanwhile would be drawn from
             # tiles that are changing under them, so the sprite table goes empty first, and the
-            # table the pass made goes in with the rest of its picture as the last piece is in.
+            # table the pass made goes in with the rest of its picture as the last piece is in. Held
+            # tiles wait for the next blank, the leaving scene's sprites shown from the tiles still in.
             def emit_scene_tiles_upload(asm, memory, work)
               h = Console::SNESHardware
               at = memory[SCENE_TILES]
               asm.lda(asm.abs(at + SCENE_TILES_LEFT))
               asm.branch_long(:beq, "rt_upload_scene_tiles_done")
+              asm.lda(asm.abs(at + SCENE_TILES_HELD))
+              asm.beq("rt_upload_scene_tiles_go")
+              asm.stz(asm.abs(at + SCENE_TILES_HELD))
+              asm.brl("rt_upload_scene_tiles_done")
+              asm.label("rt_upload_scene_tiles_go")
               asm.lda(544)
               asm.jsr(asm.abs("rt_blank_room"))
               asm.stz(asm.abs(h::OAMADDL))
