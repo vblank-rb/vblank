@@ -33,6 +33,31 @@ module VBlank
             # Lowering#sections has made every routine, since a picture is registered as its fill is made.
             def fills_faces? = face_pictures.any?
 
+            # The routines that call a routine filling a face in its own body, then those filling one, then those
+            # they call, by name: they go straight after the runtime's face routines (Runtime::Faces.section), in
+            # that order, ahead of the game's tables and its other routines.
+            #
+            # WHY THEY GO TOGETHER. The processor keeps the last 4 KB of code it ran in its instruction cache,
+            # each 16-byte line of code in the one place the bits 4 to 11 of its address name, so code 4 KB apart
+            # pushes each other out. A place's faces are filled hundreds of times a pass, and the routine looping
+            # over them and the runtime's routines filling each are together about the size of the cache, so
+            # whatever lay between them (a table, a routine the game adds) decided which of their lines shared a
+            # place: the floor of TestPS1PlaceFloorPace gained a whole frame a pass on some sizes of it and not on
+            # others, every 4 KB again. Placed one straight after the other, nothing the game adds comes
+            # between them, and how they fall against each other is the same in every build. The routines either
+            # side of them in the calls (a place's drawing that loops over the faces, and its turning of a corner)
+            # run once a face too, so they go with them. That order, the drawing first, measured the most time to
+            # spare in both perspectives of that floor.
+            def face_filling_routines
+              @face_filling_routines ||= begin
+                callees = ->(name) { @funcs.fetch(name).walk.flat_map(&:callees) }
+                filling = @called.select { |name| @funcs.fetch(name).walk.any? { |node| node.kind == :fill_face } }
+                called = filling.flat_map { |name| callees.call(name) }
+                calling = @called.select { |name| callees.call(name).intersect?(filling) }
+                (calling + filling + called).uniq & @called
+              end
+            end
+
             # The pictures' records and each list of pictures, as a section for the Linker. Made after the
             # textures have their places (#paint_sections).
             def face_sections

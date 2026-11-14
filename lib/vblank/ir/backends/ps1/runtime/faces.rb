@@ -52,6 +52,7 @@ module VBlank
           module Faces
             FACE = "rt face"
             PIECES = "face pieces"
+            SECTION = "runtime faces"
 
             # FACE is in the scratchpad (Memory#reserve_scratchpad), the first thing given it, since every step
             # of filling a face reads it; so it is named from fp, which points there.
@@ -231,7 +232,11 @@ module VBlank
             # the region cleared at power-on takes it in.
             def reserve_pieces(memory) = memory.reserve(PIECES, PIECES_BYTES)
 
-            def emit(asm, memory)
+            # The routines filling a face, a section of their own, which the build places last of the runtime's
+            # so that the game's routines filling faces come straight after it (Lowering::Faces#face_filling_routines
+            # says why).
+            def section(memory)
+              asm = R3000.new(SECTION)
               at = Memory.distance_from_scratchpad(memory[FACE])
               pieces = memory[PIECES]
               polygon = ->(name) { pieces + (POLYGONS.index(name) * POLYGON_BYTES) }
@@ -251,6 +256,7 @@ module VBlank
               emit_row_routine(asm, at, polygon)
               emit_column_corner_routine(asm, at)
               emit_quad_routine(asm, at, memory, polygon)
+              asm.section
             end
 
             # WORKING OUT A FACE'S CELLS (rt_face_cell_sides), a section of its own, which the build places

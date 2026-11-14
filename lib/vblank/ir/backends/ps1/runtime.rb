@@ -59,7 +59,9 @@ module VBlank
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
           end
 
-          # The runtime's sections: the entry point, then everything else. +main+ is the label of the
+          # The runtime's sections: the entry point, then everything else, and for a game that fills faces the
+          # reciprocal table and then the face routines last (Faces.section), so the game's own routines filling
+          # faces, which the game's sections start with, follow them straight on. +main+ is the label of the
           # game's main routine; +frame_begins+ the label of the game's routine run at each frame
           # boundary (its timers moving on), or nil for none. +faces+ is whether the game fills the
           # faces of a place, so carries Faces and its table; +sound+ whether it makes sound, so carries
@@ -96,13 +98,12 @@ module VBlank
             Tiles.emit_sprite_places(asm, memory) if over_picture
             Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors
             Collide.emit(asm) if collides
-            Faces.emit(asm, memory) if faces
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
             emit_start(asm, sound: sound, tiles: !tiled.nil?)
             emit_frame_begins(asm, frame_begins)
-            [asm.section, *(Faces.reciprocals_section(Lowering::TABLES_HOLDING) if faces)]
+            [asm.section, *(faces ? [Faces.reciprocals_section(Lowering::TABLES_HOLDING), Faces.section(memory)] : [])]
           end
 
           # The runtime's sections placed after the game's: for a game that fills faces (+faces+), the routine

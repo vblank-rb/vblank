@@ -228,7 +228,8 @@ module VBlank
             prepare_picture
           end
 
-          # The game's code, as sections for the Linker: its data, every routine a run can reach, and the
+          # The game's code, as sections for the Linker: the routines that fill faces first, straight after the
+          # runtime's (Faces#face_filling_routines), then its data, every other routine a run can reach, and the
           # program itself.
           def sections
             @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet)
@@ -254,20 +255,22 @@ module VBlank
             keep_loop_running
             keep_backdrop
             reserve_painted_numbers!
-            routines = @called.map do |name|
+            routines = @called.to_h do |name|
               @lowering_scene = @scenes.key?(name) ? name : nil
               with_call_numbers_recorded_for(name) do
-                routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))
+                [name, routine_section(self.class.routine_label(name), @funcs.fetch(name).children, routine: @plan.routine_said(name))]
               end
             end
             @lowering_scene = nil
             timers = timer_sections
             main = routine_section(MAIN, @program.children, routine: "the game loop")
             over_picture = sprites_over_picture_section
+            filling = face_filling_routines.map { |name| routines.fetch(name) }
+            others = routines.except(*face_filling_routines).values
             # The pictures are known once every routine is made, so their tables come last: a screen drawn
             # from tiles registers its sprites' pictures with the painted art first.
-            [data_section, *table_sections, *routines, *timers, main, *over_picture, *picture_sections, *paint_sections, *color_sections,
-             *face_sections, *sound_sections, *collision_sections]
+            [*filling, data_section, *table_sections, *others, *timers, main, *over_picture, *picture_sections, *paint_sections,
+             *color_sections, *face_sections, *sound_sections, *collision_sections]
           end
 
           private
