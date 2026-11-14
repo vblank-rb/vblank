@@ -403,6 +403,28 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # Escape while a key is being chosen gives up the choice and keeps the window open; pressed again,
+  # with nothing being chosen, it stops the play.
+  def test_escape_gives_up_choosing_a_key_without_stopping_the_play
+    window = open_window
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    %i[right right right down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    refute window.stop?
+
+    press_key(SDL::ESCAPE, down: false)
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
   # A folder named for the play (--config-dir) holds the settings folders, the same ones as the
   # desktop build's, and is made if it is not there.
   def test_a_config_dir_holds_the_settings_files

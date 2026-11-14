@@ -400,9 +400,11 @@ module VBlank
       # seen without anything drawn over the picture.
       def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
 
-      # The window was closed, or Escape is down, as SDL last heard it (#show reads what SDL has
-      # heard, and Session shows each picture before it asks).
-      def stop? = @closed || @sdl.SDL_GetKeyboardState(nil)[ESCAPE] != 0
+      # The window was closed, or Escape went down and was not taken for a key being chosen
+      # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
+      # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
+      # a choice is still down as the next picture is shown, and must not stop the play then.
+      def stop? = @closed
 
       # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
@@ -990,6 +992,8 @@ module VBlank
           @kept_from_game << scancode
           return write_settings_soon
         end
+        return @closed = true if scancode == ESCAPE && !repeat
+
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
           @menu.toggle unless repeat
