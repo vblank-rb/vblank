@@ -95,7 +95,11 @@ module VBlank
             end
           end
 
+          # A place taken by the chip's black (place_never_nought) is not a colour of the game's, so a
+          # game refused only for that place is told so.
           def refuse_too_many_colors!
+            refuse_no_place_for_chip_black! if @black_twin && @colors.length == COLORS
+
             raise TooMuch, "This game paints more than #{COLORS} different colours. A Super Nintendo shows " \
                            "#{COLORS} colours on a painted screen. To fix this, use fewer colours."
           end
@@ -103,16 +107,29 @@ module VBlank
           # The place of +color+ where place 0 may not stand for it: black, which is place 0, gets a
           # place of its own besides, the same black. The Super FX's PLOT leaves a pixel of place 0
           # as it was (Runtime::ChipColumns), so a picture it paints keeps place 0 for its
-          # see-through pixels and paints its black from this other place.
+          # see-through pixels and paints its black from this other place. The two stay the same
+          # colour as the game runs: place 0 changes only to a scene's backdrop (Runtime::Tint's
+          # rt_backdrop_hold), and a painted screen has none (`screen :bitmap, backdrop:` is refused,
+          # Lowering::Picture.scene_backdrops?), while a fade or a tint moves every place alike.
           def place_never_nought(color)
             place = place_of(color)
             return place unless place.zero?
 
             @black_twin ||= begin
-              refuse_too_many_colors! if @colors.length >= COLORS
+              refuse_no_place_for_chip_black! if @colors.length >= COLORS
               @colors << BLACK
               @colors.length - 1
             end
+          end
+
+          # The game's colours fill all 256 places, black among them, and the chip has no place left
+          # for its own black. The game does not paint too many colours: the chip takes one more.
+          def refuse_no_place_for_chip_black!
+            raise TooMuch, "This game paints #{COLORS} different colours, and one of them is black. A routine " \
+                           "marked on_chip: true draws black with draw_column_at. On the Super FX chip, black " \
+                           "needs a second place in the list of #{COLORS} colours, and no place is free. To fix " \
+                           "this, use #{COLORS - 1} colours or fewer, or use a color near black in the pictures " \
+                           "that the chip draws."
           end
 
           # The picture +key+ names, made once from a block that gives the picture's width, height and
