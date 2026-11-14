@@ -75,7 +75,7 @@ module DslVerbs
             colors_to_draw_with follow_pose_lists one_list_for_pose_lists? list_for_every_pose_list!
             colors_to_draw_across_lists list_chosen_at_start? follow_lists_chosen_at_start make_object_recolorable make_pool_recolorable
             make_object_layer_choosable refuse_unknown_layers! put_objects_in_layer write_picked_choice
-            lists_drawn_from list_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
+            lists_drawn_from list_drawn_from list_name_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
             request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose
             record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack
             made_data_pack_file declared_shell_screen].freeze
