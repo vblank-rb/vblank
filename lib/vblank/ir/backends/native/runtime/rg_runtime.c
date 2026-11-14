@@ -1064,9 +1064,9 @@ void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, 
 
 /* One tile of a cell of such a background (rg_start_file_fill_moving_cells): the tile +down+ and
  * +along+ of the cell +word+, shown as the run's tile for its bank and turn where it is one that
- * takes turns, in the background's tile +slot+. */
-static void start_file_mark_moving_tile(int32_t *painted, const int32_t *rules, const int32_t *moving, uint32_t word,
-                                        int32_t down, int32_t along, int32_t slot) {
+ * takes turns, in the background's tile +slot+, and that run marked in +pointed+. */
+static void start_file_mark_moving_tile(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed,
+                                        uint32_t word, int32_t down, int32_t along, int32_t slot) {
   int32_t side = rules[5], tile_bits = rules[7], mirror_bit = rules[8], flip_bit = rules[9], bank_at = rules[10];
   int32_t bank_bits = rules[11], row_tiles = rules[12], bank_count = rules[16];
   int32_t start = moving[0], count = moving[1], entry = 1 + (bank_count * 8);
@@ -1081,11 +1081,12 @@ static void start_file_mark_moving_tile(int32_t *painted, const int32_t *rules, 
     const int32_t *shown = each + 1 + ((((bank * 4) + mirrored + (2 * upside_down))) * 2);
     painted[start + (2 * slot)] = shown[0];
     painted[start + (2 * slot) + 1] = shown[1];
+    pointed[shown[0]] = 1;
     return;
   }
 }
 
-void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving) {
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed) {
   int32_t map_at = rules[2], cells = rules[3], across = rules[4], side = rules[5], map_high_byte_first = rules[6];
   int32_t held = rules[19], cell_bytes = rules[20], told_at = rules[21], told_count = rules[22], told_first = rules[23];
   int32_t columns = across * side;
@@ -1093,12 +1094,12 @@ void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, con
     uint32_t word = start_file_number(map_at + (cell * cell_bytes), cell_bytes, map_high_byte_first);
     for (int32_t down = 0; down < side; down++)
       for (int32_t along = 0; along < side; along++)
-        start_file_mark_moving_tile(painted, rules, moving, word, down, along,
+        start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along,
                                     held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along);
   }
   for (int32_t told = 0; told < told_count; told++)
-    start_file_mark_moving_tile(painted, rules, moving, start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first),
-                                0, 0, told_first + told);
+    start_file_mark_moving_tile(painted, rules, moving, pointed,
+                                start_file_number(told_at + (told * cell_bytes), cell_bytes, map_high_byte_first), 0, 0, told_first + told);
 }
 
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules) {

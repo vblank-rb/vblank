@@ -957,7 +957,7 @@ end
 
 # The cells of such a background naming a tile that takes turns through pictures (rg_runtime.h,
 # rg_start_file_fill_moving_cells).
-def rg_start_file_fill_moving_cells(painted, rules, moving)
+def rg_start_file_fill_moving_cells(painted, rules, moving, pointed)
   map_at, cells, across, side, map_high_byte_first = rules[2, 5]
   held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
   columns = across * side
@@ -965,19 +965,19 @@ def rg_start_file_fill_moving_cells(painted, rules, moving)
   @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
     side.times do |down|
       side.times do |along|
-        rg_start_file_mark_moving_tile(painted, rules, moving, word, down, along,
+        rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along,
                                        held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along)
       end
     end
   end
   @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
-    rg_start_file_mark_moving_tile(painted, rules, moving, word, 0, 0, told_first + told)
+    rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, 0, 0, told_first + told)
   end
 end
 
-# One tile of a cell of such a background, shown as a run's tile where it takes turns
-# (rg_runtime.c's start_file_mark_moving_tile).
-def rg_start_file_mark_moving_tile(painted, rules, moving, word, down, along, slot)
+# One tile of a cell of such a background, shown as a run's tile where it takes turns, and that
+# run marked in +pointed+ (rg_runtime.c's start_file_mark_moving_tile).
+def rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along, slot)
   side = rules[5]
   tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[7, 6]
   bank_count = rules[16]
@@ -994,6 +994,7 @@ def rg_start_file_mark_moving_tile(painted, rules, moving, word, down, along, sl
   shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
   painted[start + (2 * slot)] = moving[shown]
   painted[start + (2 * slot) + 1] = moving[shown + 1]
+  pointed[moving[shown]] = 1
 end
 
 # Tiles of the file as a run of painted tiles keeps them (rg_runtime.h, rg_start_file_fill_painted_tiles).

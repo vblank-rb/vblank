@@ -473,9 +473,12 @@ module VBlank
              runtime_array("run_images", "int32_t", images, writable: marked_numbers_in?(:run_images))]
           end
 
-          # Reference#exec_copy_tiles and what a scene arriving does with each run it shows.
+          # Reference#exec_copy_tiles and what a scene arriving does with each run it shows. A run that
+          # shows only where a cell of the file is pointed at it is copied only once one is
+          # (StartFileFills#made_where_run_pointed).
           def tile_copy(run)
-            eval_call("rg_tiles_copy", Statements::Int.new(@run_numbers.fetch(run.name)), Statements::AddressOf.new(list(run.list)))
+            copy = eval_call("rg_tiles_copy", Statements::Int.new(@run_numbers.fetch(run.name)), Statements::AddressOf.new(list(run.list)))
+            made_where_run_pointed(run.name, copy)
           end
 
           def lower_copy_tiles(node)

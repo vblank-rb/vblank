@@ -85,6 +85,30 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{pictures} bytes of the belt's pictures held once"
   end
 
+  # ...and A SHOW COPIES THE PICTURE INTO THE RUNS OF THE BANKS THE MAP POINTS AT ALONE: which
+  # banks a cell names is in the file, so the game learns it as it starts. The map draws the belt
+  # in two banks of six, so two runs hold the belt's pictures, and the other four were never copied
+  # into at all, from power-on on. The runs are the framework's own lists, which only the lowered
+  # game is asked about: the interpreter copies into every run, and shows the same picture.
+  def test_a_show_copies_into_the_runs_of_the_banks_the_map_draws_from_alone
+    copied = Dir.mktmpdir do |folder|
+      words = PackTilePictureGames.title_belt_words(FEW_CELLS)
+      _, file = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS)
+      program, = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS, options: LEFT_OUT)
+      run = headless_run.hand_file(file).run(program_played(program), frames: SHOWS)
+      (0...MANY_BANKS).count { |bank| run.list(belt_run_list(bank)).any?(&:nonzero?) }
+    end
+
+    assert_equal FEW_BANKS, copied, "the runs a show copied the belt into, of #{MANY_BANKS}"
+  end
+
+  # The passes the belt game plays: each shows a picture, the second one from the third pass on.
+  SHOWS = 6
+
+  # The list the run of the belt for +bank+ shows its picture from (Builder::PackTilePictures
+  # names a background's runs in the order of its banks).
+  private def belt_run_list(bank) = VBlank::Messages::MadeNames.make(:tile_pictures_part, group: :"belt_run_#{bank}", part: :shown)
+
   # Each lowering here builds on Computer::Lowering, which counts what the game keeps of the file.
   private def start_file_bytes(program) = lowering_class.new(program).start_file_array_bytes
 end

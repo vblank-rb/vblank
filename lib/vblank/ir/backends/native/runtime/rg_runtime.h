@@ -217,7 +217,8 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * where the background's painted tiles start in +painted+, how many moving tiles, and for each its
  * tile as a cell names it and then, for each bank and each of the four turns (none, mirrored,
  * upside down, both), the run and which of its tiles. A cell naming such a tile in a bank past the
- * colours keeps its own tile.
+ * colours keeps its own tile. +pointed+ has a number for each run, set to 1 for each run a cell is
+ * pointed at, so a show copies its picture into those runs alone.
  *
  * rg_start_file_fill_painted_tiles: +tiles+ tiles of the file into +table+, 32 bytes each, as a run
  * of painted tiles keeps them: two places a byte, the left one in the low four bits.
@@ -339,7 +340,7 @@ void rg_start_file_fill_bytes(int8_t *samples, int32_t at, int32_t count, int32_
 void rg_start_file_fill_picture(const int32_t *rules);
 void rg_start_file_fill_background(const int32_t *rules);
 void rg_start_file_fill_followed_tiles(int32_t *followed, const int32_t *rules, int32_t banks);
-void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving);
+void rg_start_file_fill_moving_cells(int32_t *painted, const int32_t *rules, const int32_t *moving, int32_t *pointed);
 void rg_start_file_fill_painted_tiles(uint8_t *table, int32_t tiles, const int32_t *rules);
 void rg_start_file_fill_pose(const int32_t *rules);
 void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules);

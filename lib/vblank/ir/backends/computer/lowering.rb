@@ -777,11 +777,15 @@ module VBlank
             [list_call("rg_list_fill", node, value(node.from), value(node.count), value(node.value))]
           end
 
+          # A copy into the list of a run that shows only where a cell of the file is pointed at it
+          # is made only once one is (StartFileFills#made_where_run_pointed).
           def lower_list_copy(node)
             table = @tables.fetch(node.table)
             kept = TABLE_KEPT_AS.fetch(table_type(table))
-            [list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
-                       value(node.at), Statements::Int.new(node.count))]
+            copy = list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
+                             value(node.at), Statements::Int.new(node.count))
+            run = @tile_runs.each_value.find { |each| each.list == node.name }
+            [run ? made_where_run_pointed(run.name, copy) : copy]
           end
 
           # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the

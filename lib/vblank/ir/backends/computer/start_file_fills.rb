@@ -395,7 +395,8 @@ module VBlank
               eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry), Statements::Int.new(tiles.banks))
             end
             moving = @start_file_moving_cells.map do |cells|
-              eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry), cells.rules)
+              eval_call("rg_start_file_fill_moving_cells", @names.own("painted_tiles"), rules.fetch(cells.entry), cells.rules,
+                        runs_pointed_array)
             end
             rules.values.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving
           end
@@ -427,6 +428,54 @@ module VBlank
             end
             rules = drawing_array("moving_tiles", "int32_t", [painted_start, from.moving.length, *numbers])
             @start_file_moving_cells << StartFileMovingCells.new(entry: entry_of(bg), rules: rules)
+          end
+
+          # THE RUNS A CELL OF THE FILE CAN BE POINTED AT, and nothing else shows: the run of each
+          # bank of a background read from the file, for each tile of it taking turns through
+          # pictures. Which banks the map names is in the file, so a run no cell names is learnt as
+          # the game starts, and its copies are left out: the group's `show` copies its picture into
+          # every run (Builder::PackTilePictures#emit_pack_tile_picture_copies), and a slot of sixty
+          # banks would copy it sixty times a show for the two its map draws from. The routine
+          # reading the file marks each run a cell names (rg_start_file_fill_moving_cells, in
+          # #runs_pointed_array); a copy into the list of such a run (Lowering#lower_list_copy) and
+          # from it into its tiles (Picture#tile_copy) is made only where its mark is set.
+          #
+          # A RUN THE GAME'S OWN `set_cell` CAN PUT ON THE MAP is left out: a cell written as the game
+          # runs names the run's tile directly (PackBackgrounds#pack_run_tile_read_at_start), and the
+          # file does not say it. Every tile a `set_tile` can write is known as the game is built
+          # (Nodes::SetTile#tiles_named), a tile picked as it runs among them.
+          def runs_pointed_by_file
+            @runs_pointed_by_file ||= begin
+              turns = IR::StartFile::MovingTile::TURNS
+              @program.walk.select { |node| node.kind == :background && node.from_file }.flat_map do |bg|
+                from = bg.from_file
+                runs = from.moving.flat_map do |moving|
+                  (0...from.bank_count).flat_map do |bank|
+                    turns.map { |ways| run_painting(bg.tiles.fetch(moving.tile_of(bank, ways.include?(:mirrored), ways.include?(:upside_down)))).name }
+                  end
+                end
+                runs - tiles_set_on(bg).filter_map { |tile| run_painting(bg.tiles[tile])&.name if tile < bg.tiles.length }
+              end.to_set
+            end
+          end
+
+          # The tiles of +bg+ a `set_tile` of the game can put on its map, by number.
+          def tiles_set_on(bg)
+            @program.walk.select { |node| node.kind == :set_tile && node.name == bg.name }.flat_map(&:tiles_named).compact
+          end
+
+          # A number for each run, 1 once a cell of the file is pointed at it (#runs_pointed_by_file).
+          def runs_pointed_array
+            @runs_pointed_array ||= drawing_array("runs_pointed", "int32_t", Array.new(@tile_runs.length, 0), writable: true)
+          end
+
+          # +statement+, made only where the run +name+ is one a cell of the file is pointed at, or
+          # always for a run every game shows (#runs_pointed_by_file).
+          def made_where_run_pointed(name, statement)
+            return statement unless runs_pointed_by_file.include?(name)
+
+            pointed = Statements::Index.new(runs_pointed_array, Statements::Int.new(@run_numbers.fetch(name)))
+            Statements::If.new(condition: call("rg_eq", pointed, Statements::Int.new(1)), body: [statement])
           end
 
           # Whether the routine reading the file writes the painted tiles, which are then declared
