@@ -149,6 +149,11 @@ module VBlank
       # time, so a game names one where it names its consoles (`sprite_piece_size:`).
       def sprite_piece_sizes = nil
 
+      # THE SPRITE PIECES ITS BUILD MADE OF EACH PICTURE OF +program+, where the build chooses them
+      # in ways the console's rule for cutting a picture cannot see (IR::Backends::SpriteLines
+      # .pieces_built says the shape); nil for a console whose build cuts every picture by the rule.
+      def sprite_pieces_built(_program) = nil
+
       # +size+, when this console's build draws pieces that size; a plain refusal when it does not.
       def refuse_unusable_sprite_piece_size!(size)
         sizes = sprite_piece_sizes
@@ -283,6 +288,8 @@ module VBlank
       def original_formats = SNESHardware::ORIGINAL_FORMATS
       # Its build cuts every sprite into 8×8 pieces and has no setting for bigger ones yet.
       def sprite_piece_sizes = [[8, 8]].freeze
+      # Its build gives up squares of 16×16 where video memory has no room for them (SNES::Art).
+      def sprite_pieces_built(program) = lowering.sprite_pieces_built(program)
 
       # THE CHIPS A CARTRIDGE CAN CARRY that more than a handful of games used. The one-game chips
       # (the Cx4 of Mega Man X2 and X3, the S-DD1, the SPC7110, the ST010 and the rest) are left out

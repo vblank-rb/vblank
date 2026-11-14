@@ -64,7 +64,7 @@ module VBlank
         # alike, blank ones left out; any other is cut into squares of 8×8, and each square of 16×16 on
         # its grid with two or more of them drawn is one entry instead. Its pieces go into the table
         # from its last row up, so the last of them is in front. Where the build has no room for a
-        # square's tiles it keeps the four apart, which this cannot know.
+        # square's tiles it keeps the four apart, which this cannot know: #pieces_built says so.
         #
         # :rectangles, the Genesis's (Genesis::Art): a picture made of a console's own pieces in groups
         # is those, a group where it makes one rectangle; any other is covered by rectangles of up to
@@ -76,6 +76,32 @@ module VBlank
           when :rectangles then rectangle_picture_places(image)
           else raise ArgumentError, "#{shape.inspect} is not a shape of sprite pieces"
           end
+        end
+
+        # PIECES AS THE BUILD MADE THEM. #picture_places cuts a picture by the console's rule, but a
+        # console's build can choose otherwise where the rule cannot see why: the Super Nintendo's
+        # gives up squares of 16×16 for pieces of 8×8 where its video memory has no room for them,
+        # for a picture, a crowded screen or the whole game, and cuts a copy drawn in other colours
+        # (`draw_with`) again on its grid (SNES::Art). Its cartridge then counts those pieces on a
+        # line and in its table, so the interpreter and the runtimes count them too.
+        #
+        # So +program+'s console's kit is asked for what its build made (Console::Kit
+        # #sprite_pieces_built): by each [picture's name, the list of colours it is drawn with or
+        # nil], its places as #picture_places gives them, the first in front; or nil where the
+        # build cuts by the rule, or cannot build the game. Asked once a program (Program
+        # #sprite_pieces_built_on), and a build that has just made them records them there.
+        def self.pieces_built(program)
+          console = program.described_console.name
+          program.sprite_pieces_built_on(console) { Console.for(console).sprite_pieces_built(program) }
+        end
+
+        # The places of picture +name+ drawn in +colors+ (nil for its own) as the build made them
+        # (#pieces_built), a copy the build made no pieces of of its own taking the picture's, or nil
+        # where the build made none.
+        def self.places_built(program, name, colors)
+          built = pieces_built(program) or return nil
+
+          built[[name, colors]] || built[[name, nil]]
         end
 
         # The pieces of a picture the game paints from a list as it runs: every one of its grid,
@@ -181,9 +207,13 @@ module VBlank
         # Nintendo's runtime asks every piece about a square's reach in a game with any square of
         # 16×16 (SNES::Runtime::Picture#emit_sprites), so there a piece of 8×8 up to 15 pixels off
         # the left or the top takes a row and draws nothing (measured in bsnes). Such a game is one
-        # whose sprites show a picture cut with one (SNES::Art#sprite_squares?).
+        # whose sprites show a picture cut with one (SNES::Art#sprite_squares?), as its build made
+        # them where it says (#pieces_built).
         def self.entry_reach(program, piece_height:)
           return nil unless program.described_console.sprite_piece_shape == :squares
+
+          built = pieces_built(program)
+          return (SpritePieces::BIG if built.each_value.any? { |places| places.any? { |_, _, wide, _| wide == SpritePieces::BIG } }) if built
 
           pictures = program.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, node] }
           poses = program.walk.select { |node| node.kind == :object }.flat_map(&:poses).uniq

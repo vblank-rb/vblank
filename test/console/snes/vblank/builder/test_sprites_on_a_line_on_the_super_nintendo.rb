@@ -137,6 +137,61 @@ class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
     end
   end
 
+  # PIECES AS THE BUILD MADE THEM. A screen whose pictures do not all fit video memory as squares of
+  # 16×16 draws the last of them in pieces of 8×8, each a row of the table. 165 pictures of three
+  # quarters drawn are more than fit, so the last is two pieces on each of its top eight lines, not
+  # one square. Seventeen of it side by side are then 34 entries on those lines: the two furthest
+  # back, the top of the sprite drawn first, are left out. Drawn as squares they would be 17.
+  def test_a_crowded_screens_pictures_cut_small_crowd_a_line_as_pieces
+    game = program do
+      screen :tiled
+      colors :ink, %i[transparent red green]
+      image :word, width: 16, height: 16, colors: :ink, places: Array.new(256) { 1 }
+      random = Random.new(9)
+      names = Array.new(165) do |n|
+        name = :"crowd#{n}"
+        image name, width: 16, height: 16, colors: :ink,
+                    places: Array.new(256) { |at| (at / 16 >= 8) && ((at % 16) >= 8) ? 0 : random.rand(1..2) }
+        name
+      end
+      var :state, 1
+      scene(:title) { sprite :word, at: [40, 40] }
+      scene(:crowded) do
+        sprite :far, at: [80, 150], facing: names.to_h { |name| [name, name] }
+        17.times { |i| sprite :"row#{i}", at: [i * 14, 80], image: names.last }
+      end
+      game_loop do
+        case_var(:state) do
+          when_val 0, :title
+          when_val 1, :crowded
+        end
+      end
+    end
+    screen = game_player.run(game, frames: 3).screen
+
+    refute_includes [RED, GREEN], screen.pixel(3, 81), "the top of the sprite furthest back is left out"
+    assert_includes [RED, GREEN], screen.pixel(3, 89), "below, its one piece a line is drawn"
+    assert_includes [RED, GREEN], screen.pixel(17, 81), "the sprite in front of it is drawn"
+  end
+
+  # A picture made of one piece half off the 8-pixel grid is one entry, but its copy drawn in other
+  # colours (`draw_with`) is cut again on the grid, into two. Twenty such copies side by side are 40
+  # entries on their lines, so the eight furthest back, the four sprites drawn first, are left out.
+  def test_a_copy_in_other_colours_crowds_a_line_as_the_pieces_of_its_grid
+    game = program do
+      screen :tiled
+      colors :other, %i[transparent green blue]
+      image :half_off, colors: %i[transparent red blue], pieces: [[4, 0, Array.new(64, 1)]]
+      20.times { |i| sprite(:"copy#{i}", at: [i * 12, 50], image: :half_off).draw_with :other }
+      game_loop {}
+    end
+    screen = game_player.run(game, frames: 3).screen
+
+    refute_equal GREEN, screen.pixel(5, 51), "the sprite furthest back is left out"
+    refute_equal GREEN, screen.pixel((3 * 12) + 5, 51), "and the fourth"
+    assert_equal GREEN, screen.pixel((4 * 12) + 5, 51), "the fifth is drawn"
+  end
+
   # The rows of a square of 16×16 drawn all over in +color+'s letter, for a game block.
   def square_rows(color) = ([(color == :red ? "r" : "g") * 16] * 16).join("\n")
 end

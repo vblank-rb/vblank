@@ -292,10 +292,10 @@ module VBlank
             return runtime_array("image_pieces", "int32_t", [0, 0]) unless console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen
 
             tall = (@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last
-            lists = @images.each_key.map do |name, _|
+            lists = @images.each_key.map do |name, colors|
               next [] if picture_from_start_file(name)&.from_file.is_a?(IR::StartFile::Pose)
 
-              sprite_piece_places(name, tall, console.sprite_piece_shape)
+              sprite_piece_places(name, colors, tall, console.sprite_piece_shape)
             end
             values = [lists.length, SpriteLines.entry_reach(@program, piece_height: tall) || 0]
             start = 2 + lists.length
@@ -307,15 +307,16 @@ module VBlank
             runtime_array("image_pieces", "int32_t", values)
           end
 
-          # Where the pieces of the picture +name+ stand in it, and how big each is, as the console's
-          # table holds them.
-          def sprite_piece_places(name, tall, shape)
+          # Where the pieces of the picture +name+, drawn in +colors+, stand in it, and how big each
+          # is, as the console's table holds them (Reference#sprite_piece_places).
+          def sprite_piece_places(name, colors, tall, shape)
             return SpriteLines.tile_pose_places(@tile_poses.fetch(name).pieces, piece_height: tall) if @tile_poses.key?(name)
 
             run = @tile_runs.each_value.find { |r| r.picture == name }
             return SpriteLines.painted_places(run.width, run.height, piece_height: tall, shape: shape) if run
 
-            SpriteLines.picture_places(sprite_pictures.fetch(name), piece_height: tall, shape: shape)
+            SpriteLines.places_built(@program, name, colors == SHADING_PLACES ? nil : colors) ||
+              SpriteLines.picture_places(sprite_pictures.fetch(name), piece_height: tall, shape: shape)
           end
 
           # Every picture the program defines, as SpriteCut reads one.

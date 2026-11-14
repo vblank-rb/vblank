@@ -62,10 +62,11 @@ module VBlank
         # from, each entry of the interpreter's sound log by the number the cartridge's own log keeps
         # it as (empty for a game that makes no sound), what the DSP writes for those entries are
         # worked out with (DSPWrites::Voicing, Lowering::Sound#sound_voicing), and the game's
-        # recordings by the number a place playing one keeps (Runtime::Recordings), and each sprite
-        # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names).
+        # recordings by the number a place playing one keeps (Runtime::Recordings), each sprite
+        # picture's number as SpriteNames numbers the picture it shows (Lowering::Picture#sprite_picture_names),
+        # and the pieces it made of each picture (Lowering::Picture#sprite_pieces_built).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
-                             :sound_voicing, :recording_names, :sprite_picture_names, :console_voice_bits) do
+                             :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits) do
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -151,6 +152,26 @@ module VBlank
           build(program, **choices, far_tables: true, cache: cache)
         end
 
+        # THE SPRITE PIECES THE BUILD MAKES OF EACH PICTURE OF +program+ (SpriteLines.pieces_built,
+        # Lowering::Picture#sprite_pieces_built), which can differ from the console's rule for
+        # cutting a picture wherever the build gives up squares: worked out by building the game,
+        # or nil where it cannot be built. A build records them on the program as it finishes
+        # (Program#record_sprite_pieces_built), so where the cartridge has been built already
+        # nothing asks here.
+        #
+        # A program no cartridge is made of has no cartridge's pieces to match: one handed a file
+        # as it starts, or one this build stops on in any way. Its build is not checked first, as a
+        # cartridge's is (Cartridge::LoweredBuild), so a program the checks would refuse can stop it
+        # with any error; that refusal is the cartridge build's to make, in its own words, and here
+        # the console's rule stands (SpriteLines.picture_places).
+        def self.sprite_pieces_built(program)
+          return nil if program.start_file
+
+          new.build(program).built.sprite_pieces
+        rescue StandardError
+          nil
+        end
+
         private
 
         # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
@@ -219,6 +240,8 @@ module VBlank
           findings.concat(lowering.crowded_scene_findings)
           findings.concat(lowering.scene_recording_findings)
           findings.concat(routines_without_their_chip(program)) unless carries.chip?
+          sprite_pieces = lowering.sprite_pieces_built
+          program.record_sprite_pieces_built(Lowering::CONSOLE.name, sprite_pieces)
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
             placed = linked.sections.fetch(label)
@@ -229,7 +252,7 @@ module VBlank
                              source_program: program, code: linked.places, routines: routines,
                              sound_entries: lowering.sound_entries, sound_voicing: lowering.sound_voicing,
                              recording_names: lowering.recording_names,
-                             sprite_picture_names: lowering.sprite_picture_names,
+                             sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices))
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),

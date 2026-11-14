@@ -379,6 +379,8 @@ module VBlank
         def size_screen_for(node)
           program = node.kind == :program ? node : Build.program
           @console = program.described_console
+          # Whose build's sprite pieces the lines count (#sprite_piece_places).
+          @program_played = program
           # How tall a piece of a sprite is on that console, for the lines it counts (#mark_slices_left_out).
           @sprite_piece_height = (program.sprite_piece_size_on(@console.name) || [SpritePieces::SIZE] * 2).last
           # And how far past the screen's edge one still takes an entry of its table.
@@ -3106,26 +3108,33 @@ module VBlank
           return if (limit.nil? && entries.nil?) || drawn.empty?
 
           order = drawn.each_index.sort_by { |at| [object_level(drawn[at][:object]), at] }.reverse
-          sprites = order.map { |at| [drawn[at][:x], drawn[at][:y], sprite_piece_places(drawn[at][:picture])] }
+          sprites = order.map do |at|
+            on = drawn[at]
+            colors = object_color_list(on[:object], on[:picture]) if @bitmaps.key?(on[:picture])
+            [on[:x], on[:y], sprite_piece_places(on[:picture], colors)]
+          end
           cuts = SpriteLines.left_out(sprites, limit: limit, table_entries: entries, table_from: @console.sprite_table_filled_from,
                                                entry_reach: @sprite_entry_reach,
                                                screen_width: @screen.width, screen_height: @screen.height)
           order.zip(cuts).each { |at, lines| drawn[at][:left_out] = lines if lines }
         end
 
-        # Where the pieces of the picture +name+ stand in it, as the console's sprite table holds
-        # them: a picture painted from a list or drawn from loaded tiles by its grid or its tiles,
-        # any other by what it draws.
-        def sprite_piece_places(name)
+        # Where the pieces of the picture +name+, drawn in +colors+ (nil for its own), stand in it,
+        # as the console's sprite table holds them: a picture painted from a list or drawn from
+        # loaded tiles by its grid or its tiles, any other as the console's build made it where it
+        # says (SpriteLines.places_built), or else by what it draws.
+        def sprite_piece_places(name, colors = nil)
           @sprite_piece_places ||= {}
           shape = @console.sprite_piece_shape
-          @sprite_piece_places[name] ||= if (run = @tile_runs.each_value.find { |r| r.picture == name })
-                                           SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height, shape: shape)
-                                         elsif (pose = @tile_poses[name])
-                                           SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
-                                         else
-                                           SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height, shape: shape)
-                                         end
+          @sprite_piece_places[[name, colors]] ||=
+            if (run = @tile_runs.each_value.find { |r| r.picture == name })
+              SpriteLines.painted_places(run.width, run.height, piece_height: @sprite_piece_height, shape: shape)
+            elsif (pose = @tile_poses[name])
+              SpriteLines.tile_pose_places(pose.pieces, piece_height: @sprite_piece_height)
+            else
+              SpriteLines.places_built(@program_played, name, colors) ||
+                SpriteLines.picture_places(@bitmaps.fetch(name), piece_height: @sprite_piece_height, shape: shape)
+            end
         end
 
         # SPRITES OVER A PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`). The console

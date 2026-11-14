@@ -1590,6 +1590,28 @@ module VBlank
 
         # The size of piece the game named for +console+'s sprites, or nil where it named none.
         def sprite_piece_size_on(console) = (sprite_piece_sizes || []).to_h[console]
+
+        # THE SPRITE PIECES +console+'S BUILD MADE OF EACH PICTURE (Backends::SpriteLines.pieces_built),
+        # worked out by the block the first time it is asked and kept, or as the build recorded them
+        # (#record_sprite_pieces_built). Asked again while the block runs (the build it starts asks
+        # too), the answer is nil. A frozen program keeps nothing and works it out each time.
+        def sprite_pieces_built_on(console)
+          return yield if frozen?
+
+          @sprite_pieces_built ||= {}
+          return @sprite_pieces_built[console] if @sprite_pieces_built.key?(console)
+
+          @sprite_pieces_built[console] = nil
+          @sprite_pieces_built[console] = yield
+        end
+
+        # +pieces+ are the sprite pieces +console+'s build made of each picture, which a build that
+        # has just made them records so nothing builds the game again to find them.
+        def record_sprite_pieces_built(console, pieces)
+          return if frozen?
+
+          (@sprite_pieces_built ||= {})[console] = pieces
+        end
       end
 
       # A FONT THE PROGRAM DECLARED, the same way a declared picture is a node: it draws

@@ -195,6 +195,22 @@ module VBlank
               end
             end
 
+            # THE PIECES EACH SPRITE PICTURE WAS MADE OF (Art#sprite_pictures), as the interpreter and
+            # the runtimes count them on a line and in the table (SpriteLines.pieces_built): by
+            # [picture's name, the colours a copy drawn with other colours is drawn in, or nil], each
+            # piece's [across, down, width, height] with the one in front first. The art lists a
+            # picture's pieces in the order they go into the table, which is back-most first
+            # (#emit_present_objects), so they are turned round.
+            public def sprite_pieces_built
+              @art.sprite_pictures.to_h do |key, picture|
+                places = picture.pieces.reverse.map do |piece|
+                  side = piece.big ? SpritePieces::BIG : SpritePieces::SIZE
+                  [piece.dx, piece.dy, side, side]
+                end
+                [key.is_a?(Array) ? key : [key, nil], places]
+              end
+            end
+
             # How many sprite tiles +scene+ leaves free (Art#free_sprite_tiles), for SNES#build.
             def free_sprite_tiles(scene) = @art.free_sprite_tiles(scene)
 
