@@ -268,7 +268,7 @@ class TestSNESChipColumns < Minitest::Test
         call :walls
       end
     end
-    error = assert_raises(SNES::LoweringError) { game.build_rom(**SUPERFX_BUILD) }
+    error = assert_raises(SNES::LoweringError) { game.build_rom(**SUPERFX_BUILD, out: nil, err: nil) }
 
     assert_match(/black/, error.message)
     refute_match(/more than 256/, error.message)
@@ -305,7 +305,7 @@ class TestSNESChipColumns < Minitest::Test
   # A list on the chip big enough to leave room for its numbers but not for the drawing's own
   # words: the game is told that drawing columns takes room in the chip's RAM, and how much.
   def test_a_list_that_leaves_no_room_for_drawing_on_the_chip_is_refused_naming_drawing
-    error = assert_raises(SNES::LoweringError) { chip_list_beside_walls(capacity: 1000).build_rom(**SUPERFX_BUILD) }
+    error = assert_raises(SNES::LoweringError) { chip_list_beside_walls(capacity: 1000).build_rom(**SUPERFX_BUILD, out: nil, err: nil) }
 
     assert_match(/draw_column_at/, error.message)
     assert_match(/bytes/, error.message)
@@ -313,7 +313,7 @@ class TestSNESChipColumns < Minitest::Test
 
   # The same list with no drawing on the chip fits, so the refusal above is the drawing's.
   def test_the_same_list_without_drawing_fits_on_the_chip
-    chip_list_beside_walls(capacity: 1000, draws: false).build_rom(**SUPERFX_BUILD)
+    chip_list_beside_walls(capacity: 1000, draws: false).build_rom(**SUPERFX_BUILD, out: nil, err: nil)
   end
 
   # The screen counts its clears in a number that turns over after 255 of them, and a tile the chip
@@ -339,7 +339,7 @@ class TestSNESChipColumns < Minitest::Test
     assert_operator run[:step], :>=, 260, "the clears turned over"
   end
 
-  SUPERFX_BUILD = { console: :snes, variant: :superfx, profile: false, out: nil, err: nil }.freeze
+  SUPERFX_BUILD = { console: :snes, variant: :superfx, profile: false }.freeze
 
   private def chip_list_beside_walls(capacity:, draws: true)
     VBlank.game("CHIP FULL", consoles: %i[snes], variants: { snes: :superfx }) do

@@ -40,7 +40,7 @@ class TestSNESPaintDoubled < Minitest::Test
 
   # The most of the picture's bytes that arrived in one frame, and the passes shown a second.
   private def copy_measured(rows)
-    reader = VBlank::Diagnostics::Verifier.new(repainting_game(rows: rows).build_rom(console: :snes), frames: 30)
+    reader = VBlank::Diagnostics::Verifier.new(repainting_game(rows: rows).build_rom(console: :snes, out: nil, err: nil), frames: 30)
     before = picture_bytes(reader)
     first_step = reader.var(:step)
     most = 0
@@ -64,7 +64,7 @@ class TestSNESPaintDoubled < Minitest::Test
         pixel 0, 0, :green
       end
     end
-    reader = VBlank::Diagnostics::Verifier.new(game.build_rom(console: :snes), frames: 20)
+    reader = VBlank::Diagnostics::Verifier.new(game.build_rom(console: :snes, out: nil, err: nil), frames: 20)
     picture = reader.frame_gba
 
     odd = (0...112).flat_map do |y|
@@ -126,7 +126,7 @@ class TestSNESPaintDoubled < Minitest::Test
         end
       end
     end
-    reader = VBlank::Diagnostics::Verifier.new(game.build_rom(console: :snes), frames: 60)
+    reader = VBlank::Diagnostics::Verifier.new(game.build_rom(console: :snes, out: nil, err: nil), frames: 60)
     first = reader.var(:step)
     reader.step(300)
     rate = (reader.var(:step) - first) / 5.0

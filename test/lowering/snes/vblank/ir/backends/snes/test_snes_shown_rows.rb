@@ -36,7 +36,7 @@ class TestSNESShownRows < Minitest::Test
   # The most bytes of the screen's tiles that arrived in one frame, in whole tiles: a tile counts
   # once any of its bytes changed.
   private def most_bytes_a_frame(rows)
-    reader = VBlank::Diagnostics::Verifier.new(repainting_game(rows).build_rom(console: :snes), frames: 30)
+    reader = VBlank::Diagnostics::Verifier.new(repainting_game(rows).build_rom(console: :snes, out: nil, err: nil), frames: 30)
     before = reader.video_ram.byteslice(0, TILES * TILE_BYTES)
     most = 0
     120.times do
@@ -75,7 +75,7 @@ class TestSNESShownRows < Minitest::Test
       end
     end
     VBlank::IR::Backends::SNES::CheckedRun.new.run(game.program(console: :snes), frames: 8) # raises if a pass differs
-    labels = game.build_rom(console: :snes).built.code.keys.map(&:to_s)
+    labels = game.build_rom(console: :snes, out: nil, err: nil).built.code.keys.map(&:to_s)
 
     assert_includes labels, "rt_paint_fill_band_stored"
     refute_includes labels, "rt_paint_fill_band_copied"
@@ -83,7 +83,7 @@ class TestSNESShownRows < Minitest::Test
 
   # Every row shown is the screen as it is: the same cartridge as a game that names none.
   def test_every_row_shown_builds_the_same_cartridge
-    assert_equal repainting_game(nil).build_rom(console: :snes).bytes, repainting_game(0...224).build_rom(console: :snes).bytes
+    assert_equal repainting_game(nil).build_rom(console: :snes, out: nil, err: nil).bytes, repainting_game(0...224).build_rom(console: :snes, out: nil, err: nil).bytes
   end
 
   # A picture of 160 rows, 128x80 shown doubled, gives up the rest, and a frame's copy then holds
