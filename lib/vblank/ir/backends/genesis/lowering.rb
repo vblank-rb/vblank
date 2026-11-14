@@ -225,6 +225,7 @@ module VBlank
             @routine_tables = {} # a list of routines a call picks from by number -> its table's label
             @cell_tables = {} # the words a picked tile's cells hold (Picture#emit_set_picked_tile_of) -> their table's label
             @section_routines = {}
+            @indexes_checked = {} # a loop's count -> the fewest items it is checked to be below (#index_checked_below?)
             @pictures = by_kind(:bitmap)
             prepare_paint
             prepare_picture
@@ -521,9 +522,17 @@ module VBlank
 
           def statement(node)
             return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
+            return emit_statement(node) if STRAIGHT_LINE_KINDS.include?(node.kind)
 
+            # What a statement that may run its parts or not, or run them again, checks of an index
+            # holds only inside it (#emit_slot_address).
+            kept = @indexes_checked.dup
             emit_statement(node)
+            @indexes_checked = kept
           end
+
+          # The statements that run every part of themselves, once, in order.
+          STRAIGHT_LINE_KINDS = %i[set add sub copy negate abs negate_abs clamp list_set].freeze
 
           def emit_nothing(_node) = nil
           def emit_children(node) = node.children.each { |child| statement(child) }
@@ -663,10 +672,13 @@ module VBlank
                                 (node.stop_when.nil? || value_keeps_counters?(node.stop_when))
 
             @counters_held[counter] = @asm.d(register)
+            @indexes_checked.delete(counter)
+            (@counts_only_the_loop_writes ||= []) << counter if counter == node.index
             begin
               yield
             ensure
               @counters_held.delete(counter)
+              @counts_only_the_loop_writes&.delete(counter)
             end
             @asm.move(:l, @asm.d(register), var(counter))
           end
@@ -886,13 +898,39 @@ module VBlank
             place, = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }
             full = always_full_lists[node.name]
             @asm.lea(at(place), @asm.a(0))
-            unless full && index_inside?(node.index, full)
+            unless full && (index_inside?(node.index, full) || index_checked_below?(node.index, full))
               emit_list_length(full, index + 1)
               @asm.cmp(:l, @asm.d(index + 1), @asm.d(index))
               @asm.branch_over(:cs, LIST_FAULT_JUMP_BYTES)
               @asm.jmp(@asm.abs_l(fault))
+              note_index_checked(node.index, full) if full
             end
             emit_slot_scaling(node, index)
+          end
+
+          # AN INDEX CHECKED ONCE A TURN. A loop's count held in a register, which only the loop
+          # writes (#with_counter_held), stays the same through a turn of its body. So once one read
+          # or write of a list that always holds its capacity has checked it, every later read or
+          # write that turn of a list at least as long is inside too, and needs no check: the first
+          # check stops the game, as the interpreter stops it, before anything after it runs. A loop
+          # over four lists at one index checks it once a turn, not at each of eight slots.
+          #
+          # "Later" is in the order the turn runs, so a check in a part that may not run, or may run
+          # more than once (a test's side, an inner loop), counts only inside that part (#statement).
+          #
+          # Is +index+ such a count, already checked this turn against +count+ items or fewer?
+          def index_checked_below?(index, count)
+            name = variable_named(index)
+            below = name && @indexes_checked&.fetch(name, nil)
+            !below.nil? && below <= count
+          end
+
+          # +index+ checked just now against the +count+ items of a list that always holds them.
+          def note_index_checked(index, count)
+            name = variable_named(index)
+            return unless name && @counts_only_the_loop_writes&.include?(name)
+
+            @indexes_checked[name] = [@indexes_checked.fetch(name, count), count].min
           end
 
           # JMP to a whole address: the instruction's word and the address's two.

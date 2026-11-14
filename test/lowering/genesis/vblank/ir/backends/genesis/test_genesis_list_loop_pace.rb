@@ -40,6 +40,22 @@ module ListLoopGames
     end
   end
 
+  # A loop of six turns over a list of four and a list of eight, reading the list +first+ names and
+  # then writing the one +second+ names, and counting its turns before either.
+  def self.past_the_end_game(first, second)
+    VBlank.game("TEN PARTS", consoles: %i[genesis]) do
+      lists = { short: list(:short, capacity: 4, full_of: 1), long: list(:long, capacity: 8, full_of: 2) }
+      count = var :count, 6
+      turns = var :turns, 0
+      game_loop do
+        repeat(count) do |part|
+          turns.increase!(1)
+          lists.fetch(second)[part] = lists.fetch(first)[part] + 1
+        end
+      end
+    end
+  end
+
   RUN = 64
 
   # A run of 64 of a table's entries copied into a list every fourth pass, a run further on each
@@ -64,9 +80,9 @@ class TestGenesisListLoopPace < Minitest::Test
   # How much of a frame the pass that runs the loop may take over a pass that does not: with the
   # count written in the game, and with a count the game keeps. Measured, each list read or
   # written is a few instructions where the game reads it, with no call, and a check of the index
-  # only where the count is not known; and the loop's count is kept in a register.
+  # only where the count is not known, once a turn; and the loop's count is kept in a register.
   MOST_OF_A_FRAME = 0.034
-  MOST_OF_A_FRAME_COUNTED = 0.045
+  MOST_OF_A_FRAME_COUNTED = 0.034
 
   # ...and a run of 64 entries copied from a table into a list. Measured, an entry is one
   # instruction and the count's, where a call for its place in the table and two for its slot
@@ -88,6 +104,18 @@ class TestGenesisListLoopPace < Minitest::Test
       # Five loops of three across, and the fourth part a step quicker each loop.
       assert_equal [15, 15, 15, 25, 15, 15, 15, 15, 15, 15], run.list(:xs)
       assert_equal [118] * ListLoopGames::PARTS, run.list(:ys), "five loops of two up, held to 0..127"
+    end
+  end
+
+  # A count the game keeps past the end of a list stops the game at the first read or write past
+  # it, as the interpreter stops it, whichever list the turn reaches first: the index is checked
+  # once a turn, and again for a list shorter than any checked so far that turn.
+  def test_a_count_past_a_list_stops_the_game_at_the_first_slot_past_it
+    [%i[short long], %i[long short]].each do |first, second|
+      err = assert_raises(VBlank::IR::Backends::Reference::ProgramError) do
+        game_player.run(ListLoopGames.past_the_end_game(first, second).program(console: :genesis), frames: 4)
+      end
+      assert_match(/short/, err.message, "#{first} read first")
     end
   end
 
