@@ -972,7 +972,7 @@ module VBlank
               end
 
               unless halves
-                value(node.value)
+                slot_value(node.value, width)
                 halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
               end
               return emit_write_slot_at_x(slot, width, halves, x: false)
@@ -983,12 +983,12 @@ module VBlank
             if halves
               emit_slot_into_x(place, width, index_halves(node.index), checked: checked)
             elsif index
-              value(node.value)
+              slot_value(node.value, width)
               emit_slot_into_x(place, width, index, checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
             else
               push_value(node.index)
-              value(node.value)
+              slot_value(node.value, width)
               pull_into(R1)
               emit_slot_into_x(place, width, [@asm.direct(R1), @asm.direct(R1 + 2)], checked: checked)
               halves = [@asm.direct(R0), @asm.direct(R0 + 2)]
@@ -1122,6 +1122,96 @@ module VBlank
 
             @asm.lda(halves.last)
             @asm.sta(slot_operand(slots, 2, x))
+          end
+
+          # A NUMBER GOING INTO A BYTE OR HALF SLOT keeps only the slot's low bits
+          # (Reference::ListValue#wrap_to_width), and the low bits of a sum, a difference or a bit
+          # operation come from the low bits of its two sides alone. So such a number made of those,
+          # of slots, variables and numbers written in the program, is worked out in its low half
+          # only: the high half is work whose answer the slot throws away. The console's own games
+          # keep such fields in 8- or 16-bit memory and work them that way. Any other number is
+          # worked out whole. R0's low half holds the number to store; its high half is not written.
+          def slot_value(node, width)
+            return value(node) if width == 4 || folded(node) || !(sum_in_halves?(node) || narrow_slot_read?(node))
+
+            emit_low_half(node, width == 1 ? 8 : 16)
+            @asm.sta(@asm.direct(R0))
+          end
+
+          # The deepest a sum is worked out a half at a time by #emit_low_half; deeper, it is worked
+          # out whole.
+          MOST_LOW_HALF_DEPTH = 4
+
+          def narrow_slot_read?(node)
+            node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name) && list_placed(node)[2] < 4
+          end
+
+          # A = the low +bits+ (8 or 16) of +node+'s number, the bits above them anything when +bits+
+          # is 8. The sides of a sum are worked out in the interpreter's order, the left first.
+          def emit_low_half(node, bits, depth = 0)
+            if (operand = low_half_operand(node, bits))
+              return @asm.lda(operand)
+            end
+            return emit_low_half_of_slot(node, bits) if node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+
+            unless sum_in_halves?(node) && depth < MOST_LOW_HALF_DEPTH
+              value(node)
+              return @asm.lda(@asm.direct(R0))
+            end
+
+            if (right = low_half_operand(node.rhs, bits))
+              emit_low_half(node.lhs, bits, depth + 1)
+              emit_carry_for(node.op)
+              return emit_half_sum(node.op, right)
+            end
+
+            # The left side kept on the stack while the right is worked out; a subtraction is then
+            # the left plus the right turned round, plus one.
+            emit_low_half(node.lhs, bits, depth + 1)
+            @asm.pha
+            emit_low_half(node.rhs, bits, depth + 1)
+            if node.op == :-
+              @asm.eor(0xFFFF)
+              @asm.sec
+              @asm.adc(@asm.stack(1))
+            else
+              emit_carry_for(node.op)
+              emit_half_sum(node.op, @asm.stack(1))
+            end
+            @asm.ply # the left side off the stack, A kept
+          end
+
+          # Where +node+'s low half can be read from as it is: a number written in the program, a
+          # variable, or a slot at a place known here. A byte slot's word holds the next slot's byte
+          # above it, so it is such a place only where the bits above the low eight do not matter.
+          def low_half_operand(node, bits)
+            known = folded(node)
+            return @asm.imm(known & 0xFFFF) if known
+
+            if (var = variable_named(node))
+              return at_place(place_of(var))
+            end
+            return unless node.is_a?(Node) && node.kind == :list_get && !front_dropped_lists.include?(node.name)
+
+            place, _capacity, width = list_placed(node)
+            slot = (width > 1 || bits == 8) && fixed_slot_address(node, place, width)
+            @asm.long(slot) if slot
+          end
+
+          # A = the low +bits+ of a slot read at its index, a byte slot's sign carried into the high
+          # byte where all sixteen are wanted.
+          def emit_low_half_of_slot(node, bits)
+            place, _capacity, width = list_placed(node)
+            emit_slot_into_x(place, width, index_halves(node.index), checked: !index_inside_full_list?(node.name, node.index))
+            @asm.lda(@asm.long_x(place + Runtime::Lists::HEADER))
+            return unless width == 1 && bits == 16
+
+            positive = fresh("byte_positive")
+            @asm.and_a(0x00FF)
+            @asm.cmp(0x0080)
+            @asm.bcc(positive)
+            @asm.ora(0xFF00)
+            @asm.label(positive)
           end
 
           # A LIST PUT IN ORDER, written in place (Reference#exec_list_sort): an insertion sort over

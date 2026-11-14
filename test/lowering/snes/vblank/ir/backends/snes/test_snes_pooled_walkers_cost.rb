@@ -127,19 +127,20 @@ class TestSNESPooledWalkersCost < Minitest::Test
     rom.profile(out: StringIO.new, settle: 10, frames: 20).fewest_lines_spare
   end
 
-  # Of the frame's 262 lines, the walkers and the cells leave close to half. A field read in the
-  # pool's own walk tests no index, and a sprite's numbers go to the routine placing it without the
-  # stack.
+  # Of the frame's 262 lines, the walkers and the cells leave over half. A field read in the pool's
+  # own walk tests no index, and a sprite's numbers go to the routine placing it without the stack.
   def test_three_pooled_walkers_beside_tile_work_leave_room
-    assert_operator lines_spare(self.class.game(walkers: true)), :>=, 122
+    assert_operator lines_spare(self.class.game(walkers: true)), :>=, 136
   end
 
-  # The walkers cost the frame less than a quarter of it, over the same game without them.
-  def test_three_pooled_walkers_cost_under_a_quarter_of_the_frame
+  # The walkers cost the frame about a fifth of it, over the same game without them. A byte field's
+  # sum is worked out in its low half (Lowering#slot_value); the rest of what they cost is the
+  # sums of their places, which are whole numbers.
+  def test_three_pooled_walkers_cost_about_a_fifth_of_the_frame
     without = lines_spare(self.class.game(walkers: false))
     with = lines_spare(self.class.game(walkers: true))
 
-    assert_operator without - with, :<, 66
+    assert_operator without - with, :<, 55
   end
 
   # The walk's field reads without the index test, and the sprites placed from the order the pool
