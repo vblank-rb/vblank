@@ -65,8 +65,8 @@ module VBlank
                                 "of the sound chip has a volume for the left speaker and one for the right."
 
       # What a recorded note that glides does, on a console whose build makes it.
-      GLIDES_CARRY_ON = "A recorded note with `glides: true` carries on the note sounding at a new pitch: it " \
-                        "fades as it was, and the voice is not struck again."
+      GLIDES_CARRY_ON = "A recorded note with `glides: true` carries on the note sounding at a new pitch, " \
+                        "loudness and side: it fades as it was, and the voice is not struck again."
 
       # What a Score note's own rattle and its own waveform do (Audio::Score::Note#metallic, #wave), a
       # sentence of its own: played as the note starts, or on a console whose player puts a new music

@@ -44,6 +44,22 @@ class TestSNESGlidingNotes < Minitest::Test
     assert_equal 0x1964, pitch_of(played(notes, frames: 30)), "after the glide"
   end
 
+  # The left and right volumes of the voice.
+  private def volumes_of(run) = [run.dsp_registers.getbyte(VOICE), run.dsp_registers.getbyte(VOICE + 1)]
+
+  # A glide with a volume and a side of its own: the voice's two volumes are the glide's, the near side at
+  # its loudness and the far side turned down, as a note struck there would be, with no key-on.
+  def test_a_glide_takes_its_own_loudness_and_side
+    loud = Score::Note.new(at: 0, hz: hz_of(0x1000), volume: 15)
+    glided = played([loud, Score::Note.new(at: 3, hz: hz_of(0x1000), volume: 6, pan: -0.5, length: 20, glides: true)], frames: 30)
+    struck = played([loud, Score::Note.new(at: 3, hz: hz_of(0x1000), volume: 6, pan: -0.5, length: 20)], frames: 30)
+    left, right = volumes_of(glided)
+
+    assert_operator left, :<, volumes_of(played([loud], frames: 30)).first, "quieter than the note it carried on"
+    assert_equal (left * 32 / 64.0).round, right, "the right turned down by half"
+    assert_equal volumes_of(struck), [left, right], "as a note struck there"
+  end
+
   def test_a_glide_with_nothing_sounding_stays_silent
     run = played([Score::Note.new(at: 3, hz: hz_of(0x1964), length: 20, glides: true)], frames: 30)
 

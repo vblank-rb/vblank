@@ -145,7 +145,7 @@ module VBlank
               emit_play(asm, at, place)
               emit_take(asm, at, place, sides: sides)
               emit_note(asm, at, place)
-              emit_glide(asm, at, place)
+              emit_glide(asm, at, place, sides: sides)
               emit_note_release(asm, at, place)
               emit_stop(asm, at, place)
               emit_frame(asm, at, place)
@@ -330,9 +330,10 @@ module VBlank
             end
 
             # rt_recordings_glide(a0 = row, a1 = owner): the note the owner's part sounds, if it has one, reads on
-            # at the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and its voice's
-            # pitch register, with no key on, so its shape goes on where it was. v0 = 1 when it had a note.
-            def emit_glide(asm, at, place)
+            # at the row's pitch and loudness, from the sides the row names (Reference::Mixer#glide_music_note):
+            # how far a frame takes it, and its voice's pitch and volume registers, with no key on, so its shape
+            # goes on where it was. v0 = 1 when it had a note.
+            def emit_glide(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_glide")
               Music.enter(asm, %i[s0 s1])
@@ -343,15 +344,17 @@ module VBlank
               asm.addiu(:s1, :v0, -1)
               asm.sw(:s1, at.call(TAKEN), :gp) # the place the music volume reaches
               emit_place_at(asm, :s1)
-              { ADVANCE => PLACE_ADVANCE, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }.each do |from, to|
+              { ADVANCE => PLACE_ADVANCE, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION, VOLUME => LOUD }.each do |from, to|
                 asm.lw(:t0, from, :s0)
                 asm.sw(:t0, place.call(to), :t9)
               end
+              emit_copy_row_sides(asm, at) if sides
               emit_voice_number(asm, :a0)
               asm.sll(:a0, :a0, 4)
               asm.addiu(:a0, :a0, h::SPU_PITCH)
               asm.lw(:a1, PITCH, :s0)
               asm.jal("rt_spu_write")
+              asm.jal("rt_recordings_volume")
               asm.li(:v0, 1)
               asm.label("rt_recordings_glide_done")
               Music.leave(asm, %i[s0 s1])

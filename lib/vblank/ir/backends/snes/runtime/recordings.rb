@@ -657,9 +657,9 @@ module VBlank
             end
 
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has one, reads on at
-            # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and its
-            # voice's pitch registers, with no key-on, so its fade goes on where it was. A = 1
-            # when it had a note, nought when not.
+            # the row's pitch and loudness, from the sides the row names (Reference::Mixer#glide_music_note):
+            # how far a frame takes it, its voice's pitch registers and its volumes, with no key-on, so its
+            # fade goes on where it was. A = 1 when it had a note, nought when not.
             def emit_glide(asm, at, memory, heard)
               place = place_field(asm, memory)
               row = ->(field) { asm.long_x("recording_plays", field) }
@@ -676,14 +676,25 @@ module VBlank
               asm.label("rt_recordings_glide_found")
               asm.sty(at.call(PLACE))
               asm.ldx(at.call(ROW))
-              { ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }.each do |from, to|
+              { ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION,
+                VOLUME => LOUD }.each do |from, to|
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
+              end
+              if memory.reserved?(SIDES) # the glide's sides, as a note's are taken (rt_recordings_take)
+                asm.txa
+                (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
+                asm.tax
+                asm.lda(asm.long_x("recording_sides", 0))
+                asm.sta(place.call(PLACE_SIDES))
               end
               asm.lda(at.call(PLACE))
               asm.cmp(heard)
               asm.bcs("rt_recordings_glide_done")
               emit_queued_entry(asm, at, Sound::NOTE_PITCH)
+              # ...and its loudness and sides from the row, as a struck note's (a music volume scales
+              # it after, as it does one: the player's rt_recordings_loud).
+              asm.jsr(asm.abs("rt_recordings_heard_volume"))
               asm.label("rt_recordings_glide_done")
               asm.lda(1)
               asm.rtl

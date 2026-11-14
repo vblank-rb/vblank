@@ -436,9 +436,9 @@ module VBlank
         # off its event (Music.without_trailing_nils).
         #
         # +glides: true+ BENDS THE NOTE SOUNDING rather than striking a new one: on a part that
-        # plays a recording, the note reads on from where it has got to at this pitch, its loudness
-        # and shape going on as they were (Score::Note's `glides:`, the same word). A run of them a
-        # few frames apart is a bend that sweeps.
+        # plays a recording, the note reads on from where it has got to at this pitch, and at this
+        # note's +volume+ and +pan+ or the part's, its shape going on as it was (Score::Note's
+        # `glides:`, the same word). A run of them a few frames apart is a bend that sweeps.
         def note(pitch, duration, envelope: nil, volume: nil, decay: nil, swell: nil, slide_up: nil, slide_down: nil,
                  vibrato: nil, pan: nil, duty: nil, glides: nil)
           where = "a note of the part #{part_label.inspect}"

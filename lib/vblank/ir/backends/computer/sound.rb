@@ -1087,6 +1087,8 @@ module VBlank
           # (#build_start_file_sound_fills).
           def note_sound_row(note, part)
             _, pitch, instrument, _, envelope = note
+            # A glide's step reads the recording its part's note sounds on (IR::Tunes.struck_instrument).
+            instrument = Tunes.struck_instrument(part, note) if Tunes.glides?(note)
             sample = @sound_log.recording(instrument || part.instrument)
             info = Assets::Sample.of(sample)
             own_shape = envelope || part.envelope

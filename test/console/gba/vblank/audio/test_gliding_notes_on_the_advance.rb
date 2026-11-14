@@ -8,7 +8,7 @@ require "gliding_note_tests"
 # in test/gliding_note_tests.rb), and the sound the Advance's mix makes of one, byte for byte against
 # the interpreter's: the cartridge on the gba run, the game as C, JavaScript and Ruby on theirs.
 class TestGlidingNotesOnTheAdvance < Minitest::Test
-  include GlidingNoteTests
+  include GlidingShapedNoteTests
   include MixedSound
 
   # A part that bends its note up and down while it sounds, a glide every six frames four times and
@@ -26,7 +26,7 @@ class TestGlidingNotesOnTheAdvance < Minitest::Test
           v.note :C4, :eighth
           4.times { |n| v.note 262 + (n * 10), :sixteenth, glides: true }
           v.note :E4, :eighth, glides: true
-          v.note :D4, :eighth, glides: true
+          v.note :D4, :eighth, glides: true, volume: 6, pan: :left
           v.note :G4, :quarter, pan: :left
           v.rest :half
         end
@@ -45,7 +45,7 @@ class TestGlidingNotesOnTheAdvance < Minitest::Test
   # The same bends as a sound effect's, which the effects' player walks.
   private def bending_effect
     notes = [Score::Note.new(at: 0, key: :C4), Score::Note.new(at: 2, key: :E4, glides: true),
-             Score::Note.new(at: 4, hz: 300, glides: true, length: 4)]
+             Score::Note.new(at: 4, hz: 300, glides: true, length: 4, volume: 5)]
     b = VBlank::Builder.new
     b.instance_eval do
       screen :bitmap

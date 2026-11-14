@@ -20,8 +20,8 @@ class TestGlidingNoteOption < Minitest::Test
     assert_match(/plays a recording/, error_of(Score::Note.new(at: 0, key: :C4, glides: true)).message)
   end
 
-  def test_a_note_that_glides_says_nothing_but_its_pitch
-    [{ instrument: :other }, { volume: 8 }, { envelope: { attack: 1, decay: 1, sustain: 8, release: 1 } }].each do |said|
+  def test_a_note_that_glides_names_no_recording_or_shape
+    [{ instrument: :other }, { envelope: { attack: 1, decay: 1, sustain: 8, release: 1 } }].each do |said|
       note = Score::Note.new(at: 0, key: :C4, glides: true, **said)
 
       assert_match(/carries on/, error_of(note, plays: :tone).message, said.keys.first.to_s)
@@ -43,8 +43,7 @@ class TestGlidingNoteOption < Minitest::Test
     assert_match(/plays a recording/, song_block_error(plays: nil).message)
   end
 
-  def test_a_song_blocks_note_that_glides_says_nothing_but_its_pitch
-    assert_match(/carries on/, song_block_error(volume: 8).message)
+  def test_a_song_blocks_note_that_glides_names_no_shape
     assert_match(/carries on/, song_block_error(envelope: { release: 0.2 }).message)
   end
 

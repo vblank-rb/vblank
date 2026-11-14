@@ -69,8 +69,10 @@ module VBlank
     #                      place of the key's pitch; more than 0 and 524,288 Hz at most. The key byte
     #                      must still be 127 or less: past that the note is a rest
     #   (glides)           GLIDES in the names, on a part that plays a recording: the note does not
-    #                      strike, and the one sounding carries on at its pitch (`glides: true`). Its
-    #                      instrument, volume and loudness are the part's own (255, 255, 65535)
+    #                      strike, and the one sounding carries on at its pitch (`glides: true`), at
+    #                      its volume or loudness and its shade, each the part's own where it names
+    #                      none. Its instrument is the part's own (255): it reads the recording the
+    #                      note sounding struck
     #   25    metallic     on the noise voice, 1 for a hit that rattles (the short, metallic hiss)
     #                      and 0 for one that does not, in place of the part's `metallic:` (a
     #                      Score::Note's `metallic:`)

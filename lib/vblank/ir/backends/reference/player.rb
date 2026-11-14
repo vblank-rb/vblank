@@ -561,7 +561,7 @@ module VBlank
           # at +frequency+, and it is true when there was one.
           def play_recorded_note(owner:, rank:, name:, frequency:, envelope:, loudness:, glides: false)
             return @mixer.release_music(owner) if frequency.zero?
-            return @mixer.glide_music_note(owner, frequency) if glides
+            return @mixer.glide_music_note(owner, frequency, loudness) if glides
 
             !@mixer.start_music_note(owner: owner, rank: rank, name: name, frequency: frequency,
                                      loudness: loudness, envelope: envelope).nil?

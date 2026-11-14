@@ -346,13 +346,14 @@ module VBlank
           end
 
           # A NOTE THAT GLIDES: the voice sounding +owner+'s note, if it still has one, reads on from
-          # where it has got to at +frequency+. Its loudness and its shape go on as they were. True
-          # when the part had a note sounding.
-          def glide_music_note(owner, frequency)
+          # where it has got to at +frequency+, and plays at +loudness+ from here (the glide's own
+          # volume, or its part's, as a struck note's), set as the music volume sets one
+          # (#rescale_music). Its shape goes on as it was. True when the part had a note sounding.
+          def glide_music_note(owner, frequency, loudness)
             slot = sounding_slot(owner) or return false
             voice = @slots[slot]
             voice.step = IR::Mixing.step(@samples.fetch(voice.name), frequency, @clock.rate)
-            true
+            rescale_music(owner, loudness)
           end
 
           # THE MUSIC VOLUME HAS MOVED: the voice sounding +owner+'s note, if it still has one,

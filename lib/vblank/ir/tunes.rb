@@ -174,6 +174,18 @@ module VBlank
       # Whether +event+ carries on the note sounding at a new pitch, rather than striking one.
       def glides?(event) = event[Audio::Music::Part::GLIDE_SLOT] == true
 
+      # THE RECORDING A GLIDE READS ON, as a build that works a glide's speed out ahead must name it:
+      # the one the note before it in +part+ struck, the last that sounds and does not glide (its own
+      # instrument, or its part's), which is the note sounding when the glide comes, first time round
+      # and every time after (a song coming round puts every part as it was then). The interpreter
+      # reads the voice sounding instead (Reference::Mixer#glide_music_note), which is the same. The
+      # part's own for a glide with no note struck before it, which then has nothing to carry on.
+      def struck_instrument(part, event)
+        at = part.events.rindex { |each| each.equal?(event) } || 0
+        struck = part.events.first(at).reverse.find { |each| each[1].positive? && !glides?(each) }
+        struck&.at(2) || part.instrument
+      end
+
       # WHETHER A DRUM HIT RATTLES (the noise voice's short, metallic hiss): its note's own setting
       # where it was given one (Score::Note#metallic), else its part's.
       def said_metallic(part, event)

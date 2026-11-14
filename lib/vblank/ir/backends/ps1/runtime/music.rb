@@ -929,9 +929,8 @@ module VBlank
 
             # The recorded note at NOTE under the music volume (Reference::Player#record_note_volume): the part's
             # level record held for a new level to reach (nought for a rest), the part in HELD_ORDER, its
-            # loudness at the level logged, and a note struck given that loudness. A note that glides strikes
-            # nothing, so the note it carries on keeps the loudness it was struck at
-            # (Reference::Mixer#glide_music_note); its record is held, and a new level reaches the note at it.
+            # loudness at the level logged, and the place the note struck or glided on given that loudness
+            # (Reference::Mixer#glide_music_note plays a glide at its own loudness, as a strike).
             def emit_recorded_note_level(asm, at)
               m = PS1::Music
               emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
@@ -945,10 +944,6 @@ module VBlank
               emit_part_listed(asm, at, "rt_music_recorded_level_listed")
               emit_field(asm, at, :a0, NOTE, m::NOTE_WOBBLE)
               emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
-              asm.andi(:t2, :t3, m::GLIDES)
-              asm.beq(:t2, :zero, "rt_music_recorded_level_strikes")
-              asm.move(:t3, :zero) # a glide: its loudness logged, and no place given it
-              asm.label("rt_music_recorded_level_strikes")
               asm.jal("rt_music_recorded_loudness")
             end
 

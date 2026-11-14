@@ -290,11 +290,13 @@ int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, cons
   return 1;
 }
 
-/* Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch. */
-int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound) {
+/* Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch, at +loudness+. */
+int32_t rg_mix_glide_music_note(int32_t effect, int32_t lane, const int32_t *sound, int32_t loudness) {
   int32_t at = sounding_voice(effect, lane);
   if (at < 0) return 0;
   voices[at].step = sound[1];
+  voices[at].loudness = loudness;
+  if (!voices[at].shaped) voices[at].gain = loudness << LOUDNESS_TO_GAIN;
   return 1;
 }
 

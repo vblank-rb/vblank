@@ -578,6 +578,8 @@ module VBlank
           pan = IR::Tunes.note_pan(part, event)
           row_options = row_options.merge(pan: pan) unless VBlank::Audio::Pan.centered?(pan)
           if sounds
+            # A glide's pitch reads the recording its part's note sounds on (IR::Tunes.struck_instrument).
+            instrument = IR::Tunes.struck_instrument(part, event) if IR::Tunes.glides?(event)
             row = @recordings.recorded_note_row(instrument || part.instrument, frequency, volume,
                                                 envelope || part.envelope, **row_options) + 1
           else

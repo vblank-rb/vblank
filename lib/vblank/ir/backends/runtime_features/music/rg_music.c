@@ -146,8 +146,8 @@ static inline int32_t mixer_start_note(int32_t effect, int32_t lane, int32_t ran
   (void)effect, (void)lane, (void)rank, (void)sound, (void)loudness;
   return 0;
 }
-static inline int32_t mixer_glide_note(int32_t effect, int32_t lane, const int32_t *sound) {
-  (void)effect, (void)lane, (void)sound;
+static inline int32_t mixer_glide_note(int32_t effect, int32_t lane, const int32_t *sound, int32_t loudness) {
+  (void)effect, (void)lane, (void)sound, (void)loudness;
   return 0;
 }
 static inline int32_t mixer_release_note(int32_t effect, int32_t lane) {
@@ -644,8 +644,9 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
     mixer_release_note(-1, part->tone);
   } else {
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
-    int32_t heard = note[5] & GLIDES ? mixer_glide_note(-1, part->tone, numbers)
-                                     : mixer_start_note(-1, part->tone, song[3], numbers, level_variable ? scaled_volume(loudness) : loudness);
+    int32_t heard_loudness = level_variable ? scaled_volume(loudness) : loudness;
+    int32_t heard = note[5] & GLIDES ? mixer_glide_note(-1, part->tone, numbers, heard_loudness)
+                                     : mixer_start_note(-1, part->tone, song[3], numbers, heard_loudness);
     if (!heard) return;
   }
   rg_sound_log("note %d %d", (int)playing, (int)pitch);
@@ -862,7 +863,7 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
     int32_t loudness = note[2]; /* a recorded note's volume is written as its loudness, out of 512 */
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
     int32_t heard = !sounds            ? mixer_release_note(effect, part->tone)
-                    : note[5] & GLIDES ? mixer_glide_note(effect, part->tone, numbers)
+                    : note[5] & GLIDES ? mixer_glide_note(effect, part->tone, numbers, loudness)
                                        : mixer_start_note(effect, part->tone, rank, numbers, loudness);
     if (heard) rg_sound_log("note %d %d", (int)number, (int)pitch);
     return;
@@ -1353,10 +1354,9 @@ static void start_file_event_voice(start_file_event *event, const uint8_t *recor
   int32_t hz = record[22] | (record[23] << 8) | (record[24] << 16);
   /* A noise clock is played in place of a pitch between keys. */
   if ((names & RG_NAMES_HZ) && event->clock < 0 && hz >= 1 && hz <= RG_NOTE_MOST_HZ) event->hz = hz, event->key = 0;
-  if (names & RG_NAMES_GLIDES) {
-    /* It carries on the note sounding, with that note's instrument and volume. */
-    event->glides = 1, event->instrument = 0, event->recording = -1, event->volume = RG_NOTE_VOLUMES;
-  }
+  /* It carries on the note sounding, at its own volume or the part's (rg_music_fill_notes gives it the
+   * recording that note struck). */
+  if (names & RG_NAMES_GLIDES) event->glides = 1;
   if ((names & RG_NAMES_METALLIC) && record[25] <= RG_NOTE_MOST_METALLIC) event->metallic = record[25];
   /* A wave the part does not name is the part's own. */
   if ((names & RG_NAMES_WAVE) && record[26] < wave_count) event->wave = record[26];
@@ -1481,8 +1481,9 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
     order[at] = i;
   }
 
-  /* Each record is an event, and a rest where its length runs out, unless the next has begun. */
-  int32_t made = 0;
+  /* Each record is an event, and a rest where its length runs out, unless the next has begun. A glide
+   * reads the recording the note before it struck (IR::Tunes.struck_instrument). */
+  int32_t made = 0, struck_instrument = 0, struck_recording = -1;
   for (int32_t n = 0; n < records; n++) {
     const uint8_t *record = rg_start_file_bytes() + records_at + (order[n] * record_bytes);
     int32_t tick = record[0] | (record[1] << 8), length = record[2] | (record[3] << 8);
@@ -1495,6 +1496,11 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
                               start_file_event_volume(record[6], record[8] | (record[9] << 8), rules[RG_NOTES_RECORDED]),
                               start_file_event_side(record[7], rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1};
     if (takes && key >= 0) start_file_event_voice(&event, record, takes, start_file_wave_rules(rules)[0]);
+    if (event.glides) {
+      event.instrument = struck_instrument, event.recording = struck_recording;
+    } else if (key >= 0) {
+      struck_instrument = event.instrument, struck_recording = event.recording;
+    }
     /* A recorded note between keys has a row of its own, one for each record. */
     if (event.hz >= 0 && hz_rules[0] == RG_HZ_RECORDED) {
       event.row = hz_rules[3] + order[n];

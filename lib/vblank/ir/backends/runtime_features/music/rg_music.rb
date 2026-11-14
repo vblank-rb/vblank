@@ -449,11 +449,11 @@ def rg_play_recorded_note(part, note)
     rg_mix_release_music(-1, part.tone)
   else
     numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
+    heard_loudness = @rg_level_variable ? rg_scaled_volume(loudness) : loudness
     heard = if music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(-1, part.tone, numbers)
+              rg_mix_glide_music_note(-1, part.tone, numbers, heard_loudness)
             else
-              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers,
-                                      @rg_level_variable ? rg_scaled_volume(loudness) : loudness)
+              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers, heard_loudness)
             end
     return if heard == 0
   end
@@ -639,7 +639,7 @@ def rg_play_effect_note(effect, part, note)
     heard = if !sounds
               rg_mix_release_music(effect, part.tone)
             elsif music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(effect, part.tone, numbers)
+              rg_mix_glide_music_note(effect, part.tone, numbers, volume)
             else
               rg_mix_start_music_note(effect, part.tone, rank, numbers, volume)
             end
@@ -1091,12 +1091,9 @@ def rg_start_file_event_voice(event, record, takes, wave_count)
     event.hz = hz
     event.key = 0
   end
-  return unless names.anybits?(RG_NAMES_GLIDES)
-
-  event.glides = 1
-  event.instrument = 0
-  event.recording = -1
-  event.volume = RG_NOTE_VOLUMES
+  # It carries on the note sounding, at its own volume or the part's (rg_music_fill_notes gives it the
+  # recording that note struck).
+  event.glides = 1 if names.anybits?(RG_NAMES_GLIDES)
 end
 
 # rg_music.c's start_file_voice_numbers: [fifth, sixth] with +event+'s settings in their places, a
@@ -1224,6 +1221,9 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
 
   events = []
   rest_of_part = RgStartFileEvent.new(0, -1, 0, -1, RG_NOTE_VOLUMES, RG_NOTE_SIDES, -1, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1)
+  # A glide reads the recording the note before it struck (IR::Tunes.struck_instrument).
+  struck_instrument = 0
+  struck_recording = -1
   records.each_with_index do |(tick, length, key, instrument, volume, pan, loudness, clock_byte, bytes, place), n|
     named = instrument < instruments
     played = key < RG_NOTE_KEYS ? key : -1
@@ -1233,6 +1233,13 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
                                  rg_start_file_event_volume(volume, loudness, rules[RG_NOTES_RECORDED]),
                                  rg_start_file_event_side(pan, rules[RG_NOTES_RECORDED]), clock, -1, -1, -1, -1, -1, -1, -1, 0, -1, -1)
     rg_start_file_event_voice(event, bytes, takes, rules[rg_start_file_wave_rules(rules)]) if takes != 0 && played >= 0
+    if event.glides == 1
+      event.instrument = struck_instrument
+      event.recording = struck_recording
+    elsif played >= 0
+      struck_instrument = event.instrument
+      struck_recording = event.recording
+    end
     # A recorded note between keys has a row of its own, one for each record.
     if event.hz >= 0 && rules[hz_rules] == RG_HZ_RECORDED
       event.row = rules[hz_rules + 3] + place

@@ -1,11 +1,13 @@
 # frozen_string_literal: true
 
 # ONE RECORDED NOTE MOVING THROUGH EXACT PITCHES, struck once, on every console whose build glides a
-# recorded note (Console::Description#glides_recordings): the Advance, the Super Nintendo and the
-# PlayStation. Each console's folder has a test file that includes these:
+# recorded note (Console::Description#glides_recordings): the Advance, the Super Nintendo, the Genesis
+# and the PlayStation. Each console's folder has a test file that includes these (GlidingShapedNoteTests
+# where the console shapes a recording, every one but the Genesis):
 #
 #   test/console/gba/vblank/audio/test_gliding_notes_on_the_advance.rb
 #   test/console/snes/vblank/audio/test_gliding_notes_on_the_super_nintendo.rb
+#   test/console/genesis/vblank/audio/test_gliding_notes_on_the_genesis.rb
 #   test/console/ps1/vblank/audio/test_gliding_notes_on_the_playstation.rb
 #
 # A recording that runs for 40 frames at its own pitch is the clock here: read twice as fast from
@@ -85,15 +87,13 @@ module GlidingNoteTests
     assert_operator frame_it_ends(song_block(glides: true)), :<, frame_it_ends(song_block(glides: false))
   end
 
-  # A note falling away goes on falling through a glide, where a strike starts it over.
-  def test_a_glide_keeps_the_fade_a_strike_starts_over
-    fade = { decay: 0.5, sustain: 0.2 }
-    level_of = lambda do |*notes|
-      game_player.tap { |run| run.run(song_of(*notes, envelope: fade), frames: 24) }.level_of(:tone)
-    end
-    first = Score::Note.new(at: 0, hz: ROOT)
+  # A glide with a volume and a side of its own plays on, struck once: the checked runs hold its voice's
+  # loudness to the interpreter's on every pass where the console's build keeps one (the PlayStation's).
+  def test_a_glide_with_its_own_volume_and_side_reads_on
+    quiet = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(glides: true, volume: 4, pan: -0.5))
+    struck = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(volume: 4, pan: -0.5))
 
-    assert_operator level_of.call(first, second_note(glides: true)), :<, level_of.call(first, second_note)
+    assert_operator frame_it_ends(quiet), :<, frame_it_ends(struck)
   end
 
   # The frame the note stops sounding, played a frame at a time.
@@ -113,5 +113,21 @@ module GlidingNoteTests
     struck = effect(Score::Note.new(at: 0, hz: ROOT), second_note)
 
     assert_operator frame_it_ends(glided), :<, frame_it_ends(struck)
+  end
+end
+
+# ...and on every console whose build also shapes a recording (the Genesis plays one flat out), a note
+# falling away goes on falling through a glide, where a strike starts it over.
+module GlidingShapedNoteTests
+  include GlidingNoteTests
+
+  def test_a_glide_keeps_the_fade_a_strike_starts_over
+    fade = { decay: 0.5, sustain: 0.2 }
+    level_of = lambda do |*notes|
+      game_player.tap { |run| run.run(song_of(*notes, envelope: fade), frames: 24) }.level_of(:tone)
+    end
+    first = Score::Note.new(at: 0, hz: ROOT)
+
+    assert_operator level_of.call(first, second_note(glides: true)), :<, level_of.call(first, second_note)
   end
 end

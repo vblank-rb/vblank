@@ -193,8 +193,8 @@ module VBlank
         # A NOTE ON A RECORDING CAN GIVE +hz+ IN PLACE OF A KEY too, for a pitch no key reaches: the
         # recording's own note, as a frequency, reads it at the rate it was recorded. And it can set
         # +glides: true+: it does not strike. The note sounding on its part carries on from where
-        # it has got to, fading as it was, at this pitch from here. If the part has no note sounding
-        # by then, nothing sounds.
+        # it has got to, fading as it was, at this pitch from here, and at this note's +volume+ and
+        # +pan+, or its part's. If the part has no note sounding by then, nothing sounds.
         #
         # A NOTE ON THE NOISE VOICE CAN SAY WHETHER IT RATTLES, `metallic: true` or `false`, in place
         # of its part's +metallic+: the short, metallic hiss or the full one. Another Game Boy game's
@@ -472,9 +472,10 @@ module VBlank
         NOISE_CLOCK_HZ_TEXT = Ractor.make_shareable(Sound::NOISE_CLOCK_HZ.digits.each_slice(3).map(&:join)
                                                                          .join(",").reverse)
 
-        # A note that sets +glides+ plays a recording and has a pitch to glide to. Everything else
-        # about the note it carries on is that note's, so it sets nothing else: an instrument, a
-        # volume or a shape here would have nothing to act on.
+        # A note that sets +glides+ plays a recording and has a pitch to glide to. It changes what
+        # the note sounding plays as it sounds: its pitch, and its loudness and side (its own
+        # `volume:` and `pan:`, or its part's, as a struck note's). The recording and its shape are
+        # the note's, so an instrument or a shape here would have nothing to act on.
         def refuse_bad_glide!(note, where, voice)
           unless [true, false].include?(note.glides)
             raise ArgumentError, "#{where} has `glides: #{note.glides.inspect}`. It must be true or false."
@@ -485,11 +486,11 @@ module VBlank
             raise ArgumentError, "#{where} has `glides: true`. Only a note of a part that plays a recording can glide. " \
                                  "It must have a `key:` or `hz:` to glide to."
           end
-          return unless note.instrument || note.volume || note.envelope
+          return unless note.instrument || note.envelope
 
-          raise ArgumentError, "#{where} has `glides: true` and its own instrument, volume or envelope. A note that " \
-                               "glides carries on the note that sounds, so it keeps that note's. Remove them, or " \
-                               "remove `glides: true` to strike a new note."
+          raise ArgumentError, "#{where} has `glides: true` and its own instrument or envelope. A note that " \
+                               "glides carries on the note that sounds, so it keeps that note's recording and " \
+                               "shape. Remove them, or remove `glides: true` to strike a new note."
         end
 
         # A note that gives +hz+ is on the noise voice or a recording, gives no key as well, and

@@ -472,8 +472,8 @@ module VBlank
       # noise voice and is not moved in pitch (a transpose or an offset of the part's could not move
       # it), and a glide on a part that plays a recording. A note given a slide that moves and
       # vibrato that moves, by itself or its part, holds its pitch still for the vibrato (`vibrato:
-      # :none`), where a build holding the record refuses it; a gliding note's instrument and volume
-      # are the part's own, as it carries on the note sounding; and a noise clock is played in
+      # :none`), where a build holding the record refuses it; a gliding note's instrument is the
+      # recording the note sounding struck, as it carries on that note; and a noise clock is played in
       # place of a pitch between keys.
       #
       # A voiced record's rattle is the note's on a part on the noise voice, and its wave on a part
@@ -620,7 +620,7 @@ module VBlank
           glides = settings[:glides]
           Audio::Score::Note.new(at: note.at, length: (note.length unless note.length.zero?),
                                  key: (key unless clock || pitch || settings[:hz]),
-                                 volume: (volume_of(note, where.recorded) unless glides),
+                                 volume: volume_of(note, where.recorded),
                                  instrument: (where.instruments[note.instrument] unless glides), pan: pan,
                                  noise_clock: clock, pitch_number: pitch, wave: (wave_of(bytes, note, where) if key), **settings)
         end
