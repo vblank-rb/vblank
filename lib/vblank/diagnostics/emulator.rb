@@ -225,7 +225,8 @@ module VBlank
       # play left there comes back into the same image once the core is shut — the emulator writes
       # the file as it shuts — so one image handed to two plays is a power cycle. Where the save
       # memory is in that file (after a chip's own RAM, before a clock's state) is the kit's to give
-      # (Console::Kit#save_file_of).
+      # (Console::Kit#save_file_of). The clock's state goes in and comes back with it
+      # (IR::SaveImage#clock_state).
       def with_cartridge(rom, file_name:, save: nil)
         kit = Console.for(rom.console)
         Dir.mktmpdir("vblank-play") do |dir|
@@ -233,16 +234,23 @@ module VBlank
           sav = path.sub(/\.\w+\z/, "") + kit.save_file_extension
           rom.write(path)
           layout = kit.save_file_of(rom)
-          File.binwrite(sav, layout.file_of(save.to_sav)) if save
+          File.binwrite(sav, layout.file_of(save.to_sav, save.clock_state)) if save
           core = kit.open_core(path, save_dir: dir)
           begin
             yield core
           ensure
             core.destroy
-            save.replace_with_sav(layout.memory_in(File.binread(sav)), from: "The cartridge's save memory") if save && File.size?(sav)
+            keep_save_left(save, layout, File.binread(sav)) if save && File.size?(sav)
           end
         end
       end
+
+      # +save+ made to hold the save memory and the clock's state in +file+, the emulator's save file.
+      def keep_save_left(save, layout, file)
+        save.replace_with_sav(layout.memory_in(file), from: "The cartridge's save memory")
+        save.keep_clock_state(layout.clock_in(file))
+      end
+      private_class_method :keep_save_left
 
       # Open a high-level probe on a ROM file path — the API that runs frames, reads
       # memory, and measures how many of a frame's scanlines the CPU burns. The analyzer

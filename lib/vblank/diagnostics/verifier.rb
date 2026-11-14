@@ -76,8 +76,18 @@ module VBlank
           file.byteslice(0, file.bytesize - clock_bytes)
         end
 
-        # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start from.
-        def file_of(memory) = memory_at.zero? ? memory : ("\0".b * memory_at) + memory
+        # The clock's own bytes in +file+, after the save memory, or nil for a file with none.
+        def clock_in(file)
+          return nil unless clock_bytes.positive? && file.bytesize > whole && file.bytesize % whole == clock_bytes
+
+          file.byteslice(file.bytesize - clock_bytes, clock_bytes)
+        end
+
+        # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start
+        # from, with the +clock+'s bytes after it where a run before left some (#clock_in).
+        def file_of(memory, clock = nil)
+          ("\0".b * memory_at) + memory + (clock || "".b)
+        end
       end
 
       # @param rom [VBlank::Cartridge::ROM, VBlank::Cartridge::GBCROM] a finished cartridge
@@ -472,14 +482,18 @@ module VBlank
       # in that file, and nil is what it hands back.
       #
       # A cartridge with a clock keeps that clock's own state in the same file, after the save
-      # chip, and those bytes are the clock's and not the save chip's, so they are left out. How
-      # many there are is the console's (SaveFileLayout). A cartridge with a clock and no save
-      # chip has only the clock's bytes there, and hands back nil too.
+      # chip, and those bytes are the clock's and not the save chip's, so they are left out of
+      # the save memory and kept beside it (IR::SaveImage#clock_state): a run started from this
+      # save finds the clock as this one left it, as a cartridge carries its clock from one
+      # power-on to the next. How many there are is the console's (SaveFileLayout). A cartridge
+      # with a clock and no save chip has only the clock's bytes there, and hands back nil too.
       def save_image
-        memory = save_bytes&.then { |bytes| kit.save_file_of(@rom).memory_in(bytes) }
-        return nil if memory.nil? || memory.empty?
+        bytes = save_bytes or return nil
+        layout = kit.save_file_of(@rom)
+        memory = layout.memory_in(bytes)
+        return nil if memory.empty?
 
-        IR::SaveImage.from_sav(memory, from: "The bytes of this cartridge's save memory")
+        IR::SaveImage.from_sav(memory, from: "The bytes of this cartridge's save memory").keep_clock_state(layout.clock_in(bytes))
       end
 
       # The save chip as it is now, as the bytes of the file the emulator keeps it in, or nil
@@ -1032,11 +1046,12 @@ module VBlank
       # Fill the chip before the console is turned on. The emulator looks for it as a file
       # named after the ROM, in the save directory, and reads it in as the chip's contents.
       # The file is as big as the cartridge's chip: a save memory made without a size takes the
-      # cartridge's, and one of another size is refused, as the interpreter refuses it.
+      # cartridge's, and one of another size is refused, as the interpreter refuses it. The clock
+      # a run before left beside the save goes after it, where the emulator reads it back.
       def write_save_memory
         program = @rom.source_program
         @save.use_memory!(IR::SaveLayout.memory_of(program)) if program
-        File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav))
+        File.binwrite(save_path, kit.save_file_of(@rom).file_of(@save.to_sav, @save.clock_state))
       end
 
       def save_path = File.join(@save_dir, "#{File.basename(@tempfile.path, '.*')}#{kit.save_file_extension}")

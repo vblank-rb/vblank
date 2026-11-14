@@ -328,18 +328,17 @@ module VBlank
       # A SAVE FILE READ FROM A PATH, which can be the emulator's own file and not the save memory
       # alone: a Super FX board's file has the chip's working RAM before the save, and a clock's
       # file the clock's bytes after it. Where the save memory is in it is the cartridge's to give
-      # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known.
+      # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known. The clock's
+      # bytes go with it (IR::SaveImage#clock_state).
       SaveFile = Data.define(:bytes, :from) do
-        def memory_for(cartridge)
-          memory = Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
-          Diagnostics::SaveBytes.save_holding(memory, from: from)
-        end
+        def memory_for(cartridge) = Playthrough.save_in(cartridge, bytes, from: from)
       end
 
-      # The save memory in +bytes+, the emulator's save file of +cartridge+, or nil when it holds none.
-      def self.save_memory_in(cartridge, bytes)
-        memory = bytes && Console.for(cartridge.console).save_file_of(cartridge).memory_in(bytes)
-        memory unless memory.nil? || memory.empty?
+      # The save in +bytes+, the emulator's save file of +cartridge+: its save memory, with the
+      # clock's bytes the emulator keeps after it.
+      def self.save_in(cartridge, bytes, from:)
+        layout = Console.for(cartridge.console).save_file_of(cartridge)
+        Diagnostics::SaveBytes.save_holding(layout.memory_in(bytes), from: from, clock_state: layout.clock_in(bytes))
       end
 
       # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built records how
@@ -549,10 +548,13 @@ module VBlank
         # The cartridge's save memory as the last frame left it, or nil for a cartridge with
         # none. Whatever size it is: a cartridge somebody else made can keep a save of a
         # size the framework has no model of, and that one comes back as its bytes. It is the
-        # save memory alone, without what else the emulator keeps in its file (Playthrough.save_memory_in).
+        # save memory alone, without what else the emulator keeps in its file, and the clock's
+        # bytes carried beside it, so a playthrough started from it finds the clock as this one
+        # left it (Playthrough.save_in).
         def save_left
-          memory = Playthrough.save_memory_in(@cartridge, @game.save_bytes)
-          memory && Diagnostics::SaveBytes.save_holding(memory, from: "The save this playthrough left")
+          bytes = @game.save_bytes or return nil
+          save = Playthrough.save_in(@cartridge, bytes, from: "The save this playthrough left")
+          save unless save.to_sav.empty?
         end
       end
 
