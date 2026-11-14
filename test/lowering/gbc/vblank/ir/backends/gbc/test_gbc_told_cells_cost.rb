@@ -14,13 +14,14 @@ class TestGBCToldCellsCost < Minitest::Test
   include PackBackgroundSetCellGames
 
   WRITES_A_PASS = 16
+  BANK_BYTES = 0x4000
 
-  # A game whose background is told +changes+ cells by a slot, writing WRITES_A_PASS of them a
-  # pass, each by a place it works out.
-  private def busy_game(folder, changes)
+  # A game whose background is told +changes+ cells by a slot, writing +writes+ of them a pass,
+  # each by a place it works out.
+  private def busy_game(folder, changes, writes: WRITES_A_PASS)
     from = map_cells_original(folder, :gbc)
     cells = MAP_TILES.flatten.length
-    VBlank.game("TOLD #{changes}", consoles: %i[gbc]) do
+    VBlank.game("TOLD #{changes} #{writes}", consoles: %i[gbc]) do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :video, at: TILES_AT, count: MAP_CELLS_VIDEO.length
@@ -35,7 +36,7 @@ class TestGBCToldCellsCost < Minitest::Test
       world = background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4, set_cells: pack[:changes]
       place = var :place, 0
       game_loop do
-        WRITES_A_PASS.times { |n| world.set_cell n % 4, (n / 4) % 2, place }
+        writes.times { |n| world.set_cell n % 4, (n / 4) % 2, place }
         place += 1
         place.store!(0) if place >= 3
       end
@@ -52,6 +53,30 @@ class TestGBCToldCellsCost < Minitest::Test
       many = idle_share(busy_game(folder, 200))
 
       assert_in_delta few, many, 0.005, "writing a cell of 200 told cells costs #{(few - many).round(4)} of a frame more than of 4"
+    end
+  end
+
+  # The table of told cells is kept once in the banks, however many lines write a cell: a port's
+  # high-score table writes each letter from a line of its own, and a table of 200 cells a line
+  # would fill the banks. What 12 more lines cost is the same whether 4 cells are told or 200:
+  # their code, and no table more.
+  def test_the_told_cells_are_kept_once_however_many_lines_write_them
+    Dir.mktmpdir do |folder|
+      more_lines = ->(changes) { banked_bytes(busy_game(folder, changes, writes: 16)) - banked_bytes(busy_game(folder, changes, writes: 4)) }
+      of_few = more_lines.(4)
+      of_many = more_lines.(200)
+
+      assert_operator of_many - of_few, :<, 200 * 2,
+                      "12 more lines writing one of 200 told cells take #{of_many} bytes of the banks, and of 4 take #{of_few}"
+    end
+  end
+
+  # How many bytes of the cartridge's banks +game+'s Color build fills: each bank is filled from
+  # its start and the rest left at 0xFF (as tools/emitted_color_probe.rb reads them).
+  private def banked_bytes(game)
+    rom = game.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+    rom.bytes.b.scan(/.{1,#{BANK_BYTES}}/mn).drop(1).sum do |bank|
+      bank.bytesize.downto(0).find { |used| used.zero? || bank.getbyte(used - 1) != 0xFF }
     end
   end
 end

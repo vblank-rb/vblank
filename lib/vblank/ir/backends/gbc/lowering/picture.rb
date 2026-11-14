@@ -1398,7 +1398,7 @@ module VBlank
               cells = node.picks.map { |tile| tile && !tile.negative? && tile < bg.tiles.length ? grid_cell_of(bg, tile) : NO_GRID_CELL }
               return if cells.all?(NO_GRID_CELL)
 
-              table = drawing_table("picked_cells", 2, cells, banked: true)
+              table = picked_cells_table(cells)
               outside = fresh("picked_cell_outside")
               place = Build.var_ref(keep_local(:picked_place))
               value(Build.binop(:-, node.picked_by.copy, Build.int(node.picks_from)))
@@ -1410,6 +1410,17 @@ module VBlank
               jump_if(Build.binop(:==, cell, Build.int(NO_GRID_CELL)), outside) if cells.include?(NO_GRID_CELL)
               emit_worked_out_cell_change(bg, node, cell)
               @asm.label(outside)
+            end
+
+            # The label of a banked table of +cells+, one kept for every line that picks from the same
+            # cells. A game writes a line of text from a line of Ruby for each letter, or a port's
+            # screen changes many cells told by one slot, so a table for each line would be a table of
+            # every told cell for each: a few hundred bytes of the banks a line. The tables are only
+            # read, so two lines can read one. It is looked for among the tables this try still holds,
+            # since a routine measured and thrown away (Lowering#bytes_of) takes its tables with it.
+            def picked_cells_table(cells)
+              kept = @drawing_tables.find { |table| table.banked && table.bytes == 2 && table.label.start_with?("picked_cells ") && table.entries == cells }
+              kept ? kept.label : drawing_table("picked_cells", 2, cells, banked: true)
             end
 
             # A cell of +bg+ given the grid cell +cell+, a number the game worked out, where +node+ says.
