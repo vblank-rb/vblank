@@ -81,9 +81,12 @@ class TestFaceFillCost < Minitest::Test
   end
 
   # Every eight pixels the place on the picture is worked out exactly, and between it steps two
-  # pixels at a time as without perspective.
-  def test_a_face_leaning_away_costs_under_thirty_cycles_a_pixel_in_perspective_every_8_pixels
-    assert_fill_under(30, whole_screen_face(:every_8_pixels, far: 5.0), "a stretch at a time it cost 56")
+  # pixels at a time as without perspective. What a stretch costs on top of its pixels is most of
+  # the difference: its picture's shifts are written into its instructions, and how far one over
+  # the distance was moved stays in a register for the row.
+  def test_a_face_leaning_away_costs_under_twenty_three_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(23, whole_screen_face(:every_8_pixels, far: 5.0),
+                      "a stretch at a time it cost 56; reading its shifts from memory, 24")
   end
 
   def test_a_face_leaning_away_costs_under_ninety_cycles_a_pixel_in_perspective_every_pixel
@@ -96,9 +99,9 @@ class TestFaceFillCost < Minitest::Test
     assert_fill_under(27, whole_screen_face(:none, lit: true), "unlit it costs under 17")
   end
 
-  def test_a_lit_face_leaning_away_costs_under_forty_six_cycles_a_pixel_in_perspective_every_8_pixels
-    assert_fill_under(46, whole_screen_face(:every_8_pixels, far: 5.0, lit: true),
-                      "a stretch at a time it cost 71; unlit it costs under 30")
+  def test_a_lit_face_leaning_away_costs_under_thirty_four_cycles_a_pixel_in_perspective_every_8_pixels
+    assert_fill_under(34, whole_screen_face(:every_8_pixels, far: 5.0, lit: true),
+                      "a stretch at a time it cost 71; reading its shifts from memory, 34; unlit it costs under 23")
   end
 
   private def assert_fill_under(most, program, before)

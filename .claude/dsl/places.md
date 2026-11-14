@@ -303,11 +303,11 @@ hides. The Advance's fill makes that test itself; every other lowering makes it 
 as the cut hands each corner on (`IR::PlaceDrawing::OUTCODE_EDGES`). **What it
 costs on the Advance**, a face covering the whole screen with a picture with no see-through pixel:
 about 15 of the console's cycles a pixel with `perspective: :none` (two pixels worked out together
-and written as one pair; 20 pictures a second), about 30 with `:every_8_pixels` (each stretch of
-eight worked out exactly at its far end, then two pixels at a time; 12 a second), and about 90 with
+and written as one pair; 30 pictures a second), about 21 with `:every_8_pixels` (each stretch of
+eight worked out exactly at its far end, then two pixels at a time; 20 a second), and about 70 with
 `:every_pixel`. A picture with see-through pixels reads each pixel's pair back first, about 37 without
-perspective. `examples/cube3d.rb` runs at 30 a second and `examples/two_rooms.rb` at 10, both in
-perspective. **Perspective is the same everywhere**: one over each corner's distance travels with its
+perspective. In perspective, `examples/cube3d.rb` runs at 60 a second as it starts and
+`examples/two_rooms.rb` at 12. **Perspective is the same everywhere**: one over each corner's distance travels with its
 corner, and the place on the picture is found from it through one shared table (`IR::Reciprocals`),
 which every lowering reads, so all of them draw the same pixels. `rom.profile`
 names the fill "filling the faces of a place with their pictures".

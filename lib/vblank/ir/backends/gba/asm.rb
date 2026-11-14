@@ -20,6 +20,7 @@ module VBlank
           COND_NE = 0x1  # Not equal (Z=0)
           COND_HS = 0x2  # Unsigned higher or same (C=1)
           COND_LO = 0x3  # Unsigned lower (C=0)
+          COND_MI = 0x4  # Negative (N=1)
           COND_HI = 0x8  # Unsigned higher (C=1 and Z=0)
           COND_LS = 0x9  # Unsigned lower or same (C=0 or Z=1)
           COND_GE = 0xA  # Signed greater or equal (N=V)
@@ -30,7 +31,7 @@ module VBlank
 
           COND_BY_NAME = {
             eq: COND_EQ, ne: COND_NE,
-            hs: COND_HS, lo: COND_LO, hi: COND_HI, ls: COND_LS,
+            hs: COND_HS, lo: COND_LO, hi: COND_HI, ls: COND_LS, mi: COND_MI,
             ge: COND_GE, lt: COND_LT,
             gt: COND_GT, le: COND_LE,
             al: COND_AL,
