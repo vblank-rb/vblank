@@ -233,7 +233,7 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song`. #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`."),
         sample: works("the sound chip plays recordings itself, each on a voice of its own with its own loudness and " \
                       "shape, 16 at once."),
