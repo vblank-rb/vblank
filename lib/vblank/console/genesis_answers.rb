@@ -28,6 +28,16 @@ module VBlank
 
       PLAIN = "the same as on the Advance."
 
+      # Why a recording plays at full loudness on the Genesis. The cycles are counted from the sound
+      # processor's sample loop (Backends::Genesis::Runtime::Recordings#driver) in the Z80's own timings,
+      # the common path a sample takes, against its clock over the samples a second it sounds.
+      RECORDING_LOUDNESS = "A recording plays at full loudness, whatever its volume: the DAC has no volume of " \
+                           "its own. To play it more quietly, the sound processor must scale each sample, about " \
+                           "13300 times a second. Its sample loop takes about 204 of the 269 cycles it has for " \
+                           "each sample, a look-up in a scaling table takes about 27 more, and a table for each of the 16 " \
+                           "volumes takes 4 KB of its 8 KB of memory. The music volume and a sound's volume are " \
+                           "only in the sound log."
+
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
         screen: works("`screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a " \
@@ -266,8 +276,10 @@ module VBlank
         stop_wave: works,
         song: works("see `define_sound` for the square and wave voices. A wave part between the speakers " \
                     "(`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other " \
-                    "side. If not, it plays from both speakers. A part that plays a recording plays from both " \
-                    "speakers, wherever `pan` puts it: the FM chip's sixth voice plays it from both."),
+                    "side. If not, it plays from both speakers. A part that plays a recording plays from the " \
+                    "left speaker, the right speaker or both, the nearest to where `pan` puts it, by the same " \
+                    "rule: the DAC plays through the FM chip's sixth voice, which has a switch for each speaker. " \
+                    "#{RECORDING_LOUDNESS}"),
         play_song: works,
         stop_music: works,
         hold_music: works,
@@ -275,14 +287,13 @@ module VBlank
         music_volume: works,
         fade_music_in: works,
         fade_music_out: works,
-        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} Its new loudness and side are not heard: the FM chip's " \
-                     "sixth voice plays a recording at one loudness, from both speakers. " \
-                     "#{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
+        songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} It moves to the nearest speaker, as `song` says, and its " \
+                     "new loudness is not heard, as no recording's is. #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
                       "bits. The sound processor sounds about 13300 samples a second, and plays each recording at " \
-                      "the rate it was recorded at. Only one recording plays at a " \
-                      "time, at one loudness, and a recording cannot have a shape (`envelope:`)."),
+                      "the rate it was recorded at. Only one recording plays at a time, and a recording cannot " \
+                      "have a shape (`envelope:`). #{RECORDING_LOUDNESS}"),
         instrument: works("see `sample`.")
       })
 

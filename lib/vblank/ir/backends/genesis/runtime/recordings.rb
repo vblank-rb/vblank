@@ -42,6 +42,10 @@ module VBlank
             NAME = 20
             STEP = 22 # Samples of the recording a sample of the Z80's, in 256ths
             ROW_BYTES = 24
+            # ...and in a game with a recorded note off the middle (SIDES), the speakers it plays from, as the
+            # FM chip's register $B6 of its second part keeps them for the sixth voice, which the DAC is.
+            SIDE = 24
+            ROW_BYTES_WITH_SIDE = 26
 
             # The place's state, in bytes.
             PLACE = "rt recordings place"
@@ -106,6 +110,8 @@ module VBlank
             GLIDE_ENTRY = 0x81
             # Kept in a game with a recorded note that glides, whose runtime then carries what moves one.
             GLIDES = "rt recordings glides"
+            # ...and in a game with a recorded note off the middle of the speakers, whose rows name a side.
+            SIDES = "rt recordings sides"
             SECOND_PART = 2
             # How long the 68000 lets the Z80 run when the queue is full, in turns of a two-instruction
             # loop: more than a sample's time, in which the Z80 takes an entry.
@@ -162,28 +168,38 @@ module VBlank
 
             # +glides+ for a game with a recorded note that glides (`glides: true`), whose runtime then
             # carries what bends one (#emit_glide) and its sound processor takes a new step mid-play.
-            def reserve(memory, glides: false)
+            # +sides+ for a game with a recorded note off the middle of the speakers, whose rows then name
+            # the speakers each play is heard from (SIDE), and whose places set them.
+            def reserve(memory, glides: false, sides: false)
               memory.reserve(GLIDES, 2) if glides
+              memory.reserve(SIDES, 2) if sides
               memory.reserve(PLACE, PLACE_BYTES)
               memory.reserve(KEPT_BY_PASS, Frame::STEPS_KEPT * 2)
               [DROPS, DROPS_MUSIC, OWNER_ASKING].each { |name| memory.reserve(name, 2) }
               memory.reserve(FM_KEPT, FM_REGISTERS * 2)
             end
 
-            # A play's row, for "recording_plays": +start+ a label.
-            def emit_row(asm, start:, length:, back:, advance:, logged:, name:, step:)
+            # A play's row, for "recording_plays": +start+ a label. +side+, in a game with SIDES, is the
+            # speakers' bits it plays from (ChipWrites::BOTH_SPEAKERS and its two), and nil in any other.
+            def emit_row(asm, start:, length:, back:, advance:, logged:, name:, step:, side: nil)
               asm.data_longs(start)
               asm.data_longs(length, back, advance >> 16)
               asm.data_words(advance & 0xFFFF, logged, name, step)
+              asm.data_words(side) if side
             end
+
+            # How long a row is in a game with or without SIDES.
+            def row_bytes(memory) = memory.reserved?(SIDES) ? ROW_BYTES_WITH_SIDE : ROW_BYTES
 
             def emit(asm, memory)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               glides = memory.reserved?(GLIDES)
               emit_start(asm, at, glides: glides)
-              emit_play(asm, at)
-              emit_note(asm, at)
-              emit_glide(asm, at) if glides
+              rows = row_bytes(memory)
+              sides = memory.reserved?(SIDES)
+              emit_play(asm, at, rows, sides: sides)
+              emit_note(asm, at, rows)
+              emit_glide(asm, at, rows, sides: sides) if glides
               emit_stop(asm, at)
               emit_frame(asm, at)
               emit_mail(asm, at)
@@ -315,9 +331,9 @@ module VBlank
 
             # rt_recordings_play(row): the play's entry logged, and the recording in the place from its start
             # (Reference::Mixer#start) if it is free. With it busy, the play is dropped, as the mixer drops it.
-            def emit_play(asm, at)
+            def emit_play(asm, at, rows, sides: false)
               asm.label("rt_recordings_play")
-              asm.mulu(asm.imm(ROW_BYTES), asm.d(0))
+              asm.mulu(asm.imm(rows), asm.d(0))
               asm.lea(asm.abs_l("recording_plays"), asm.a(0))
               asm.lea(asm.idx(0, 0, 0), asm.a(4))
               asm.move(:w, asm.disp(4, LOGGED), asm.d(0))
@@ -340,6 +356,7 @@ module VBlank
               asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
               asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
               asm.move(:w, asm.disp(4, LOGGED), at.call(PLACE, PLACE_LOGGED))
+              emit_side_told(asm) if sides
               asm.jsr(asm.abs_l("rt_recordings_send"))
               asm.moveq(1, asm.d(0))
               asm.rts
@@ -363,9 +380,9 @@ module VBlank
             # note now, which a new music volume reaches (a Genesis plays a recording at one loudness, so
             # only the log hears it). rt_recordings_release_music: a song's note freed; a sound effect's is
             # the effect's.
-            def emit_note(asm, at)
+            def emit_note(asm, at, rows)
               asm.label("rt_recordings_note")
-              asm.mulu(asm.imm(ROW_BYTES), asm.d(0))
+              asm.mulu(asm.imm(rows), asm.d(0))
               asm.lea(asm.abs_l("recording_plays"), asm.a(0))
               asm.lea(asm.idx(0, 0, 0), asm.a(4))
               asm.tst(:w, at.call(PLACE, HELD))
@@ -546,14 +563,24 @@ module VBlank
               asm.move(:b, asm.d(1), asm.post(2))
             end
 
+            # The speakers the row A4 points at plays from (SIDE) told to the FM chip's register $B6 of its second
+            # part, the sixth voice's, which the DAC plays through: queued for the Z80 as any FM write is, and
+            # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3.
+            def emit_side_told(asm)
+              asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
+              asm.move(:w, asm.disp(4, SIDE), asm.d(1))
+              asm.jsr(asm.abs_l("rt_fm_write"))
+            end
+
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has the place, reads on at
             # the row's pitch (Reference::Mixer#glide_music_note): how far a frame takes it, and the Z80 told
-            # its new step (GLIDE_ENTRY), which it takes from where it has got to, so nothing starts again. A
-            # Genesis plays a recording at one loudness and from both speakers, so the glide's loudness and side
-            # reach only the log, as the music volume's do. D0 = 1 when the part had a note, nought when not.
-            def emit_glide(asm, at)
+            # its new step (GLIDE_ENTRY), which it takes from where it has got to, so nothing starts again; and
+            # in a game with SIDES, the speakers the row names. A Genesis plays a recording at the one loudness,
+            # so the glide's loudness reaches only the log, as the music volume's does. D0 = 1 when the part had
+            # a note, nought when not.
+            def emit_glide(asm, at, rows, sides: false)
               asm.label("rt_recordings_glide")
-              asm.mulu(asm.imm(ROW_BYTES), asm.d(0))
+              asm.mulu(asm.imm(rows), asm.d(0))
               asm.lea(asm.abs_l("recording_plays"), asm.a(0))
               asm.lea(asm.idx(0, 0, 0), asm.a(4))
               asm.tst(:w, at.call(PLACE, HELD))
@@ -562,6 +589,7 @@ module VBlank
               asm.branch(:ne, "rt_recordings_none")
               asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
               asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
+              emit_side_told(asm) if sides
               emit_bus_taken(asm)
               asm.lea(asm.abs_l(Z80_MEMORY + MAILBOX + Z80_STEP), asm.a(2))
               emit_step_mailed(asm, "rt_recordings_glide_step")

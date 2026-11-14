@@ -37,11 +37,11 @@ module VBlank
           # +counted+ for a game that reads how many frames it has shown since power-on (Frame::SETTING_UP).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
-                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false)
+                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false)
             Frame.reserve(memory, counted: counted)
             Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles)
             Sound.reserve(memory) if sound
-            Recordings.reserve(memory, glides: glides) if samples
+            Recordings.reserve(memory, glides: glides, sides: recorded_sides) if samples
             return unless songs
           
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,

@@ -202,25 +202,48 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta RECORDED_HZ, pitch_of_waves(crossings_of(left.last(SAMPLE_RATE / 2))), 2
   end
 
-  # A RECORDED PART SET TO ONE SIDE is heard from both speakers alike: the FM chip's sixth voice plays
-  # every recording, and it plays from both.
-  def test_a_recorded_part_set_to_one_side_is_heard_from_both_speakers
+  # A RECORDED PART SET TO ONE SIDE is heard from that speaker: the FM chip's sixth voice, which the DAC
+  # plays through, sounds from the left, the right or both (its register $B6), so a part sits on the
+  # nearest of the three. +notes+ writes the part; the [left, right] swing heard over its last frames.
+  private def recorded_sides_heard(frames: 20, &notes)
     run = Genesis::HeadlessRun.new(keep_sound: true)
     clip = CLIP
     run.run(program_of do
       enable_sound
-      instrument :clip, pcm: clip.unpack("c*") * 100, rate: 13_000, note: :C4
+      instrument :clip, pcm: clip.unpack("c*") * 400, rate: 13_000, note: :C4
       song(:tune) do
         tempo 150
-        voice(:keys, plays: :clip) { |v| v.pan :left; v.note :C4, :whole }
+        voice(:keys, plays: :clip, &notes)
       end
       play_song :tune
       game_loop { nil }
-    end, frames: 20)
-    left, right = run.sound_made.last(SAMPLE_RATE / 6 * 2).each_slice(2).to_a.transpose.map { |side| side.max - side.min }
+    end, frames: frames)
+    run.sound_made.last(SAMPLE_RATE / 6 * 2).each_slice(2).to_a.transpose.map { |side| side.max - side.min }
+  end
+
+  def test_a_recorded_part_set_to_one_side_is_heard_from_that_speaker
+    left, right = recorded_sides_heard { |v| v.pan :left; v.note :C4, :whole }
+
+    assert_operator left, :>, 1000, "the recording is heard on the left"
+    assert_operator right, :<, left / 10, "and not on the right (#{left}, #{right})"
+  end
+
+  def test_a_recorded_part_near_the_middle_is_heard_from_both_speakers
+    left, right = recorded_sides_heard { |v| v.pan(-0.3); v.note :C4, :whole }
 
     assert_operator left, :>, 1000, "the recording is heard"
     assert_in_delta 1.0, left.fdiv(right), 0.05, "as loud from the right (#{left}, #{right})"
+  end
+
+  # A glide to a side of its own moves the note sounding there, with no new start.
+  def test_a_recorded_note_glides_to_the_right_speaker
+    left, right = recorded_sides_heard(frames: 26) do |v|
+      v.note :C4, :eighth
+      v.note :C4, :whole, glides: true, pan: :right
+    end
+
+    assert_operator right, :>, 1000, "the recording is heard on the right"
+    assert_operator left, :<, right / 10, "and no longer on the left (#{left}, #{right})"
   end
 
   def test_a_recording_played_once_leaves_the_speaker_still

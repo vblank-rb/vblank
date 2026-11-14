@@ -165,7 +165,7 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
-                                  glides: samples && Music.glides?(program))
+                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       cache: cache)
           game = lowering.sections
