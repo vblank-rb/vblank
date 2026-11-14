@@ -60,12 +60,15 @@ module PackTilePoseGames
   # THE GAME, as a block a Builder or VBlank.game runs: a set of four tiles, a pose of it for each
   # of +frames+ (each pose's options made by +pose+ from the pack and the frame's start), a ball
   # spinning through them, and the set loaded from a picture of the game's own on the first pass.
-  def self.ball_game(from, frames: SPIN, &pose)
+  # With +balls+ more than one, that many balls of the first pose stand side by side on one row,
+  # 24 pixels apart, so a console that draws only so many sprite pieces on a line leaves some out.
+  def self.ball_game(from, frames: SPIN, balls: 1, &pose)
     kinds = KINDS
     starts = frame_starts(frames)
     total = frame_bytes(frames).length
     # Held as a local, since the game's block runs after this method has returned.
     pose_options = pose
+    count = balls
     proc do
       screen :tiled
       colors :ball, %i[transparent red green white]
@@ -78,7 +81,13 @@ module PackTilePoseGames
         image :"spin#{number}", tiles_from: :ball_tiles, **pose_options.call(pack, at)
         :"spin#{number}"
       end
-      poses.one? ? sprite(:ball, at: [40, 20], image: poses.first) : sprite(:ball, at: [40, 20], frames: poses, rate: 2)
+      if count > 1
+        count.times { |at| sprite(:"ball#{at}", at: [4 + (24 * at), 20], image: poses.first) }
+      elsif poses.one?
+        sprite(:ball, at: [40, 20], image: poses.first)
+      else
+        sprite(:ball, at: [40, 20], frames: poses, rate: 2)
+      end
       set.copy_from :kinds, at: 0, count: 4, to: 0
       game_loop { wait_vblank }
     end
@@ -90,10 +99,10 @@ module PackTilePoseGames
   end
 
   # The game as a Builder makes it, as +options+ say (Cartridge::Options).
-  private def ball_game_builder(from, options: VBlank::Cartridge::Options.new, frames: SPIN, &pose)
+  private def ball_game_builder(from, options: VBlank::Cartridge::Options.new, frames: SPIN, balls: 1, &pose)
     pose ||= ->(pack, at) { PackTilePoseGames.frame_pose(pack, at, size: SIZE) }
     b = Builder.new(options: options)
-    b.instance_eval(&PackTilePoseGames.ball_game(from, frames: frames, &pose))
+    b.instance_eval(&PackTilePoseGames.ball_game(from, frames: frames, balls: balls, &pose))
     b.finalize_program
     b
   end

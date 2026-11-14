@@ -284,7 +284,9 @@ module VBlank
           # then where each image's pieces start, then each image's pieces (see rg_screen.h for the
           # layout). Only two 0s where the console draws them all. A pose read from the start file
           # lists none here: the runtime lists its frame's pieces as the game starts
-          # (StartFileFills#pose_piece_rules).
+          # (StartFileFills#pose_piece_rules). A pose of sprite tiles whose pieces are a frame of the
+          # file lists its stand-ins here, and the runtime lists the frame's pieces in their place as
+          # it starts (StartFileFills#tile_pose_piece_rules).
           def image_pieces_array
             console = @program.described_console
             return runtime_array("image_pieces", "int32_t", [0, 0]) unless console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen

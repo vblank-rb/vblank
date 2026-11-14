@@ -963,6 +963,36 @@ void rg_start_file_fill_pose(const int32_t *rules) {
   free(places);
 }
 
+/* SpriteLines.tile_pose_places: a tile pose's +count+ pieces (three numbers each: across, down,
+ * tile) as rg_screen_read_image_pieces takes them, each 8 wide and +tall+ high. Where +tall+ is 16
+ * a tile with the next tile of the set right under it, or the one before over it, is one piece
+ * whose upper tile is even (SpritePieces.paired_tiles). */
+static int32_t *tile_pose_listed_pieces(const int32_t *pieces, int32_t count, int32_t tall) {
+  int32_t *list = malloc((size_t)(1 + (4 * count)) * sizeof *list);
+  char *taken = calloc((size_t)(count > 0 ? count : 1), 1);
+  if (!list || !taken) rg_fault("there is no room to list a pose's %d pieces", (int)count);
+  list[0] = 0;
+  for (int32_t p = 0; p < count; p++) {
+    if (taken[p]) continue;
+    int32_t dx = pieces[3 * p], dy = pieces[(3 * p) + 1], tile = pieces[(3 * p) + 2];
+    if (tall == 16) {
+      int32_t under = -1, over = -1;
+      for (int32_t o = p + 1; o < count && under < 0; o++)
+        if (!taken[o] && pieces[3 * o] == dx && pieces[(3 * o) + 1] == dy + 8 && pieces[(3 * o) + 2] == tile + 1) under = o;
+      for (int32_t o = p + 1; o < count && under < 0 && over < 0; o++)
+        if (!taken[o] && pieces[3 * o] == dx && pieces[(3 * o) + 1] == dy - 8 && pieces[(3 * o) + 2] == tile - 1) over = o;
+      int32_t top = under >= 0 ? tile : tile - 1;
+      if ((under >= 0 || over >= 0) && top % 2 == 0) {
+        taken[under >= 0 ? under : over] = 1;
+        if (over >= 0) dy -= 8;
+      }
+    }
+    pose_piece_entry(list, dx, dy, 8, tall);
+  }
+  free(taken);
+  return list;
+}
+
 void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules) {
   int32_t entry_at = rules[0], records_at = rules[1], origin_x = rules[2], origin_y = rules[3], first_tile = rules[4];
   int32_t tile_count = rules[5], width = rules[6], height = rules[7], room = rules[8];
@@ -993,6 +1023,12 @@ void rg_start_file_fill_tile_pose(int32_t *pieces, const int32_t *rules) {
         kept++;
       }
     }
+  }
+  int32_t tall = rules[9], images = rules[10];
+  if (tall > 0 && images > 0) {
+    /* Listed once and kept for the game's life, shared by every image showing the pose. */
+    const int32_t *listed = tile_pose_listed_pieces(pieces, kept, tall);
+    for (int32_t image = 0; image < images; image++) rg_screen_read_image_pieces(rules[11 + image], listed);
   }
   for (; kept < room; kept++) {
     pieces[3 * kept] = 0;

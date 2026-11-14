@@ -73,17 +73,39 @@ module VBlank
           # each place left (rg_start_file_fill_tile_pose, which IR::StartFile.tile_pose_pieces_in
           # says in Ruby). Its rules: where the frame's entry is and where the records start, where
           # the object's place is in the picture, across and down, the number the frames give the
-          # set's first tile, how many tiles the set holds, the picture's width and height, and how
-          # many pieces the array has room for.
+          # set's first tile, how many tiles the set holds, the picture's width and height, how
+          # many pieces the array has room for, then the rules for listing them (#tile_pose_piece_rules).
+          # The call is made once the game is lowered (#start_file_tile_pose_fills), since only then
+          # is every image that shows the pose numbered.
           def record_start_file_tile_pose_fill(array, pose)
-            where = pose.from_file
-            rules = [where.entry_at, where.records_at, where.origin_x, where.origin_y, where.first_tile, where.tile_count,
-                     pose.width, pose.height, pose.pieces.length]
-            start_file_tile_pose_fills << eval_call("rg_start_file_fill_tile_pose", array,
-                                                    drawing_array("start_file_tile_pose", "int32_t", rules))
+            tile_pose_fills_recorded << [array, pose]
           end
 
-          def start_file_tile_pose_fills = @start_file_tile_pose_fills ||= []
+          def tile_pose_fills_recorded = @tile_pose_fills_recorded ||= []
+
+          def start_file_tile_pose_fills
+            tile_pose_fills_recorded.map do |array, pose|
+              where = pose.from_file
+              rules = [where.entry_at, where.records_at, where.origin_x, where.origin_y, where.first_tile, where.tile_count,
+                       pose.width, pose.height, pose.pieces.length, *tile_pose_piece_rules(pose)]
+              eval_call("rg_start_file_fill_tile_pose", array, drawing_array("start_file_tile_pose", "int32_t", rules))
+            end
+          end
+
+          # A TILE POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM, for a console that draws
+          # only so many (Picture#image_pieces_array, which lists the pose's stand-ins): how tall a
+          # piece is (8, or 16 where a Color is told 8x16 and pairs a tile with the next one under
+          # it), then how many images show the pose and each one's number. The runtime then lists
+          # the frame's pieces for each of those images as the interpreter does
+          # (SpriteLines.tile_pose_places of the pieces IR::StartFile.tile_pose_pieces_in reads).
+          # Two 0s where the console draws every piece.
+          def tile_pose_piece_rules(pose)
+            console = @program.described_console
+            return [0, 0] unless console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen
+
+            images = @images.each_key.each_with_index.filter_map { |(name, _), at| at if name == pose.name }
+            [(@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last, images.length, *images]
+          end
 
           # A SHADING READ FROM THE FILE (IR::StartFile::Shading), in the array a lit fill hands the
           # runtime (Picture#shading_array): written with zeros where its colours and its levels'

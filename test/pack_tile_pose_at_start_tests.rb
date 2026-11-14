@@ -39,14 +39,43 @@ module PackTilePoseAtStartTests
     Dir.mktmpdir do |folder|
       whole = ball_game_builder(original(folder, frames: held), frames: held).program
       left_out = ball_game_builder(original(folder, frames: wild), frames: wild, options: LEFT_OUT).program
-      bytes = PackTilePoseGames.frame_bytes(wild).pack("C*")
-      slot = VBlank::Original::Slot.numbers(:frames, at: 0, count: bytes.bytesize, width: :byte, signed: false, layout: :gbc)
-      frame = VBlank::Original::FrameRecord::Source.new(slot: slot, at: 0, count: nil, layout: TALL)
-      records = VBlank::Original::FrameRecord::Section.new(sources: [frame]).bytes({ frames: bytes })
-      file = VBlank::Original::Pack.holding({ frames: bytes }, sha1: Digest::SHA1.hexdigest(bytes), build_version: "1",
-                                                              frame_records: records).to_bytes
 
-      assert_equal game_player.run(whole, frames: 3).screen.to_a, game_player.hand_file(file).run(left_out, frames: 3).screen.to_a
+      assert_equal game_player.run(whole, frames: 3).screen.to_a, game_player.hand_file(file_of(wild)).run(left_out, frames: 3).screen.to_a
     end
+  end
+
+  # A CROWDED ROW OF POSES READ AS THE GAME STARTS. Six balls stand side by side, each a pose twice
+  # as wide as its frame's pieces reach, so the build holds a stand-in piece for every place of its
+  # grid and the frame fills only half of them. On a console that draws only so many sprite pieces
+  # on a line, the frame's pieces decide which are left out, as they do all-in-one.
+  def test_a_crowded_row_of_poses_read_at_start_leaves_out_what_all_in_one_does
+    assert_crowded_row_alike(VBlank::Cartridge::Options.new)
+  end
+
+  # The same where the Color is told to draw 8x16, so a tile and the next one under it are one piece.
+  def test_a_crowded_row_of_poses_read_at_start_in_tall_pieces_leaves_out_what_all_in_one_does
+    assert_crowded_row_alike(VBlank::Cartridge::Options.new(sprite_piece_size: { gbc: [8, 16] }))
+  end
+
+  private def assert_crowded_row_alike(options)
+    frames = [SPIN.first]
+    pose = ->(pack, at) { PackTilePoseGames.frame_pose(pack, at, size: [32, 16]) }
+    left_out_options = options.with(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      whole = ball_game_builder(original(folder, frames: frames), frames: frames, balls: 6, options: options, &pose).program
+      left_out = ball_game_builder(original(folder, frames: frames), frames: frames, balls: 6, options: left_out_options, &pose).program
+
+      assert_equal game_player.run(whole, frames: 3).screen.to_a, game_player.hand_file(file_of(frames)).run(left_out, frames: 3).screen.to_a
+    end
+  end
+
+  # The pack file a player's copy holding +frames+ makes, its frames' records written.
+  private def file_of(frames)
+    bytes = PackTilePoseGames.frame_bytes(frames).pack("C*")
+    slot = VBlank::Original::Slot.numbers(:frames, at: 0, count: bytes.bytesize, width: :byte, signed: false, layout: :gbc)
+    frame = VBlank::Original::FrameRecord::Source.new(slot: slot, at: 0, count: nil, layout: TALL)
+    records = VBlank::Original::FrameRecord::Section.new(sources: [frame]).bytes({ frames: bytes })
+    VBlank::Original::Pack.holding({ frames: bytes }, sha1: Digest::SHA1.hexdigest(bytes), build_version: "1",
+                                                     frame_records: records).to_bytes
   end
 end

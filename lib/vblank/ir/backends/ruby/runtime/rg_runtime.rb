@@ -656,6 +656,29 @@ def rg_start_file_frame_bank(entry_at, records_at)
   pieces.positive? ? rg_start_file_half(first_piece + RG_PIECE_BANK_AT) : 0
 end
 
+# rg_runtime.c's tile_pose_listed_pieces
+def rg_tile_pose_listed_pieces(pieces, count, tall)
+  list = [0]
+  taken = Array.new(count, false)
+  count.times do |p|
+    next if taken[p]
+
+    dx, dy, tile = pieces[3 * p, 3]
+    if tall == 16
+      later = ((p + 1)...count).reject { |o| taken[o] || pieces[3 * o] != dx }
+      under = later.find { |o| pieces[(3 * o) + 1] == dy + 8 && pieces[(3 * o) + 2] == tile + 1 }
+      over = later.find { |o| pieces[(3 * o) + 1] == dy - 8 && pieces[(3 * o) + 2] == tile - 1 } unless under
+      if (under || over) && (under ? tile : tile - 1).even?
+        taken[under || over] = true
+        dy -= 8 if over
+      end
+    end
+    list.push(dx, dy, 8, tall)
+    list[0] += 1
+  end
+  list.freeze
+end
+
 # The pieces of a pose of sprite tiles whose pieces are a frame in the file (rg_runtime.h,
 # rg_start_file_fill_tile_pose).
 def rg_start_file_fill_tile_pose(pieces, rules)
@@ -685,6 +708,11 @@ def rg_start_file_fill_tile_pose(pieces, rules)
         kept += 1
       end
     end
+  end
+  tall, images = rules[9], rules[10]
+  if tall.positive? && images.positive?
+    listed = rg_tile_pose_listed_pieces(pieces, kept, tall)
+    images.times { |image| rg_screen_read_image_pieces(rules[11 + image], listed) }
   end
   (kept...room).each { |left| pieces[3 * left, 3] = [0, 0, -1] }
 end

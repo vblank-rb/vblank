@@ -263,7 +263,11 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * for. Each tile of each piece, row by row, is a piece of the pose, and the file is the player's:
  * a tile that is turned, off the picture's 8-pixel grid, outside the picture or outside the set
  * draws nothing, nor one at a place an earlier one took. Each place left names tile -1, which no
- * set holds. IR::StartFile.tile_pose_pieces_in says the same in Ruby.
+ * set holds. IR::StartFile.tile_pose_pieces_in says the same in Ruby. Then, on a console that draws
+ * only so many sprite pieces, how tall a piece is (0 where it draws every one), how many images show
+ * the pose and each one's number: the pieces kept are listed for each of those images
+ * (rg_screen_read_image_pieces) as SpriteLines.tile_pose_places lists them, in place of the
+ * stand-ins the game lists.
  *
  * rg_start_file_put_tile_pixels: +count+ of the game's own pixels, +pixels+, into the background
  * tiles' pixels from +start+ on, of which there are +total+: a tile the game holds for a
