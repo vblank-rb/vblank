@@ -175,7 +175,10 @@ instance variables.
 ## Loops
 
 - **`while` and `until` on a game test are loops in the game.** The build warns about one that never
-  waits for a frame. The whole test is asked again on every round, as Ruby asks it: `while count < 5
+  waits for a frame and whose test reads nothing the loop changes (a button, or a number nothing in
+  it or the routines it calls writes), since only a frame could end it. A loop that changes what its
+  test reads (`i += 1` under `while i < n`, a retry that clears its flag) is work inside the pass and
+  gets no warning (`test/all/vblank/ir/guardrails/test_ir_guardrail_loop_never_waits.rb`). The whole test is asked again on every round, as Ruby asks it: `while count < 5
   && marks[count] != 9`, and `while copy.byte(at) != 0` in an unpacking routine, whose read is
   checked against the copy's end on each round.
 - **A loop can start on plain numbers and become the game's.** `at = 3`, then `while at < size` with a
