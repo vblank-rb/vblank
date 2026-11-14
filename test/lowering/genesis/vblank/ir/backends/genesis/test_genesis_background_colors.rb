@@ -76,23 +76,49 @@ class TestGenesisBackgroundColors < Minitest::Test
     end
   end
 
-  def test_more_lists_than_a_genesis_has_palettes_for_are_refused_in_words
+  # FIVE LISTS ON ONE SCREEN, more than the four palettes: the fifth shares a palette with one of the
+  # others, at places of its own past that list's. The wall is red for the first passes, every list told
+  # its other colours, then each list's own; the checked run holds every pass to the interpreter.
+  def test_more_lists_than_a_genesis_has_palettes_for_share_them
+    run = checked(frames: 8) do
+      rays = TestGenesisBackgroundColors.five_lists(self, 1)
+      step = var :step, 0
+      game_loop do
+        rays.draw_with(FIVE.each_with_index.to_h { |name, n| [name, [:"alt#{n}"]] }, showing: step / 4)
+        step.store!(step + 1)
+      end
+    end
+
+    assert_equal FIVE_COLORS.map { |color| shown(color) }, (0...5).map { |n| run.screen.pixel((n * 8) + 1, 1) }
+  end
+
+  def test_lists_too_long_to_share_a_palette_are_refused_in_words
     error = assert_raises(VBlank::IR::Backends::NotMadeYet) do
       Genesis.new.build(program_of do
-        names = %i[l0 l1 l2 l3 l4]
-        names.zip(%i[blue yellow cyan orange magenta]).each_with_index do |(name, color), n|
-          colors name, [:transparent, color]
-          colors :"alt#{n}", [:transparent, :red]
-          image :"tile#{n}", width: 8, height: 8, data: Array.new(64) { color }, colors: name
-        end
-        tiles :wall, **names.each_index.to_h { |n| [(97 + n).chr, :"tile#{n}"] }
-        rays = background :rays, tiles: :wall, map: Array.new(20) { "abcde" * 6 }
-        rays.draw_with(names.each_with_index.to_h { |name, n| [name, [:"alt#{n}"]] }, showing: 0)
+        rays = TestGenesisBackgroundColors.five_lists(self, 8)
+        rays.draw_with(FIVE.each_with_index.to_h { |name, n| [name, [:"alt#{n}"]] }, showing: 0)
         game_loop { nil }
       end)
     end
 
     assert_match(/more than the four a Genesis holds/, error.message)
+  end
+
+  FIVE = %i[l0 l1 l2 l3 l4].freeze
+  FIVE_COLORS = %i[blue yellow cyan orange magenta].freeze
+
+  # A wall of five tiles, each drawn from a list of its own that holds its colour +length+ times, and for
+  # each list another of red.
+  def self.five_lists(builder, length)
+    builder.instance_eval do
+      FIVE.zip(FIVE_COLORS).each_with_index do |(name, color), n|
+        colors name, [:transparent, *Array.new(length, color)]
+        colors :"alt#{n}", [:transparent, *Array.new(length, :red)]
+        image :"tile#{n}", width: 8, height: 8, data: Array.new(64) { color }, colors: name
+      end
+      tiles :wall, **FIVE.each_index.to_h { |n| [(97 + n).chr, :"tile#{n}"] }
+      background :rays, tiles: :wall, map: Array.new(20) { "abcde" * 6 }
+    end
   end
 
   private

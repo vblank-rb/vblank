@@ -160,6 +160,9 @@ module VBlank
             @cuts = {} # a sprite picture's name => its Cut (#cut_sprite_picture)
             @palettes = Array.new(PALETTES) # each a list of up to fifteen colour words, or nil for one not used yet
             @held = {} # whose list => the palette it keeps to itself (#reserve_held_palette)
+            @held_offsets = {} # whose list => the place before its first, for a list that shares a palette (#share_held_palette)
+            @held_counts = {} # whose list => how many places it has
+            @palettes_written = Set.new # the palettes of lists whose writes are made (#held_places_of)
             @scene_held = {} # whose list => the scenes whose copies alone keep its palette (#reserve_scene_held_palette)
             @held_names = {} # whose list => what a refusal calls it, where its key does not say (#held_name)
             # What each palette holds, for a refusal's words: by scene, nil for the palettes every screen keeps.
@@ -187,10 +190,11 @@ module VBlank
           # one a sprite's piece draws too, is the one tile in video memory.
           # +palette+ is a palette whose places are the tile's own list's (#reserve_held_palette), for a tile of a
           # background the game draws with other colours: the tile is then made of places, as a sprite's is.
+          # +offset+ is the place before the list's first, where it shares the palette (#held_places_of).
           # +of+ is the background's name, for a build with too many tiles to say what took them.
-          def background_cell(image, of:, palette: nil)
+          def background_cell(image, of:, palette: nil, offset: 0)
             taker = "background :#{of}"
-            return placed_background_cell(image, palette, taker) if palette
+            return placed_background_cell(image, palette, taker, offset) if palette
 
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             colors = drawn.map { |at| word_of(image.color_at(at)) }.uniq
@@ -347,17 +351,33 @@ module VBlank
               refuse_long_held_list!(colors)
               @held_names[key] = name if name
               free = (0...PALETTES).find { |p| @palettes[p].nil? }
-              unless free
-                raise TooManyLists, "The lists of colours the game changes need more lists than a Genesis holds (#{PALETTES}, " \
-                                    "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
-                                    "pictures in other colours."
-              end
+              return share_held_palette(key, colors) unless free
 
               @palettes[free] = colors.map { |color| word_of(color) }
               note_taker(free, held_taker(key))
+              @held_counts[key] = colors.length
               @held[key] = free
             end
           end
+
+          # Where the list kept under +key+ is in the colour memory: its palette, the place before its first
+          # (0 for a list whose places are the palette's from place 1), how many places it has, and whether
+          # other lists share its palette, so a write of its colours must touch its own places alone.
+          HeldPlaces = Data.define(:palette, :offset, :count, :shared)
+
+          # The places of the list kept under +key+ (#reserve_held_palette), or nil for one with no palette, for
+          # the code that writes its colours. Its palette is shared with no list after this, since a write
+          # made already would not know of it (#share_held_palette).
+          def held_places_of(key)
+            palette = @held[key] or return nil
+
+            @palettes_written << palette
+            HeldPlaces.new(palette: palette, offset: @held_offsets.fetch(key, 0), count: @held_counts.fetch(key, 0),
+                           shared: @held.count { |_, other| other == palette } > 1)
+          end
+
+          # The place before the first of the list kept under +key+: 0 but for a list that shares its palette.
+          def held_offset_of(key) = @held_offsets.fetch(key, 0)
 
           # A LIST THE GAME CHANGES THAT ONLY SOME SCENES DRAW WITH keeps a palette in those scenes' copies
           # alone (+scenes+), and every other scene has that palette for its own pictures, as a console game
@@ -379,6 +399,7 @@ module VBlank
               copies.each { |palettes| palettes[free] = colors.map { |color| word_of(color) } }
               scenes.each { |scene| @takers[scene][free] << held_taker(key) }
               @scene_held[key] = scenes
+              @held_counts[key] = colors.length
               @held[key] = free
             end
           end
@@ -543,9 +564,10 @@ module VBlank
           def allot_run_tile(name) = @run_tiles[[@tiles.object_id, name]] ||= @tiles.own_tile("painted tiles :#{name}")
 
           # A tile of a background drawn with other colours, made of the places its pixels were drawn at.
-          def placed_background_cell(image, palette, taker)
+          # +offset+ is the place before the list's first in a palette it shares (#share_held_palette).
+          def placed_background_cell(image, palette, taker, offset)
             places = Array.new(64) do |at|
-              image.tile_see_through_at?(at) ? 0 : image.place_at(at) || first_place(image, image.color_at(at))
+              image.tile_see_through_at?(at) ? 0 : offset + (image.place_at(at) || first_place(image, image.color_at(at)))
             end
             [@tiles.word_of(TileBytes.of(places), taker), palette]
           end
@@ -731,6 +753,47 @@ module VBlank
 
             @held_names.fetch(key, "a list of colours of a background")
           end
+
+          # A LIST OF A BACKGROUND'S THAT FINDS NO PALETTE FREE shares one with other such lists. A cell
+          # names a palette, and its tile's pixels name places in it, so a tile drawn from a short list can
+          # name places past the start: a list of three colours at places 4 to 6 is as much the tile's as
+          # one at places 1 to 3. So the lists of a background walked bank by bank, as a Color or Advance
+          # original's banks of four colours are, fit five to a palette, and a write of one list's colours
+          # touches its own places alone (Lowering::Picture#emit_held_list_write). Only a palette that
+          # backgrounds' lists alone hold, every screen, is shared: a sprite's tiles name its list's places
+          # from place 1, and its palette number is all that a sprite drawn with another list changes.
+          # Asked only once every palette is taken, so a game that fits without sharing builds as it did.
+          #
+          # A palette whose list's writes are made already (#held_places_of) is not shared: those writes put
+          # all fifteen places.
+          def share_held_palette(key, colors)
+            unless background_list?(key)
+              raise TooManyLists, "The lists of colours the game changes need more lists than a Genesis holds (#{PALETTES}, " \
+                                  "shared with every other picture). To fix this, change fewer lists, or draw fewer " \
+                                  "pictures in other colours."
+            end
+
+            host = (0...PALETTES).find do |p|
+              holders = @held.select { |_, held| held == p }.keys
+              holders.any? && holders.all? { |other| background_list?(other) && !@scene_held.key?(other) } &&
+                !@palettes_written.include?(p) && @palettes[p].length + colors.length <= OWN_COLORS
+            end
+            unless host
+              raise TooManyLists, "The lists of colours that the game changes need more colours than a Genesis shows at " \
+                                  "once. It holds #{PALETTES} sets of #{OWN_COLORS} colours for all the pictures. Short " \
+                                  "lists of a background share a set. To fix this, change fewer lists, or use fewer " \
+                                  "colours in each list."
+            end
+
+            @held_offsets[key] = @palettes[host].length
+            @palettes[host] += colors.map { |color| word_of(color) }
+            note_taker(host, held_taker(key))
+            @held_counts[key] = colors.length
+            @held[key] = host
+          end
+
+          # Whether +key+ is a background's own list (Lowering::Picture#list_palette_of): +[:background, id, index]+.
+          def background_list?(key) = key.is_a?(Array) && key.first == :background
 
           # A list the game changes is refused where it holds more colours than a palette.
           def refuse_long_held_list!(colors)

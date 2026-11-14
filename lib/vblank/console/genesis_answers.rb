@@ -145,6 +145,9 @@ module VBlank
                        "lists too draws only its tiles of that list from it, since each cell names its own list. " \
                        "A background that draws with several lists the game changes draws its tiles of each " \
                        "list from that list, so every list of a screen can change on one frame. " \
+                       "If a background draws with more lists than the four, its short lists share one of the four. " \
+                       "A list of three colours uses three of the fifteen places, so five such lists fit in one. " \
+                       "A sprite's list does not share. " \
                        "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \

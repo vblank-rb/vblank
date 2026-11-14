@@ -195,7 +195,8 @@ module VBlank
                        "colours. #{advance}"
               end
 
-              "The lists of colours this game draws with need more than the four a Genesis holds at once. The Genesis " \
+              "The lists of colours this game draws with need more than the four a Genesis holds at once. Short lists " \
+                "of a background share one of the four, and these lists do not fit even so. The Genesis " \
                 "build keeps each list for the whole game. It does not swap lists as the game runs yet. To fix this, draw " \
                 "with fewer lists of colours. To step through many sets of colours, draw the sprites and the background " \
                 "with one list, and change what it holds with `recolor`: that list keeps one of the four, whatever the " \
@@ -692,9 +693,18 @@ module VBlank
             # palette, where it has one. A list only some scenes keep (Art#reserve_scene_held_palette) has the set
             # noted, and is written only while one of them is up, since another scene's own pictures may be in
             # its palette; one of them taking over writes the set noted (#emit_scene_held_lists).
+            #
+            # A list that shares its palette with other lists (Art#share_held_palette) is written to its own
+            # places alone (Runtime::Tint's rt_colors_hold_places), the first and how many.
             def emit_held_list_write(key, which)
-              palette = @art.held_palette_of(key) or return
+              places = @art.held_places_of(key) or return
+              palette = places.palette
               table = LabelAddress.new(held_colors_table(key))
+              if places.shared
+                first = (palette * Art::PLACES) + places.offset
+                return runtime_call("rt_colors_hold_places", [table, which, Build.int(first), Build.int(places.count - 1)])
+              end
+
               scenes = @art.scenes_holding(key)
               return runtime_call("rt_colors_hold", [table, which, Build.int(palette)]) unless scenes
 
@@ -718,7 +728,7 @@ module VBlank
                 next unless @art.scenes_holding(key).include?(scene)
 
                 palette = @art.held_palette_of(key)
-                @asm.clr(:l, runtime_at(Runtime::Tint::SETS, palette * 4))
+                @asm.clr(:l, runtime_at(Runtime::Tint::SETS, palette * Art::PLACES * 4))
                 runtime_call("rt_colors_hold", [LabelAddress.new(held_colors_table(key)), Build.var_ref(noted), Build.int(palette)])
               end
             end
@@ -923,7 +933,8 @@ module VBlank
                     if bg.recolors.empty? && bg.list_followed_by(image.list_drawn_from).nil?
                       @art.background_cell(image, of: bg.name)
                     else
-                      @art.background_cell(image, of: bg.name, palette: recolored_palette(bg, image))
+                      palette = recolored_palette(bg, image)
+                      @art.background_cell(image, of: bg.name, palette: palette, offset: recolored_offset(bg, image))
                     end
                   end
                 end
@@ -953,6 +964,13 @@ module VBlank
             def recolored_palette(bg, image)
               palette = list_palette_of(bg, image)
               palette.key ? @art.reserve_held_palette(palette.key, palette.colors, name: palette.name) : @art.ordered_palette(palette.colors)
+            end
+
+            # The place before the first of the list that palette's tile is drawn from (#recolored_palette): 0,
+            # but for a background's list that shares a palette with others (Art#share_held_palette).
+            def recolored_offset(bg, image)
+              key = list_palette_of(bg, image).key
+              key ? @art.held_offset_of(key) : 0
             end
 
             # The palette a tile of +bg+ drawn with other colours is drawn from (#recolored_palette), before it is

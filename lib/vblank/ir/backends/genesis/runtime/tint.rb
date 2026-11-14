@@ -45,6 +45,7 @@ module VBlank
           #
           #   rt_tint_to(mode, steps, color)         D0 = 0 black, 1 white, 2 the colour in D2; D1 the 256ths
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
+          #   rt_colors_hold_places(table, which, first, count)  the same for a list sharing its palette
           #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
           #   rt_scene_colors(table)                 a scene taking over: its own palettes
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to hold it
@@ -63,7 +64,7 @@ module VBlank
             DIRTY = "rt colors dirty"
             CRAM = "rt cram" # The colour memory as it is to be, a word for each of its 64 places
             OWED = "rt cram owed" # 1 while CRAM is not yet in the colour memory
-            SETS = "rt colors sets" # For each palette, the set of a list it holds now (a long), or nought
+            SETS = "rt colors sets" # For each place, the set of the list starting after it holds now (a long), or nought
 
             TOWARD_BLACK = PaletteWalk::TOWARD_BLACK
             TOWARD_WHITE = PaletteWalk::TOWARD_WHITE
@@ -80,7 +81,7 @@ module VBlank
               memory.reserve(DIRTY, 2)
               memory.reserve(CRAM, Art::PALETTES * Art::PLACES * 2)
               memory.reserve(OWED, 2)
-              memory.reserve(SETS, Art::PALETTES * 4)
+              memory.reserve(SETS, Art::PALETTES * Art::PLACES * 4)
             end
 
             # +backdrop+ for a game whose backdrop is copied from a list it recolours, which then carries
@@ -284,12 +285,21 @@ module VBlank
             # each; +which+ names one of the others, and a number naming none is the declared colours, as the
             # interpreter holds them (Reference#colors_held_by). The set's colours go into the palette's places
             # in the game's colours, and the colour memory is owed. A set a palette holds already costs nothing.
+            #
+            # rt_colors_hold_places(table, which, first, count) is the same for a list that shares its palette
+            # with other lists (Art#share_held_palette): +first+ is the place before the list's first, counted
+            # over the whole colour memory (a palette is sixteen), and +count+ is one less than how many places
+            # it has, so the set goes into its own places alone. SETS notes the set at +first+, so each list
+            # in a palette is noted apart; rt_colors_hold is the palette's first place and all fifteen.
             def emit_hold(asm, memory, at)
               asm.label("rt_colors_hold")
+              asm.lsl(:l, 4, asm.d(2)) # a palette is sixteen places
+              asm.moveq(Art::OWN_COLORS - 1, asm.d(3))
+              asm.label("rt_colors_hold_places")
               asm.movea(:l, asm.d(0), asm.a(0))
-              asm.moveq(0, asm.d(3))
-              asm.move(:w, asm.post(0), asm.d(3))
-              asm.cmp(:l, asm.d(3), asm.d(1))
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, asm.post(0), asm.d(4))
+              asm.cmp(:l, asm.d(4), asm.d(1))
               asm.branch(:cc, "rt_colors_hold_own")
               asm.addq(:l, 1, asm.d(1))
               asm.bra("rt_colors_hold_set")
@@ -299,15 +309,14 @@ module VBlank
               asm.mulu(asm.imm(Tiles::SET_BYTES), asm.d(1))
               asm.add(:l, asm.d(1), asm.a(0))
               asm.move(:l, asm.a(0), asm.d(1))
-              asm.lsl(:l, 2, asm.d(2))
+              asm.lsl(:l, 2, asm.d(2)) # a place's note is a long
               asm.lea(asm.abs_l(memory[SETS]), asm.a(1))
               asm.cmp(:l, asm.idx(1, 0, 2), asm.d(1))
               asm.branch(:eq, "rt_colors_hold_done")
               asm.move(:l, asm.d(1), asm.idx(1, 0, 2))
-              asm.lsl(:l, 3, asm.d(2)) # four bytes a palette became thirty-two: a palette's places in the colours
+              asm.lsr(:l, 1, asm.d(2)) # and its colour a word
               asm.lea(asm.abs_l(memory[COLORS], 2), asm.a(1))
               asm.add(:l, asm.d(2), asm.a(1))
-              asm.moveq(Art::OWN_COLORS - 1, asm.d(3))
               asm.label("rt_colors_hold_place")
               asm.move(:w, asm.post(0), asm.post(1))
               asm.dbra(asm.d(3), "rt_colors_hold_place")
