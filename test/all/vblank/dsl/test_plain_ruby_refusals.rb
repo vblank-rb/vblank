@@ -44,6 +44,37 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("`Minitest`") { game_loop { Minitest::Test } }
   end
 
+  def test_a_flag_of_the_game_block_one_routine_sets_and_the_loop_tests_is_refused_at_the_test
+    error = assert_raises(Refused) do
+      built do
+        @open = false
+        seen = var :seen, 0
+        func(:open_door) { @open = true }
+        game_loop do
+          call :open_door if pressed(:a)
+          seen += 1 if @open
+        end
+      end
+    end
+
+    assert_includes error.message, "`game_variables :open` to the game block"
+    assert_includes error.message, "`true` or `false`"
+    assert_match(/\(at test_plain_ruby_refusals\.rb:\d+\)/, error.message)
+  end
+
+  def test_a_flag_left_nil_one_routine_tests_and_another_sets_is_told_to_start_as_false
+    error = assert_raises(Refused) do
+      built do
+        seen = var :seen, 0
+        func(:check_door) { seen += 1 if @open }
+        func(:open_door) { @open = true }
+        game_loop { call :check_door }
+      end
+    end
+
+    assert_includes error.message, "give `@open` `false` where it is first set"
+  end
+
   def test_an_instance_variable_handed_a_variable_can_move_while_setting_up
     built do
       score = var :score, 0

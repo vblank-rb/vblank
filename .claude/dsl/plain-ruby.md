@@ -116,10 +116,16 @@ instance variables.
   only while setting up (a counter that makes names, a count a setting-up method works out and game
   code uses as `repeat(@count)` or `@count.times`) is not refused. Nor is one that a routine gives a
   number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
-  String, or one read while it holds nil (`return if @laid_out`). Nor is a line of `initialize`,
-  wherever the object is made, or one holding `true` or `false`: that is a flag the build keeps for
-  itself (`plan unless @planned`, set true by `plan`). A number one routine gives and another reads is
-  refused: the game can run them in either order.
+  String, or a number read while it holds nil. Nor is a line of `initialize`, wherever the object is
+  made. A number one routine gives and another reads is refused: the game can run them in either order.
+- **A plain `true` or `false` (or nil) is a once-guard or a game flag**, told apart by where it changes.
+  A once-guard is set in the routine that has just read it (`plan unless @planned`, with `plan` setting
+  `@planned = true`; or `return if @laid_out` above `@laid_out = true`): the work it guards is built
+  the first time a routine reaches it, and a later read, from any routine, finds it built. It is not
+  refused. A game flag is set in one routine and tested in another (`@open = true` in one, `if @open`
+  in the other): Ruby would decide the test while building, so it is refused at the second of the two
+  lines the build reaches, naming the fix, `game_variables :open` (and `@open = false` where it starts,
+  for one left nil).
 
 ## Changing a variable
 

@@ -113,6 +113,35 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal 3, played(PlannedOncePart, :planned_once_tick)[:planned_once_steps]
   end
 
+  def test_a_once_guard_read_from_a_second_routine_is_not_refused
+    assert_equal 6, played(PlannedTwicePart, :planned_once_tick, :planned_twice_tick)[:planned_once_steps]
+  end
+
+  def test_an_unnamed_flag_one_routine_sets_and_another_tests_later_is_refused_at_the_test
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(UnnamedDoorOpenedFirstPart, :door_opened_first_open, :door_opened_first_test)
+    end
+
+    assert_match(/`@open` is changed while the game plays/, error.message)
+    assert_match(/game_variables :open` to UnnamedDoorOpenedFirstPart/, error.message)
+    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+  end
+
+  def test_an_unnamed_flag_one_routine_tests_and_another_sets_later_is_refused_at_the_change
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played(UnnamedDoorTestedFirstPart, :door_tested_first_test, :door_tested_first_open)
+    end
+
+    assert_match(/game_variables :open` to UnnamedDoorTestedFirstPart/, error.message)
+  end
+
+  def test_a_named_flag_one_routine_sets_and_another_tests_plays_as_a_var
+    named = played(NamedDoorPart, :named_door_test, :named_door_open, frames: 5)[:named_door_seen]
+
+    assert_equal played(DoorWithVarPart, :door_var_test, :door_var_open, frames: 5)[:door_var_seen], named
+    assert_equal 3, named
+  end
+
   def test_a_number_set_in_initialize_while_game_code_records_and_read_in_another_routine_is_not_refused
     assert_equal 6, played(ScrollPart, :scroll_part_make, :scroll_part_tick)[:scroll_part_shown]
   end

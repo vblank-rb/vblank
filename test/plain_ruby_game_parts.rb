@@ -504,6 +504,65 @@ class PlannedOncePart
   end
 end
 
+# The same once-guard reached from two routines: the first sets it while it plans, and the second
+# reads it true and plans nothing. Every change to it is made where it was just read.
+class PlannedTwicePart < PlannedOncePart
+  def initialize(builder)
+    super
+    builder.func(:planned_twice_tick) { step }
+  end
+end
+
+# A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
+# tests it. The game can run them in either order, and Ruby decides the test while building, so
+# the build stops at whichever line comes second. Declared in each order.
+class UnnamedDoorOpenedFirstPart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_opened_first_seen, 0)
+    builder.func(:door_opened_first_open) { @open = true }
+    builder.func(:door_opened_first_test) { @seen += 1 if @open }
+  end
+end
+
+class UnnamedDoorTestedFirstPart
+  def initialize(builder)
+    @open = false
+    @seen = builder.var(:door_tested_first_seen, 0)
+    builder.func(:door_tested_first_test) { @seen += 1 if @open }
+    builder.func(:door_tested_first_open) { @open = true }
+  end
+end
+
+# The door again, named: a game variable, which plays as its twin with `var`.
+class NamedDoorPart
+  game_variables :open
+
+  def initialize(builder)
+    @open = false
+    @passes = builder.var(:named_door_passes, 0)
+    @seen = builder.var(:named_door_seen, 0)
+    builder.func(:named_door_test) { @seen += 1 if @open }
+    builder.func(:named_door_open) do
+      @passes += 1
+      @open = true if @passes == 2
+    end
+  end
+end
+
+class DoorWithVarPart
+  def initialize(builder)
+    @open = builder.var(:door_var_open, false)
+    @passes = builder.var(:door_var_passes, 0)
+    @seen = builder.var(:door_var_seen, 0)
+    builder.func(:door_var_test) { @seen += 1 if @open }
+    builder.func(:door_var_open) do
+      @passes += 1
+      @open = true if @passes == 2
+    end
+  end
+end
+
 # A number a part is made with, inside a routine, and only read after: its `initialize` gives it a
 # start, which is no change the game makes as it plays.
 class ScrolledSpot
