@@ -232,11 +232,42 @@ module VBlank
         return order_turn_nodes(order) if order.turns
 
         keys = order.keys_list
-        by_name = order_keys(order)
+        by_name = without_common_addend(order_keys(order))
         numbers = run_objects(order).each_with_index.map do |name, i|
           Build.list_set(keys, Build.int(i), by_name.fetch(name))
         end
         numbers + [Build.list_sort(order.order_list, by: keys, descending: order.front == :lowest)]
+      end
+
+      # THE SAME NUMBER ADDED TO EVERY THING'S NUMBER CHANGES NO ORDER, so it is left out. A box's
+      # bottom is the thing's place, plus where the box starts in it, plus its height, and things of
+      # one size have the same two: the order of their bottoms is the order of their places, and
+      # each thing's number is then a copy of its place, where it was a sum worked out every frame.
+      # The one order it is not is past the biggest number there is, where a sum turns round to the
+      # smallest; a thing placed there is two billion pixels off the screen.
+      #
+      # +keys+ is each thing's number, by name, handed back with the numbers written in the
+      # program that every one of them adds up to the same total made noughts, in place: each
+      # sum stays in the tree, so the game's own number it was worked out from is still used
+      # (Guardrails::Checks::OrphanedExpression), and a lowering leaves a nought added out.
+      def without_common_addend(keys)
+        sums = keys.values.map { |node| sums_of_written_numbers(node) }
+        totals = sums.map { |each| each.sum { |sum| sum.rhs.value } }.uniq
+        return keys unless totals.length == 1 && !totals.first.zero?
+
+        sums.flatten.each { |sum| sum.replace_operand(sum.rhs, Build.int(0)) }
+        keys
+      end
+
+      # The sums in +node+ that add a number written in the program to it, outermost first: none
+      # for a node that is not such a sum.
+      def sums_of_written_numbers(node)
+        sums = []
+        while node.kind == :binop && node.op == :+ && node.rhs.kind == :int
+          sums << node
+          node = node.lhs
+        end
+        sums
       end
 
       # This frame's order copied from the table (#declare_turn_table), and the turn moved to the

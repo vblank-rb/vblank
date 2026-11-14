@@ -311,6 +311,7 @@ module VBlank
             keep_order_tables
             make_chip_code
             routines = @called.flat_map do |name|
+              next [] if @sorts_written_in_place.include?(name)
               next [chip_routine_section(name)] if on_chip?(name)
 
               @lowering_scene = @scenes.key?(name) ? name : nil
@@ -756,8 +757,25 @@ module VBlank
 
           def emit_call(node)
             raise LoweringError, "the routine #{node.target.inspect} is called and never declared" unless @funcs.key?(node.target)
+            return emit_sort_in_place(@funcs.fetch(node.target).children) if @sorts_written_in_place&.include?(node.target)
 
             call_routine(self.class.routine_label(node.target))
+          end
+
+          # A draw order's routine written where it is called (#sort_written_in_place?), with D on
+          # its tables' page while it runs when it has one (KeyedSort), and back on the game's page,
+          # $0000, after.
+          def emit_sort_in_place(body)
+            page = @keyed_sorts.fetch(body.last.name).page
+            if page
+              @asm.lda(page)
+              @asm.tcd
+            end
+            body.each { |each_node| statement(each_node) }
+            return unless page
+
+            @asm.lda(0)
+            @asm.tcd
           end
 
           # Reference#exec_call_one_of: the number worked out once, and a number naming no routine of
@@ -1440,8 +1458,9 @@ module VBlank
           # nearly every move; one that goes further goes on to one routine that moves it back as the
           # sort above does, its number and its item with it.
           #
-          # What is left is mostly the numbers themselves, worked out as whole words: eight
-          # instructions a thing, the index read among them.
+          # What is left is mostly the numbers themselves, written as whole words: five instructions
+          # a thing for a number that is a copy of its place (Builder::DrawOrder#without_common_addend
+          # leaves out an amount every thing adds), eight for a sum, the index read among them.
           #
           # THE ORDER IS KEPT IN THESE TABLES, NOT IN THE LIST. Three tables in the first 8K, where a
           # 16-bit address reaches them: the numbers, by place, low halves and high halves apart;
@@ -1456,12 +1475,30 @@ module VBlank
           # Every table is two bytes a place, the numbers' low halves and high halves kept apart, so
           # one index reaches a place's number and its item, and an item doubled is where it is in the
           # table of places: two times its place.
-          KeyedSort = Data.define(:order, :keys, :count, :lows, :highs, :places, :entries, :descending) do
+          #
+          # THE TABLES AS THE DIRECT PAGE, for a sort written where it is called
+          # (#sort_written_in_place?) whose numbers are each read where they are. The direct page is
+          # the 256 bytes an instruction names with one byte rather than two, a fetch from the
+          # cartridge fewer, and the processor's D register says where it starts. Moved to the page
+          # the tables start in while their numbers are written and sorted, every read and write of
+          # them is that fetch quicker; D is put back to the game's page, $0000, after. It must start
+          # a page (its low byte nought), or each of those instructions takes a step more and the
+          # fetch saved is spent again. +page+ is where D goes, nil for a sort that keeps D where it
+          # is, and +scratch+ the six bytes that sort's moving routine keeps an item and its number
+          # in, since the game's working numbers are not on the page then.
+          KeyedSort = Data.define(:order, :keys, :count, :lows, :highs, :places, :entries, :descending, :page, :scratch) do
+            # The operand for +address+, plus X when +x+: on the direct page when the sort moves D
+            # there and the address is within the page's 256 bytes, else by its 16-bit address.
+            def at(asm, address, x: false)
+              offset = page && (address - page)
+              return x ? asm.direct_x(offset) : asm.direct(offset) if offset&.between?(0, 0xFF)
+
+              x ? asm.abs_x(address) : asm.abs(address)
+            end
+
             # The operands for the two halves of the number +plus+ bytes into the numbers (two bytes
             # a place), plus X when +x+.
-            def number(asm, plus, x: false)
-              [lows, highs].map { |at| x ? asm.abs_x(at, plus) : asm.abs(at + plus) }
-            end
+            def number(asm, plus, x: false) = [lows, highs].map { |table| at(asm, table + plus, x: x) }
           end
 
           # Which sorts keep their numbers by place (LoweringPlan#sorts_kept_apart, with room in the
@@ -1478,10 +1515,61 @@ module VBlank
                                     lows: @memory.reserve("the numbers of #{said}", count * 2),
                                     highs: @memory.reserve("the numbers' high halves of #{said}", count * 2),
                                     places: @memory.reserve("the places in #{said}", count * 2),
-                                    entries: @memory.reserve("the items of #{said}", count * 2))
+                                    entries: @memory.reserve("the items of #{said}", count * 2), page: nil, scratch: nil)
               @keyed_sorts[node.name] = keyed
               @keys_by_place[node.by] = keyed
             end
+            @sorts_written_in_place = @called.select { |name| sort_written_in_place?(name) }.freeze
+            @sorts_written_in_place.each { |name| keep_sort_on_its_page(@funcs.fetch(name).children) }
+          end
+
+          # The sort of +body+ (a routine #sort_written_in_place? holds) given the page its tables
+          # start in as its direct page, when every number it writes is read where it is: a number
+          # worked out first is worked out in the game's working numbers, which are on the game's
+          # own page. A first 8K with no room for the moving routine's six bytes keeps D where it is.
+          def keep_sort_on_its_page(body)
+            keyed = @keyed_sorts.fetch(body.last.name)
+            return unless body[0...-1].all? { |node| key_read_in_place?(without_added_nought(node.value)) }
+            return if @memory.near_bytes_left < NEAR_BYTES_LAST + 6
+
+            paged = keyed.with(page: keyed.lows & 0xFF00, scratch: @memory.reserve("the moving number of the order #{keyed.order.inspect}", 6))
+            @keyed_sorts[keyed.order] = paged
+            @keys_by_place[keyed.keys] = paged
+          end
+
+          # Whether #emit_key_by_place writes +value+ with nothing worked out first: a variable, a
+          # number written in the program, a word slot at a fixed place, or a sum or difference of
+          # two of those. Asked before any routine is written, so the operands it looks for are made
+          # in an assembler of their own and thrown away.
+          def key_read_in_place?(value)
+            kept = @asm
+            @asm = measuring_assembler
+            read = ->(node) { operand_halves(node) || fixed_word_slot_halves(node) }
+            return !!read.call(value) unless sum_in_halves?(value) && %i[+ -].include?(value.op)
+
+            !!(read.call(without_added_nought(value.lhs)) && read.call(value.rhs))
+          ensure
+            @asm = kept
+          end
+
+          # A DRAW ORDER'S ROUTINE WRITTEN WHERE IT IS CALLED. The routine (Builder::DrawOrder
+          # #finalize_draw_orders) is the numbers written by place and the sort, called once
+          # before the frame's sprites are placed: a long call and its return are about as much
+          # as two places' compares, so where it is called once its statements are written there
+          # instead, and the routine is not made. One called from more than one place stays a
+          # routine, so its code is not written twice.
+          def sort_written_in_place?(name)
+            return false if on_chip?(name)
+
+            body = @funcs[name]&.children or return false
+            sort = body.last
+            return false unless sort&.kind == :list_sort && @keyed_sorts.key?(sort.name)
+
+            keys = @keyed_sorts.fetch(sort.name).keys
+            return false unless body[0...-1].all? { |node| node.kind == :list_set && node.name == keys }
+
+            @program.walk.count { |node| node.kind == :call && node.target == name } == 1 &&
+              @program.walk.none? { |node| node.kind == :call_one_of && node.targets.include?(name) }
           end
 
           # The tables as the order starts: item +n+ in place +n+.
@@ -1496,9 +1584,9 @@ module VBlank
           # A thing's number, written into the slot of the order its thing is in: X from the table of
           # places, then the number into the slot there, a half at a time.
           def emit_key_by_place(node, keyed)
-            place = @asm.abs(keyed.places + (folded(node.index) * 2))
+            place = keyed.at(@asm, keyed.places + (folded(node.index) * 2))
             to = keyed.number(@asm, 0, x: true)
-            value = node.value
+            value = without_added_nought(node.value)
             if sum_in_halves?(value) && %i[+ -].include?(value.op)
               return with_key_halves(without_added_nought(value.lhs), value.rhs) do |lefts, rights|
                 @asm.ldx(place)
@@ -1540,20 +1628,39 @@ module VBlank
             done = fresh("sort_done")
             (1...keyed.count).each do |place|
               stays = fresh("sort_stays")
-              emit_keyed_compare(keyed, keyed.number(@asm, place * 2), keyed.number(@asm, (place * 2) - 2))
-              @asm.bpl(stays)
+              emit_keyed_stays_unless_beyond(keyed, keyed.number(@asm, place * 2), keyed.number(@asm, (place * 2) - 2), stays)
               emit_keyed_swap(keyed, place)
               if place > 1
-                emit_keyed_compare(keyed, keyed.number(@asm, (place * 2) - 2), keyed.number(@asm, (place * 2) - 4))
-                @asm.bpl(stays)
+                emit_keyed_stays_unless_beyond(keyed, keyed.number(@asm, (place * 2) - 2), keyed.number(@asm, (place * 2) - 4), stays)
                 @asm.ldx((place - 1) * 2)
                 @asm.jsr(@asm.abs(mover))
               end
               @asm.label(stays)
             end
-            @asm.brl(done)
+            @asm.bra(done)
             emit_keyed_move(keyed, mover)
             @asm.label(done)
+          end
+
+          # A jump to +stays+ unless the number at +item+ (two halves) is strictly beyond the one at
+          # +before+; past it when it is, so the item moves. The subtraction overflows only for two
+          # numbers far apart, so the branch for a sign that overflowed is the one not taken: a place
+          # that stays is a branch not taken and one taken, where turning the sign round first
+          # (#emit_keyed_compare) is two taken.
+          def emit_keyed_stays_unless_beyond(keyed, item, before, stays)
+            overflowed = fresh("sort_overflowed")
+            moves = fresh("sort_moves")
+            first, second = keyed.descending ? [before, item] : [item, before]
+            @asm.lda(first[0])
+            @asm.cmp(second[0])
+            @asm.lda(first[1])
+            @asm.sbc(second[1])
+            @asm.bvs(overflowed)
+            @asm.bpl(stays)
+            @asm.bra(moves)
+            @asm.label(overflowed)
+            @asm.bmi(stays)
+            @asm.label(moves)
           end
 
           # The item in +place+ and the one before it swapped, at addresses known as the cartridge is
@@ -1562,20 +1669,19 @@ module VBlank
           def emit_keyed_swap(keyed, place)
             at = place * 2
             [keyed.lows, keyed.highs].each do |table|
-              @asm.lda(@asm.abs(table + at))
-              @asm.ldy(@asm.abs(table + at - 2))
-              @asm.sta(@asm.abs(table + at - 2))
-              @asm.sty(@asm.abs(table + at))
+              @asm.lda(keyed.at(@asm, table + at))
+              @asm.ldy(keyed.at(@asm, table + at - 2))
+              @asm.sta(keyed.at(@asm, table + at - 2))
+              @asm.sty(keyed.at(@asm, table + at))
             end
-            @asm.lda(@asm.abs(keyed.entries + at))
-            @asm.ldx(@asm.abs(keyed.entries + at - 2))
-            @asm.sta(@asm.abs(keyed.entries + at - 2))
-            @asm.stx(@asm.abs(keyed.entries + at))
-            @asm.tay
+            @asm.ldy(keyed.at(@asm, keyed.entries + at))
+            @asm.ldx(keyed.at(@asm, keyed.entries + at - 2))
+            @asm.sty(keyed.at(@asm, keyed.entries + at - 2))
+            @asm.stx(keyed.at(@asm, keyed.entries + at))
             @asm.lda(at - 2)
-            @asm.sta(@asm.abs_y(keyed.places))
+            @asm.sta(@asm.abs_y(keyed.places)) # no store names the direct page plus Y
             @asm.lda(at)
-            @asm.sta(@asm.abs_x(keyed.places))
+            @asm.sta(keyed.at(@asm, keyed.places, x: true))
           end
 
           # N set when the number at +item+ (two halves) is strictly beyond the one at +before+, so the
@@ -1601,11 +1707,15 @@ module VBlank
           # here only for an item that goes back more than one place (#emit_keyed_swap takes the
           # first), and each place it goes back is about twenty instructions.
           #
-          #   R2  the item, doubled    R3  its number
+          #   R2  the item, doubled    R3  its number    (or the sort's +scratch+, for one on its own page)
           def emit_keyed_move(keyed, mover)
             step = fresh("sort_step")
             placed = fresh("sort_placed")
-            key = [@asm.direct(SORT_KEY), @asm.direct(SORT_KEY + 2)]
+            key, item = if keyed.scratch
+                          [[keyed.at(@asm, keyed.scratch), keyed.at(@asm, keyed.scratch + 2)], keyed.at(@asm, keyed.scratch + 4)]
+                        else
+                          [[@asm.direct(SORT_KEY), @asm.direct(SORT_KEY + 2)], @asm.direct(SORT_ITEM)]
+                        end
             here = keyed.number(@asm, 0, x: true)
             before = keyed.number(@asm, -2, x: true)
             @asm.label(mover)
@@ -1613,15 +1723,15 @@ module VBlank
               @asm.lda(here[half])
               @asm.sta(key[half])
             end
-            @asm.lda(@asm.abs_x(keyed.entries))
-            @asm.sta(@asm.direct(SORT_ITEM))
+            @asm.lda(keyed.at(@asm, keyed.entries, x: true))
+            @asm.sta(item)
 
             @asm.label(step)
             2.times do |half|
               @asm.lda(before[half])
               @asm.sta(here[half])
             end
-            @asm.lda(@asm.abs_x(keyed.entries, -2))
+            @asm.lda(keyed.at(@asm, keyed.entries - 2, x: true))
             emit_item_placed(keyed)
             2.times { @asm.dex }
             @asm.beq(placed)
@@ -1633,7 +1743,7 @@ module VBlank
               @asm.lda(key[half])
               @asm.sta(here[half])
             end
-            @asm.lda(@asm.direct(SORT_ITEM))
+            @asm.lda(item)
             emit_item_placed(keyed)
             @asm.rts
           end
@@ -1641,7 +1751,7 @@ module VBlank
           # The item doubled in A put in the place X names, in the table of items and the table of
           # places.
           def emit_item_placed(keyed)
-            @asm.sta(@asm.abs_x(keyed.entries))
+            @asm.sta(keyed.at(@asm, keyed.entries, x: true))
             @asm.tay
             @asm.txa
             @asm.sta(@asm.abs_y(keyed.places))
