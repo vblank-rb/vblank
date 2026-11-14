@@ -15,8 +15,8 @@ module VBlank
         # keep apart. A sum of two works the left-hand side out into D0 and takes the right-hand side
         # from where it already is — a number written in the program is part of the instruction, a
         # variable is read where it lives — so `x + 1` is two instructions and no call. A right-hand
-        # side that has to be worked out first is worked out, pushed on the stack, and pulled into D1
-        # once the left-hand side is in D0. A runtime routine taking several numbers has them in
+        # side that has to be worked out first is worked out and kept in D2, or pushed on the stack,
+        # while the left-hand side is worked out into D0 (#with_right_operand). A runtime routine taking several numbers has them in
         # D0, D1, D2... Nothing is kept in a register from one statement to the next, so a statement
         # never has to know what came before it.
         #
@@ -705,7 +705,8 @@ module VBlank
             end
           end
 
-          # Is +node+ a value worked out in place with D0, D1 and A0 alone?
+          # Is +node+ a value worked out in place with D0, D1, D2 and A0 alone? (D2 only for the right
+          # side of a sum, kept there while the left side is worked out: #with_right_operand.)
           def value_keeps_counters?(node)
             return true if node.is_a?(Symbol) || folded(node)
             return false unless node.is_a?(Node)
@@ -1771,13 +1772,31 @@ module VBlank
           end
 
           # The left side worked out into D0, and the block handed where the right side is: in place
-          # when it needs nothing worked out, and otherwise worked out first, pushed, and pulled into
-          # D1 once the left side is in D0.
+          # when it needs nothing worked out, and otherwise worked out first and kept while the left
+          # side is worked out.
+          #
+          # It is kept in D2 where the left side is written in place, with no call
+          # (#value_keeps_counters?), and no sum round this one is keeping its right side there
+          # already: a move there and none back, where the stack takes a push and a pull of twelve
+          # cycles each. A sum inside the left side then pushes its own. Anywhere else the right side
+          # is pushed, and pulled into D1 once the left side is in D0.
           def with_right_operand(left, right)
             operand = operand_of(right)
             if operand
               value(left)
               return yield(operand)
+            end
+
+            unless @right_side_kept || !value_keeps_counters?(left)
+              value(right)
+              @asm.move(:l, @asm.d(0), @asm.d(2))
+              @right_side_kept = true
+              begin
+                value(left)
+              ensure
+                @right_side_kept = false
+              end
+              return yield @asm.d(2)
             end
 
             push_value(right)
