@@ -82,7 +82,7 @@ module VBlank
 
             bank_lists_by_pose = as_built.walk.select { |node| node.kind == :bitmap }.to_h { |node| [node.name, frame_bank_lists(node)] }
             following = Stacking.objects_in_draw_order(program).select(&:follows_each)
-            following.reject { |node| one_pose_or_banks_of_one_slot?(node, bank_lists_by_pose) }.map do |node|
+            following.reject { |node| single_color_source?(node, bank_lists_by_pose) }.map do |node|
               Finding.new(check: NAME, severity: :error, node: node, message: following_message(node, console))
             end
           end
@@ -94,9 +94,10 @@ module VBlank
             pose_in_file.bank_lists if pose_in_file.is_a?(StartFile::Pose)
           end
 
-          # Whether the sprite +node+ shows one picture, or only poses drawn in their frames' banks
-          # of one slot (+bank_lists_by_pose+ holds each picture's bank lists, nil for any other).
-          def one_pose_or_banks_of_one_slot?(node, bank_lists_by_pose)
+          # Whether the sprite +node+ takes its colours from one source: it shows one picture, or only
+          # poses drawn in their frames' banks of one slot (+bank_lists_by_pose+ holds each picture's
+          # bank lists, nil for any other).
+          def single_color_source?(node, bank_lists_by_pose)
             poses = node.poses.uniq
             return true if poses.one?
 
