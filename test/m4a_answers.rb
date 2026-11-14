@@ -35,6 +35,7 @@ module M4AAnswers
   SPLIT_TABLE_AT = 0x0E0        # 128 bytes
   KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 0, 1, 36 and 38 written
   MIXED_SONG_AT = 0x5C0         # a song whose tracks switch between plain voices, the kit and the split
+  ROUNDS_SONG_AT = 0x5D0        # a song whose tracks come round at different points
   WAVE_AT = 0x600               # a recording that loops
   ONE_SHOT_AT = 0x660           # one that does not
   TRACKS_AT = 0x700
@@ -101,6 +102,17 @@ module M4AAnswers
                    [:note, 6, 1], [:wait, 6], [:voice, 7], [:note, 6, 50], [:wait, 6], [:voice, 0], [:note, 6, 62], [:wait, 6], [:fine]],
                   [[:voice, 0], [:vol, 100], [:note, 6, 60, 100], [:wait, 6], [:voice, 6], [:note, 6, 0], [:wait, 6], [:voice, 5],
                    [:note, 6, 48], [:wait, 6], [:note, 6, 64], [:wait, 6], [:voice, 0], [:note, 6, 62], [:wait, 6], [:fine]]].freeze
+  # A song whose tracks come round at different points, at a tempo that lands a tick on three
+  # quarters of a frame. The first square's track goes round every 6 ticks from its start, counting
+  # its rounds in the driver's memory and playing every second one a fifth higher; the second
+  # square's plays a note once, then goes round every 18 ticks, so each of its rounds lasts
+  # thirteen and a half frames and the second starts a frame later in the count than the first.
+  # The two come round together every 36 ticks, 27 frames, from the end of the second's first round.
+  ROUNDS_TRACKS = [[[:tempo, 100], [:voice, 1], [:vol, 127], [:label, :round], [:memacc, 1, 0, 1],
+                    [:memacc_jump, 6, 0, 2, :second], [:note, 3, 60, 100], [:wait, 6], [:goto, :round],
+                    [:label, :second], [:memacc, 0, 0, 0], [:note, 3, 67, 100], [:wait, 6], [:goto, :round]],
+                   [[:voice, 2], [:vol, 100], [:note, 4, 50, 90], [:wait, 6], [:label, :round], [:note, 8, 72, 110],
+                    [:wait, 9], [:note, 4, 76], [:wait, 9], [:goto, :round]]].freeze
   # The number a kit's or a split's first voice is given, past the 128 a VOICE names (Packing::M4A).
   KIT_AND_SPLIT_NUMBERS_FROM = 128
   # The recorded voices the mixed song plays, each where its twelve bytes are, as a port names them.
@@ -182,7 +194,8 @@ module M4AAnswers
     end
   end
 
-  COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS }).freeze
+  COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS,
+                     ROUNDS_SONG_AT => ROUNDS_TRACKS }).freeze
 
   # --- the player --------------------------------------------------------------------------------
 
@@ -192,18 +205,33 @@ module M4AAnswers
   # (0 for a tie) and the key that lets go of it.
   Sounding = Struct.new(:record, :start, :gate, :key)
 
-  # MPlayMain over the song at +song_at+ in +copy+: each tick of every track, the records of
-  # +walked+'s notes on voices of +kind+ (255 any), until the song ends. +watch+ is [track, place]
-  # to stop at, the frame of which is #found. A note on a kit's or a split's voice is numbered from
-  # +kit_from+ or +split_from+; #voices is where the voice each record played is, record by record.
-  class Player
-    attr_reader :records, :voices, :end_frame, :found, :jump
+  # The most rounds of the last track to come round that are kept to compare with
+  # (Packing::M4A::MOST_ROUNDS_KEPT).
+  MOST_ROUNDS = 8
+  # A round kept: the frame the slowest track jumped back on, and the whole driver at its start.
+  Round = Data.define(:frame, :state)
 
-    def initialize(copy, song_at, walked: nil, kind: 255, watch: nil, kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM)
+  # MPlayMain over the song at +song_at+ in +copy+: each tick of every track, the records of
+  # +walked+'s notes on voices of +kind+ (255 any), until the song ends or comes round. A note on a
+  # kit's or a split's voice is numbered from +kit_from+ or +split_from+; #voices is where the voice
+  # each record played is, record by record.
+  #
+  # WHERE A SONG COMES ROUND, as the reader works it out (Packing::M4A, "A SONG COMES ROUND"): a
+  # jump back really jumps, and the rounds counted are those of the last track to jump back for
+  # the first time. A round is kept as the whole driver at the start of the frame that track jumps
+  # back on, and at the start of every frame the driver is compared with each round kept: the same,
+  # and the song is #end_frame long and comes round to that round's frame, #loop_frame. A round
+  # ending with MOST_ROUNDS kept and none the same ends the song after its frame, coming round to
+  # the first; so does a song still playing at the most frames.
+  # +frames+ instead plays that many frames with nothing compared, as the driver plays on for ever.
+  class Player
+    attr_reader :records, :voices, :end_frame, :loop_frame
+
+    def initialize(copy, song_at, walked: nil, kind: 255, frames: nil, kit_from: KIT_AND_SPLIT_NUMBERS_FROM, split_from: KIT_AND_SPLIT_NUMBERS_FROM)
       @copy = copy.bytes
       @walked = walked
       @kind = kind
-      @watch = watch
+      @frames = frames
       @kit_from = kit_from
       @split_from = split_from
       @voices = []
@@ -221,26 +249,59 @@ module M4AAnswers
     def signed(byte) = byte >= 128 ? byte - 256 : byte
 
     def play
-      tempo = 150
-      count = 0
+      @tempo = 150
+      @count = 0
       @frame = 0
       @ended = false
-      until @ended || @frame >= 0xFFFE
-        count += tempo
-        while count >= 150 && !@ended
-          tempo = tick(tempo)
-          count -= 150
+      @rounds = []
+      @looped = []
+      most = @frames || 0xFFFE
+      until @ended || @frame >= most
+        compare_rounds unless @frames
+        break if @ended
+
+        @count += @tempo
+        while @count >= 150 && !@ended
+          tick
+          @count -= 150
         end
+        keep_round if @round_ended && !@ended && !@frames
+        @round_ended = false
         @frame += 1 unless @ended
       end
+      # A song still playing at the most frames comes round to its first round kept.
+      @loop_frame = @rounds.first&.frame unless @frames || @ended
       @end_frame = @frame
       @sounding.dup.each { |note| let_go(note) }
       self
     end
 
-    # One tick of every track; hands back the tempo after it.
-    def tick(tempo)
-      @tempo = tempo
+    # Everything the driver plays on from: the tempo and its count, the memory, every track.
+    def state = [@tempo, @count, @memory.dup, @tracks.map { |track| track.to_a.map { |field| field.is_a?(Array) ? field.dup : field } }]
+
+    # At a frame's start, the driver the same as at a round kept is the song come round to it.
+    def compare_rounds
+      @frame_start = state
+      same = @rounds.find { |round| round.state == @frame_start }
+      come_round(same.frame) if same
+    end
+
+    # The round that ended on this frame kept, from the frame's start; with MOST_ROUNDS kept already,
+    # the song comes round to the first after this frame.
+    def keep_round
+      return @rounds << Round.new(frame: @frame, state: @frame_start) if @rounds.length < MOST_ROUNDS
+
+      @frame += 1
+      come_round(@rounds.first.frame)
+    end
+
+    def come_round(frame)
+      @loop_frame = frame
+      @ended = true
+    end
+
+    # One tick of every track.
+    def tick
       playing = false
       @tracks.each_with_index do |track, n|
         break if @ended
@@ -259,15 +320,9 @@ module M4AAnswers
       # MPlayMain counts a track that starts the tick playing, so the song stops a tick after its
       # last track's FINE.
       @ended = true unless playing
-      @tempo
     end
 
     def read(track, n)
-      if @watch == [n, track.place]
-        @found = @frame
-        @ended = true
-        return
-      end
       byte = @copy[track.place]
       if byte < 0x80
         command = track.status
@@ -338,13 +393,19 @@ module M4AAnswers
       end
     end
 
-    # GOTO, or REPT with no count, from +track+ to +place+: back, the song's end, kept as [the
-    # track's number, the place]; forward, a jump.
+    # GOTO, or REPT with no count, from +track+ to +place+. A jump back ends a round of the track:
+    # one jumping back for the first time is the one whose rounds are counted, from none.
     def jump_back(track, n, place)
-      return track.place = place if place >= track.place
+      back = place < track.place
+      track.place = place
+      return unless back
 
-      @jump ||= [n, place]
-      @ended = true
+      unless @looped.include?(n)
+        @looped << n
+        @slow = n
+        @rounds.clear
+      end
+      @round_ended = true if n == @slow
     end
 
     def stop(track, n)
@@ -490,10 +551,15 @@ module M4AAnswers
 
   # [length, loop frame] of the song at +song_at+, 65535 for none.
   def self.length(song_at)
-    first = Player.new(COPY, song_at).play
-    return [first.end_frame, 0xFFFF] unless first.jump
+    played = Player.new(COPY, song_at).play
+    [played.end_frame, played.loop_frame || 0xFFFF]
+  end
 
-    [first.end_frame, Player.new(COPY, song_at, watch: first.jump).play.found]
+  # The bytes a slot of +count+ notes holds for track +walked+'s notes of +kind+ as the driver plays
+  # the song at +song_at+ for +frames+, on past every loop.
+  def self.played_track_bytes(song_at, walked, frames:, count:, kind: 255)
+    records = Player.new(COPY, song_at, walked: walked, kind: kind, frames: frames).play.records
+    VBlank::Original::PackNote.bytes_of(records, count: count)
   end
 
   # A recording's samples and its voice's settings, as the routine writes them: the samples, and

@@ -1620,9 +1620,12 @@ module PackGames
   # M4AAnswers by the pack's unpacking: its first track on the recording its voice names, every
   # setting of that from the voice, its second track's notes on the first square, its third's on
   # the noise voice, and the song's length and loop, played a tick a frame; and tracks that switch
-  # between the group's voices, a drum kit and a key split, each note on its own recording.
+  # between the group's voices, a drum kit and a key split, each note on its own recording; and a
+  # song whose tracks come round apart, written until they come round together.
   class MusicPlayer2000Songs < Kit
-    NOTES = 16
+    # The song of every command is written for as many rounds as the reader keeps (Packing::M4A,
+    # A SONG COMES ROUND).
+    NOTES = 176
 
     private def m4a_original(folder)
       path = File.join(folder, "made_up_m4a.bin")
@@ -1713,6 +1716,34 @@ module PackGames
           # The song ends, so it plays once rather than coming round to the pack's NO_LOOP.
           music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
                                                           plays_once: true, longest: 600)]
+          game_loop do
+            wait_vblank
+            music.play 0 if pressed(:a)
+          end
+        end
+        b.finalize_program
+        built_by(b)
+      end,
+      # The two squares' tracks of the song whose tracks come round apart (M4AAnswers::ROUNDS_TRACKS),
+      # played past its loop.
+      game(:music_player_2000_tracks_coming_round_apart, passes: 120, presses: { 1 => [:a] }) do |folder, options|
+        from = m4a_original(folder)
+        b = VBlank::Builder.new(options: options)
+        b.instance_eval do
+          screen :bitmap
+          enable_sound
+          song = M4AAnswers::ROUNDS_SONG_AT
+          pack = data_pack(from: from, version: "1") do |slots|
+            2.times { |track| slots.notes :"track_#{track}", count: NOTES }
+            slots.numbers :timing, count: 2, width: :half, signed: false
+            slots.fill_from_copy do |copy, unpacked|
+              2.times { |track| copy.unpack_m4a_track at: song, into: unpacked[:"track_#{track}"], track: track }
+              copy.unpack_m4a_length at: song, into: unpacked[:timing]
+            end
+          end
+          parts = Array.new(2) { |track| VBlank::Audio::Score::Part.new(notes: pack[:"track_#{track}"].notes) }
+          music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
           game_loop do
             wait_vblank
             music.play 0 if pressed(:a)

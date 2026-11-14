@@ -229,7 +229,15 @@ from that copy. The game's code says each piece's shape and size; it never depen
     (`kind: 4` keeps only its notes on the noise voice, `0` on recordings, `1` to `3` the squares and the
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
     the song's length in frames and the frame it comes round to (65535 for a song that ends), two numbers
-    of two bytes; `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
+    of two bytes. **A song comes round where the whole driver is as it was before**: each track jumps
+    back on its own, so a short figure goes round many times to a melody's once, and a round that differs
+    from the one before (a MEMACC counting rounds, a round starting a frame later in the tempo's count)
+    is played as it falls. The reader writes the notes until every track comes round together, so a song
+    whose tracks come round apart takes more notes than one pass of its longest track: size its slots
+    and the Score's `longest:` for that. One that does not come round in 8 rounds of its slowest track
+    is written for those 8 and comes round to the first. The rounds are written out because every song
+    player comes round at one moment for all its parts (`Packing::M4A`, "WHY THE READER WRITES THE
+    ROUNDS OUT"). `copy.unpack_m4a_recording at: VOICE, into:` a recording voice's samples; and
     `copy.unpack_m4a_voice at: VOICE, into:` its rate, the sample it loops back to (every bit set for a voice
     that does not loop, which `holds_from:` takes as none), its length and its
     envelope's four bytes, four numbers of four bytes (`mix_rate:` names the rate a voice played at a

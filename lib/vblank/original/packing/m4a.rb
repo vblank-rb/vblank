@@ -37,11 +37,32 @@ module VBlank
       # length the frames to the tick that lets it go; the song's Score plays a tick a frame
       # (`tempo: 3600, ticks_per_beat: 1`).
       #
-      # A SONG ENDS where its first track to jump back does (GOTO, or REPT with no count): that
-      # tick's frame is its length, and the frame of the tick that track first reached the place it
-      # jumps to is where it comes round. A song no track jumps back in ends when its last track
-      # ends (FINE), and has no loop frame (NO_LOOP). A song whose tracks come round at different
-      # ticks is cut where the first does.
+      # A SONG COMES ROUND where the whole driver is as it was before: every track's place, wait and
+      # settings, the patterns it is in, the tempo and what is left of its count, the driver's
+      # memory. Each track jumps back on its own (GOTO, or REPT with no count) and the walk follows
+      # it, so a short figure goes round many times to a long melody's once, a MEMACC counting
+      # rounds plays each, and a round that starts a frame later in the tempo's count than the one
+      # before is played as it falls. The rounds watched are those of the track that jumps back for
+      # the first time last, the slowest: the driver at the start of the frame it jumps back on is
+      # kept, MOST_ROUNDS_KEPT of them, and at the start of every frame the driver is compared with
+      # each kept. The same as one, and that frame is the song's length and the kept one's frame is
+      # where it comes round to; the notes from there play over and over as the driver plays them.
+      # So a song whose tracks come round together is written once, as the original holds it, and
+      # one whose tracks come round apart is written until they come round together.
+      #
+      # A song that does not come round in MOST_ROUNDS_KEPT rounds of its slowest track ends after
+      # the frame the next round starts on, and comes round to the first kept; so does one still
+      # playing at MOST_FRAMES. A song no track jumps back in ends when its last track ends (FINE),
+      # and has no loop frame (NO_LOOP). A note sounding as the song comes round is let go there, as
+      # Score plays one (sound.md).
+      #
+      # WHY THE READER WRITES THE ROUNDS OUT, not a Score part that loops on its own: every song
+      # player there is (the interpreter, the Advance's and every console's, the C, JavaScript and
+      # Ruby runtimes) comes round at one moment for every part, and a part with its own loop point
+      # would be a change to each of them, while a round that differs from the one before (MEMACC,
+      # the tempo's count) needs the notes written out whatever the parts can do. Writing them costs
+      # the slots room: a port sizes a track's slot, and a Score's `longest:`, for the rounds its
+      # song comes round in.
       #
       # EACH NOTE, as ply_note strikes it: its voice is the track's (VOICE), or for a drum kit the
       # kit's voice of the note's key, and for a key split the split's voice its table names for the
@@ -91,11 +112,6 @@ module VBlank
       # part, so of two struck on one frame the part plays the later. More than MOST_SOUNDING notes of
       # one track sounding at once: the later ones last until the next note. With `kind:`, EOT lets go
       # of the newest kept note on its key, where the driver looks at all of the track's.
-      #
-      # THE LOOP IS THE FIRST PASS'S. The song comes round to the frame its loop point was first
-      # reached on, and plays the first pass again. A song whose second pass differs from its first
-      # (MEMACC counting passes, the tempo's leftover count moving a later tick by a frame) is played
-      # as its first.
       module M4A
         # The bits of a cartridge address that are a place in the copy, 0x08000000 its first byte.
         ADDRESS_BITS = 0x01FF_FFFF
@@ -114,6 +130,8 @@ module VBlank
         MOST_PATTERN_LEVELS = 3
         MEMACC_BYTES = 256
         VOICE_BYTES = 12
+        # The most rounds of the slowest track kept to compare the driver with (A SONG COMES ROUND).
+        MOST_ROUNDS_KEPT = 8
 
         KIND_RECORDING = 0
         KIND_FIRST_SQUARE = 1
@@ -192,21 +210,20 @@ module VBlank
         #
         # +track+ (a setting) is the track whose notes are written, with +kind+ the kind of voice kept
         # and +kit_from+ and +split_from+ the instrument numbers a kit's and a split's first voice
-        # are given; all four are nil for a walk that writes no notes. +watch+ is a walk that finds
-        # where the song comes round: it stops on the tick the track +watch_track+ first reaches the
-        # place +watch_place+, keeping that frame in +found_frame+.
+        # are given; all four are nil for a walk that writes no notes. Every walk stops where the
+        # song comes round (A SONG COMES ROUND), keeping that frame in +end_frame+ and the frame it
+        # comes round to in +loop_frame+.
         #
         # +voiced+ writes each record as a voiced Original::PackNote, with its console voice's own
         # settings from the voice's twelve bytes (VoicedTrack says which).
         class Walk
-          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, watch: false, voiced: false)
+          def initialize(block, lists, track: nil, kind: nil, kit_from: nil, split_from: nil, voiced: false)
             @block = block
             @lists = lists
             @track = track
             @kind = kind
             @kit_from = kit_from
             @split_from = split_from
-            @watch = watch
             @voiced = voiced
           end
 
@@ -227,7 +244,7 @@ module VBlank
             into.store!(into - 256) if into >= 128
           end
 
-          # The walk: every track from its start, a frame at a time, until the song ends.
+          # The walk: every track from its start, a frame at a time, until the song ends or comes round.
           def emit
             emit_start
             ended = var(:ended)
@@ -235,18 +252,27 @@ module VBlank
             tempo = var(:tempo)
             frame = var(:frame)
             ticking = var(:ticking)
+            round_ended = var(:round_ended)
             @block.repeat(MOST_FRAMES, stop_when: ended == 1) do
-              tempo_count.store!(tempo_count + tempo)
-              ticking.store!(0)
-              ticking.store!(1) if tempo_count >= TEMPO_COUNT_PER_TICK
-              @block.repeat(MOST_TICKS_A_FRAME, stop_when: ticking == 0) do
-                emit_tick
-                tempo_count.store!(tempo_count - TEMPO_COUNT_PER_TICK)
-                ticking.store!(0) if tempo_count < TEMPO_COUNT_PER_TICK
-                ticking.store!(0) if ended == 1
+              emit_compare_rounds
+              if ended == 0
+                emit_copy_frame_start
+                tempo_count.store!(tempo_count + tempo)
+                ticking.store!(0)
+                ticking.store!(1) if tempo_count >= TEMPO_COUNT_PER_TICK
+                @block.repeat(MOST_TICKS_A_FRAME, stop_when: ticking == 0) do
+                  emit_tick
+                  tempo_count.store!(tempo_count - TEMPO_COUNT_PER_TICK)
+                  ticking.store!(0) if tempo_count < TEMPO_COUNT_PER_TICK
+                  ticking.store!(0) if ended == 1
+                end
+                emit_keep_round if round_ended == 1 && ended == 0
+                round_ended.store!(0)
+                frame.increase!(1) if ended == 0
               end
-              frame.increase!(1) if ended == 0
             end
+            # A song still playing at the most frames comes round to its first round kept.
+            var(:loop_frame).store!(list(:round_frames, MOST_ROUNDS_KEPT)[0]) if ended == 0 && var(:rounds_kept) > 0
             var(:end_frame).store!(frame)
             emit_release_all if @track
           end
@@ -262,9 +288,15 @@ module VBlank
             var(:tempo_count).store!(0)
             var(:sequence).store!(0)
             var(:group).store!(address_at(from + 4))
+            var(:loop_frame).store!(NO_LOOP)
+            var(:rounds_kept).store!(0)
+            var(:round_ended).store!(0)
+            var(:slowest).store!(-1)
+            var(:memacc_count).store!(0)
             count = var(:track_count)
             count.store!(@block.byte(from))
             count.store!(MOST_TRACKS) if count > MOST_TRACKS
+            var(:stack_count).store!(count * MOST_PATTERN_LEVELS)
             clocks = list(:clocks, CLOCKS.length)
             CLOCKS.each_with_index { |ticks, at| clocks[at] = ticks }
             noise = list(:noise, NOISE_TABLE.length)
@@ -275,6 +307,7 @@ module VBlank
               %i[wait status level repeats key velocity shift voice_number volume pan bend tune].each { |name| track_list(name)[t] = 0 }
               track_list(:place)[t] = 0
               track_list(:active)[t] = 0
+              track_list(:looped)[t] = 0
               track_list(:voice)[t] = -1
               track_list(:bend_range)[t] = STARTING_BEND_RANGE
             end
@@ -289,13 +322,86 @@ module VBlank
           # asked for, and one first asked for in a branch would be made only when that branch runs.
           def emit_lists
             TRACK_LISTS.each { |name| track_list(name) }
+            track_list(:looped)
             SOUNDING_LISTS.each { |name| sounding_list(name) }
             list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
+            list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
+            list(:round_frames, MOST_ROUNDS_KEPT)
           end
 
+          # Each track's state, which the driver plays on from. (A track's +looped+, whether it has
+          # jumped back yet, is the walk's own and not the driver's.)
           TRACK_LISTS = %i[place wait status active level repeats key velocity shift voice voice_number volume pan bend
                            bend_range tune].freeze
           SOUNDING_LISTS = %i[used gate key record start sequence].freeze
+
+          # THE DRIVER AS KEPT, at the start of a frame: the tempo's count and the tempo, then each of
+          # TRACK_LISTS for every track, the patterns' places, the driver's memory. The +rounds+ list
+          # holds one at the start of this frame, then a round kept in each of MOST_ROUNDS_KEPT more.
+          STATE_TRACKS_AT = 2
+          STATE_STACK_AT = STATE_TRACKS_AT + (TRACK_LISTS.length * MOST_TRACKS)
+          STATE_MEMACC_AT = STATE_STACK_AT + (MOST_TRACKS * MOST_PATTERN_LEVELS)
+          STATE_SIZE = STATE_MEMACC_AT + MEMACC_BYTES
+
+          # Each part of the driver's state after the tempo: where it is in a state kept, how many of it
+          # there are, and the list it is in. Only the tracks the song has are kept, and the memory
+          # once a MEMACC writes it: the rest are 0 in every state.
+          def each_state_part
+            TRACK_LISTS.each_with_index { |name, n| yield STATE_TRACKS_AT + (n * MOST_TRACKS), var(:track_count), track_list(name) }
+            yield STATE_STACK_AT, var(:stack_count), list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
+            yield STATE_MEMACC_AT, var(:memacc_count), list(:memacc, MEMACC_BYTES)
+          end
+
+          # The driver at the start of this frame, kept in case the slowest track's round ends on it.
+          def emit_copy_frame_start
+            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
+            rounds[0] = var(:tempo_count)
+            rounds[1] = var(:tempo)
+            each_state_part { |at, count, from| @block.repeat(count) { |i| rounds[at + i] = from[i] } }
+          end
+
+          # The driver now compared with each round kept: the same as one, and the song comes round
+          # to that round's frame, this frame its length.
+          def emit_compare_rounds
+            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
+            same = var(:same_round)
+            differs = var(:differs)
+            base = var(:round_base)
+            same.store!(-1)
+            @block.repeat(var(:rounds_kept), stop_when: same >= 0) do |r|
+              base.store!((r + 1) * STATE_SIZE)
+              differs.store!(0)
+              differs.store!(1) if rounds[base] != var(:tempo_count)
+              differs.store!(1) if rounds[base + 1] != var(:tempo)
+              each_state_part do |at, count, from|
+                @block.repeat(count, stop_when: differs == 1) { |i| differs.store!(1) if rounds[base + at + i] != from[i] }
+              end
+              same.store!(r) if differs == 0
+            end
+            if same >= 0
+              var(:loop_frame).store!(list(:round_frames, MOST_ROUNDS_KEPT)[same])
+              emit_song_end
+            end
+          end
+
+          # The slowest track's round ended on this frame: the driver at the frame's start kept. With
+          # MOST_ROUNDS_KEPT kept already, the song ends after this frame and comes round to the first.
+          def emit_keep_round
+            rounds = list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
+            frames = list(:round_frames, MOST_ROUNDS_KEPT)
+            kept = var(:rounds_kept)
+            base = var(:round_base)
+            if kept < MOST_ROUNDS_KEPT
+              base.store!((kept + 1) * STATE_SIZE)
+              @block.repeat(STATE_SIZE) { |i| rounds[base + i] = rounds[i] }
+              frames[kept] = var(:frame)
+              kept.increase!(1)
+            else
+              var(:frame).increase!(1)
+              var(:loop_frame).store!(frames[0])
+              emit_song_end
+            end
+          end
 
           # One tick of every track, in order (MPlayMain), and the song's end once none plays on. A
           # track counts as playing on a tick it starts playing, so the song stops on the tick after
@@ -345,7 +451,6 @@ module VBlank
             reading.store!(1) if wait[t] == 0
             @block.repeat(MOST_COMMANDS_A_TICK, stop_when: reading == 0) do
               place.store!(track_list(:place)[t])
-              emit_watch(t) if @watch
               byte.store!(@block.byte(place))
               if byte < WAIT
                 command.store!(track_list(:status)[t])
@@ -368,14 +473,6 @@ module VBlank
             end
           end
 
-          # The watching walk stops where the track it watches first reads the place it jumps to.
-          def emit_watch(t)
-            if t == var(:watch_track) && var(:at) == var(:watch_place)
-              var(:found_frame).store!(var(:frame))
-              emit_song_end
-            end
-          end
-
           # A command of FINE to EOT: what each does to the track (the ply_ routines).
           def emit_command(t, command)
             place = var(:at)
@@ -389,7 +486,10 @@ module VBlank
               level = track_list(:level)
               if level[t] > 0
                 level[t] = level[t] - 1
-                place.store!(list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)[(t * MOST_PATTERN_LEVELS) + level[t]])
+                stack = list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
+                place.store!(stack[(t * MOST_PATTERN_LEVELS) + level[t]])
+                # Cleared, so a state kept holds only the places a track will go back to.
+                stack[(t * MOST_PATTERN_LEVELS) + level[t]] = 0
               end
             elsif command == REPT
               emit_repeat(t)
@@ -445,22 +545,22 @@ module VBlank
             emit_release_all if @track && t == @track
           end
 
-          # GOTO (ply_goto) to the address at +place+. One back is the song's end: where it jumps to
-          # is kept for the walk that watches for it, and the walk stops on this tick. One forward is
-          # only a jump.
+          # GOTO (ply_goto) to the address at +place+. One back ends a round of the track: a track
+          # jumping back for the first time is the slowest yet, and its rounds are counted from none
+          # (A SONG COMES ROUND).
           def emit_jump_back(t, place)
             target = var(:target)
             target.store!(address_at(place))
             if target < place
-              if var(:jumped) == 0
-                var(:jumped).store!(1)
-                var(:watch_track).store!(t)
-                var(:watch_place).store!(target)
+              looped = track_list(:looped)
+              if looped[t] == 0
+                looped[t] = 1
+                var(:slowest).store!(t)
+                var(:rounds_kept).store!(0)
               end
-              emit_song_end
-            else
-              place.store!(target)
+              var(:round_ended).store!(1) if t == var(:slowest)
             end
+            place.store!(target)
           end
 
           # PATT (ply_patt): the place after the pattern's address kept on the track's stack and the
@@ -512,6 +612,7 @@ module VBlank
             data.store!(@block.byte(place + 2))
             place.increase!(3)
             other.store!(area[data])
+            var(:memacc_count).store!(MEMACC_BYTES) if operation <= 5
             if operation == 0
               area[spot] = data
             elsif operation == 1
@@ -929,19 +1030,13 @@ module VBlank
           called "MusicPlayer2000 song length"
 
           def self.routine(block)
-            lists = {}
-            jumped = block.variable(:m4a_jumped)
-            jumped.store!(0)
-            Walk.new(block, lists).emit
-            length = block.variable(:m4a_song_length)
-            length.store!(block.variable(:m4a_end_frame))
-            found = block.variable(:m4a_found_frame)
-            found.store!(NO_LOOP)
-            Walk.new(block, lists, watch: true).emit if jumped == 1
+            Walk.new(block, {}).emit
+            length = block.variable(:m4a_end_frame)
+            loop_frame = block.variable(:m4a_loop_frame)
             block.write(length)
             block.write(length >> 8)
-            block.write(found)
-            block.write(found >> 8)
+            block.write(loop_frame)
+            block.write(loop_frame >> 8)
           end
         end
 
