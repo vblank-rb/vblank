@@ -100,10 +100,12 @@ module VBlank
           # EVERY WORD THE ROUTINE READS OR WRITES, which the lowering names before any of the game's
           # own variables (GBA#lower), so each is in reach of one instruction. A word past that reach
           # takes four, and the routine reads a word in some hundred places: left to the game's order
-          # of naming, a game with many variables would make the routine too big for its room.
+          # of naming, a game with many variables would make the routine too big for its room. The
+          # hidden page's address is the drawing's word and not the routine's, but the routine reads
+          # it each row, so it is named here too (#refuse_words_named_late! holds the list whole).
           def self.words
             CORNER_WORDS + EDGE_WORDS + PICTURE_WORDS + ROW_ENDS + WORKING_WORDS +
-              MOST_CORNERS.times.flat_map { |k| EDGE_FIELDS.map { |field| :"_face_edge#{k}_#{field}" } }
+              MOST_CORNERS.times.flat_map { |k| EDGE_FIELDS.map { |field| :"_face_edge#{k}_#{field}" } } + [BACKBUF]
           end
 
           # The number no palette number or colour is, for a picture with no see-through pixel.
@@ -329,6 +331,7 @@ module VBlank
             end
             emit_patch_routine
             place_label(DerivedNames.routine_end(ROUTINE))
+            refuse_words_named_late!(start...pos)
             refuse_oversized_routine!(pos - start)
           end
 
@@ -352,6 +355,19 @@ module VBlank
 
             raise LoweringError, "The routine that fills a face came to #{size} bytes, and the quick memory keeps " \
                                  "#{room} for it. This is a fault in VBlank, not in the game."
+          end
+
+          # A WORD THE ROUTINE NAMES THAT FACES.WORDS DOES NOT is given its place where the routine
+          # first names it, after the game's own variables: in a game of a thousand variables that
+          # is past one instruction's reach, and each of its reads takes four instructions where it
+          # took one. So the routine's size would grow with the game, and only a big game would find
+          # out. Every game builds the routine, so this check stops the smallest of them instead.
+          def refuse_words_named_late!(span)
+            late = @primitives.variables_named_in(span) - self.class.words
+            return if late.empty?
+
+            raise LoweringError, "The routine that fills a face names #{late.join(", ")}, which Faces.words does " \
+                                 "not list. This is a fault in VBlank, not in the game."
           end
 
           private

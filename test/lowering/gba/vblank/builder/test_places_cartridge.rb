@@ -194,6 +194,27 @@ class TestPlacesCartridge < Minitest::Test
     assert_backends_agree(PlaceGames.moved_shapes(passes: 8), frames: [6, 14, 22, 30, 38], name: "ROBOTS")
   end
 
+  # Ten places and thirty, each a routine with words of its own: every square on the cartridge
+  # where the interpreter draws it.
+  def test_many_places_agree
+    assert_backends_agree(PlaceGames.many_places(10), frames: 3, console_frames: 30, name: "TENPLACES")
+    assert_backends_agree(PlaceGames.many_places(30), frames: 3, console_frames: 30, name: "THIRTYPLACES")
+  end
+
+  # The routine that fills a face is one for the whole game, and every word it reads is named
+  # before the places' own (GBA::Faces.words), so it is the same size however many places there are.
+  def test_the_fill_routine_is_the_same_size_for_one_place_or_thirty
+    sizes = [1, 10, 30].map { |count| fill_routine_bytes(PlaceGames.many_places(count)) }
+
+    assert_equal [sizes.first] * 3, sizes
+  end
+
+  private def fill_routine_bytes(program)
+    backend = GBA.new
+    backend.lower(program)
+    backend.routine_addresses.fetch(VBlank::IR::Backends::GBA::Faces::ROUTINE).size
+  end
+
   # A game that draws no place carries none of the machinery: no routine for filling a face in
   # the quick memory, so its layout and its bytes are what they were before places existed.
   def test_a_game_with_no_place_carries_nothing_of_one

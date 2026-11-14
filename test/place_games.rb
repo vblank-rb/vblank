@@ -562,6 +562,33 @@ module PlaceGames
     builder.program
   end
 
+  # +count+ PLACES, EACH ONE SQUARE FACE showing the tile, laid out ten to a row ten wholes ahead,
+  # drawn without perspective. Each place is its own drawing routine with its own words, so a game
+  # of many places names many variables before the routine that fills a face.
+  def self.many_places(count)
+    builder = VBlank::Builder.new
+    builder.instance_eval do
+      screen :bitmap, tear_free: true
+      image :tile, width: 8, height: 8, data: TILE
+      count.times do |k|
+        row, column = k.divmod(10)
+        x = (2.0 * column) - 9.0
+        y = 4.0 - (2.5 * row)
+        place :"robot#{k}" do
+          face point(x - 0.5, y + 0.5, 10.0), point(x + 0.5, y + 0.5, 10.0), point(x + 0.5, y - 0.5, 10.0),
+               point(x - 0.5, y - 0.5, 10.0), picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+        end
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        clear_screen :black
+        count.times { |k| draw_place :"robot#{k}", seen_by: eye, perspective: :none }
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
   # THE ANSWER KEY FOR A MOVED SHAPE: the same square drawn two ways, which must be the same picture.
   # The viewer looks along x (its right is -z), and the square stands at STANCE_SPOT turned a
   # quarter round so its right points up and its up points along z. With +moved+ the square is
