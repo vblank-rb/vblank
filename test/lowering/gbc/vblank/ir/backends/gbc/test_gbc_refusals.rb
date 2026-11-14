@@ -24,6 +24,25 @@ class TestGBCRefusals < Minitest::Test
     assert_match(/cannot show one layer through another/, error.message)
   end
 
+  # A FADE PLACED UNDER A LAYER needs a display that blends. The Color fades by changing its
+  # colours, which the background and every sprite read alike, so it cannot keep one layer out of
+  # a fade, and its answer for `fade` says so (IR::Fading#walk_every_fade).
+  def test_a_fade_under_a_layer_is_refused_and_the_answer_says_so
+    error = assert_raises(GBC::LoweringError) do
+      GBC.new.build(color_program do
+        screen :tiled
+        image(:guy, "#" => :white) { "########\n" * 8 }
+        layers :world, :actors
+        layer(:actors) { sprite :guy, at: [40, 40] }
+        game_loop { fade :black, 50, under: :actors }
+      end)
+    end
+
+    assert_match(/fades part of the screen, and a Game Boy Color cannot/, error.message)
+    assert_match(/`under:`, `inside:` and `outside:` are refused/, error.message)
+    refute_match(/`under:` works/, error.message)
+  end
+
   # The Color draws ten sprite pieces on a row of the screen, so this one could never show whole.
   def test_a_sprite_picture_wider_than_ten_pieces_is_refused_saying_so
     error = assert_raises(GBC::LoweringError) do

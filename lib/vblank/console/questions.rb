@@ -88,6 +88,8 @@ module VBlank
         when :players_connected
           Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
         when :program then program_question(node, console)
+        # A fade placed under a layer, or held to part of the screen, needs a display that blends:
+        # one that fades by changing its colours changes them for every layer at once (IR::Fading).
         when :fade
           Question.new(:fade, "This line fades part of the screen", console.blends) if node.under || node.reaches
         when :background

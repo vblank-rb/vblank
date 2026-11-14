@@ -97,9 +97,9 @@ module VBlank
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture, as on " \
-                    "the Advance. `under:` works where it falls between the background and the " \
-                    "sprites; `inside:` and `outside:` are refused, since a Game Boy Color cannot " \
-                    "fade part of the screen."),
+                    "the Advance. The background and every sprite read the same colours, so a fade " \
+                    "reaches all of them. A Game Boy Color cannot fade part of the screen, so " \
+                    "`under:`, `inside:` and `outside:` are refused."),
         tint: works,
         fade_in: works,
         fade_out: works,
