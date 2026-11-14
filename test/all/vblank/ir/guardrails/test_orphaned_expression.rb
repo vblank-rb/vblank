@@ -293,7 +293,8 @@ class TestOrphanedExpression < Minitest::Test
       end
     end
 
-    assert_match(/stopped/, ex.message)
+    assert_kind_of VBlank::StoppedByChecks, ex
+    assert_match(/Build stopped/, err.string)
     assert_match(/did nothing with it/, err.string)
     assert_match(/test_orphaned_expression\.rb:\d+/, err.string, "it must name the author's line")
   end
