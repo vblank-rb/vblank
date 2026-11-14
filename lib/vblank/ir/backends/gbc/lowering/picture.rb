@@ -1871,7 +1871,13 @@ module VBlank
             # A run the game puts in order as it runs (`draw_in_order`, Reference#names_in_draw_order)
             # stands at its place among the rest, and its sprites are placed in the order its list
             # holds them, read from the front: each sprite's placing is a routine of the frame's own,
-            # called by the number the list holds.
+            # called by the number the list holds. That routine leaves a sprite as it is when it was
+            # placed as it was on the pass before (#emit_placing_unless_unchanged), as the rest of the
+            # frame's sprites are: a sprite whose place in the order is the same begins where it began
+            # in the table, and one whose place changed does not, so is placed afresh. This holds
+            # because the order's list holds each of its sprites' numbers once, every pass (the
+            # framework sorts it; the game never writes it), so each sprite is placed every pass and
+            # what it keeps of its last placing is still what the table holds.
             def emit_present_objects(node)
               object = ->(name) { @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" } }
               changing = node.names.map(&object).select { |obj| Stacking.levels_of(@stacking.depths, obj).uniq.length > 1 }
@@ -1898,7 +1904,7 @@ module VBlank
               @asm.jump(past)
               placings.each do |name, label|
                 @asm.label(label)
-                sprite_placement(object.call(name))
+                emit_placing_unless_unchanged(object.call(name))
                 @asm.ret
               end
               @asm.label(past)
@@ -2063,16 +2069,26 @@ module VBlank
             # THE NUMBER PICKS THE ROUTINE FROM A TABLE, as the Genesis's does: a routine address for
             # each sprite of the run, read by one dispatch the run shares, so the code grows with the
             # run's length and not its square.
+            #
+            # A list of a byte a slot (a run of up to 128) is read where it is, a byte a sprite: the
+            # list is filled at power-on and only sorted or copied over after, so it is always as
+            # long as the run and its every slot holds a number from nought up, under the run's
+            # length. A longer run's list is read as any list item is, in 32 bits.
             def emit_ordered_run(run, placings)
               dispatch = emit_ordered_dispatch(run, placings)
+              place, _capacity, width = @lists.fetch(run.order)
               (run.objects.length - 1).downto(0) do |k|
                 past = fresh("past_the_ordered")
-                value(Build.list_get(run.order, Build.int(k)))
-                @asm.load(:a, :b)
-                @asm.or_a(:c)
-                @asm.or_a(:d)
-                @asm.jump_relative(:nz, past)
-                @asm.load(:a, :e)
+                if width == 1
+                  @asm.load(:a, [place + Runtime::Lists::HEADER + k])
+                else
+                  value(Build.list_get(run.order, Build.int(k)))
+                  @asm.load(:a, :b)
+                  @asm.or_a(:c)
+                  @asm.or_a(:d)
+                  @asm.jump_relative(:nz, past)
+                  @asm.load(:a, :e)
+                end
                 @asm.cp_a(run.objects.length)
                 @asm.jump_relative(:nc, past)
                 @asm.call(dispatch)
