@@ -163,7 +163,7 @@ module VBlank
 
             # rt_plane_put_up: a0 = the plane, a1 = the map's cells (Lowering::Picture#grid_label: a word a
             # cell, row by row, each the place in video RAM of the tile it shows, y << 16 | x, or nought for
-            # none), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
+            # none), or nought to keep the cells the plane holds (Lowering::Picture#emit_put_up_again), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
             # power of two (5 for 32, 6 for 64), t4 = how many rows it has, t5 = the background's colour table
             # (PLANE_TABLE), t6 = how deep it sits (PLANE_LEVEL). The map's grid is the plane's size until another
             # goes up on it, so the plane comes round where the map's grid does.
@@ -197,6 +197,7 @@ module VBlank
               asm.move(:s6, :a3)
               emit_plane_place(asm, :s1, :a0)
               asm.sllv(:s3, :t4, :a3) # how many cells
+              asm.beq(:a1, :zero, "rt_plane_put_up_end") # no cells: the plane keeps the ones it holds
               asm.move(:s2, :a1)
               # The plane emptied, a page's height at a time (a fill is at most 511 lines): every pixel
               # 0000h, which the chip does not draw.
@@ -363,6 +364,15 @@ module VBlank
               asm.sw(:t2, drawn, :gp)
               asm.label("rt_sprite_place_done")
               asm.jr(:ra)
+
+              # rt_draw_order_fault: a run's list names none of its sprites (Lowering::Picture#emit_ordered_run),
+              # v0 = the place it holds, a1 = how many sprites the run has. The game stops.
+              fault = at.call(Frame::FAULT)
+              asm.label("rt_draw_order_fault")
+              asm.sw(:zero, fault + Frame::FAULT_LIST, :gp)
+              asm.sw(:v0, fault + Frame::FAULT_FIRST, :gp)
+              asm.sw(:a1, fault + Frame::FAULT_SECOND, :gp)
+              asm.j("rt_fault") { asm.li(:a0, Frame::DRAW_ORDER_NAMES_NONE) }
             end
 
             # A STATUS BAR is a plane drawn from the row its top is at down to the bottom of the screen, its map

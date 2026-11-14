@@ -226,7 +226,20 @@ module VBlank
                   refuse_unmade!(TILED_SCREEN, "has a background whose map is more than #{TileMap.max_grid_size} cells across " \
                                                "or down, or whose maps are of different sizes")
                 end
+                refuse_ragged_changed_map!(bg)
               end
+            end
+
+            # A CELL IS CHANGED ONLY INSIDE ITS OWN ROW (Reference#change_cell), and the runtime tests a changed cell
+            # against one size for the whole map (#emit_set_tile_of), which every map the builder makes has: it
+            # refuses a map whose rows differ in length (Builder#background_rows). So a map like that was built by
+            # hand, and one whose cells the game changes is refused here, rather than changed past a short row's end.
+            def refuse_ragged_changed_map!(bg)
+              return if bg.every_map.all? { |map| map.map { |row| Array(row).length }.uniq.length <= 1 }
+              return unless @program.walk.any? { |node| node.kind == :set_tile && node.name == bg.name }
+
+              raise LoweringError, "the background #{bg.name.inspect} has a map whose rows are of different lengths, and " \
+                                   "the game changes its cells"
             end
 
             def refuse_unmade_sprites!
@@ -470,8 +483,28 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
               return emit_stamp_background(node) unless @tiled
+              return emit_put_up(node, 0, reset_view: 1) if node.parent&.kind == :program
 
-              emit_put_up(node, 0, reset_view: 1)
+              emit_put_up_again(node)
+            end
+
+            # A BACKGROUND WHOSE LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop) is up
+            # already the second time, and the interpreter puts it up as it now is: the cells the game
+            # changed, and the map it chose, stay (Reference#put_up_background keeps its copy of the map).
+            # So its cells are copied onto its plane the first time alone, noted in a number of the
+            # lowering's own; every time after, it goes up from its corner keeping what its plane holds.
+            # A line written once in the program, before the game loop, runs once and needs no note.
+            def emit_put_up_again(bg)
+              copied = (@cells_copied ||= {})[plane_of(bg)] ||= keep_local(:"cells_copied_#{plane_of(bg)}")
+              kept = fresh_label("cells_kept")
+              done = fresh_label("put_up_done")
+              jump_unless(Build.binop(:==, Build.var_ref(copied), Build.int(0)), kept)
+              emit_store_number(copied, 1)
+              emit_put_up(bg, 0, reset_view: 1)
+              @asm.b(done)
+              @asm.label(kept)
+              emit_put_up(bg, nil, reset_view: 1)
+              @asm.label(done)
             end
 
             # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
@@ -526,9 +559,12 @@ module VBlank
             end
 
             # A status bar put up from its corner shows from the top it was declared with (Reference#bar_top_shown).
+            # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds
+            # (#emit_put_up_again), which are of a map the size of the first.
             def emit_put_up(bg, which, reset_view:)
-              columns, rows = TileMap.grid(bg.every_map.fetch(which))
-              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), LabelAddress.new(grid_label(bg, which)), Build.int(reset_view),
+              columns, rows = TileMap.grid(bg.every_map.fetch(which || 0))
+              cells = which ? LabelAddress.new(grid_label(bg, which)) : Build.int(0)
+              runtime_call("rt_plane_put_up", [Build.int(plane_of(bg)), cells, Build.int(reset_view),
                                                Build.int(columns.bit_length - 1), Build.int(rows), Build.int(plane_table_word(bg)),
                                                Build.int(background_level(bg))])
               return if reset_view.zero?
@@ -872,14 +908,18 @@ module VBlank
             # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
             # place in the run, so each entry in turn places the sprite it names. Each sprite's placing is written
             # once, as a routine of its own ending in a return, and an entry picks it from a table of their
-            # addresses kept beside the code: a few instructions an entry, whatever the run's length. As many
-            # entries are read as the run has sprites, which is the length the builder keeps the list at, and an
-            # entry read past the list's end stops the game, as the interpreter's read does. An entry naming no
-            # sprite of the run, which the builder never writes and the interpreter stops on, places none here.
+            # addresses kept beside the code: a few instructions an entry, whatever the run's length.
+            #
+            # The entries are read as the interpreter reads the list (Reference#names_in_draw_order): every one
+            # it holds now, and a place below nought counts back from the run's last sprite, as a Ruby array's
+            # does. The builder keeps the list at the run's length and fills it with places of the run, so a
+            # game the builder makes never meets the rest; a run written by hand does. A place naming none of
+            # the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault), where the interpreter stops.
             def emit_ordered_run(run)
               table = fresh_label("ordered_placings")
               past = fresh_label("past_ordered_placings")
               placings = run.objects.map { fresh_label("ordered_placing") }
+              count = run.objects.length
               @asm.b(past)
               @asm.label(table)
               @asm.data_words(placings)
@@ -891,18 +931,29 @@ module VBlank
                 @asm.jr(:ra)
               end
               @asm.label(past)
-              run.objects.each_index do |k|
-                none = fresh_label("order_names_none")
-                emit_value(Build.list_get(run.order, Build.int(k)))
-                @asm.sltiu(:t0, :v0, run.objects.length)
-                @asm.beq(:t0, :zero, none)
-                @asm.sll(:v0, :v0, 2)
-                @asm.la(:t1, table)
-                @asm.addu(:t1, :t1, :v0)
-                @asm.lw(:t1, 0, :t1)
-                @asm.jalr(:t1)
-                @asm.label(none)
-              end
+              entry = @ordered_entry ||= keep_local(:ordered_entry)
+              next_entry = fresh_label("next_ordered_entry")
+              named = fresh_label("order_names_one")
+              done = fresh_label("ordered_run_done")
+              emit_store_number(entry, 0)
+              @asm.label(next_entry)
+              jump_unless(Build.binop(:<, Build.var_ref(entry), Build.list_len(run.order)), done)
+              emit_value(Build.list_get(run.order, Build.var_ref(entry)))
+              @asm.sra(:t0, :v0, 31) # all ones below nought...
+              @asm.andi(:t0, :t0, count) # ...so the run's length is added to a place counted back
+              @asm.addu(:t0, :v0, :t0)
+              @asm.sltiu(:t1, :t0, count)
+              @asm.bne(:t1, :zero, named)
+              @asm.j("rt_draw_order_fault") { @asm.addiu(:a1, :zero, count) }
+              @asm.label(named)
+              @asm.sll(:t0, :t0, 2)
+              @asm.la(:t1, table)
+              @asm.addu(:t1, :t1, :t0)
+              @asm.lw(:t1, 0, :t1)
+              @asm.jalr(:t1)
+              emit_increment(entry)
+              @asm.b(next_entry)
+              @asm.label(done)
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }

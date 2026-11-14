@@ -153,6 +153,42 @@ class TestSetTile < Minitest::Test
     assert_equal Color.resolve(:red), pixel_at(0, 1, screen), "nothing else was written over"
   end
 
+  # A BACKGROUND WHOSE LINE RUNS AGAIN keeps the cells the game changed: it was up already, and
+  # putting it up again shows it from its corner, as it now is (Reference#put_up_background). The
+  # background is declared in a routine the game loop calls, so its line runs every pass; the door
+  # opens on the third pass and must stay open on every pass after.
+  private def room_put_up_every_pass
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      tiles :dungeon, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      func(:put_up_room) do
+        room = background :room, tiles: :dungeon, map: Array.new(6) { "######" }
+        room.set_tile 3, 1, "." if frames == 2
+      end
+      game_loop do
+        call :put_up_room
+        wait_vblank
+        frames += 1
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_background_put_up_again_keeps_the_cell_changed
+    keeping = "a background put up again keeping the cells the game changed: its build copies the declared map again"
+    skip_on_gbc keeping
+    skip_on_snes keeping
+    skip_on_genesis keeping
+    screen = game_player.run(room_put_up_every_pass, frames: 6).screen
+    assert_equal Color.resolve(:blue), pixel_at(3, 1, screen), "the door stays open"
+    assert_equal Color.resolve(:red), pixel_at(2, 1, screen), "and its neighbour is untouched"
+  end
+
   # --- the console draws the same thing ---
 
   def test_both_backends_agree_after_a_cell_changed

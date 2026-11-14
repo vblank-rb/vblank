@@ -455,6 +455,7 @@ module VBlank
           when CartridgeFaults::COPY_TOO_LONG then Faults.copy_too_long(list, first, second)
           when CartridgeFaults::COPY_PAST_TABLE then Faults.copy_past_table(first, second)
           when CartridgeFaults::PICTURE_NOT_THERE then Faults.picture_missing(first, second)
+          when CartridgeFaults::DRAW_ORDER_NAMES_NONE then Faults.draw_order_names_none(first, second)
           when CartridgeFaults::SAVE_READ_OUTSIDE then Faults.save_outside("read", first, second)
           when CartridgeFaults::SAVE_WRITE_OUTSIDE then Faults.save_outside("wrote to", first, second)
           else console_fault_message(code, first, second)

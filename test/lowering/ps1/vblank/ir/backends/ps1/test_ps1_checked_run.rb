@@ -107,6 +107,28 @@ class TestPS1CheckedRun < Minitest::Test
     assert_match(/can call itself again/, error.message)
   end
 
+  # A cell is changed only inside the row it is in (Reference#change_cell reads the row's own length),
+  # and the program keeps one size for a background's map. Every map the builder makes is a rectangle,
+  # so a map whose rows differ in length was built by hand, and is refused rather than changed past a
+  # short row's end.
+  def test_a_map_whose_rows_differ_in_length_is_refused
+    program = program_of do
+      screen :tiled
+      image(:wall, "#" => :red) { SOLID_TILE }
+      tiles :walls, "#" => :wall
+      room = background :room, tiles: :walls, map: %w[## ##]
+      game_loop { room.set_tile 1, 1, "#" }
+    end
+    declared = program.walk.find { |node| node.kind == :background }
+    ragged = VBlank::IR::Build.background(:room, tiles: declared.tiles, map: [[0, 0], [0]], tile_w: 8, tile_h: 8)
+    beside = declared.parent.children
+    beside[beside.index(declared)] = ragged
+    ragged.parent = declared.parent
+
+    error = assert_raises(PS1::LoweringError) { PS1.new.build(program) }
+    assert_match(/rows are of different lengths/, error.message)
+  end
+
   # What the console can do and this build does not make yet is refused as not made yet, naming the
   # part, never in the words of hardware the console lacks (Console::PS1Answers).
   def test_what_the_build_does_not_make_yet_is_refused_as_not_made_yet

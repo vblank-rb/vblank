@@ -603,8 +603,9 @@ module VBlank
                                   # The area is kept in memory (PS1::Lowering::Paint#emit_inside).
                                   area_clips_called_routines: true,
                                   # The graphics chip draws every sprite each frame as a textured rectangle,
-                                  # so the number is the framework's, not the hardware's.
-                                  sprites: 128, sprite_places: 512,
+                                  # so the number is the framework's, not the hardware's: every place a game
+                                  # can keep is drawn, as the interpreter draws every sprite a frame shows.
+                                  sprites: 512, sprite_places: 512,
                                   # Nothing limits a row: the chip draws whatever it is sent.
                                   # The chip draws a turned or resized sprite as a textured quad.
                                   sprites_a_row: nil, sprite_pieces_drawn_a_line: nil, turning_sprites: true,
