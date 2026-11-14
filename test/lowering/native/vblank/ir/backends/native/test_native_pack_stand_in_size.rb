@@ -9,4 +9,5 @@ class TestNativePackStandInSize < Minitest::Test
   include PackStandInSizeTests
 
   private def written_bytes(program) = VBlank::IR::Backends::Native::Lowering.new(program, title: "VBlank").source_files.values.sum(&:bytesize)
+  private def lowering_class = VBlank::IR::Backends::Native::Lowering
 end

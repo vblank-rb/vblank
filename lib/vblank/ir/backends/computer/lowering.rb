@@ -258,6 +258,18 @@ module VBlank
           # in them, and a reachable scroll of it still calls the feature's code.
           def runtime_features = @runtime_features ||= RuntimeFeatures.used_by(@program.walk)
 
+          # How many bytes each type an array can be written in takes.
+          ARRAY_TYPE_BYTES = Ractor.make_shareable({ "int8_t" => 1, "uint8_t" => 1, "int16_t" => 2, "uint16_t" => 2, "int32_t" => 4 })
+
+          # THE BYTES THE GAME SETS ASIDE FOR WHAT THE START FILE FILLS (Statements::StartFileArray): the
+          # tables, colours and numbers a build that reads its pack as the game starts keeps while it runs,
+          # in whichever language it is written. The written game names only their sizes, so what it holds
+          # at run time is not in its length. Public for the tests of what such a build costs
+          # (test/pack_stand_in_size_tests.rb); asking lowers the program, so ask a lowering made for it.
+          def start_file_array_bytes
+            top_level.sum { |item| item.is_a?(Statements::StartFileArray) ? item.count * ARRAY_TYPE_BYTES.fetch(item.type) : 0 }
+          end
+
           private
 
           # --- the file ---

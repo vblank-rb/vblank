@@ -219,15 +219,19 @@ module VBlank
       # for each group and each bank of the slot, a run of each key turned each of the four ways,
       # its pictures read from the file. Hands back the run's tiles, in order, and +where+ told
       # which cells to point at them, +first+ being where they start among the background's tiles.
+      #
+      # A run's pictures are places, two a byte, and a bank is only the colours the places are
+      # shown in, so every bank's run of a group copies from one table of its pictures
+      # (#painted_pictures_read_at_start), however many banks and backgrounds draw the group.
       def declare_pack_tile_runs_at_start(name, moving, where, first)
         tiles = []
         groups = moving.values.map(&:first).uniq
         moving_tiles = groups.flat_map do |group|
           keys = group.keys.length
           start = first + tiles.length
+          held = painted_pictures_read_at_start(group)
           where.bank_names.each_with_index do |list, bank|
             run = :"#{group.name}_run_#{group.parts.length}" # one for each background and bank
-            held = declare_painted_pictures_read_at_start(run, group)
             group.parts << declare_tile_picture_run(run, count: keys * TURNS.length, colors: list, side: Original::Slot::TILE_SIDE,
                                                          bytes: nil, fast: group.fast, held: held)
             tiles.concat(Array.new(keys * TURNS.length) { |at| Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1) })
@@ -239,9 +243,14 @@ module VBlank
         [tiles, where.with(moving: moving_tiles.freeze)]
       end
 
-      # The table a run read at start copies its pictures from: each picture's tiles, each key
-      # turned the four ways, as a run's bytes keep them, read from the file as the game starts.
-      def declare_painted_pictures_read_at_start(run, group)
+      # The table every run of +group+ read at start copies its pictures from: each picture's tiles,
+      # each key turned the four ways, as a run's bytes keep them, read from the file as the game
+      # starts. Declared the first time a background asks for it.
+      def painted_pictures_read_at_start(group)
+        (@pack_tile_pictures_at_start ||= {})[group.name] ||= declare_painted_pictures_read_at_start(group)
+      end
+
+      def declare_painted_pictures_read_at_start(group)
         format = group.pictures.first.first.layout.format
         read = (0...group.pictures.first.length).flat_map do |picture|
           group.pictures.flat_map do |handles|
@@ -250,7 +259,7 @@ module VBlank
             TURNS.map { |turns| IR::StartFile::PaintedTile.new(at: at, turns: turns) }
           end
         end
-        name = Messages::MadeNames.make(:tile_pictures_part, group: run, part: :pictures)
+        name = Messages::MadeNames.make(:tile_pictures_part, group: group.name, part: :pictures)
         node = Build.table(name, Array.new(read.length * TilePictures::TILE_BYTES, 0), width: :byte, signed: false)
         node.painted_from_file = IR::StartFile::PaintedTiles.new(tile_format: format, tiles: read.freeze)
         record(node)

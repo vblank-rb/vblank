@@ -144,13 +144,14 @@ module PackTilePictureGames
   # in turn as the game plays, as a title's colours cycle; such a game is built and measured, and
   # not yet played alike by every build (the registry plays the game without). Gives back the
   # program and the pack file the build made (nil for a build that leaves its pack out). Public,
-  # since PackStandInSizeTests builds it from an object of its own.
-  def title_belt_game_and_file(folder, words:, in_other_lists: false, options: VBlank::Cartridge::Options.new)
+  # since PackStandInSizeTests builds it from an object of its own. +banks+ is how many banks of
+  # sixteen colours its slot of colours holds, two or more; the map draws from the first two.
+  def title_belt_game_and_file(folder, words:, in_other_lists: false, banks: 2, options: VBlank::Cartridge::Options.new)
     tiles = [*PLACES, *BELT].map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
     map_at = TILES_AT + tiles.bytesize
     copy = "\0".b * (map_at + (words.length * 2))
     levels = MadeUpOriginalLayouts::LEVELS
-    copy[COLORS_AT, 64] = GENESIS_COLORS.(levels + levels.rotate(7))
+    copy[COLORS_AT, banks * 32] = GENESIS_COLORS.((0...banks).flat_map { |bank| levels.rotate(7 * bank) })
     copy[TILES_AT, tiles.bytesize] = tiles
     copy[map_at, words.length * 2] = words.pack("n*")
     path = File.join(folder, "made_up.bin")
@@ -166,7 +167,7 @@ module PackTilePictureGames
         slots.tiles :video, at: TILES_AT, count: PLACES.length
         slots.tiles :belt, at: BELT_AT, count: BELT.length
         slots.numbers :map, at: map_at, count: words.length, width: :half, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 32
+        slots.colors :palette, at: COLORS_AT, count: banks * 16
       end
       lists.each { |name, colors| colors name, colors }
       belt = tile_pictures :belt, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) }
