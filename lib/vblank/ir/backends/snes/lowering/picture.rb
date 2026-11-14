@@ -179,6 +179,46 @@ module VBlank
               )]
             end
 
+            # What a crowded scene gave up to fit its sprites (Art, "A crowded screen's sprites"): the
+            # pictures drawn in pieces of 8×8 where a square would take more tiles, and a scene
+            # drawn in pieces of 8×8 alone. Each piece is a row the runtime places on every frame, so
+            # a frame that was in time can run late, and the author is told which pictures and how
+            # many rows.
+            def crowded_scene_findings
+              lean = @art.lost_squares.map do |scene, pictures|
+                Guardrails::Finding.new(check: :snes_crowded_scene_squares, severity: :warning, node: :program,
+                                        message: lost_squares_message(scene, pictures))
+              end
+              lean + @small_sprite_scenes.map do |scene|
+                Guardrails::Finding.new(check: :snes_crowded_scene_small_pieces, severity: :warning, node: :program,
+                                        message: small_scene_message(scene))
+              end
+            end
+
+            # How many sprite tiles +scene+ leaves free (Art#free_sprite_tiles), for SNES#build.
+            def free_sprite_tiles(scene) = @art.free_sprite_tiles(scene)
+
+            # Pictures named in a warning before the rest are counted.
+            PICTURES_NAMED = 3
+
+            def lost_squares_message(scene, pictures)
+              names = pictures.keys.map { |name| ":#{Array(name).first}" }
+              named = names.first(PICTURES_NAMED).join(", ")
+              named += " and #{names.length - PICTURES_NAMED} more" if names.length > PICTURES_NAMED
+              "The sprites of the scene :#{Modes.strip_scene_prefix(scene)} do not all fit in video memory as squares " \
+                "of 16×16. #{names.length} pictures are drawn in pieces of 8×8 where a square takes more tiles: #{named}. " \
+                "When one of each shows, they take #{pictures.values.sum} more rows of the sprite table. The console " \
+                "places each row again on every frame, so each frame takes more time. To keep the squares, use fewer " \
+                "different pictures in this scene."
+            end
+
+            def small_scene_message(scene)
+              "The sprites of the scene :#{Modes.strip_scene_prefix(scene)} do not fit in video memory as squares of " \
+                "16×16. All of its pictures are drawn in pieces of 8×8. Each sprite takes more rows of the sprite " \
+                "table. The console places each row again on every frame, so each frame takes more time. To keep " \
+                "the squares, use fewer different pictures in this scene."
+            end
+
             def rows_of_declared_sprite(node)
               return 0 if node.declared.nil? || Guardrails::SpriteWords.pool?(node)
 
@@ -191,7 +231,8 @@ module VBlank
               @alone_flag_in_line_table = Picture.alone_flag_in_line_table?(@program)
               @art = Art.new(backdrop: @cache.handover.game_backdrop, sprite_squares: @sprite_squares,
                              screen_colors: @screen_colors, sprite_colors: @sprite_colors, scene_tiles: @sprite_tiles,
-                             background_tiles: @scene_background_tiles, small_sprite_scenes: @small_sprite_scenes,
+                             background_tiles: @scene_background_tiles, lean_square_scenes: @lean_square_scenes,
+                             small_sprite_scenes: @small_sprite_scenes,
                              third_layer: @third_layer, shared_held_lists: @shared_held_lists, tile_memo: @tile_memo)
               sizes = @program.walk.select { |node| node.kind == :background }.map(&:tile_w).uniq
               @art.reserve_blank_big_tile if sizes.length > 1

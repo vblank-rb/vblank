@@ -229,16 +229,18 @@ module VBlank
           # works out from the program once for all its tries (BuildCache), its background pictures'
           # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
           # into the sound unit (Runtime::Sound, "Each scene's recordings"). +shared_held_lists+ has the
-          # short lists one background changes share a set of colours (Art).
+          # short lists one background changes share a set of colours (Art). +lean_square_scenes+ and
+          # +small_sprite_scenes+ are the crowded scenes whose sprites give up squares (Art).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false, chip: false,
-                         scene_recordings: false, shared_held_lists: false, cache: BuildCache.for(SNES, program))
+                         background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [], one_sprite_tile_set: false,
+                         chip: false, scene_recordings: false, shared_held_lists: false, cache: BuildCache.for(SNES, program))
             @program = program
             @shared_held_lists = shared_held_lists
             @scene_recordings = scene_recordings
             @cache = cache
             @tile_memo = cache.facts.tile_memo
             @one_sprite_tile_set = one_sprite_tile_set
+            @lean_square_scenes = lean_square_scenes
             @small_sprite_scenes = small_sprite_scenes
             @memory = memory
             @sprite_squares = sprite_squares

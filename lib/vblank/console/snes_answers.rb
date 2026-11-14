@@ -144,7 +144,9 @@ module VBlank
                       "big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 " \
                       "pieces too, wherever they sit. No error " \
                       "shows as the game runs when a piece is not shown. The build warns when the sprites one screen declares pass " \
-                      "128, and when it gives up the squares of 16×16 to fit the tiles. It does not count " \
+                      "128, and when it gives up the squares of 16×16 to fit the tiles. On a screen whose " \
+                      "pictures do not all fit as squares, the pictures that fit keep their squares, and the " \
+                      "build names the pictures that do not and the rows they add. It does not count " \
                       "pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super " \
                       "Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with " \
                       "`over_picture: true` on a painted screen is not made yet: the build refuses it and says " \

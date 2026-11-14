@@ -225,9 +225,23 @@ module VBlank
           # another in the first sixteen colours of colour memory, so in a game that does not fit
           # otherwise those lists go one after another in one set, each tile's places counted from
           # where its list starts there.
+          #
+          # A CROWDED SCREEN'S SPRITES (+lean_square_scenes+, +small_sprite_scenes+). The console takes
+          # squares of 16×16 and pieces of 8×8 on one screen, a size bit on each row of its sprite
+          # table, so a screen whose pictures do not all fit as squares need not give up every square.
+          # It is built again with +lean_square_scenes+ naming it, and the number of SPARE TILES it may
+          # spend. A square takes four tiles side by side, where its quarters as pieces of 8×8 take
+          # only the new ones that draw something: a blank quarter, two quarters alike, or a quarter
+          # some tile already holds is a tile the square wastes (#square_waste). A square that wastes
+          # none is always made, so with no spare tiles the screen takes the tiles it would cut small,
+          # and fits wherever that does. A square that wastes some is made while the spare tiles last,
+          # the pictures made first first (SNES#build gives them what the first build left free). The
+          # rest are drawn in pieces of 8×8. A screen that does not fit even with none spent is cut
+          # small alone (+small_sprite_scenes+). What each crowded screen gave up is in #lost_squares,
+          # for the build to say.
           def initialize(backdrop: nil, sprite_squares: true, screen_colors: false, sprite_colors: false, scene_tiles: false,
-                         background_tiles: false, small_sprite_scenes: [], third_layer: false, shared_held_lists: false,
-                         tile_memo: TileMemo.new)
+                         background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [], third_layer: false,
+                         shared_held_lists: false, tile_memo: TileMemo.new)
             @tile_memo = tile_memo
             @shared_held_lists = shared_held_lists
             @held_offsets = {} # whose list => where in its palette it starts, where not at the first place
@@ -238,7 +252,10 @@ module VBlank
             @bar_tile_numbers = { blank_bar_tile => 0 }
             @bar_open_slots = {}.compare_by_identity
             @sprite_squares = sprite_squares
+            @spare_sprite_tiles = lean_square_scenes.dup # scene => the tiles its squares may still waste
             @small_sprite_scenes = small_sprite_scenes
+            @lost_squares = Hash.new { |scenes, scene| scenes[scene] = {} }
+            @rows_added = 0 # rows the picture being made takes past its squares (#count_rows_added)
             @scene_of_sprite_tiles = nil
             @screen_colors = screen_colors
             @sprite_colors = sprite_colors
@@ -574,30 +591,24 @@ module VBlank
           # it is not made in that order.
           def sprite_picture(name, image, mixed: false, held: nil, scene: nil, tile_scene: nil, number: @sprite_pictures.length)
             @sprite_pictures[name] ||= with_sprite_tiles_of(tile_scene) do
-              next pieced_sprite_picture(name, image, mixed, held, scene, number) if image.pieces
-
-              palettes = sprite_palettes(scene)
-              palette = held || allocate_sprite_palette(mixed, scene) do |within|
-                palette_for(palettes, sprite_image_colors(image), "sprites", within)
-              end
-              cut =SpritePieces.cut(image.width, image.height) do |x, y|
-                i = (y * image.width) + x
-                if !image.drawn_at?(i) then 0
-                elsif held then place_in_list(image, i)
-                else palettes[palette].index(image.color_at(i)) + 1
-                end
-              end
-              squares = cut.to_h { |across, down, places| [[across, down], places] }
-              pieces = squares_here? ? square_pieces(squares, image, palette) : []
-              pieces += squares.map do |(across, down), places|
-                Piece.new(dx: across, dy: down, tile: sprite_tile_number(TileBytes.of(places)), palette: palette)
-              end
-              SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: pieces)
+              recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scene, number) }
             end
           end
 
           # Whether any picture has a square of 16×16, which the runtime then reads off each piece.
           def sprite_squares? = @sprite_pictures.each_value.any? { |picture| picture.pieces.any?(&:big) }
+
+          # The pictures of each crowded scene (+lean_square_scenes+) drawn in pieces of 8×8 where a
+          # square would have cost more tiles: scene => { picture's name => the rows of the sprite
+          # table one of it shown takes past what its squares would }.
+          def lost_squares = @lost_squares.reject { |_, pictures| pictures.empty? }
+
+          # How many of the console's sprite tiles +scene+'s sprites leave free, with what every
+          # screen keeps, in a game of +scene_tiles+.
+          def free_sprite_tiles(scene)
+            tiles = @scene_sprite_stores.dig(scene, 0) || @sprite_tiles
+            MOST_SPRITE_TILES - tiles.count { |bytes| !bytes.nil? }
+          end
 
           # --- tiles a game paints from a list (a run: Builder::TileRuns) ---
           #
@@ -861,11 +872,67 @@ module VBlank
             SpritePieces.big_squares(cut.keys, image.width, image.height, least: SQUARE_LEAST_PIECES).filter_map do |across, down|
               parts = SpritePieces.big_square_quarters(across, down)
               tile = sprite_square_number(parts.map { |part| cut[part] ? TileBytes.of(cut[part]) : blank_tile })
-              next unless tile
+              unless tile
+                count_rows_added(parts.count { |part| cut[part] })
+                next
+              end
 
               parts.each { |part| cut.delete(part) }
               Piece.new(dx: across, dy: down, tile: tile, palette: palette, big: true)
             end
+          end
+
+          # #sprite_picture's picture, made in the tiles in use.
+          def make_sprite_picture(name, image, mixed, held, scene, number)
+            return pieced_sprite_picture(name, image, mixed, held, scene, number) if image.pieces
+
+            palettes = sprite_palettes(scene)
+            palette = held || allocate_sprite_palette(mixed, scene) do |within|
+              palette_for(palettes, sprite_image_colors(image), "sprites", within)
+            end
+            cut = SpritePieces.cut(image.width, image.height) do |x, y|
+              i = (y * image.width) + x
+              if !image.drawn_at?(i) then 0
+              elsif held then place_in_list(image, i)
+              else palettes[palette].index(image.color_at(i)) + 1
+              end
+            end
+            squares = cut.to_h { |across, down, places| [[across, down], places] }
+            pieces = squares_here? ? square_pieces(squares, image, palette) : []
+            pieces += squares.map do |(across, down), places|
+              Piece.new(dx: across, dy: down, tile: sprite_tile_number(TileBytes.of(places)), palette: palette)
+            end
+            SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: pieces)
+          end
+
+          # The block's picture +name+, and in a crowded scene the rows its squares given up add
+          # (#count_rows_added), kept in #lost_squares.
+          def recording_lost_squares(name)
+            @rows_added = 0
+            picture = yield
+            @lost_squares[@scene_of_sprite_tiles][name] = @rows_added if @rows_added.positive? && lean_squares_here?
+            picture
+          end
+
+          # A square of 16×16 the picture being made gives up for +quarters+ pieces of 8×8.
+          def count_rows_added(quarters)
+            @rows_added += quarters - 1
+          end
+
+          # Is the scene whose sprite pictures are being made crowded (+lean_square_scenes+)?
+          def lean_squares_here? = @spare_sprite_tiles.key?(@scene_of_sprite_tiles)
+
+          # How many more tiles the square +tiles+ takes than its quarters of 8×8 would: its four,
+          # less those that are new and draw something. A blank quarter, two quarters alike and a
+          # quarter a tile already holds each waste one. A square made already is shared, and wastes
+          # none.
+          def square_waste(tiles)
+            return 0 if @sprite_square_numbers.key?(tiles.join)
+
+            new_tiles = tiles.uniq.reject do |bytes|
+              bytes == blank_tile || @sprite_tile_numbers.key?(bytes) || @square_tile_numbers.key?(bytes)
+            end
+            tiles.length - new_tiles.length
           end
 
           # A PICTURE THE GAME MADE OF PIECES (Assets::Image#pieces) is shown from those pieces, each
@@ -885,33 +952,45 @@ module VBlank
             end
             # Last given first: sprites go into the table back-most first (Lowering::Picture
             # #emit_present_objects), so the piece placed last is the one in front.
-            pieces = given.map { |dx, dy, own| sprite_piece_from_places(dx, dy, own, image, palette, held, palettes) }.reverse
+            pieces = given.flat_map { |dx, dy, own| sprite_pieces_from_places(dx, dy, own, image, palette, held, palettes) }.reverse
             SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: pieces)
           end
 
-          # One piece of a game's own, of 8×8 or 16×16, its tiles shared with any piece alike. A big
-          # piece with no place for its four tiles raises, and the game is built again without
-          # squares (SNES#build).
-          def sprite_piece_from_places(dx, dy, own, image, palette, held, palettes)
+          # One piece of a game's own, of 8×8 or 16×16, as the pieces it is drawn with, its tiles
+          # shared with any piece alike. A big piece is one square of 16×16. In a crowded scene
+          # (+lean_square_scenes+), one whose square wastes more tiles than are spare, or has no
+          # place, is its quarters that draw something. Anywhere else a big piece with no place
+          # for its four tiles raises, and the game is built again another way (SNES#build).
+          def sprite_pieces_from_places(dx, dy, own, image, palette, held, palettes)
             ours = held ? own : own.bytes.map { |place| place.zero? ? 0 : palettes[palette].index(image.colors.fetch(place) & 0x7FFF) + 1 }
                                    .pack("C*")
             if Assets::Image.side(own) == Assets::PIECE_SIZE
-              return Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(TileBytes.of(ours.bytes)), palette: palette)
+              return [Piece.new(dx: dx, dy: dy, tile: shared_sprite_tile_number(TileBytes.of(ours.bytes)), palette: palette)]
             end
 
+            quarters = Assets::Image.quarters(ours).select { |_, _, quarter| quarter.bytes.any?(&:positive?) }
             tile = sprite_square_number(Assets::Image.quarters(ours).map { |_, _, quarter| TileBytes.of(quarter.bytes) })
-            raise sprite_tiles_error, "The sprites use more squares of 16×16 than a Super Nintendo has room for." unless tile
+            return [Piece.new(dx: dx, dy: dy, tile: tile, palette: palette, big: true)] if tile
+            raise sprite_tiles_error, "The sprites use more squares of 16×16 than a Super Nintendo has room for." unless lean_squares_here?
 
-            Piece.new(dx: dx, dy: dy, tile: tile, palette: palette, big: true)
+            count_rows_added(quarters.length)
+            quarters.map do |across, down, quarter|
+              Piece.new(dx: dx + across, dy: dy + down, tile: shared_sprite_tile_number(TileBytes.of(quarter.bytes)), palette: palette)
+            end
           end
 
           # The number of a tile of 8×8, which may be one of a square's four.
           def shared_sprite_tile_number(bytes) = @square_tile_numbers[bytes] || sprite_tile_number(bytes)
 
           # The first of the four tiles of the square +tiles+ (left top, right top, left bottom,
-          # right bottom), laid out as the console reads them, or nil with no place for them. Two
-          # squares alike share their tiles.
+          # right bottom), laid out as the console reads them, or nil with no place for them, or in a
+          # crowded scene where they waste more tiles than it has spare (#square_waste). Two squares
+          # alike share their tiles.
           def sprite_square_number(tiles)
+            scene = @scene_of_sprite_tiles
+            waste = lean_squares_here? ? square_waste(tiles) : 0
+            return nil if waste.positive? && waste > @spare_sprite_tiles.fetch(scene)
+
             @sprite_square_numbers.fetch(tiles.join) do |same|
               first = (0...MOST_SPRITE_TILES).find { |at| square_fits_at?(at) }
               next unless first
@@ -920,6 +999,7 @@ module VBlank
                 @sprite_tiles[at] = bytes
                 @square_tile_numbers[bytes] ||= at
               end
+              @spare_sprite_tiles[scene] -= waste if waste.positive?
               @sprite_square_numbers[same] = first
             end
           end

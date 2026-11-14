@@ -121,7 +121,10 @@ module VBlank
         # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
-        # A screen that still does not fit is cut small alone (+small_sprite_scenes+). Before any of
+        # A screen that still does not fit keeps a square only where it takes no more tiles than its
+        # quarters (+lean_square_scenes+), then spends the tiles that leaves free on squares that take
+        # more (#build_spending_spare_tiles), and one that does not fit even so is cut small alone
+        # (+small_sprite_scenes+); each says what it gave up (Picture#crowded_scene_findings). Before any of
         # those, a game of sprites in several lists of colours is built with one set of their
         # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
@@ -152,8 +155,9 @@ module VBlank
 
         # #build, its work RAM laid out with the runtime's tables near or far, as +far_tables+ sets.
         def build_laid_out(program, title: "VBLANK", sprite_squares: true, screen_colors: false, sprite_colors: false,
-                           sprite_tiles: false, background_tiles: false, small_sprite_scenes: [], one_sprite_tile_set: false,
-                           scene_recordings: false, shared_held_lists: false, far_tables: false, cache:)
+                           sprite_tiles: false, background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [],
+                           one_sprite_tile_set: false, scene_recordings: false, shared_held_lists: false, far_tables: false,
+                           cache:)
           board = board_for(program)
           memory = Memory.new(far_tables: far_tables)
           carries = cache.facts.carries(board, screen_colors: screen_colors, sprite_colors: sprite_colors,
@@ -161,13 +165,15 @@ module VBlank
           Runtime.reserve(memory, carries)
           lowering = Lowering.new(program, memory: memory, sprite_squares: sprite_squares, screen_colors: screen_colors,
                                                 sprite_colors: sprite_colors, sprite_tiles: sprite_tiles,
-                                                background_tiles: background_tiles, small_sprite_scenes: small_sprite_scenes,
+                                                background_tiles: background_tiles, lean_square_scenes: lean_square_scenes,
+                                                small_sprite_scenes: small_sprite_scenes,
                                                 one_sprite_tile_set: one_sprite_tile_set, chip: carries.chip?,
                                                 scene_recordings: scene_recordings, shared_held_lists: shared_held_lists,
                                                 cache: cache)
           choices = { sprite_squares: sprite_squares, screen_colors: screen_colors, sprite_colors: sprite_colors,
                       sprite_tiles: sprite_tiles, background_tiles: background_tiles,
-                      small_sprite_scenes: small_sprite_scenes, one_sprite_tile_set: one_sprite_tile_set,
+                      lean_square_scenes: lean_square_scenes, small_sprite_scenes: small_sprite_scenes,
+                      one_sprite_tile_set: one_sprite_tile_set,
                       scene_recordings: scene_recordings, shared_held_lists: shared_held_lists, far_tables: far_tables,
                       cache: cache }
           begin
@@ -177,6 +183,11 @@ module VBlank
           rescue Art::ScreenSpritesFull => e
             built = build_with_one_sprite_tile_set(program, title, choices, lowering)
             return built if built
+
+            spare = lean_square_scenes[e.scene]
+            # A try spending spare tiles that does not fit: #build_spending_spare_tiles keeps the one before.
+            raise if spare&.positive?
+            return build(program, title: title, **choices, lean_square_scenes: lean_square_scenes.merge(e.scene => 0)) unless spare
 
             return build(program, title: title, **choices, small_sprite_scenes: [*small_sprite_scenes, e.scene])
           rescue Art::TooManyBackgroundColors
@@ -194,6 +205,9 @@ module VBlank
             findings << small_pieces_finding
             return build(program, title: title, **choices, sprite_squares: false)
           end
+          spent = build_spending_spare_tiles(program, title, choices, lowering)
+          return spent if spent
+
           begin
             runtime = Runtime.sections(memory, carries, lowering, sleeps_every_pass: @sleeps_every_pass)
           rescue Runtime::Sound::TooBig
@@ -202,6 +216,7 @@ module VBlank
             return build(program, title: title, **choices, scene_recordings: true)
           end
           findings.concat(lowering.sprite_table_findings)
+          findings.concat(lowering.crowded_scene_findings)
           findings.concat(lowering.scene_recording_findings)
           findings.concat(routines_without_their_chip(program)) unless carries.chip?
           linked =Linker.new(runtime + game, most_banks: board.most_banks).link
@@ -241,6 +256,26 @@ module VBlank
             raise
           rescue Art::TooMuch, Lowering::NotMadeYet
             @one_sprite_tile_set_failed = true
+            findings.slice!(said..)
+            nil
+          end
+        end
+
+        # The game built again with the tiles each crowded scene left free spent on squares that waste
+        # some (Art, "A crowded screen's sprites"), or nil where none is left free or that does not
+        # fit, which keeps the build that +lowering+ made, and with nothing that try found to say.
+        # The first build keeps only the squares that waste nothing, so a picture with a blank
+        # quarter, the commonest kind, would lose its square there although the room was free.
+        def build_spending_spare_tiles(program, title, choices, lowering)
+          spare = choices[:lean_square_scenes].select { |_, tiles| tiles.zero? }
+                                              .to_h { |scene, _| [scene, lowering.free_sprite_tiles(scene)] }
+                                              .select { |_, tiles| tiles.positive? }
+          return nil if spare.empty?
+
+          said = findings.length
+          begin
+            build(program, title: title, **choices, lean_square_scenes: choices[:lean_square_scenes].merge(spare))
+          rescue Art::TooMuch
             findings.slice!(said..)
             nil
           end
