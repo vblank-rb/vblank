@@ -234,9 +234,10 @@ module VBlank
             refuse_unmade_parts!
             refuse_unmade_picture!
             assign_planes
-            variables_most_read_first.each do |name|
-              @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4)
-            end
+            given = names_in_steps
+            named, unnamed = variables_most_read_first.partition { |name| given.include?(name) }
+            named.each { |name| @variables[name] = @memory.reserve_scratchpad("the variable #{name.inspect}", 4) }
+            unnamed.each { |name| @variables[name] = @memory.reserve("the variable #{name.inspect}", 4) }
             @declared_lists.each_value do |node|
               width = LoweringPlan::SLOT_BYTES.fetch(node.width)
               place = if node.name == corners_list_in_face
@@ -319,6 +320,18 @@ module VBlank
             reads = Hash.new(0)
             @program.walk.each { |node| reads[node.name] += 1 if node.kind == :var_ref }
             (Reach.variables(@program) | loop_variables).each_with_index.sort_by { |name, at| [-reads[name], at] }.map(&:first)
+          end
+
+          # Every name a step of the program gives in one of its operands. A variable none of them names
+          # is the lowering's own, read by code it writes once a pass at most (the game loop's frame
+          # counts, a viewer's working numbers), or one nothing reads: it is kept in main RAM, and the
+          # scratchpad it would have had goes to the routines' own numbers (#keep_local), a loop's count
+          # among them, which are given it after every variable and are read on every round: a place's
+          # drawing reads its loop counts once a face, a thousand times a pass.
+          def names_in_steps
+            @program.walk.each_with_object(Set.new) do |node, names|
+              node.attrs.each_value { |operand| names << operand if operand.is_a?(Symbol) }
+            end
           end
 
           # --- the data ---
