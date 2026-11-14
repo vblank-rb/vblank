@@ -315,8 +315,11 @@ and written as one pair; 30 pictures a second), about 19 with `:every_16_pixels`
 sixteen worked out exactly at its far end, then two pixels at a time; 20 a second), about 21 with
 `:every_8_pixels` (20 a second; each setting has a loop of its own, made only for a game that draws with it), and about 70 with `:every_pixel`. Most of a pixel's cost in
 perspective is the pixel itself; what a stretch costs on top is spread over its pixels. A picture with
-see-through pixels is drawn a stretch at a time in perspective, about 38 every sixteen pixels and 60
-every eight (each held by a cost test). In perspective, `examples/cube3d.rb` runs at 60 a second as it
+see-through pixels (a grate, half of it gaps) costs a few cycles a pixel more: about 22 every sixteen
+pixels and 24 every eight, 33 and 37 lit (each held by a cost test). Its loops are made only for a game
+that fills a face in perspective with such a picture, and take 1.6 to 2K more of the quick memory for
+each setting the game draws with, twice that lit. With `:every_pixel` such a picture has no loop of
+its own and costs several hundred a pixel. In perspective, `examples/cube3d.rb` runs at 60 a second as it
 starts and `examples/two_rooms.rb` at 15. **Perspective is the same everywhere**: one over each corner's distance travels with its
 corner, and the place on the picture is found from it through one shared table (`IR::Reciprocals`),
 which every lowering reads, so all of them draw the same pixels. `rom.profile`

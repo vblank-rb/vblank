@@ -15,6 +15,20 @@ module PlaceGames
   # The colour of the picture's pixel +across+, +down+.
   def self.tile(across, down) = TILE[(down * 8) + across]
 
+  # The see-through colour of the games' pictures that have some, a magenta no other picture here
+  # holds; and what those games clear the screen to, not black, since a number the screen keeps
+  # free for see-through, written by mistake, would show black.
+  SEE_THROUGH = 0x7C1F
+  BEHIND_SEE_THROUGH = :white
+
+  # +pixels+ with every one whose number in it +see_through+ picks made SEE_THROUGH, where
+  # +see_through+ is given; as they are where it is nil.
+  def self.with_see_through(pixels, see_through)
+    return pixels unless see_through
+
+    pixels.each_with_index.map { |color, at| see_through.call(at) ? SEE_THROUGH : color }
+  end
+
   # A square face two wholes wide, two wholes in front of a viewer that faces straight ahead. The
   # view is 90 degrees across a screen 240 pixels wide, so a point one whole to the side at two
   # wholes ahead lands 60 pixels from the middle: the face covers x 60 to 179 and y 20 to 139.
@@ -184,19 +198,24 @@ module PlaceGames
   # Drawn with +perspective+. +asked_first+ asks where its corners land first, with a near limit nearer
   # than the drawing's, and +drawn_straight_first+ draws it without perspective first, the same pass:
   # both turn its points before the drawing, which reads them. +console+ is the console it is built for
-  # (none, the unbound program a test plays as each run's console).
-  def self.wall_down_the_side(perspective, asked_first: false, drawn_straight_first: false, console: nil)
+  # (none, the unbound program a test plays as each run's console). +see_through+ makes bars of four
+  # picture pixels see-through, every other one, so the wall's far end crowds bars and gaps into
+  # one pair.
+  def self.wall_down_the_side(perspective, asked_first: false, drawn_straight_first: false, console: nil,
+                              see_through: false)
+    halves = (0...8).flat_map { (0...64).map { |across| across < 32 ? 0x001F : 0x7C00 } }
+    halves = with_see_through(halves, see_through ? ->(at) { ((at % 64) / 4).odd? } : nil)
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
     builder.instance_eval do
       screen :bitmap, tear_free: true
-      image :halves, width: 64, height: 8, data: (0...8).flat_map { (0...64).map { |across| across < 32 ? 0x001F : 0x7C00 } }
+      image :halves, width: 64, height: 8, data: halves, transparent: see_through ? SEE_THROUGH : nil
       place :side do
         face point(-1.0, 1.0, 2.0), point(-1.0, 1.0, 10.0), point(-1.0, -1.0, 10.0), point(-1.0, -1.0, 2.0),
              picture: :halves, on_picture: [[0, 0], [64, 0], [64, 8], [0, 8]]
       end
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
       game_loop do
-        clear_screen :black
+        clear_screen see_through ? BEHIND_SEE_THROUGH : :black
         4.times { |corner| screen_spot :side, corner, seen_by: eye, near: 0.01 } if asked_first
         draw_place :side, seen_by: eye, perspective: :none if drawn_straight_first
         draw_place :side, seen_by: eye, perspective: perspective
@@ -210,18 +229,21 @@ module PlaceGames
   # it leans away gently, with a picture of stripes a picture pixel wide laid across it eight times
   # over, red and blue: where a stripe lands shows where the place on the picture was worked out to.
   # Drawn with +perspective+, or with each of a list of them in turn, one over the last.
-  def self.striped_wall(perspective)
+  # +see_through+ makes three stripes of every eight see-through, side by side.
+  def self.striped_wall(perspective, see_through: false)
+    stripes = (0...8).flat_map { (0...64).map { |across| across.even? ? 0x001F : 0x7C00 } }
+    stripes = with_see_through(stripes, see_through ? ->(at) { at % 8 < 3 } : nil)
     builder = VBlank::Builder.new
     builder.instance_eval do
       screen :bitmap, tear_free: true
-      image :stripes, width: 64, height: 8, data: (0...8).flat_map { (0...64).map { |across| across.even? ? 0x001F : 0x7C00 } }
+      image :stripes, width: 64, height: 8, data: stripes, transparent: see_through ? SEE_THROUGH : nil
       place :wall do
         face point(-1.5, 1.0, 2.0), point(1.5, 1.0, 3.0), point(1.5, -1.0, 3.0), point(-1.5, -1.0, 2.0),
              picture: :stripes, on_picture: [[0, 0], [512, 0], [512, 8], [0, 8]]
       end
       eye = viewer :eye, at: [0.0, 0.0, 0.0]
       game_loop do
-        clear_screen :black
+        clear_screen see_through ? BEHIND_SEE_THROUGH : :black
         Array(perspective).each { |each| draw_place :wall, seen_by: eye, perspective: each }
       end
     end
@@ -237,7 +259,8 @@ module PlaceGames
   # The square face (x 60 to 179, y 20 to 139) all white, lit by the shading, its left corners'
   # light +left+ and its right corners' +right+, and +added+ added to every point's light as the
   # game runs (a lamp the game turns up). +see_through+ leaves every third pixel of the picture
-  # out, and +far+ is how far ahead its right side is.
+  # out, and +far+ is how far ahead its right side is. A list of perspectives draws it with each in
+  # turn, one over the last.
   def self.lit_square(left:, right:, added: 0.0, perspective: :none, see_through: false, far: 2.0)
     clear = see_through ? 0x001F : nil
     pixels = Array.new(64) { |at| see_through && (at % 3).zero? ? clear : 0x7FFF }
@@ -254,7 +277,7 @@ module PlaceGames
       game_loop do
         4.times { |point| wall.point_lights[point] = added }
         clear_screen :black
-        draw_place :wall, seen_by: eye, perspective: perspective
+        Array(perspective).each { |each| draw_place :wall, seen_by: eye, perspective: each }
       end
     end
     builder.finalize_program
@@ -368,12 +391,14 @@ module PlaceGames
   # The face named +shape+ in WINDOW_FACES, seen by a viewer turned left by +spin+ degrees and
   # standing +rise+ wholes up, so its corners land part way into a pixel. With +windows+ ([left,
   # top, right, bottom] each) it is drawn through each in turn, WINDOW_PASSES passes each, the window
-  # read from a table as the game runs; without, on the whole screen.
-  def self.face_through_windows(shape, spin:, rise:, windows: nil)
+  # read from a table as the game runs; without, on the whole screen. +see_through+ makes every third
+  # pixel of the picture see-through, in rows that slant.
+  def self.face_through_windows(shape, spin:, rise:, windows: nil, see_through: false)
+    pixels = with_see_through(TILE, see_through ? ->(at) { (at + (at / 8)) % 3 == 0 } : nil)
     builder = VBlank::Builder.new
     builder.instance_eval do
       screen :bitmap, tear_free: true
-      image :tile, width: 8, height: 8, data: TILE
+      image :tile, width: 8, height: 8, data: pixels, transparent: see_through ? SEE_THROUGH : nil
       place :wall do
         face(*WINDOW_FACES.fetch(shape).map { |x, y, z| point(x, y, z) },
              picture: :tile, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]])
@@ -384,14 +409,14 @@ module PlaceGames
         edges = (0...4).map { |k| table(:"window_edge#{k}", windows.map { |window| window[k] }, width: :word) }
         pass = var :pass, 0
         game_loop do
-          clear_screen :black
+          clear_screen see_through ? BEHIND_SEE_THROUGH : :black
           at = pass / WINDOW_PASSES
           draw_place :wall, seen_by: eye, window: edges.map { |edge| edge[at] }
           pass += 1
         end
       else
         game_loop do
-          clear_screen :black
+          clear_screen see_through ? BEHIND_SEE_THROUGH : :black
           draw_place :wall, seen_by: eye
         end
       end

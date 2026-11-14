@@ -87,6 +87,40 @@ class TestPlacesCartridge < Minitest::Test
                                                                                          name: "BOTHRUNS")
   end
 
+  # ...and with see-through pixels, which in perspective take runs of whole stretches of their own
+  # (GBA::Faces.see_through_runs): bars and gaps crowded into one pair at the wall's far end, and
+  # stripes a picture pixel wide.
+  def test_a_see_through_wall_leaning_away_agrees_in_each_perspective
+    %i[none every_16_pixels every_8_pixels every_pixel].each do |perspective|
+      assert_backends_agree(PlaceGames.wall_down_the_side(perspective, see_through: true), frames: 3, console_frames: 30,
+                                                                                           name: "GRATE")
+      assert_backends_agree(PlaceGames.striped_wall(perspective, see_through: true), frames: 3, console_frames: 30,
+                                                                                    name: "GAPS")
+    end
+    both = PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels], see_through: true)
+    assert_backends_agree(both, frames: 3, console_frames: 30, name: "BOTHGAPS")
+  end
+
+  # THE BIGGEST FILL ROUTINE THERE IS: lit, see-through, every 8 pixels and every 16 in one game, so
+  # it has every run and every twin. Its room in the quick memory (GBA::Faces.routine_bytes) leaves
+  # it little to spare, so a routine grown past it fails here, not in a game.
+  def test_a_lit_see_through_face_drawn_every_8_and_every_16_pixels_builds_and_agrees
+    program = PlaceGames.lit_square(left: 0.1, right: 0.95, perspective: %i[every_8_pixels every_16_pixels],
+                                    see_through: true, far: 3.0)
+
+    assert_equal [8, 16], VBlank::IR::Backends::GBA::Faces.see_through_runs(program)
+    assert_backends_agree(program, frames: 3, console_frames: 30, name: "LITBOTH")
+  end
+
+  # A see-through face held to windows that cut its rows short at either end, so a run of whole
+  # stretches hands a row's last stretch back to be drawn a stretch at a time, a pixel kept back.
+  def test_a_see_through_face_through_windows_agrees
+    %i[square side].product([[0, 0, 150, 160], [61, 0, 240, 160], [73, 20, 141, 131]]).each do |shape, window|
+      program = PlaceGames.face_through_windows(shape, spin: 0.3, rise: 0.013, windows: [window], see_through: true)
+      assert_backends_agree(program, frames: 3, console_frames: 30, name: "GRATEWIN")
+    end
+  end
+
   SEE_THROUGH_OR_NOT = [false, true].freeze
 
   # A face lit from its corners: each pixel the shading's colour for its blended light, leaning
@@ -207,6 +241,53 @@ class TestPlacesCartridge < Minitest::Test
     sizes = [1, 10, 30].map { |count| fill_routine_bytes(PlaceGames.many_places(count)) }
 
     assert_equal [sizes.first] * 3, sizes
+  end
+
+  # The runs for see-through pictures in perspective are in the routine only for a game that fills
+  # a face in perspective with one: the same wall solid, or see-through without perspective, keeps
+  # the routine it had.
+  def test_only_a_see_through_picture_in_perspective_grows_the_fill_routine
+    solid = fill_routine_bytes(PlaceGames.striped_wall(:every_16_pixels))
+    flat = fill_routine_bytes(PlaceGames.striped_wall(:none, see_through: true))
+
+    assert_operator fill_routine_bytes(PlaceGames.striped_wall(:every_16_pixels, see_through: true)), :>, solid
+    assert_equal fill_routine_bytes(PlaceGames.striped_wall(:none)), flat
+  end
+
+  # ...and only for the settings the see-through picture is drawn with: a grate drawn without
+  # perspective beside a solid wall drawn every 16 pixels has no twin, one drawn every 16 has that
+  # setting's alone.
+  def test_the_see_through_twins_follow_the_settings_the_see_through_picture_is_drawn_with
+    faces = VBlank::IR::Backends::GBA::Faces
+
+    assert_empty faces.see_through_runs(grate_beside_wall(grate: :none, wall: :every_16_pixels))
+    assert_equal [16], faces.see_through_runs(grate_beside_wall(grate: :every_16_pixels, wall: :every_8_pixels))
+    assert_equal [8, 16], faces.see_through_runs(PlaceGames.striped_wall(%i[every_8_pixels every_16_pixels], see_through: true))
+    assert_backends_agree(grate_beside_wall(grate: :every_8_pixels, wall: :every_16_pixels), frames: 3, console_frames: 30,
+                                                                                            name: "BESIDE")
+  end
+
+  # A see-through wall drawn with +grate+ and a solid one drawn with +wall+, the same pass.
+  private def grate_beside_wall(grate:, wall:)
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image :solid, width: 8, height: 8, data: [0x001F] * 64
+      image :gaps, width: 8, height: 8, data: [0x001F, PlaceGames::SEE_THROUGH] * 32, transparent: PlaceGames::SEE_THROUGH
+      { grate: :gaps, wall: :solid }.each do |name, picture|
+        place name do
+          face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 3.0), point(1.0, -1.0, 3.0), point(-1.0, -1.0, 2.0),
+               picture: picture, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]]
+        end
+      end
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        draw_place :grate, seen_by: eye, perspective: grate
+        draw_place :wall, seen_by: eye, perspective: wall
+      end
+    end
+    b.finalize_program
+    b.program
   end
 
   private def fill_routine_bytes(program)

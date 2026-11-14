@@ -29,7 +29,8 @@ module VBlank
         # time, both worked out and the pair written whole (#emit_pixel_pairs); only a pixel left
         # over at either end of a row reads its pair, puts its own half in and writes the pair back.
         # A picture with see-through pixels goes a pair at a time too, and reads a pair back only
-        # where one of its two pixels is see-through (#emit_see_through_pixel_pairs).
+        # where one of its two pixels is see-through (#emit_see_through_pixel_pairs, and in
+        # perspective #emit_run_pair).
         #
         # THE DIRECT SCREEN IS FILLED TOO, two bytes of colour a pixel. A game draws a place only
         # on the tear-free screen (Builder#draw_place), but a program can hold a fill without a
@@ -137,6 +138,7 @@ module VBlank
             @palette = palette
             @lit = self.class.lights_faces?(program)
             @runs = self.class.stretch_runs(program)
+            @see_through_runs = self.class.see_through_runs(program)
             spans = self.class.perspectives_drawn(program)
             @cuts_stretches = spans.nil? || spans.any? { |span| span > SPLIT_PIXELS }
           end
@@ -175,14 +177,63 @@ module VBlank
           # loops, and is that much bigger; a game that lights none carries none of them.
           def self.lights_faces?(program) = program.walk.any? { |node| node.kind == :fill_face && node.shading }
 
-          # The room the quick memory keeps for the routine, lit or not, with its runs of whole
-          # stretches (see ROUTINE_BYTES).
-          def self.routine_bytes(lit:, runs: STRETCH_RUNS)
-            room = lit ? LIT_ROUTINE_BYTES : ROUTINE_BYTES
-            return room unless runs.include?(LONG_STRETCH)
+          # WHICH RUNS OF WHOLE STRETCHES HAVE A TWIN for pictures with see-through pixels, a grate
+          # or a door with gaps (#emit_run_pair): of Faces.stretch_runs, those the game fills a face
+          # with such a picture in. Each twin is a thousand bytes and more of quick memory, so a
+          # game that draws none carries none, and a grate drawn only without perspective, or
+          # every pixel, carries none either. A picture that names a see-through colour none of
+          # its pixels has is drawn as one with none (#picture_entry).
+          #
+          # A drawing of a place fills with its own perspective, in the routines it calls (a place's
+          # fills are in a routine its drawings share); a fill outside one with its own number, or,
+          # worked out as the game runs, with any (as Faces.perspectives_drawn).
+          def self.see_through_runs(program)
+            pictures = ScreenLayout.bitmaps_of(program).slice(*pictures_filled(program))
+            clear = pictures.filter_map { |name, picture| name if see_through?(picture) }.to_set
+            return [] if clear.empty?
 
-            room -= lit ? LIT_RUN_BYTES : RUN_BYTES unless runs.include?(STRETCH)
-            room + (lit ? LIT_LONG_RUN_BYTES : LONG_RUN_BYTES)
+            routines = program.walk.select { |node| node.kind == :func }.to_h { |node| [node.name, node] }
+            shows = ->(node) { fills_reached(node, routines).any? { |fill| fill.pictures.any? { clear.include?(_1) } } }
+            spans = perspectives_drawn(program) && program.walk.filter_map do |node|
+              case node.kind
+              when :draw_place then Nodes::FillFace::PERSPECTIVE_SPANS.fetch(node.perspective) if shows.call(node)
+              when :fill_face then node.perspective.value if node.perspective.kind == :int && shows.call(node)
+              end
+            end
+            spans ? stretch_runs(program) & spans : stretch_runs(program)
+          end
+
+          # The fills inside +node+ and inside every routine it calls, and they call, by name in
+          # +routines+, each routine once.
+          def self.fills_reached(node, routines, seen = Set.new)
+            fills = node.walk.select { |each| each.kind == :fill_face }
+            node.walk.flat_map(&:callees).uniq.each do |name|
+              next unless (body = routines[name]) && seen.add?(name)
+
+              fills.concat(fills_reached(body, routines, seen))
+            end
+            fills
+          end
+          private_class_method :fills_reached
+
+          # Whether some pixel of +picture+ is its see-through colour.
+          def self.see_through?(picture) = !picture.transparent.nil? && picture.pixels.unpack("v*").include?(picture.transparent)
+
+          # The room the quick memory keeps for the routine, lit or not, with its runs of whole
+          # stretches, and the twins for see-through pictures of +see_through_runs+ (see
+          # ROUTINE_BYTES).
+          def self.routine_bytes(lit:, runs: STRETCH_RUNS, see_through_runs: [])
+            room = lit ? LIT_ROUTINE_BYTES : ROUTINE_BYTES
+            if runs.include?(LONG_STRETCH)
+              room -= lit ? LIT_RUN_BYTES : RUN_BYTES unless runs.include?(STRETCH)
+              room += lit ? LIT_LONG_RUN_BYTES : LONG_RUN_BYTES
+            end
+            return room if see_through_runs.empty?
+
+            room += lit ? LIT_SEE_THROUGH_PAIR_BYTES : SEE_THROUGH_PAIR_BYTES
+            room += lit ? LIT_SEE_THROUGH_RUN_BYTES : SEE_THROUGH_RUN_BYTES if see_through_runs.include?(STRETCH)
+            room += lit ? LIT_SEE_THROUGH_LONG_RUN_BYTES : SEE_THROUGH_LONG_RUN_BYTES if see_through_runs.include?(LONG_STRETCH)
+            room
           end
 
           # The pictures a fill reads as the game runs, which the cartridge carries whatever else
@@ -317,6 +368,7 @@ module VBlank
             emit_edges
             @span_patches = []
             @moved_up_patches = []
+            @clear_patches = []
             emit_branch(:bl, PATCH_ROUTINE)
             emit_rows
             place_label(OUTSIDE_WINDOW_LABEL)
@@ -328,6 +380,10 @@ module VBlank
             if @lit
               emit_pixel_in_perspective_routine(lit: true)
               emit_shade_color_routine
+            end
+            if @see_through_runs.any?
+              emit_see_through_pair_routine(lit: false)
+              emit_see_through_pair_routine(lit: true) if @lit
             end
             emit_patch_routine
             place_label(DerivedNames.routine_end(ROUTINE))
@@ -348,9 +404,19 @@ module VBlank
           LIT_RUN_BYTES = 2_884
           LONG_RUN_BYTES = 1_788
           LIT_LONG_RUN_BYTES = 3_760
+          # A game that fills a face in perspective with a see-through picture has the room after
+          # these more: the routines a pair with a see-through pixel calls
+          # (#emit_see_through_pair_routine) with the patch routine's writing of the see-through
+          # number (#emit_patch_clear), and the twin of each run it has (Faces.see_through_runs).
+          SEE_THROUGH_PAIR_BYTES = 128
+          LIT_SEE_THROUGH_PAIR_BYTES = 256
+          SEE_THROUGH_RUN_BYTES = 1_536
+          LIT_SEE_THROUGH_RUN_BYTES = 3_340
+          SEE_THROUGH_LONG_RUN_BYTES = 1_912
+          LIT_SEE_THROUGH_LONG_RUN_BYTES = 4_132
 
           def refuse_oversized_routine!(size)
-            room = self.class.routine_bytes(lit: @lit, runs: @runs)
+            room = self.class.routine_bytes(lit: @lit, runs: @runs, see_through_runs: @see_through_runs)
             return if size <= room
 
             raise LoweringError, "The routine that fills a face came to #{size} bytes, and the quick memory keeps " \
@@ -436,7 +502,7 @@ module VBlank
           def picture_entry(name, buffered)
             bmp, indexed_clear = @pictures.call(name)
             clear = buffered ? indexed_clear : bmp.transparent
-            clear = nil unless bmp.transparent && bmp.pixels.unpack("v*").include?(bmp.transparent)
+            clear = nil unless self.class.see_through?(bmp)
             [0, bmp.width.bit_length - 1, bmp.width - 1, bmp.height - 1, clear || NO_CLEAR, bmp.height.bit_length - 1]
           end
 
@@ -1075,10 +1141,11 @@ module VBlank
           # The along words count pixels from the row's start: first and past are the drawn part's,
           # along and far-along the stretch's two ends, near and far the place at each.
           #
-          # A row of a picture with no see-through pixel, on the tear-free screen, whose first
-          # drawn pixel starts a stretch, is not drawn here at all: the fast run takes it from its
-          # first stretch to its last pixel (#emit_whole_stretches), and comes back only for a row
-          # held in at its right end. So the place at the row's first stretch is worked out here
+          # A row on the tear-free screen whose first drawn pixel starts a stretch is not drawn
+          # here at all: the fast run takes it from its first stretch to its last pixel
+          # (#emit_whole_stretches), and comes back only for a row held in at its right end. A
+          # picture with see-through pixels takes the run's twin, in a game that has one
+          # (Faces.see_through_runs). So the place at the row's first stretch is worked out here
           # only for a row the fast run did not take.
           def emit_span_in_perspective(next_row)
             stretch = gensym
@@ -1163,6 +1230,11 @@ module VBlank
               emit_whole_stretches(run, slow, next_row, lit: lit) if @runs.include?(STRETCH)
               emit_long_stretches(long_label(run), slow, next_row, lit: lit) if @runs.include?(LONG_STRETCH)
               emit_every_pixel_run(every_pixel_label(run), next_row, lit: lit)
+              run = lit ? lit_label(see_through_label(fast)) : see_through_label(fast)
+              emit_whole_stretches(run, slow, next_row, lit: lit, see_through: true) if @see_through_runs.include?(STRETCH)
+              if @see_through_runs.include?(LONG_STRETCH)
+                emit_long_stretches(long_label(run), slow, next_row, lit: lit, see_through: true)
+              end
             end
           end
 
@@ -1248,6 +1320,7 @@ module VBlank
           def lit_label(fast) = DerivedNames.sub_label(fast, :lit)
           def every_pixel_label(run) = DerivedNames.sub_label(run, :every_pixel)
           def long_label(run) = DerivedNames.sub_label(run, :every_16_pixels)
+          def see_through_label(fast) = DerivedNames.sub_label(fast, :see_through)
 
           # The words the run of whole stretches keeps: u, v and w over the distance at the
           # stretch's start and each one's step over a whole stretch, which the run reads and
@@ -1264,13 +1337,17 @@ module VBlank
           LONG_STRETCH = 16
           STRETCH_RUNS = [STRETCH, LONG_STRETCH].freeze
 
-          # On to +fast+ when the stretch about to be drawn starts at a drawn pixel, of a picture
-          # with no see-through pixel, on the tear-free screen. Those rows take a loop of their own
-          # from there on (#emit_whole_stretches, or #emit_every_pixel_run), lit or not.
+          # On to +fast+ when the stretch about to be drawn starts at a drawn pixel, on the
+          # tear-free screen. Those rows take a loop of their own from there on
+          # (#emit_whole_stretches, or #emit_every_pixel_run), lit or not. A picture with
+          # see-through pixels takes the twin of a run of whole stretches (#see_through_label) where
+          # the game has one (Faces.see_through_runs), and no other: every pixel in perspective, or
+          # in a setting with no twin, it goes the slow way.
           #
           #   r0 where the stretch starts, along; r2 where the drawn part of the row ends
           def emit_branch_to_whole_stretches(fast)
             not_whole = gensym
+            see_through = DerivedNames.sub_label(fast, :see_through_branch)
             load_var(0, :_face_along)
             load_var(1, :_face_first)
             emit(ASM.cmp_reg(0, 1))
@@ -1285,7 +1362,21 @@ module VBlank
             load_var(3, :_face_clear)
             emit(ASM.add_imm(3, 3, 1)) # NO_CLEAR is -1
             emit(ASM.cmp_imm(3, 0))
-            emit_branch(:bcond, not_whole, cond: :ne)
+            see_through_runs = @see_through_runs.any?
+            emit_branch(:bcond, see_through_runs ? see_through : not_whole, cond: :ne)
+            emit_branch_by_shading(fast, not_whole, runs: @runs)
+            if see_through_runs
+              emit_branch(:b, not_whole)
+              place_label(see_through)
+              emit_branch_by_shading(see_through_label(fast), not_whole, runs: @see_through_runs, every_pixel: false)
+            end
+            place_label(not_whole)
+          end
+
+          # On to +fast+ or its lit twin by the shading word, and from there by the perspective
+          # word (#emit_branch_by_perspective). Lit, a perspective with no run goes on to
+          # +not_whole+; unlit it falls through.
+          def emit_branch_by_shading(fast, not_whole, runs:, every_pixel: true)
             load_var(1, :_face_shading) if @lit
             load_var(3, :_face_perspective)
             lit_branch = DerivedNames.sub_label(fast, :lit_branch)
@@ -1293,28 +1384,30 @@ module VBlank
               emit(ASM.cmp_imm(1, 0))
               emit_branch(:bcond, lit_branch, cond: :ne)
             end
-            emit_branch_by_perspective(fast)
-            if @lit
-              emit_branch(:b, not_whole)
-              place_label(lit_branch)
-              emit_branch_by_perspective(lit_label(fast))
-            end
-            place_label(not_whole)
+            emit_branch_by_perspective(fast, runs: runs, every_pixel: every_pixel)
+            return unless @lit
+
+            emit_branch(:b, not_whole)
+            place_label(lit_branch)
+            emit_branch_by_perspective(lit_label(fast), runs: runs, every_pixel: every_pixel)
           end
 
           # On to +fast+ for a stretch every eight pixels, or its long twin (#long_label) for every
           # sixteen from a multiple of sixteen (a stretch that starts between is the second part of
-          # one cut in two), or its every-pixel run for every pixel, by the perspective word in r3.
-          # r0 is along. Only to the runs the game has (Faces.stretch_runs): a game that did not
-          # name a setting has no run for it, and the slow way draws the same pixels.
-          def emit_branch_by_perspective(fast)
-            emit(ASM.cmp_imm(3, 1))
-            emit_branch(:bcond, every_pixel_label(fast), cond: :eq)
-            if @runs.include?(STRETCH)
+          # one cut in two), or its every-pixel run for every pixel (unless not +every_pixel+), by
+          # the perspective word in r3. r0 is along. Only to the +runs+ the game has
+          # (Faces.stretch_runs, or for a see-through picture Faces.see_through_runs): a game that
+          # did not name a setting has no run for it, and the slow way draws the same pixels.
+          def emit_branch_by_perspective(fast, runs:, every_pixel: true)
+            if every_pixel
+              emit(ASM.cmp_imm(3, 1))
+              emit_branch(:bcond, every_pixel_label(fast), cond: :eq)
+            end
+            if runs.include?(STRETCH)
               emit(ASM.cmp_imm(3, STRETCH))
               emit_branch(:bcond, fast, cond: :eq)
             end
-            return unless @runs.include?(LONG_STRETCH)
+            return unless runs.include?(LONG_STRETCH)
 
             emit(ASM.cmp_imm(3, LONG_STRETCH))
             emit_if(:eq, ASM.tst_imm(0, LONG_STRETCH - 1))
@@ -1467,7 +1560,10 @@ module VBlank
           # turns, and r8-r10 hold the shade, its step and the table while a turn's pixels are
           # drawn, so u and v at the far end wait in their words, and so does how far one over the
           # distance was moved.
-          def emit_whole_stretches(fast, slow, next_row, lit:)
+          #
+          # +see_through+, the twin for a picture with see-through pixels: each pair is tested as it
+          # is drawn (#emit_run_pair), and a pixel kept back that is see-through is never written.
+          def emit_whole_stretches(fast, slow, next_row, lit:, see_through: false)
             even = gensym
             top = gensym
             odd = gensym
@@ -1500,16 +1596,16 @@ module VBlank
             emit_whole_stretch_steps(lit: lit, shift: 3)
             emit(ASM.tst_imm(7, KEPT_BACK))
             emit_branch(:bcond, odd, cond: :ne)
-            4.times { emit_pair(lit: lit) }
+            4.times { emit_run_pair(lit: lit, see_through: see_through) }
             emit_next_whole_stretch(top, lit: lit)
             emit_branch(:b, last)
             emit_near_end_of_lit_run(near_end, top, last, cond: :gt) if lit
             place_label(odd)
-            emit_odd_turn_pixels(lit: lit)
+            emit_odd_turn_pixels(lit: lit, see_through: see_through)
             emit_next_whole_stretch(top, lit: lit)
 
             place_label(last)
-            emit_last_stretch(slow, next_row, lit: lit)
+            emit_last_stretch(slow, next_row, lit: lit, see_through: see_through)
           end
 
           # THE RUN FOR :every_16_pixels. A stretch of sixteen is two turns. The first works the far
@@ -1523,8 +1619,8 @@ module VBlank
           # run's last turn (#emit_run_turns).
           #
           # The registers are #emit_whole_stretches's, but r5, which holds the turns as
-          # #emit_run_turns says.
-          def emit_long_stretches(fast, slow, next_row, lit:)
+          # #emit_run_turns says. +see_through+ as there.
+          def emit_long_stretches(fast, slow, next_row, lit:, see_through: false)
             even = gensym
             top = gensym
             odd = gensym
@@ -1555,18 +1651,18 @@ module VBlank
             emit_branch(:bcond, odd, cond: :ne)
             even_pixels = gensym
             place_label(even_pixels)
-            4.times { emit_pair(lit: lit) }
+            4.times { emit_run_pair(lit: lit, see_through: see_through) }
             emit_next_long_turn(top, even_pixels, lit: lit)
             emit_branch(:b, last)
             near_end = gensym
             emit_cut_turn(cut_turn, loaded, near_end, draw, lit: lit)
             emit_near_end_of_lit_run(near_end, top, last, cond: :ge) if lit
             place_label(odd)
-            emit_odd_turn_pixels(lit: lit)
+            emit_odd_turn_pixels(lit: lit, see_through: see_through)
             emit_next_long_turn(top, odd, lit: lit)
 
             place_label(last)
-            emit_last_stretch(slow, next_row, lit: lit)
+            emit_last_stretch(slow, next_row, lit: lit, see_through: see_through)
           end
 
           # What both runs do before their loop: the words their turns step, each a turn back (the
@@ -1609,13 +1705,22 @@ module VBlank
           end
 
           # A turn starting on the right half of a pair: its first pixel makes up the pair kept
-          # back, and its last is kept back in turn.
-          def emit_odd_turn_pixels(lit:)
-            emit_pair_pixel(14, lit: lit)
-            emit(ASM.orr_reg_lsl(11, 7, 14, 8))
-            emit(ASM.store_halfword_post(11, 4, 2))
-            3.times { emit_pair(lit: lit) }
-            emit_pair_pixel(7, lit: lit)
+          # back, and its last is kept back in turn. +see_through+, the pair the first makes up is
+          # tested as any other is, and so is the kept-back one's half.
+          def emit_odd_turn_pixels(lit:, see_through: false)
+            if see_through
+              emit_see_through_run_pixel(12, row: 14, lit: lit)
+              emit_kept_back_as_left_half(lit: lit)
+              emit_pair_unless_see_through(lit: lit)
+              3.times { emit_run_pair(lit: lit, see_through: true) }
+              emit_see_through_run_pixel(7, row: 12, lit: lit)
+            else
+              emit_pair_pixel(14, lit: lit)
+              emit(ASM.orr_reg_lsl(11, 7, 14, 8))
+              emit(ASM.store_halfword_post(11, 4, 2))
+              3.times { emit_pair(lit: lit) }
+              emit_pair_pixel(7, lit: lit)
+            end
             emit(ASM.orr_imm(7, 7, KEPT_BACK))
           end
 
@@ -1866,7 +1971,9 @@ module VBlank
           #
           #   r0 where the whole stretches ended, along; r1 where the drawn part ends; r2 the
           #   row's length; r5 the pixels left; r10 and r11 what the far end's routine would lose
-          def emit_last_stretch(slow, next_row, lit:)
+          #
+          # +see_through+, each pair made up is tested as the run's are (#emit_last_stretch_pixel).
+          def emit_last_stretch(slow, next_row, lit:, see_through: false)
             held_in = gensym
             steps_known = gensym
             pixel = gensym
@@ -1907,20 +2014,15 @@ module VBlank
             emit_moved_up(3, 3, :down)
             emit_load_shade if lit
             place_label(pixel)
-            emit_pair_pixel(14, lit: lit)
-            emit(ASM.tst_imm(7, KEPT_BACK))
-            emit_if(:ne, ASM.orr_reg_lsl(11, 7, 14, 8))
-            emit_if(:ne, ASM.store_halfword_post(11, 4, 2))
-            emit(ASM.mov_imm_cond(:ne, 7, 0))
-            emit_if(:eq, ASM.orr_imm(7, 14, KEPT_BACK))
+            emit_last_stretch_pixel(lit: lit, see_through: see_through)
             emit(ASM.subs_imm(5, 5, 1))
             emit_branch(:bcond, pixel, cond: :ne)
             place_label(finished)
-            emit_kept_back_pixel
+            emit_kept_back_pixel(lit: lit, see_through: see_through)
             emit_branch(:b, next_row)
 
             place_label(held_in)
-            emit_kept_back_pixel
+            emit_kept_back_pixel(lit: lit, see_through: see_through)
             emit(ASM.cmp_reg(0, 1))
             emit_branch(:bcond, next_row, cond: :ge)
             store_var(0, :_face_along)
@@ -1929,9 +2031,44 @@ module VBlank
             emit_branch(:b, slow)
           end
 
+          # One pixel of the last stretch: it makes up a pair with the one kept back, or is kept
+          # back itself. +see_through+, the pair is tested as the run's are, the pixel worked out
+          # into r12 for it.
+          def emit_last_stretch_pixel(lit:, see_through:)
+            unless see_through
+              emit_pair_pixel(14, lit: lit)
+              emit(ASM.tst_imm(7, KEPT_BACK))
+              emit_if(:ne, ASM.orr_reg_lsl(11, 7, 14, 8))
+              emit_if(:ne, ASM.store_halfword_post(11, 4, 2))
+              emit(ASM.mov_imm_cond(:ne, 7, 0))
+              emit_if(:eq, ASM.orr_imm(7, 14, KEPT_BACK))
+              return
+            end
+
+            kept = gensym
+            emit_see_through_run_pixel(12, row: 14, lit: lit)
+            emit(ASM.tst_imm(7, KEPT_BACK))
+            emit_if(:eq, ASM.orr_imm(7, 12, KEPT_BACK))
+            emit_branch(:bcond, kept, cond: :eq)
+            emit_kept_back_as_left_half(lit: lit)
+            emit_pair_unless_see_through(lit: lit)
+            emit_number(7, 0)
+            place_label(kept)
+          end
+
           # The pixel kept back, if one is, written with the half of its pair beside it. lr is
-          # spare.
-          def emit_kept_back_pixel
+          # spare. +see_through+, one that is see-through is not written.
+          def emit_kept_back_pixel(lit: false, see_through: false)
+            if see_through
+              if lit
+                emit(ASM.tst_imm(7, SEE_THROUGH_MARK))
+                emit_if(:ne, ASM.bic_imm(7, 7, KEPT_BACK))
+              else
+                emit(ASM.and_imm(14, 7, 0xFF))
+                emit_cmp_clear(14)
+                emit_if(:eq, ASM.bic_imm(7, 7, KEPT_BACK))
+              end
+            end
             emit(ASM.tst_imm(7, KEPT_BACK))
             emit_if(:ne, ASM.load_halfword(14, 4))
             emit_if(:ne, ASM.and_imm(14, 14, 0xFF00))
@@ -2425,27 +2562,133 @@ module VBlank
           end
 
           # One pixel of a pair into +into+, and u and v a step on. Its three shifts are written in
-          # as the routine starts, so each is emitted as nought and its place noted.
-          def emit_pair_pixel(into, lit: false)
+          # as the routine starts, so each is emitted as nought and its place noted. +row+ is the
+          # register the picture's row is found in, r12 unless given.
+          def emit_pair_pixel(into, lit: false, row: 12)
             @span_patches << [pos, :across]
             emit(ASM.add_reg_lsr(into, 6, 0, 0))
             @span_patches << [pos, :down]
-            emit(ASM.lsr_imm(12, 1, 32))
+            emit(ASM.lsr_imm(row, 1, 32))
             @span_patches << [pos, :row]
-            emit(ASM.ldrb_reg_lsl(into, into, 12, 0))
+            emit(ASM.ldrb_reg_lsl(into, into, row, 0))
             emit(ASM.add_reg(0, 0, 2))
             emit(ASM.add_reg(1, 1, 3))
-            emit_shaded_number(into) if lit
+            emit_shaded_number(into, spare: row) if lit
           end
 
           # LIT: the palette number in +into+ made the one its colour becomes at the shade in r8,
           # from the shading's table in r10 (a row of 256 a level), and the shade a step on (r9).
-          # Four instructions, one of them a load.
-          def emit_shaded_number(into)
-            emit(ASM.lsr_imm(12, 8, 16))
-            emit(ASM.orr_reg_lsl(12, into, 12, 8))
-            emit(ASM.ldrb_reg(into, 10, 12))
+          # Four instructions, one of them a load. +spare+ (r12 unless given) is spare.
+          def emit_shaded_number(into, spare: 12)
+            emit(ASM.lsr_imm(spare, 8, 16))
+            emit(ASM.orr_reg_lsl(spare, into, spare, 8))
+            emit(ASM.ldrb_reg(into, 10, spare))
             emit(ASM.add_reg(8, 8, 9))
+          end
+
+          # A PAIR IN A RUN OF WHOLE STRETCHES (#emit_whole_stretches, #emit_long_stretches): for a
+          # picture with no see-through pixel written whole (#emit_pair); for one with some
+          # (+see_through+) tested as #emit_see_through_pixel_pairs tests its pairs, with no
+          # register to spare. The run holds every register, so the see-through number is written
+          # into the compares themselves as the routine starts (#emit_cmp_clear), and a pair
+          # with a see-through pixel is a call (#emit_see_through_pair_routine): a pair with none
+          # pays three instructions for the test, two compares and the call not made.
+          #
+          #   r11 and r12 the two pixels, lr spare until the call takes it
+          def emit_run_pair(lit:, see_through:)
+            return emit_pair(lit: lit) unless see_through
+
+            emit_see_through_run_pixel(11, row: 12, lit: lit)
+            emit_see_through_run_pixel(12, row: 14, lit: lit)
+            emit_pair_unless_see_through(lit: lit)
+          end
+
+          # One pixel of a see-through picture's pair into +into+, +row+ spare. Lit, it is shaded,
+          # and marked SEE_THROUGH_MARK when its palette number was the see-through one.
+          def emit_see_through_run_pixel(into, row:, lit:)
+            emit_pair_pixel(into, row: row)
+            return unless lit
+
+            emit_cmp_clear(into)
+            emit_shaded_number(into, spare: row) # changes no flag
+            emit_if(:eq, ASM.orr_imm(into, into, SEE_THROUGH_MARK))
+          end
+
+          # The pixel kept back in r7 as the left half of a pair, in r11, without the run's marks:
+          # unlit its byte, lit its byte and its SEE_THROUGH_MARK.
+          def emit_kept_back_as_left_half(lit:)
+            emit(lit ? ASM.bic_imm(11, 7, KEPT_BACK) : ASM.and_imm(11, 7, 0xFF))
+          end
+
+          # The pair in r11 and r12 written whole when neither is see-through, and the pair after it
+          # next; otherwise left to the routine for a pair with a see-through pixel.
+          def emit_pair_unless_see_through(lit:)
+            if lit
+              emit(ASM.orr_reg(14, 11, 12))
+              emit(ASM.tst_imm(14, SEE_THROUGH_MARK))
+              drawn = :eq
+            else
+              emit_cmp_clear(11)
+              emit_cmp_clear(12, cond: :ne)
+              drawn = :ne
+            end
+            emit_if(drawn, ASM.orr_reg_lsl(11, 11, 12, 8))
+            emit_if(drawn, ASM.store_halfword_post(11, 4, 2))
+            emit_branch(:bl, see_through_pair_label(lit), cond: drawn == :eq ? :ne : :eq)
+          end
+
+          # Compares +reg+ with the picture's see-through number, which the patch routine writes
+          # in (#emit_patch_clear): emitted as a compare with nought, its place noted. Made to run
+          # only under +cond+ when given. The see-through number is a palette number, under 256,
+          # so it fits the compare's eight bits with no turn.
+          def emit_cmp_clear(reg, cond: nil)
+            @clear_patches << pos
+            instruction = ASM.cmp_imm(reg, 0)
+            cond ? emit_if(cond, instruction) : emit(instruction)
+          end
+
+          SEE_THROUGH_PAIR_ROUTINE = DerivedNames.sub_label(ROUTINE, :see_through_pair)
+          LIT_SEE_THROUGH_PAIR_ROUTINE = DerivedNames.sub_label(ROUTINE, :see_through_pair_lit)
+
+          def see_through_pair_label(lit) = lit ? LIT_SEE_THROUGH_PAIR_ROUTINE : SEE_THROUGH_PAIR_ROUTINE
+
+          # A PAIR WITH A SEE-THROUGH PIXEL, from a run of whole stretches: r11 its left pixel and
+          # r12 its right, r4 where it is in the screen's memory, which is left a pair on. Both
+          # see-through, nothing is written; one, the pair is read from video memory, the drawn
+          # half put in, and written back, the see-through one's own register taking what was
+          # read. Called with its return in lr; changes r4, r11, r12 and the flags, and no other.
+          #
+          # Unlit, a see-through pixel is the see-through number (#emit_cmp_clear); +lit+, it is
+          # marked SEE_THROUGH_MARK.
+          def emit_see_through_pair_routine(lit:)
+            place_label(see_through_pair_label(lit))
+            if lit
+              emit(ASM.tst_imm(11, SEE_THROUGH_MARK))
+              emit_if(:ne, ASM.tst_imm(12, SEE_THROUGH_MARK))
+              both = :ne
+            else
+              emit_cmp_clear(11)
+              emit_cmp_clear(12, cond: :eq)
+              both = :eq
+            end
+            emit(ASM.add_imm_cond(both, 4, 4, 2))
+            emit_if(both, ASM.bx(14))
+            if lit
+              emit(ASM.tst_imm(11, SEE_THROUGH_MARK))
+              left = :ne
+            else
+              emit_cmp_clear(11)
+              left = :eq
+            end
+            right = left == :eq ? :ne : :eq
+            emit_if(left, ASM.load_halfword(11, 4))
+            emit_if(left, ASM.and_imm(11, 11, 0xFF))
+            emit_if(left, ASM.orr_reg_lsl(11, 11, 12, 8))
+            emit_if(right, ASM.load_halfword(12, 4))
+            emit_if(right, ASM.and_imm(12, 12, 0xFF00))
+            emit_if(right, ASM.orr_reg(11, 11, 12))
+            emit(ASM.store_halfword_post(11, 4, 2))
+            emit(ASM.bx(14))
           end
 
           # One pixel alone, the +half+ (:low or :high) of its pair, put in with what the other
@@ -2498,7 +2741,8 @@ module VBlank
           #
           # The few instructions that move u and v up (#emit_moved_up) have their entries after the
           # pixels', each with its lowest bit set for one moving v (an instruction is four bytes
-          # along, so that bit is spare).
+          # along, so that bit is spare), and the compares that take the see-through number have
+          # theirs after those (#emit_patch_clear), written whether the shifts need it or not.
           #
           #   r0 the across field, r1 the down field, r2 the row field, r3 the table, r4 how many
           #   are left, r5 a pixel's instructions, r6 an instruction, r7 the next entry
@@ -2509,8 +2753,15 @@ module VBlank
             entries << 0 if entries.length.odd?
             entries += @moved_up_patches.map { |site, axis| (table - site) | (axis == :down ? 1 : 0) }
             entries << 0 if entries.length.odd?
+            clear_entries_at = 2 * entries.length
+            entries += @clear_patches.map { |site| table - site }
+            entries << 0 if entries.length.odd?
             emit(entries.pack("v*"))
             place_label(PATCH_ROUTINE)
+            back = pos + 8 - table
+            emit(ASM.sub_imm(3, 15, back & ~0xFF))
+            emit(ASM.sub_imm(3, 3, back & 0xFF))
+            emit_patch_clear(clear_entries_at)
             load_var(2, :_face_shift)
             load_var(1, :_face_rows_shift)
             emit(ASM.rsb_imm(0, 2, 32))
@@ -2520,9 +2771,6 @@ module VBlank
             emit(ASM.and_imm(1, 1, 31))
             emit(ASM.lsl_imm(1, 1, 7))
             emit(ASM.lsl_imm(2, 2, 7))
-            back = pos + 8 - table
-            emit(ASM.sub_imm(3, 15, back & ~0xFF))
-            emit(ASM.sub_imm(3, 3, back & 0xFF))
             # Nothing to do when the instructions already hold these shifts, as they do for every
             # face after the first that shows a picture of the same size: the first pixel decides,
             # for the shifts that move u and v up too.
@@ -2588,6 +2836,39 @@ module VBlank
             emit(ASM.str(6, 5))
             emit(ASM.subs_imm(4, 4, 1))
             emit_branch(:bcond, each, cond: :ne)
+          end
+
+          # THE SEE-THROUGH NUMBER, written into each compare that takes it (#emit_cmp_clear): the
+          # low eight bits of the instruction, its first byte, from the entries +at+ bytes into the
+          # table on. Nothing to do when the first already holds it, as it does for every face
+          # after the first that shows the same picture, nor in a game with no such compare. A
+          # picture with none has NO_CLEAR, which no run that compares is entered with.
+          #
+          #   r3 the table, r0 the number, r4 how many are left, r5 an entry and then the
+          #   instruction's address, r6 the byte there, r7 the next entry
+          def emit_patch_clear(at)
+            return if @clear_patches.empty?
+
+            done = gensym
+            each = gensym
+            load_var(0, :_face_clear)
+            emit(ASM.and_imm(0, 0, 0xFF))
+            emit_number(7, at)
+            emit(ASM.add_reg(7, 3, 7))
+            emit(ASM.load_halfword(5, 7))
+            emit(ASM.sub_reg(5, 3, 5))
+            emit(ASM.ldrb_offset(6, 5, 0))
+            emit(ASM.cmp_reg(6, 0))
+            emit_branch(:bcond, done, cond: :eq)
+            emit_number(4, @clear_patches.length)
+            place_label(each)
+            emit(ASM.load_halfword(5, 7))
+            emit(ASM.add_imm(7, 7, 2))
+            emit(ASM.sub_reg(5, 3, 5))
+            emit(ASM.strb(0, 5))
+            emit(ASM.subs_imm(4, 4, 1))
+            emit_branch(:bcond, each, cond: :ne)
+            place_label(done)
           end
 
           # Where each pixel's three patched instructions start, checked to be across, down and

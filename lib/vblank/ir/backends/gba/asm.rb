@@ -67,8 +67,10 @@ module VBlank
 
           # Branch with link — subroutine call. Saves return address in LR (r14).
           # @param word_offset [Integer] target in words relative to current PC
-          def branch_link(word_offset)
-            encoded = 0xEB000000 | ((word_offset - 2) & 0x00FFFFFF)
+          # @param cond [Symbol, Integer, nil] condition code, for a call made only when it is met
+          def branch_link(word_offset, cond = nil)
+            cc = cond ? resolve_cond(cond) : 0xE
+            encoded = (cc << 28) | 0x0B000000 | ((word_offset - 2) & 0x00FFFFFF)
             [encoded].pack("V")
           end
 

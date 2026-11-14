@@ -78,15 +78,17 @@ module VBlank
           # The layout for +program+. +stack_room+ is the bytes a game asked for its stack, or nil
           # for the build to decide; +divides+ and +divides_fractions+ whether it needs each divide
           # routine, and +fills_faces+ whether it needs the routine that fills a face (+lights_faces+
-          # whether it needs that routine's larger form, that lights them too, and +stretch_runs+ which of
-          # its runs of whole stretches it has, Faces.stretch_runs).
+          # whether it needs that routine's larger form, that lights them too, +stretch_runs+ which of
+          # its runs of whole stretches it has, Faces.stretch_runs, and +see_through_runs+ which of
+          # those have a twin for see-through pictures, Faces.see_through_runs).
           def self.for(program, stack_room: nil, divides: false, divides_fractions: false, fills_faces: false,
-                       lights_faces: false, stretch_runs: Faces::STRETCH_RUNS)
+                       lights_faces: false, stretch_runs: Faces::STRETCH_RUNS, see_through_runs: [])
             stack = stack_room || stack_needed(program).clamp(DEFAULT_STACK_BYTES, MOST_STACK_BYTES)
             starts_at = END_OF_QUICK - CONSOLE_BYTES - interrupt_room_needed(program)
             fix_at = starts_at - stack - (divides_fractions ? Divide::FIX_ROUTINE_BYTES : 0)
             divide_at = fix_at - (divides ? Divide::ROUTINE_BYTES : 0)
-            fill_at = divide_at - (fills_faces ? Faces.routine_bytes(lit: lights_faces, runs: stretch_runs) : 0)
+            fill_bytes = Faces.routine_bytes(lit: lights_faces, runs: stretch_runs, see_through_runs: see_through_runs)
+            fill_at = divide_at - (fills_faces ? fill_bytes : 0)
             new(ceiling: fill_at, divide_at: (divide_at if divides), divide_fix_at: (fix_at if divides_fractions),
                 fill_face_at: (fill_at if fills_faces), stack_bytes: stack, stack_starts_at: starts_at)
           end

@@ -315,7 +315,7 @@ module VBlank
               case fix.kind
               when :b then ASM.branch(word_offset)
               when :bcond then ASM.branch_cond(fix.cond, word_offset)
-              when :bl then ASM.branch_link(word_offset)
+              when :bl then ASM.branch_link(word_offset, fix.cond)
               end
             @code[fix.pos, 4] = encoded
           end
