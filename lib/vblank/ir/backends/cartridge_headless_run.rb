@@ -378,13 +378,15 @@ module VBlank
         end
 
         # Every list as the runtime keeps it: a header (each runtime's Lists sets where in it the
-        # capacity, the front and the length are) and then its slots, a ring from the front.
+        # capacity, the front and the length are, and how many bytes each is) and then its slots, a ring
+        # from the front.
         def read_lists
           layout = runtime::Lists
+          field = layout::FIELD_BYTES
           @places.lists.to_h do |name, (address, _capacity, width, _label)|
-            capacity = half(address + layout::CAPACITY)
-            front = half(address + layout::FRONT)
-            length = half(address + layout::LENGTH)
+            capacity = number_at(address + layout::CAPACITY, field)
+            front = number_at(address + layout::FRONT, field)
+            length = number_at(address + layout::LENGTH, field)
             items = Array.new(length) do |i|
               slot = (front + i) % capacity
               read_slot(address + layout::HEADER + (slot * width), width)

@@ -10,10 +10,12 @@ module VBlank
           # by index, and the game stopped, in the interpreter's words, by an index outside the list, an
           # item added to a full one or taken from an empty one.
           #
-          # A list lives in the game's region of RAM (Memory#reserve): a header of four halfwords — its
+          # A list lives in the game's region of RAM (Memory#reserve): a header of four words — its
           # capacity, where its first item is, how many items it holds, and how far to shift a slot's
           # number to get its place in bytes (0, 1 or 2 for slots of 1, 2 or 4 bytes) — and then its
-          # slots. The items go round the slots like a ring, so taking one from the front moves where the
+          # slots. Words rather than halfwords, so a list may have more than 65,535 slots, as the
+          # interpreter's may and the 2 megabytes have room for; a word is one load or store, as a
+          # halfword is. The items go round the slots like a ring, so taking one from the front moves where the
           # first item is rather than every item after it.
           #
           # A slot narrower than a word keeps the low bits of what goes in and reads back with its top bit
@@ -25,10 +27,15 @@ module VBlank
           # address.
           module Lists
             CAPACITY = 0
-            FRONT = 2
-            LENGTH = 4
-            SHIFT = 6
-            HEADER = 8
+            FRONT = 4
+            LENGTH = 8
+            SHIFT = 12
+            HEADER = 16
+            # How many bytes each number of the header is (CartridgeHeadlessRun#read_lists).
+            FIELD_BYTES = 4
+
+            # One list's entry in "game_lists" (#emit_start): its address, its capacity and its shift.
+            START_ENTRY_BYTES = 12
 
             # The load that reads one entry of a table, widened as the table keeps it, by the number the
             # lowering hands rt_list_copy (EntryKeeping#number).
@@ -66,7 +73,7 @@ module VBlank
             end
 
             # rt_lists_start: every list's header, from the table the lowering writes ("game_lists"): each
-            # list's address (a word), its capacity and its shift (a halfword each), and an address of
+            # list's address, its capacity and its shift (a word each), and an address of
             # nought after the last.
             def emit_start(asm)
               asm.label("rt_lists_start")
@@ -74,11 +81,11 @@ module VBlank
               asm.label("rt_lists_start_next")
               asm.lw(:t1, 0, :t0)
               asm.beq(:t1, :zero, "rt_lists_start_done")
-              asm.lhu(:t2, 4, :t0)
-              asm.lhu(:t3, 6, :t0)
-              asm.sh(:t2, CAPACITY, :t1)
-              asm.sh(:t3, SHIFT, :t1)
-              asm.b("rt_lists_start_next") { asm.addiu(:t0, :t0, 8) }
+              asm.lw(:t2, 4, :t0)
+              asm.lw(:t3, 8, :t0)
+              asm.sw(:t2, CAPACITY, :t1)
+              asm.sw(:t3, SHIFT, :t1)
+              asm.b("rt_lists_start_next") { asm.addiu(:t0, :t0, START_ENTRY_BYTES) }
               asm.label("rt_lists_start_done")
               asm.jr(:ra)
             end
@@ -87,37 +94,37 @@ module VBlank
             # (rt_list_fill then sets what they are). rt_list_length: v0 = how many it holds.
             def emit_empty(asm)
               asm.label("rt_list_empty")
-              asm.sh(:zero, FRONT, :a0)
-              asm.jr(:ra) { asm.sh(:zero, LENGTH, :a0) }
+              asm.sw(:zero, FRONT, :a0)
+              asm.jr(:ra) { asm.sw(:zero, LENGTH, :a0) }
 
               asm.label("rt_list_at_capacity")
-              asm.lhu(:t0, CAPACITY, :a0)
-              asm.sh(:zero, FRONT, :a0)
-              asm.jr(:ra) { asm.sh(:t0, LENGTH, :a0) }
+              asm.lw(:t0, CAPACITY, :a0)
+              asm.sw(:zero, FRONT, :a0)
+              asm.jr(:ra) { asm.sw(:t0, LENGTH, :a0) }
 
               asm.label("rt_list_length")
-              asm.lhu(:v0, LENGTH, :a0)
+              asm.lw(:v0, LENGTH, :a0)
               asm.jr(:ra)
             end
 
             # t9 = the address of the slot +offset+ (a register) places after the first item of the list at
             # +list+ (a0 unless set), unchecked. Changes t6 and t7.
             def emit_slot_of_offset(asm, offset, label, list: :a0)
-              asm.lhu(:t6, FRONT, list)
-              asm.lhu(:t7, CAPACITY, list)
+              asm.lw(:t6, FRONT, list)
+              asm.lw(:t7, CAPACITY, list)
               asm.addu(:t6, :t6, offset)
               asm.sltu(:t9, :t6, :t7)
               asm.bne(:t9, :zero, label)
               asm.subu(:t6, :t6, :t7) # once round the ring
               asm.label(label)
-              asm.lhu(:t7, SHIFT, list)
+              asm.lw(:t7, SHIFT, list)
               asm.sllv(:t6, :t6, :t7)
               asm.addu(:t9, list, :t6)
             end
 
             # +value+ into the slot at t9, as many bytes as its list's slots take. Changes t7.
             def emit_write_slot(asm, value, label)
-              asm.lhu(:t7, SHIFT, :a0)
+              asm.lw(:t7, SHIFT, :a0)
               asm.addiu(:t7, :t7, -1)
               asm.bltz(:t7, "#{label}_byte")
               asm.beq(:t7, :zero, "#{label}_half")
@@ -132,7 +139,7 @@ module VBlank
             # v0 = what the slot at t9 of the list at +list+ (a0 unless set) holds, widened by its sign.
             # Changes t7.
             def emit_read_slot(asm, label, list: :a0)
-              asm.lhu(:t7, SHIFT, list)
+              asm.lw(:t7, SHIFT, list)
               asm.addiu(:t7, :t7, -1)
               asm.bltz(:t7, "#{label}_byte")
               asm.beq(:t7, :zero, "#{label}_half")
@@ -149,7 +156,7 @@ module VBlank
             # An index in +index+ outside the list stops the game: compared as a number that cannot be
             # negative, an index below nought is past the end too. Changes t6 and t7.
             def emit_index_check(asm, index)
-              asm.lhu(:t6, LENGTH, :a0)
+              asm.lw(:t6, LENGTH, :a0)
               asm.sltu(:t7, index, :t6)
               asm.beq(:t7, :zero, "rt_list_index_fault") { asm.move(:t8, index) }
             end
@@ -157,33 +164,33 @@ module VBlank
             # rt_list_push(list, value): the value into the slot after the last item. A full list stops the game.
             def emit_push(asm)
               asm.label("rt_list_push")
-              asm.lhu(:t0, LENGTH, :a0)
-              asm.lhu(:t1, CAPACITY, :a0)
+              asm.lw(:t0, LENGTH, :a0)
+              asm.lw(:t1, CAPACITY, :a0)
               asm.sltu(:t2, :t0, :t1)
               asm.beq(:t2, :zero, "rt_list_full")
               emit_slot_of_offset(asm, :t0, "rt_list_push_within")
               emit_write_slot(asm, :a1, "rt_list_push_write")
               asm.addiu(:t0, :t0, 1)
-              asm.jr(:ra) { asm.sh(:t0, LENGTH, :a0) }
+              asm.jr(:ra) { asm.sw(:t0, LENGTH, :a0) }
             end
 
             # rt_list_drop(list, from): the first item taken (from 1) or the last (from 0). An empty list
             # stops the game.
             def emit_drop(asm)
               asm.label("rt_list_drop")
-              asm.lhu(:t0, LENGTH, :a0)
+              asm.lw(:t0, LENGTH, :a0)
               asm.beq(:t0, :zero, "rt_list_empty_fault")
               asm.addiu(:t0, :t0, -1)
-              asm.sh(:t0, LENGTH, :a0)
+              asm.sw(:t0, LENGTH, :a0)
               asm.beq(:a1, :zero, "rt_list_drop_done")
-              asm.lhu(:t1, FRONT, :a0)
-              asm.lhu(:t2, CAPACITY, :a0)
+              asm.lw(:t1, FRONT, :a0)
+              asm.lw(:t2, CAPACITY, :a0)
               asm.addiu(:t1, :t1, 1)
               asm.sltu(:t3, :t1, :t2)
               asm.bne(:t3, :zero, "rt_list_drop_front")
               asm.move(:t1, :zero)
               asm.label("rt_list_drop_front")
-              asm.sh(:t1, FRONT, :a0)
+              asm.sw(:t1, FRONT, :a0)
               asm.label("rt_list_drop_done")
               asm.jr(:ra)
             end
@@ -242,8 +249,8 @@ module VBlank
               asm.beq(:t1, :zero, "rt_list_copy_start")
               asm.move(:t4, :t0)
               asm.label("rt_list_copy_start")
-              asm.sh(:zero, FRONT, :a0)
-              asm.sh(:t5, LENGTH, :a0)
+              asm.sw(:zero, FRONT, :a0)
+              asm.sw(:t5, LENGTH, :a0)
               asm.blez(:t5, "rt_list_copy_done")
               asm.move(:t0, :zero) # the slot to write next
               asm.label("rt_list_copy_item")
@@ -269,7 +276,7 @@ module VBlank
             # (Lowering#emit_fixed_front_sort).
             def emit_sort(asm)
               asm.label("rt_list_sort")
-              asm.lhu(:t0, LENGTH, :a0)
+              asm.lw(:t0, LENGTH, :a0)
               asm.li(:t1, 1) # the item to place next
               asm.slt(:t2, :t1, :t0)
               asm.beq(:t2, :zero, "rt_list_sort_done")
@@ -345,7 +352,7 @@ module VBlank
               fault = Runtime.at(memory, Frame::FAULT)
               asm.label("rt_list_full")
               asm.sw(:a0, fault + Frame::FAULT_LIST, :gp)
-              asm.lhu(:t0, CAPACITY, :a0)
+              asm.lw(:t0, CAPACITY, :a0)
               asm.sw(:t0, fault + Frame::FAULT_FIRST, :gp)
               asm.j("rt_fault") { asm.li(:a0, Frame::LIST_FULL) }
 
@@ -358,7 +365,7 @@ module VBlank
               asm.label("rt_list_index_fault")
               asm.sw(:a0, fault + Frame::FAULT_LIST, :gp)
               asm.sw(:t8, fault + Frame::FAULT_FIRST, :gp)
-              asm.lhu(:t0, LENGTH, :a0)
+              asm.lw(:t0, LENGTH, :a0)
               asm.sw(:t0, fault + Frame::FAULT_SECOND, :gp)
               asm.j("rt_fault") { asm.li(:a0, Frame::INDEX_OUT_OF_RANGE) }
             end

@@ -364,12 +364,12 @@ module VBlank
               # A list of words whose first item is in its first slot, holding them all, is copied straight:
               # no index can be past its end, and its items are its slots in order.
               lists = Runtime::Lists
-              asm.lhu(:t2, lists::FRONT, :a0)
+              asm.lw(:t2, lists::FRONT, :a0)
               asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
-              asm.lhu(:t2, lists::SHIFT, :a0)
+              asm.lw(:t2, lists::SHIFT, :a0)
               asm.addiu(:t2, :t2, -2)
               asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
-              asm.lhu(:t2, lists::LENGTH, :a0)
+              asm.lw(:t2, lists::LENGTH, :a0)
               asm.sltu(:t2, :t2, :t1)
               asm.bne(:t2, :zero, "rt_face_corners_one_by_one")
               asm.label("rt_face_corners_straight")

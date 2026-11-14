@@ -346,8 +346,7 @@ module VBlank
             asm.data_words(0)
             asm.label("game_lists")
             @lists.each_value do |list|
-              asm.data_words(list.address)
-              asm.data_halves(list.capacity, list.slot_bytes.bit_length - 1)
+              asm.data_words(list.address, list.capacity, list.slot_bytes.bit_length - 1)
             end
             asm.data_words(0)
             @routine_tables.each do |targets, label|
@@ -720,7 +719,7 @@ module VBlank
             if @lists_of_fixed_length.include?(list.name.to_sym) && list.capacity <= 0x7FFF # SLTIU's number, sign and all
               @asm.sltiu(:t7, :v0, list.capacity)
             else
-              @asm.lhu(:t6, *base_and_distance(list.address + lists::LENGTH))
+              @asm.lw(:t6, *base_and_distance(list.address + lists::LENGTH))
               @asm.sltu(:t7, :v0, :t6)
             end
             fault = @index_faults[list.address] ||= fresh_label("index_past_end")
@@ -813,7 +812,7 @@ module VBlank
 
             @asm.li(:a0, list.address)
             @asm.li(:a1, keys.address)
-            @asm.lhu(:t0, lists::LENGTH, :a0)
+            @asm.lw(:t0, lists::LENGTH, :a0)
             @asm.li(:t1, 1)
             @asm.slt(:t2, :t1, :t0)
             @asm.beq(:t2, :zero, done)

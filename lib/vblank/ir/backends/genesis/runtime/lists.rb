@@ -27,6 +27,9 @@ module VBlank
             LENGTH = 4
             SHIFT = 6
             HEADER = 8
+            # How many bytes each number of the header is (CartridgeHeadlessRun#read_lists). A list of
+            # more than 65,535 slots cannot fit in the 64K of work RAM, so a word holds every count.
+            FIELD_BYTES = 2
 
             # How a table keeps its entries, by the number the lowering hands rt_list_copy: a signed
             # byte, an unsigned byte, a signed half, an unsigned half, a whole word.

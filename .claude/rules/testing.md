@@ -148,6 +148,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `many_players_tests.rb` (games and tests for four and for sixteen players, played by the interpreter and the game as C, JavaScript and Ruby, which read sixteen; no cartridge does, so not in `test/all/`),
 `wanderers_tests.rb` (`examples/wanderers.rb` with four players, as a computer builds it, played by the same runs for the same reason),
 `list_reading_tests.rb` (a game's lists and pools read off a running cartridge, played by each console that has a cartridge),
+`long_list_tests.rb` (a list of more than 65,535 slots, played by each console with the memory for one: the Advance, of bytes, and the PlayStation, of words),
 `probe_by_name_tests.rb` (a probe reading a built cartridge's variables, lists and pools by name, played by the Advance and the Color),
 `heard_alike_tests.rb` (two builds of one small tune held alike by what each cartridge puts out of its speakers, and a probe reading a frame's samples, played by each console whose emulator hands its sound over),
 `build_once_tests.rb` (what a cartridge build does once, its plan and its routines, held on each console that builds a cartridge),
