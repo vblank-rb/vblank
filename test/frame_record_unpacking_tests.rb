@@ -180,6 +180,44 @@ module FrameRecordUnpackingTests
     def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
   end
 
+  # FRAMES OF TWO SLOTS NAMED IN TURN: the unpacking writes the frames of one slot kept one way
+  # in one loop, and its records land in the order the build lays them out too.
+  def test_the_records_of_frames_of_two_slots_named_in_turn_are_the_builds
+    Dir.mktmpdir do |folder|
+      whole = interleaved_builder(folder, VBlank::Cartridge::Options.new)
+      left_out = interleaved_builder(folder, LEFT_OUT)
+      release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY.bytesize })
+      unpacking = left_out.declared_data_pack.unpacking(release: release)
+      played = game_player.hand_file(COPY).run(unpacking.program, frames: 40)
+
+      assert_equal whole.made_data_pack_file.unpack1("H*"), unpacking.pack_file_in(played, sha1: SHA1, build_version: "1").unpack1("H*")
+    end
+  end
+
+  # A pose of the slot of bytes, one of the slot of words, then another of the slot of bytes.
+  private def interleaved_builder(folder, options)
+    from = frames_original(folder)
+    b = Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      colors :hero, [:transparent, *WORDS::COLORS.drop(1)]
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :sprites, at: TILES_AT, count: WORDS::TILE_COUNT
+        slots.numbers :small, at: SMALL_AT, count: SMALL.bytesize, width: :byte, signed: false
+        slots.numbers :high_first, at: HIGH_FIRST_AT, count: HIGH_FIRST.bytesize, width: :byte, signed: false
+      end
+      given = BYTES::FRAME.with(counted: false)
+      frames = { all: pack[:small].frame(2, layout: given, count: BYTES::PIECES.length),
+                 words: pack[:high_first].frame(0, layout: WORDS::FRAME),
+                 two: pack[:small].frame(2, layout: given, count: 2) }
+      frames.each { |name, frame| image name, tiles: pack[:sprites], frame: frame, origin: [24, 24], colors: :hero, size: SIZE }
+      sprite :all, at: [0, 0]
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b
+  end
+
   # SEVEN POSES OF 64x64 AT ONE PLACE, read from the pack as the game starts: more pieces than the
   # Game Boy Color's sprite table holds, so the pieces furthest back are left out. The game as C,
   # JavaScript and Ruby each leave out the ones the interpreter does (each run's player checks
@@ -241,7 +279,7 @@ module FrameRecordUnpackingTests
       played = game_player.hand_file(copy).run(unpacking.program, frames: 40)
       fault = unpacking.fault_in(played)
 
-      refute_nil fault, "the unpacking found the frames that do not fit"
+      refute_nil fault, "the unpacking did not stop on frames that do not fit"
       assert_match "overlap", unpacking.fault_error(fault).message
     end
   end

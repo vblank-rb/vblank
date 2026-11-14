@@ -187,7 +187,7 @@ module VBlank
       # them. Frames laid over each other can ask for more; a record that does not fit keeps the
       # pieces that do, and one with no room for its header has none (entry 0). Neither is drawn
       # short: the build that holds the pack refuses such frames, and the unpacking stops with a
-      # fault (#first_without_room).
+      # fault (#index_of_first_without_room).
       # Frames of one slot read with different pose values are each a slot's worth, since one
       # frame given two sets of values is two records.
       Section = Data.define(:sources) do
@@ -214,46 +214,54 @@ module VBlank
         # what the pack's unpacking writes (FrameRewrite), worked out here by the build that holds
         # the pack.
         def bytes(slot_bytes)
-          directory, records = laid_out(slot_bytes)
-          [directory.pack("V*"), *records.compact].join.b.ljust(size, "\0".b)
+          laid = lay_out_records(slot_bytes)
+          [laid.directory.pack("V*"), *laid.records].join.b.ljust(size, "\0".b)
         end
+
+        # THE ORDER THE RECORDS ARE WRITTEN IN, which is not always the order the game named the
+        # frames: the unpacking reads the frames of one slot kept one way in one loop
+        # (FrameRewrite), so their records are written together, each group where its first frame
+        # was named. Each group is a list of [source, its number in the directory].
+        def groups_in_writing_order = sources.each_with_index.group_by { |source, _| [source.slot.name, source.layout] }.values
 
         # FRAMES THAT OVERLAP. #size gives the frames of one slot that say their own count as many
         # pieces as the slot holds, which is enough while no two of them share bytes. Frames that
         # overlap can name more, and then a record has too little room for its pieces, or none:
-        # the number of the first such source, read from +slot_bytes+ as #bytes reads them, or nil
-        # where every record has room. The build that holds the pack refuses such frames
-        # (PackPoses#refuse_frames_without_room!), and the unpacking stops with a fault
-        # (FrameRewrite), so no pose is drawn short of its pieces.
-        def first_without_room(slot_bytes)
-          _, records = laid_out(slot_bytes)
-          sources.each_index.find do |index|
-            record = records[index]
-            whole = sources[index].record(slot_bytes.fetch(sources[index].slot.name))
-            record.nil? || record.bytesize < whole.bytesize
-          end
-        end
+        # the number in the directory of the first such source to be written, read from
+        # +slot_bytes+ as #bytes reads them, or nil where every record has room. The build that
+        # holds the pack refuses such frames (PackPoses#refuse_frames_without_room!), and the
+        # unpacking stops with a fault (FrameRewrite), so no pose is drawn short of its pieces.
+        def index_of_first_without_room(slot_bytes) = lay_out_records(slot_bytes).first_cut
 
         private
 
-        # Where each record starts (0 for one with no room) and each record (nil for none), in the
-        # order of the sources.
-        def laid_out(slot_bytes)
+        def lay_out_records(slot_bytes)
           out = records_at
-          directory = []
-          records = sources.map do |source|
+          directory = Array.new(sources.length, 0)
+          records = []
+          first_cut = nil
+          groups_in_writing_order.flatten(1).each do |source, index|
+            bytes = slot_bytes.fetch(source.slot.name)
             room = room_at(out)
             if room.negative?
-              directory << 0
+              first_cut ||= index
               next
             end
 
-            directory << out
-            source.record(slot_bytes.fetch(source.slot.name), room: room).tap { |record| out += record.bytesize }
+            record = source.record(bytes, room: room)
+            first_cut ||= index if record.bytesize < source.record(bytes).bytesize
+            directory[index] = out
+            records << record
+            out += record.bytesize
           end
-          [directory, records]
+          LaidOut.new(directory: directory, records: records, first_cut: first_cut)
         end
       end
+
+      # A SECTION LAID OUT (Section#bytes): where each record starts by number in the directory (0
+      # for one with no room), the records in the order they are written, and the number of the
+      # first record cut short or left out for want of room (nil for none).
+      LaidOut = Data.define(:directory, :records, :first_cut)
 
       # The record of the frame whose directory entry is at byte +entry_at+ of +bytes+ (a whole
       # pack file), in a section that starts at byte +section_at+: an empty frame where the entry

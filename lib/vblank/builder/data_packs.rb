@@ -124,7 +124,7 @@ module VBlank
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list, platform: from.platform, make_unpacking_parts: make_parts,
                                        make_unpacking: lambda { |_release|
-                                         frames = pack_frame_section(for_unpacking: true)
+                                         frames = pack_frame_section_for_unpacking!
                                          made[frames] ||= unpacking_program(bytes, copy_release_slots, routines, reading,
                                                                             release: copy_release, frames: frames)
                                        })
@@ -178,7 +178,7 @@ module VBlank
                                        platform: from.platform,
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
-                                         frames = pack_frame_section(for_unpacking: true)
+                                         frames = pack_frame_section_for_unpacking!
                                          made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines,
                                                                                        reading, release: release, frames: frames)
                                        })

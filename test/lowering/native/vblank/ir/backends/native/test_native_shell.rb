@@ -44,7 +44,7 @@ class TestNativeShell < Minitest::Test
   # frame that the unpacking writes.
   POSE_ROWS = ((ShellTests::POSE_TOP * 3)...((ShellTests::POSE_TOP + ShellTests::POSE_SIZE[1]) * 3))
 
-  private def marker_rows_of(bmp) = window_rows_of(bmp, MARKER_ROWS) + window_rows_of(bmp, POSE_ROWS)
+  private def game_rows_of(bmp) = window_rows_of(bmp, MARKER_ROWS) + window_rows_of(bmp, POSE_ROWS)
 
   private def window_rows_of(bmp, rows)
     rows.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
@@ -62,7 +62,7 @@ class TestNativeShell < Minitest::Test
       end
       answer = play(all_in_one, dir, "answer")
 
-      assert_includes marker_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
+      assert_includes game_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
       refute_empty window_rows_of(answer.picture, POSE_ROWS).join.delete("\0"), "the pose is on the picture"
 
       assert_equal %w[made-up-shell parts], Dir.children(shell).sort
@@ -265,7 +265,7 @@ class TestNativeShell < Minitest::Test
     played = play(shell_exe(shell), dir, "first", options: shell_options(dir, copy: copy_at(dir)))
 
     assert_equal answer.variables, played.variables
-    assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
+    assert_equal game_rows_of(answer.picture), game_rows_of(played.picture)
     assert_equal all_in_one_pack, kept_pack(dir), "the pack is the all-in-one build's, byte for byte"
   end
 
@@ -274,7 +274,7 @@ class TestNativeShell < Minitest::Test
     played = play(shell_exe(shell), dir, "second", options: ["--pack-folder", File.join(dir, "kept")])
 
     assert_equal answer.variables, played.variables
-    assert_equal marker_rows_of(answer.picture), marker_rows_of(played.picture)
+    assert_equal game_rows_of(answer.picture), game_rows_of(played.picture)
   end
 
   # A pack names the build of the game it was made for: a new build refuses the pack the first one

@@ -316,26 +316,29 @@ module VBlank
       # the pack keeps a record of after its last slot (Original::FrameRecord::Section). The number
       # of +source+ among them is its place in that section's directory. Both builds of one game
       # name the same frames in the same order, so the pack one makes is the file the other reads.
-      # +name+ is the picture that names it, which an error names.
+      # +picture+ is the image the frame is first read for, which an error gives.
       #
       # AN UNPACKING MADE ALREADY WRITES NO RECORD OF A FRAME NAMED AFTER IT (DSL::DataPack#unpacking
       # makes it from the frames named so far), so a new frame named then is refused rather than
       # left out of the pack in silence.
-      def pack_frame_number(source, name)
+      def pack_frame_number(source, picture)
         @pack_frames ||= []
         found = @pack_frames.index(source)
         return found if found
 
-        refuse_frame_after_unpacking!(name, source) if @pack_unpacking_made
-        (@pack_frame_names ||= []) << name
+        refuse_frame_after_unpacking!(picture, source) if @pack_unpacking_made
+        (@pack_frame_pictures ||= {})[source] = picture
         (@pack_frames << source).length - 1
       end
 
-      # The section those frames make. Asked for by DSL::DataPack#unpacking, which makes its
-      # program from it, so a frame named after that is refused (#pack_frame_number).
-      def pack_frame_section(for_unpacking: false)
-        @pack_unpacking_made = true if for_unpacking
-        Original::FrameRecord::Section.new(sources: (@pack_frames || []).dup.freeze)
+      # The section those frames make.
+      def pack_frame_section = Original::FrameRecord::Section.new(sources: (@pack_frames || []).dup.freeze)
+
+      # The section for DSL::DataPack#unpacking, which makes its program from it: a frame named
+      # after this is refused (#pack_frame_number).
+      def pack_frame_section_for_unpacking!
+        @pack_unpacking_made = true
+        pack_frame_section
       end
 
       # ONCE THE WHOLE PROGRAM IS DECLARED: a program that reads its pack as it starts is told the
@@ -351,17 +354,15 @@ module VBlank
       end
 
       # Frames of one slot that overlap can hold more pieces between them than the pack keeps room
-      # for (Original::FrameRecord::Section#first_without_room). The pack is made already, so its
-      # bytes say which frame is the first without room.
+      # for (Original::FrameRecord::Section#index_of_first_without_room). The pack is made already,
+      # so its bytes say which frame is the first without room.
       def refuse_frames_without_room!
-        index = pack_frame_section.first_without_room(@data_pack_contents.slots)
+        index = pack_frame_section.index_of_first_without_room(@data_pack_contents.slots)
         return unless index
 
         source = @pack_frames.fetch(index)
-        raise ArgumentError, "image :#{@pack_frame_names.fetch(index)} reads the frame at byte #{source.at} of slot " \
-                             ":#{source.slot.name}. Frames of this slot overlap, and together they hold more pieces " \
-                             "than the data pack has room for. The pack has no room for all the pieces of this frame. " \
-                             "To fix this, name frames that do not overlap, or name fewer frames of this slot."
+        raise ArgumentError, "image :#{@pack_frame_pictures.fetch(source)} " \
+                             "#{Original::Unpacking::Fault.frames_without_room_message(source.at, source.slot.name)}"
       end
 
       def refuse_frame_after_unpacking!(name, source)

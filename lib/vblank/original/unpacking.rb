@@ -244,13 +244,13 @@ module VBlank
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
 
       # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the five
-      # below (the fifth says what its two numbers are); +at+ is a place in the copy for the first two, a byte outside the slot for the third
-      # (a format's write names the first byte past the slot's end, whether it found the write did
-      # not fit when the size was expected or when the byte was written), and for the fourth the
-      # first byte read outside one file of a copy that is several (CopyReader#file), counted from
-      # that file's start; +detail+ is the number of the format the routine was told
-      # (Unpacking#format_words), the slot's number in the pack's order, or the file's number in
-      # the release's list of files.
+      # below. For the first four, +at+ is a place in the copy for the first two, a byte outside the
+      # slot for the third (a format's write names the first byte past the slot's end, whether it
+      # found the write did not fit when the size was expected or when the byte was written), and
+      # for the fourth the first byte read outside one file of a copy that is several
+      # (CopyReader#file), counted from that file's start; +detail+ is the number of the format the
+      # routine was told (Unpacking#format_words), the slot's number in the pack's order, or the
+      # file's number in the release's list of files. The fifth gives its own two numbers.
       Fault = Data.define(:kind, :at, :detail)
 
       class Fault
@@ -259,9 +259,17 @@ module VBlank
         WRITE_OUTSIDE_SLOT = 3
         READ_OUTSIDE_FILE = 4
         # Frames of one slot that overlap name more pieces than the records keep room for
-        # (FrameRecord::Section#first_without_room): +at+ is where the first frame without room
+        # (FrameRecord::Section#index_of_first_without_room): +at+ is where the first frame without room
         # starts in its slot, and +detail+ the slot's number.
         FRAMES_WITHOUT_ROOM = 5
+
+        # The words for frames without room, after who reads the frame ("image :hero ", "The
+        # unpacking "): the build that holds the pack and the unpacking say the same.
+        def self.frames_without_room_message(at, slot_name)
+          "reads the frame at byte #{at} of slot :#{slot_name}. Frames of this slot overlap. Together they have more " \
+            "pieces than the data pack has room for. To fix this, name frames that do not overlap, or name fewer frames " \
+            "of this slot."
+        end
 
         # The error the build stops with, in words, for a pack of +slots+ from a copy of +copy_size+
         # bytes whose formats are called +format_words+, and whose +files+ (ReleaseFiles) are the
@@ -282,11 +290,7 @@ module VBlank
             WrongCopy.new("The unpacking routine reads byte #{at} (0x#{at.to_s(16)}) of the copy, and the copy has " \
                           "bytes 0 to #{copy_size - 1}. Correct the place it reads for this release.")
           when FRAMES_WITHOUT_ROOM
-            slot = slots.fetch(detail)
-            ArgumentError.new("The unpacking reads the frame at byte #{at} of slot :#{slot.name}. Frames of this slot " \
-                              "overlap, and together they hold more pieces than the data pack has room for. The pack has " \
-                              "no room for all the pieces of this frame. To fix this, name frames that do not overlap, " \
-                              "or name fewer frames of this slot.")
+            ArgumentError.new("The unpacking #{Fault.frames_without_room_message(at, slots.fetch(detail).name)}")
           else
             slot = slots.fetch(detail)
             ArgumentError.new("The unpacking routine writes byte #{at} of slot :#{slot.name}, and the slot holds bytes " \
