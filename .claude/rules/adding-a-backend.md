@@ -152,7 +152,10 @@ writing an instruction is shared, because two copies of a decision drift apart:
   change to a background made to the scene's own declaration of the name, each scene a branch where
   that is known only as the game runs (`for_background`), and a background put up in a pass held at
   its corner through it (`keep_corner_notes`, given the console's layers and how its status bar is
-  held; `emit_unless_put_up`; `emit_corners_forgotten`).
+  held; `emit_unless_put_up`; `emit_corners_forgotten`), and a background whose line runs more than
+  once copying its declared map the first time alone, so a later put-up keeps the cells the game
+  changed (`emit_put_up_keeping_cells`; the Color tells the two apart in its runtime instead, by the
+  grid its layer holds).
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).

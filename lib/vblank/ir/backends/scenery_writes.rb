@@ -9,7 +9,7 @@ module VBlank
       # tested is the program's; how a label, a jump and a store are written is each processor's. Written
       # out in each lowering, the copies were the same but for the console's name for a fresh label.
       #
-      # WHAT THE LOWERING SUPPLIES: the ControlFlow hooks fresh_label, place_label, jump_unless, keep_local,
+      # WHAT THE LOWERING SUPPLIES: the ControlFlow hooks fresh_label, place_label, jump, jump_unless, keep_local,
       # statement and emit_store_zero, its plan (@plan, LoweringPlan), and, for #for_background, @scene, the
       # variable the scene up is kept in, and @lowering_scene, the scene whose routine is being written, or nil.
       module SceneryWrites
@@ -33,6 +33,30 @@ module VBlank
             yield own
             place_label(other)
           end
+        end
+
+        # A BACKGROUND WHOSE LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop) is up already the
+        # second time, and the interpreter puts it up as it now is: the cells the game changed, and the map it
+        # chose, stay (Reference#put_up_background keeps its copy of the map). So its declared map is copied onto
+        # its layer the first time alone, noted in a number of the lowering's own for +layer+; every time after,
+        # it goes up keeping what the layer holds. The block writes the put-up, handed true where it keeps the
+        # cells. A line written once in the program, before or after the game loop, runs once and needs no note.
+        #
+        # Only a background every screen shows comes this way: a scene's own goes up as its scene takes over,
+        # as declared (IR::SceneHandover), and its layer is another's while it is down.
+        def emit_put_up_keeping_cells(bg, layer)
+          return yield(false) if bg.parent&.kind == :program
+
+          copied = (@cells_copied ||= {})[layer] ||= keep_local(:"cells_copied_#{layer}")
+          kept = fresh_label("cells_kept")
+          done = fresh_label("put_up_done")
+          jump_unless(Build.binop(:==, Build.var_ref(copied), Build.int(0)), kept)
+          statement(Build.set(copied, 1))
+          yield false
+          jump(done)
+          place_label(kept)
+          yield true
+          place_label(done)
         end
 
         # How a status bar's top is held at its corner (#keep_corner_notes): :own_note where a bar has a note of

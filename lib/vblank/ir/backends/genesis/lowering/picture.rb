@@ -987,11 +987,18 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
 
-              emit_put_up(node, 0, reset_view: 1)
+              # Put up again, it keeps the cells its plane holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, layer_of(node)) { |kept| emit_put_up(node, kept ? nil : 0, reset_view: 1) }
             end
 
+            # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds: then
+            # nothing is copied, and the view goes back to the corner as rt_background_put_up puts it there.
             def emit_put_up(bg, which, reset_view:)
-              runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
+              if which
+                runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, which).number), Build.int(reset_view)])
+              else
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), Build.int(0), Build.int(0)])
+              end
               note = corner_note(layer_of(bg)) if reset_view.nonzero?
               statement(Build.set(note, 1)) if note
             end

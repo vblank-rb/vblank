@@ -163,7 +163,7 @@ module VBlank
 
             # rt_plane_put_up: a0 = the plane, a1 = the map's cells (Lowering::Picture#grid_label: a word a
             # cell, row by row, each the place in video RAM of the tile it shows, y << 16 | x, or nought for
-            # none), or nought to keep the cells the plane holds (Lowering::Picture#emit_put_up_again), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
+            # none), or nought to keep the cells the plane holds (SceneryWrites#emit_put_up_keeping_cells), a2 = not nought to show it from its corner, a3 = how many columns the map's grid has as a
             # power of two (5 for 32, 6 for 64), t4 = how many rows it has, t5 = the background's colour table
             # (PLANE_TABLE), t6 = how deep it sits (PLANE_LEVEL). The map's grid is the plane's size until another
             # goes up on it, so the plane comes round where the map's grid does.

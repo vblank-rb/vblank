@@ -477,28 +477,9 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
               return emit_stamp_background(node) unless @tiled
-              return emit_put_up(node, 0, reset_view: 1) if node.parent&.kind == :program
 
-              emit_put_up_again(node)
-            end
-
-            # A BACKGROUND WHOSE LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop) is up
-            # already the second time, and the interpreter puts it up as it now is: the cells the game
-            # changed, and the map it chose, stay (Reference#put_up_background keeps its copy of the map).
-            # So its cells are copied onto its plane the first time alone, noted in a number of the
-            # lowering's own; every time after, it goes up from its corner keeping what its plane holds.
-            # A line written once in the program, before the game loop, runs once and needs no note.
-            def emit_put_up_again(bg)
-              copied = (@cells_copied ||= {})[plane_of(bg)] ||= keep_local(:"cells_copied_#{plane_of(bg)}")
-              kept = fresh_label("cells_kept")
-              done = fresh_label("put_up_done")
-              jump_unless(Build.binop(:==, Build.var_ref(copied), Build.int(0)), kept)
-              emit_store_number(copied, 1)
-              emit_put_up(bg, 0, reset_view: 1)
-              @asm.b(done)
-              @asm.label(kept)
-              emit_put_up(bg, nil, reset_view: 1)
-              @asm.label(done)
+              # Put up again, it keeps the cells its plane holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, plane_of(node)) { |kept| emit_put_up(node, kept ? nil : 0, reset_view: 1) }
             end
 
             # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
@@ -554,7 +535,7 @@ module VBlank
 
             # A status bar put up from its corner shows from the top it was declared with (Reference#bar_top_shown).
             # +which+ is the map whose cells go onto the plane, or nil to keep the cells the plane holds
-            # (#emit_put_up_again), which are of a map the size of the first.
+            # (SceneryWrites#emit_put_up_keeping_cells), which are of a map the size of the first.
             def emit_put_up(bg, which, reset_view:)
               columns, rows = TileMap.grid(bg.every_map.fetch(which || 0))
               cells = which ? LabelAddress.new(grid_label(bg, which)) : Build.int(0)
