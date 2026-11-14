@@ -27,7 +27,7 @@ class TestPacmanExample < Minitest::Test
     Pacman::GAME.program(console: game_console)
   end
 
-  private def screen_size = VBlank::Console.described(game_console).screen_size
+  private def screen_size = described_game_console.screen_size
   private def layout = Pacman::Layout.new(width: screen_size[0], height: screen_size[1])
 
   # Pac (yellow), a pellet (white), and the ghost (red) all render over the room —

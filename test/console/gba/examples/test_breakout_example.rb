@@ -33,7 +33,7 @@ class TestBreakoutExample < Minitest::Test
   end
 
   # How wide the screen of this run's console is, which the game lays its wall and paddle out on.
-  private def screen_width = VBlank::Console.described(game_console).screen_width
+  private def screen_width = described_game_console.screen_width
 
   # VBlank.build runs the guardrails and Doctor, so a clean, non-empty build is
   # itself the structural check.

@@ -473,13 +473,13 @@ module PackAtStartTests
   private def bar_width(screen)
     side = VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE
     height = VBlank::Builder::DataPacks::PROGRESS_BAR_HEIGHT
-    row = ((VBlank::Console.described(game_console).screen_height - height) / 2) + (height / 2)
+    row = ((described_game_console.screen_height - height) / 2) + (height / 2)
     gray = screen.pixel(side + bar_across - 1, row)
     (0...bar_across).count { |x| screen.pixel(side + x, row) != gray }
   end
 
   private def bar_across
-    VBlank::Console.described(game_console).screen_width - (2 * VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE)
+    described_game_console.screen_width - (2 * VBlank::Builder::DataPacks::PROGRESS_BAR_SIDE)
   end
 
   # With no cost named the bar is the bytes written of the pack's bytes: the copied slot is a

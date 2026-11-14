@@ -96,7 +96,7 @@ module VBlank
         one = wanted[pass]
         other = handed[pass]
         differing = one.each_index.reject { |at| one[at] == other[at] }
-        width = Console.described(Testing.console).screen_width
+        width = Testing.described_console.screen_width
         first = differing.first
         format("The picture differs first on pass %<pass>d: %<count>d pixels, the first at (%<x>d, %<y>d), which is " \
                "0x%<one>04X all-in-one and 0x%<other>04X in the build handed its pack. The all-in-one picture has " \

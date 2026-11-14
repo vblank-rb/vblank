@@ -18,7 +18,7 @@ class TestSpriteClearedField < Minitest::Test
   START = [40, 40].freeze
   ONE = SIDE * SIDE
   # The whole screen, in pixels, of the console this run plays the game on.
-  private def field = VBlank::Console.described(game_console).screen_size.reduce(:*)
+  private def field = described_game_console.screen_size.reduce(:*)
 
   # A white field with a red block sprite declared above the loop. The block is the game
   # loop's body, handed the sprite and a counter of the passes so far.
@@ -75,7 +75,7 @@ class TestSpriteClearedField < Minitest::Test
   # A clear inside an area clears that area and leaves the rest of the picture, so a sprite
   # outside it is still on the picture and still has to be rubbed out as it moves.
   def test_a_clear_inside_an_area_leaves_a_sprite_outside_it_alone
-    width, height = VBlank::Console.described(game_console).screen_size
+    width, height = described_game_console.screen_size
     prog = field_program do |hero, step|
       inside(120, 0, width - 120, height) { clear_screen :blue } if step == 3
       hero.move :down, by: 8 if step > 3

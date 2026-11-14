@@ -29,7 +29,7 @@ module SpriteOffScreenGames
   end
 
   # The width and height of the screen of the console this run plays the game on.
-  private def screen_played = VBlank::Console.described(game_console).screen_size
+  private def screen_played = described_game_console.screen_size
 end
 
 # A SPRITE THE GAME PUTS OFF THE SCREEN IS NOT ON IT, however far off that is.

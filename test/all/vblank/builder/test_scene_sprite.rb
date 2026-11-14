@@ -113,7 +113,7 @@ class TestSceneSprite < Minitest::Test
 
   ONE = SIDE * SIDE
   # The whole screen, in pixels, of the console this run plays the game on.
-  private def field = VBlank::Console.described(game_console).screen_size.reduce(:*)
+  private def field = described_game_console.screen_size.reduce(:*)
 
   def test_a_sprite_declared_inside_a_scene_leaves_no_trail
     prog = scenes_program do |_state, _step|

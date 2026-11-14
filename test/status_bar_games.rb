@@ -20,7 +20,7 @@ module StatusBarGames
 
   # A program built for this run's console, so its `screen_height` is that console's.
   def program(&block)
-    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant))
     b.instance_eval(&block)
     b.finalize_program
     b.program
@@ -146,9 +146,9 @@ module StatusBarGames
     end
   end
 
-  def screen_height = VBlank::Console.described(game_console).screen_height
+  def screen_height = described_game_console.screen_height
 
-  def screen_width = VBlank::Console.described(game_console).screen_width
+  def screen_width = described_game_console.screen_width
 
   def picture(prog, frames) = game_player.run(prog, frames: frames).screen
 end

@@ -14,7 +14,7 @@ class TestSpriteClearedFieldOnTheAdvance < Minitest::Test
   START = [40, 40].freeze
   ONE = SIDE * SIDE
   # The whole screen, in pixels, of the console this run plays the game on.
-  private def field = VBlank::Console.described(game_console).screen_size.reduce(:*)
+  private def field = described_game_console.screen_size.reduce(:*)
 
   # A white field with a red block sprite declared above the loop. The block is the game
   # loop's body, handed the sprite and a counter of the passes so far.

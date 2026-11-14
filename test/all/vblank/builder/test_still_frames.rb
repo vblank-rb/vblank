@@ -51,13 +51,13 @@ module StillFrameGames
   # A program built for this run's console, so a game laid out from its `screen_height` is laid
   # out for the console it is played on.
   private def program(&block)
-    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant))
     builder.instance_eval(&block)
     builder.finalize_program
     builder.program
   end
 
-  private def screen_height = VBlank::Console.described(game_console).screen_height
+  private def screen_height = described_game_console.screen_height
 
   # A tiled game with the pictures every case here draws from — a red, a blue and a green tile
   # and a white ball — and one sprite standing still. +game+ says the rest, in the game's own

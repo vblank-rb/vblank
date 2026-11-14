@@ -10,7 +10,7 @@ class TestScoreboardExample < Minitest::Test
   GRAY = Color.resolve(:gray)
   GREEN = Color.resolve(:green)
 
-  private def screen_height = VBlank::Console.described(game_console).screen_height
+  private def screen_height = described_game_console.screen_height
 
   # The picture after +frames+ passes with +keys+ held throughout.
   private def picture(frames, keys = [])

@@ -17,7 +17,7 @@ class TestWanderersExample < Minitest::Test
   end
 
   private def start
-    width, height = VBlank::Console.described(game_console).screen_size
+    width, height = described_game_console.screen_size
     Wanderers::Layout.new(width: width, height: height).starts.first
   end
 

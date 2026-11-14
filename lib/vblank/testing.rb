@@ -64,6 +64,13 @@ module VBlank
 
     def self.variant = VARIANT
 
+    # WHAT A TEST'S GAME CAN TELL ABOUT THE CONSOLE IT PLAYS ON: the run's console as the run's variant
+    # describes it (Console::Kit#described_as). A variant can change the screen (DOS's mode_x is 320 by 240
+    # where the plain screen is 320 by 200), so a test that sizes the screen asks this, never
+    # `Console.described(game_console)`, which is the plain console's.
+    def self.described_console = Console.described(CONSOLE, variant: VARIANT)
+    def described_game_console = Testing.described_console
+
     # A GAME THAT NAMES NO VARIANT FOR THE RUN'S CONSOLE is built as the run's, so a test written once is
     # played as each variant a run is started for. One that names its own keeps it, and so does a build
     # told one outright (`game.program(variant: :none)`).

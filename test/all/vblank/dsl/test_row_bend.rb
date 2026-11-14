@@ -309,7 +309,7 @@ class TestRowBend < Minitest::Test
   # at the wait before the first pass too, for the frame that shows it.
   def test_a_block_is_asked_once_for_every_row_each_frame
     i = game_player.run(counting_bend_program, frames: 8)
-    rows = VBlank::Console.described(game_console).screen_height # 160 on the Advance
+    rows = described_game_console.screen_height # 160 on the Advance
     rounds = i[:passes] + 1 - framework_drawing_lag
 
     assert_operator i[:passes], :>, 3, "the game should have played a few passes"

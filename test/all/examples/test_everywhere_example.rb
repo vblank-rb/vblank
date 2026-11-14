@@ -10,7 +10,7 @@ class TestEverywhereExample < Minitest::Test
   YELLOW = Color.resolve(:yellow)
   WHITE = Color.resolve(:white)
 
-  private def described = VBlank::Console.described(game_console)
+  private def described = described_game_console
   private def program
     skip_unless_written_for Everywhere::GAME
     Everywhere.program(console: game_console)

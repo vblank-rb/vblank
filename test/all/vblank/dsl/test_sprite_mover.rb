@@ -115,7 +115,7 @@ class TestSpriteMover < Minitest::Test
 
   def test_interpreter_clips_the_heart_at_the_left_edge
     screen = game_player.input_each_frame { [:left] }.run(heart_at_left_edge(frames: 3)).screen
-    width = VBlank::Console.described(game_console).screen_width
+    width = described_game_console.screen_width
     EDGE_PIXELS.each do |x, y, color|
       x = edge_column(x, width)
       assert_equal Color.resolve(color || :white), screen.pixel(x, y),
