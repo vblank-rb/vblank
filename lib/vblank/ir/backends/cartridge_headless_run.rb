@@ -162,6 +162,12 @@ module VBlank
         def sprites(name = nil) = name ? @drawn_sprites.rows_named(@sprites, name) : @sprites
         def sprites_by_depth = sprites # A console's sprite table holds them that way round
 
+        # How many frames the cartridge spent setting up before the one its first pass was shown in, as
+        # the interpreter is told it (Reference#frames_setting_up, CartridgeCheck#prepare_interpreter):
+        # the count the console's runtime keeps one more, so nought is not counted yet, which its run reads
+        # into @setting_up. None before the first pass is shown, and none on a cartridge that counts none.
+        def setting_up_counted = [(@setting_up || 0) - 1, 0].max
+
         # The rest of what the interpreter answers that no console's run can, each refused by name.
         refuses :peak_voices, :sound_drops, :sound_owners, :frame, :log, :screen_mode, :buffered, :volume_of,
                 :level_of, :loudness_by_voice, :write_save_copy, :write_save_vars, :full_depth_sound,

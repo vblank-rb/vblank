@@ -95,8 +95,10 @@ module VBlank
         # interpreter's log of sounds is @interpreter_sounds.
         def further_difference(_program, _before) = nil
 
-        # What the interpreter is told before it plays, past what every console tells it.
-        def prepare_interpreter(_interpreter) = nil
+        # What the interpreter is told before it plays, past what every console tells it: the frames the
+        # cartridge spent setting up, which move only the count of frames since power-on
+        # (CartridgeHeadlessRun#setting_up_counted).
+        def prepare_interpreter(interpreter) = interpreter.frames_setting_up(setting_up_counted)
 
         # A game that never waits for the screen has no frames to count, so it is played on the
         # interpreter first, with the buttons held from power-on, to find whether it comes to an

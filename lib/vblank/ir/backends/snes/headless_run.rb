@@ -74,11 +74,6 @@ module VBlank
             self
           end
 
-          # How many frames the cartridge spent setting up before the one its first pass was shown in
-          # (Runtime::Frame::SETTING_UP), as the interpreter is told it (Reference#frames_setting_up):
-          # none before the first pass is shown.
-          def setting_up_counted = [(@setting_up || 0) - 1, 0].max
-
           # A Super Nintendo cartridge has no rumble motor, so it never runs (Reference#motor_on?).
           def motor_on? = false
 

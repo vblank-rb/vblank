@@ -41,11 +41,23 @@ module VBlank
               asm.rti
             end
 
+            # How much one copy of a counted clearing fills (#emit_memories_cleared_counted): a quarter
+            # of video RAM or an eighth of work RAM, which the copying engine fills in well under a
+            # frame, at eight of the console's clock cycles a byte.
+            COUNTED_FILL_BYTES = 0x4000
+
             # rt_boot: the console made ready, then the game's main routine, +main+, for good.
             # +fast+ is false on a board whose ROM is only read at the slow speed (a Super FX's):
             # MEMSEL is then left at its power-on nought, and banks $80 and up are read as slowly
             # as banks $00 and up, which that ROM can keep up with.
-            def emit(asm, main:, fast: true)
+            #
+            # +counted+ for a game that reads how many frames it has shown since power-on. Clearing
+            # the memories takes several frames, and setting up after it more, and the screen's
+            # interrupt, which counts them (Frame::FRAMES), must be on through all of it. So its
+            # memories are cleared in the order #emit_memories_cleared gives, with the interrupt
+            # switched on as soon as the part of work RAM the interrupt keeps its numbers in is
+            # cleared.
+            def emit(asm, main:, fast: true, counted: false)
               h = Console::SNESHardware
               asm.label("rt_boot")
               asm.rep(0x30)
@@ -66,7 +78,7 @@ module VBlank
               asm.stz(asm.abs(h::NMITIMEN))
               asm.rep(0x20)
               emit_registers_cleared(asm)
-              emit_memories_cleared(asm)
+              counted ? emit_memories_cleared_counted(asm) : emit_memories_cleared(asm)
               asm.jsl(asm.long("rt_start"))
               asm.jsl(asm.long(main))
               asm.label("rt_main_returned")
@@ -119,6 +131,57 @@ module VBlank
               asm.stz(asm.abs(h::WMADDL + 2))
               asm.rep(0x20)
               2.times { emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, 0) }
+            end
+
+            # The same memories cleared with the screen's interrupt counting the frames it takes.
+            #
+            # The processor stops while the copying engine works, so the interrupt of a blank that
+            # begins during a copy waits for the copy to end. It is not lost, but only one can wait:
+            # a copy that outlasts a frame loses a blank. So every copy here is COUNTED_FILL_BYTES,
+            # well under a frame. (Reading whether a blank has begun between copies would not do:
+            # the mark a blank sets is cleared again as the blank ends.)
+            #
+            # The interrupt keeps its numbers in the first 8K of work RAM, which the first copy
+            # clears: the power comes on at the top of the picture, and the first blank begins
+            # most of a frame later. The interrupt is switched on then, and the rest is cleared: the
+            # video RAM, the colours, the sprites and the rest of work RAM, whose port goes on from
+            # where the first copy ended.
+            def emit_memories_cleared_counted(asm)
+              h = Console::SNESHardware
+              asm.stz(asm.abs(h::WMADDL))
+              asm.sep(0x20)
+              asm.stz(asm.abs(h::WMADDL + 2))
+              asm.rep(0x20)
+              emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, COUNTED_FILL_BYTES)
+              Runtime.emit_interrupt_on(asm)
+              asm.stz(asm.abs(h::VMADDL))
+              emit_fill(asm, h::DMA_TO_TWO_PORTS | h::DMA_FIXED_SOURCE, h::VMDATAL & 0xFF, COUNTED_FILL_BYTES)
+              emit_fill_repeated(asm, "rt_boot_video_ram_cleared", (0x10000 / COUNTED_FILL_BYTES) - 1)
+              asm.sep(0x20)
+              asm.stz(asm.abs(h::CGADD))
+              asm.rep(0x20)
+              emit_fill(asm, h::DMA_FIXED_SOURCE, h::CGDATA & 0xFF, 512)
+              asm.stz(asm.abs(h::OAMADDL))
+              emit_fill(asm, h::DMA_FIXED_SOURCE, h::OAMDATA & 0xFF, 544)
+              emit_fill(asm, h::DMA_FIXED_SOURCE, h::WMDATA & 0xFF, COUNTED_FILL_BYTES)
+              emit_fill_repeated(asm, "rt_boot_work_ram_cleared", (0x20000 / COUNTED_FILL_BYTES) - 2)
+            end
+
+            # The last fill made again +times+ times more, COUNTED_FILL_BYTES each, counted in Y: a fill
+            # from a byte that does not move leaves every setting of the channel but its count as it was.
+            # +label+ names the loop.
+            def emit_fill_repeated(asm, label, times)
+              h = Console::SNESHardware
+              asm.ldy(times)
+              asm.label(label)
+              asm.lda(COUNTED_FILL_BYTES)
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.sep(0x20)
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
+              asm.dey
+              asm.bne(label)
             end
 
             # Channel 0 copying the byte at rt_zero to the port $21+port, +count+ times (0 is 65536).

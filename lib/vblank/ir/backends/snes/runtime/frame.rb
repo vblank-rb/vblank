@@ -80,7 +80,8 @@ module VBlank
             # 1 once the screen is on: before the end of the first pass it is off.
             DISPLAY_ON = "rt display on"
             # THE FRAMES SPENT SETTING UP, before the one the first pass is shown in: from the
-            # interrupt being switched on (Runtime#emit_start), through the game's first pass and the
+            # interrupt being switched on (Runtime#emit_start, or near the top of setting up in a game that
+            # reads the count: Boot#emit_memories_cleared_counted), through the game's first pass and the
             # copy of its picture. They are frames of a screen still off, so they move nothing on but
             # the count of frames since power-on, as the interpreter is told
             # (Reference#frames_setting_up): the first pass answers for one frame, and the music, the
@@ -221,6 +222,24 @@ module VBlank
               asm.plx
               asm.pla
               asm.rti
+            end
+
+            # A BLANK COUNTED BY HAND, while the screen's interrupt is held off: FRAMES one more if a
+            # blank has begun since RDNMI was last read. A blank sets RDNMI's top bit as it begins,
+            # whether the interrupt is on or not, and the bit stays until it is read or the blank ends,
+            # so code that looks more often than a blank lasts counts each one once. A 8 bits wide
+            # before and after; +label+ names the place after it.
+            def emit_blank_counted_by_hand(asm, memory, label)
+              at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
+              asm.lda(asm.abs(Console::SNESHardware::RDNMI))
+              asm.bpl(label)
+              asm.rep(0x20)
+              asm.inc(at.call(FRAMES))
+              asm.bne("#{label}_high")
+              asm.inc(at.call(FRAMES, 2))
+              asm.label("#{label}_high")
+              asm.sep(0x20)
+              asm.label(label)
             end
 
             # The same interrupt, as a routine of its own with the buttons' reading written into it

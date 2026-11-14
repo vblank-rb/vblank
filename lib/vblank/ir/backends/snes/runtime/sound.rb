@@ -620,9 +620,10 @@ module VBlank
 
             # +songs+ for a game with songs, whose player (Music) runs where each wait ends, and
             # +samples+ for one that plays recordings (Recordings), whose count of each moves on there.
-            def emit(asm, memory, waves, recordings: [], scenes: nil, songs: false, samples: false)
+            # +counted+ as #emit_start takes it.
+            def emit(asm, memory, waves, recordings: [], scenes: nil, songs: false, samples: false, counted: false)
               made = image_for(memory, waves, recordings: recordings, scenes: scenes)
-              emit_start(asm, memory, made)
+              emit_start(asm, memory, made, counted: counted)
               emit_write(asm, memory, samples)
               emit_log(asm, memory)
               emit_frame(asm, memory, songs, samples)
@@ -768,13 +769,25 @@ module VBlank
             # rt_sound_start: the program sent, the bytes of +made+ (an Image) a byte at a time, and
             # started; then the DSP told where the sample table is, with every voice quiet
             # (DSPWrites.at_power_on).
-            def emit_start(asm, memory, made)
+            #
+            # +counted+ for a game that counts the frames setting up takes, whose screen's interrupt is
+            # on by now (Boot#emit_memories_cleared_counted). It is switched off here, since it could
+            # miss the built-in program's last answer, and the blanks that begin meanwhile are counted
+            # by hand after each byte (Frame#emit_blank_counted_by_hand), a byte taking far less than a
+            # blank lasts; and once more as it is switched on again, when the program has started. The
+            # program's own answers stay put until the next command, as the game's every sound relies on.
+            def emit_start(asm, memory, made, counted: false)
               h = Console::SNESHardware
               length = made.bytes.size
               kick = ((length + 2) & 0xFF) | 1 # past the last byte's number, and never nought
               asm.label("rt_sound_start")
               asm.php
               asm.sei
+              if counted
+                asm.sep(0x20)
+                asm.stz(asm.abs(h::NMITIMEN))
+                asm.rep(0x20)
+              end
               asm.label("rt_sound_await_ready")
               asm.lda(asm.abs(h::APUIO0))
               asm.cmp(READY)
@@ -788,11 +801,19 @@ module VBlank
               asm.txa
               asm.sta(asm.abs(h::APUIO0))
               emit_await_echo(asm, "rt_sound_byte_taken")
+              Frame.emit_blank_counted_by_hand(asm, memory, "rt_sound_byte_blank_counted") if counted
               asm.inx
               asm.cpx(length)
               asm.bne("rt_sound_next_byte")
               asm.rep(0x20)
               emit_command(asm, command: 0, kick: kick, echo: "rt_sound_started")
+              if counted
+                asm.sep(0x20)
+                Frame.emit_blank_counted_by_hand(asm, memory, "rt_sound_started_blank_counted")
+                asm.lda(h::NMI_ON)
+                asm.sta(asm.abs(h::NMITIMEN))
+                asm.rep(0x20)
+              end
               asm.lda(kick)
               asm.sta(asm.abs(memory[SENT]))
               asm.lda(1)

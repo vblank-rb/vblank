@@ -221,6 +221,10 @@ module VBlank
           # each routine's section, by its label, beside what that routine is to the author.
           attr_reader :variables, :lists, :frame_begins, :section_routines
 
+          # Whether the cartridge counts the frames it spends setting up into the game's count of
+          # frames since power-on, from the top of setting up (Runtime::Boot#emit).
+          def counts_from_power_on? = Frames.counts_from_power_on?(@program)
+
           # +sprite_squares+ draws sprites' squares of 16×16 as one row of the table each (Art).
           # +screen_colors+ has each scene bring its own background colours in, and +sprite_colors+ its
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own

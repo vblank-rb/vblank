@@ -89,13 +89,15 @@ module VBlank
             vectors = W65816.new("runtime vectors", home: :first)
             Boot.emit_vectors(vectors)
             asm = W65816.new("runtime")
-            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast)
+            count_at = lowering.variables[IR::Frames::COUNT]
+            counted = lowering.counts_from_power_on?
+            Boot.emit(asm, main: Lowering::MAIN, fast: c.board.fast, counted: counted)
             Boot.emit_zero(asm)
             Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
             pad = memory.scratch(4)
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
                                     second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
-                                    count_at: lowering.variables[IR::Frames::COUNT])
+                                    count_at: count_at)
             Blank.emit(asm, memory, Blank.scratch(memory))
             lists = Lists.scratch(memory)
             Lists.emit(asm, memory, lists)
@@ -127,8 +129,8 @@ module VBlank
               Saving.emit(asm, memory, saving, bank: c.board.save_bank, size: c.saves)
               Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
             end
-            emit_sound_routines(asm, memory, c, lowered)
-            emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings])
+            emit_sound_routines(asm, memory, c, lowered, counted: counted)
+            emit_start(asm, chip: c.chip?, sound: c.sound, opening_recordings: lowered[:opening_recordings], interrupt_on: !counted)
             emit_frame_begins(asm, lowering.frame_begins)
             chip_paint = c.painted && c.chip? ? [ChipFill.section, ChipBlit.section] : []
             [vectors.section, asm.section, *chip_paint] +
@@ -150,10 +152,10 @@ module VBlank
               sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars? }
           end
 
-          def emit_sound_routines(asm, memory, carries, lowered)
+          def emit_sound_routines(asm, memory, carries, lowered, counted: false)
             if carries.sound
               Sound.emit(asm, memory, lowered[:waves], recordings: lowered[:recordings], scenes: lowered[:scene_recordings],
-                                      songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?)
+                                      songs: !lowered[:music].nil?, samples: !lowered[:plays].nil?, counted: counted)
             end
             Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts]) if lowered[:music]
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
@@ -163,10 +165,13 @@ module VBlank
           # table "game_starts": each place as a word and its number as two, and a place of nought
           # after the last), its lists' headers, the picture's start, the screen's interrupt
           # switched on, and the buttons held from power-on. A game that makes sound sends the sound
-          # unit its program first, while the screen's interrupt is still off (Sound), and then, in a
+          # unit its program first, while the screen's interrupt is off (Sound#emit_start), and then, in a
           # game that loads each scene's recordings, those of the scene it opens on, whose table is
           # +opening_recordings+: the game's first pass is then not the one that waits for them.
-          def emit_start(asm, chip: false, sound: false, opening_recordings: nil)
+          # +interrupt_on+ is false for a game that counts frames from power-on, whose interrupt
+          # was switched on as soon as work RAM was cleared (Boot#emit), so the frames all this
+          # takes are counted too.
+          def emit_start(asm, chip: false, sound: false, opening_recordings: nil, interrupt_on: true)
             asm.label("rt_start")
             asm.jsl(asm.long("rt_chip_start")) if chip
             asm.jsl(asm.long("rt_sound_start")) if sound
@@ -188,7 +193,7 @@ module VBlank
             asm.label("rt_start_lists")
             asm.jsl(asm.long("rt_lists_start"))
             asm.jsl(asm.long("rt_picture_start"))
-            emit_interrupt_on(asm)
+            emit_interrupt_on(asm) if interrupt_on
             asm.jml(asm.long("rt_buttons_from_power_on"))
           end
 
