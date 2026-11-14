@@ -1242,7 +1242,9 @@ module VBlank
                      "This row is #{row.inspect}."
           end
         end
-        raise ArgumentError, "background :#{name} has an empty map" if rows.empty?
+        # Rows with no cells in them are an empty map too: the Genesis copies a map a row at a
+        # time, and a row of no cells counted down from nought as the most its counter holds.
+        raise ArgumentError, "background :#{name} has an empty map" if rows.empty? || rows.all?(&:empty?)
 
         widths = rows.map(&:length).uniq
         unless widths.size == 1
