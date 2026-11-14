@@ -167,7 +167,8 @@ instance variables.
   `|` and `^` between tests evaluate both sides.
 - `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number. Either side can be
   the game's number: `3 == hp` is the test `hp == 3` is.
-- `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass.
+- `x = test ? a : b`, `x = if … else … end` and `x = case … else … end` pick a value on every pass, and
+  so does the same written into a list's slot (`answers[i] = test ? 1 : 0`) or a field (`box.count = …`).
 - `case` on a game number takes `when` with a number, a symbol, a range (`4..` and `..2` too), a comma list, a variable, or
   `true`/`false`. A `case` with no subject asks each `when` in turn. `case … in` takes the same
   values, with `a | b` between them; any other pattern (a binding, an array, a guard) is Ruby's, on
@@ -241,6 +242,7 @@ Each is a friendly error naming the line.
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
+| `nil`, `true`, `false` or a test's answer put into a list (`answers[i] = pass == 1`) | a number: `answers[i] = pass == 1 ? 1 : 0` |
 | a loop on a game number alone (`x while left`, `until left`) | a comparison: `left != 0`, `(flags & 4) != 0` |
 | a loop Ruby runs while building that goes round a million times | a test that can fail: `n != 0` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |

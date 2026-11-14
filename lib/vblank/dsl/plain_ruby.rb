@@ -590,14 +590,20 @@ module VBlank
           "#{STEPS}.bits(#{argument(node.receiver)}, :#{node.name}, #{argument(node.arguments.arguments.first)})"
         end
 
+        # `slots[i] = value`. The value is written for its value, so a ternary, an `if` with an
+        # `else` or a `case` there picks the number that goes into the slot, as it does into
+        # `x = ...`; as a statement it would record its two sides and hand on nothing.
         def index_write_text(node)
-          *keys, value = node.arguments.arguments.map { |each_argument| argument(each_argument) }
-          slot_write_text(argument(node.receiver), keys, value, written_place(node, node.arguments))
+          *keys, value = node.arguments.arguments
+          keys = keys.map { |key| argument(key) }
+          slot_write_text(argument(node.receiver), keys, "(#{value_text(value)})", written_place(node, node.arguments))
         end
 
+        # ...and `thing.field = value`, the same way.
         def attribute_write_text(node)
           label = node.slice[/\A[^=]*/].strip
-          attribute_write(argument(node.receiver), node.name.to_s.delete_suffix("="), argument(node.arguments.arguments.first), label)
+          value = "(#{value_text(node.arguments.arguments.first)})"
+          attribute_write(argument(node.receiver), node.name.to_s.delete_suffix("="), value, label)
         end
 
         def written_place(node, arguments) = "#{node.receiver.slice}[#{arguments.arguments[0...-1].map(&:slice).join(', ')}]"
