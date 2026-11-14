@@ -90,6 +90,7 @@
 #define DUTY_BITS 0xFF         /* ...whose eight bits (Audio::Duty#bits) are under it */
 #define CARRIES_VIBRATO (1 << 9) /* ...and above it, set when its vibrato carries its swing on */
 #define GLIDES (1 << 10)         /* ...and set on a recorded note that carries on the one sounding */
+#define GLIDE_KEEPS_LOUDNESS (1 << 29) /* ...and with it where that note keeps its loudness, naming none */
 #define HAS_NOISE_BITS (1 << 11) /* ...and set on a drum hit that says whether it rattles, */
 #define NOISE_BITS_AT 12         /* ...its noise bits (Audio::Sound.noise_register_bits) above it */
 #define NOISE_BITS 0xF
@@ -645,7 +646,7 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
   } else {
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
     int32_t heard_loudness = level_variable ? scaled_volume(loudness) : loudness;
-    int32_t heard = note[5] & GLIDES ? mixer_glide_note(-1, part->tone, numbers, heard_loudness)
+    int32_t heard = note[5] & GLIDES ? mixer_glide_note(-1, part->tone, numbers, note[5] & GLIDE_KEEPS_LOUDNESS ? -1 : heard_loudness)
                                      : mixer_start_note(-1, part->tone, song[3], numbers, heard_loudness);
     if (!heard) return;
   }
@@ -863,7 +864,7 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
     int32_t loudness = note[2]; /* a recorded note's volume is written as its loudness, out of 512 */
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
     int32_t heard = !sounds            ? mixer_release_note(effect, part->tone)
-                    : note[5] & GLIDES ? mixer_glide_note(effect, part->tone, numbers, loudness)
+                    : note[5] & GLIDES ? mixer_glide_note(effect, part->tone, numbers, note[5] & GLIDE_KEEPS_LOUDNESS ? -1 : loudness)
                                        : mixer_start_note(effect, part->tone, rank, numbers, loudness);
     if (heard) rg_sound_log("note %d %d", (int)number, (int)pitch);
     return;
@@ -1428,7 +1429,7 @@ static void start_file_write_note(int32_t *into, const start_file_event *event, 
   into[4] = rest ? 0 : side < RG_NOTE_SIDES ? rules[RG_NOTES_SIDE_FLAGS + side] : rules[RG_NOTES_FLAGS];
   into[5] = rest ? 0 : rules[RG_NOTES_SHAPES];
   if (!rest && rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES) start_file_voice_numbers(&into[4], &into[5], event, start_file_wave_rules(rules));
-  if (!rest && event->glides) into[5] |= GLIDES;
+  if (!rest && event->glides) into[5] |= GLIDES | (event->volume == RG_NOTE_VOLUMES ? GLIDE_KEEPS_LOUDNESS : 0);
 }
 
 /* The speaker an event names from a record's pan byte: one of the three on a part that does not

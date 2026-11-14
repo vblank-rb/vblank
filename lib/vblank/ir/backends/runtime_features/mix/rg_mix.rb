@@ -213,14 +213,16 @@ def rg_mix_start_release(voice)
   true
 end
 
-# Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch, at +loudness+. 1 when
-# there was one.
+# Reference::Mixer#glide_music_note: the note sounding reads on at the row's pitch, at +loudness+, or at its
+# own where that is -1. 1 when there was one.
 def rg_mix_glide_music_note(effect, lane, sound, loudness)
   at = rg_mix_sounding_voice(effect, lane)
   return 0 if at < 0
 
   voice = @rg_mix_voices[at]
   voice.step = @rg_game_note_sounds[sound + 1]
+  return 1 if loudness.negative?
+
   voice.loudness = loudness
   voice.gain = loudness << rg_loudness_to_gain if voice.shaped == 0
   1

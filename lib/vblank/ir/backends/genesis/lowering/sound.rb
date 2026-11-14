@@ -100,8 +100,11 @@ module VBlank
             # the note sits between the speakers: the sixth FM voice, which the DAC plays through, sounds from
             # the left, the right or both, so the nearest of the three (Audio::Pan.side_of). +walks+ asks for a
             # row whose place is walked a sample at a time, for a part with a note that glides: every place here is.
-            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false)
-              _ = walks
+            # A glide that names no side of its own (+keeps_side+) keeps the note's: its row's SIDE is
+            # Runtime::Recordings::SIDE_KEPT. A loudness is the log's alone here, kept or not (+keeps_loudness+).
+            def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false,
+                                  keeps_loudness: false, keeps_side: false)
+              _ = [walks, keeps_loudness]
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?
@@ -109,7 +112,8 @@ module VBlank
                                      "that yet.", part: "recordings with a shape")
               end
             
-              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED, side: SPEAKER_BITS_BY_SIDE.fetch(Audio::Pan.side_of(pan)))
+              side = keeps_side ? Runtime::Recordings::SIDE_KEPT : SPEAKER_BITS_BY_SIDE.fetch(Audio::Pan.side_of(pan))
+              play_row(name, frequency, info.loop_length, Runtime::Recordings::NOT_LOGGED, side: side)
             end
 
             # The speakers' bits of the sixth FM voice for each side Audio::Pan.side_of names (nil both).

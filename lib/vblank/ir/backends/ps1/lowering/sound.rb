@@ -134,11 +134,16 @@ module VBlank
             # Nintendo's: here the note is shaped by the nearest envelope, which +envelope+ already is. +pan+ is
             # where it sits between the speakers (an Audio::Pan, nil for the middle; Runtime::Recordings::SIDES).
             # Its number in "recording_plays".
-            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil)
+            #
+            # A glide that names no volume (+keeps_loudness+) or no side (+keeps_side+) of its own keeps the
+            # note's: its row holds Runtime::Recordings::KEPT there, which the glide leaves as it was.
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil,
+                                  keeps_loudness: false, keeps_side: false)
               _ = [walks, chip_envelope]
               info = Assets::Sample.of(declared_sample(name))
-              play_row(name, frequency, info.loop_length, IR::Tunes.mix_loudness(volume), envelope || info.envelope,
-                       Runtime::Recordings::NOT_LOGGED, pan: pan)
+              loudness = keeps_loudness ? Runtime::Recordings::KEPT : IR::Tunes.mix_loudness(volume)
+              play_row(name, frequency, info.loop_length, loudness, envelope || info.envelope,
+                       Runtime::Recordings::NOT_LOGGED, pan: pan, keeps_side: keeps_side)
             end
 
             def declared_sample(name) = @samples.fetch(name) { raise LoweringError, "the sample #{name.inspect} is not declared" }
@@ -151,7 +156,7 @@ module VBlank
             # voice's volume out of it, as the interpreter's mix does), and the count the
             # interpreter's mix keeps. Its number in "recording_plays", the same one for a play alike and heard
             # where +pan+ puts it alike.
-            def play_row(name, frequency, back, loudness, envelope, logged, pan: nil)
+            def play_row(name, frequency, back, loudness, envelope, logged, pan: nil, keeps_side: false)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = CONSOLE.sample_clock(declared.rate)
@@ -162,7 +167,7 @@ module VBlank
               row = [@sound_memory.start_of(SoundMemory.recording(name, back)), recording_pitch(step), loudness, info.length, back,
                      advance >> VBlank::Audio::Sound::STEP_SHIFT, advance & ((1 << VBlank::Audio::Sound::STEP_SHIFT) - 1),
                      logged, @samples.keys.index(name), shape ? shape.packed : 0]
-              play = [row, VBlank::Audio::Pan.shares_word(pan)]
+              play = [row, keeps_side ? Runtime::Recordings::KEPT : VBlank::Audio::Pan.shares_word(pan)]
               @plays << play unless @plays.include?(play)
               @plays.index(play)
             end

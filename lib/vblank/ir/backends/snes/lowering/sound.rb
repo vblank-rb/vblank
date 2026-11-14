@@ -193,7 +193,11 @@ module VBlank
             # that glides +walks+ its samples, which every frame pays for while it sounds, since its
             # end cannot be counted ahead; every other note counts its frames. +pan+ is where the note
             # sits between the speakers (an Audio::Pan, nil for the middle; Runtime::Recordings::SIDES).
-            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil)
+            #
+            # A glide that names no volume (+keeps_loudness+) or no side (+keeps_side+) of its own keeps the
+            # note's: its row holds Runtime::Recordings::KEPT there, which the glide leaves as it was.
+            def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil,
+                                  keeps_loudness: false, keeps_side: false)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = Console::SUPER_NINTENDO.sample_clock(declared.rate)
@@ -204,12 +208,12 @@ module VBlank
               row = Runtime::Recordings.row(
                 source: source,
                 pitch: [step / RECORDING_STEP_TO_PITCH, 1].max,
-                volume: (IR::Tunes.mix_loudness(volume) * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round,
+                volume: keeps_loudness ? Runtime::Recordings::KEPT : (IR::Tunes.mix_loudness(volume) * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
                 walks: walks, chip_envelope: chip_envelope_number(envelope ? chip_envelope : declared.chip_envelope)
               )
-              play_number(row, pan)
+              play_number(row, pan, keeps_side: keeps_side)
             end
 
             def declared_sample(name)
@@ -434,8 +438,8 @@ module VBlank
 
             # The number in "recording_plays" of a play of +row+ heard where +pan+ (an Audio::Pan, nil
             # for the middle) puts it: the next the first time the two are played together.
-            def play_number(row, pan)
-              play = [row, VBlank::Audio::Pan.shares_word(pan)]
+            def play_number(row, pan, keeps_side: false)
+              play = [row, keeps_side ? Runtime::Recordings::KEPT : VBlank::Audio::Pan.shares_word(pan)]
               @plays << play unless @plays.include?(play)
               @plays.index(play)
             end

@@ -70,7 +70,7 @@ module VBlank
     #                      must still be 127 or less: past that the note is a rest
     #   (glides)           GLIDES in the names, on a part that plays a recording: the note does not
     #                      strike, and the one sounding carries on at its pitch (`glides: true`), at
-    #                      its volume or loudness and its shade, each the part's own where it names
+    #                      its volume or loudness and its shade, each the note's own where it names
     #                      none. Its instrument is the part's own (255): it reads the recording the
     #                      note sounding struck
     #   25    metallic     on the noise voice, 1 for a hit that rattles (the short, metallic hiss)

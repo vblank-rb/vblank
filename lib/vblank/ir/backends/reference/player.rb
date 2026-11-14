@@ -225,7 +225,7 @@ module VBlank
                         play_recorded_note(owner: lane, rank: rank, name: instrument || part.instrument,
                                            frequency: sounds ? frequency : 0, envelope: envelope || part.envelope,
                                            loudness: song_loudness(volume || part.volume, follows_level: !level.nil?),
-                                           glides: IR::Tunes.glides?(event)) ||
+                                           glides: IR::Tunes.glides?(event), own_loudness: !volume.nil?) ||
                           !sounds
                       else
                         true
@@ -397,7 +397,7 @@ module VBlank
                                            frequency: sounds?(kind, part, event) ? frequency : 0,
                                            envelope: envelope || part.envelope,
                                            loudness: IR::Tunes.mix_loudness(volume || part.volume),
-                                           glides: IR::Tunes.glides?(event))
+                                           glides: IR::Tunes.glides?(event), own_loudness: !volume.nil?)
                 @log << [:note, name, frequency] if heard
                 next
               end
@@ -558,10 +558,11 @@ module VBlank
           # +loudness+ out of IR::Tunes::MIX_FULL, shaped by +envelope+ (or the recording itself),
           # and a rest gives the voice back. True when the note got a voice, or the rest had one
           # to give back. A note that +glides+ strikes nothing: the part's sounding note carries on
-          # at +frequency+, and it is true when there was one.
-          def play_recorded_note(owner:, rank:, name:, frequency:, envelope:, loudness:, glides: false)
+          # at +frequency+, at +loudness+ where the glide names its own volume (+own_loudness+) and
+          # at the loudness it had where it names none, and it is true when there was one.
+          def play_recorded_note(owner:, rank:, name:, frequency:, envelope:, loudness:, glides: false, own_loudness: false)
             return @mixer.release_music(owner) if frequency.zero?
-            return @mixer.glide_music_note(owner, frequency, loudness) if glides
+            return @mixer.glide_music_note(owner, frequency, (loudness if own_loudness)) if glides
 
             !@mixer.start_music_note(owner: owner, rank: rank, name: name, frequency: frequency,
                                      loudness: loudness, envelope: envelope).nil?

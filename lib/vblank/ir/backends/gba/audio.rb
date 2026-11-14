@@ -260,6 +260,10 @@ module VBlank
           # In the instrument's halfword, on a note that glides (`glides: true`): it bends the note
           # sounding to the row's step rather than striking, and the rest of the row is not read.
           GLIDES = 0x8000
+          # ...and beside it, on a glide that names no volume of its own: the note keeps its loudness. The
+          # row's loudness is its part's even so, for a music volume to scale the note to as the
+          # interpreter's does (Reference::Player#record_note_volume).
+          GLIDE_KEEPS_LOUDNESS = 0x4000
 
           # One entry in that table: where the recording is in the cartridge, how long it is, the
           # four numbers that shape a note on it (0 for a note that starts and stops dead), and
@@ -2531,10 +2535,11 @@ module VBlank
             @emitter.emit(ASM.ldr_offset(ACC, at, 4))
             @emitter.emit(ASM.str_offset(ACC, NOTE_REG, Mixer::SLOT_STEP))
             @emitter.emit(ASM.load_halfword_offset(ACC, at, 10))              # how loud
-            if number
-              @primitives.store_var(ACC, self.class.music_note(number))
-              emit_scaled_loudness(ACC)
-            end
+            @primitives.store_var(ACC, self.class.music_note(number)) if number
+            @emitter.emit(ASM.load_halfword_offset(TMP, at, 8))
+            @emitter.emit(ASM.tst_imm(TMP, GLIDE_KEEPS_LOUDNESS))
+            @emitter.emit_branch(:bcond, done, cond: :ne)                    # the note's own loudness goes on
+            emit_scaled_loudness(ACC) if number
             @emitter.emit(ASM.str_offset(ACC, NOTE_REG, Mixer::SLOT_VOL))
             @mixer.emit_store_gain_unless_shaped(NOTE_REG, ACC, TMP) if @mixer.shapes_notes?
             @emitter.emit_branch(:b, done)
@@ -2772,9 +2777,10 @@ module VBlank
                 heard = loudness(volume || part.volume)
                 if frequency.positive? && heard.positive? && IR::Tunes.glides?(event)
                   # The step reads the recording the part's note sounds on, and the loudness is the
-                  # glide's own, or its part's, as a struck note's is (#emit_glide).
+                  # glide's own, or the note's kept where it names none (#emit_glide).
                   step = @mixer.step_at(@mixer.sample_info(IR::Tunes.struck_instrument(part, event)), frequency)
-                  next [frame, step, GLIDES, heard].pack("VVvv")
+                  keeps = event[3].nil? ? GLIDE_KEEPS_LOUDNESS : 0
+                  next [frame, step, GLIDES | keeps, heard].pack("VVvv")
                 end
 
                 sounding = IR::Tunes::Sounding.new(name: instrument || part.instrument,

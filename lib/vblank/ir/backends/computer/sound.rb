@@ -51,6 +51,9 @@ module VBlank
           CARRIES_VIBRATO = 1 << 9
           # ...and set on a recorded note that carries on the one sounding (IR::Tunes.glides?).
           GLIDES = 1 << 10
+          # ...and with it on a glide that names no volume of its own: the note keeps its loudness
+          # (rg_music.c's GLIDE_KEEPS_LOUDNESS). A recorded note has no noise bits, so this sits clear of them.
+          GLIDE_KEEPS_LOUDNESS = 1 << 29
           # ...and set on a drum hit given its own rattle (IR::Tunes.said_metallic),
           # with its noise bits (Audio::Sound.noise_register_bits) above it (rg_music.c's HAS_NOISE_BITS).
           HAS_NOISE_BITS = 1 << 11
@@ -1058,7 +1061,7 @@ module VBlank
             side = pitch.zero? ? 0 : Audio::Pan.bits_of(Tunes.note_side(part, note))
             shapes = Tunes.said_duty(part, note) unless pitch.zero?
             [at, @sound_log.pitch_number(pitch), heard, last, Int32.wrap(flags | (side << PAN_AT)),
-             (shapes ? HAS_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES : 0) |
+             (shapes ? HAS_DUTY | shapes.bits : 0) | (wobble&.carries ? CARRIES_VIBRATO : 0) | (Tunes.glides?(note) ? GLIDES | (note[3].nil? ? GLIDE_KEEPS_LOUDNESS : 0) : 0) |
                (pitch.zero? ? 0 : own_voice_bits(note, kind))]
           end
 

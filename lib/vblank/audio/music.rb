@@ -437,7 +437,7 @@ module VBlank
         #
         # +glides: true+ BENDS THE NOTE SOUNDING rather than striking a new one: on a part that
         # plays a recording, the note reads on from where it has got to at this pitch, and at this
-        # note's +volume+ and +pan+ or the part's, its shape going on as it was (Score::Note's
+        # note's +volume+ and +pan+ where it names them, else the note's own, its shape going on as it was (Score::Note's
         # `glides:`, the same word). A run of them a few frames apart is a bend that sweeps.
         def note(pitch, duration, envelope: nil, volume: nil, decay: nil, swell: nil, slide_up: nil, slide_down: nil,
                  vibrato: nil, pan: nil, duty: nil, glides: nil)

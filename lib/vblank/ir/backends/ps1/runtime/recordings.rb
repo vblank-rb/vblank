@@ -131,6 +131,9 @@ module VBlank
 
             # Kept in a game with a recorded note that glides, whose glide then sets the voice's volumes too.
             GLIDES = "rt recordings glides"
+            # What a glide's row holds for a loudness, and its word of "recording_sides" for its sides, where
+            # the glide names none of its own and keeps the note's (Lowering::Sound#recorded_note_row).
+            KEPT = 0xFFFF_FFFF
 
             def reserve(memory, sides: false, glides: false)
               memory.reserve(GLIDES, 4) if glides
@@ -349,13 +352,18 @@ module VBlank
               asm.addiu(:s1, :v0, -1)
               asm.sw(:s1, at.call(TAKEN), :gp) # the place the music volume reaches
               emit_place_at(asm, :s1)
-              copied = { ADVANCE => PLACE_ADVANCE, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }
-              copied[VOLUME] = LOUD if glides
-              copied.each do |from, to|
+              { ADVANCE => PLACE_ADVANCE, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }.each do |from, to|
                 asm.lw(:t0, from, :s0)
                 asm.sw(:t0, place.call(to), :t9)
               end
-              emit_copy_row_sides(asm, at) if sides && glides
+              if glides # its loudness and sides where it names them; a row holding KEPT leaves the note's
+                asm.lw(:t0, VOLUME, :s0)
+                asm.li(:t1, KEPT)
+                asm.beq(:t0, :t1, "rt_recordings_glide_loud_kept")
+                asm.sw(:t0, place.call(LOUD), :t9)
+                asm.label("rt_recordings_glide_loud_kept")
+                emit_copy_row_sides(asm, at, unless_kept: "rt_recordings_glide_sides_kept") if sides
+              end
               emit_voice_number(asm, :a0)
               asm.sll(:a0, :a0, 4)
               asm.addiu(:a0, :a0, h::SPU_PITCH)
@@ -591,7 +599,8 @@ module VBlank
             end
 
             # The row at s0's word of "recording_sides" into the place at offset s1's word of SIDES.
-            def emit_copy_row_sides(asm, at)
+            # With +unless_kept+, a label, a word of KEPT leaves the place's sides as they are.
+            def emit_copy_row_sides(asm, at, unless_kept: nil)
               asm.la(:t0, "recording_plays")
               asm.subu(:t0, :s0, :t0)
               asm.li(:t1, ROW_BYTES)
@@ -601,8 +610,13 @@ module VBlank
               asm.la(:t1, "recording_sides")
               asm.addu(:t0, :t0, :t1)
               asm.lw(:t0, 0, :t0)
+              if unless_kept
+                asm.li(:t1, KEPT)
+                asm.beq(:t0, :t1, unless_kept)
+              end
               emit_place_sides_at(asm, :t1)
               asm.sw(:t0, at.call(SIDES), :t1)
+              asm.label(unless_kept) if unless_kept
             end
 
             # +into+ = gp plus the place at offset s1's word of SIDES, less where SIDES is.

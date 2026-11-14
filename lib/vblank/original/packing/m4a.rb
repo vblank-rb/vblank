@@ -1009,6 +1009,7 @@ module VBlank
                 emit_sides_for_note(t, sounding_list(:velocity)[s], sounding_list(:rhythm_pan)[s], right, left)
                 [hz, names, shade].each { |each| each.store!(0) }
                 emit_shade(right, left, shade, names)
+                names.store!(names | PackNote::NAMES.fetch(:shade)) # a glide names its side, the middle too
                 if sounding_list(:fixed)[s] == 1
                   key.store!(OWN_KEY)
                 else

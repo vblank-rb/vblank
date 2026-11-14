@@ -566,7 +566,7 @@ module M4AAnswers
       right, left = sides_of(track, note.velocity, note.rhythm_pan)
       pitch = note.fixed ? { key: 60 } : pitch_of(track, note.pitch_key)
       key = [pitch.delete(:key), 127].min
-      settings = shade_of(right, left).merge(pitch)
+      settings = { shade: 0 }.merge(shade_of(right, left), pitch) # a glide names its side, the middle too
       if note.glide && note.glide[0] == @frame
         note.glide[2], note.glide[5], note.glide[8] = key, right + left, settings.merge(glides: true)
       elsif note.glide.nil? && note.start == @frame

@@ -45,6 +45,8 @@ module VBlank
             # ...and in a game with a recorded note off the middle (SIDES), the speakers it plays from, as the
             # FM chip's register $B6 of its second part keeps them for the sixth voice, which the DAC is.
             SIDE = 24
+            # ...nought in a glide's row where the glide names no side and keeps the note's.
+            SIDE_KEPT = 0
             ROW_BYTES_WITH_SIDE = 26
 
             # The place's state, in bytes.
@@ -566,10 +568,13 @@ module VBlank
             # The speakers the row A4 points at plays from (SIDE) told to the FM chip's register $B6 of its second
             # part, the sixth voice's, which the DAC plays through: queued for the Z80 as any FM write is, and
             # dropped when it is what the register holds already (Sound#emit_fm_write_queued). Uses D0 to D3 and A1.
-            def emit_side_queued(asm)
+            # With +unless_kept+, a label, a SIDE of SIDE_KEPT writes nothing.
+            def emit_side_queued(asm, unless_kept: nil)
               asm.move(:w, asm.imm(0x100 | (ChipWrites::SPEAKERS + 2)), asm.d(0))
               asm.move(:w, asm.disp(4, SIDE), asm.d(1))
+              asm.branch(:eq, unless_kept) if unless_kept # SIDE_KEPT is nought
               asm.jsr(asm.abs_l("rt_fm_write"))
+              asm.label(unless_kept) if unless_kept
             end
 
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has the place, reads on at
@@ -589,7 +594,7 @@ module VBlank
               asm.branch(:ne, "rt_recordings_none")
               asm.move(:l, asm.disp(4, ADVANCE), at.call(PLACE, PLACE_ADVANCE))
               asm.move(:w, asm.disp(4, ADVANCE_FRACTION), at.call(PLACE, PLACE_ADVANCE_FRACTION))
-              emit_side_queued(asm) if sides
+              emit_side_queued(asm, unless_kept: "rt_recordings_glide_side_kept") if sides
               emit_bus_taken(asm)
               asm.lea(asm.abs_l(Z80_MEMORY + MAILBOX + Z80_STEP), asm.a(2))
               emit_step_mailed(asm, "rt_recordings_glide_step")

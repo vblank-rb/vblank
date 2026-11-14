@@ -30,6 +30,7 @@ RG_HAS_DUTY = 1 << 8 # A note's sixth number: set when it or its part set its sh
 RG_DUTY_BITS = 0xFF # A note's eight shape bits (Audio::Duty#bits), under the flag
 RG_CARRIES_VIBRATO = 1 << 9 # Above the shapes: set when the vibrato carries its swing on
 RG_GLIDES = 1 << 10 # Set on a recorded note that carries on the one sounding
+RG_GLIDE_KEEPS_LOUDNESS = 1 << 29 # ...and with it where that note keeps its loudness, naming none
 RG_HAS_NOISE_BITS = 1 << 11 # Set on a drum hit that says whether it rattles...
 RG_NOISE_BITS_AT = 12 # ...its noise bits above it
 RG_NOISE_BITS = 0xF
@@ -451,7 +452,8 @@ def rg_play_recorded_note(part, note)
     numbers = 1 + (sound * RG_NUMBERS_PER_NOTE_SOUND)
     heard_loudness = @rg_level_variable ? rg_scaled_volume(loudness) : loudness
     heard = if music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(-1, part.tone, numbers, heard_loudness)
+              rg_mix_glide_music_note(-1, part.tone, numbers,
+                                      music[note + 5].anybits?(RG_GLIDE_KEEPS_LOUDNESS) ? -1 : heard_loudness)
             else
               rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers, heard_loudness)
             end
@@ -639,7 +641,7 @@ def rg_play_effect_note(effect, part, note)
     heard = if !sounds
               rg_mix_release_music(effect, part.tone)
             elsif music[note + 5].anybits?(RG_GLIDES)
-              rg_mix_glide_music_note(effect, part.tone, numbers, volume)
+              rg_mix_glide_music_note(effect, part.tone, numbers, music[note + 5].anybits?(RG_GLIDE_KEEPS_LOUDNESS) ? -1 : volume)
             else
               rg_mix_start_music_note(effect, part.tone, rank, numbers, volume)
             end
@@ -1194,7 +1196,7 @@ def rg_start_file_write_note(music, into, event, rules)
   if rules[RG_NOTES_RECORD_BYTES] == RG_NOTE_VOICED_BYTES
     music[into + 4], music[into + 5] = rg_start_file_voice_numbers(music[into + 4], music[into + 5], event, rules, rg_start_file_wave_rules(rules))
   end
-  music[into + 5] |= RG_NOTE_GLIDES if event.glides == 1
+  music[into + 5] |= RG_NOTE_GLIDES | (event.volume == RG_NOTE_VOLUMES ? RG_GLIDE_KEEPS_LOUDNESS : 0) if event.glides == 1
 end
 
 def rg_music_fill_notes(music, note_sounds, rules, tick_frames)

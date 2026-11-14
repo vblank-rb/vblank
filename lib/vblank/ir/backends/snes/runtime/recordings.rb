@@ -137,6 +137,9 @@ module VBlank
             ALL = 0xFFFF
             # Kept in a game with a note that glides, whose runtime then carries what moves one.
             GLIDES = "rt recordings glides"
+            # What a glide's row holds for a loudness, and its word of "recording_sides" for its sides, where
+            # the glide names none of its own and keeps the note's (Lowering::Sound#recorded_note_row).
+            KEPT = 0xFFFF
 
             # THE SOUND CHIP'S OWN ENVELOPE. A recording can be given the three bytes the S-DSP shapes
             # a voice by (Audio::SNESEnvelope: ADSR1, ADSR2, GAIN), and its voice is told them as
@@ -651,12 +654,18 @@ module VBlank
 
             # The row at ROW's word of "recording_sides" (a word for each row's ROW_BYTES, X the row) into the
             # place's PLACE_SIDES, X the row again after.
-            def emit_row_sides_copied(asm, at, place)
+            # With +unless_kept+, a label, a word of KEPT leaves the place's sides as they are.
+            def emit_row_sides_copied(asm, at, place, unless_kept: nil)
               asm.txa
               (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
               asm.tax
               asm.lda(asm.long_x("recording_sides", 0))
+              if unless_kept
+                asm.cmp(KEPT)
+                asm.beq(unless_kept)
+              end
               asm.sta(place.call(PLACE_SIDES))
+              asm.label(unless_kept) if unless_kept
               asm.ldx(at.call(ROW))
             end
 
@@ -680,12 +689,17 @@ module VBlank
               asm.label("rt_recordings_glide_found")
               asm.sty(at.call(PLACE))
               asm.ldx(at.call(ROW))
-              { ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION,
-                VOLUME => LOUD }.each do |from, to|
+              { ADVANCE => PLACE_ADVANCE, ADVANCE + 2 => PLACE_ADVANCE + 2, ADVANCE_FRACTION => PLACE_ADVANCE_FRACTION }.each do |from, to|
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
-              emit_row_sides_copied(asm, at, place) if memory.reserved?(SIDES) # the glide's sides, as a note's
+              # Its loudness and sides where it names them; a row holding KEPT leaves the note's.
+              asm.lda(row.call(VOLUME))
+              asm.cmp(KEPT)
+              asm.beq("rt_recordings_glide_loud_kept")
+              asm.sta(place.call(LOUD))
+              asm.label("rt_recordings_glide_loud_kept")
+              emit_row_sides_copied(asm, at, place, unless_kept: "rt_recordings_glide_sides_kept") if memory.reserved?(SIDES)
               asm.lda(at.call(PLACE))
               asm.cmp(heard)
               asm.bcs("rt_recordings_glide_done")

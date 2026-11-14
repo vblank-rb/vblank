@@ -194,7 +194,8 @@ module VBlank
         # recording's own note, as a frequency, reads it at the rate it was recorded. And it can set
         # +glides: true+: it does not strike. The note sounding on its part carries on from where
         # it has got to, fading as it was, at this pitch from here, and at this note's +volume+ and
-        # +pan+, or its part's. If the part has no note sounding by then, nothing sounds.
+        # +pan+ where it names them; else the note keeps its own. If the part has no note sounding by then,
+        # nothing sounds.
         #
         # A NOTE ON THE NOISE VOICE CAN SAY WHETHER IT RATTLES, `metallic: true` or `false`, in place
         # of its part's +metallic+: the short, metallic hiss or the full one. Another Game Boy game's
@@ -474,7 +475,7 @@ module VBlank
 
         # A note that sets +glides+ plays a recording and has a pitch to glide to. It changes what
         # the note sounding plays as it sounds: its pitch, and its loudness and side (its own
-        # `volume:` and `pan:`, or its part's, as a struck note's). The recording and its shape are
+        # `volume:` and `pan:`; where it names none, the note keeps its own). The recording and its shape are
         # the note's, so an instrument or a shape here would have nothing to act on.
         def refuse_bad_glide!(note, where, voice)
           unless [true, false].include?(note.glides)
