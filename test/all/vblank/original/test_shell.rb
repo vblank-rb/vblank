@@ -22,6 +22,21 @@ class TestOriginalShell < Minitest::Test
     end
   end
 
+  # Each part of building a shell after the checks is a phase the build names, so a big port's
+  # build has no long stretch with nothing said.
+  def test_building_a_shell_names_each_phase_after_the_checks
+    Dir.mktmpdir do |folder|
+      said = StringIO.new
+      progress = VBlank::Messages::Progress.to(said)
+      VBlank::Original::Shell.build(port_without_copy(folder), err: nil, progress: progress)
+      progress.done
+      phases = said.string.lines.map { |line| line.strip.split(/\s{2,}/).first }
+
+      assert_equal ["Checking for mistakes", "Reading game again", "Building unpacking"], phases.last(3), said.string
+      assert_match(%r{^  Building unpacking +[\d.]+s +1/1$}, said.string)
+    end
+  end
+
   # A port whose code depends on what the copy holds cannot be a shell: the build stops, naming
   # the line that read the copy.
   def test_a_port_that_reads_the_copy_as_it_is_built_is_refused_as_a_shell

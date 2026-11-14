@@ -161,6 +161,8 @@ module VBlank
       # The block runs a second time for those two, since a checked build hands back only its program.
       def shell_parts(err: $stderr, progress: Messages::Progress.silent, settings: {}, console: @consoles.first)
         program = checked_program(err: err, progress: progress, settings: settings, console: console, pack_at_start: true)
+        # A big game takes as long to read the second time as the first, so it is a phase of its own.
+        progress.step("Reading game again")
         options = @options.with(console: console, variant: variant_for(console), consoles: @consoles, for_computer: true,
                                 pack_at_start: true)
         evaluated = EvaluatedGame.new(@block, options: options, settings: settings)

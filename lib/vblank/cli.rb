@@ -1219,12 +1219,18 @@ module VBlank
 
     # The game built as Ruby, ready to play: a game that needs something the Ruby runtime cannot do
     # yet is refused here, before a window opens.
+    #
+    # Writing a big game as Ruby takes a while, so it is a phase of the build, closed before the
+    # window opens or the match starts.
     def live_session(game, program, network = nil)
+      build_progress.step("Writing game as Ruby")
       VBlank::Live::Session.new(program, uncapped: options[:uncapped], stop_after_passes: options[:pictures], network: network,
                                          collect_garbage: options[:collect_garbage] && !match_without_window?)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game.title} in a window yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Build a cartridge, or use vblank preview."
+    ensure
+      build_progress.done
     end
 
     # How fast +rate+ (a play of +program+) went, printed once the play stops. The game moves on one
@@ -1248,12 +1254,14 @@ module VBlank
       built = VBlank::Original::Shell.build(game, console: console_to_play(game), settings: given_settings,
                                                   progress: build_progress)
       require_relative "live"
-      shell = VBlank::Live::Shell.from(built)
+      shell = VBlank::Live::Shell.from(built, progress: build_progress)
       width, height = built.game.described_console.framed_screen_size
+      build_progress.step("Opening window")
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
                                      height: height, pixel_size: built.game.described_console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
+      build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       folder = options[:pack_folder] || window.folder_for(shell.folder) or
         raise Thor::Error, "#{game.title} cannot make the folder to keep its data pack in. Give one with --pack-folder."
@@ -1267,6 +1275,7 @@ module VBlank
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise build_stopped(e)
     ensure
+      build_progress.done # a phase that stopped leaves its line open
       window&.close
     end
 
@@ -1473,11 +1482,13 @@ module VBlank
 
       console = program.described_console
       width, height = console.framed_screen_size
+      build_progress.step("Opening window")
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
                                      height: height, pixel_size: console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
                                      config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))
+      build_progress.done
       warn window.settings_problems_message if window.settings_problems_message
       say "Playing #{game.title} for the #{console.title} in Ruby #{RUBY_VERSION} with #{jit_in_use}. " \
           "#{'Press F1 or ` for the menu. ' if game.menu?}Press P to pause. Hold Tab to play fast. Press Escape to stop."
@@ -1489,6 +1500,7 @@ module VBlank
     rescue *MATCH_FAILURES => e
       raise Thor::Error, match_failure_message(e)
     ensure
+      build_progress.done # a window that would not open leaves its phase open
       window&.close
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
     end

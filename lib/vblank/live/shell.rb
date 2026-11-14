@@ -48,11 +48,21 @@ module VBlank
       # The +choose_copy+ of #play for a +window+ (an SDL): its picker of a folder or of a file.
       def copy_chooser(window) = copy_is_folder? ? -> { window.choose_folder } : -> { window.choose_file }
 
-      # The Live::Shell for +shell+, an Original::Shell, its programs written as Ruby here.
-      def self.from(shell)
+      # The Live::Shell for +shell+, an Original::Shell, its programs written as Ruby here. A big
+      # game's game and unpacking each take a while to write, so +progress+ (a Messages::Progress)
+      # is told each as a phase; the menu is small and is written inside the first.
+      def self.from(shell, progress: Messages::Progress.silent)
         ruby = IR::Backends::Ruby.new
-        new(facts: shell.facts, game: ruby.live_source(shell.game), menu: ruby.live_source(shell.menu),
-            unpackings: shell.unpackings.map { |unpacking| ruby.live_source(unpacking.program) })
+        progress.step("Writing game as Ruby")
+        game = ruby.live_source(shell.game)
+        menu = ruby.live_source(shell.menu)
+        progress.step("Writing unpacking as Ruby")
+        unpackings = shell.unpackings.each_with_index.map do |unpacking, written|
+          progress.report_count(written, shell.unpackings.size)
+          ruby.live_source(unpacking.program)
+        end
+        progress.report_count(unpackings.size, unpackings.size)
+        new(facts: shell.facts, game: game, menu: menu, unpackings: unpackings)
       end
 
       # Plays the shell on +device+ until the player stops it: the game, once there is a pack in

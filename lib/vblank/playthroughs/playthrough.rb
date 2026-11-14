@@ -405,6 +405,9 @@ module VBlank
           cartridge = Playthrough.cartridge_from(cartridge)
           Playthrough.refuse_unusable_pass_count!(cartridge, in_passes)
           counting = Playthrough.counts_passes?(steps, lead_in: lead_in, in_passes: in_passes, asked: count_passes)
+          # Making the game the way +on+ names (a big game written as Ruby, or built as C) takes a
+          # while before its first frame, so it is a phase of its own.
+          progress.step("Starting game")
           started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
                                                                 count_passes: counting, match: match)
           game = started.game
