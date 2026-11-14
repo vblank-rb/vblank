@@ -117,6 +117,7 @@ module VBlank
               asm.load([at + VALID], :a)
               asm.load(:a, 0xFF)
               asm.load([memory[Picture::GRID_UP]], :a)
+              asm.load([memory[Picture::GRID_KEPT]], :a) if memory.reserved?(Picture::GRID_KEPT) # no grid's cells now
               # Its view can put a cell in any row of the console's grid, so a grid put up after it
               # copies every row (Picture#emit_background).
               asm.load(:a, Art::GRID_CELLS)

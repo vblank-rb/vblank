@@ -38,6 +38,12 @@ module VBlank
             LCDC_WANTED = "rt picture lcdc"
             OVERLAP = "rt picture overlap" # Two sprites' masks and where they meet, while they are tested
             GRID_UP = "rt picture grid up" # The number of the grid up, or being put up
+            # IN A GAME THAT PUTS A BACKGROUND UP AGAIN (Lowering::Picture#puts_backgrounds_up_again?): the number of
+            # the grid whose cells the background holds, and the window's for a status bar, which a changed cell
+            # leaves as they are (GRID_UP and BAR_UP do not). A put-up that keeps the cells it holds
+            # (rt_background_put_up_kept, rt_bar_put_up_kept) copies nothing while its grid is the one there.
+            GRID_KEPT = "rt picture grid kept"
+            BAR_KEPT = "rt picture bar kept"
             # The rows of the console's grid that can hold cells, the rest of its rows empty: those
             # of the grid last put up (the rows its maps reach, GBC::Art#grid), and those its put up
             # reaches, which is more while it is still being copied in (#emit_background).
@@ -157,7 +163,11 @@ module VBlank
             module_function
 
             def reserve(memory, lends: false, groups: false, bar_rows: nil, rooms: false, cells_shown_now: false,
-                        bar_covers: false, painting: false)
+                        bar_covers: false, painting: false, grids_kept: false)
+              if grids_kept
+                memory.reserve(GRID_KEPT, 1)
+                memory.reserve(BAR_KEPT, 1) if bar_rows
+              end
               memory.reserve(ROOMS, 3) if rooms
               memory.reserve(BAR_COVERS, 2) if bar_covers
               memory.reserve(CELL_SHOWN_NOW, CELL_SHOWN_NOW_BYTES) if cells_shown_now
@@ -698,6 +708,7 @@ module VBlank
               if bar # the window's grid holds no bar yet, and the window starts at the left edge
                 asm.load(:a, 0xFF)
                 asm.load([memory[BAR] + BAR_UP], :a)
+                asm.load([memory[BAR_KEPT]], :a) if memory.reserved?(BAR_KEPT)
                 asm.load(:a, WINDOW_LEFT)
                 asm.load_high(h::WX, :a)
               end
@@ -1769,6 +1780,22 @@ module VBlank
             # sprite table, and what the blank has no time for goes in with the display off
             # (#emit_map_rows): so a screen comes up in the frame it takes over, as a console's own
             # games bring one in.
+            # rt_background_put_up_kept(grid): rt_background_put_up_unscrolled for a background put up again
+            # (Lowering::Picture#background_put_up), which keeps the cells the game changed while its grid is
+            # the one the background holds (GRID_KEPT), as the interpreter keeps them (Reference#put_up_background).
+            def emit_background_put_up_kept(asm, memory)
+              asm.label("rt_background_put_up_kept")
+              asm.xor_a(:a)
+              asm.load([memory[SCROLL]], :a)
+              asm.load([memory[SCROLL] + 1], :a)
+              asm.load_hl_sp(2)
+              asm.load(:a, [:hl])
+              asm.load(:hl, memory[GRID_KEPT])
+              asm.cp_a([:hl])
+              asm.ret(:z)
+              asm.jump("rt_background_put_up")
+            end
+
             def emit_background(asm, memory, bar: false, grids_in_bank: false)
               h = Console::GBCHardware
               emit_background_cell(asm, memory)
@@ -1777,6 +1804,7 @@ module VBlank
               if bar
                 emit_background_cell(asm, memory, label: "rt_bar_cell", grid: h::TILE_MAP1, up: memory[BAR] + BAR_UP)
               end
+              emit_background_put_up_kept(asm, memory) if memory.reserved?(GRID_KEPT)
               asm.label("rt_background_put_up_unscrolled")
               asm.xor_a(:a)
               asm.load([memory[SCROLL]], :a)
@@ -1789,6 +1817,7 @@ module VBlank
               asm.ret(:z)
               asm.label("rt_picture_put_up") # A = the grid's number
               asm.load([memory[GRID_UP]], :a)
+              asm.load([memory[GRID_KEPT]], :a) if memory.reserved?(GRID_KEPT)
               asm.load(:hl, memory[BigMaps::STATE] + BigMaps::ON) # a big map is not up any more
               asm.load([:hl], 0)
               asm.load(:e, :a) # its entry in the grids' table
@@ -2179,6 +2208,21 @@ module VBlank
             def emit_bar(asm, memory, rows, grids_in_bank: false)
               h = Console::GBCHardware
               top = Calls.arg(memory, 0, 1)
+              kept = memory.reserved?(BAR_KEPT)
+              # rt_bar_put_up_kept(grid, top): rt_bar_put_up for a bar put up again, which keeps the cells
+              # the game changed while its grid is the one the window holds (BAR_KEPT).
+              if kept
+                asm.label("rt_bar_put_up_kept")
+                asm.load_hl_sp(2)
+                asm.load(:a, [:hl])
+                asm.load([memory[BAR]], :a)
+                asm.load_hl_sp(6)
+                asm.load(:a, [:hl])
+                asm.load(:hl, memory[BAR_KEPT])
+                asm.cp_a([:hl])
+                asm.jump(:z, "rt_bar_on")
+                asm.jump("rt_bar_grid_in_a")
+              end
               asm.label("rt_bar_put_up")
               asm.load_hl_sp(2)
               asm.load(:a, [:hl]) # the top, a row of the screen already
@@ -2190,6 +2234,7 @@ module VBlank
               asm.cp_a([:hl])
               asm.jump_relative(:z, "rt_bar_on")
               asm.load([:hl], :a)
+              asm.load([memory[BAR_KEPT]], :a) if kept
               asm.load(:e, :a) # its entry in the grids' table
               asm.load(:d, 0)
               asm.load(:hl, "art_grids")
@@ -2246,6 +2291,7 @@ module VBlank
               asm.label("rt_bar_take_down")
               asm.load(:a, 0xFF)
               asm.load([memory[BAR] + BAR_UP], :a)
+              asm.load([memory[BAR_KEPT]], :a) if memory.reserved?(BAR_KEPT)
               asm.label("rt_bar_off")
               asm.load(:a, [memory[LCDC_WANTED]])
               asm.and_a(~h::LCDC_WINDOW_ON & 0xFF)

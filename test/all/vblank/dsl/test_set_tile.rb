@@ -180,10 +180,6 @@ class TestSetTile < Minitest::Test
   end
 
   def test_a_background_put_up_again_keeps_the_cell_changed
-    keeping = "a background put up again keeping the cells the game changed: its build copies the declared map again"
-    skip_on_gbc keeping
-    skip_on_snes keeping
-    skip_on_genesis keeping
     screen = game_player.run(room_put_up_every_pass, frames: 6).screen
     assert_equal Color.resolve(:blue), pixel_at(3, 1, screen), "the door stays open"
     assert_equal Color.resolve(:red), pixel_at(2, 1, screen), "and its neighbour is untouched"

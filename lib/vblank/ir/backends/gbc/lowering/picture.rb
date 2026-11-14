@@ -92,6 +92,14 @@ module VBlank
             # Does the game ask for a cell on the frame being drawn (`now: true`)?
             def cells_shown_now? = @reachable.any? { |node| node.kind == :set_tile && node.now }
 
+            # Does a background every screen shows go up from a line that can run more than once
+            # (#put_up_again?)? The runtime then keeps GRID_KEPT for it.
+            def puts_backgrounds_up_again?
+              @reachable.any? do |node|
+                node.kind == :background && !@handover.on_arrival?(node) && !painted_screen_for?(node) && put_up_again?(node)
+              end
+            end
+
             # Has a status bar of the game more than one map to show (Runtime::Picture#emit_bar_show)?
             def bar_shows_maps? = @backgrounds.each_value.any? { |bg| bg.bar? && bg.every_map.length > 1 }
 
@@ -1067,8 +1075,16 @@ module VBlank
             def emit_background(node)
               return paint_background(node) if painted_screen_for?(node)
 
-              background_put_up(node) unless @handover.on_arrival?(node)
+              background_put_up(node, again: put_up_again?(node)) unless @handover.on_arrival?(node)
             end
+
+            # WHETHER +bg+'S LINE CAN RUN MORE THAN ONCE (one in a routine, or in the game loop). Put up the second
+            # time, it keeps the cells the game changed, as the interpreter keeps them (Reference#put_up_background).
+            # The Color already copies nothing for a grid that is up, and a changed cell marks its grid as not
+            # up (GRID_UP), so a scene's arrival puts the declared map back; a put-up that keeps the cells is
+            # told apart by a second number, the grid whose cells the layer holds (Runtime::Picture::GRID_KEPT),
+            # rather than by a note of the lowering's own (SceneryWrites#emit_put_up_keeping_cells).
+            def put_up_again?(bg) = bg.parent&.kind != :program
 
             # Whether a background is declared where the screen is painted: its scene's screen, or the
             # game's for one in no scene.
@@ -1102,14 +1118,35 @@ module VBlank
             # unscrolled every time, even when its grid is up already: a background put up again
             # on every pass, after the game has set where its view sits, shows from its corner on
             # every frame (Runtime::Picture's rt_background_put_up_unscrolled).
-            def background_put_up(bg)
-              return bar_put_up(bg) if bg.bar?
+            #
+            # +again+ for a line that can run more than once (#put_up_again?): the cells the game changed stay,
+            # through rt_background_put_up_kept, or for a big map the game changes, its copy in memory
+            # (#changed_big_place) copied in the first time alone (SceneryWrites#emit_put_up_keeping_cells).
+            def background_put_up(bg, again: false)
+              return bar_put_up(bg, again: again) if bg.bar?
 
               emit_tile_room(tile_room(bg)) if bg.several_sets? # up as declared: its first area
 
               emit_bends_shown(bg)
-              big?(bg) ? big_put_up(bg, 0, "rt_big_put_up") : runtime_call("rt_background_put_up_unscrolled", [Build.int(grid_of(bg))])
+              if big?(bg)
+                big_put_up_again(bg, again)
+              else
+                routine = again ? "rt_background_put_up_kept" : "rt_background_put_up_unscrolled"
+                runtime_call(routine, [Build.int(grid_of(bg))])
+              end
               note_put_up(corner_note(BACKGROUND_LAYER))
+            end
+
+            # A big map put up, its copy in memory kept from the first put-up of a line that runs again.
+            def big_put_up_again(bg, again)
+              return big_put_up(bg, 0, "rt_big_put_up") unless again && changed_big?(bg)
+
+              emit_put_up_keeping_cells(bg, BACKGROUND_LAYER) do |kept|
+                next big_put_up(bg, 0, "rt_big_put_up") unless kept
+
+                cols, rows = TileMap.size_of(bg.map)
+                runtime_call("rt_big_put_up", [Build.int(@art.big_map_in_memory(cols, rows, changed_big_place(bg)))])
+              end
             end
 
             # Whether any of a background's maps is bigger than the Color's grid of 32×32 cells.
@@ -1137,9 +1174,11 @@ module VBlank
             # it was declared with until it is placed (Reference#bar_top_shown), and covering sprites
             # as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up). The setting is kept
             # only where a reachable `covers_sprites =` sets it (#bar_covers_sprites?).
-            def bar_put_up(bar)
+            #
+            # +again+ for a line that can run more than once: the cells the game changed stay (rt_bar_put_up_kept).
+            def bar_put_up(bar, again: false)
               top = bar.bar_top.clamp(0, Console::GBCHardware::SCREEN_HEIGHT)
-              runtime_call("rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
+              runtime_call(again ? "rt_bar_put_up_kept" : "rt_bar_put_up", [Build.int(grid_of(bar)), Build.int(top)])
               covers = @handover.bar_covers_on_put_up(bar)
               emit_store_bar_covers(covers) if covers && bar_covers_sprites?
               note_put_up(bar_note)

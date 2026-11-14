@@ -59,7 +59,7 @@ module VBlank
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
                       bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false,
-                      walks_colors: false)
+                      walks_colors: false, grids_kept: false)
             # Must be first: the walk's tables share a page, and the first place there is fits them whole.
             Picture.reserve_walk_tables(memory) if walks_colors
             SpriteTileLoads.reserve(memory) if tile_loads
@@ -68,7 +68,8 @@ module VBlank
             KeptSprites.reserve(memory) if kept_sprites
             Frame.reserve(memory, together: together, dark: dark)
             Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?,
-                                    cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?)
+                                    cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?,
+                                    grids_kept: grids_kept)
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
             Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
