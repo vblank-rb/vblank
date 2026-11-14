@@ -110,6 +110,7 @@ module VBlank
           # The whole file: +items+ is the top level, in the order it is to appear.
           def print_file(items)
             @lists = items.grep(Statements::ListStorage).to_set { |list| list.name.text }
+            @lists_turning = lists_dropped_from_front(items)
             @step_tables = []
             items.each { |item| print_top(item) }
             @step_tables.each { |table| line(0, table) }
@@ -521,6 +522,8 @@ module VBlank
           # with its two numbers put in (runtime/rg_int32.js).
           def call_expression(item)
             function = item.function.text
+            return list_read_in_place(item) if function == "rg_list_get" && !@lists_turning.include?(item.args.first.name.text)
+
             args = item.args.map { |arg| expression(arg) }
             if args.size == 2 && (form = OPERATORS[function])
               before, between, after = form
@@ -529,6 +532,47 @@ module VBlank
               "(#{args.first} #{SHIFTS.fetch(function)} #{args.last})"
             else
               "#{function}(#{args.join(', ')})"
+            end
+          end
+
+          # AN ITEM OF A LIST READ IN PLACE, for a list whose first item stays in its first slot
+          # (#lists_dropped_from_front): the index checked against the list's length and read from
+          # its typed array at that slot, where rg_list_get is a call. V8 inlines a call only in a
+          # function light enough, and a port's unpacking loop round its chip's operators reads a
+          # list a hundred times and more a sample in one heavy function. The index is kept in
+          # rg_list_at, a variable of the runtime: worked out whole before it is set (a read inside
+          # it sets it first), and read straight after. Unsigned, a negative index is past any length.
+          def list_read_in_place(item)
+            list, index = item.args.map { |arg| expression(arg) }
+            "((rg_list_at = #{index}) >>> 0 < #{list}.length ? #{list}.items[rg_list_at] : rg_list_index_fault_at(#{list}, rg_list_at))"
+          end
+
+          # The lists the game ever drops an item from the front of (rg_list_drop with a front not
+          # written as nought), the only lists whose first item can be anywhere but their first slot:
+          # every other way a list changes leaves it there or puts it back (runtime/rg_list.js).
+          def lists_dropped_from_front(items)
+            dropped = Set.new
+            items.grep(Statements::Function).each do |function|
+              each_statement(function.body) do |statement|
+                next unless statement.is_a?(Statements::Eval) && statement.call.function.text == "rg_list_drop"
+
+                list, front = statement.call.args
+                dropped << list.name.text unless front.is_a?(Statements::Int) && front.value.zero?
+              end
+            end
+            dropped
+          end
+
+          # Every statement in +list+ and in the statements it holds.
+          def each_statement(list, &block)
+            list.each do |statement|
+              yield statement
+              case statement
+              when Statements::If then each_statement(statement.body, &block)
+                                       each_statement(statement.otherwise, &block)
+              when Statements::While, Statements::Block then each_statement(statement.body, &block)
+              when Statements::Steps then statement.steps.each { |step| each_statement(step, &block) }
+              end
             end
           end
 
