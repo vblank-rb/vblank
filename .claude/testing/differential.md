@@ -33,13 +33,17 @@ than the frames asked for; below that it can be caught half-drawn, so it keeps `
 one-pass tolerance and the `OverBudget` refusal. The comparison is still every pixel exact; this
 only picks the moment.
 
-**A game that moves or changes by itself, whose pass takes several frames, is read with
-`assert_backends_agree_by_passes(program, frame: 20, keys: [...])`**, never with `console_frames:`
-alone. On the tear-free screen the page a pass drew is shown from the frame after the pass ended, so
-on the frame a pass ends on the count is a pass ahead of the picture, and `assert_backends_agree`
-compares that frame with the wrong pass. Which frame that is moves whenever the lowering gets faster
-or slower. `assert_backends_agree_by_passes` plays the interpreter the passes counted a frame
-earlier, which is right on every frame. A picture that stands still can be read either way.
+**The Advance shows a finished pass from the frame after it ends**: the page it painted on the
+tear-free screen, the scroll and sprites on a tiled one. So on the frame a pass ends on, the count
+at the end of the frame is a pass ahead of the picture. On those two screens both calls read the
+passes counted a frame earlier (the interpreter plays one more on a tiled screen, whose scroll and
+sprites it shows a pass late), which is right on every frame of a game whose pass takes several,
+the frame a pass ends included (`Pictures#passes_beyond_counted_frame_before`, measured and held
+by `test_console_line_up.rb`). The turning screen is not measured and stays on the old rule.
+
+**A game whose pass takes a varying number of frames is read with
+`assert_backends_agree_by_passes(program, frame: 20, keys: [...])`**: it reads that frame and the
+next two, and passes if one agrees, for a screen where a frame can fall between two pictures.
 
 A failure prints the count, the first few coordinates with colour names, and a 40x20 map of
 where they differ. Use `backend_pictures` directly to pin a known, filed disagreement without

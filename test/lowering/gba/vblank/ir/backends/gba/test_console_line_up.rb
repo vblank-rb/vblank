@@ -15,6 +15,9 @@ class TestConsoleLineUp < Minitest::Test
   # A full 32x32 checkerboard map — the whole grid the console gives a background.
   FULL_MAP = (0...32).map { |r| (0...32).map { |c| (r + c).even? ? "#" : "." }.join }.freeze
 
+  # A full map with no pattern that repeats within a few pixels, so a scroll a pass behind shows.
+  UNEVEN_MAP = (0...32).map { |r| (0...32).map { |c| ((r * 7) + (c * c)) % 5 == 0 ? "#" : "." }.join }.freeze
+
   private def build(&block)
     b = VBlank::Builder.new
     b.instance_eval(&block)
@@ -100,6 +103,45 @@ class TestConsoleLineUp < Minitest::Test
 
     assert_operator passes.uniq.length, :>=, 3, "the frames read cover the ends of several passes"
     assert_operator passes.uniq.length, :<, passes.length, "a pass takes this game more than one frame"
+  end
+
+  # The same frame read by the plain check, for a game whose picture moves every pass with nobody at
+  # the controls: the frame a pass ends on shows the pass before it there too.
+  def test_a_moving_tear_free_game_agrees_on_every_frame_read_by_the_plain_check
+    program = build do
+      screen :bitmap, tear_free: true
+      x = 10
+      game_loop do
+        x += 3
+        repeat(12) { clear_screen :black }
+        draw_rect_at x, 40, 8, 8, Color.resolve(:white)
+      end
+    end
+    (9..20).each { |frame| assert_backends_agree(program, frames: frame, console_frames: frame, name: "SLOWMOVE") }
+  end
+
+  # A TILED GAME WHOSE PASS TAKES SEVERAL FRAMES shows the passes counted a frame earlier too, and
+  # the interpreter shows the scroll and the sprites a pass late on every console (see "Which
+  # frame's numbers the picture was drawn from" in .claude/rules/testing.md), so it is played one
+  # pass further. Read by the passes counted on the frame itself, every frame inside a pass was a
+  # pass behind.
+  def test_a_slow_tiled_game_agrees_on_every_frame
+    program = build do
+      screen :tiled
+      image(:brick, "#" => :red) { SOLID_TILE }
+      image(:floor, "#" => :blue) { SOLID_TILE }
+      image(:guy, "#" => :white) { SOLID_TILE }
+      tiles :set, "#" => :brick, "." => :floor
+      bg = background :bg, tiles: :set, map: UNEVEN_MAP
+      guy = sprite(:guy, at: [10, 40])
+      work = 0
+      game_loop do
+        bg.scroll_by 1, 0
+        repeat(60_000) { work += 1 } # three frames or so of work a pass
+        guy.x += 2
+      end
+    end
+    (9..16).each { |frame| assert_backends_agree(program, frames: frame, console_frames: frame, name: "SLOWTILE") }
   end
 
   # A single-buffered picture caught mid-pass is half drawn, and no interpreter frame can

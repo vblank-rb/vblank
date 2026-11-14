@@ -137,21 +137,16 @@ module VBlank
       # many passes as the console counted by then. Two passes in a row each a frame long, and
       # then a longer one, still leave one of three frames inside a pass.
       #
-      # ON THE ADVANCE'S TEAR-FREE SCREEN the passes are the ones counted a frame earlier
-      # (#differing_from_passes_shown), so every frame has an answer, the one a pass ends on too.
+      # ON THE ADVANCE'S TEAR-FREE AND TILED SCREENS each frame is read with the passes counted a
+      # frame earlier (#passes_beyond_counted_frame_before), as #assert_backends_agree reads it, so
+      # every frame has an answer, the one a pass ends on too.
       def assert_backends_agree_by_passes(program, frame:, keys: [], name: "DIFF", tries: 3)
         return assert_backends_agree(program, frames: frame, keys: keys, name: name) if Testing.checked?
 
-        reads = frame...(frame + tries)
-        differing = if page_shown_frame_after_pass?(program)
-                      differing_from_passes_shown(program, reads, keys, name)
-                    else
-                      reads.map do |read|
-                        oracle, console, = backend_pictures(program, frames: read, console_frames: read, keys: keys,
-                                                                     name: name)
-                        mismatched_pixels(oracle, console).length
-                      end
-                    end
+        differing = (frame...(frame + tries)).map do |read|
+          oracle, console, = backend_pictures(program, frames: read, console_frames: read, keys: keys, name: name)
+          mismatched_pixels(oracle, console).length
+        end
         assert_includes differing, 0, "none of frames #{frame} to #{frame + tries - 1} agreed, holding #{keys.inspect}"
       end
 
@@ -171,8 +166,16 @@ module VBlank
         return lowered_pictures(program, frames, keys) if Testing.checked?
 
         played = console_frames || console_frames_for(program, frames)
-        console, passes = console_picture(program, played, name, keys)
-        ran = passes ? oracle_frames_for(program, frames, passes, played) : frames
+        beyond = passes_beyond_counted_frame_before(program)
+        if beyond
+          console, passes, counted = console_picture_with_earlier_count(program, played, name, keys)
+        else
+          console, passes = console_picture(program, played, name, keys)
+        end
+        ran = if counted&.positive? then counted + beyond
+              elsif passes then oracle_frames_for(program, frames, passes, played)
+              else frames
+              end
         # What the interpreter SHOWS, not what it stored. A fade, a tint and the camera all
         # change the picture without touching a drawn pixel, so reading the stored cells
         # would compare a picture nobody is looking at against one the console really put out.
@@ -207,31 +210,53 @@ module VBlank
 
       private
 
-      # Is this program's picture a page the Advance shows from the frame AFTER the pass that drew
-      # it ended? True of its tear-free screen, which is the one measured.
+      # THE ADVANCE SHOWS A FINISHED PASS FROM THE FRAME AFTER IT ENDS. The game finishes a pass
+      # part-way down a frame, and that is when the pass is counted. What it drew is shown from the
+      # next frame: the page it painted, on the tear-free bitmap screen, swapped in as that frame
+      # starts; the scroll and the sprites, on a tiled screen, written in the blank before it. So the
+      # picture read at the end of a frame is the passes counted by the end of the frame before.
+      # On the frame a pass ends on, the count is a pass ahead of the picture; a game that keeps up
+      # ends a pass on every frame, so it is a pass ahead on every one of them.
       #
-      # The game finishes a pass part-way down a frame, and that is when the pass is counted. The
-      # page it drew is swapped in as the next frame starts. So the picture read at the end of a
-      # frame is the pass counted by the end of the frame before: on the one frame a pass ends on,
-      # the count is a pass ahead of the picture. A game that keeps up ends a pass on every
-      # frame, so it is a pass ahead on every one of them.
-      def page_shown_frame_after_pass?(program)
+      # This is how many passes past that count the interpreter plays to show the same picture, or
+      # nil for a program this line-up is not for. None on the tear-free screen. One on a tiled
+      # screen, since the interpreter shows the scroll and the sprites a pass late as well (the
+      # framework's drawing lag; see "Which frame's numbers the picture was drawn from" in
+      # .claude/rules/testing.md).
+      #
+      # Both were measured on a game whose pass takes several frames, with the count of pixels that
+      # differ from the interpreter's picture after each pass: on every frame, one pass, and only one,
+      # differs by none. Read by the passes counted on the frame itself, the tear-free screen was a
+      # pass behind on the frame a pass ends, and the tiled one on every frame inside a pass.
+      #
+      # The turning screen was not measured, so it stays on #oracle_frames_for, and so does a
+      # single-buffered bitmap screen, which the game paints while it is shown.
+      def passes_beyond_counted_frame_before(program)
+        return nil if line_up(program).shows_pass_before_last
+
         screens = program.walk.select { |node| node.kind == :screen }
-        !line_up(program).shows_pass_before_last && screens.any? &&
-          screens.all? { |screen| screen.mode == :bitmap && screen.buffered }
+        return nil if screens.empty?
+        return 0 if screens.all? { |screen| screen.mode == :bitmap && screen.buffered }
+
+        1 if screens.all? { |screen| screen.mode == :tiled }
       end
 
-      # For each of the console's frames +reads+ (one after another), how many pixels of its
-      # picture differ from the interpreter's after the passes the console had counted a frame
-      # earlier: the pass whose page that frame shows (#page_shown_frame_after_pass?).
-      def differing_from_passes_shown(program, reads, keys, name)
-        _, counted = console_picture(program, [reads.first - 1, 1].max, name, keys)
-        reads.map do |read|
-          console, passes = console_picture(program, read, name, keys)
-          oracle = IR::Backends::Reference.new.hold(*keys).run(program, frames: counted).screen.shown
-          counted = passes
-          mismatched_pixels(oracle, console).length
-        end
+      # The console's picture after +console_frames+ frames, the passes it had counted by then, and
+      # those it had counted a frame earlier (#passes_beyond_counted_frame_before). One run, read a
+      # frame short of the end and then played on a frame. The counts are nil for a program with no
+      # loop to count.
+      #
+      # BEFORE THE FIRST PASS ENDS the count a frame earlier is none, whether the game was in its
+      # first pass then or still setting up, and only the second has nothing of a pass to show; so
+      # #backend_pictures lines that frame up as before, on the count at its end.
+      def console_picture_with_earlier_count(program, console_frames, name, keys)
+        Diagnostics::Emulator.load!
+        rom = console_kit(program).builder.cartridge_for(program, title: name)
+        reader = Diagnostics::Verifier.new(rom, frames: [console_frames - 1, 0].max, keys: IR::Buttons.mask(keys),
+                                                count_passes: true)
+        counted = reader.passes
+        reader.step(1)
+        [game_screen_of(program, reader.frame_gba), reader.passes, counted]
       end
 
       # The failure for +bad+ differences (PictureMismatch says it), on the screen of +picture+, the
@@ -369,6 +394,9 @@ module VBlank
       # A CONSOLE WHOSE PICTURE IS ALWAYS THE PASS BEFORE ITS LAST (LineUp#shows_pass_before_last)
       # is compared at that pass, however many it made: its picture is never half-drawn, and is
       # never the last pass's either.
+      #
+      # On the Advance, a tear-free or tiled program comes here only for a frame before its first
+      # pass ended; from then on #passes_beyond_counted_frame_before lines it up.
       def oracle_frames_for(program, frames, passes, console_frames)
         return [passes - 1, 0].max if line_up(program).shows_pass_before_last
         return passes if passes > frames && !shows_finished_passes?(program)
