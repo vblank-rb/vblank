@@ -463,6 +463,7 @@ module VBlank
             @emitter.write_reg16(REG_DISPCNT, base | held)
             @primitives.store_word_immediate(MODE_BUFFERED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
+            @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
             # In a program that crosses to the tiled screen, that screen's own colors have been in
             # this table since, so every number this screen painted would mean another color. So
             # put the originals back, which is also what makes a remembered tint true again. A
@@ -486,6 +487,7 @@ module VBlank
             @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
+            @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
             @effects.emit_kept_tint_on_entry(IR::Modes::DIRECT)
           end
 

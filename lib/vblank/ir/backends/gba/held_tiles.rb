@@ -114,6 +114,15 @@ module VBlank
             end
           end
 
+          # A PAINTED SCREEN TAKING OVER FORGETS EVERY WAITING CHANGE. Its picture is kept in the
+          # same video memory the maps were in, so a change written there in the gap would be a
+          # stray pixel in the picture. None of them is owed later either: coming back, the tiled
+          # screen puts every background up again as declared (Reference#put_up_always_up), and
+          # a scene's own when it takes over.
+          def emit_forget_all_held_tiles
+            emit_drop_held_tiles(0, HELD_PLACES) if @holds_tiles
+          end
+
           # Every waiting change but those to the held backgrounds every screen shows. Nothing,
           # in a game whose scenes change no background held.
           def emit_forget_scene_held_tiles

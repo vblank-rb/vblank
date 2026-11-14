@@ -93,6 +93,43 @@ module HeldTilesGames
     end
   end
 
+  # A held room on a tiled screen and a scene on a painted one. On pass OPEN_AT a cell of the room
+  # changes and then, later in the same pass, the painted scene takes over and paints its picture
+  # once. The painted picture lives in the video memory the room's map was in, so a change still
+  # waiting there would land in it.
+  private def painted_scene_game
+    proc do
+      screen :tiled
+      image(:wall, "#" => :red) { Minitest::Test::SOLID_TILE }
+      image(:floor, "#" => :blue) { Minitest::Test::SOLID_TILE }
+      tiles :frame, "#" => :wall, "." => :floor
+      frames = var :frames, 0
+      state = var :state, 0
+      painted = var :painted, 0
+      scene(:room) do
+        room = background :room, tiles: :frame, map: Array.new(HeldTilesGames::ROWS) { "#" * HeldTilesGames::COLS },
+                                 held: true
+        if frames == HeldTilesGames::OPEN_AT
+          room.set_tile 3, 1, "."
+          state.store! 1
+        end
+      end
+      scene(:paint) do
+        screen :bitmap
+        if painted == 0
+          clear_screen :green
+          painted.store! 1
+        end
+      end
+      game_loop do
+        frames += 1
+        # Two choices, so the painted scene arrives in the pass the room's cell changed.
+        case_var(:state) { when_val 0, :room }
+        case_var(:state) { when_val 1, :paint }
+      end
+    end
+  end
+
   # One pass that makes more changes than the queue for the boundary holds: cell (0, 0) goes blue
   # again and again, then green, and only after all of those cell (1, 0) goes blue.
   private def overflowing_game

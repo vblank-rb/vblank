@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "differential"
 require "all/vblank/dsl/test_held_tiles"
 
 # A held background on the Advance's cartridge, read off the emulator's picture frame by frame.
@@ -12,6 +13,7 @@ require "all/vblank/dsl/test_held_tiles"
 # the old. Held, every frame shows the whole of one size: the size of the pass before.
 class TestHeldTilesCartridge < Minitest::Test
   include HeldTilesGames
+  include Differential
 
   # Counting passes that put the writes well down the frame on the console.
   BUSY = 12_000
@@ -43,6 +45,14 @@ class TestHeldTilesCartridge < Minitest::Test
     end
     shown.each { |frames, open| assert_equal frames - 1 >= OPEN_AT, open, "pass #{frames}: the cell shows open: #{open}" }
     assert(shown.any? { |_, open| open }, "the cell opened in the end")
+  end
+
+  # A painted scene arriving in the pass a held cell changed shows its picture clean: the change
+  # waiting for the room it replaces is forgotten, as the interpreter forgets it. The picture is
+  # painted once and then stands still, so any frame well after the change will do.
+  def test_a_painted_scene_taking_over_forgets_the_held_changes
+    assert_backends_agree(tree_of(painted_scene_game), frames: OPEN_AT + 4, console_frames: OPEN_AT + 6,
+                                                       name: "HELDPAINT")
   end
 
   # A FRAME THAT WRITES 240 CELLS STILL FITS. The writes are in the gap between frames, which is
