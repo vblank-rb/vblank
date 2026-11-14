@@ -79,6 +79,17 @@ module VBlank
             VBLANK = "rt vblank"
             # 1 once the screen is on: before the end of the first pass it is off.
             DISPLAY_ON = "rt display on"
+            # THE FRAMES SPENT SETTING UP, before the one the first pass is shown in: from the
+            # interrupt being switched on (Runtime#emit_start), through the game's first pass and the
+            # copy of its picture. They are frames of a screen still off, so they move nothing on but
+            # the count of frames since power-on, as the interpreter is told
+            # (Reference#frames_setting_up): the first pass answers for one frame, and the music, the
+            # buttons and the game's catching up start there, however long setting up took. Kept
+            # one more, for a reader of the run, so nought means not counted yet; 16 bits.
+            SETTING_UP = "rt frames setting up"
+            # ...and the same, not one more, until it is added to the game's count of frames since
+            # power-on (#emit_setting_up_added), in a game that keeps one.
+            SETTING_UP_UNCOUNTED = "rt frames setting up uncounted"
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
             END_SHOWN = 0xFFFF_FFFF
@@ -126,6 +137,8 @@ module VBlank
               memory.reserve(PAD_PRESSED, 2)
               memory.reserve(VBLANK, 2)
               memory.reserve(DISPLAY_ON, 2)
+              memory.reserve(SETTING_UP, 2)
+              memory.reserve(SETTING_UP_UNCOUNTED, 2)
               return unless second_controller
 
               [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED].each { |name| memory.reserve(name, 2) }
@@ -134,9 +147,10 @@ module VBlank
             # +pad+ is two words of the direct page, the same on the game's page and the
             # interrupt's, that reading the controller works in. +sound+ for a game that makes sound,
             # whose wait ends in Sound's rt_sound_frame. +sleeps_every_pass+ for the cartridge a checked
-            # run reads (#emit_sleep_unless_in_blank gives the reason).
+            # run reads (#emit_sleep_unless_in_blank gives the reason). +count_at+ is where the game
+            # keeps its count of frames since power-on (#emit_setting_up_counted).
             def emit(asm, memory, pad:, sound: false, extra_buttons: false, second_controller: false, dims: false,
-                     sleeps_every_pass: false)
+                     sleeps_every_pass: false, count_at: nil)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
 
               asm.label("rt_vblank_interrupt")
@@ -163,10 +177,12 @@ module VBlank
               asm.label("rt_wait_vblank_buttons")
               asm.jsr(asm.abs("rt_read_buttons"))
               asm.stz(at.call(WAITING))
+              emit_setting_up_added(asm, at, count_at) if count_at
               asm.jsl(asm.long("rt_sound_frame")) if sound # the music of the frames the pass took (Sound)
               asm.rtl
 
-              emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank: memory.reserved?(Sound::QUEUE) && !sleeps_every_pass)
+              emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank: memory.reserved?(Sound::QUEUE) && !sleeps_every_pass,
+                                                             count_at: count_at)
               emit_buttons(asm, memory, pad, extra_buttons, second_controller)
               emit_stopping(asm, memory)
             end
@@ -231,12 +247,13 @@ module VBlank
             # are copied in the blank. Then the sleeps it waits for the blank in, and the step that
             # moves on what keeps time by the frame. +goes_on_in_blank+ for a pass that ends inside the
             # blank to go straight on to the copying (#emit_sleep_unless_in_blank).
-            def emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank:)
+            def emit_show_pass_routines(asm, memory, at, dims, goes_on_in_blank:, count_at: nil)
               h = Console::SNESHardware
               asm.label("rt_show_pass")
               asm.lda(at.call(DISPLAY_ON))
               asm.bne("rt_show_pass_on")
               asm.jsl(asm.long("rt_upload_whole"))
+              emit_setting_up_counted(asm, at, count_at)
               asm.jsr(asm.abs("rt_sleep_until_vblank"))
               if Letterbox.named_band?(memory)
                 asm.jsr(asm.abs("rt_letterbox_show_band")) # the screen on for the band the game named alone
@@ -298,6 +315,51 @@ module VBlank
               asm.jsl(asm.long("rt_frame_begins"))
               asm.label("rt_frame_begins_skipped")
               asm.rts
+            end
+
+            # The first pass's picture is copied and the screen is about to come on in the next blank.
+            # Every frame counted so far is SETTING_UP, and the count starts again from nought, so the
+            # blank's interrupt counts frame 1, the first pass's: that pass answers for one frame
+            # (#emit_buttons' rt_read_buttons), and a reader numbers the frames from it as the
+            # interpreter does. The interrupt is held off while the count is taken, as where a wait
+            # ends, so none falls between the read and the nought. The game's own count of frames since
+            # power-on, at +count_at+, takes them all (nil for a game that keeps none).
+            def emit_setting_up_counted(asm, at, count_at)
+              h = Console::SNESHardware
+              asm.sep(0x20)
+              asm.stz(asm.abs(h::NMITIMEN))
+              asm.rep(0x20)
+              asm.lda(at.call(FRAMES))
+              asm.stz(at.call(FRAMES))
+              asm.stz(at.call(FRAMES, 2))
+              asm.tay
+              asm.sep(0x20)
+              asm.lda(h::NMI_ON)
+              asm.sta(asm.abs(h::NMITIMEN))
+              asm.rep(0x20)
+              asm.tya
+              asm.inc
+              asm.sta(at.call(SETTING_UP)) # one more, so nought is a count not taken yet
+              return unless count_at
+
+              asm.sty(at.call(SETTING_UP_UNCOUNTED))
+            end
+
+            # The frames setting up took, added to the game's count of frames since power-on at
+            # +count_at+ once, as the first pass's wait ends: where the interpreter adds them
+            # (Reference#store_frame_counters), after the game was found waiting.
+            def emit_setting_up_added(asm, at, count_at)
+              place = ->(plus) { count_at + plus > 0xFFFF ? asm.long(count_at + plus) : asm.abs(count_at + plus) }
+              asm.lda(at.call(SETTING_UP_UNCOUNTED))
+              asm.beq("rt_setting_up_added")
+              asm.clc
+              asm.adc(place.call(0))
+              asm.sta(place.call(0))
+              asm.lda(place.call(2))
+              asm.adc(0)
+              asm.sta(place.call(2))
+              asm.stz(at.call(SETTING_UP_UNCOUNTED))
+              asm.label("rt_setting_up_added")
             end
 
             # A PASS THAT ENDS A LITTLE INTO THE BLANK STILL MAKES IT. Music plays where a wait ends,

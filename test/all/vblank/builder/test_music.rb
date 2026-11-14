@@ -198,6 +198,56 @@ class TestMusic < Minitest::Test
   end
 
   # ========================================================================
+  # play_song — when the notes land
+  # ========================================================================
+
+  # A song named before a long setting up: four sixteenths, then +busy+ turns of a loop before the
+  # game loop, so the first pass ends some frames after power-on on a console that is slow at it.
+  # It notes `frames_since_power_on` on its first pass, which does count those frames.
+  private def song_after_setting_up(busy)
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      enable_sound
+      song(:tune) do
+        tempo 150 # a sixteenth is 6 frames
+        voice(:lead) { |v| 4.times { v.note :C5, :sixteenth } }
+      end
+      play_song :tune
+      spin = 0
+      repeat(busy) { spin += 1 }
+      started = -1
+      game_loop do
+        started = frames_since_power_on if started.negative?
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # The pass each of the song's notes was logged at.
+  private def note_passes(program)
+    run = game_player
+    passes = []
+    logged = 0
+    run.each_vblank do |pass|
+      run.audio.drop(logged).each { |entry| passes << pass if entry.first == :voice }
+      logged = run.audio.size
+    end
+    run.run(program, frames: 30)
+    passes
+  end
+
+  # THE SONG MOVES ON FROM THE GAME'S FIRST FRAME, however long setting up took: frames spent
+  # before the first picture is shown play no music, so the notes land on the same passes as in a
+  # game that sets up at once.
+  def test_a_long_setting_up_moves_no_note
+    assert_equal note_passes(song_after_setting_up(0)), note_passes(song_after_setting_up(20_000))
+  end
+
+  # ========================================================================
   # play_song — friendly errors
   # ========================================================================
 

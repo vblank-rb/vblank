@@ -27,6 +27,10 @@ module VBlank
           # (Runtime::Frame#emit_sleep_unless_in_blank).
           def cartridge_builder = SNES.new(sleeps_every_pass: true)
 
+          # The frames the cartridge spent setting up move only the count of frames since power-on
+          # (Runtime::Frame::SETTING_UP).
+          def prepare_interpreter(interpreter) = interpreter.frames_setting_up(setting_up_counted)
+
           def further_difference(program, before)
             difference = self.class.sounds_difference(@interpreter_sounds, audio_played)
             difference ||= dsp_difference

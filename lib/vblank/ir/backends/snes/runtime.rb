@@ -93,7 +93,8 @@ module VBlank
             Int32.emit(asm, Int32.scratch(memory, fractions: lowering.fractions?), divides: lowering.divides?)
             pad = memory.scratch(4)
             Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
-                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass)
+                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
+                                    count_at: lowering.variables[IR::Frames::COUNT])
             Blank.emit(asm, memory, Blank.scratch(memory))
             lists = Lists.scratch(memory)
             Lists.emit(asm, memory, lists)

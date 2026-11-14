@@ -74,6 +74,11 @@ module VBlank
             self
           end
 
+          # How many frames the cartridge spent setting up before the one its first pass was shown in
+          # (Runtime::Frame::SETTING_UP), as the interpreter is told it (Reference#frames_setting_up):
+          # none before the first pass is shown.
+          def setting_up_counted = [(@setting_up || 0) - 1, 0].max
+
           # A Super Nintendo cartridge has no rumble motor, so it never runs (Reference#motor_on?).
           def motor_on? = false
 
@@ -201,7 +206,12 @@ module VBlank
             @loudest_each_frame = []
             @black_each_frame = []
             @picture_each_frame = []
+            @setting_up = nil
           end
+
+          # The count is written as the screen comes on for the first pass, which may be after the
+          # game was found waiting at that pass's end: read again as the pass's moment is.
+          def read_setting_up = @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP))
 
           def power_on = set_buttons(@held)
 
@@ -268,11 +278,20 @@ module VBlank
 
           # Has the blank that reads frame 1 come, with the first pass ended and nothing shown? A
           # game that takes several frames to set up has not read frame 1 yet at all.
-          def frame_one_read_early? = word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+          def frame_one_read_early? = set_up? && word(runtime_place(Runtime::Frame::FRAMES)) == 1 && shown_pass.zero?
+
+          # Whether the frames setting up took are counted, and the runtime counts from frame 1
+          # (Runtime::Frame::SETTING_UP, kept one more).
+          def set_up? = half(runtime_place(Runtime::Frame::SETTING_UP)).positive?
+
+          # Every frame before that reads frame 1's buttons, as the interpreter, which plays no frame
+          # setting up, reads them once for its first pass.
+          def next_screen_frame = set_up? ? super : 1
 
           # Frame 1 was handed over in time, so it is not decided again.
           def first_pass_ended
             @decided = 1 if @deciding && frame_one_read_early?
+            read_setting_up
           end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+
@@ -285,6 +304,7 @@ module VBlank
           # which #play_passes waits for (#sounds_counted?). The moment the run ended on has no
           # boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up if frame == 1
             @vars = variables
             @lists = lists
             @screen = picture
