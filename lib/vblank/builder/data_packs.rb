@@ -124,7 +124,7 @@ module VBlank
         @data_pack = DSL::DataPack.new(rom_sha1: @data_pack_contents.rom_sha1, build_version: @data_pack_contents.build_version,
                                        slots: slots.list, platform: from.platform, make_unpacking_parts: make_parts,
                                        make_unpacking: lambda { |_release|
-                                         frames = pack_frame_section
+                                         frames = pack_frame_section(for_unpacking: true)
                                          made[frames] ||= unpacking_program(bytes, copy_release_slots, routines, reading,
                                                                             release: copy_release, frames: frames)
                                        })
@@ -178,7 +178,7 @@ module VBlank
                                        platform: from.platform,
                                        make_unpacking: lambda { |release|
                                          release = refuse_unsized_unpacking!(release)
-                                         frames = pack_frame_section
+                                         frames = pack_frame_section(for_unpacking: true)
                                          made[[release, frames]] ||= unpacking_program(nil, slots_in_release(slots, release.name), slots.routines,
                                                                                        reading, release: release, frames: frames)
                                        })
@@ -561,7 +561,8 @@ module VBlank
             maker.call(progress) if progress
             maker.wait_vblank
           end
-          Original::FrameRewrite.new(maker, pack: list, section: frames, section_at: slots_size, slot_places: places, wait: wait).emit
+          Original::FrameRewrite.new(maker, pack: list, section: frames, section_at: slots_size, slot_places: places, wait: wait,
+                                   faults: faults).emit
           finished.store!(1)
           if progress
             maker.call(progress)
@@ -641,7 +642,7 @@ module VBlank
             written = (shift.zero? ? slot_bytes_done[number] : slot_bytes_done[number] >> shift).clamp(0, whole)
             (written * share) / whole
           # Must fold with +, not Array#sum: sum starts from Ruby's 0, and the parts are game values.
-          end.inject { |total, part| total + part } || 0
+          end.inject { |total, part| total + part } || 0 # rubocop:disable Performance/Sum
         end
       end
 

@@ -199,8 +199,9 @@ module VBlank
       # the slots' places or the routine can differ by release.
       #
       # The program writes a record of each frame of a sprite the game has named by the time it is
-      # asked for (Original::FrameRewrite), so ask once the game is declared: asked again after
-      # the game names another frame, it is made again.
+      # asked for (Original::FrameRewrite), so ask once the game is declared: a new frame named
+      # after it is refused (Builder::PackPoses#pack_frame_number), since the program made
+      # already would not write it.
       def unpacking(release: nil) = @make_unpacking.call(release)
 
       # The parts of an all-in-one build's routine (an Original::UnpackingParts), which the pack

@@ -175,6 +175,92 @@ module FrameRecordUnpackingTests
     def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
   end
 
+  # AN UNPACKING ASKED FOR BEFORE THE GAME NAMES ALL ITS FRAMES writes no record of the frames
+  # named after it, so a frame named after it is refused, saying when to ask.
+  def test_a_frame_named_after_the_unpacking_was_made_is_refused
+    Dir.mktmpdir do |folder|
+      from = frames_original(folder)
+      release = VBlank::Original::Release.from("Test", { "sha1" => SHA1, "size" => COPY.bytesize })
+      [LEFT_OUT, VBlank::Cartridge::Options.new].each do |options|
+        b = Builder.new(options: options)
+        refused = assert_raises(ArgumentError) do
+          b.instance_eval do
+            colors :hero, [:transparent, *WORDS::COLORS.drop(1)]
+            pack = data_pack from: from, version: "1" do |slots|
+              slots.tiles :sprites, at: TILES_AT, count: WORDS::TILE_COUNT
+              slots.numbers :small, at: SMALL_AT, count: SMALL.bytesize, width: :byte, signed: false
+            end
+            image :first, tiles: pack[:sprites], frame: pack[:small].frame(1, layout: BYTES::FRAME), origin: [24, 24],
+                          colors: :hero, size: SIZE
+            options.pack_at_start ? pack.unpacking(release: release) : pack.unpacking
+            image :second, tiles: pack[:sprites], frame: pack[:small].frame(2, layout: BYTES::FRAME.with(counted: false), count: 2),
+                           origin: [24, 24], colors: :hero, size: SIZE
+          end
+        end
+
+        assert_match "image :second", refused.message
+        assert_match "unpacking", refused.message
+      end
+    end
+  end
+
+  # FRAMES OF ONE SLOT THAT OVERLAP can hold more pieces between them than the slot does, which is
+  # more than the pack keeps room for. The all-in-one build refuses them, and the unpacking stops
+  # with a fault, so a shell refuses the copy rather than drawing nothing.
+  def test_frames_that_overlap_past_the_packs_room_are_refused
+    Dir.mktmpdir do |folder|
+      overlapping = OverlappingFrames.new(folder)
+      refused = assert_raises(ArgumentError) { overlapping.builder(VBlank::Cartridge::Options.new) }
+
+      assert_match "overlap", refused.message
+      assert_match "image :inner", refused.message
+      left_out = overlapping.builder(LEFT_OUT)
+      copy = overlapping.copy
+      release = VBlank::Original::Release.from("Test", { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize })
+      unpacking = left_out.declared_data_pack.unpacking(release: release)
+      played = game_player.hand_file(copy).run(unpacking.program, frames: 40)
+      fault = unpacking.fault_in(played)
+
+      refute_nil fault, "the unpacking found the frames that do not fit"
+      assert_match "overlap", unpacking.fault_error(fault).message
+    end
+  end
+
+  # Two frames of PackPoseGames' layout in a slot of eleven bytes: the outer frame at byte 0, of two
+  # pieces, and the inner one at byte 1, inside the outer frame's first piece, whose first byte (1)
+  # the inner frame reads as its count. Three pieces between them, where the slot holds two.
+  class OverlappingFrames
+    include PackPoseGames
+
+    FRAME_BYTES = [2, 1, 0, 0, 1, 0x0E, 8, 0, 0, 1, 0x0E].freeze
+
+    def initialize(folder)
+      @folder = folder
+    end
+
+    def copy = File.binread(File.join(@folder, "made_up.bin"))
+
+    def builder(options)
+      from = original(@folder, frame_bytes: FRAME_BYTES)
+      b = Builder.new(options: options)
+      b.instance_eval do
+        screen :tiled
+        colors :hero, [:transparent, *COLORS.drop(1)]
+        pack = data_pack from: from, version: "1" do |slots|
+          slots.tiles :sprites, at: TILES_AT, count: 32, colors: 16
+          slots.numbers :frames, at: FRAMES_AT, count: FRAME_BYTES.length, width: :byte, signed: false
+        end
+        image :outer, tiles: pack[:sprites], frame: pack[:frames].frame(0, layout: FRAME), origin: [8, 8], colors: :hero, size: [32, 32]
+        image :inner, tiles: pack[:sprites], frame: pack[:frames].frame(1, layout: FRAME), origin: [8, 8], colors: :hero, size: [32, 32]
+        sprite :outer, at: [40, 40]
+        sprite :inner, at: [80, 40]
+        game_loop { wait_vblank }
+      end
+      b.finalize_program
+      b
+    end
+  end
+
   # The all-in-one build's unpacking writes the records too: it is the program every backend is
   # held to, handed the copy the build read.
   def test_the_all_in_one_builds_unpacking_writes_the_records_too

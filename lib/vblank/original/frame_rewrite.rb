@@ -26,14 +26,16 @@ module VBlank
 
       # +pack+ is the list of the pack's bytes and +section+ the FrameRecord::Section to write
       # from byte +section_at+ of it; +slot_places+ is where each slot starts in the list, by name;
-      # +wait+ makes the routine wait for the next frame.
-      def initialize(builder, pack:, section:, section_at:, slot_places:, wait:)
+      # +wait+ makes the routine wait for the next frame. +faults+ (UnpackingFaults) keeps the
+      # first frame that has no room for all its pieces (Unpacking::Fault::FRAMES_WITHOUT_ROOM).
+      def initialize(builder, pack:, section:, section_at:, slot_places:, wait:, faults:)
         @builder = builder
         @pack = pack
         @section = section
         @section_at = section_at
         @slot_places = slot_places
         @wait = wait
+        @faults = faults
       end
 
       def emit
@@ -95,10 +97,15 @@ module VBlank
               held.store!(most)
             end
           end
+          # Frames that overlap can name more pieces than the section keeps room for
+          # (FrameRecord::Section#first_without_room): the record is cut to the room, or left
+          # out, and the unpacking stops with a fault, so a shell refuses the copy rather than
+          # drawing a pose short of its pieces.
           if out + FrameRecord::HEADER_BYTES <= section_end
             most.store!((value_of(section_end - FrameRecord::HEADER_BYTES) - out) / FrameRecord::PIECE_BYTES)
             if held > most
               held.store!(most)
+              @faults.emit_fault(Unpacking::Fault::FRAMES_WITHOUT_ROOM, frames[frame * row], slot_number(source))
             end
             emit_bytes(value_of(@section_at) + (frames[(frame * row) + 2] * FrameRecord::ENTRY_BYTES), entry_bytes(out - @section_at))
             emit_bytes(out, FrameRecord.header_bytes(held, named))
@@ -114,9 +121,14 @@ module VBlank
               waited.store!(0)
               @wait.call
             end
+          else
+            @faults.emit_fault(Unpacking::Fault::FRAMES_WITHOUT_ROOM, frames[frame * row], slot_number(source))
           end
         end
       end
+
+      # The number of the slot of +source+ in the pack's order, which a fault names it by.
+      def slot_number(source) = @slot_places.keys.index(source.slot.name)
 
       # A directory entry's bytes: +offset+, low byte first.
       def entry_bytes(offset)

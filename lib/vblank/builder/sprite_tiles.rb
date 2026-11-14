@@ -132,7 +132,7 @@ module VBlank
         first_tile = opts[:first_tile]
         if pack_left_out?
           refuse_pose_without_size!(name) unless size
-          record = pack_frame_number(frame_source(name, frame))
+          record = pack_frame_number(frame_source(name, frame), name)
           from_file = IR::StartFile::TilePose.new(entry_at: @pack_frames_at + (record * Original::FrameRecord::ENTRY_BYTES),
                                                   records_at: @pack_frames_at, origin_x: origin[0], origin_y: origin[1],
                                                   first_tile: first_tile, tile_count: set[:count])

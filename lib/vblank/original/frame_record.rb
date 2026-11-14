@@ -162,8 +162,10 @@ module VBlank
       # section's SIZE follows from the game's own words alone (#size), as every slot's does, since
       # a build that leaves its pack out must know the file's size: the pieces a game gave a frame,
       # and for the frames that say their own count as many pieces as their slot could hold between
-      # them. Frames laid over each other could ask for more; a record that does not fit keeps the
-      # pieces that do, and one with no room for its header has none (entry 0), which draws nothing.
+      # them. Frames laid over each other can ask for more; a record that does not fit keeps the
+      # pieces that do, and one with no room for its header has none (entry 0). Neither is drawn
+      # short: the build that holds the pack refuses such frames, and the unpacking stops with a
+      # fault (#first_without_room).
       # Frames of one slot read with different pose values are each a slot's worth, since one
       # frame given two sets of values is two records.
       Section = Data.define(:sources) do
@@ -190,16 +192,44 @@ module VBlank
         # what the pack's unpacking writes (FrameRewrite), worked out here by the build that holds
         # the pack.
         def bytes(slot_bytes)
+          directory, records = laid_out(slot_bytes)
+          [directory.pack("V*"), *records.compact].join.b.ljust(size, "\0".b)
+        end
+
+        # FRAMES THAT OVERLAP. #size gives the frames of one slot that say their own count as many
+        # pieces as the slot holds, which is enough while no two of them share bytes. Frames that
+        # overlap can name more, and then a record has too little room for its pieces, or none:
+        # the number of the first such source, read from +slot_bytes+ as #bytes reads them, or nil
+        # where every record has room. The build that holds the pack refuses such frames
+        # (PackPoses#refuse_frames_without_room!), and the unpacking stops with a fault
+        # (FrameRewrite), so no pose is drawn short of its pieces.
+        def first_without_room(slot_bytes)
+          _, records = laid_out(slot_bytes)
+          sources.each_index.find do |index|
+            record = records[index]
+            whole = sources[index].record(slot_bytes.fetch(sources[index].slot.name))
+            record.nil? || record.bytesize < whole.bytesize
+          end
+        end
+
+        private
+
+        # Where each record starts (0 for one with no room) and each record (nil for none), in the
+        # order of the sources.
+        def laid_out(slot_bytes)
           out = records_at
           directory = []
           records = sources.map do |source|
             room = room_at(out)
-            next directory << 0 if room.negative?
+            if room.negative?
+              directory << 0
+              next
+            end
 
             directory << out
             source.record(slot_bytes.fetch(source.slot.name), room: room).tap { |record| out += record.bytesize }
           end
-          [directory.pack("V*"), *records.grep(String)].join.b.ljust(size, "\0".b)
+          [directory, records]
         end
       end
 
