@@ -126,7 +126,43 @@ module RubySNESEmulator
       return @colors if @colors && @colors_of == video_buffer
 
       @colors_of = video_buffer
-      @colors = picture_colors(video_buffer).freeze
+      @colors = Core.picture_colors(video_buffer, @drawn_width, @drawn_height).freeze
+    end
+
+    # +buffer+, a picture bsnes drew at +drawn_width+ × +drawn_height+ (#video_buffer), as the
+    # console's own colours at its own size (#colors). Public for the gem's own test, which holds it
+    # to the arithmetic pixel by pixel on a picture no cartridge would draw.
+    #
+    # ONE UNPACK AND ONE LOOKUP, NOT A BLOCK PER PIXEL. A single pattern reads the whole picture:
+    # each kept row starts at its own byte (@) and is read as one number per square, the whole
+    # square's width at once (a pixel, V, or two side by side, Q), so the pixels in between are
+    # never made into numbers of their own. The square's top-left pixel is that number's low four
+    # bytes, all #console_color looks at. A picture has few distinct squares, so a hash works out
+    # each the first time it is asked for and answers every other square from memory.
+    def self.picture_colors(buffer, drawn_width, drawn_height)
+      colors = Hash.new { |known, square| known[square] = console_color(square) }
+      colors.values_at(*buffer.unpack(picture_pattern(drawn_width, drawn_height)))
+    end
+
+    # The unpack pattern #picture_colors reads a picture of this size with. A row read as one
+    # directive and a count is parsed once; a directive per pixel is parsed a pixel at a time,
+    # which is most of the work. So a square two pixels wide is one 8-byte number, and only some
+    # other width falls back to a pixel and a skip each.
+    def self.picture_pattern(drawn_width, drawn_height)
+      across = drawn_width / WIDTH
+      down = drawn_height / HEIGHT
+      row = case across
+            when 1 then "V#{WIDTH}"
+            when 2 then "Q<#{WIDTH}"
+            else "Vx#{(across - 1) * 4}" * WIDTH
+            end
+      Array.new(HEIGHT) { |y| "@#{y * down * drawn_width * 4}#{row}" }.join
+    end
+
+    # A square as bsnes drew its top-left pixel in the low four bytes (blue, green, red, unused)
+    # as a 15-bit colour: the top five bits of each, red lowest.
+    def self.console_color(square)
+      ((square >> 19) & 0x1F) | (((square >> 11) & 0x1F) << 5) | (((square >> 3) & 0x1F) << 10)
     end
 
     # The sound of the frames since this was last asked, as signed 16-bit samples, left and right
@@ -277,20 +313,6 @@ module RubySNESEmulator
     end
 
     private
-
-    # Each row's top-left pixels, read by a pattern that steps over the rest of each square, so the
-    # pixels in between are never made into numbers at all.
-    def picture_colors(buffer)
-      across = @drawn_width / WIDTH
-      down = @drawn_height / HEIGHT
-      pattern = "#{"Vx#{(across - 1) * 4}" * WIDTH}"
-      (0...HEIGHT).flat_map do |y|
-        row = buffer.byteslice(y * down * @drawn_width * 4, WIDTH * across * 4)
-        row.unpack(pattern).map do |pixel|
-          ((pixel >> 19) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 3) & 0x1F) << 10)
-        end
-      end
-    end
 
     def memory(id)
       size = @call[:retro_get_memory_size].call(id)
