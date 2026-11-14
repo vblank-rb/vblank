@@ -423,6 +423,8 @@ module VBlank
             @asm = M68000.new(label, holds: ROUTINES)
             @routine = label
             @labels = 0
+            @indexes_checked = {} # a routine is called from anywhere
+            @checks_kept_inside = nil
             @asm.label(label)
             body.each { |node| statement(node) }
             yield if block_given?
@@ -520,19 +522,57 @@ module VBlank
 
           # --- statements ---
 
+          # Each statement made, with what it lets later ones know of the indexes checked
+          # (#index_checked_below?): a statement that runs straight through keeps what is known and
+          # adds its own checks, then forgets the variable it writes. Any other may jump about, run
+          # its parts again, call a routine that writes anything or wait out the frame, so inside it
+          # what was known holds until its first label (#place_label), and after it only what nothing
+          # but an enclosing loop writes, a loop's count, is still known. A test's body runs only
+          # after its test, so it starts knowing what was known before the test.
           def statement(node)
-            return call_routine(node.label) if node.is_a?(RoutineCuts::PartCall)
-            return emit_statement(node) if STRAIGHT_LINE_KINDS.include?(node.kind)
+            if node.is_a?(RoutineCuts::PartCall)
+              call_routine(node.label)
+              return @indexes_checked = checks_only_loops_write
+            end
+            return emit_straight_line_statement(node) if STRAIGHT_LINE_KINDS.include?(node.kind)
 
-            # What a statement that may run its parts or not, or run them again, checks of an index
-            # holds only inside it (#emit_slot_address).
-            kept = @indexes_checked.dup
-            emit_statement(node)
-            @indexes_checked = kept
+            outside = @checks_kept_inside
+            @checks_kept_inside = checks_only_loops_write
+            @indexes_checked = @checks_kept_inside.dup unless node.kind == :if
+            begin
+              emit_statement(node)
+            ensure
+              @indexes_checked = @checks_kept_inside
+              @checks_kept_inside = outside
+            end
           end
 
-          # The statements that run every part of themselves, once, in order.
+          # The statements that run every part of themselves, once, in order, each writing at most
+          # one variable as it ends (#variable_written).
           STRAIGHT_LINE_KINDS = %i[set add sub copy negate abs negate_abs clamp list_set].freeze
+
+          def emit_straight_line_statement(node)
+            @noting_checks = true
+            emit_statement(node)
+          ensure
+            @noting_checks = false
+            @indexes_checked.delete(variable_written(node))
+          end
+
+          # The variable a statement of STRAIGHT_LINE_KINDS writes, or nil for a list's slot.
+          def variable_written(node)
+            case node.kind
+            when :copy then node.dest
+            when :list_set then nil
+            else node.var
+            end
+          end
+
+          # What is known of the indexes checked that holds wherever the code goes: checks of a count
+          # only its loop writes (#with_counter_held).
+          def checks_only_loops_write
+            @indexes_checked.select { |name, _| @counts_only_the_loop_writes&.include?(name) }
+          end
 
           def emit_nothing(_node) = nil
           def emit_children(node) = node.children.each { |child| statement(child) }
@@ -641,7 +681,12 @@ module VBlank
           # --- what ControlFlow asks of a lowering, in the 68000's instructions ---
 
           def fresh_label(what) = fresh(what)
-          def place_label(label) = @asm.label(label)
+          # A label of a loop or a test can be jumped to from anywhere in it, so past one only what
+          # holds all through the statement is known of the indexes checked (#statement).
+          def place_label(label)
+            @indexes_checked = (@checks_kept_inside || checks_only_loops_write).dup
+            @asm.label(label)
+          end
           def jump(label) = @asm.bra(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
@@ -909,27 +954,30 @@ module VBlank
             emit_slot_scaling(node, index)
           end
 
-          # AN INDEX CHECKED ONCE A TURN. A loop's count held in a register, which only the loop
-          # writes (#with_counter_held), stays the same through a turn of its body. So once one read
-          # or write of a list that always holds its capacity has checked it, every later read or
-          # write that turn of a list at least as long is inside too, and needs no check: the first
-          # check stops the game, as the interpreter stops it, before anything after it runs. A loop
-          # over four lists at one index checks it once a turn, not at each of eight slots.
+          # AN INDEX CHECKED ONCE. A variable nothing writes between two reads or writes of lists
+          # that always hold their capacity is the same at both, so once the first has checked it,
+          # the second needs no check if its list is at least as long: the first check stops the
+          # game, as the interpreter stops it, before anything after it runs. A walk over four lists
+          # at one index checks it once a turn, not at each of eight slots.
           #
-          # "Later" is in the order the turn runs, so a check in a part that may not run, or may run
-          # more than once (a test's side, an inner loop), counts only inside that part (#statement).
+          # What is known runs from one statement to the next only while each runs straight through
+          # (#statement): a variable a statement writes is forgotten, and so is every one at a call,
+          # a wait, a test's other side or a loop's next turn, except a loop's count held in a
+          # register, which only the loop writes (#with_counter_held) and so stays the same through
+          # a turn of its body.
           #
-          # Is +index+ such a count, already checked this turn against +count+ items or fewer?
+          # Is +index+ a variable already checked against +count+ items or fewer?
           def index_checked_below?(index, count)
             name = variable_named(index)
-            below = name && @indexes_checked&.fetch(name, nil)
+            below = name && @indexes_checked.fetch(name, nil)
             !below.nil? && below <= count
           end
 
-          # +index+ checked just now against the +count+ items of a list that always holds them.
+          # +index+ checked just now against the +count+ items of a list that always holds them, in a
+          # statement that runs straight through.
           def note_index_checked(index, count)
             name = variable_named(index)
-            return unless name && @counts_only_the_loop_writes&.include?(name)
+            return unless name && @noting_checks
 
             @indexes_checked[name] = [@indexes_checked.fetch(name, count), count].min
           end

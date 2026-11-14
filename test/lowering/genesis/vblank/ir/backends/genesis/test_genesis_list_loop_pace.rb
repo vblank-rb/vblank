@@ -110,11 +110,13 @@ class TestGenesisListLoopPace < Minitest::Test
 
   # A count the game keeps past the end of a list stops the game at the first read or write past
   # it, as the interpreter stops it, whichever list the turn reaches first: the index is checked
-  # once a turn, and again for a list shorter than any checked so far that turn.
+  # once a turn, and again for a list shorter than any checked so far that turn. The cartridge is
+  # played by itself, since a checked run plays the interpreter after it, which stops there anyway.
   def test_a_count_past_a_list_stops_the_game_at_the_first_slot_past_it
     [%i[short long], %i[long short]].each do |first, second|
       err = assert_raises(VBlank::IR::Backends::Reference::ProgramError) do
-        game_player.run(ListLoopGames.past_the_end_game(first, second).program(console: :genesis), frames: 4)
+        VBlank::IR::Backends::Genesis::HeadlessRun.new.run(ListLoopGames.past_the_end_game(first, second).program(console: :genesis),
+                                                            frames: 4)
       end
       assert_match(/short/, err.message, "#{first} read first")
     end
