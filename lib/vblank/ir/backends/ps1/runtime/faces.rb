@@ -151,7 +151,7 @@ module VBlank
 
             # HOW MANY CORNERS THE POOL HOLDS: the most that can be in use at once. A cut makes at most a
             # corner for each edge of the piece it cuts, so MOST_CORNERS. In use at once are the face's own,
-            # the four cuts that hold it to its edges, every cut of rt_face_sweep's rest across the screen
+            # the four cuts that hold it to the screen, every cut of rt_face_sweep's rest across the screen
             # one way and the other (its parts are handed back, the rest is not) or the two crossings
             # rt_face_row makes on each line along a strip in place of a cut, and on the picture and
             # between levels, for each piece waiting and for the part being sent, the corners it came off
@@ -429,18 +429,18 @@ module VBlank
               asm.label("rt_fill_face_pieces")
               asm.move(:s7, :zero)
               emit_face_corners_made(asm, at, face, pool)
-              emit_jump_past_clip(asm, at, face)
-              # Clipped to the four edges, in sixteenths: above the left, below the right, then the same
-              # down.
-              [[x, LEFT_OFFSET_BYTES, :above], [x, RIGHT_OFFSET_BYTES, :below], [y, TOP_OFFSET_BYTES, :above],
-               [y, BOTTOM_OFFSET_BYTES, :below]].each do |number, edge, side|
+              emit_jump_past_clip(asm, face)
+              # Clipped to the screen's four sides, in sixteenths: above the left, below the right, then the
+              # same down. Never to the face's edges, which the drawing area holds it to
+              # (FacePieces.sent_unclipped? says why).
+              [[x, 0, :above], [x, FacePieces::SCREEN_WIDTH * 16, :below], [y, 0, :above],
+               [y, FacePieces::SCREEN_HEIGHT * 16, :below]].each do |number, line, side|
                 from, below, above = side == :above ? [face, 0, polygon.call(:rows_a)] : [polygon.call(:rows_a), face, 0]
                 asm.li(:a0, from)
                 asm.li(:a1, below)
                 asm.li(:a2, above)
                 asm.li(:a3, number)
-                asm.lw(:t4, at + edge, FACE_BASE)
-                asm.jal("rt_face_cut") { asm.sll(:t4, :t4, 4) }
+                asm.jal("rt_face_cut") { asm.li(:t4, line) }
               end
               asm.label("rt_fill_face_clipped")
               asm.li(:t0, face)
@@ -728,13 +728,7 @@ module VBlank
               asm.move(:t1, :zero)
               asm.li(:t2, FacePieces::SCREEN_WIDTH * 16)
               asm.move(:t3, :zero)
-              asm.beq(:t0, :zero, "rt_face_straight_bounds") { asm.li(:t4, FacePieces::SCREEN_HEIGHT * 16) }
-              asm.label("rt_face_straight_edges")
-              [[:t1, LEFT_OFFSET_BYTES], [:t2, RIGHT_OFFSET_BYTES], [:t3, TOP_OFFSET_BYTES], [:t4, BOTTOM_OFFSET_BYTES]].each do |register, edge|
-                asm.lw(register, at + edge, FACE_BASE)
-                asm.sll(register, register, 4)
-              end
-              asm.label("rt_face_straight_bounds")
+              asm.li(:t4, FacePieces::SCREEN_HEIGHT * 16)
               asm.addiu(:t6, FACE_BASE, at + CORNERS_OFFSET_BYTES)
               asm.lw(:t7, 0, :t6)
               asm.move(:t8, :t7)
@@ -900,38 +894,19 @@ module VBlank
               asm.b("rt_fill_face_done")
             end
 
-            # On to rt_fill_face_clipped, past the cuts to the edges, for a face FacePieces.sent_unclipped?
-            # holds is sent as it is: without perspective, every corner on the screen; in perspective, every
-            # corner inside the face's edges, held already.
-            def emit_jump_past_clip(asm, at, face)
-              [[FacePieces::X, FacePieces::SCREEN_WIDTH, LEFT_OFFSET_BYTES, RIGHT_OFFSET_BYTES],
-               [FacePieces::Y, FacePieces::SCREEN_HEIGHT, TOP_OFFSET_BYTES, BOTTOM_OFFSET_BYTES]].each do |number, side, low, high|
+            # On to rt_fill_face_clipped, past the cuts to the screen, for a face FacePieces.sent_unclipped?
+            # holds is sent as it is: every corner on the screen.
+            def emit_jump_past_clip(asm, face)
+              [[FacePieces::X, FacePieces::SCREEN_WIDTH], [FacePieces::Y, FacePieces::SCREEN_HEIGHT]].each do |number, side|
                 asm.li(:a0, face)
                 asm.jal("rt_face_extent") { asm.li(:a1, NUMBER_OFFSETS.fetch(number)) }
-                emit_unclipped_bounds(asm, at, side, low, high, "rt_fill_face_bounds_#{number}")
-                asm.slt(:t0, :v0, :t1)
-                asm.bne(:t0, :zero, "rt_fill_face_clip")
-                asm.slt(:t0, :t2, :v1)
-                asm.bne(:t0, :zero, "rt_fill_face_clip")
+                asm.bltz(:v0, "rt_fill_face_clip")
+                asm.label("rt_fill_face_bounds_#{number}")
+                asm.slti(:t0, :v1, (side * 16) + 1)
+                asm.beq(:t0, :zero, "rt_fill_face_clip")
               end
               asm.b("rt_fill_face_clipped")
               asm.label("rt_fill_face_clip")
-            end
-
-            # t1 and t2, the least and the most a corner may be one way for its face to go unclipped
-            # (FacePieces.sent_unclipped?), in sixteenths: the screen's, from nought to +side+ pixels, or in
-            # perspective the edges' at +low+ and +high+, held already. +label+ names the places between.
-            # Changes t0.
-            def emit_unclipped_bounds(asm, at, side, low, high, label)
-              asm.lw(:t0, at + SPANS_OFFSET_BYTES, FACE_BASE)
-              asm.move(:t1, :zero)
-              asm.beq(:t0, :zero, label) { asm.li(:t2, side * 16) }
-              asm.label("#{label}_edges")
-              asm.lw(:t1, at + low, FACE_BASE)
-              asm.lw(:t2, at + high, FACE_BASE)
-              asm.sll(:t1, :t1, 4)
-              asm.sll(:t2, :t2, 4)
-              asm.label(label)
             end
 
             # rt_face_cell_sides: a0 = a piece of three corners or more, the face as clipped. v0 = the width of
@@ -1336,6 +1311,17 @@ module VBlank
               asm.addu(:t1, :t1, :t2)
               asm.addu(:s6, :t1, :t0) # the first line
               asm.label("rt_face_sweep_line")
+              # Done at the first line a side past the face's right or bottom edge: what is left lies past
+              # it (FacePieces.past_edge?). The right edge is RIGHT_OFFSET_BYTES on from the number's offset,
+              # the bottom BOTTOM_OFFSET_BYTES, as the left and top are from LEFT_OFFSET_BYTES.
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES, :t3)
+              asm.lw(:t1, at + RIGHT_OFFSET_BYTES, :t3)
+              asm.subu(:t0, :s6, :t0)
+              asm.sll(:t1, :t1, 4)
+              asm.slt(:t0, :t0, :t1)
+              asm.beq(:t0, :zero, "rt_face_sweep_done")
+              asm.label("rt_face_sweep_before_edge")
               asm.slt(:t0, :s6, :s5)
               asm.beq(:t0, :zero, "rt_face_sweep_rest")
               # The rest goes into whichever of the two it is not in now.
@@ -1353,6 +1339,13 @@ module VBlank
               asm.lw(:t0, 0, :s2)
               asm.slti(:t0, :t0, 3)
               asm.bne(:t0, :zero, "rt_face_sweep_next")
+              # A part before the face's left or top edge is left out (FacePieces.before_edge?).
+              asm.label("rt_face_sweep_corners")
+              asm.addu(:t3, :s1, FACE_BASE)
+              asm.lw(:t1, at + LEFT_OFFSET_BYTES, :t3)
+              asm.sll(:t1, :t1, 4)
+              asm.slt(:t0, :t1, :s6)
+              asm.beq(:t0, :zero, "rt_face_sweep_next")
               # What the part takes of the pool is handed back once it is sent: the rest's corners were
               # all made before it.
               asm.label("rt_face_sweep_part")
@@ -1397,6 +1390,14 @@ module VBlank
               asm.lw(:s4, 0, :s3)
               emit_previous_slot(asm, :s3, "rt_face_row_behind_first")
               asm.label("rt_face_row_line")
+              # Done at the first line a side past the face's right edge (FacePieces.past_edge?).
+              asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
+              asm.lw(:t1, at + RIGHT_OFFSET_BYTES, FACE_BASE)
+              asm.subu(:t0, :s5, :t0)
+              asm.sll(:t1, :t1, 4)
+              asm.slt(:t0, :t0, :t1)
+              asm.beq(:t0, :zero, "rt_face_row_done")
+              asm.label("rt_face_row_before_edge")
               asm.slt(:t0, :s5, :s6)
               asm.beq(:t0, :zero, "rt_face_row_last")
               emit_four_corner_cell(asm, at, x)
@@ -1405,6 +1406,9 @@ module VBlank
               asm.jal("rt_face_row_left")
               emit_run_ahead(asm)
               emit_run_behind(asm, at)
+              emit_line_past_left_edge(asm, at)
+              asm.beq(:t0, :zero, "rt_face_row_next")
+              asm.label("rt_face_row_any_inside")
               emit_send_square(asm, "rt_face_row_sent")
               asm.label("rt_face_row_next")
               asm.lw(:t0, at + CELL_SIDE_OFFSET_BYTES + x, FACE_BASE)
@@ -1510,8 +1514,20 @@ module VBlank
               asm.lw(:a2, at + CROSSING_OFFSET_BYTES, FACE_BASE)
               asm.move(:a3, :v0)
               asm.move(:s4, :v0)
-              asm.jal("rt_face_quad") { asm.move(:s2, :a2) }
+              # Left out before the face's left edge (FacePieces.before_edge?), its crossings kept.
+              emit_line_past_left_edge(asm, at)
+              asm.beq(:t0, :zero, "rt_face_row_next") { asm.move(:s2, :a2) }
+              asm.label("rt_face_row_four_send")
+              asm.jal("rt_face_quad")
               asm.b("rt_face_row_next")
+            end
+
+            # t0 = 1 where the line s5 is past the face's left edge, so a square before it may draw inside
+            # the edges (FacePieces.before_edge?), nought where it is not. Changes t1.
+            def emit_line_past_left_edge(asm, at)
+              asm.lw(:t1, at + LEFT_OFFSET_BYTES, FACE_BASE)
+              asm.sll(:t1, :t1, 4)
+              asm.slt(:t0, :t1, :s5)
             end
 
             # THE STRIP'S TWO RUNS (FacePieces.strip_chains), for the strip in s0: falls through with s5 the

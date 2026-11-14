@@ -120,11 +120,15 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert((105...135).any? { |x| played.screen.pixel(x, 80) != BLACK }, "the face is drawn")
   end
 
+  # The face reaches from x -60 to 300, eight texels across. It is cut at the screen's left side and
+  # held to the view by the chip's drawing area, never cut there, so at x 239 the chip reads the texel
+  # the whole face puts there: 299 pixels in is past six and a half texels of 45 pixels, and the chip
+  # reads half a texel on, so texel 7.
   def test_a_face_wider_than_the_view_is_cut_at_its_edges
     screen = game_player.run(PlaceGames.square(x_scale: 3.0), frames: 2).screen
 
     assert_equal tile(1, 3), screen.pixel(0, 72)
-    assert_equal tile(6, 3), screen.pixel(239, 72)
+    assert_equal tile(7, 3), screen.pixel(239, 72)
     assert_equal BLACK, screen.pixel(240, 72), "past the view the game was laid out for"
   end
 
@@ -304,11 +308,4 @@ class TestPlacesOnThePlayStation < Minitest::Test
   # Faces through windows hugging them, passed over in the shared drawing when wholly outside
   # (IR::PlaceDrawing::OUTCODE_EDGES).
   include PlaceGames::WindowHuggingTests
-
-  # The part the PlayStation's own build does not make yet, which the window-hugging tests need. Passing
-  # faces over is not the cause: the same differences come with the shared test left out of the build.
-  WINDOW_EDGE_SKIP_REASON = "a face held to a window drawn at the window's edge as the whole screen draws it " \
-                            "(the chip can differ there by a pixel or a picture pixel)"
-
-  private def refuse_window_hugging_on_this_run! = skip_on_ps1(WINDOW_EDGE_SKIP_REASON)
 end
