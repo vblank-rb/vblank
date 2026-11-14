@@ -314,7 +314,7 @@ module VBlank
               always = @handover.always_up.scenery
               own = @scenes.keys.map { |scene| @handover.arrival(scene).scenery }
               @scene_planes = own.map(&:length).max || 0
-              refuse_unmade_stacking!
+              @plan.refuse_unmade_stacking!(NotMadeYet, part: TILED_SCREEN)
               always.each_with_index { |bg, i| @layers[bg] = @scene_planes + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
               count = @scene_planes + always.length
@@ -417,12 +417,6 @@ module VBlank
               [grids.map(&:first).max || PLANE_CELLS, grids.map(&:last).max || PLANE_CELLS].map { |cells| cells * TILE_SIDE }
             end
 
-            # A stack the planes' order cannot show: a scene's own background behind one every screen shows.
-            def refuse_unmade_stacking!
-              return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) }
-
-              refuse_unmade!(TILED_SCREEN, "puts a scene's own background in a layer behind a background every screen shows")
-            end
 
             def plane_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
 
@@ -570,7 +564,7 @@ module VBlank
               return if reset_view.zero?
 
               emit_bar_put_up(bg) if bg.bar?
-              note = @put_up_this_pass&.fetch(plane_of(bg))
+              note = corner_note(plane_of(bg))
               statement(Build.set(note, 1)) if note
             end
 
@@ -586,56 +580,17 @@ module VBlank
             # The label of the table of +bg+'s map number +which+, made with the art (#picture_sections).
             def grid_label(bg, which) = (@grids[[bg.object_id, which]] ||= ["tiles grid #{@grids.length}", bg, which]).first
 
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), as the Genesis's lowering keeps it
-            # (Genesis::Lowering::Picture#keep_corner_notes): a put-up notes itself for the rest of its pass,
-            # a note for each plane, and the scroll, or a status bar's top, written at the end of the pass leaves
-            # it where it was put up. The wait forgets the notes.
-            def keep_corner_notes
-              return unless @tiled && @plan.places_at_pass_end?(:scroll_background, :place_bar)
-
-              @put_up_this_pass = (0...@plane_places.length).to_h { |plane| [plane, keep_local(:"put_up_this_pass_#{plane}")] }
-            end
-
-            def emit_clear_corner_notes
-              @put_up_this_pass&.each_value { |note| emit_store_number(note, 0) }
-            end
-
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh_label("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
-
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names: the one by that name,
-            # or, where several scenes each declare one by that name, the one of the scene whose routine is being
-            # lowered, or the one every screen shows; nil where that cannot be told while the game is built.
-            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
-
-            # +node+'s change made to the background it names, yielded to the block; where that is not known
-            # while the game is built, to the one of the scene up when it runs, each scene its own branch.
-            def for_background(node)
-              bg = background_declared_for(node)
-              return yield(bg) if bg
-
-              @scenes.each do |scene, number|
-                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
-                next unless own
-
-                other = fresh_label("not_scene")
-                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
-                yield own
-                @asm.label(other)
-              end
+            # A BACKGROUND PUT UP IN A PASS IS HELD AT ITS CORNER through that pass (SceneryWrites#keep_corner_notes),
+            # on a screen drawn from tiles: a note for each plane. A status bar is a plane like the others, so its
+            # plane's note holds its top too.
+            def keep_plane_corner_notes
+              keep_corner_notes((0...@plane_places.length).to_a, bar: :layer_note) if @tiled
             end
 
             # Reference#exec_scroll_background.
             def emit_scroll_background(node)
               for_background(node) do |bg|
-                emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) do
+                emit_unless_put_up(node, corner_note(plane_of(bg))) do
                   runtime_call("rt_plane_scroll", [Build.int(plane_of(bg)), node.x, node.y])
                 end
               end
@@ -648,7 +603,7 @@ module VBlank
                 next unless bg.bar?
 
                 runtime_call("rt_bar_covers", [node.covers]) if node.covers
-                emit_unless_put_up(node, @put_up_this_pass&.fetch(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
+                emit_unless_put_up(node, corner_note(plane_of(bg))) { runtime_call("rt_bar_place", [node.top]) }
               end
             end
 

@@ -43,6 +43,7 @@ module VBlank
           include Division
           include Products
           include ControlFlow
+          include SceneryWrites
           include MeasuredOnCopies
           include TileRuns
 
@@ -289,7 +290,7 @@ module VBlank
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_scene_held_sets
             keep_timer_numbers
-            keep_corner_notes
+            keep_corner_notes((0...PLANES).to_a, bar: nil) # the Genesis build places no status bar yet
             keep_loop_running
             keep_order_tables
             routines = @called.flat_map do |name|

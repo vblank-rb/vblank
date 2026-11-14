@@ -39,6 +39,7 @@ module VBlank
           end
 
           include ControlFlow
+          include SceneryWrites
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Paint, Faces, and the loops and tests
@@ -249,7 +250,7 @@ module VBlank
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
-            keep_corner_notes
+            keep_plane_corner_notes
             keep_loop_running
             keep_backdrop
             reserve_painted_numbers!
@@ -641,7 +642,7 @@ module VBlank
           # both as the runtime counted them.
           def emit_wait_vblank(_node)
             call_routine("rt_wait_vblank")
-            emit_clear_corner_notes
+            emit_corners_forgotten
             emit_load_word(:t0, runtime_place(Runtime::Frame::FRAMES_TAKEN))
             emit_load_variable(Frames::COUNT)
             @asm.addu(:v0, :v0, :t0)

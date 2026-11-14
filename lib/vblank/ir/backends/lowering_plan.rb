@@ -257,6 +257,26 @@ module VBlank
         # (Reference#put_up_background).
         def places_at_pass_end?(*kinds) = @program.walk.any? { |node| kinds.include?(node.kind) && placed_at_pass_end?(node) }
 
+        # The declared background a change to one by +node+'s name means, written in +scene+'s routine (nil
+        # outside every scene's): SceneHandover#background_named, raising the lowering's own error for a name
+        # nothing declares.
+        def background_named(node, scene:) = @handover.background_named(node, scene: scene, error: @error)
+
+        # A STACK A LOWERING'S LAYERS CANNOT SHOW: a scene's own background behind one every screen shows
+        # (SceneHandover#own_scenery_behind_shared?), where the lowering keeps a scene's own scenery in the
+        # layers in front of the shared. Refused with +not_made_yet+ (an error that includes
+        # Backends::NotMadeYet) naming +part+; the block picks the backgrounds the lowering stacks in its
+        # layers, as SceneHandover's does.
+        def refuse_unmade_stacking!(not_made_yet, part:, &stacked)
+          return unless @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene, &stacked) }
+
+          raise not_made_yet.new(
+            "This game puts a scene's own background in a layer behind a background that every screen shows. The " \
+            "#{@console.title} build does not make that yet. To fix this, build the game for the Game Boy Advance " \
+            "alone for now (`consoles: %i[gba]`).", part: part
+          )
+        end
+
         # THE REFUSALS EVERY CARTRIDGE LOWERING MAKES, IN ONE ORDER, before it makes anything; a
         # console's own refusals come after these. Written in each lowering they drifted, and one game
         # with two faults was refused for a different one by each console. The order:

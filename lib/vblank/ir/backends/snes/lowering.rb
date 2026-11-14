@@ -37,6 +37,7 @@ module VBlank
           end
 
           include ControlFlow
+          include SceneryWrites
           include MeasuredOnCopies
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
@@ -301,7 +302,7 @@ module VBlank
             end
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_timer_numbers
-            keep_corner_notes
+            keep_corner_notes(corner_layers, bar: :own_note)
             keep_background_color_choices
             keep_sprite_color_choices
             keep_scene_tiles_up

@@ -36,6 +36,7 @@ module VBlank
           end
 
           include ControlFlow
+          include SceneryWrites
 
           # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest, and the
@@ -311,7 +312,7 @@ module VBlank
             keep_held_colors
             keep_group_numbers
             keep_sprites_hidden_flag
-            keep_corner_notes
+            keep_corner_notes([Picture::BACKGROUND_LAYER], bar: :own_note)
             keep_loop_running
             keep_patches
             keep_tile_runs

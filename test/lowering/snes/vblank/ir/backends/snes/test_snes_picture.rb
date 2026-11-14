@@ -358,7 +358,7 @@ class TestSNESPicture < Minitest::Test
       end)
     end
 
-    assert_match(/behind a background every screen shows/, error.message)
+    assert_match(/behind a background that every screen shows/, error.message)
   end
 
   # A BACKGROUND BENT ROW BY ROW: each of the screen's rows shown at its own sideways offset, worked

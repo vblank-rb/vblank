@@ -1280,42 +1280,16 @@ module VBlank
                 alone = @alone_flag_in_line_table ? [Build.int(bg.shown_above_row)] : []
                 runtime_call("rt_background_held_above", [Build.int(layer_of(bg)), Build.int(bg.above_row), *alone])
               end
-              [@put_up_this_pass&.fetch(layer_of(bg)), (@bar_up_this_pass if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
-            end
-
-            # A BACKGROUND PUT UP IN A PASS SHOWS FROM ITS CORNER ON THAT PASS'S FRAME
-            # (Reference#put_up_background), and the place the game keeps for its view, or the top it
-            # keeps for a status bar, is written at the end of the pass (IR::Frames
-            # .loop_in_console_order), after the put-up. So a put-up notes itself for the rest of its
-            # pass, a note for each layer, and the write at the end of it leaves the background or bar
-            # where it was put up. The wait forgets the notes (#emit_corners_forgotten), and the next
-            # pass's write moves it.
-            def keep_corner_notes
-              if @plan.places_at_pass_end?(:scroll_background)
-                layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
-                @put_up_this_pass = layers.to_h { |layer| [layer, keep_local(:"put_up_this_pass_#{layer}")] }
-              end
-              @bar_up_this_pass = keep_local(:bar_up_this_pass) if @plan.places_at_pass_end?(:place_bar)
+              [corner_note(layer_of(bg)), (bar_note if bg.bar?)].compact.each { |note| statement(Build.set(note, 1)) }
             end
 
             # The two layers a background can be on.
             LAYERS = [0, 1].freeze
 
-            # The notes forgotten at a wait: the pass that put a background up has ended.
-            def emit_corners_forgotten
-              [*@put_up_this_pass&.values, @bar_up_this_pass].compact.each { |note| statement(Build.set(note, 0)) }
-            end
-
-            # +node+'s write, unless it is written at the end of a pass that put its background or bar
-            # up (+note+, #keep_corner_notes).
-            def emit_unless_put_up(node, note)
-              return yield unless note && @plan.placed_at_pass_end?(node)
-
-              held = fresh("held_at_corner")
-              jump_unless(Build.binop(:==, Build.var_ref(note), Build.int(0)), held)
-              yield
-              @asm.label(held)
-            end
+            # Every layer a background goes up on, the third among them where the game has one: those a put-up
+            # holds at its corner through its pass (SceneryWrites#keep_corner_notes). A status bar's top is held
+            # by a note of its own, since a bar is placed by its top rather than its layer's view.
+            def corner_layers = @third_layer ? [*LAYERS, THIRD_LAYER] : LAYERS
 
             # WHICH OF THE TWO LAYERS EACH BACKGROUND IS ON (#assign_background_layers). A scene's own
             # scenery is in front of the scenery every screen shows, as the interpreter paints it over
@@ -1341,7 +1315,7 @@ module VBlank
               end
               @scene_bars = @scenes.keys.any? { |scene| @handover.arrival(scene).scenery.any?(&:held_to_rows?) }
               refuse_unmade!("a background kept above a row beside a status bar") if Picture.background_rows_held?(@program) && Picture.status_bar?(@program)
-              refuse_unmade_stacking!
+              @plan.refuse_unmade_stacking!(NotMadeYet, part: "the picture") { |bg| !on_third_layer?(bg) }
               refuse_unmade_bends!
               always.each_with_index { |bg, i| @layers[bg] = @scene_layers + (always.length - 1 - i) }
               own.each { |scenery| scenery.each_with_index { |bg, i| @layers[bg] = scenery.length - 1 - i } }
@@ -1455,36 +1429,6 @@ module VBlank
 
             def layer_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no layer" }
 
-            # A stack the layers' order cannot show: a scene's own background behind one every screen
-            # shows (see #assign_background_layers).
-            def refuse_unmade_stacking!
-              stacked = @scenes.each_key.any? { |scene| @handover.own_scenery_behind_shared?(scene) { |bg| !on_third_layer?(bg) } }
-              refuse_unmade!("a scene's own background in a layer behind a background every screen shows") if stacked
-            end
-
-            # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over names
-            # (SceneHandover#background_named); nil where that cannot be told while the game is built.
-            def background_declared_for(node) = @handover.background_named(node, scene: @lowering_scene, error: LoweringError)
-
-            # +node+'s change made to the background it names (#background_declared_for), yielded
-            # to the block. Where that is not known while the game is built — a change outside every
-            # scene's routine, to a name several scenes declare — the change is made to the one of
-            # the scene up when it runs, each scene's its own branch.
-            def for_background(node)
-              bg = background_declared_for(node)
-              return yield(bg) if bg
-
-              @scenes.each do |scene, number|
-                own = @handover.arrival(scene).scenery.find { |declared| declared.name == node.name }
-                next unless own
-
-                other = fresh("not_scene")
-                jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
-                yield own
-                @asm.label(other)
-              end
-            end
-
             # A scene taking over (Lowering#emit_scene): the tiles its scenery and its sprites paint
             # from lists copied in again, as each list is now; what it shows of its own goes up from
             # its corner, as declared, with every map it chooses back at the first; and the layers its
@@ -1567,7 +1511,7 @@ module VBlank
             def emit_scroll_background(node) = for_background(node) { |bg| emit_scroll_background_on(node, bg) }
 
             def emit_scroll_background_on(node, bg)
-              emit_unless_put_up(node, @put_up_this_pass&.fetch(layer_of(bg))) do
+              emit_unless_put_up(node, corner_note(layer_of(bg))) do
                 runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), node.x, node.y])
               end
             end
@@ -1688,7 +1632,7 @@ module VBlank
                 next unless bg.bar?
 
                 runtime_call("rt_bar_covers", [node.covers]) if node.covers
-                emit_unless_put_up(node, @bar_up_this_pass) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
+                emit_unless_put_up(node, bar_note) { runtime_call("rt_bar_place", [Build.int(layer_of(bg)), node.top]) }
               end
             end
 

@@ -146,7 +146,13 @@ writing an instruction is shared, because two copies of a decision drift apart:
 - `IR::Stacking.items_in_draw_order` — a frame's sprites back to front, each run the game orders in
   its place; `IR::SceneHandover#background_named` — which declaration a change to a background names;
   `SceneHandover#own_scenery_behind_shared?` — a stack that puts a scene's own background behind one
-  every screen shows.
+  every screen shows, which `LoweringPlan#refuse_unmade_stacking!` refuses for a lowering whose layers
+  cannot show it.
+- `Backends::SceneryWrites` — mixed into the lowering beside `ControlFlow`, written with its hooks: a
+  change to a background made to the scene's own declaration of the name, each scene a branch where
+  that is known only as the game runs (`for_background`), and a background put up in a pass held at
+  its corner through it (`keep_corner_notes`, given the console's layers and how its status bar is
+  held; `emit_unless_put_up`; `emit_corners_forgotten`).
 - `Backends::PaletteWalk` — a fade or tint that walks the colours: what the runtime is handed
   (toward what, the colour, the steps held to their range) and the rules its runtime keeps (said
   the same, it does nothing; worked out as the pass ends, sent in the blank).
