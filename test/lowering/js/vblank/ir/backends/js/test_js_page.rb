@@ -57,6 +57,29 @@ class TestJSPage < Minitest::Test
     assert_equal VBlank::Graphics::Color.resolve(:red), picture[(8 * 240) + 40], "the game's red bar at (40, 8)"
   end
 
+  # A game of big pixels draws a canvas half the Advance's width and height, and the page shows it as
+  # big as the same game's with pixels of the console's own size: each pixel a square of four.
+  def test_a_canvas_of_big_pixels_is_shown_the_size_of_the_consoles_screen
+    pages = [1, 2].to_h do |size|
+      game = VBlank.game("BIGPAGE", consoles: %i[gba]) do
+        screen :bitmap, pixel_size: size
+        game_loop { clear_screen :blue }
+      end
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "page.html")
+        JS.new.build_page(game, path, console: :gba, err: StringIO.new)
+        [size, File.read(path, encoding: Encoding::UTF_8)]
+      end
+    end
+    shown = pages.transform_values { |html| html.match(%r{canvas \{ width: min\((\d+)px, 96vw\); aspect-ratio: (\d+) / (\d+)}).captures }
+
+    assert_match(/<canvas id="screen" width="120" height="80"/, pages[2])
+    assert_match(/<canvas id="screen" width="240" height="160"/, pages[1])
+    assert_equal %w[720 240 160], shown[1]
+    assert_equal %w[720 120 80], shown[2]
+    assert_equal 120 * 80, pictures_in(played_page(["play 3", "picture"], html: pages[2])).first.size
+  end
+
   # A console with no L and R, the Color, gets a page that names none: not in the keys said in
   # words, and not on the pad.
   def test_a_console_without_l_and_r_has_none_on_its_page

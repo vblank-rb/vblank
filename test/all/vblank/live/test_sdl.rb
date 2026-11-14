@@ -479,6 +479,34 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A game of big pixels hands the window its small picture, and the window opens as big as the
+  # console's whole screen would at that scale: each of the picture's pixels a square of four.
+  def test_a_picture_of_big_pixels_opens_the_window_the_consoles_size
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 2, width: 120, height: 80, pixel_size: 2)
+    window.show(Array.new(120 * 80, 0), 120, 80)
+
+    assert_equal [480, 320], window.window_size
+  ensure
+    window&.close
+  end
+
+  # The menu's size of a window of big pixels is the console's whole screen times the scale, as for
+  # any game.
+  def test_the_menu_sizes_a_window_of_big_pixels_as_the_consoles_screen
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 1, width: 120, height: 80, pixel_size: 2)
+    press_key(SDL::MENU)
+    window.show(Array.new(120 * 80, 0), 120, 80)
+    %i[right down right].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    press_key(SDL::MENU)
+    window.hold_while_paused
+
+    assert_equal [480, 320], window.window_size
+  ensure
+    window&.close
+  end
+
   # A device keeps the console's time on the machine's own clock.
   def test_the_window_waits_on_the_machines_clock
     window = open_window

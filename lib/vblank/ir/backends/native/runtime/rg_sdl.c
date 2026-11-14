@@ -56,7 +56,9 @@
  *
  * THE PICTURE is the console's 240x160 screen, its 15-bit colors handed to SDL as they are (SDL
  * has a pixel format for exactly that layout), and scaled up by a whole number with each pixel
- * kept square and sharp — never smoothed — and the window's spare room left black.
+ * kept square and sharp — never smoothed — and the window's spare room left black. A game of big
+ * pixels (RG_PIXEL_SIZE, rg_console.h) hands over a smaller picture, which is stretched to the
+ * console's size first, so its window and its scale are the console's as for any game.
  *
  * THE BUTTONS ARE A GAMEPAD'S, AND THE KEYBOARD IS A GAMEPAD. The game is asked one question —
  * which of the console's ten buttons are down on any gamepad — and the keyboard answers it by
@@ -848,7 +850,7 @@ static void apply_window_changes(void) {
     else rg_window_fullscreen_happened((SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0);
   }
   if (size_owed && !rg_window_fullscreen()) {
-    SDL_SetWindowSize(window, RG_WHOLE_WIDTH * rg_window_scale(), RG_WHOLE_HEIGHT * rg_window_scale());
+    SDL_SetWindowSize(window, RG_SHOWN_WIDTH * rg_window_scale(), RG_SHOWN_HEIGHT * rg_window_scale());
     size_owed = 0;
   }
 }
@@ -906,7 +908,7 @@ static double pixel_density(void) {
 static int largest_scale_that_fits(void) {
   SDL_Rect room;
   if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &room)) return RG_WINDOW_SCALE_MOST;
-  int fits = SDL_min(room.w / RG_WHOLE_WIDTH, room.h / RG_WHOLE_HEIGHT);
+  int fits = SDL_min(room.w / RG_SHOWN_WIDTH, room.h / RG_SHOWN_HEIGHT);
   return SDL_min(fits, RG_WINDOW_SCALE_MOST);
 }
 
@@ -1424,7 +1426,7 @@ static bool read_events(void) {
       break;
     case SDL_EVENT_WINDOW_RESIZED:
       window_owed_a_drawing = true;
-      rg_window_size_changed(event.window.data1, event.window.data2, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
+      rg_window_size_changed(event.window.data1, event.window.data2, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
       break;
     case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
       window_owed_a_drawing = true;
@@ -2521,21 +2523,23 @@ int main(int argc, char **argv) {
    * window opens the size it was left at, and fullscreen if that is how it was left. */
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
   if (rg_window_fullscreen()) flags |= SDL_WINDOW_FULLSCREEN;
-  window = SDL_CreateWindow(rg_game_title, RG_WHOLE_WIDTH * rg_window_scale(), RG_WHOLE_HEIGHT * rg_window_scale(), flags);
+  window = SDL_CreateWindow(rg_game_title, RG_SHOWN_WIDTH * rg_window_scale(), RG_SHOWN_HEIGHT * rg_window_scale(), flags);
   if (!window) refuse_to_start("the window cannot be opened");
   note_window_opened();
-  SDL_SetWindowMinimumSize(window, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
+  SDL_SetWindowMinimumSize(window, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
   rg_window_consume_changes(); /* the window opened as the settings ask: nothing is left to do to it */
   renderer = SDL_CreateRenderer(window, NULL);
   if (!renderer) refuse_to_start("nothing can draw into the window");
-  SDL_SetRenderLogicalPresentation(renderer, RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+  /* The picture is drawn over the whole of the logical size, so a game of big pixels has each of its
+   * pixels stretched to RG_PIXEL_SIZE of the console's, and the window's scale counts those. */
+  SDL_SetRenderLogicalPresentation(renderer, RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XBGR1555, SDL_TEXTUREACCESS_STREAMING, RG_WHOLE_WIDTH,
                               RG_WHOLE_HEIGHT);
   if (!texture) refuse_to_start("the picture cannot be made");
   SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
   /* The menu's boxes are see-through, and fade at their edges. */
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-  rg_window_menu_reset(RG_WHOLE_WIDTH, RG_WHOLE_HEIGHT);
+  rg_window_menu_reset(RG_SHOWN_WIDTH, RG_SHOWN_HEIGHT);
   /* If the windows of keys and variables cannot start the window says so, and the menu and the
    * hotkeys still work. */
   if (!rg_menu_start(window, renderer)) {

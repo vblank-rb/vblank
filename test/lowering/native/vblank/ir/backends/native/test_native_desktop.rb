@@ -392,6 +392,29 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
+  # A GAME OF BIG PIXELS (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
+  # the same: 240×160 three times over, each of its pixels a square of six of the window's. Its
+  # white last pixel fills the window's last six rows and columns, and the blue beside it starts
+  # just past them.
+  def test_a_game_of_big_pixels_opens_the_window_the_consoles_size
+    game = VBlank.game("BIGWINDOW", consoles: %i[gba]) do
+      screen :bitmap, pixel_size: 2
+      game_loop do
+        clear_screen :blue
+        pixel screen_width - 1, screen_height - 1, :white
+      end
+    end
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game, File.join(dir, "big"), console: :gba, err: nil)
+      window, = picture_of_window(exe, dir, [], frames: 5)
+      seen_at = ->(x, y) { window.pixels[(y * window.width) + x] }
+
+      assert_equal [720, 480], [window.width, window.height]
+      assert_equal [765] * 4, [[714, 474], [719, 474], [714, 479], [719, 479]].map { |x, y| seen_at.call(x, y) }, "the white pixel"
+      assert_equal [255] * 2, [[713, 479], [719, 473]].map { |x, y| seen_at.call(x, y) }, "the blue beside it"
+    end
+  end
+
   # A console the program cannot use a BIOS for yet, and a build with no cartridge for the BIOS to
   # read, are refused before anything is built, saying what to leave out.
   def test_a_bios_the_program_cannot_use_is_refused

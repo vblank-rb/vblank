@@ -39,7 +39,7 @@ module VBlankScript
   def self.play(options)
     game = VBlank::IR::Backends::Ruby::LiveGame.new(SOURCE)
     window = VBlank::Live::SDL.new(title: TITLE, scale: options[:scale], width: game.width, height: game.height,
-                                   menu: MENU, settings_file: options[:"settings-file"] || :usual,
+                                   pixel_size: game.pixel_size, menu: MENU, settings_file: options[:"settings-file"] || :usual,
                                    config_dir: options[:"config-dir"], game_controls: game.controls)
     warn window.settings_problems_message if window.settings_problems_message
     puts "Playing #{TITLE}. #{'Press F1 or ` for the menu. ' if MENU}Press P to pause. Hold Tab to play fast. " \

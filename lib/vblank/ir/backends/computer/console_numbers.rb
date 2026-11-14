@@ -8,7 +8,10 @@ module VBlank
         # beside game.c, which runtime/rg_console.h includes. Its screen is the size of the
         # runtime's buffers, and its whole screen the size of its window: bigger where the game's
         # screen is shown in a border (Console::Description#bordered?), whose corner is RG_GAME_LEFT
-        # and RG_GAME_TOP. Its clock sets how long a frame lasts. Everything else
+        # and RG_GAME_TOP. RG_PIXEL_SIZE is how many of the window's pixels across and down each of
+        # the picture's is shown as at a scale of 1 (Console::Description#pixel_size): a game of big
+        # pixels plays a small screen and opens a window the console's size all the same. Its clock
+        # sets how long a frame lasts. Everything else
         # the game does differently on one console than another is decided when the game is
         # lowered, from the same description.
         #
@@ -26,12 +29,23 @@ module VBlank
           # read it from (a shell's parts, Native#build_desktop_shell). The buttons a player's
           # number keeps are every console's, since a build refuses a button its console lacks
           # before there is a game to play.
-          def values(console, start_up: true)
+          def values(console, start_up: true) = screen_values(console).merge(console_values(console, start_up), StartFileNumbers.names)
+
+          # The screen's sizes and where the game's sits in it. Kept apart from the rest: one hash
+          # literal of every pair is deep enough on Ruby's stack that YJIT (Ruby 4.0.9, arm64)
+          # panicked compiling it, ending the process.
+          def screen_values(console)
             whole = console.framed_screen_size
             left, top = console.border_corner
             { "RG_SCREEN_WIDTH" => console.screen_width, "RG_SCREEN_HEIGHT" => console.screen_height,
               "RG_WHOLE_WIDTH" => whole[0], "RG_WHOLE_HEIGHT" => whole[1], "RG_GAME_LEFT" => left, "RG_GAME_TOP" => top,
-              "RG_CONSOLE_TICKS_A_SECOND" => console.cycles_a_second,
+              "RG_PIXEL_SIZE" => console.pixel_size,
+              "RG_SHOWN_FIRST_ROW" => console.shown_row_bounds[0], "RG_SHOWN_PAST_ROW" => console.shown_row_bounds[1] }
+          end
+
+          # The rest #values tells of +console+.
+          def console_values(console, start_up)
+            { "RG_CONSOLE_TICKS_A_SECOND" => console.cycles_a_second,
               "RG_CONSOLE_TICKS_A_FRAME" => console.cycles_a_frame,
               "RG_CONSOLE_BLENDS" => console.blends, "RG_CONSOLE_DIMS" => console.fades_by_brightness,
               "RG_CONSOLE_RUMBLES" => console.rumbles,
@@ -43,9 +57,7 @@ module VBlank
               "RG_CLOCK_KEEPS_DATE" => console.clock_keeps_date, "RG_COLOR_BITS" => console.color_bits,
               "RG_VOICES_READ_SOUND_MEMORY" => console.voices_read_sound_memory,
               "RG_CONSOLE_PLAYS_BIOS_START_UP" => start_up && console.plays_bios_start_up,
-              "RG_SHOWN_FIRST_ROW" => console.shown_row_bounds[0], "RG_SHOWN_PAST_ROW" => console.shown_row_bounds[1],
               "RG_ONE_PLAYERS_BUTTONS" => IR::Buttons::EVERY_BUTTON_MASK }
-              .merge(StartFileNumbers.names)
           end
 
           # +value+ as C and JavaScript write it: true and false as 1 and 0.

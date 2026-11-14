@@ -32,6 +32,10 @@ module VBlank
           def width = @game.class::RG_WHOLE_WIDTH
           def height = @game.class::RG_WHOLE_HEIGHT
 
+          # How many of the window's pixels across and down each of the picture's is shown as at a
+          # scale of 1 (Live::SDL's +pixel_size+).
+          def pixel_size = @game.class::RG_PIXEL_SIZE
+
           # The file the game reads as it starts (IR::StartFile), +bytes+ a String, handed over before
           # #play. A game that reads one and is handed none stops at its first statement, in the sentence
           # rg_start_file_refusal gives.

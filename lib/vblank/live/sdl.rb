@@ -195,13 +195,20 @@ module VBlank
       # +game_controls+ is the keys and gamepad buttons the game adds to the layout, as the list of
       # numbers the game is built with (LiveGame#controls), nil for none: Settings says what is done
       # with them.
-      def initialize(title:, scale: nil, width: 240, height: 160, library: nil, menu: true, settings_file: nil, config_dir: nil,
-                     caption: nil, state_folder_name: nil, game_controls: nil)
+      #
+      # +pixel_size+ is how many of the window's pixels, across and down, each of the picture's is
+      # shown as at a scale of 1 (Console::Description#pixel_size): a game of big pixels hands over
+      # a picture half the console's width and height, and its window is the console's size all the
+      # same, the scale counted in the console's pixels as for any game.
+      def initialize(title:, scale: nil, width: 240, height: 160, pixel_size: 1, library: nil, menu: true, settings_file: nil,
+                     config_dir: nil, caption: nil, state_folder_name: nil, game_controls: nil)
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
         @width = width
         @height = height
+        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
+        @shown_height = height * pixel_size
         @closed = false
         @has_menu = menu
         @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls)
@@ -226,7 +233,8 @@ module VBlank
         end
         @states = states_in(state_folder_name) if menu && state_folder_name
         @save_file = save_file_in(state_folder_name) if state_folder_name
-        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [width, height], controls: @player_settings,
+        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
+                         controls: @player_settings,
                          scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
         @settings = @menu.settings # as the window last made them so
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
@@ -598,13 +606,15 @@ module VBlank
 
       def open_window(title, scale)
         raise_failed!("start its video") if @sdl.SDL_Init(INIT_VIDEO).zero?
-        @window = @sdl.SDL_CreateWindow(title, @width * scale, @height * scale,
+        @window = @sdl.SDL_CreateWindow(title, @shown_width * scale, @shown_height * scale,
                                         WINDOW_RESIZABLE | WINDOW_HIGH_PIXEL_DENSITY)
         raise_failed!("open the window") if @window.null?
         @renderer = @sdl.SDL_CreateRenderer(@window, nil)
         raise_failed!("draw in the window") if @renderer.null?
+        # The picture is drawn over the whole of the logical size, so a picture of big pixels is
+        # stretched to it, each pixel the same whole number of the window's.
         raise_failed!("keep the picture's shape") if @sdl.SDL_SetRenderLogicalPresentation(
-          @renderer, @width, @height, LOGICAL_PRESENTATION_LETTERBOX
+          @renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX
         ).zero?
         @texture = @sdl.SDL_CreateTexture(@renderer, PIXELFORMAT_XBGR1555, TEXTUREACCESS_STREAMING, @width, @height)
         raise_failed!("make the picture") if @texture.null?
@@ -677,7 +687,7 @@ module VBlank
         return WindowMenu::SCALES.max if @sdl.SDL_GetDisplayUsableBounds(@sdl.SDL_GetDisplayForWindow(@window), room).zero?
 
         _, _, wide, high = room[0, 16].unpack("l4")
-        [[wide / @width, high / @height].min, WindowMenu::SCALES.max].min
+        [[wide / @shown_width, high / @shown_height].min, WindowMenu::SCALES.max].min
       end
 
       def live?(pointer) = pointer && !pointer.null?
@@ -738,7 +748,7 @@ module VBlank
         begin
           drawing.each { |part| part.is_a?(WindowMenu::Box) ? draw_box(part) : draw_words(part) }
         ensure
-          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @width, @height, LOGICAL_PRESENTATION_LETTERBOX)
+          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX)
         end
       end
 
@@ -824,7 +834,7 @@ module VBlank
         @settings = @menu.settings
         @closed = true if @menu.quit?
         if @settings.scale != was.scale
-          @sdl.SDL_SetWindowSize(@window, @width * @settings.scale, @height * @settings.scale)
+          @sdl.SDL_SetWindowSize(@window, @shown_width * @settings.scale, @shown_height * @settings.scale)
         end
         @sdl.SDL_SetWindowFullscreen(@window, @settings.fullscreen ? 1 : 0) if @settings.fullscreen != was.fullscreen
         set_speaker_volume

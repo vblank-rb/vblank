@@ -1251,7 +1251,7 @@ module VBlank
       shell = VBlank::Live::Shell.from(built)
       width, height = built.game.described_console.framed_screen_size
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
-                                     height: height, menu: game.menu?,
+                                     height: height, pixel_size: built.game.described_console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual, config_dir: options[:config_dir],
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(built.game.computer_controls))
       warn window.settings_problems_message if window.settings_problems_message
@@ -1474,7 +1474,7 @@ module VBlank
       console = program.described_console
       width, height = console.framed_screen_size
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
-                                     height: height, menu: game.menu?,
+                                     height: height, pixel_size: console.pixel_size, menu: game.menu?,
                                      settings_file: options[:settings_file] || :usual,
                                      config_dir: options[:config_dir], state_folder_name: state_folder_name(game, network),
                                      game_controls: VBlank::IR::ComputerControls.runtime_numbers(program.computer_controls))

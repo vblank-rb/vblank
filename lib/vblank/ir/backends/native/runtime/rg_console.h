@@ -38,6 +38,17 @@
 #endif
 #define RG_SCREEN_BORDERED (RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT)
 
+/* How many of the window's pixels, across and down, each pixel of the picture is shown as at a scale
+ * of 1: 2 for a game of big pixels (`screen :bitmap, pixel_size: 2`, Console::Description#pixel_size),
+ * which plays a screen half the console's width and height. The window is sized from the picture as
+ * shown, RG_SHOWN_WIDTH by RG_SHOWN_HEIGHT, so it opens the console's size whatever the game's pixels,
+ * and its scale is counted in the console's pixels; the picture is stretched to fill it. */
+#ifndef RG_PIXEL_SIZE
+#define RG_PIXEL_SIZE 1
+#endif
+#define RG_SHOWN_WIDTH (RG_WHOLE_WIDTH * RG_PIXEL_SIZE)
+#define RG_SHOWN_HEIGHT (RG_WHOLE_HEIGHT * RG_PIXEL_SIZE)
+
 /* How many bits of each colour channel the console shows, from the top. */
 #ifndef RG_COLOR_BITS
 #define RG_COLOR_BITS 5
