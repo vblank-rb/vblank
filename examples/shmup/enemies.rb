@@ -95,6 +95,7 @@ module Shmup
         if player.shot_live == 1
           if player.shot.overlaps?(enemy)
             hud.score_up
+            @build.play_enemy_blast # a verb of the game's own (examples/shmup/blasts.rb)
             player.reclaim_shot
             respawn enemy
           end
@@ -104,6 +105,7 @@ module Shmup
         # for a moment, so an enemy flies straight through it then.
         if player.hittable && player.ship.overlaps?(enemy)
           hud.hit
+          @build.play_ship_blast
           player.hurt
           respawn enemy
         end
