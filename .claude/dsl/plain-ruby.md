@@ -118,15 +118,18 @@ instance variables.
   number outright before that routine reads it (`@rows = 2`, then `@rows.times`), one only put into a
   String, or a number read while it holds nil. Nor is a line of `initialize`, wherever the object is
   made. A number one routine gives and another reads is refused: the game can run them in either order.
-- **A plain `true` or `false` (or nil) is a once-guard or a game flag**, told apart by where it changes.
-  A once-guard is set in the routine that has just read it (`plan unless @planned`, with `plan` setting
-  `@planned = true`; or `return if @laid_out` above `@laid_out = true`): the work it guards is built
-  the first time a routine reaches it, and a later read, from any routine, finds it built. It is not
-  refused, so long as what it guards adds nothing to what the game runs. A game flag is set in one
-  routine and tested in another (`@open = true` in one, `if @open` in the other), or tested around game
-  code and set in the same routine (`seen += 1 if @open`, then `@open = true`): Ruby would decide the
-  test while building, so it is refused at the second of the two lines the build reaches, naming the fix, `game_variables :open` (and `@open = false` where it starts,
-  for one left nil).
+- **A plain `true` or `false` (or nil) is refused when it is a game flag**: a test on it (`if @open`,
+  `unless @open`, `if !@open`) has game code on a side, and game code changes it and leaves it changed.
+  Ruby would decide that test once, while building. The build looks at both sides: the side Ruby runs,
+  and the side it skips, which it runs on a copy of the build that is then thrown away. So
+  `seen += 1 if @open` with `@open = true` anywhere in game code is refused, in one routine or two,
+  naming both lines and the fix, `game_variables :open` (and `@open = false` where it starts, for one
+  left nil). Not refused: a once-guard, whose test guards building work and no game code (`plan unless
+  @planned`, with `plan` setting `@planned = true` and declaring routines; `return if @laid_out` above
+  `@laid_out = true`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
+  `@white = false` in an `ensure`), which is the same on every pass. A side that can leave the code
+  around it (`return`, `break`, `next`, `yield`) is never run on the copy, and a test playing in a
+  Ractor of its own runs none.
 
 ## Changing a variable
 

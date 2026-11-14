@@ -44,68 +44,6 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_refused("`Minitest`") { game_loop { Minitest::Test } }
   end
 
-  def test_a_flag_of_the_game_block_one_routine_sets_and_the_loop_tests_is_refused_at_the_test
-    error = assert_raises(Refused) do
-      built do
-        @open = false
-        seen = var :seen, 0
-        func(:open_door) { @open = true }
-        game_loop do
-          call :open_door if pressed(:a)
-          seen += 1 if @open
-        end
-      end
-    end
-
-    assert_includes error.message, "`game_variables :open` to the game block"
-    assert_includes error.message, "`true` or `false`"
-    assert_match(/\(at test_plain_ruby_refusals\.rb:\d+\)/, error.message)
-  end
-
-  def test_a_flag_of_the_game_block_tested_then_set_in_the_loop_is_refused
-    error = assert_raises(Refused) do
-      built do
-        @open = false
-        seen = var :seen, 0
-        game_loop do
-          seen += 1 if @open
-          @open = true
-        end
-      end
-    end
-
-    assert_includes error.message, "`game_variables :open` to the game block"
-  end
-
-  # The side Ruby skips is tried and put back: the locals and instance variables it set, and what
-  # the builder recorded, are as they were, so the build after it is the one without the side.
-  def test_a_flag_tested_where_the_side_sets_nothing_the_game_runs_builds_as_before
-    builder = built do
-      @shown = false
-      @label = :none
-      seen = var :seen, 0
-      game_loop do
-        @label = :shown if @shown
-        seen += 1 if @label == :none
-      end
-    end
-
-    assert_equal 3, game_player.run(builder.program, frames: 3)[:seen]
-  end
-
-  def test_a_flag_left_nil_one_routine_tests_and_another_sets_is_told_to_start_as_false
-    error = assert_raises(Refused) do
-      built do
-        seen = var :seen, 0
-        func(:check_door) { seen += 1 if @open }
-        func(:open_door) { @open = true }
-        game_loop { call :check_door }
-      end
-    end
-
-    assert_includes error.message, "give `@open` `false` where it is first set"
-  end
-
   def test_an_instance_variable_handed_a_variable_can_move_while_setting_up
     built do
       score = var :score, 0

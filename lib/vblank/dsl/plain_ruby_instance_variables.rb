@@ -360,30 +360,30 @@ module VBlank
           refuse_named_object!(label, current)
         end
 
-        # The builder's record of instance variables, while it records game code. Nil while a side of
-        # a test is tried on a throwaway (Steps::Throwaway), since nothing it does stays.
+        # The builder's record of instance variables, while it records game code.
         def uses_while_recording(owner)
           builder = Builder.in_use
           return unless builder&.recording_game_code? && !owner.is_a?(Module)
-          return if builder.instance_variable_uses.trying?
 
           builder.instance_variable_uses
         end
 
-        # The builder, where a test of +owner+'s +label+, holding +current+, is a test of a plain
-        # flag that no line of game code has changed yet: what its sides record decides what the
-        # flag is (Steps::BuildTest#watch_flag). Nil for any other.
+        # The builder, where a test of +owner+'s +label+, holding +current+, is a test in game code of
+        # a plain flag not yet known to guard game code: what its sides record says whether it does
+        # (Steps::BuildTest#watch_flag, Uses#refuse_game_flags!). Nil for any other.
         def builder_watching_flag(owner, label, current)
           return unless Uses::FLAGS.include?(current)
 
           uses = uses_while_recording(owner)
-          return if uses.nil? || uses.named?(owner, label) || uses.flag_changed?(owner, label)
+          return if uses.nil? || uses.named?(owner, label) || uses.flag_guards_game?(owner, label)
 
           Builder.in_use
         end
 
-        # A side of a test of +owner+'s plain flag +label+ records game code.
-        def note_flag_guarding_game(owner, label) = Builder.in_use.instance_variable_uses.note_flag_guarding_game(owner, label)
+        # A side of a test of +owner+'s plain flag +label+, which held +current+, records game code.
+        def note_flag_guarding_game(owner, label, current)
+          Builder.in_use.instance_variable_uses.note_flag_guarding_game(owner, label, current)
+        end
 
         # The game variable a named instance variable holding +current+ is: made now from a number
         # it still holds as Ruby, or the one it holds already.
@@ -625,12 +625,12 @@ module VBlank
           # before changing it, the line that first changed it, the line of a change worked out from
           # Ruby's own number that nothing has given a number outright since, and the routine whose
           # line last gave it a number. A Struct, since each field is set as the build reaches it.
-          #
-          # A `true` or `false` keeps two more: the routines whose code read it (nil reads too), and
-          # whether its last change was a once-guard's (#note_flag_change).
-          # And whether a test on it guards game code: a side of one recorded statements, run or tried.
-          Use = Struct.new(:read_before_change, :changed_at, :changed_from_ruby_at, :given_in, :flag_read_in, :flag_guard,
-                           :flag_read_nil, :flag_guards_game)
+          Use = Struct.new(:read_before_change, :changed_at, :changed_from_ruby_at, :given_in)
+
+          # One plain flag of one object (#note_flag_change): what it held before game code first
+          # changed it, the line and routine of a change that still stands, the line of a test on it
+          # whose side records game code, and whether that test found it nil.
+          Flag = Struct.new(:started, :start, :changed_at, :changed_in, :tested_at, :tested_nil)
 
           TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
           FLAGS = [true, false, nil].freeze # What a plain flag holds
@@ -645,19 +645,39 @@ module VBlank
             @makers_by_name = {}
             @first_numbers = {}
             @uses = {}.compare_by_identity
-            @trying = 0
+            @flags = {}.compare_by_identity
           end
 
-          # A side of a test is run on a throwaway between these two (Steps::Throwaway): nothing it
-          # reads or writes is noted.
-          def start_trying = @trying += 1
-          def stop_trying = @trying -= 1
-          def trying? = @trying.positive?
+          # Is a test on +owner+'s plain flag +label+ known already to guard game code?
+          def flag_guards_game?(owner, label) = !@flags[owner]&.dig(label)&.tested_at.nil?
 
-          # Has a line of game code given +owner+'s +label+ a value yet?
-          def flag_changed?(owner, label) = !@uses[owner]&.dig(label)&.changed_at.nil?
+          # A test on +owner+'s plain flag +label+, which held +current+, has a side that records game
+          # code: what the flag holds decides what the game does as it plays.
+          def note_flag_guarding_game(owner, label, current)
+            flag = flag_of(owner, label)
+            flag.tested_at ||= Messages::AuthorSource.author_file_and_line
+            flag.tested_nil ||= current.nil?
+          end
 
-          def note_flag_guarding_game(owner, label) = use_of(owner, label).flag_guards_game = true
+          # A PLAIN TRUE OR FALSE (OR NIL) IN GAME CODE is decided while building wherever a test asks
+          # it. That is right for a flag the build keeps for itself, and wrong for one the game keeps,
+          # and two facts together tell the second: a test on it guards game code (a side of it, run
+          # or tried, recorded statements: Steps::BuildTest#watch_flag), and game code leaves it
+          # changed. Asked once every routine is recorded, so the order the build met them in does
+          # not matter:
+          #
+          # - `@seen += 1 if @open` with `@open = true` anywhere in game code: refused.
+          # - `plan unless @planned` with `plan` setting `@planned = true`: the test guards building
+          #   work (routines declared), not game code. Left alone.
+          # - `@white = true`, then `yield`, then `@white = false` in an `ensure`: a switch set for
+          #   the length of one call and put back, which is the same on every pass. Left alone.
+          def refuse_game_flags!
+            @flags.each do |owner, labels|
+              labels.each do |label, flag|
+                refuse_game_flag!(owner, label, flag) if flag.tested_at && flag.changed_at
+              end
+            end
+          end
 
           # A variable was just made for +owner+'s +label+, at the line running now. Recorded with
           # that line, under the class a mark would be written in (#first_number_owner).
@@ -720,7 +740,6 @@ module VBlank
           end
 
           def note_read(owner, label, current)
-            return note_flag_read(owner, label, current) if FLAGS.include?(current)
             return unless plain_number?(current)
 
             use = use_of(owner, label)
@@ -735,7 +754,7 @@ module VBlank
           # from what it holds. Only a plain number held is the game's to lose; nil counts, given a
           # number.
           def note_change(owner, label, current, value, operator:)
-            return note_flag_change(owner, label) if FLAGS.include?(current) && [true, false].include?(value)
+            return note_flag_change(owner, label, current, value) if FLAGS.include?(current) && [true, false].include?(value)
             return unless (current.nil? || plain_number?(current)) && plain_number?(value)
 
             use = use_of(owner, label)
@@ -749,48 +768,38 @@ module VBlank
           private
 
           # A number or a symbol: what a game keeps and a line of game code can mean to change.
-          # `true` and `false` have rules of their own (#note_flag_change).
+          # `true` and `false` have rules of their own (#refuse_game_flags!).
           def plain_number?(value) = TRACKED.any? { |kind| value.is_a?(kind) }
 
-          # A PLAIN TRUE OR FALSE IN GAME CODE is one of two things, and only where it changes tells
-          # them apart. Ruby decides every test on it while building, either way.
-          #
-          # - A ONCE-GUARD, a flag the build keeps for itself: `plan unless @planned`, with `plan`
-          #   setting `@planned = true`, or `return if @laid_out` above `@laid_out = true`. Its
-          #   change is made in the routine that has just read it, so the work it guards is built
-          #   once, the first time a routine reaches it. A later read, from any routine, finds the
-          #   work built already. That is what the author meant, and it is left alone, so long as
-          #   no side of a test on it records game code (Steps::BuildTest#watch_flag): the side Ruby
-          #   ran is watched, and the side it skipped is tried on a throwaway. `@seen += 1 if @open`
-          #   above `@open = true` has a once-guard's shape, and it is a game flag.
-          # - A GAME FLAG: one routine sets `@open = true` and another tests `if @open`. The game
-          #   can run the two in either order, so a test decided while building is frozen at
-          #   whichever value Ruby held then. Refused at the second of the two lines the build
-          #   reaches: a read after the change, or a change after the read.
-          #
-          # A read of nil counts as a read here, since `@open` left unset reads as false.
-          def note_flag_read(owner, label, current)
-            use = use_of(owner, label)
+          # A line of game code gives a plain flag +value+ outright, where it held +current+. A change
+          # stands until the routine that made it puts the flag back as it was before game code first
+          # changed it (nil and false are one answer to a test), which is a switch held for a while
+          # and the same on every pass. Put back from another routine, it is the game turning the
+          # flag on and off, and the change still stands.
+          def note_flag_change(owner, label, current, value)
+            flag = flag_of(owner, label)
             routine = Builder.in_use.recorded_routine_body
-            if use.changed_at && !use.flag_guard && !use.given_in.equal?(routine)
-              refuse_unnamed_change!(owner, label, use.changed_at, flag: true)
+            flag.start = current unless flag.started
+            flag.started = true
+            if !value == !flag.start
+              flag.changed_at = flag.changed_in = nil if flag.changed_in.equal?(routine)
+            elsif flag.changed_at.nil?
+              flag.changed_at = Messages::AuthorSource.author_file_and_line
+              flag.changed_in = routine
             end
-            (use.flag_read_in ||= Set.new.compare_by_identity) << routine
-            return if use.changed_at
-
-            use.read_before_change = true
-            use.flag_read_nil ||= current.nil?
           end
 
-          # A line of game code gives a plain flag `true` or `false` outright (#note_flag_read).
-          def note_flag_change(owner, label)
-            use = use_of(owner, label)
-            routine = Builder.in_use.recorded_routine_body
-            here = Messages::AuthorSource.author_file_and_line
-            use.flag_guard = (use.flag_read_in&.include?(routine) && !use.flag_guards_game) || false
-            refuse_unnamed_change!(owner, label, nil, flag: true) if use.read_before_change && !use.flag_guard
-            use.given_in = routine
-            use.changed_at ||= here
+          def flag_of(owner, label) = (@flags[owner] ||= {})[label] ||= Flag.new(false, nil, nil, nil, nil, false)
+
+          def refuse_game_flag!(owner, label, flag)
+            name = label.to_s.delete_prefix("@")
+            where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
+            start = " Then give `#{label}` `false` where it is first set." if flag.tested_nil
+            raise Refused, "`#{label}` is changed while the game plays (at #{flag.changed_at}), and a test on it " \
+                           "decides what the game does (at #{flag.tested_at}). `#{label}` is a plain Ruby value, so " \
+                           "the game does not see the change. Ruby decided the test once, while it built the game, " \
+                           "from the value (`true` or `false`) it held then. To fix this, add `game_variables " \
+                           ":#{name}` to #{where}.#{start}"
           end
 
           # Who a variable name is made for: the game block, or the class or module that chose the
@@ -824,17 +833,13 @@ module VBlank
                            "number.#{Messages::AuthorSource.at_author_line}"
           end
 
-          # +flag+ is a `true` or `false` (#note_flag_change), which keeps a value, not a number. One
-          # read while it held nil is told to start as `false` too, since a game variable cannot be nil.
-          def refuse_unnamed_change!(owner, label, changed_at, flag: false)
+          def refuse_unnamed_change!(owner, label, changed_at)
             name = label.to_s.delete_prefix("@")
             where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
-            kept = flag ? "value (`true` or `false`)" : "number"
-            start = " Then give `#{label}` `false` where it is first set." if flag && use_of(owner, label).flag_read_nil
             raise Refused, "`#{label}` is changed while the game plays, and game code reads it. `#{label}` is a plain " \
-                           "Ruby value, so the game does not see the change. It keeps the #{kept} that Ruby gave it " \
-                           "while Ruby built the game. To fix this, add `game_variables :#{name}` to #{where}.#{start}" \
-                           "#{" (changed at #{changed_at})" if changed_at}#{Messages::AuthorSource.at_author_line if flag}"
+                           "Ruby value, so the game does not see the change. It keeps the number that Ruby gave it " \
+                           "while Ruby built the game. To fix this, add `game_variables :#{name}` to #{where}." \
+                           "#{" (changed at #{changed_at})" if changed_at}"
           end
         end
       end

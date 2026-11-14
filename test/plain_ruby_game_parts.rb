@@ -513,6 +513,36 @@ class PlannedTwicePart < PlannedOncePart
   end
 end
 
+# A switch held for the length of one call and put back after it, which picks how the code inside
+# is built: the same on every pass, so a test on it is rightly Ruby's, though both its sides are
+# game code.
+class SwitchedPart
+  def initialize(builder)
+    @fast = false
+    @slow_steps = builder.var(:switched_slow, 0)
+    @fast_steps = builder.var(:switched_fast, 0)
+    builder.func(:switched_tick) do
+      step
+      while_fast { step }
+    end
+  end
+
+  def while_fast
+    @fast = true
+    yield
+  ensure
+    @fast = false
+  end
+
+  def step
+    if @fast
+      @fast_steps += 1
+    else
+      @slow_steps += 1
+    end
+  end
+end
+
 # A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
 # tests it. The game can run them in either order, and Ruby decides the test while building, so
 # the build stops at whichever line comes second. Declared in each order.

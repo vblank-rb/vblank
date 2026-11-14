@@ -671,6 +671,8 @@ module VBlank
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
+      # Every line of game code is recorded, so each plain flag's tests and changes are known.
+      @instance_variable_uses.refuse_game_flags!
 
       finalize_scene_sprite_handover # first: it settles what each sprite waits for before it is painted
       finalize_sprite_repaints
