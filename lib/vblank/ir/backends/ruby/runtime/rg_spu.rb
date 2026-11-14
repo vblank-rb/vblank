@@ -130,7 +130,9 @@ end
 
 # --- the encoder (rg_spu.c's, PS1::ADPCM.encode), for a recording laid out as the game starts ---
 
-RG_SPU_ENCODE_WEIGHTS = [[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]].freeze
+# Must stay shareable: a shell plays its unpacking inside a Ractor, which cannot set a constant
+# holding a mutable Array (the inner pairs too).
+RG_SPU_ENCODE_WEIGHTS = Ractor.make_shareable([[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]])
 RG_SPU_LARGEST_SHIFT = 12
 RG_SPU_MOST_LOOP_SAMPLES = 0x1_0000
 
