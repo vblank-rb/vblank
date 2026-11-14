@@ -31,17 +31,6 @@ class TestPackTurningBackgrounds < Minitest::Test
     slots.colors :table, at: COLORS_AT, count: TABLE.length
   end
 
-  def test_tiles_of_256_colors_under_a_map_of_two_byte_cells_are_refused
-    slots = lambda do |named|
-      named.tiles :pictures, at: TILES_AT, count: BYTE_TILES.length, colors: 256
-      named.numbers :cells, at: MAP_AT, count: CELLS.length / 2, width: :half, signed: false
-      named.colors :table, at: COLORS_AT, count: TABLE.length
-    end
-    error = refusal(slots) { |pack| background :layer, tiles: pack[:pictures], map: pack[:cells], colors: pack[:table], across: 16 }
-
-    assert_includes error.message, "one byte wide"
-  end
-
   def test_tiles_of_256_colors_with_fewer_colors_than_the_table_are_refused
     slots = lambda do |named|
       named.tiles :pictures, at: TILES_AT, count: BYTE_TILES.length, colors: 256

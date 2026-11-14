@@ -15,8 +15,8 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `slots.tiles :walls, at: 0x1020, count: 40` — 8x8 tiles; `colors: 4` or `colors: 16` where the
     console keeps both (the Super Nintendo). **`colors: 256` is a tile kept a byte a pixel**, 64 bytes row
     by row, each byte a place in a table of 256 colours, in any layout: the pictures of a layer a console
-    turns and resizes (the Advance's turning layer, the Super Nintendo's Mode 7), for a `background` from
-    the pack (`backgrounds.md`).
+    turns and resizes (the Advance's turning layer, the Super Nintendo's Mode 7), or of a layer of 256
+    colours that scrolls, for a `background` from the pack (`backgrounds.md`).
   - `slots.numbers :speeds, at: 0x2000, count: 8, width: :byte, signed: false` — numbers one, two or four bytes wide; `signed:` must be said.
     `pack[:video_bytes].numbers(first, count)` is `count` of them from number `first` on, for a
     background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
@@ -523,6 +523,8 @@ Two layouts are no one console's, since a byte is a byte in every layout: a tile
 pixel (`Console::BYTE_A_PIXEL_TILES`, `slots.tiles ..., colors: 256`), and a map of one byte a cell, each
 the number of a tile with no turn and no bank (`Console::BYTE_MAP_CELLS`, a background's `map:` given a
 slot of numbers `width: :byte`). Together they are how a console keeps the layer it turns and resizes.
+Tiles of 256 colours also take a map of map cells or of the console's own two-byte cells, for a layer
+that scrolls: such a cell's tile and turns are read, and its bank is not (`backgrounds.md`).
 
 Each console's layout is numbers in its hardware file (`Console::GBCHardware::ORIGINAL_FORMATS` and the
 rest), named by its kit (`Console::Kit#original_formats`); one reader reads any of them

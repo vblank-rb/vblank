@@ -10,6 +10,7 @@ require "pack_sound_tests"
 require "pack_scores_at_start_tests"
 require "pack_background_tests"
 require "pack_slot_view_games"
+require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
 require "all/vblank/builder/test_pack_poses"
@@ -1822,6 +1823,28 @@ module PackGames
     ].freeze
   end
 
+  # A TEXT LAYER OF 256 COLOURS (PackTableTileBackgroundGames): more tiles than a byte names, some
+  # turned, under map cells the unpacking writes or under the Advance's own cells of two bytes.
+  class TableTileBackgrounds < Kit
+    include PackTableTileBackgroundGames
+
+    GAMES = [
+      game(:background_of_map_cells_over_tiles_of_256_colors, passes: 4) do |folder, options|
+        built(*table_tile_pack_game_and_file(table_tile_original(folder), options: options) do |layer|
+          game_loop do
+            wait_vblank
+            layer.scroll_by 3, 1
+          end
+        end)
+      end,
+      game(:background_of_two_byte_cells_over_tiles_of_256_colors, passes: 3) do |folder, options|
+        built(*table_tile_pack_game_and_file(table_tile_original(folder), options: options, map: :two_byte_cells) do |_layer|
+          game_loop { wait_vblank }
+        end)
+      end
+    ].freeze
+  end
+
   # COLOURS READ AS THE GAME STARTS, COMPARED WHILE THE GAME IS BUILT: what the build checks of two
   # lists of colours when one of them is markers (IR::StartFile, "MARKERS"), whose colours it does
   # not hold. Each is a game the all-in-one build accepts, so the build with the pack left out must
@@ -2083,7 +2106,7 @@ module PackGames
   end
 
   KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
-          Sounds, Scores, MusicPlayer2000Songs, SlotViews, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
+          Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 
   # Every registered game.
