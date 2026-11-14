@@ -45,6 +45,75 @@ class TestCLI < Minitest::Test
       assert_match(/Built demo\.gba \(\d+ bytes\)/, build_out)
       assert_match(/Built demo\.gbc \(\d+ bytes\)/, build_out)
       refute_match(/warning/, build_out, "the starter builds with nothing to warn about")
+      refute_match(/Build stopped/, build_out, "a build that worked does not say it stopped")
+    end
+  end
+
+  # A game whose `while` tests a number with no comparison, which stops the build as it reads the game.
+  LOOP_ON_A_NUMBER = <<~GAME
+    require "vblank"
+    VBlank.game("OOPS", consoles: %i[gba]) do
+      screen :bitmap
+      count = var :count, 0
+      game_loop { count += 1 while count }
+    end
+  GAME
+
+  # A game the guardrails stop: drawing on a tiled screen.
+  DRAWS_ON_TILES = <<~GAME
+    require "vblank"
+    VBlank.game("TILED", consoles: %i[gba]) do
+      screen :tiled
+      game_loop { fill_rect 0, 0, 8, 8, :red }
+    end
+  GAME
+
+  # What a command said once its build's phases ("  Reading game  0.1s") and its "Building ... -
+  # Please wait." are taken out: the refusal, whose first line is what a person reads first.
+  private def refusal_lines(out)
+    out.lines.map(&:chomp).reject { |line| line.start_with?("  ") || line.start_with?("Building ") }
+  end
+
+  # A build that stops says so in its first line, before the reason, so nobody reads the reason
+  # and wonders whether the game will still play.
+  def test_a_build_that_stops_says_so_before_the_reason
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
+      out, status = cli("build", "oops.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: OOPS .*Nothing was built/, lines.first, out)
+      assert_equal "", lines[1], "a blank line comes between the headline and the reason"
+      assert_match(/with no comparison/, lines[2], out)
+      refute File.exist?(File.join(dir, "oops.gba"))
+    end
+  end
+
+  def test_run_says_its_build_stopped_before_the_reason
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
+      out, status = cli("run", "oops.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: OOPS .*nothing will play/, lines.first, out)
+      assert_match(/with no comparison/, out)
+    end
+  end
+
+  # The guardrails print their findings themselves: the headline goes above them, once.
+  def test_a_build_the_guardrails_stop_says_so_once_above_the_findings
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "tiled.rb"), DRAWS_ON_TILES)
+      out, status = cli("build", "tiled.rb", dir: dir)
+
+      refute status.success?, out
+      lines = refusal_lines(out)
+      assert_match(/\ABuild stopped: TILED /, lines.first, out)
+      assert_match(/1 problem about this game:/, lines[2], out)
+      assert_equal 1, out.scan("Build stopped").size, out
+      assert_match(/Fix the problem above/, out)
     end
   end
 

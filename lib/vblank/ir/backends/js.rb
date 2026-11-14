@@ -103,15 +103,17 @@ module VBlank
         end
 
         # The web build's own check, on a program however it was made: every console-only step,
-        # said in plain words to +err+, and a Guardrails::ValidationError when the game can reach
-        # one. One in a routine nothing calls is a warning, since the lowering leaves it out
+        # said in plain words, in a Guardrails::ValidationError when the game can reach one and to
+        # +err+ when it cannot. One in a routine nothing calls is a warning, since the lowering leaves it out
         # (Lowering#reachable_steps is how the two agree on which those are).
         def refuse_console_only_steps!(program, err = $stderr)
           reached = Lowering.new(program).reachable_steps
           check = Guardrails::Checks::WebPortability.new(severity: :error, reached: reached)
           report = Guardrails::Validator.new(checks: [check]).run(program, autofix: false)
-          report.print_findings(to: err) if err
+          # A step the game reaches stops the build, and the error's message is those steps: printed
+          # here as well, they would come before the line that says the build stopped, and twice.
           report.raise_on_error!
+          report.print_findings(to: err) if err
         end
 
         # The program written out as JavaScript: the game alone, with no runtime.

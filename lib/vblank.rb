@@ -16,6 +16,11 @@ module VBlank
 
   # A build the checks stopped, or a cartridge that came out wrong.
   class ROMError < BuildError; end
+
+  # A build the guardrails stopped. The build has printed the findings already, under the line
+  # that says it stopped (Messages::BuildStopped), so a caller that prints this error's message
+  # prints it as it is, with no second headline.
+  class StoppedByChecks < ROMError; end
 end
 
 # THE WHOLE LIBRARY, A LINE FOR EACH MODULE, and this is the only place that says so. Each one loads a
@@ -211,8 +216,8 @@ module VBlank
                 IR::Guardrails::Checks::StackNotHonored.new(evaluated.sprites)]
       findings = IR::ProgramChecks.findings_for!(program, checks: checks, progress: progress)
       if findings.errors.any?
-        raise ROMError,
-              "build stopped by #{findings.errors.size} problem(s) — see the explanation(s) above"
+        stopped_by_checks = true
+        raise StoppedByChecks, Messages::BuildStopped.fix_findings_line(findings.errors.size)
       end
     end
 
@@ -240,6 +245,14 @@ module VBlank
     # reader sees the explanation and then the line saying the build stopped.
     progress.done
     findings = request.findings if request
+    # A build the findings stopped says so first, so its reader knows before the first word of
+    # them that nothing was made. A game built for several consoles names this one, as the others
+    # can still build.
+    if stopped_by_checks
+      stopped_on = Console.described(options.console).title if cartridge && options.game_consoles.size > 1
+      err.puts Messages::BuildStopped.headline(title, console: stopped_on)
+      err.puts
+    end
     findings&.print_findings(to: err)
     # A build cut short by `debug_halt` says so where it says the rest, so a test that captures
     # the build's words has these too and the terminal is spared them.

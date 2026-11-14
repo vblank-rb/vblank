@@ -9,4 +9,5 @@ require_relative "messages/made_names"     # Names the build makes up for what n
 require_relative "messages/plain_words"    # What a person calls a thing: the build's English
 require_relative "messages/progress"       # What a build reports while it runs
 require_relative "messages/build_output"   # Where a build prints
+require_relative "messages/build_stopped"  # The first line of a build that stopped
 require_relative "messages/author_source"  # The first line outside the framework, to blame for a mistake

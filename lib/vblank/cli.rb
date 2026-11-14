@@ -471,7 +471,7 @@ module VBlank
       # A setting the game does not ask for, or one it cannot read, or a build that stopped (the
       # guardrails' reasons are printed already; a lowering's are the message): say why, not a
       # backtrace.
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     desc "profile GAME_FILE", "Run the game and report what it costs"
@@ -550,7 +550,7 @@ module VBlank
       # the cartridge somebody would actually ship, not a differently-placed one.
       game.build_rom(settings: given_settings, console: console_to_run(game, "profile")).profile(format: format, **measuring)
     rescue ArgumentError, VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # The options `run` and `compare` both take: what sets which buttons to press, and the
@@ -1174,7 +1174,7 @@ module VBlank
       end
       yield VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: build)
     rescue VBlank::Playthroughs::CommandLine::Refused => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # --- run ---
@@ -1189,10 +1189,10 @@ module VBlank
       # A big game takes a while to read and check, and somebody is waiting for the window, so a
       # status line goes out before the first phase starts. It says what is happening and no more.
       say "Building #{game.title} - Please wait."
-      game.checked_program(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
+      game.checked_program(progress: build_progress, settings: given_settings, console: console,
                            for_computer: for_computer)
     rescue ArgumentError, VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # "DEMO is for the Game Boy Advance and the Game Boy Color. This plays it as the Game Boy
@@ -1246,7 +1246,7 @@ module VBlank
     def play_shell_in_window(game)
       say "Building #{game.title} as a shell - Please wait."
       built = VBlank::Original::Shell.build(game, console: console_to_play(game), settings: given_settings,
-                                                  progress: VBlank::Messages::Progress.to($stderr))
+                                                  progress: build_progress)
       require_relative "live"
       shell = VBlank::Live::Shell.from(built)
       width, height = built.game.described_console.framed_screen_size
@@ -1265,7 +1265,7 @@ module VBlank
                                 }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) })
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     ensure
       window&.close
     end
@@ -1396,7 +1396,7 @@ module VBlank
       command = VBlank::Playthroughs::CommandLine.new(options, out: $stdout, build: nil)
       game = nil
       export = -> { game.build_rom(settings: given_settings, console: EXPORTED_CONSOLE) }
-      command.play(on: way, window: window, export_cartridge: export, progress: VBlank::Messages::Progress.to($stderr)) do
+      command.play(on: way, window: window, export_cartridge: export, progress: build_progress) do
         game = load_game(game_file)
         refuse_export_for_other_console!(game)
         program = exporting? ? program_to_run(game, console: EXPORTED_CONSOLE, for_computer: false) : program_to_run(game)
@@ -1404,7 +1404,7 @@ module VBlank
                                                        source: [File.binread(game_file), given_settings, program.console])
       end
     rescue VBlank::Playthroughs::CommandLine::Refused => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot play #{game&.title || game_file} as Ruby yet. The game needs a part of VBlank " \
                          "that does not work in Ruby yet: #{e.part}. Give another way with --on, such as --on native."
@@ -1723,22 +1723,30 @@ module VBlank
       end
       built = {}
       failed = {}
+      stops = []
       consoles.each do |console|
         built[console] = write_cartridge_for(game, game_file, console)
       rescue VBlank::BuildError => e
         # A build the guardrails stopped (their reasons are printed already), or something the
         # checks let through that the console's lowering cannot make.
         failed[console] = e.message
+        stops << e
       end
       built.each_value { |rom| profile_rom(rom) } if options[:profile] || options[:scene] || options[:keys].any?
-      raise Thor::Error, not_built_message(game, failed, built.keys) unless failed.empty?
+      return if failed.empty?
+
+      # One headline for the command, over every console's reason, naming the consoles that did
+      # not build when others did.
+      stop = stops.find { |error| !error.is_a?(VBlank::StoppedByChecks) } || stops.first
+      unbuilt = failed.keys.map { |console| VBlank::Console.described(console).title }.join(" and the ") unless built.empty?
+      raise build_stopped(stop, message: not_built_message(game, failed, built.keys), console: unbuilt)
     end
 
     # One console's cartridge, written beside the game file or to --output, and handed back.
     def write_cartridge_for(game, game_file, console)
       # Somebody is sitting there waiting for this, so it says what it is doing.
       variant = options[:variant] || game.variant_for(console)
-      rom = game.build_rom(progress: VBlank::Messages::Progress.to($stderr), settings: given_settings, console: console,
+      rom = game.build_rom(progress: build_progress, settings: given_settings, console: console,
                            variant: variant)
       path = options[:output] || File.join(File.dirname(File.expand_path(game_file)), game.default_filename(console: console))
       rom.write(path)
@@ -1866,7 +1874,7 @@ module VBlank
         say "Building #{File.basename(path)} as a shell for #{target ? options[:target] : 'this computer'} - Please wait."
         VBlank::IR::Backends::Native.new.build_desktop_shell(game, path, console: console, settings: given_settings, target: target,
                                                                          strip: options[:strip],
-                                                                         progress: VBlank::Messages::Progress.to($stderr))
+                                                                         progress: build_progress)
         say "Built #{path}, a folder. Run the program in it called #{File.basename(path)}."
         return
       end
@@ -1874,10 +1882,10 @@ module VBlank
       VBlank::IR::Backends::Native.new.build_desktop(game, path, console: console, settings: given_settings, target: target,
                                                                  strip: options[:strip], pack_at_start: options[:pack_at_start],
                                                                  bios: options[:bios],
-                                                                 progress: VBlank::Messages::Progress.to($stderr))
+                                                                 progress: build_progress)
       say "Built #{path}"
     rescue VBlank::BuildError, VBlank::IR::Backends::Computer::Error => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # The "ruby" format: the game as one Ruby file that plays in a window with Ruby, fiddle and SDL3
@@ -1891,7 +1899,7 @@ module VBlank
       say "Building #{File.basename(path)} - Please wait."
       VBlank::IR::Backends::Ruby.new.build_script(game, path, console: console, settings: given_settings,
                                                   pack_at_start: options[:pack_at_start], shell: options[:shell],
-                                                  progress: VBlank::Messages::Progress.to($stderr))
+                                                  progress: build_progress)
       say "Built #{path}. To play it, run: ruby #{File.basename(path)}"
     rescue VBlank::IR::Backends::Ruby::RuntimeGap => e
       raise Thor::Error, "VBlank cannot write #{game.title} as Ruby yet. The game needs a part of VBlank " \
@@ -1949,7 +1957,7 @@ module VBlank
       path = options[:output] || file_beside(game, game_file, console, WEB_OUTPUTS.fetch(js))
       web = VBlank::IR::Backends::JS.new
       data = options[:data].to_sym
-      progress = VBlank::Messages::Progress.to($stderr)
+      progress = build_progress
       if options[:shell]
         template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
         web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress)
@@ -1969,7 +1977,7 @@ module VBlank
       end
       say "Built #{path}"
     rescue VBlank::BuildError => e
-      raise Thor::Error, e.message
+      raise build_stopped(e)
     end
 
     # One line on what the build kept in the console's quick memory, for --stats. The
@@ -2028,17 +2036,43 @@ module VBlank
       path = File.expand_path(game_file)
       raise Thor::Error, "I cannot find the game file #{game_file}." unless File.file?(path)
 
+      @game_title = File.basename(game_file) # what a build that stops while the file loads is called
       VBlank.forget_registered_games!
       load path
-      VBlank.registered_games.last || raise(Thor::Error, <<~MSG.chomp)
+      game = VBlank.registered_games.last || raise(Thor::Error, <<~MSG.chomp)
         #{game_file} does not declare a game. Add:
           VBlank.game "NAME", consoles: %i[gba gbc] do
             # ...the game...
           end
       MSG
+      @game_title = game.title
+      game
     rescue VBlank::BuildError => e
       # A build that stopped while the file loaded: show the plain-language reason, not a backtrace.
-      raise Thor::Error, e.message
+      raise build_stopped(e)
+    end
+
+    # --- a build that stopped ---
+
+    # The progress every build of this command writes its phases to. One for the command, so a
+    # build that stops can close the line it left open before the reason is printed.
+    def build_progress = @build_progress ||= VBlank::Messages::Progress.to($stderr)
+
+    # +error+, which stopped the command, as the error the command ends with, saying +message+.
+    #
+    # A BUILD THAT STOPPED SAYS SO IN ITS FIRST LINE (Messages::BuildStopped), because its reason
+    # alone does not say that nothing was made. This is the one place the command line adds that
+    # line: every rescue of a build hands its error here. The error is a VBlank::BuildError, or one
+    # the playthroughs made from one (its cause). A build the guardrails stopped printed the line
+    # itself, above its findings, so it gets no second one; anything else is not a build that
+    # stopped, and its message goes out as it is. +console+ names the console that did not build,
+    # for a game whose other consoles did.
+    def build_stopped(error, message: error.message, console: nil)
+      stopped = [error, error.cause].find { |raised| raised.is_a?(VBlank::BuildError) }
+      return Thor::Error.new(message) if stopped.nil? || stopped.is_a?(VBlank::StoppedByChecks)
+
+      @build_progress&.done
+      Thor::Error.new(VBlank::Messages::BuildStopped.with_headline(message, @game_title || "The game", console: console))
     end
 
     def starter_source(name)
