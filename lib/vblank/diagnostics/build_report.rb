@@ -460,7 +460,7 @@ module VBlank
       def save_memory_use(program)
         node = program.walk.find { |one| one.kind == :save_memory } or return nil
 
-        memory = IR::SaveLayout.memory(node.kilobytes)
+        memory = IR::SaveLayout.memory_named_by(node)
         records = node.records.map do |name, half, copies|
           { name: name, half: half, copies: copies, bytes: memory.record_room(half, copies) }
         end

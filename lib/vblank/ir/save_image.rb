@@ -70,9 +70,12 @@ module VBlank
       def memory = @memory || SaveLayout::PACKED
 
       # Take the save memory +program_memory+ a program declares it has. A chip cannot change, so
-      # one that was already another size is refused.
+      # one that was already another size is refused. One of the same size takes the program's
+      # kind: a .sav file says only how big the chip is (#from_sav), and 64K of it is the Advance's
+      # flash or a Super FX cartridge's battery-backed RAM.
       def use_memory!(program_memory)
         @memory ||= program_memory
+        @memory = program_memory if @memory.size == program_memory.size
         return if @memory == program_memory
 
         raise WrongSize.new(@memory.kilobytes, program_memory.kilobytes)

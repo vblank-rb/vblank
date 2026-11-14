@@ -100,8 +100,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `text_height` — works: the same as on the Advance.
 - `menu` — works: see `draw_text` for what its rows are made of.
 - `var` — works: a variable is the same 32-bit whole number as on the Advance.
-- `save_var` — works: kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip keeps it too, in RAM of its own beside the chip's.
-- `save_data` — works: kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip keeps it too, in RAM of its own beside the chip's.
+- `save_var` — works: kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip keeps 64K, in RAM of its own beside the chip's.
+- `save_data` — works: kept in 32K of battery-backed RAM on the cartridge. A cartridge with a Super FX chip keeps 64K, in RAM of its own beside the chip's. Records that need more than the cartridge keeps are refused, naming the bytes they need.
 - `part` — works: the same as on the Advance.
 - `start_over` — works: the same as on the Advance.
 - `clock` — **refused**: a Super Nintendo cartridge built here has no clock chip. Ask the player for the time on a screen of the game's own, if the game needs it.

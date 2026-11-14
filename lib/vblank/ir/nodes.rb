@@ -1766,7 +1766,9 @@ module VBlank
       # HOW MUCH SAVE MEMORY THE PROGRAM HAS, in kilobytes (see IR::SaveLayout::MEMORIES), and
       # so which kind: the smallest takes any byte at any time, where the bigger ones have to be
       # wiped a block at a time before a block is written again (IR::SaveLayout::Memory says
-      # which). A program that names none has the smallest.
+      # which). A program that names none has the smallest. +chip+ is the kind (:battery, :flash,
+      # :eeprom) where it is not the Advance's chip of that size, as on a console whose cartridge
+      # keeps more than 32K of battery-backed memory; nil for the Advance's.
       #
       # It also records how the size came about, for a report to read and nothing to run:
       # +asked_for+ is whether the program's author named it, and +records+ is each record laid
@@ -1778,7 +1780,7 @@ module VBlank
         kind :save_memory
         declaration!
         category :data
-        operands kilobytes: :int, asked_for: :flag, records: :list
+        operands kilobytes: :int, chip: :option, asked_for: :flag, records: :list
       end
 
       # Wipe the block of save memory that holds +at+, so it takes any write again, and reads

@@ -150,9 +150,10 @@ module VBlank
         Nodes.build(:save_sum, at: at, length: length)
       end
 
-      # The program has +kilobytes+ of save memory (see Nodes::SaveMemory).
-      def save_memory(kilobytes, asked_for: true, records: [])
-        Nodes.build(:save_memory, kilobytes: kilobytes, asked_for: asked_for, records: records)
+      # The program has +kilobytes+ of save memory (see Nodes::SaveMemory), of +chip+ where it is
+      # not the Advance's chip of that size.
+      def save_memory(kilobytes, asked_for: true, records: [], chip: nil)
+        Nodes.build(:save_memory, kilobytes: kilobytes, chip: chip, asked_for: asked_for, records: records)
       end
 
       # Wipe the block of save memory holding +at+ (see Nodes::SaveErase). +wait: false+ only

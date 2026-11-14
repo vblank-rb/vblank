@@ -46,8 +46,9 @@ module VBlank
       # A kind of cartridge board: its +name+, the +map_mode+ its header holds, whether the console
       # may read it at the faster speed (+fast+), the most 32K banks it holds, how much RAM a chip
       # on it has of its own (+chip_ram_bytes+, nought for none), and the bank the console sees a
-      # save in (+save_bank+).
-      Board = Data.define(:name, :map_mode, :fast, :most_banks, :chip_ram_bytes, :save_bank) do
+      # save in (+save_bank+), and the most bytes that save can be (+most_save_bytes+, the biggest of
+      # the board's Console::Description#save_memories).
+      Board = Data.define(:name, :map_mode, :fast, :most_banks, :chip_ram_bytes, :save_bank, :most_save_bytes) do
         # How far into the cartridge's RAM the save starts: nought on a plain board, whose RAM is
         # all the save; on a chip's board, past the bank or banks the chip works in.
         def save_offset = (save_bank - SRAM_BANK) << 16
@@ -64,17 +65,18 @@ module VBlank
       end
 
       PLAIN = Board.new(name: :plain, map_mode: LOROM_FAST, fast: true, most_banks: 128, chip_ram_bytes: 0,
-                        save_bank: SRAM_BANK)
+                        save_bank: SRAM_BANK, most_save_bytes: Console::SNES_PLAIN_SAVE_MEMORIES.last.first * 1024)
       # THE SAVE ON A SUPER FX BOARD. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
       # the painted screen's 56K, the tiles' generations, the list of tiles the chip readied, the
       # blocks a rectangle and a picture are handed over in, and the chip's numbers in what is
       # left. A save of 32K does not fit beside them. So a game that saves gets a board with 128K
-      # of the chip's RAM, and its save is the first 32K of the second bank, $71:0000-$71:7FFF
-      # (GSU_SAVE_BANK), which the chip never reaches; the rest of that bank is spare. bsnes keeps
-      # all 128K as the cartridge's save file, the save 64K into it (Diagnostics::SNESReading).
-      # A game that does not save keeps the 64K board, byte for byte as before.
+      # of the chip's RAM, and its save is the whole of the second bank, $71:0000-$71:FFFF
+      # (GSU_SAVE_BANK), 64K, which the chip never reaches. bsnes keeps all 128K as the
+      # cartridge's save file, the save 64K into it (Diagnostics::SNESReading). A game that does
+      # not save keeps the 64K board, byte for byte as before.
       SUPER_FX = Board.new(name: :super_fx, map_mode: LOROM_SLOW, fast: false, most_banks: 64,
-                           chip_ram_bytes: 0x10000, save_bank: GSU_SAVE_BANK)
+                           chip_ram_bytes: 0x10000, save_bank: GSU_SAVE_BANK,
+                           most_save_bytes: Console::SNES_SUPER_FX_SAVE_MEMORIES.last.first * 1024)
       BOARDS = { plain: PLAIN, super_fx: SUPER_FX }.freeze
 
       # The native vectors, and the emulation ones, by the name the lowering gives them.

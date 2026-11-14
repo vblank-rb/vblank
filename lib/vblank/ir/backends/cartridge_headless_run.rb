@@ -209,9 +209,13 @@ module VBlank
         # THE SAVE MEMORY goes in as the file the emulator keeps a cartridge's battery-backed memory
         # in, and what the run left there comes back into the same image when the console is off
         # again — so one image handed to two runs is a power cycle, as it is for the interpreter.
+        # The image takes the program's save memory first, as the interpreter's does, so its size
+        # is the cartridge's (a Super FX cartridge's 64K, not the 32K an image starts as).
         def play(frames)
-          saves = SaveLayout.named_by?(@rom.built.source_program)
+          program = @rom.built.source_program
+          saves = SaveLayout.named_by?(program)
           refuse_power_cut! if saves
+          @save.use_memory!(SaveLayout.memory_of(program)) if saves
           Diagnostics::Emulator.with_cartridge(@rom, file_name: "game#{kit.description.extension}",
                                                      save: (@save if saves)) do |core|
             @core = core

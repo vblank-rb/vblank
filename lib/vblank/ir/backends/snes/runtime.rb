@@ -124,7 +124,7 @@ module VBlank
             end
             if c.saves
               saving = Saving.scratch(memory)
-              Saving.emit(asm, memory, saving, bank: c.board.save_bank)
+              Saving.emit(asm, memory, saving, bank: c.board.save_bank, size: c.saves)
               Saving.emit_list_moves(asm, saving, lists) if lowering.moves_lists_to_save?
             end
             emit_sound_routines(asm, memory, c, lowered)

@@ -305,7 +305,9 @@ module VBlank
                              # Its 64K of RAM is where it draws, and where the console's processor
                              # keeps a painted screen's picture: one page of 56K, so a painted screen
                              # keeps one page there as on a plain cartridge.
-                             changes: { roomier_memory_bytes: (120 + 64) * 1024 },
+                             # Its save is the whole of the second bank of the chip's RAM.
+                             changes: { roomier_memory_bytes: (120 + 64) * 1024,
+                                        save_memories: SNES_SUPER_FX_SAVE_MEMORIES },
                              build: { board: :super_fx },
                              note: "the Super FX 2 (GSU-2), a 21 MHz processor of its own that draws into " \
                                    "the cartridge's RAM: Yoshi's Island, Doom, Star Fox 2"),

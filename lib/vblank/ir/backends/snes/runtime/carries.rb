@@ -14,7 +14,8 @@ module VBlank
           # builds the same bytes.
           #
           # +board+ is the cartridge's (Cartridge::SNESROM::BOARDS). +painted+ is a screen painted
-          # rather than drawn from tiles (Paint). +saves+ reaches save memory. +sound+ makes sound,
+          # rather than drawn from tiles (Paint). +saves+ is how many bytes of save memory it reaches
+          # (IR::SaveLayout.memory_of), nil where it reaches none. +sound+ makes sound,
           # +songs+ has songs, whose player (Music) follows the music volume with +follows_level+ and
           # shares the voices with +effects+ sound effects; +samples+ plays its own recordings, on
           # +recording_voices+. +holds_music+, +wobbles+, +steps_shapes+, +swells+, +slides+ and +sides+
@@ -58,7 +59,8 @@ module VBlank
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
-              new(board: board, painted: Lowering::Paint.painted?(program), saves: SaveLayout.named_by?(program),
+              new(board: board, painted: Lowering::Paint.painted?(program),
+                  saves: (SaveLayout.memory_of(program).size if SaveLayout.named_by?(program)),
                   sound: Lowering::Sound.sounds?(program), songs: songs, follows_level: songs && SNES::Music.follows_level?(program),
                   effects: IR::Tunes.effects(program).uniq.size, samples: Lowering::Sound.samples?(program),
                   recording_voices: SNES::Music.recording_voices(program), holds_music: Lowering::Sound.holds_music?(program),

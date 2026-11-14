@@ -60,11 +60,11 @@ module VBlank
 
       # Declare the record of the saved variables +saved_vars+ (IR::SavedVar), laid out beside
       # the records already laid out — if the game has any and its save memory keeps them in a
-      # record. +memory+ is the save memory the cartridge has, in kilobytes (see
+      # record. +memory+ is the save memory the cartridge has, an IR::SaveLayout::Memory (see
       # IR::SaveLayout.chosen); records that fit no memory at all are refused next, whatever this
       # does.
       def lay_out_save_var_record(saved_vars, memory)
-        return if saved_vars.empty? || !IR::SaveLayout.memory(memory).save_vars_in_record?
+        return if saved_vars.empty? || !memory.save_vars_in_record?
 
         layout = new_record_layout(SAVE_VAR_RECORD, copies: 1, when_busy: :wait)
         %i[changed spacing count].each { |what| ensure_var(layout.scratch(what)) }

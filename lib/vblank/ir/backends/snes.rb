@@ -253,7 +253,7 @@ module VBlank
                       cop: linked.address_of("rt_irq") }
           cartridge = Cartridge::SNESROM.new(linked.banks, title: title, vectors: vectors.transform_values { |at| at & 0xFFFF },
                                                            built: built, board: board,
-                                                           save_bytes: carries.saves ? Runtime::Saving::SIZE : 0)
+                                                           save_bytes: carries.saves || 0)
           Fit.new(cartridge: cartridge, settings: settings, lowering: lowering, findings: try_findings, sprite_pieces: sprite_pieces)
         end
 
