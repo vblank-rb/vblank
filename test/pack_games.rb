@@ -1803,6 +1803,47 @@ module PackGames
         builder.finalize_program
         built(builder.program, builder.made_data_pack_file)
       end,
+      # A background of pictures given as colours in lists from the pack, in a tileset that keeps
+      # black as a colour: the bank of four, and the whole slot of sixteen, which a picture's list
+      # can grow no further than.
+      game(:background_of_pictures_of_colors_in_pack_lists_keeping_black_solid, passes: 3) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :whole, pack[:palette]
+          image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          image :stone, width: 8, height: 8, colors: :whole, data: Array.new(64) { |at| PALETTE.fetch(9 + (at % 3)) }
+          tiles :wall_tiles, "#" => :brick, "o" => :stone, black: :solid
+          background :wall, tiles: :wall_tiles, map: ["#o#"]
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
+      # Kept solid, such a picture is still swapped by finding each pixel's place in its own list.
+      game(:background_of_a_picture_of_colors_in_a_pack_list_keeping_black_solid_drawn_with_another,
+           passes: 3, refused: refused_by_builder("places:")) do |folder, options|
+        from = layout_original(folder, GENESIS)
+        test = self
+        builder = Builder.new(options: options)
+        builder.instance_eval do
+          screen :tiled
+          pack = test.palette_pack_of(self, from)
+          colors :bank_1, pack[:palette].bank(1, size: BANK_SIZE)
+          colors :bank_2, pack[:palette].bank(2, size: BANK_SIZE)
+          image :brick, width: 8, height: 8, colors: :bank_1, data: Array.new(64) { |at| BANKS.fetch(1).fetch(1 + (at % 3)) }
+          tiles :wall_tiles, "#" => :brick, black: :solid
+          wall = background :wall, tiles: :wall_tiles, map: ["##"]
+          wall.draw_with :bank_2
+          game_loop { wait_vblank }
+        end
+        builder.finalize_program
+        built(builder.program, builder.made_data_pack_file)
+      end,
       # A canvas in a list from the pack stamps a picture drawn in that list, each pixel at the
       # place of its colour in the canvas's list.
       game(:canvas_in_a_pack_list_stamping_a_picture_in_that_list, passes: 4) do |folder, options|

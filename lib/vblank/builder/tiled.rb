@@ -191,12 +191,21 @@ module VBlank
       # This is a copy of the picture, once however many tilesets ask, and the picture itself keeps
       # its answer for any tileset that did not ask: the same tile stored twice, which is what two
       # answers about one tile cost.
+      #
+      # A PICTURE GIVEN AS COLOURS IN A LIST READ FROM THE DATA PACK AS THE GAME STARTS. Such a list
+      # holds a marker for each colour (IR::StartFile), and the picture's pixels are the game's own
+      # colours, so no pixel is at any place of it: the build cannot find the place the all-in-one
+      # build finds. Places added after the list's own would grow it past sixteen, or past what the
+      # list has. So the copy counts into a list of the colours its pixels draw, with no name, which
+      # shows the same picture. Swapping it for another list goes by place, and is refused as for the
+      # picture itself (Images#refuse_swapping_unplaced_pixels!, which asks #solid_black_source).
       private def solid_black_image(source)
         picture = @pictures[source]
         return source if picture.nil? || picture.places
 
         @solid_black_images[source] ||= begin
-          table = picture.colors&.dup || [nil]
+          unplaced = picture.colors&.any? { |color| IR::StartFile.marker?(color) }
+          table = unplaced ? [nil] : (picture.colors&.dup || [nil])
           places = Array.new(picture.width * picture.height) do |at|
             next 0 unless picture.drawn_at?(at)
 
@@ -206,10 +215,14 @@ module VBlank
           end
           name = free_name_after(source, :solid_black)
           define_placed_image(name, places: places, width: picture.width, height: picture.height,
-                                    colors: table.map { |color| color || :transparent }, colors_name: picture.colors_name)
+                                    colors: table.map { |color| color || :transparent },
+                                    colors_name: (picture.colors_name unless unplaced))
           name
         end
       end
+
+      # The picture +pose+ is the solid-black copy of (#solid_black_image), or nil for any other.
+      private def solid_black_source(pose) = @solid_black_images.key(pose)
 
       # Paint a tiled background: a tileset plus a map of which tile goes in each grid
       # cell. Author the map two ways:

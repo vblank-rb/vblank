@@ -1061,9 +1061,11 @@ module VBlank
       # a picture is drawn as it is: its pixels are the game's own colours. Drawn with another
       # list it is swapped by finding each pixel's colour in its own list, and the build does not
       # hold that list's colours (it holds markers, IR::StartFile), so it cannot say which place
-      # a pixel is. +poses+ are the pictures +subject+ shows, told other colours.
+      # a pixel is. +poses+ are the pictures +subject+ shows, told other colours. A tile's copy that
+      # keeps black as a colour (Tiled#solid_black_image) counts into its own colours, not the list's,
+      # so it is held to this as the picture it was made from is.
       def refuse_swapping_unplaced_pixels!(poses, subject)
-        picture = poses.find do |pose|
+        picture = poses.map { |pose| solid_black_source(pose) || pose }.find do |pose|
           image = @pictures[pose]
           image && !@painted_colors.key?(pose) && image.places.nil? && image.colors&.any? { |color| IR::StartFile.marker?(color) }
         end
