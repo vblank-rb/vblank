@@ -103,7 +103,7 @@ module VBlank
         end
 
         # A try that fit: the cartridge, the settings and lowering it was made with, what the
-        # lowering found to say, and the sprite pieces it made of each picture.
+        # lowering's findings, and the sprite pieces it made of each picture.
         Fit = Data.define(:cartridge, :settings, :lowering, :findings, :sprite_pieces)
 
         # +sleeps_every_pass+ builds the cartridge a checked run reads, in which every pass sleeps
@@ -224,16 +224,17 @@ module VBlank
                                                       shared_held_lists: settings.shared_held_lists, cache: cache)
           begin
             game = lowering.sections + lowering.art_sections
-          rescue StandardError
+          rescue LoweringError => e
             # A screen whose sprites did not fit stops the try once every screen has been made,
-            # whatever went wrong after it (Art#refuse_crowded_scenes!).
-            lowering.refuse_crowded_scenes!
+            # whatever the build refused after it (Art#refuse_crowded_scenes!), but backgrounds over
+            # their sets of colours, which no change to the sprites can help.
+            lowering.refuse_crowded_scenes! unless e.is_a?(Art::BackgroundColorsFull)
             raise
           end
           lowering.refuse_crowded_scenes!
           runtime = Runtime.sections(memory, carries, lowering, sleeps_every_pass: @sleeps_every_pass)
-          said = [*lowering.sprite_table_findings, *lowering.crowded_scene_findings, *lowering.scene_recording_findings]
-          said.concat(routines_without_their_chip(program)) unless carries.chip?
+          try_findings = [*lowering.sprite_table_findings, *lowering.crowded_scene_findings, *lowering.scene_recording_findings]
+          try_findings.concat(routines_without_their_chip(program)) unless carries.chip?
           sprite_pieces = lowering.sprite_pieces_built
           linked = Linker.new(runtime + game, most_banks: board.most_banks).link
           routines = lowering.section_routines.map do |label, routine|
@@ -253,7 +254,7 @@ module VBlank
           cartridge = Cartridge::SNESROM.new(linked.banks, title: title, vectors: vectors.transform_values { |at| at & 0xFFFF },
                                                            built: built, board: board,
                                                            save_bytes: carries.saves ? Runtime::Saving::SIZE : 0)
-          Fit.new(cartridge: cartridge, settings: settings, lowering: lowering, findings: said, sprite_pieces: sprite_pieces)
+          Fit.new(cartridge: cartridge, settings: settings, lowering: lowering, findings: try_findings, sprite_pieces: sprite_pieces)
         end
 
         # The settings of the try after +try+, which +error+ stopped (BuildTries), an Attempt, or nil

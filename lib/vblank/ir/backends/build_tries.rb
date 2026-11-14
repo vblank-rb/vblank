@@ -17,26 +17,27 @@ module VBlank
       # - THE ORDER OF THE STEPS is each console's: its step is handed the error that stopped a try
       #   and the try, and gives the settings of the next try, or nil where nothing it can change
       #   would help, and the error stands. The settings are one value (a Data), so a try is known
-      #   by its settings alone.
+      #   by its settings, and by what the build's BuildCache holds by then (a Color variable found
+      #   to be kept whole is the cache's, and the try after it has the same settings).
       # - WHAT A TRY FOUND IS KEPT for every later try. The next settings are the last ones with one
       #   thing more, never a fresh start, because what a try finds (these sprites need more tiles
       #   than the console holds) is a fact about the game and not about that try. A step that must
-      #   start part of its settings over says so in the settings it gives.
+      #   start part of its settings over gives those parts back as they were first.
       # - A TRY THAT IS SURE TO FAIL STOPS as soon as it is: each console's lowering raises the
       #   moment a count passes what the console holds, rather than at the end of the try (the
       #   console's own checks; see each lowering's Art). And a try that has found one thing that
       #   does not fit, of a kind several parts of the game can each have, finds them all before it
       #   stops (the Super Nintendo's crowded scenes), so one try does what one try per part did.
       # - A STEP THE LAST TRY'S MEASUREMENTS RULE OUT IS SKIPPED, untried (#first_step_not_ruled_out):
-      #   a part of the cartridge too full by more than a step can move, tiles past the room a step
-      #   leaves. The measurements are each console's.
+      #   a part of the cartridge too full by more than a step can move (the Color's part always in
+      #   view). The measurements are each console's.
       # - A STEP MAY BE AN ATTEMPT (Attempt): one way of fitting that is worth trying before the
       #   others but may not work, and if the tries after it fail, the build goes back to where it
       #   was and carries on there. And a try that fits may be followed by one that would be better
       #   (more of the game the fast way), kept only if it fits too (+better+ in #run).
       #
       # What the build works out from the program alone, and not from how a try is built, is
-      # BuildCache's, made once for all the tries. Each try is timed and said at debug level
+      # BuildCache's, made once for all the tries. Each try is timed and logged at debug level
       # (VBLANK_LOG=debug), with the error that stopped it and the settings it changed.
       class BuildTries
         # One try of the build: its number from 1, the settings it was made with, and what it made
@@ -78,7 +79,7 @@ module VBlank
 
         # The first of the steps from +first+ on (each the one after the last, by +following+, nil
         # past the last) that the block does not rule out, nil for none. The block is given a step
-        # and says whether the last try's measurements show that step cannot fit.
+        # and answers whether the last try's measurements show that step cannot fit.
         def self.first_step_not_ruled_out(first, following:)
           step = first
           step = following.call(step) while step && yield(step)
@@ -137,7 +138,8 @@ module VBlank
         private
 
         # Where the build goes after +error+ stopped +try+: the next step's settings, or, where no step
-        # helps, the open attempt that gives up on it.
+        # helps, the open attempt that gives up on it. One with nothing else to try stands for the
+        # error it was made for, which the attempts opened before it are then asked about.
         def resume_after(error, try, choices, next_settings)
           step = next_settings.call(error, try)
           if step.is_a?(Attempt)
@@ -149,9 +151,9 @@ module VBlank
           while (choice = choices.pop)
             next unless choice.attempt.gives_up_on?(error)
             return Resumption.new(settings: nil, result: choice.kept) if choice.kept
-            raise choice.error unless choice.attempt.otherwise
+            return Resumption.new(settings: choice.attempt.otherwise, result: nil) if choice.attempt.otherwise
 
-            return Resumption.new(settings: choice.attempt.otherwise, result: nil)
+            error = choice.error
           end
           raise error
         end

@@ -96,6 +96,20 @@ class TestBuildTries < Minitest::Test
     assert_equal Settings.new(tiles: 1, colors: 1, spare: true), build(tries, fit_needing(tiles: 1, colors: 1), better: better)
   end
 
+  # An attempt opened inside a better try, with nothing else to try, gives the build back to the
+  # try that fit before the better one.
+  def test_an_attempt_inside_a_better_try_falls_back_to_the_try_that_fit
+    tries = BuildTries.new("Test", Settings.first)
+    better = ->(try, _) { BuildTries::Attempt.new(settings: try.settings.with(spare: true), given_up_on: [TooFewTiles]) unless try.settings.spare }
+    step = lambda do |error, try|
+      BuildTries::Attempt.new(settings: try.settings.with(colors: 2), given_up_on: [TooFewTiles]) if error.is_a?(TooFewTiles) && try.settings.colors == 1
+    end
+    fit = fit_needing(tiles: 1, colors: 1, spare_fits: false)
+
+    assert_equal Settings.first, tries.run(next_settings: step, better: better) { |try| fit.call(try) }
+    assert_equal 3, tries.count
+  end
+
   def test_steps_a_measurement_rules_out_are_passed_over
     following = ->(step) { step < 10 ? step + 1 : nil }
 

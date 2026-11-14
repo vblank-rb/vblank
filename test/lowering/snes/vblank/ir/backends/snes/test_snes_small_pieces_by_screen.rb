@@ -9,7 +9,7 @@ require "tmpdir"
 # squares, or that screen's words can run out of the table's 128 rows.
 class TestSNESSmallPiecesByScreen < Minitest::Test
   SNES = VBlank::IR::Backends::SNES
-  CROWD =165 # pictures of three tiles of their own: 495 tiles cut small, and 660 in squares
+  CROWD = 165 # pictures of three tiles of their own: 495 tiles cut small, and 660 in squares
 
   private def game
     crowd = CROWD
