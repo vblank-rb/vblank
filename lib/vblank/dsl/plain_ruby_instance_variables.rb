@@ -369,20 +369,26 @@ module VBlank
         end
 
         # The builder, where a test of +owner+'s +label+, holding +current+, is a test in game code of
-        # a plain flag not yet known to guard game code: what its sides record says whether it does
+        # a plain flag: what its sides record says whether it guards game code
         # (Steps::BuildTest#watch_flag, Uses#refuse_game_flags!). Nil for any other.
         def builder_watching_flag(owner, label, current)
           return unless Uses::FLAGS.include?(current)
 
           uses = uses_while_recording(owner)
-          return if uses.nil? || uses.named?(owner, label) || uses.flag_guards_game?(owner, label)
+          return if uses.nil? || uses.named?(owner, label)
 
           Builder.in_use
         end
 
-        # A side of a test of +owner+'s plain flag +label+, which held +current+, records game code.
-        def note_flag_guarding_game(owner, label, current)
-          Builder.in_use.instance_variable_uses.note_flag_guarding_game(owner, label, current)
+        # The side of a test of +owner+'s plain flag +label+ written at +site+ ran, and +records+
+        # says whether it recorded game code.
+        def note_flag_side_run(owner, label, current, site, records:)
+          Builder.in_use.instance_variable_uses.note_flag_side_run(owner, label, current, site, records: records)
+        end
+
+        # ...and the side at +site+ was skipped.
+        def note_flag_side_skipped(owner, label, current, site)
+          Builder.in_use.instance_variable_uses.note_flag_side_skipped(owner, label, current, site)
         end
 
         # The game variable a named instance variable holding +current+ is: made now from a number
@@ -629,8 +635,12 @@ module VBlank
 
           # One plain flag of one object (#note_flag_change): what it held before game code first
           # changed it, the line and routine of a change that still stands, the line of a test on it
-          # whose side records game code, and whether that test found it nil.
-          Flag = Struct.new(:started, :start, :changed_at, :changed_in, :tested_at, :tested_nil)
+          # whose side Ruby ran and recorded game code, the sides of tests on it Ruby skipped (each
+          # [site, line]), and whether a test found it nil.
+          Flag = Struct.new(:started, :start, :changed_at, :changed_in, :tested_at, :skipped, :tested_nil)
+
+          # A skipped side of a test on a flag, where it is written and the line the build was at.
+          SkippedSide = Data.define(:site, :at)
 
           TRACKED = [Integer, Float, Symbol].freeze # What a plain instance variable is noted holding
           FLAGS = [true, false, nil].freeze # What a plain flag holds
@@ -646,35 +656,55 @@ module VBlank
             @first_numbers = {}
             @uses = {}.compare_by_identity
             @flags = {}.compare_by_identity
+            @flag_sides = {}
           end
 
-          # Is a test on +owner+'s plain flag +label+ known already to guard game code?
-          def flag_guards_game?(owner, label) = !@flags[owner]&.dig(label)&.tested_at.nil?
+          # A side of a test on +owner+'s plain flag +label+, which held +current+, ran: written at
+          # +site+, and recording game code or not (+records+). A side that records game code once
+          # is taken to record it wherever it is reached.
+          def note_flag_side_run(owner, label, current, site, records:)
+            @flag_sides[site] = :records if records
+            @flag_sides[site] ||= :quiet
+            return unless records
 
-          # A test on +owner+'s plain flag +label+, which held +current+, has a side that records game
-          # code: what the flag holds decides what the game does as it plays.
-          def note_flag_guarding_game(owner, label, current)
             flag = flag_of(owner, label)
             flag.tested_at ||= Messages::AuthorSource.author_file_and_line
             flag.tested_nil ||= current.nil?
           end
 
+          # ...and one was skipped, which is judged once every routine is recorded (#refuse_game_flags!).
+          def note_flag_side_skipped(owner, label, current, site)
+            flag = flag_of(owner, label)
+            flag.skipped[site] ||= SkippedSide.new(site: site, at: Messages::AuthorSource.author_file_and_line)
+            flag.tested_nil ||= current.nil?
+          end
+
           # A PLAIN TRUE OR FALSE (OR NIL) IN GAME CODE is decided while building wherever a test asks
           # it. That is right for a flag the build keeps for itself, and wrong for one the game keeps,
-          # and two facts together tell the second: a test on it guards game code (a side of it, run
-          # or tried, recorded statements: Steps::BuildTest#watch_flag), and game code leaves it
-          # changed. Asked once every routine is recorded, so the order the build met them in does
-          # not matter:
+          # and two facts together tell the second: a test on it guards game code, and game code
+          # leaves it changed. Asked once every routine is recorded, so the order the build met them
+          # in does not matter.
+          #
+          # A test guards game code where a side Ruby ran recorded statements, or where Ruby skipped
+          # a side that, wherever else the build ran it, recorded statements, or that the build never
+          # ran at all (Steps::BuildTest#watch_flag). A side never run is unknown, so it counts, unless
+          # the source shows it records nothing: refusing then costs a game one variable it names,
+          # where letting it pass would freeze the flag with no word. Nothing here runs a side Ruby
+          # skipped, so the answer is the same however and wherever the game is built.
           #
           # - `@seen += 1 if @open` with `@open = true` anywhere in game code: refused.
-          # - `plan unless @planned` with `plan` setting `@planned = true`: the test guards building
-          #   work (routines declared), not game code. Left alone.
+          # - `plan unless @planned` with `plan` setting `@planned = true`: the side guards building
+          #   work (routines declared), not game code, as the first reach shows, and the later reaches
+          #   that skip it skip that same side. Left alone. So is `return if @laid_out`.
           # - `@white = true`, then `yield`, then `@white = false` in an `ensure`: a switch set for
           #   the length of one call and put back, which is the same on every pass. Left alone.
           def refuse_game_flags!
             @flags.each do |owner, labels|
               labels.each do |label, flag|
-                refuse_game_flag!(owner, label, flag) if flag.tested_at && flag.changed_at
+                next unless flag.changed_at
+
+                tested_at = flag.tested_at || flag.skipped.values.find { |side| @flag_sides[side.site] != :quiet }&.at
+                refuse_game_flag!(owner, label, flag, tested_at) if tested_at
               end
             end
           end
@@ -789,14 +819,14 @@ module VBlank
             end
           end
 
-          def flag_of(owner, label) = (@flags[owner] ||= {})[label] ||= Flag.new(false, nil, nil, nil, nil, false)
+          def flag_of(owner, label) = (@flags[owner] ||= {})[label] ||= Flag.new(false, nil, nil, nil, nil, {}, false)
 
-          def refuse_game_flag!(owner, label, flag)
+          def refuse_game_flag!(owner, label, flag, tested_at)
             name = label.to_s.delete_prefix("@")
             where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
             start = " Then give `#{label}` `false` where it is first set." if flag.tested_nil
             raise Refused, "`#{label}` is changed while the game plays (at #{flag.changed_at}), and a test on it " \
-                           "decides what the game does (at #{flag.tested_at}). `#{label}` is a plain Ruby value, so " \
+                           "decides what the game does (at #{tested_at}). `#{label}` is a plain Ruby value, so " \
                            "the game does not see the change. Ruby decided the test once, while it built the game, " \
                            "from the value (`true` or `false`) it held then. To fix this, add `game_variables " \
                            ":#{name}` to #{where}.#{start}"

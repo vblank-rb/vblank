@@ -219,6 +219,10 @@ module VBlank
         NEW_VALUE = "__plain_ruby_new"
         JUMPS = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
 
+        # Values written out, which a jump can hand back without recording anything.
+        LITERALS = [Prism::NilNode, Prism::TrueNode, Prism::FalseNode, Prism::IntegerNode, Prism::FloatNode,
+                    Prism::SymbolNode, Prism::StringNode].freeze
+
         attr_reader :block_node
 
         # +outer_locals+ are the names the block's scope holds. Written further down the method a
@@ -1127,8 +1131,7 @@ module VBlank
           promotions = promotions_text(node, [node.statements, other_side(node)], answer)
           watched = kept ? nil : flag_tested(node)
           sides = under_open_test(answer) do
-            "#{yes_side_text(node, answer, shut_at, kept, watched && side_tryable?(node.statements))}" \
-              "#{no_side_text(node, answer, shut_at, kept, watched && other_side_tryable?(node))}"
+            "#{yes_side_text(node, answer, shut_at, kept)}#{no_side_text(node, answer, shut_at, kept)}"
           end
           watch = watched ? "#{answer}.watch_flag(#{flag_watch_arguments(node, watched)}); " : ""
           "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{watch}#{promotions}#{sides}#{answer}.#{value_step(kept)})"
@@ -1147,24 +1150,27 @@ module VBlank
         end
 
         # What BuildTest#watch_flag is handed: the object, the instance variable and what it holds
-        # now, and whether each side can be tried at all. A side that can leave the code around it
-        # (`return`, `break`, `next`, `yield`) is not run where it would not run.
+        # now, where the test is written (so a side skipped here can be matched with the same side
+        # run where the build reached the line before or after), and whether each side records
+        # nothing whatever runs it, read off the source: nothing written, a `return`, `break` or
+        # `next` alone, or a `raise`, which stops the build (`raise ArgumentError, "..." if @written`,
+        # a guard on how the game is put together).
         def flag_watch_arguments(node, name)
-          "self, :#{name}, #{name}, tries_yes: #{side_tryable?(node.statements)}, tries_no: #{other_side_tryable?(node)}"
-        end
-
-        def side_tryable?(statements) = !statements.nil? && !leaves_code?(statements)
-
-        def other_side_tryable?(node)
           other = other_side(node)
-          other.is_a?(Prism::ElseNode) && side_tryable?(other.statements)
+          quiet_no = other.nil? || (other.is_a?(Prism::ElseNode) && quiet_side?(other.statements))
+          site = "#{@source_label}:#{node.location.start_offset}"
+          "self, :#{name}, #{name}, site: #{site.inspect}, quiet_yes: #{quiet_side?(node.statements)}, quiet_no: #{quiet_no}"
         end
 
-        def leaves_code?(node)
-          return true if JUMPS.any? { |kind| node.is_a?(kind) } || node.is_a?(Prism::YieldNode)
-          return false if node.is_a?(Prism::DefNode) || node.is_a?(Prism::LambdaNode)
+        def quiet_side?(statements)
+          statements.nil? || statements.body.all? { |statement| quiet_statement?(statement) }
+        end
 
-          node.compact_child_nodes.any? { |child| leaves_code?(child) }
+        def quiet_statement?(statement)
+          return true if statement.is_a?(Prism::CallNode) && statement.receiver.nil? && %i[raise fail].include?(statement.name)
+
+          JUMPS.any? { |kind| statement.is_a?(kind) } &&
+            (statement.arguments.nil? || statement.arguments.arguments.all? { |given| LITERALS.any? { |kind| given.is_a?(kind) } })
         end
 
         def value_step(kept)
@@ -1381,25 +1387,12 @@ module VBlank
           "#{name} = (#{text}; #{name})"
         end
 
-        # +tried+ is a side that may be run on a throwaway copy of the build (#watched_close_text).
-        def yes_side_text(node, answer, shut_at, kept, tried = false)
+        def yes_side_text(node, answer, shut_at, kept)
           body = side_body_text(node, other_side(node)&.location&.start_offset || shut_at)
-          "if #{answer}.open_yes_side; #{watched_close_text(answer, side_close_text(answer, kept, body), tried)}; end; "
+          "if #{answer}.open_yes_side; #{side_close_text(answer, kept, body)}; end; "
         end
 
-        # A side of a test on a flag may be run on a throwaway copy of the build (BuildTest#watch_flag),
-        # which must end however the side does: whatever it raises goes to the test, which ends the
-        # copy there or raises it again, and the `ensure` ends the copy where the side left some
-        # other way. On one line, so the side's line numbers stay as written.
-        def watched_close_text(answer, close, tried)
-          return close unless tried
-
-          raised = fresh_name
-          "begin; #{close}; rescue ::Exception => #{raised}; #{answer}.side_raised(#{raised}); " \
-            "ensure; #{answer}.side_left; end"
-        end
-
-        def no_side_text(node, answer, shut_at, kept, tried = false)
+        def no_side_text(node, answer, shut_at, kept)
           other = other_side(node)
           return "" unless other
 
@@ -1410,7 +1403,7 @@ module VBlank
                  else
                    "#{conditional_text(other, kept: kept)}#{line_ends_between(other.location.end_offset, shut_at)}"
                  end
-          "if #{answer}.open_no_side; #{watched_close_text(answer, side_close_text(answer, kept, body), tried)}; end; "
+          "if #{answer}.open_no_side; #{side_close_text(answer, kept, body)}; end; "
         end
 
         # One side's statements. What follows them is kept as written, because a heredoc's

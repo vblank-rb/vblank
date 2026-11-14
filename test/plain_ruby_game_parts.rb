@@ -543,6 +543,28 @@ class SwitchedPart
   end
 end
 
+# A guard on how the game is put together: a routine declared once a part is written refuses more
+# lines added to it. The test's side stops the build, so it records no game code.
+class WrittenOncePart
+  def initialize(builder)
+    @builder = builder
+    @written = false
+    @steps = builder.var(:written_once_steps, 0)
+    builder.func(:written_once_tick) do
+      add_step
+      write
+    end
+  end
+
+  def add_step
+    raise ArgumentError, "the part is written already" if @written
+
+    @steps += 1
+  end
+
+  def write = @written = true
+end
+
 # A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
 # tests it. The game can run them in either order, and Ruby decides the test while building, so
 # the build stops at whichever line comes second. Declared in each order.

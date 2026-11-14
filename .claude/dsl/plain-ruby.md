@@ -120,16 +120,15 @@ instance variables.
   made. A number one routine gives and another reads is refused: the game can run them in either order.
 - **A plain `true` or `false` (or nil) is refused when it is a game flag**: a test on it (`if @open`,
   `unless @open`, `if !@open`) has game code on a side, and game code changes it and leaves it changed.
-  Ruby would decide that test once, while building. The build looks at both sides: the side Ruby runs,
-  and the side it skips, which it runs on a copy of the build that is then thrown away. So
-  `seen += 1 if @open` with `@open = true` anywhere in game code is refused, in one routine or two,
-  naming both lines and the fix, `game_variables :open` (and `@open = false` where it starts, for one
-  left nil). Not refused: a once-guard, whose test guards building work and no game code (`plan unless
-  @planned`, with `plan` setting `@planned = true` and declaring routines; `return if @laid_out` above
-  `@laid_out = true`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
-  `@white = false` in an `ensure`), which is the same on every pass. A side that can leave the code
-  around it (`return`, `break`, `next`, `yield`) is never run on the copy, and a test playing in a
-  Ractor of its own runs none.
+  Ruby would decide that test once, while building. The build watches the side Ruby runs. A side Ruby
+  skips counts as game code unless the build ran that same side somewhere else and it recorded
+  nothing, or it holds nothing but a `return`, `break`, `next` or `raise`. So `seen += 1 if @open` with
+  `@open = true` anywhere in game code is refused, in one routine or two, naming both lines and the
+  fix, `game_variables :open` (and `@open = false` where it starts, for one left nil). Not refused: a
+  once-guard, whose test guards building work and no game code (`plan unless @planned`, with `plan`
+  setting `@planned = true` and declaring routines; `return if @laid_out` above `@laid_out = true`;
+  `raise "..." if @written`), and a switch a routine sets and puts back (`@white = true`, `yield`, then
+  `@white = false` in an `ensure`), which is the same on every pass.
 
 ## Changing a variable
 

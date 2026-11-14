@@ -8,10 +8,6 @@ VBlank.require_game_file "../../../plain_ruby_game_parts"
 # left alone, and one whose test decides what the game does as it plays, while game code changes
 # it, is refused naming `game_variables`. The parts are in test/plain_ruby_game_parts.rb.
 class TestPlainRubyFlags < Minitest::Test
-  # Steps::Throwaway tries the side of a test Ruby skips in a forked copy of the build, and a
-  # process forks only from the main Ractor.
-  runs_on_the_main_ractor!
-
   Refused = VBlank::DSL::PlainRuby::Refused
 
   private def played(part, *routines, frames: 3)
@@ -41,9 +37,12 @@ class TestPlainRubyFlags < Minitest::Test
     assert_equal [3, 3], [player[:switched_slow], player[:switched_fast]]
   end
 
-  # The side Ruby skips is tried on a copy of the build, so nothing it changes reaches the build:
-  # `@label` is still :none, and the game counts every pass.
-  def test_a_flag_tested_where_the_skipped_side_changes_a_plain_value_builds_as_without_it
+  def test_a_flag_whose_side_only_raises_is_not_refused
+    assert_equal 3, played(WrittenOncePart, :written_once_tick)[:written_once_steps]
+  end
+
+  # A flag nothing in game code changes is Ruby's to decide, whatever its sides hold.
+  def test_a_flag_game_code_never_changes_is_not_refused
     builder = built do
       @shown = false
       @label = :none
