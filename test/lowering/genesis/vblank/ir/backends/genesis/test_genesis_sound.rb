@@ -119,9 +119,9 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta 433, pitch_of(run), 25
   end
 
-  # THE SOUND PROCESSOR IS STOPPED WHILE THE VIDEO CHIP COPIES A BLOCK, and for every write the
-  # 68000 makes to the FM chip. A recording has to keep its pitch through that, so these hold it
-  # far closer than the test above, by where the sound crosses its middle and not by a count.
+  # THE SOUND PROCESSOR IS STOPPED WHILE THE VIDEO CHIP COPIES A BLOCK, and while the 68000 writes
+  # into its memory. A recording has to keep its pitch through that, so these hold it far closer
+  # than the test above, by where the sound crosses its middle and not by a count.
   def test_a_recording_alone_keeps_its_pitch
     assert_in_delta RECORDED_HZ, pitch_while { game_loop { nil } }, 2
   end
@@ -129,6 +129,77 @@ class TestGenesisSound < Minitest::Test
   # A long recording is read with a different end in sight for most of its length than a short one.
   def test_a_long_recording_keeps_its_pitch
     assert_in_delta RECORDED_HZ, pitch_while(clip: CLIP * 100) { game_loop { nil } }, 2
+  end
+
+  # A RECORDING LONGER THAN THE SOUND PROCESSOR'S WINDOW ONTO THE CARTRIDGE (32K) is read through more
+  # than one bank of it, and goes round from the bank it ends on to the one it starts on. Heard over
+  # most of three seconds, which takes in both.
+  def test_a_recording_across_two_banks_keeps_its_pitch_as_it_goes_round
+    clip = CLIP * 1100
+    heard = waves_while(clip: clip, frames: 180, seconds: 2.8) { game_loop { nil } }
+
+    assert_operator clip.bytesize, :>, Genesis::Runtime::Recordings::WINDOW
+    assert_in_delta RECORDED_HZ, pitch_of_waves(heard), 2
+    assert_operator longest_wave(heard), :<, WAVE_SAMPLES * 1.25, "every wave is heard, the bank's change and the loop's too"
+  end
+
+  # A SONG'S NOTES are written to the FM chip by the sound processor itself, between two samples, so a
+  # note does not hold the recording still. Under a wave part playing a note every two frames every
+  # wave of the recording is heard, and at its pitch: a wave lost would be a gap twice as long.
+  def test_a_recording_keeps_every_wave_under_a_song_playing_a_note_every_two_frames
+    heard = waves_while do
+      song(:tune) do
+        tempo 900
+        voice(:pad, plays: :wave) { 8.times { note :A3, :eighth; note :C4, :eighth } }
+      end
+      play_song :tune
+      game_loop { nil }
+    end
+
+    assert_in_delta RECORDED_HZ, pitch_of_waves(heard), 2
+    assert_operator longest_wave(heard), :<, WAVE_SAMPLES * 1.25, "no wave of the recording is lost under the song"
+  end
+
+  # THE TIMERS' REGISTER ALSO HOLDS THE THIRD FM VOICE'S MODE, and the sound processor writes it every
+  # sample. A mode the game sets is written into the value of each of those writes, so every write of
+  # the register in the sound processor's program must be one the 68000 knows to change.
+  def test_every_write_of_the_timers_register_carries_the_third_voices_mode
+    recordings = Genesis::Runtime::Recordings
+    program = recordings.driver
+    code = program.code
+    loads = (0...code.size - 2).select { |at| code[at] == 0x21 && code[at + 2] == recordings::TIMERS }.map { |at| at + 1 }
+    named = (0...code.size - 5).select { |at| code[at, 3] == [0x3E, recordings::TIMERS, 0x77] }.map { |at| at + 4 }
+    patched = recordings::TIMER_WRITES.keys.map { |label| program.address_of(label) }
+
+    assert_equal (loads + named).sort, patched.sort
+    recordings::TIMER_WRITES.each do |label, value|
+      assert_equal value, code[program.address_of(label)], "#{label} holds the timers' own bits, with no mode"
+    end
+  end
+
+  # A PAL CONSOLE's sound chip runs a little slower, so its timer's ticks come further apart and the
+  # sound processor steps through a recording a little further at each. Genesis Plus GX plays a
+  # cartridge whose header names Europe alone as a PAL console.
+  def test_a_recording_keeps_its_pitch_on_a_pal_console
+    rom = VBlank.build("PAL PITCH", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      enable_sound
+      sample(:clip, pcm: CLIP.unpack("c*"), rate: 13_000).play(loop: true)
+      game_loop { nil }
+    end
+    left = Dir.mktmpdir do |dir|
+      path = File.join(dir, "pal.bin")
+      rom.write(path)
+      bytes = File.binread(path)
+      bytes[VBlank::Console::GenesisHardware::REGION_AT, 3] = "E  "
+      File.binwrite(path, bytes)
+      core = VBlank::Console.for(:genesis).open_core(path, save_dir: dir)
+      Array.new(100) { core.run_frame.take_audio.each_slice(2).map(&:first) }.flatten
+    ensure
+      core&.destroy
+    end
+
+    assert_operator left.size / 100, :>, SAMPLE_RATE / 55, "the console runs as a PAL one, fifty frames a second"
+    assert_in_delta RECORDED_HZ, pitch_of_waves(crossings_of(left.last(SAMPLE_RATE / 2))), 2
   end
 
   # A RECORDED PART SET TO ONE SIDE is heard from both speakers alike: the FM chip's sixth voice plays
@@ -186,11 +257,17 @@ class TestGenesisSound < Minitest::Test
 
   # CLIP at 13000 samples a second: fifteen up and fifteen down.
   RECORDED_HZ = 13_000 / 30.0
+  # One wave of it, in the emulator's samples.
+  WAVE_SAMPLES = SAMPLE_RATE / RECORDED_HZ
 
   # The pitch +clip+ is heard at, looping, in a game that also does +game+ on a +kind+ of screen:
   # the waves between the first upward crossing of the middle and the last, over the last third
-  # of a second, each crossing placed between its two samples.
-  def pitch_while(kind = :tiled, clip: CLIP, &game)
+  # of a second.
+  def pitch_while(kind = :tiled, clip: CLIP, &game) = pitch_of_waves(waves_while(kind, clip: clip, &game))
+
+  # Where +clip+, looping in that game, crosses its middle going up, in the emulator's samples, over
+  # the last +seconds+ of +frames+.
+  def waves_while(kind = :tiled, clip: CLIP, frames: 60, seconds: 1 / 3r, &game)
     clip = clip.unpack("c*")
     builder = VBlank::Builder.new
     builder.instance_eval do
@@ -201,15 +278,25 @@ class TestGenesisSound < Minitest::Test
     end
     builder.finalize_program
     run = Genesis::HeadlessRun.new(keep_sound: true)
-    run.run(builder.program.copy.tap { |program| program.console = :genesis }, frames: 60)
-    left = run.sound_made.each_slice(2).map(&:first).last(SAMPLE_RATE / 3)
+    run.run(builder.program.copy.tap { |program| program.console = :genesis }, frames: frames)
+    crossings_of(run.sound_made.each_slice(2).map(&:first).last((SAMPLE_RATE * seconds).to_i))
+  end
+
+  # Each upward crossing of the sound's middle, placed between its two samples.
+  def crossings_of(left)
     middle = (left.max + left.min) / 2.0
     crossings = []
     left.each_cons(2).with_index do |(before, after), i|
       crossings << (i + ((middle - before) / (after - before).to_f)) if before < middle && after >= middle
     end
-    (crossings.length - 1) * SAMPLE_RATE / (crossings.last - crossings.first)
+    crossings
   end
+
+  # Every wave counted from the first crossing to the last. A wave held still or lost makes it low.
+  def pitch_of_waves(crossings) = (crossings.length - 1) * SAMPLE_RATE / (crossings.last - crossings.first)
+
+  # The longest gap between two crossings, in the emulator's samples: a wave lost shows as twice one.
+  def longest_wave(crossings) = crossings.each_cons(2).map { |before, after| after - before }.max
 
   def recording_program(loop:)
     build = VBlank::IR::Build

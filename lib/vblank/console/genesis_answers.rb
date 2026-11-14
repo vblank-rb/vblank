@@ -279,7 +279,8 @@ module VBlank
                      "#{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
-                      "bits. The sound processor reads it 13000 samples a second. Only one recording plays at a " \
+                      "bits. The sound processor sounds about 13300 samples a second, and plays each recording at " \
+                      "the rate it was recorded at. Only one recording plays at a " \
                       "time, at one loudness, and a recording cannot have a shape (`envelope:`)."),
         instrument: works("see `sample`.")
       })
