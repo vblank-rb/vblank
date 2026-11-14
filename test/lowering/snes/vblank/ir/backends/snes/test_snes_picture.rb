@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
 
 # What a Super Nintendo cartridge draws on a tiled screen is what the interpreter draws, pixel for
 # pixel, after every pass (SNES::CheckedRun): its backgrounds — put up, scrolled, a cell changed, a
@@ -548,6 +549,7 @@ class TestSNESPicture < Minitest::Test
     end
 
     assert_match(/150 rows of the sprite table/, said)
+    assert_match(/:wide \(50 rows\) 3 times/, said, "it names the sprites it counted")
   end
 
   def test_a_build_that_fits_the_sprite_table_says_nothing_of_it
@@ -559,6 +561,77 @@ class TestSNESPicture < Minitest::Test
     end
 
     refute_match(/sprite table/, said)
+  end
+
+  # A title of 100 pieces and a play screen of two players of 20 each, which a variable picks
+  # one at a time, the players drawn in an order the game works out or not: 140 rows declared,
+  # never more than 100 up together.
+  private def two_screens_game(ordered:, player_pieces: 20)
+    proc do
+      screen :tiled
+      image :banner, colors: %i[transparent red], pieces: Array.new(50) { |n| [n, 0, Array.new(64, 1)] }
+      image :player, colors: %i[transparent green], pieces: Array.new(player_pieces) { |n| [n, 0, Array.new(64, 1)] }
+      t = 0
+      where = 0
+      scene :title do
+        2.times { |n| sprite :banner, at: [10, 20 + (n * 20)] }
+      end
+      scene :play do
+        players = Array.new(2) { |n| sprite :player, at: [10, 100 + (n * 20)] }
+        draw_in_order(*players) { |player| player.y } if ordered
+      end
+      game_loop do
+        t += 1
+        where = 1 if t == 10
+        case_var(:where) do
+          when_val 0, :title
+          when_val 1, :play
+        end
+      end
+    end
+  end
+
+  # How many rows of the sprite table the cartridge built from +block+ shows after each of
+  # +frames+ frames, read in bsnes.
+  private def rows_shown_each_frame(frames, &block)
+    rom = VBlank.build("ROWS", console: :snes, out: StringIO.new, err: StringIO.new, &block)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "rows.sfc")
+      rom.write(path)
+      core = VBlank::Diagnostics::Emulator.open_snes(path, save_dir: dir)
+      shown = Array.new(frames) do
+        core.run_frame
+        (0...128).count { |row| core.oam.getbyte((row * 4) + 1) < 224 }
+      end
+      core.destroy
+      shown
+    end
+  end
+
+  # The cartridge hands out rows as it places the sprites that show, so the title's 100 and play's
+  # 40 take turns at the same rows, ordered or not. The first frames are the console starting,
+  # before the game's first pass has placed a sprite.
+  def test_screens_never_up_together_take_turns_at_the_sprite_table
+    [false, true].each do |ordered|
+      shown = rows_shown_each_frame(20, &two_screens_game(ordered: ordered))
+
+      assert_equal [100, 40], shown.last(14).uniq, "ordered: #{ordered}"
+    end
+  end
+
+  def test_sprite_table_count_adds_no_ordered_sprite_off_its_screen
+    [false, true].each do |ordered|
+      refute_match(/sprite table/, said_by_build(&two_screens_game(ordered: ordered)), "ordered: #{ordered}")
+    end
+  end
+
+  # Players of 70 pieces: the play screen can take 140 rows, and says so the same, ordered or not.
+  def test_sprite_table_warning_names_the_scene_ordered_or_not
+    said = [false, true].map { |ordered| said_by_build(&two_screens_game(ordered: ordered, player_pieces: 70)) }
+
+    assert_equal said.first, said.last
+    assert_match(/scene :play can take 140 rows of the sprite table/, said.first)
+    assert_match(/:player \(70 rows\) 2 times/, said.first)
   end
 
   # The game of the test above that only fits as small pieces, and now says that it did.

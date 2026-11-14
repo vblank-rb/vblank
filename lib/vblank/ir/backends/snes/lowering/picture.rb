@@ -161,19 +161,51 @@ module VBlank
             # picture came to. A pool's sprites and letters of text are left out of the count: how
             # many show at once is decided as the game runs, so this counts what is certain, the
             # sprites a screen declares, each at its largest pose.
+            #
+            # NO ROW IS A SPRITE'S OWN HERE. The runtime hands the rows out on every pass, one for
+            # each piece of each sprite that shows, as rt_sprite_place places it (Runtime::Picture,
+            # "SPRITES"), so the table holds what is up on that pass and nothing else: a hidden
+            # sprite, or one of a scene that is not up, takes no row, ordered or not. So the count
+            # is of the sprites that can be up together (SpriteRows.screens_shown_together), never
+            # the layout SpriteRows.plan makes for a console that settles each sprite's rows as the
+            # game is built, where a sprite drawn in an order keeps rows on every screen. It is
+            # still the most a screen can hold, not what any one pass holds: the build cannot tell
+            # a walking sprite the game hides before it shows a dying one from two that show
+            # together. So the warning says it is that bound and names what it added.
             def sprite_table_findings
               return [] if painted?
 
-              screen = IR::SpriteRows.plan(@program) { |node| rows_of_declared_sprite(node) }.busiest
+              screens = IR::SpriteRows.screens_shown_together(@program) { |node| rows_of_declared_sprite(node) }
+              screen = screens.max_by(&:count)
               return [] if screen.nil? || screen.count <= Runtime::Picture::MOST_SPRITES
 
-              [Guardrails::Finding.new(
-                check: :snes_sprite_table, severity: :warning, node: :program,
-                message: "The sprites of one screen take #{screen.count} rows of the sprite table. A Super " \
-                         "Nintendo has #{Runtime::Picture::MOST_SPRITES}, and a sprite past the last row is not " \
-                         "drawn. Each piece of a picture takes one row. To fix this, use fewer sprites, or make " \
-                         "their pictures of fewer pieces."
-              )]
+              [Guardrails::Finding.new(check: :snes_sprite_table, severity: :warning, node: :program,
+                                       message: sprite_table_message(screen))]
+            end
+
+            def sprite_table_message(screen)
+              where = screen.scenes.empty? ? "one screen" : "the scene #{scenes_named(screen.scenes)}"
+              "The sprites of #{where} can take #{screen.count} rows of the sprite table. A Super Nintendo has " \
+                "#{Runtime::Picture::MOST_SPRITES}. A sprite past the last row is not drawn. Each piece of a " \
+                "picture takes one row. This count adds every sprite on the screen at its biggest picture, shown " \
+                "or hidden: #{counted_sprites_named(screen)}. If some of these sprites never show at the same " \
+                "time, the screen can fit. To fix this, use fewer sprites, or make their pictures of fewer pieces."
+            end
+
+            def scenes_named(scenes) = scenes.map { |scene| ":#{Modes.strip_scene_prefix(scene)}" }.join(" and ")
+
+            # The sprites a count added, by their biggest picture, the most rows first, in the
+            # author's names (a sprite's own name is the framework's): ":banner (50 rows) 2 times".
+            def counted_sprites_named(screen)
+              nodes = IR::Stacking.objects_in_draw_order(@program).to_h { |node| [node.name, node] }
+              biggest = screen.names.filter_map do |name|
+                next if rows_of_declared_sprite(nodes.fetch(name)).zero?
+
+                @objects.fetch(name).poses.map { |pose| [pose, @art.sprite_pictures.fetch(pose).pieces.length] }.max_by(&:last)
+              end
+              biggest.tally.sort_by { |(_pose, rows), times| -rows * times }
+                     .map { |(pose, rows), times| ":#{pose} (#{rows} #{rows == 1 ? 'row' : 'rows'})#{" #{times} times" if times > 1}" }
+                     .join(", ")
             end
 
             # What a crowded scene gave up to fit its sprites (Art, "A crowded screen's sprites"): the
