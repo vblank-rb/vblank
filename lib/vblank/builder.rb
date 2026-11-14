@@ -202,6 +202,7 @@ module VBlank
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
+      @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
       @open_repeat_container_counts = [] # containers each #open_repeat opened, for #close_repeat
       @handed_name_writes = []
       @kept_buttons = []
@@ -1180,6 +1181,26 @@ module VBlank
     # BlockKitInternals#emit_held_place, which holds those places.
     def register_held_expression(name, node) = @held_expressions[name] = node
 
+    # The value the block gives back, with the statements recorded while working it out kept as
+    # what that value needs run before each time it is read: a read of the copy's check of its place
+    # against the copy's end, and the store of a held place (#register_held_expression). A loop's
+    # test given as an argument (`repeat n, stop_when: copy.byte(at) == 0`) is worked out before
+    # the loop is opened, so those statements are recorded before it, and would run once; #repeat
+    # moves them into the loop, to run on every round before the test is asked
+    # (#take_trailing_test_statements). Public for Original::Packing::BlockKitInternals, whose
+    # reads of the copy are such values.
+    def register_statements_for_value
+      mark = statement_mark
+      value = yield
+      if value.is_a?(DSL::Value) && mark.container.equal?(@container_stack.last)
+        children = mark.container.children
+        start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+        recorded = start ? children[(start + 1)..] : []
+        @value_statements[value.node] = recorded unless recorded.empty?
+      end
+      value
+    end
+
     # +name+, or the first of name_2, name_3... that no variable has.
     def free_variable_name(name)
       return name unless @variables.include?(name)
@@ -1296,17 +1317,71 @@ module VBlank
     # statements, so it is set afresh each round before the test reads it. Nor does the `else`
     # gate what is declared in the body (no #open_container), as the plain repeat's body is not.
     def open_repeat_rerunning_test_statements(most_passes, index, stop_node, test_statements)
+      stopped = declare_stop_flag(index)
+      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      @container_stack.push(emit_test_asking(stopped, stop_node, test_statements))
+      @open_repeat_container_counts[-1] += 1
+    end
+
+    # #repeat's loop for a `stop_when:` whose working out recorded +test_statements+
+    # (#take_trailing_test_statements): the loop #open_repeat_rerunning_test_statements makes,
+    # given a block for its body, which is handed +index_value+.
+    def repeat_rerunning_test_statements(count, index, index_value, stop_node, test_statements, &block)
+      stopped = declare_stop_flag(index)
+      push_container(Build.repeat(DSL::Value.node_for(count), index, stop_when: Build.var_ref(stopped))) do
+        @container_stack.push(emit_test_asking(stopped, stop_node, test_statements))
+        begin
+          run_block(index_value, &block)
+        ensure
+          @container_stack.pop
+        end
+      end
+    end
+
+    # The loop's stop flag, a variable of its own, set to 0 here before the loop.
+    def declare_stop_flag(index)
       stopped = :"#{index}_stopped"
       ensure_var(stopped)
       @unique_names << stopped
       record(Build.set(stopped, 0))
-      push_open_repeat(Build.repeat(DSL::Value.node_for(most_passes), index, stop_when: Build.var_ref(stopped)))
+      stopped
+    end
+
+    # Inside the loop: +test_statements+, then an `if` on +stop_node+ that sets +stopped+, whose
+    # `else` is given back for the body.
+    def emit_test_asking(stopped, stop_node, test_statements)
       test_statements.each { |statement| attach(statement) }
       ask = Build.if_(stop_node, Build.set(stopped, 1))
       ask.else = Build.else_
       record(ask)
-      @container_stack.push(ask.else)
-      @open_repeat_container_counts[-1] += 1
+      ask.else
+    end
+
+    # The statements +node+ (a loop's test, worked out before the loop) needs run before each time
+    # it is read (#register_statements_for_value), and those the statements themselves need, taken
+    # out of the open container. They are taken only when they are the last statements recorded
+    # there, so nothing written between them and the loop reads what they set; otherwise none are,
+    # and the test reads them once, before the loop.
+    def take_trailing_test_statements(node)
+      return [] if @value_statements.empty?
+
+      children = @container_stack.last.children
+      needed = {}.compare_by_identity
+      waiting = [node]
+      until waiting.empty?
+        waiting.pop.walk.each do |part|
+          @value_statements.fetch(part, []).each do |statement|
+            next if needed.key?(statement)
+
+            needed[statement] = true
+            waiting << statement
+          end
+        end
+      end
+      here = children.select { |statement| needed.key?(statement) }
+      return [] if here.empty? || !children.last(here.size).each_with_index.all? { |statement, at| statement.equal?(here[at]) }
+
+      children.pop(here.size)
     end
 
     # Records +node+, a game `while`'s repeat, and opens it until #close_repeat.

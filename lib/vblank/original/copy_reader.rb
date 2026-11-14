@@ -351,22 +351,25 @@ module VBlank
       end
     end
 
-    # WHAT WENT WRONG IN AN UNPACKING ROUTINE, kept as it runs: the first fault (Unpacking::Fault)
-    # in the program's FAULT_ variables. One that came after is not kept, since it is most often
-    # what the first one led to.
+    # WHAT WENT WRONG IN AN UNPACKING ROUTINE: the first fault (Unpacking::Fault), kept in the
+    # program's FAULT_ variables, and the routine halted there. Nothing after a fault is worth
+    # running, since the build stops on it (Builder::DataPacks#refuse_faulted_or_unfinished_unpacking!),
+    # and running on is what lets a loop whose only way out was the byte it could not read go
+    # round for ever: a `while` reading the copy up to a 0 the copy does not hold reads on past its
+    # end on every round, and without the halt would never wait or end.
     class UnpackingFaults
       def initialize(builder)
+        @builder = builder
         @kind = builder.var(Unpacking::FAULT_KIND, 0)
         @at = builder.var(Unpacking::FAULT_AT, 0)
         @detail = builder.var(Unpacking::FAULT_DETAIL, 0)
       end
 
       def emit_fault(kind, at, detail)
-        if @kind == 0
-          @kind.store!(kind)
-          @at.store!(at)
-          @detail.store!(detail)
-        end
+        @kind.store!(kind)
+        @at.store!(at)
+        @detail.store!(detail)
+        @builder.halt
       end
     end
 

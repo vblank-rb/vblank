@@ -50,13 +50,16 @@ module VBlank
         def repeat(count, stop_when: nil, &) = @internals.builder.repeat(count, stop_when: stop_when, &)
 
         # The copy's byte at +at+, with the check before it: a place outside what the block may read
-        # (the whole copy, or the one file of it the block was given at) records a fault and reads
-        # a byte of the copy instead, as any table read does. A place worked out from another read
-        # of the copy is held first (BlockKitInternals#emit_held_place).
+        # (the whole copy, or the one file of it the block was given at) records a fault, which
+        # halts the routine (Original::UnpackingFaults). A place worked out from another read
+        # of the copy is held first (BlockKitInternals#emit_held_place). In a loop's test, the check
+        # runs on every round (Builder#register_statements_for_value).
         def byte(at)
-          at = @internals.emit_held_place(at)
-          @internals.emit_read_outside_fault(at) if @internals.outside_block_reads(at)
-          @internals.copy[at]
+          @internals.builder.register_statements_for_value do
+            at = @internals.emit_held_place(at)
+            @internals.emit_read_outside_fault(at) if @internals.outside_block_reads(at)
+            @internals.copy[at]
+          end
         end
 
         def expect_size(size)
@@ -201,21 +204,26 @@ module VBlank
           end
         end
 
-        # The copy's byte at +at+, outside any block: a place outside the copy records a fault and
-        # reads a byte of the copy instead, as BlockKit#byte does.
+        # The copy's byte at +at+, outside any block: a place outside the copy records a fault, which
+        # halts the routine, as BlockKit#byte does; and the check runs on every round of a loop
+        # whose test this is.
         def copy_byte(at)
-          at = emit_held_place(at)
-          emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= copy.length
-          copy[at]
+          @builder.register_statements_for_value do
+            at = emit_held_place(at)
+            emit_fault(Unpacking::Fault::READ_PAST_END, at, 0) if at < 0 || at >= copy.length
+            copy[at]
+          end
         end
 
         # Byte +at+ of +file+ (a FileReader), counted from the file's start, outside any block: a
-        # place outside the file records a fault naming the file, and reads a byte of the copy
-        # instead. Inside the file is inside the copy, so the copy's own check is not made too.
+        # place outside the file records a fault naming the file, which halts the routine. Inside
+        # the file is inside the copy, so the copy's own check is not made too.
         def file_byte(at, file)
-          at = emit_held_place(at)
-          emit_fault(Unpacking::Fault::READ_OUTSIDE_FILE, at, file.number) if at < 0 || at >= file.size
-          copy[at + file.start]
+          @builder.register_statements_for_value do
+            at = emit_held_place(at)
+            emit_fault(Unpacking::Fault::READ_OUTSIDE_FILE, at, file.number) if at < 0 || at >= file.size
+            copy[at + file.start]
+          end
         end
 
         # WHAT A BLOCK MAY READ: from the copy's first byte to its end, or, for a block given its

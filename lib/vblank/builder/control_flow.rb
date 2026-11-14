@@ -170,6 +170,11 @@ module VBlank
           elsif !stop_when.nil?
             DSL::Value.node_for(stop_when)
           end
+        # A test whose working out recorded statements (a read of the copy's check of its place)
+        # runs them inside the loop, before it is asked on each round.
+        test_statements = leave ? take_trailing_test_statements(leave) : []
+        return repeat_rerunning_test_statements(count, index, i, leave, test_statements, &block) unless test_statements.empty?
+
         if leave
           inlined = inline_held_expressions(leave)
           # The test is now the copy, so the value given is used, not thrown away.

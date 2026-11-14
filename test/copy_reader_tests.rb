@@ -406,6 +406,67 @@ module CopyReaderTests
     end
   end
 
+  # A LOOP'S TEST READ PAST THE COPY'S END ON A LATER ROUND stops the routine there with the plain
+  # refusal, on every run's build of it. The copy holds two bytes and no 0, so the third round
+  # reads byte 2: in `stop_when:`, and in a `while` with no bound of its own, which a read past
+  # the end must end. The answer key is the copy's length.
+  NO_NOUGHT_COPY = VBlank::Testing::InRactors.shareable([9, 8].pack("C*"))
+
+  # The error the unpacking +b+ declared (with the pack left out) stops with, played on the run's
+  # player handed NO_NOUGHT_COPY.
+  private def refusal_reading_no_nought_copy(b)
+    release = VBlank::Original::Release.from("Test", { "sha1" => Digest::SHA1.hexdigest(NO_NOUGHT_COPY),
+                                                       "size" => NO_NOUGHT_COPY.bytesize })
+    unpacking = b.declared_data_pack.unpacking(release: release)
+    played = game_player.hand_file(NO_NOUGHT_COPY).run(unpacking.program, frames: 8)
+    refute unpacking.finished_in?(played), "the read past the end stops the routine"
+    fault = unpacking.fault_in(played)
+    refute_nil fault, "the read past the end is a fault"
+    unpacking.fault_error(fault)
+  end
+
+  def test_a_stop_when_that_reads_past_the_copys_end_on_a_later_round_stops_the_routine_there
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, NO_NOUGHT_COPY)
+      b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+      b.instance_eval do
+        data_pack(from: from, version: "1") do |slots|
+          slots.numbers :reached, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = var(:at, 0)
+            repeat(10, stop_when: copy.byte(at) == 0) { at.increase!(1) }
+            pack[:reached][0] = at
+          end
+        end
+      end
+      refused = refusal_reading_no_nought_copy(b)
+
+      assert_kind_of VBlank::Original::WrongCopy, refused
+      assert_match "reads byte 2 ", refused.message
+    end
+  end
+
+  def test_a_while_with_no_bound_that_reads_past_the_copys_end_stops_the_routine_there
+    Dir.mktmpdir do |folder|
+      from = copy_of(folder, NO_NOUGHT_COPY)
+      b = VBlank::Builder.new(options: PACK_LEFT_OUT)
+      b.instance_eval do
+        data_pack(from: from, version: "1") do |slots|
+          slots.numbers :reached, count: 1, width: :byte, signed: false
+          slots.fill_from_copy do |copy, pack|
+            at = 0
+            at += 1 while copy.byte(at) != 0
+            pack[:reached][0] = at
+          end
+        end
+      end
+      refused = refusal_reading_no_nought_copy(b)
+
+      assert_kind_of VBlank::Original::WrongCopy, refused
+      assert_match "reads byte 2 ", refused.message
+    end
+  end
+
   # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
