@@ -147,6 +147,32 @@ class TestGenesisScenery < Minitest::Test
     assert_match(/move `case_var\(:state\)` to the top of the game loop/, error.message)
   end
 
+  # A timer moves on each time the game waits for the screen. A routine that waits, called before the
+  # pick inside an `if`, lets the timer change the variable in the same pass, after the scene was
+  # noted for the frame's sprites: refused, naming the timer, the wait and the pick.
+  def test_sprite_pictures_taking_turns_refuse_a_timer_changing_the_scene_across_a_wait_before_the_pick
+    program = TestSceneTilesOnTheGenesis.sprite_heavy_scenes(dispatched_inside_test: true, changed_by: :timer_and_wait)
+    error = assert_raises(Genesis::LoweringError) { Genesis.new.build(program) }
+
+    assert_match(/timer `clock` changes `state` at \S*test_scene_tiles_on_the_genesis\.rb:\d+/, error.message)
+    assert_match(/waits for the screen at \S+:\d+/, error.message)
+    assert_match(/inside an `if` at \S+:\d+/, error.message)
+  end
+
+  # The loop's own wait written partway down, and the scene picked after it: the end of each pass
+  # places the sprites before that pass picks its scene, so the first frame shows the first scene's
+  # sprite before its pictures are in. Refused, naming the wait and the pick, whether the pick is
+  # inside an `if` or not.
+  def test_sprite_pictures_taking_turns_refuse_a_scene_picked_after_a_wait_partway_down_the_loop
+    [true, false].each do |inside|
+      program = TestSceneTilesOnTheGenesis.sprite_heavy_scenes(dispatched_inside_test: inside, changed_by: :pick_after_wait)
+      error = assert_raises(Genesis::LoweringError) { Genesis.new.build(program) }
+
+      assert_match(/after `wait_vblank` at \S+:\d+/, error.message)
+      assert_match(/move `case_var\(:state\)` above `wait_vblank`/, error.message)
+    end
+  end
+
   # Picked at the top of the loop, the same scenes build.
   def test_sprite_pictures_taking_turns_build_with_a_scene_picked_at_the_top_of_the_loop
     assert Genesis.new.build(TestSceneTilesOnTheGenesis.sprite_heavy_scenes)

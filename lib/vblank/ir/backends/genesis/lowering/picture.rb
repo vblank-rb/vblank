@@ -393,7 +393,7 @@ module VBlank
             # already. Kept in the room the scenes take turns with, that sprite would be drawn from
             # whatever the arriving scene put there. Built with :sprites, for a game whose sprite
             # pictures do not all fit beside a scene's backgrounds, a scene's own take turns too, and
-            # the one way of writing the loop that shows such a frame is refused
+            # the ways of writing the loop that show such a frame are refused
             # (#refuse_hand_over_inside_test!).
             def make_art_by_scene(poses)
               refuse_hand_over_inside_test!(:pictures) if @scene_tiles == :sprites
@@ -416,14 +416,54 @@ module VBlank
             # The same is so of a game whose scenes write their own sprite colours as they take over
             # (+scene_colors+ of :sprites): the leaving scene's sprites would be drawn in the arriving
             # scene's palettes. +shared+ names what the scenes take turns with, a key of TAKING_TURNS.
+            #
+            # A TIMER moves on at each wait for the screen (Reference#accrue_timer, Runtime::Frame's
+            # rt_wait_vblank). The loop's own wait ends the pass, after the frame's sprites are placed, so
+            # a timer's change there is noted with the next pass. A wait the pass reaches before the pick,
+            # in a routine it calls, lets the timer change the variable after it was noted.
+            #
+            # A PICK AFTER THE LOOP'S OWN WAIT, written partway down the loop, comes after the end of the
+            # pass that places the frame's sprites, so the first frame places the first scene's sprites
+            # before that scene has put its tiles in; refused wherever it is in the loop.
             def refuse_hand_over_inside_test!(shared)
               @program.walk.select { |node| node.kind == :loop }.each do |loop_node|
+                refuse_pick_after_wait!(loop_node, shared)
                 loop_node.children.reject { |node| Frames.scene_dispatch?(node) }.flat_map { |node| Frames.dispatches_inside(node) }.each do |dispatch|
-                  change = statements_run_before(loop_node, dispatch).find { |node| LightScenes.written_var(node) == dispatch.var && node.kind != :case }
-                  next unless change
+                  ran = statements_run_before(loop_node, dispatch)
+                  change = ran.find { |node| writes_scene_number?(node, dispatch.var) }
+                  raise LoweringError, hand_over_inside_test_message(dispatch, change, shared) if change
 
-                  raise LoweringError, hand_over_inside_test_message(dispatch, change, shared)
+                  wait = ran.find { |node| node.kind == :wait_vblank }
+                  timer_change = wait && timer_write_of(dispatch.var)
+                  raise LoweringError, timer_across_wait_message(dispatch, timer_change, wait, shared) if timer_change
                 end
+              end
+            end
+
+            def writes_scene_number?(node, var) = LightScenes.written_var(node) == var && node.kind != :case
+
+            # The first write of +var+ a timer's handler makes, in it or a routine it calls, with the timer's
+            # name; nil when none does.
+            def timer_write_of(var)
+              Nodes::OnTimer.of(@program).each do |timer, handler|
+                statements = handler.walk.to_a + statements_of_routines_called(handler)
+                change = statements.find { |node| writes_scene_number?(node, var) }
+                return [timer, change] if change
+              end
+              nil
+            end
+
+            # Refuses a scene picked in a statement of +loop_node+ that runs after the end of the pass, which
+            # the console's order puts before the loop's own wait (IR::Frames.loop_in_console_order).
+            def refuse_pick_after_wait!(loop_node, shared)
+              order = @plan.console_loop(loop_node)
+              return if order.pass_end.empty?
+
+              pass_end_at = order.each_time.index { |node| node.equal?(order.pass_end.first) }
+              wait = order.each_time[pass_end_at..].find { |node| node.kind == :wait_vblank }
+              order.each_time[pass_end_at..].each do |statement|
+                dispatch = Frames.dispatches_inside(statement).first
+                raise LoweringError, pick_after_wait_message(dispatch, wait, shared) if dispatch
               end
             end
 
@@ -445,6 +485,26 @@ module VBlank
                 "of the game loop, outside the `if`. Or change `#{name}` after the `case_var`."
             end
 
+            def timer_across_wait_message(dispatch, (timer, change), wait, shared)
+              name = dispatch.var
+              turns = TAKING_TURNS.fetch(shared)
+              "The scenes of this game share #{turns.shared}. " \
+                "The timer `#{timer}` changes `#{name}`#{line_words(change)}. A timer moves on each time " \
+                "the game waits for the screen. The game waits for the screen#{line_words(wait)}, and then, " \
+                "in the same pass, it uses `#{name}` to pick a scene inside an `if`#{line_words(dispatch)}. On that pass, the " \
+                "sprites of the last scene can show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` to " \
+                "the top of the game loop, outside the `if`. Or change `#{name}` in the game loop, not in the timer."
+            end
+
+            def pick_after_wait_message(dispatch, wait, shared)
+              name = dispatch.var
+              turns = TAKING_TURNS.fetch(shared)
+              "The scenes of this game share #{turns.shared}. " \
+                "The game uses `#{name}` to pick a scene#{line_words(dispatch)}, after `wait_vblank`#{line_words(wait)} in the " \
+                "game loop. The sprites of a pass show before the pass picks its scene, so on the first pass the sprites " \
+                "show with the wrong #{turns.shown_wrong}. To fix this, move `case_var(:#{name})` above `wait_vblank`."
+            end
+
             # " at file.rb:12" for the line that wrote +node+, or the nearest line around it that the
             # build knows; nothing where it knows none.
             def line_words(node)
@@ -452,11 +512,12 @@ module VBlank
               node.source ? " at #{node.source}" : ""
             end
 
-            # Every statement a pass of +loop_node+ runs before it reaches +target+, in the order it runs
-            # them, with the bodies of the routines they call (not the scenes, which only the pick runs).
+            # Every statement a pass of +loop_node+ runs before it reaches +target+, in the order the console
+            # runs them (LoweringPlan#console_loop: a wait at the top of the loop ends the pass), with the
+            # bodies of the routines they call (not the scenes, which only the pick runs).
             def statements_run_before(loop_node, target)
               ran = []
-              collect_statements_before(loop_node.children, target, ran)
+              collect_statements_before(@plan.console_loop(loop_node).each_time, target, ran)
               ran
             end
 
