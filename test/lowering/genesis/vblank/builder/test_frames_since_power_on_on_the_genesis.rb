@@ -1,0 +1,34 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "power_on_frame_games"
+
+# `frames_since_power_on` on the Genesis's cartridge, read back in Genesis Plus GX. The games and what
+# every console's cartridge is held to are in test/power_on_frame_games.rb.
+class TestFramesSincePowerOnOnTheGenesis < Minitest::Test
+  include PowerOnFrameGames
+
+  # The reading the screen-changing game waits for: past the frames the longest build sets up in,
+  # the console's memories cleared, its painted screen copied whole, and the spin after.
+  GREEN_FROM_FRAME = 30
+
+  # Spins before the loop that take a few frames.
+  BUSY = 3_000
+
+  # A painted screen's pass is copied to the console in the blank after it, so the frame that shows
+  # the pass that read the hold is the one after the frame it ran in.
+  PICTURE_FRAMES_LATER = 1
+
+  def test_the_console_counts_the_frames_spent_setting_up
+    assert_frames_setting_up_counted(:genesis, busy: BUSY)
+  end
+
+  # Clearing the console's memories takes frames before the game's first line, and copying its
+  # painted screen whole more before its first pass is shown. They are shown frames too.
+  def test_a_screen_held_to_a_frame_changes_on_it_with_or_without_songs
+    changed = green_frames(:genesis, hold: GREEN_FROM_FRAME, busy: BUSY)
+
+    assert_equal [GREEN_FROM_FRAME + 1 + PICTURE_FRAMES_LATER], changed.values.uniq,
+                 "the frame each build's screen changed on, counted from power-on: #{changed}"
+  end
+end

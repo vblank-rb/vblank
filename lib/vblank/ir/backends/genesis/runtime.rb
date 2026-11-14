@@ -34,10 +34,11 @@ module VBlank
           # places, as much of them as what its songs do asks for (Music), and those of its +effects+ sound
           # effects (Effects).
           # +sprites_over_picture+ for a painted screen that shows sprites over its picture (Paint).
+          # +counted+ for a game that reads how many frames it has shown since power-on (Frame::SETTING_UP).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
-                      sprites_over_picture: false, scene_tiles: false)
-            Frame.reserve(memory)
+                      sprites_over_picture: false, scene_tiles: false, counted: false)
+            Frame.reserve(memory, counted: counted)
             Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory) if samples
@@ -59,6 +60,8 @@ module VBlank
           # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles), and
           # +scene_colors+ for one whose scenes each write their own palettes (Tint#emit_scene_colors).
           # +runs+ for a tiled game that paints tiles from a list, whose blank writes them (Lowering::TileRuns).
+          # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
+          # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
           # +registers+ is how many words of the video chip's register table the game writes
@@ -71,13 +74,15 @@ module VBlank
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false)
+                         backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
+                         count_at: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
-            Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD))
+            Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD),
+                           counting: (Frame.counting_block(memory) if count_at))
             Int32.emit(asm, fractions: fractions)
-            Frame.emit(asm, memory, sound: sound, samples: !plays.nil?)
+            Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
@@ -86,7 +91,7 @@ module VBlank
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
             Recordings.emit(asm, memory) if plays
-            emit_start(asm, samples: !plays.nil?)
+            emit_start(asm, samples: !plays.nil?, counting_at: (memory.displacement(Frame::COUNTING) if count_at))
             emit_frame_begins(asm, frame_begins)
             [entry.section, asm.section, music, *plays].compact
           end
@@ -94,8 +99,10 @@ module VBlank
           # What a game needs before its first line: its variables that do not start at nought (the
           # table "game_starts": each place as a long, then its number as a long, and a place of
           # nought after the last), its lists' headers, the picture's start, the screen's interrupt
-          # switched on.
-          def emit_start(asm, samples: false)
+          # switched on. In a game that counts the frames setting up takes, the interrupt is on already,
+          # only counting them (Boot#emit), and is handed its whole work instead: the flag at +counting_at+
+          # (Frame::COUNTING) cleared.
+          def emit_start(asm, samples: false, counting_at: nil)
             asm.label("rt_start")
             asm.lea(asm.abs_l("game_starts"), asm.a(0))
             asm.label("rt_start_next")
@@ -108,7 +115,7 @@ module VBlank
             asm.jsr(asm.abs_l("rt_lists_start"))
             asm.jsr(asm.abs_l("rt_picture_start"))
             asm.jsr(asm.abs_l("rt_recordings_start")) if samples
-            emit_interrupt_on(asm)
+            counting_at ? asm.clr(:w, asm.disp(5, counting_at)) : emit_interrupt_on(asm)
             asm.rts
           end
 

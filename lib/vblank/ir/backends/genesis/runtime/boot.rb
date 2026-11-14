@@ -38,7 +38,13 @@ module VBlank
             end
 
             # rt_boot: the console made ready, then the game's main routine, +main+, for good.
-            def emit(asm, main:, registers:, held_at:)
+            #
+            # +counting+ (a Frame::CountingBlock) for a game that reads how many frames it has shown since
+            # power-on. Clearing the memories takes several frames, setting up after it may take more, and
+            # those are shown frames like any other. So for such a game the screen's interrupt is switched on
+            # as soon as the video chip is set up, counting only (Frame::COUNTING), with the part of work RAM
+            # it counts in cleared first and left alone by the clearing after (#emit_counting_on).
+            def emit(asm, main:, registers:, held_at:, counting: nil)
               h = Console::GenesisHardware
               asm.label("rt_boot")
               asm.move_to_sr(asm.imm(0x2700)) # every interrupt held off
@@ -46,7 +52,8 @@ module VBlank
               emit_security_check(asm, h)
               emit_sound_quiet(asm, h)
               emit_video_chip(asm, h, registers)
-              emit_memories_cleared(asm, h)
+              emit_counting_on(asm, counting) if counting
+              emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.move(:w, asm.d(7), asm.disp(5, held_at))
               asm.jsr(asm.abs_l("rt_start"))
@@ -89,10 +96,26 @@ module VBlank
               asm.dbra(asm.d(1), "rt_boot_register")
             end
 
+            # THE INTERRUPT ON, COUNTING ONLY: A5 set, the CountingBlock +counting+ at the start of work RAM
+            # cleared, COUNTING set in it, and the screen's interrupt switched on (Runtime#emit_interrupt_on).
+            # The interrupt then counts FRAMES and nothing else until setting up ends (Runtime#emit_start).
+            def emit_counting_on(asm, counting)
+              asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
+              asm.lea(asm.abs_l(Memory::FIRST), asm.a(0))
+              asm.moveq(0, asm.d(0))
+              asm.move(:w, asm.imm((counting.bytes / 4) - 1), asm.d(1))
+              asm.label("rt_boot_clear_counting")
+              asm.move(:l, asm.d(0), asm.post(0))
+              asm.dbra(asm.d(1), "rt_boot_clear_counting")
+              asm.move(:w, asm.imm(1), asm.disp(5, counting.flag_at))
+              Runtime.emit_interrupt_on(asm)
+            end
+
             # Video RAM, 64K; colour memory, 64 words; vertical scroll memory, 40 words; each with the
             # chip pointed at its start and the address moving on by a word, and then work RAM, 64K,
-            # which the code clears through A0 with no call.
-            def emit_memories_cleared(asm, h)
+            # which the code clears through A0 with no call: all of it but its first +kept_bytes+, which
+            # the interrupt counts in (#emit_counting_on).
+            def emit_memories_cleared(asm, h, kept_bytes: 0)
               asm.moveq(0, asm.d(0))
               asm.move(:l, asm.imm(Console::GenesisHardware.command(h::WRITE_VRAM, 0)), asm.abs_l(h::VDP_CONTROL))
               asm.move(:w, asm.imm(h::VRAM_SIZE / 4 - 1), asm.d(1))
@@ -101,8 +124,8 @@ module VBlank
               asm.dbra(asm.d(1), "rt_boot_clear_video_ram")
               emit_clear_words(asm, h, h::WRITE_CRAM, h::CRAM_COLORS, "rt_boot_clear_colors")
               emit_clear_words(asm, h, h::WRITE_VSRAM, h::VSRAM_WORDS, "rt_boot_clear_scroll")
-              asm.lea(asm.abs_l(h::WRAM), asm.a(0))
-              asm.move(:w, asm.imm(h::WRAM_SIZE / 4 - 1), asm.d(1))
+              asm.lea(asm.abs_l(h::WRAM + kept_bytes), asm.a(0))
+              asm.move(:w, asm.imm(((h::WRAM_SIZE - kept_bytes) / 4) - 1), asm.d(1))
               asm.label("rt_boot_clear_work_ram")
               asm.move(:l, asm.d(0), asm.post(0))
               asm.dbra(asm.d(1), "rt_boot_clear_work_ram")

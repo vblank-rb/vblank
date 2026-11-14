@@ -158,7 +158,8 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
-          Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs,
+          counted = IR::Frames.counts_from_power_on?(program)
+          Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs, counted: counted,
                                   music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
@@ -178,7 +179,8 @@ module VBlank
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                             runs: picture == :tiled && lowering.paints_tiles?)
+                                             runs: picture == :tiled && lowering.paints_tiles?,
+                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

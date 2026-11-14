@@ -184,6 +184,7 @@ module VBlank
           # frame before it is the first's, and the interrupts of those read the buttons the script gave
           # for it.
           def start_run(_program)
+            @setting_up = nil
             @frames_played = 0
             @deciding = true
             @logged_entries = []
@@ -197,12 +198,19 @@ module VBlank
 
           def next_screen_frame = screen_on? ? super : 1
 
+          # The count is written as the screen comes on for the first pass, which may be after the game was
+          # found waiting at that pass's end, so it is read again at every moment.
+          def read_setting_up
+            @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP)) if @places.runtime.key?(Runtime::Frame::SETTING_UP)
+          end
+
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
           # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
           # INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the cartridge plays where the wait ends, after the game
           # was found waiting, so a pass's moment takes the count the cartridge kept as that wait ended
           # (Runtime::Sound::LOGGED_BY_PASS). The moment the run ended on has no boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up
             @vars = variables
             @lists = lists
             @screen = picture
