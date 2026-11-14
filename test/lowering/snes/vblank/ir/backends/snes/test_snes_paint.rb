@@ -136,7 +136,9 @@ class TestSNESPaint < Minitest::Test
   # Half the screen painted each pass, the left half and then the right, is 448 tiles (28672
   # bytes) for the blank: seven blanks' worth at least. While they arrive the screen must show the
   # last pass's whole picture, and then this pass's whole picture, never a mix: not half the new
-  # tiles (a wipe down the screen), and not the old tiles in the new pass's faded colours.
+  # tiles (a wipe down the screen), and not the old tiles in the new pass's faded colours. The
+  # first time each half shows it is loaded with the screen off, a black frame (Paint's
+  # LOAD_SCREEN_OFF), which is not a mix of the two.
   def test_a_big_change_and_its_colours_arrive_on_the_same_frame
     program = program_of do
       screen :bitmap
@@ -153,7 +155,7 @@ class TestSNESPaint < Minitest::Test
     run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 5)
 
     assert_operator run.frames_took(3), :>, 1, "the half screen takes more than one blank"
-    assert_empty run.black_frames
+    assert_operator run.black_frames.size, :<=, 2, "a black frame for each half's first load"
     assert_empty run.torn_frames
   end
 
@@ -199,6 +201,75 @@ class TestSNESPaint < Minitest::Test
     run = SNES::HeadlessRun.new.run(program, frames: 10)
 
     assert_equal [1] * 7, (4..10).map { |pass| run.frames_took(pass) }
+  end
+
+  # Walls on all four edges, 116 tiles, painted every pass beside a panel painted on every other:
+  # every wall tile is in both pictures, and the turn still swaps the maps alone.
+  def test_a_panel_shown_every_other_pass_inside_walls_on_every_edge_takes_one_frame
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 256, 8, :gray
+        fill_rect 0, 216, 256, 8, :gray
+        fill_rect 0, 8, 8, 208, :gray
+        fill_rect 248, 8, 8, 208, :gray
+        fill_rect 32, 32, 192, 160, :blue if n % 2 == 0
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 10)
+    run = SNES::HeadlessRun.new.run(program, frames: 10)
+
+    assert_equal [1] * 7, (4..10).map { |pass| run.frames_took(pass) }
+  end
+
+  # A BIG NEW PICTURE IS LOADED WITH THE SCREEN OFF, as the console's own games load a screen: half
+  # the screen of tiles no pass painted before, 448 tiles, is 28672 bytes, more than five blanks
+  # hold. With the screen off video RAM takes writes on every line, so it goes in one go and the
+  # screen comes back on in the blank after: one black frame, and then the new picture whole. The
+  # pass took 17 frames, sending it over six blanks with the screen on and painting it a row of
+  # pixels at a time; most of what is left is painting and keeping count of 448 tiles.
+  def test_a_first_half_screen_picture_is_loaded_with_the_screen_off
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 4, 4, 8, 8, :white
+        fill_rect 0, 0, 128, 224, :red if n >= 3
+        n += 1
+      end
+    end
+    SNES::CheckedRun.new.run(program, frames: 8)
+    run = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 8)
+
+    assert_operator run.frames_took(5), :<=, 9, "the pass that paints the half"
+    assert_equal 1, run.black_frames.size
+    assert_empty run.torn_frames
+  end
+
+  # Two pictures taking turns arrive with the screen off the first time each shows; a third big
+  # pass running, the whole screen in a new colour every pass, is sent with the screen on, so the
+  # screen does not flicker black between every two pictures.
+  def test_only_the_first_two_big_passes_running_are_loaded_with_the_screen_off
+    program = program_of do
+      screen :bitmap
+      n = 0
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 0, 256, 224, :red if n % 3 == 0
+        fill_rect 0, 0, 256, 224, :green if n % 3 == 1
+        fill_rect 0, 0, 256, 224, :blue if n % 3 == 2
+        n += 1
+      end
+    end
+    first_two = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 3).black_frames
+    six = SNES::HeadlessRun.new(watch_picture: true).run(program, frames: 6).black_frames
+
+    refute_empty first_two
+    assert_equal first_two, six, "no black frame after the first two big passes"
   end
 
   # A prompt that blinks under words that stay, the words on a layer of their own (TextLayer):

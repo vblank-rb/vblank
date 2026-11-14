@@ -65,7 +65,8 @@ module VBlank
           # colour still shows the clear tile, so a tile sent early is not seen early, and the
           # colours never show with the last pass's tiles. A tile painted in both passes shows as it
           # arrives; a pass that changes more than a blank holds of such tiles still shows them
-          # coming in down the screen.
+          # coming in down the screen. On a plain cartridge a change bigger than a few blanks hold
+          # goes with the screen off instead, in one go (LOAD_SCREEN_OFF).
           #
           # ON A SUPER FX CARTRIDGE THE SCREEN IS OFF WHERE THE PICTURE'S TOP AND BOTTOM ARE BLACK
           # (Letterbox), and the copy has those lines as well as the blank's: a first-person view in
@@ -201,6 +202,33 @@ module VBlank
             # leaves as it was while the screen still shows the last pass.
             CLEARS = "rt paint clears"
 
+            # A BIG CHANGE IS LOADED WITH THE SCREEN OFF, on a plain cartridge (PaintLog): a pass
+            # whose tiles to send are more than SCREEN_OFF_BLANKS blanks hold would take a frame for
+            # each with the screen on. The console's own games load a screen that size with the
+            # screen switched off (INIDISP's forced blank), when video RAM takes writes on every
+            # line, so here it goes in one go: the screen off as the blank starts, everything sent,
+            # and the screen on again in the blank the load ends in or the next. The frames between
+            # are black, a frame for a load of half the screen, and the frame after shows the pass's
+            # whole picture.
+            #
+            # A black frame is a frame the screen does not show: the interpreter has no frame
+            # between two passes, and the checked run holds each pass's picture as it is shown, so
+            # what it holds is the same either way. What a player sees is a frame of nothing in the
+            # place of many frames of the last picture, as at a retail game's change of screen.
+            #
+            # Only the first BIG_PASSES_SCREEN_OFF of a stretch of big passes are loaded so: two, so
+            # that two pictures taking turns (PaintTurns) each arrive so the first time they show.
+            # A third big pass running means the game changes most of the screen on every pass, and
+            # loaded with the screen off it would show a black frame between every two pictures, a
+            # flicker the console's own games never show: it is sent with the screen on, over the
+            # blanks it takes. (LOAD_SCREEN_OFF: this pass's change goes with the screen off;
+            # BIG_PASSES: how many big passes have run up to the last one, held at the most.)
+            SCREEN_OFF_BLANKS = 3
+            SCREEN_OFF_TILES = SCREEN_OFF_BLANKS * Blank::BLANK_BYTES / TILE_BYTES
+            BIG_PASSES_SCREEN_OFF = 2
+            LOAD_SCREEN_OFF = "rt paint load screen off"
+            BIG_PASSES = "rt paint big passes"
+
             # The direct page the routines work on.
             Scratch = Data.define(:left, :right, :top, :bottom, :area, :y, :row, :count, :chunk, :last,
                                   :shift, :mask, :not_mask, :planes, :left_planes, :right_planes,
@@ -243,6 +271,10 @@ module VBlank
               memory.reserve(IN_PLACE_START, 2)
               memory.reserve(SHOWN_GENERATION, 2)
               memory.reserve(CAMERA, CAMERA_BYTES)
+              unless chip
+                memory.reserve(LOAD_SCREEN_OFF, 2)
+                memory.reserve(BIG_PASSES, 2)
+              end
               chip ? RepeatLog.reserve(memory) : PaintLog.reserve(memory, turns: turns)
               TextLayer.reserve(memory) if text_layer && !chip
             end
@@ -343,7 +375,9 @@ module VBlank
               emit_no_generation_everywhere(asm, memory, "rt_paint_start")
               Picture.emit_fill_work_ram(asm, memory[SHOWN_IN], TILES, "rt_paint_no_generation")
               Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
-              [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END].each do |name|
+              cleared = [GENERATION, CLEARS, CLEAR_PLACE, MAP_CHANGED, CLEAR_CHANGED, RUNS_END]
+              cleared += [LOAD_SCREEN_OFF, BIG_PASSES] if logged
+              cleared.each do |name|
                 asm.stz(asm.abs(memory[name]))
               end
               asm.lda(NOTHING_SHOWN)
@@ -1004,6 +1038,7 @@ module VBlank
               asm.lda(asm.direct(s.top))
               asm.sta(asm.direct(s.y))
               asm.label("rt_paint_fill_row")
+              emit_fill_band(asm, s)
               asm.jsr(asm.abs("rt_paint_row_start"))
               asm.lda(asm.direct(s.chunk))
               6.times { asm.asl }
@@ -1044,17 +1079,78 @@ module VBlank
               asm.rtl
 
               # One tile's row at X, through a mask's planes (+planes+: the mask's opposite, then the
-              # four pairs of planes held to the mask).
-              [["rt_paint_fill_left", s.left_planes], ["rt_paint_fill_right_tile", s.right_planes]].each do |label, planes|
+              # four pairs of planes held to the mask); and all eight of its rows, for a band.
+              [["rt_paint_fill_left", s.left_planes, 1], ["rt_paint_fill_right_tile", s.right_planes, 1],
+               ["rt_paint_fill_band_left", s.left_planes, 8], ["rt_paint_fill_band_right_tile", s.right_planes, 8]].each do |label, planes, rows|
                 asm.label(label)
                 4.times do |pair|
-                  asm.lda(asm.abs_x(pair * 16))
-                  asm.and_a(asm.direct(planes))
-                  asm.ora(asm.direct(planes + 2 + (pair * 2)))
-                  asm.sta(asm.abs_x(pair * 16))
+                  rows.times do |row|
+                    asm.lda(asm.abs_x((pair * 16) + (row * 2)))
+                    asm.and_a(asm.direct(planes))
+                    asm.ora(asm.direct(planes + 2 + (pair * 2)))
+                    asm.sta(asm.abs_x((pair * 16) + (row * 2)))
+                  end
                 end
                 asm.rts
               end
+            end
+
+            # In rt_paint_fill, at a row +y+ that is the top of a row of tiles whose eight rows the
+            # rectangle covers: the whole BAND painted a tile at a time, its eight rows together,
+            # and on to the next row of pixels after it. A tile between the edges is 32 stores, not
+            # eight rows of the loop for a row; a fill of half the screen is mostly such tiles.
+            # Else on to the row at a time.
+            def emit_fill_band(asm, s)
+              asm.lda(asm.direct(s.y))
+              asm.bit(0x0007)
+              asm.branch_long(:bne, "rt_paint_fill_by_row")
+              asm.clc
+              asm.adc(8)
+              asm.cmp(asm.direct(s.bottom))
+              asm.beq("rt_paint_fill_band")
+              asm.branch_long(:bcs, "rt_paint_fill_by_row")
+              asm.label("rt_paint_fill_band")
+              asm.jsr(asm.abs("rt_paint_row_start"))
+              asm.lda(asm.direct(s.chunk))
+              6.times { asm.asl }
+              asm.clc
+              asm.adc(asm.direct(s.row))
+              asm.tax
+              asm.jsr(asm.abs("rt_paint_fill_band_left"))
+              asm.lda(asm.direct(s.last))
+              asm.sec
+              asm.sbc(asm.direct(s.chunk))
+              asm.branch_long(:beq, "rt_paint_fill_band_done")
+              asm.dec
+              asm.sta(asm.direct(s.count))
+              asm.branch_long(:beq, "rt_paint_fill_band_right")
+              asm.label("rt_paint_fill_band_middle")
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              4.times do |pair|
+                asm.lda(asm.direct(s.planes + (pair * 2)))
+                8.times { |row| asm.sta(asm.abs_x((pair * 16) + (row * 2))) }
+              end
+              asm.dec(asm.direct(s.count))
+              asm.branch_long(:bne, "rt_paint_fill_band_middle")
+              asm.label("rt_paint_fill_band_right")
+              asm.txa
+              asm.clc
+              asm.adc(TILE_BYTES)
+              asm.tax
+              asm.jsr(asm.abs("rt_paint_fill_band_right_tile"))
+              asm.label("rt_paint_fill_band_done")
+              asm.lda(asm.direct(s.y))
+              asm.clc
+              asm.adc(8)
+              asm.sta(asm.direct(s.y))
+              asm.cmp(asm.direct(s.bottom))
+              asm.branch_long(:bcc, "rt_paint_fill_row")
+              asm.plb
+              asm.rtl
+              asm.label("rt_paint_fill_by_row")
             end
 
             # A painting's start, on a plain cartridge: passed over if it is the last pass's (a clear
@@ -1915,6 +2011,7 @@ module VBlank
                 asm.stz(asm.abs(memory[RUNS_END]))
                 asm.lda(MOST_RUNS * 4)
                 asm.sta(asm.abs(memory[IN_PLACE_START]))
+                asm.stz(asm.abs(memory[BIG_PASSES])) # nothing to send is a small pass
                 asm.rtl
                 asm.label("rt_paint_prepare_cleared")
               end
@@ -1979,7 +2076,9 @@ module VBlank
               asm.lda(asm.abs(memory[GENERATION]))
               asm.sta(asm.abs(memory[SHOWN_GENERATION]))
               asm.jsr(asm.abs("rt_paint_map_runs")) if logged # after the tiles, which ask the map as it is shown
+              asm.jsr(asm.abs("rt_paint_choose_load")) if logged
               asm.rtl
+              emit_choose_load(asm, memory, s) if logged
 
               # rt_paint_run_end (JSR): the run started at +chunk+, if one is, ended before +tile+
               # and put on its list: the runs of tiles not on the screen from the start, the others
@@ -2027,6 +2126,48 @@ module VBlank
               asm.lda(0xFFFF)
               asm.sta(asm.direct(s.chunk))
               asm.label("rt_paint_run_end_none")
+              asm.rts
+            end
+
+            # rt_paint_choose_load (JSR, as a pass on a plain cartridge is prepared, its runs listed):
+            # LOAD_SCREEN_OFF set for a pass whose runs, both lists, hold more than SCREEN_OFF_TILES
+            # tiles, while BIG_PASSES big passes running are no more than BIG_PASSES_SCREEN_OFF;
+            # BIG_PASSES kept for the next. Before the first pass is shown the screen is off
+            # already, and that load counts as none. (+count+ is the tiles.)
+            def emit_choose_load(asm, memory, s)
+              asm.label("rt_paint_choose_load")
+              asm.stz(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.beq("rt_paint_choose_load_small")
+              asm.stz(asm.direct(s.count))
+              [[nil, RUNS_END], [IN_PLACE_START, nil]].each_with_index do |(from, to), list|
+                tag = "rt_paint_choose_load_list#{list}"
+                from ? asm.ldx(asm.abs(memory[from])) : asm.ldx(0)
+                asm.label(tag)
+                to ? asm.cpx(asm.abs(memory[to])) : asm.cpx(MOST_RUNS * 4)
+                asm.bcs("#{tag}_done")
+                asm.lda(asm.long_x(memory[RUNS] + 2))
+                asm.clc
+                asm.adc(asm.direct(s.count))
+                asm.sta(asm.direct(s.count))
+                4.times { asm.inx }
+                asm.bra(tag)
+                asm.label("#{tag}_done")
+              end
+              asm.lda(asm.direct(s.count))
+              asm.cmp(SCREEN_OFF_TILES + 1)
+              asm.bcc("rt_paint_choose_load_small")
+              asm.lda(asm.abs(memory[BIG_PASSES]))
+              asm.cmp(BIG_PASSES_SCREEN_OFF)
+              asm.bcs("rt_paint_choose_load_done") # held there: the stretch goes on
+              asm.inc
+              asm.sta(asm.abs(memory[BIG_PASSES]))
+              asm.lda(1)
+              asm.sta(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.rts
+              asm.label("rt_paint_choose_load_small")
+              asm.stz(asm.abs(memory[BIG_PASSES]))
+              asm.label("rt_paint_choose_load_done")
               asm.rts
             end
 
@@ -2299,6 +2440,18 @@ module VBlank
             def emit_upload(asm, memory, s, bank, logged)
               h = Console::SNESHardware
               asm.label("rt_paint_upload")
+              if logged
+                # A big change: the screen off, and Blank's routines told so, so nothing waits for
+                # a blank (LOAD_SCREEN_OFF). The blank has started, so the frame before is whole.
+                asm.lda(asm.abs(memory[LOAD_SCREEN_OFF]))
+                asm.beq("rt_paint_upload_screen_on")
+                asm.sep(0x20)
+                asm.lda(Picture::DISPLAY_FORCED_OFF)
+                asm.sta(asm.abs(h::INIDISP))
+                asm.rep(0x20)
+                asm.stz(asm.abs(memory[Frame::DISPLAY_ON]))
+                asm.label("rt_paint_upload_screen_on")
+              end
               asm.lda(asm.abs(memory[RUNS_END]))
               asm.sta(asm.direct(s.last))
               asm.ldx(0)
@@ -2399,7 +2552,31 @@ module VBlank
               asm.sta(asm.abs(h::WH1))
               asm.rep(0x20)
               asm.label("rt_paint_upload_done")
+              emit_screen_on_after_load(asm, memory) if logged
               asm.rts
+            end
+
+            # After a load with the screen off (LOAD_SCREEN_OFF): the screen on again in a blank, so
+            # the frame it shows next is the whole picture and none shows it from part of the way
+            # down — at once if the load ended inside one, else as the next starts. A game that
+            # dims sets its brightness after this, in the same blank (Frame's rt_show_pass).
+            def emit_screen_on_after_load(asm, memory)
+              h = Console::SNESHardware
+              asm.lda(asm.abs(memory[LOAD_SCREEN_OFF]))
+              asm.beq("rt_paint_upload_loaded")
+              asm.stz(asm.abs(memory[LOAD_SCREEN_OFF]))
+              Blank.emit_line_now(asm)
+              asm.cmp(Blank::FIRST_BLANK_LINE)
+              asm.bcs("rt_paint_upload_in_blank")
+              asm.jsr(asm.abs("rt_blank_next"))
+              asm.label("rt_paint_upload_in_blank")
+              asm.sep(0x20)
+              asm.lda(h::FULL_BRIGHTNESS)
+              asm.sta(asm.abs(h::INIDISP))
+              asm.rep(0x20)
+              asm.lda(1)
+              asm.sta(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.label("rt_paint_upload_loaded")
             end
 
             # In rt_paint_upload where the screen is off above and below the picture (Letterbox): the
@@ -2504,7 +2681,11 @@ module VBlank
               asm.adc(asm.direct(s.y))
               asm.sta(asm.long_x(memory[RUNS]))
               asm.label("rt_paint_send_runs_full")
+              # With the screen off there is no blank to wait for: the next piece goes now.
+              asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
+              asm.beq("rt_paint_send_runs_next")
               asm.jsr(asm.abs("rt_blank_next"))
+              asm.label("rt_paint_send_runs_next")
               asm.brl("rt_paint_send_runs")
               asm.label("rt_paint_send_runs_go")
               asm.jsr(asm.abs("rt_paint_send_ready"))

@@ -31,7 +31,7 @@ module VBlank
           # edge. A piece that big goes in a blank of its own: rt_blank_room sends a piece it finds
           # no room for at once if the blank's copying has only just started, as no blank has more,
           # and else waits for the next. With the screen still off, before the first pass is shown,
-          # there is always room.
+          # or switched off for a big change (Paint's LOAD_SCREEN_OFF), there is always room.
           #
           #   rt_blank_room   before a piece (JSR): A is its bytes; returns once there is room for
           #                   it and AFTER_PIECE_LINES more, for the writes that follow it

@@ -167,11 +167,13 @@ module VBlank
           # anything, that show no pass's whole picture — a pass's change half copied, or its colours
           # sent before its tiles. A pass's picture is the one read once the pass was shown, as the
           # checked run holds it to the interpreter's; every frame between two passes is the first
-          # of them or the second, unless the copy between is seen arriving.
+          # of them or the second, unless the copy between is seen arriving. A frame all black is
+          # not torn: it is the screen switched off for a big load (Runtime::Paint::LOAD_SCREEN_OFF),
+          # a frame that shows nothing, which #black_frames names.
           def torn_frames
             whole = @moments.map { |moment| moment.picture.is_a?(NearPicture) ? moment.picture.check : moment.picture }
             first_lit = @black_each_frame.index(false) || @black_each_frame.size
-            (first_lit...@picture_each_frame.size).reject { |frame| whole.include?(@picture_each_frame[frame]) }
+            (first_lit...@picture_each_frame.size).reject { |frame| @black_each_frame[frame] || whole.include?(@picture_each_frame[frame]) }
           end
 
           # The Advance's mix, a stream of sound its processor makes from every recording: a Super
