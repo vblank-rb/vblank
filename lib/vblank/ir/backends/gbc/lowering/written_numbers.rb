@@ -232,7 +232,7 @@ module VBlank
             def emit_low_byte_in_a(operand)
               name = variable_kept_at_least(operand, 1)
               return @asm.load(:a, [place_of(name)]) if name && !folded(operand)
-              return emit_item_low_byte_in_a(operand) if list_item_in_place?(operand)
+
               if operand.is_a?(Node) && operand.kind == :binop && LOW_SUM_OPS.include?(operand.op)
                 left, right = operand.lhs, operand.rhs
                 left, right = right, left if operand.op != :- && folded(left)

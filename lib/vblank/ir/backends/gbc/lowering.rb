@@ -218,9 +218,6 @@ module VBlank
           # of the routine the runtime runs at each frame boundary, or nil for a game with no timers.
           attr_reader :variables, :lists, :frame_begins
 
-          # Each variable kept narrower than four bytes, by its name, and its bytes (GBC::Places#kept_bytes).
-          def kept_variable_bytes = @variables.keys.filter_map { |name| (bytes = kept_bytes(name)) && [name, bytes] }.to_h
-
           # +lends_sprite_colors+ builds the game with its sprites' lists of colours borrowing the
           # console's eight as it runs (Art::TooManySpriteLists), and :by_scene with each scene numbering
           # its own lists too (Art::TooManyLentLists). +tile_rooms+ builds it with each screen
@@ -691,18 +688,6 @@ module VBlank
             end
 
             # The tiles each background's `set_tile`s put in its cells, by the background's name.
-            # The variables kept in a byte though the game never declared them narrow
-            # (GBC::ByteVariables). A game loop's own numbers (IR::Frames::ConsoleLoop) are written
-            # by statements the program does not hold, and the clock's offset is added to in four
-            # bytes where it is kept (Clock), so they stay whole.
-            def byte_variables
-              @byte_variables ||= begin
-                plan = @cache.plan
-                loops = plan.game_loops.flat_map { |node| plan.console_loop(node).variables }
-                ByteVariables.new(@cache.program, also_whole: loops + IR::Clock::OFFSETS).names
-              end
-            end
-
             def tiles_set_in
               @tiles_set_in ||= @cache.plan.reachable.select { |node| node.kind == :set_tile }.group_by(&:name)
                                       .transform_values { |nodes| nodes.flat_map(&:tiles_named) }
@@ -892,7 +877,7 @@ module VBlank
           def jump(label) = @asm.jump(label)
           def emit_value(operand) = value(operand)
           def emit_store(name) = store(name)
-          def emit_increment(name) = add_in_place(place_of(name), 1, kept_bytes(name) || 4)
+          def emit_increment(name) = add_in_place(place_of(name), 1)
           def loop_statements(node) = children_of(node).first
 
           def emit_store_zero(name)

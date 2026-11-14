@@ -21,15 +21,9 @@ module VBlank
 
             # How many bytes variable +name+ is kept in, or nil for the whole four.
             def kept_bytes(name)
-              width = kept_width(name)
+              width = @program.kept_width_of(name)
               KeptWidths::BYTES.fetch(width) if width
             end
-
-            # The width variable +name+ is kept at: the one the game declared, or :byte for one
-            # only ever holding a byte (GBC::ByteVariables), or nil for the whole number.
-            def kept_width(name) = @program.kept_width_of(name) || (:byte if byte_variables.include?(name))
-
-            def byte_variables = @byte_variables ||= @cache.facts.byte_variables.to_set
 
             def kept_variable_named(node)
               name = any_variable_named(node)
@@ -80,7 +74,7 @@ module VBlank
             def emit_set_kept(node)
               name = node.var
               bytes = kept_bytes(name)
-              return if KeptWidths.wrap?(node, kept_width(name))
+              return if KeptWidths.wrap?(node, @program.kept_width_of(name))
 
               number = folded(node.value)
               return emit_written_number_kept(name, number) if number
@@ -105,7 +99,7 @@ module VBlank
 
             # Whether +number+ is one variable +name+ can hold.
             def fits_kept?(name, number)
-              width = kept_width(name)
+              width = @program.kept_width_of(name)
               number.between?(KeptWidths.lowest(width), KeptWidths.highest(width))
             end
 
@@ -225,8 +219,6 @@ module VBlank
             # can be (Lowering#fixed_length_lists), so the index is held to its capacity.
             def emit_list_slot_of_index(index, place, capacity, width, out_of_range, fixed: false)
               length = (capacity if fixed)
-              name = kept_variable_named(index)
-              return emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: length) if name && kept_bytes(name) == 1 && capacity <= BYTE_INDEXED_CAPACITY
               if kept_list_index?(index, capacity)
                 low_value(index, 2)
                 return emit_list_slot_of_de(place, width, out_of_range, length: length)
@@ -234,57 +226,6 @@ module VBlank
 
               value(index)
               emit_list_slot_address(place, width, out_of_range, length: length)
-            end
-
-            # Whether +operand+ is an item of a list kept with its first item in its first slot, so
-            # its lowest byte can be read where it is (#emit_item_low_byte_in_a).
-            def list_item_in_place?(operand)
-              operand.is_a?(Node) && operand.kind == :list_get && !front_dropped_lists.include?(operand.name)
-            end
-
-            # A = the lowest byte of the item +item+ reads, from its slot, lowest byte first, with no
-            # whole number made of it: a pool's link read into a variable kept in a byte. An index
-            # out of range stops the game, as reading the item would.
-            def emit_item_low_byte_in_a(item)
-              slot = fixed_slot(item)
-              return @asm.load(:a, [slot]) if slot
-
-              place, capacity, width = list_placed(item)
-              out_of_range = fresh("list_index_out_of_range")
-              read = fresh("list_item_read")
-              emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name))
-              @asm.load(:a, [:hl])
-              @asm.jump(read)
-              @asm.label(out_of_range)
-              value(item.index) if kept_list_index?(item.index, capacity)
-              list_get_through_routine(place)
-              @asm.load(:a, :e)
-              @asm.label(read)
-            end
-
-            # A list this long or shorter is indexed by a variable kept in a byte with one compare.
-            BYTE_INDEXED_CAPACITY = 0x80
-
-            # HL = the slot variable +name+, kept in one byte, names; a jump to +out_of_range+ when it
-            # is outside the list. The byte read as a number from 0 to 255 is the index itself when
-            # it is at or above nought, and 128 or more when it is below: past the end of a list no
-            # longer than BYTE_INDEXED_CAPACITY either way, so one compare with the length (whose
-            # high byte is nought) checks both ends. Where the jump lands the index is worked out
-            # again, as for any kept index (#kept_list_index?).
-            def emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: nil)
-              @asm.load(:a, [place_of(name)])
-              if length
-                @asm.cp_a(length)
-              else
-                @asm.load(:hl, place + Runtime::Lists::LENGTH)
-                @asm.cp_a([:hl])
-              end
-              @asm.jump(:nc, out_of_range)
-              @asm.load(:l, :a)
-              @asm.load(:h, 0)
-              (width / 2).times { @asm.add_hl(:hl) } # × the slot's width: 1, 2 or 4
-              @asm.load(:de, place + Runtime::Lists::HEADER)
-              @asm.add_hl(:de)
             end
 
             # An ordering of two variables kept at the same width: [the one, the other, and

@@ -223,8 +223,8 @@ module VBlank
           # only its own bytes read, and is sign-extended as the game reads it.
           def read_variables
             @places.variables.to_h do |name, address|
-              bytes = @places.variable_bytes(name)
-              [name, bytes < 4 ? kept_number(address, bytes) : word(address)]
+              width = @places.source_program.kept_width_of(name)
+              [name, width ? kept_number(address, KeptWidths::BYTES.fetch(width)) : word(address)]
             end
           end
 

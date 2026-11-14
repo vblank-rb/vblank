@@ -169,11 +169,17 @@ module VBlank
       def variables
         @variables ||= begin
           sized = @built.variables.to_h { |name, at| [at, name.to_s] }
+          kept = @built.source_program
           @built.variables.each do |name, at|
-            (1...@built.variable_bytes(name)).each { |byte| sized[at + byte] = "#{name}+#{byte}" }
+            (1...variable_bytes(kept, name)).each { |byte| sized[at + byte] = "#{name}+#{byte}" }
           end
           sized.merge(@built.runtime.to_h { |name, at| [at, name.tr(' ', '_')] })
         end
+      end
+
+      def variable_bytes(program, name)
+        width = program.kept_width_of(name)
+        width ? IR::KeptWidths::BYTES.fetch(width) : 4
       end
 
       # The code's labels by [bank, address]. A label inside a routine reads as the part after the

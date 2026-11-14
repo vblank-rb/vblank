@@ -31,7 +31,6 @@ require_relative "gbc/lowering/sprite_tiles"
 require_relative "gbc/lowering/clock"
 require_relative "gbc/lowering/written_numbers"
 require_relative "gbc/lowering/division"
-require_relative "gbc/byte_variables"
 require_relative "gbc/lowering/kept_variables"
 require_relative "gbc/lowering"
 require_relative "gbc/sound_log"
@@ -75,16 +74,8 @@ module VBlank
         # picture groups asks — a sprite showing a picture whose group is not up (PictureCheck), and
         # groups up together that up_together does not allow (TogetherCheck) — by its number, so a
         # run one stops says what stopped it in the interpreter's words.
-        #
-        # +kept_bytes+ is each variable the cartridge keeps narrower than four bytes, by its name: one
-        # the game declared narrow, or one only ever holding a byte (GBC::ByteVariables).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_tables, :notes,
-                             :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks,
-                             :kept_bytes) do
-          # How many bytes variable +name+ is kept in: four for a whole number. A narrow one reads
-          # back with its sign copied up from its top byte.
-          def variable_bytes(name) = kept_bytes.fetch(name, 4)
-
+                             :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks) do
           # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
           # (Reference#sprites): who each is, which picture it shows and where, back to front. The
           # runtime keeps them in a table of its own (Runtime::Picture::DRAWN), front-most first as
@@ -419,7 +410,7 @@ module VBlank
                              music_follows_level: !lowering.music_level.nil?,
                              sound_effects: lowering.music.effects.map(&:name), recordings: lowering.clips.recordings,
                              picture_checks: lowering.picture_checks,
-                             together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes)
+                             together_checks: lowering.together_checks)
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)
