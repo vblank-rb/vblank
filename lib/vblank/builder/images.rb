@@ -488,6 +488,12 @@ module VBlank
         @pictures.fetch(pose).list_drawn_from
       end
 
+      # The name of the list +pose+ was drawn from, as the game named it: for a tile's copy that keeps
+      # black as a colour, its picture's (Tiled#solid_black_image), since the copy of a picture of
+      # colours in a list read as the game starts has no list name of its own. Public for
+      # DSL::Background#refuse_unfollowed_changing_list!, which refuses alike both ways by it.
+      def list_name_drawn_from(pose) = list_drawn_from(solid_black_source(pose) || pose).first
+
       # A list declared with `colors`, as a picture given it by name holds it: see-through first.
       # nil for a name nothing declared.
       def declared_colors(name)

@@ -427,7 +427,7 @@ module VBlank
       def refuse_unfollowed_changing_list!(list)
         return if @bitmap
 
-        names = @tile_pictures.map { |pose| @builder.list_drawn_from(pose).first }.uniq
+        names = @tile_pictures.map { |pose| @builder.list_name_drawn_from(pose) }.uniq
         return unless names.include?(list)
 
         fix = names.one? ? "draw_with :#{list}" : "draw_with({ #{list}: :#{list} })"
