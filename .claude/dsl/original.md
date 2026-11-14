@@ -358,6 +358,30 @@ from that copy. The game's code says each piece's shape and size; it never depen
   every build runs the routine. A build that leaves the pack out never runs the routine, so it keeps
   nothing.
 
+  **A part in pieces**, so a player's machine unpacks it on several cores. The game declares the pieces;
+  VBlank never works out what can run side by side (`Original::PiecedUnpacking` says why). A slot with
+  no `at:` takes `pieces:`, a number of equal pieces or the items of each piece in order
+  (`slots.samples :music, count: rooms.sum, pieces: rooms`; `slots.numbers :lengths, count: n, width:
+  :word, signed: false, pieces: n`). A part takes `pieces: n`, and its block is built once for each
+  piece, handed the piece's number, a plain Integer from 0, after the release:
+  `slots.fill_from_copy(:music, pieces: n) { |copy, pack, release, song| ... }`. It writes
+  `pack[:music].piece(song)[i] = sample`, `i` counted from the piece's first item and held to the piece
+  as a write is held to a slot; `copy.count_written room, into: pack[:music].piece(song)` counts it. A
+  piece the copy lacks counts its room as written and leaves it zeros. The pack is byte for byte the one
+  the same part writes with no pieces, and `pieces: 1` the same as `pieces: 2`. Refused as the routine is
+  built, in plain words: a part in pieces that writes a whole slot or another piece's number; a part in
+  pieces that reads a slot, other than its own piece; a part without pieces that reads a slot in pieces;
+  a slot in pieces written by two parts; a part whose `pieces:` is not the piece count of a slot it
+  writes; a frame of a sprite from a slot in pieces. A piece must set every variable before it reads it:
+  each piece is a program of its own on several workers, so a number one piece leaves for the next is
+  not there. One worker plays the whole routine as one program, as it was before pieces: every build
+  here, and every test. Several workers play the parts without pieces as one program and each piece as
+  its own, the pieces of most work first, and join them in the order declared. How many workers is the
+  player's machine's choice, not the game's: one a processor, never more, or `--unpack-workers N` on
+  `vblank run --shell`, `vblank build` and `vblank preview` (a web page's default; its player can change
+  it in the page's settings). `pack.pieced_unpacking` gives the split to a game's own test, which holds
+  it to `pack.unpacking`'s pack (`test/all/vblank/builder/test_data_pack_pieces.rb`).
+
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines
   `self.routine(block)`: game code, written into the unpacking once. `block` is the `Packing::BlockKit`

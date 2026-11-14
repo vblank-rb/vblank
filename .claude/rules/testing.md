@@ -107,6 +107,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `compared_without_advance_emulator.rb` (two cartridges of a console that does not play in the Advance's emulator, compared in a child process where that emulator cannot load, for the Genesis's and the Super Nintendo's tests),
 `slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
+`pieced_original.rb` (that original's songs rendered by a part in pieces, a song a piece in rooms of uneven size, for the tests of pieces on the build and on the Ruby and web shells' workers),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),
 `shell_screen_tests.rb` (the made-up port with a shell's first screen of its own, `shell_screen`, and the same screen drawn by a plain game, which is the answer key each runtime's test holds it to),
 `made_up_original_layouts.rb` (made-up originals in each console's layout, and a game reading them through a data pack, for the layout tests and the pack-at-start runs),

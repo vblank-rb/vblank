@@ -294,6 +294,12 @@ module VBlank
             ArgumentError.new("The unpacking #{Fault.frames_without_room_message(at, slots.fetch(detail).name)}")
           else
             slot = slots.fetch(detail)
+            if slot.pieced?
+              return ArgumentError.new("The unpacking routine writes byte #{at} of a piece of slot :#{slot.name}, and that " \
+                                       "piece holds fewer bytes. A write cannot go past its piece. Correct start:, count: " \
+                                       "or the place written, or make the piece bigger.")
+            end
+
             ArgumentError.new("The unpacking routine writes byte #{at} of slot :#{slot.name}, and the slot holds bytes " \
                               "0 to #{slot.byte_size - 1}. A write cannot go past its slot. Correct start:, count: or " \
                               "the place written, or make the slot bigger.")

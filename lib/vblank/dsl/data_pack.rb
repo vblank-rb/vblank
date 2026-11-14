@@ -36,8 +36,14 @@ module VBlank
         @routines = []
       end
 
-      # One part of the unpacking routine: its +part+ name (nil for a routine of one part) and its block.
-      Routine = Data.define(:part, :block)
+      # One part of the unpacking routine: its +part+ name (nil for a routine of one part), its block,
+      # and how many +pieces+ it writes, a piece each time its block is built (nil for a part that
+      # is not in pieces).
+      Routine = Data.define(:part, :block, :pieces) do
+        def initialize(part:, block:, pieces: nil) = super
+
+        def pieced? = !pieces.nil?
+      end
 
       # The slots named so far, in order, and the parts of the unpacking routine (each a Routine),
       # in the order they run; none for a pack with no routine.
@@ -49,46 +55,50 @@ module VBlank
       # to unpack, 1 unless the routine works hard for it (`cost: 40` for a slot it renders sound
       # into). A shell's bar then moves by the work done rather than the bytes written
       # (Original::Slot#cost).
-      def colors(name, count:, at: nil, layout: nil, cost: 1)
-        add(Original::Slot.colors(name, at: at, count: count, layout: layout || @layout, cost: cost))
+      #
+      # Every slot with no at: takes +pieces+ too: the slot is written a piece at a time by a part
+      # of the routine given as many pieces (#fill_from_copy), a number of equal pieces or the items
+      # of each piece in order (`pieces: [4410, 8820, 2205]`). Original::PiecedUnpacking says why.
+      def colors(name, count:, at: nil, layout: nil, cost: 1, pieces: nil)
+        add(pieces, Original::Slot.colors(name, at: at, count: count, layout: layout || @layout, cost: cost))
       end
 
       # +count+ tiles of 8x8 pixels, of +colors+ colours where the layout keeps more than one kind.
       # `colors: 256` is a tile kept a byte a pixel, 64 bytes, in any layout: the pictures of a
       # background that turns and resizes.
-      def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1)
-        add(Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @layout, cost: cost))
+      def tiles(name, count:, at: nil, colors: nil, layout: nil, cost: 1, pieces: nil)
+        add(pieces, Original::Slot.tiles(name, at: at, count: count, colors: colors, layout: layout || @layout, cost: cost))
       end
 
       # +count+ numbers, each +width+ (:byte, :half or :word) wide; +signed+ sets whether they can be
       # below zero. +byte_order+ (:low_first or :high_first) names how they are kept in place of a
       # console's layout.
-      def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1)
-        add(Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
+      def numbers(name, count:, width:, signed:, at: nil, layout: nil, byte_order: nil, cost: 1, pieces: nil)
+        add(pieces, Original::Slot.numbers(name, at: at, count: count, width: width, signed: signed,
                                          layout: layout || (@layout unless byte_order), byte_order: byte_order, cost: cost))
       end
 
       # +count+ pixels, one byte each: a picture of up to 256 colours, row by row, for an image's
       # `places:` (`image ..., colors: [...], places: pack[:art], see_through: 255`).
-      def pixels(name, count:, at: nil, cost: 1) = add(Original::Slot.pixels(name, at: at, count: count, cost: cost))
+      def pixels(name, count:, at: nil, cost: 1, pieces: nil) = add(pieces, Original::Slot.pixels(name, at: at, count: count, cost: cost))
 
       # +count+ samples of recorded sound, one byte each, 8-bit signed, for a recording's `pcm:`
       # (`sample :bang, pcm: pack[:bang], rate: 7000`, or `pack[:sounds].samples(first, count)`).
-      def samples(name, count:, at: nil, cost: 1) = add(Original::Slot.samples(name, at: at, count: count, cost: cost))
+      def samples(name, count:, at: nil, cost: 1, pieces: nil) = add(pieces, Original::Slot.samples(name, at: at, count: count, cost: cost))
 
       # +count+ notes of music, each an Original::PackNote, which the unpacking routine writes from
       # the original's songs, for a Score's part (`notes: pack[:theme].notes(instruments: %i[horn])`).
-      def notes(name, count:, at: nil, cost: 1) = add(Original::Slot.notes(name, at: at, count: count, cost: cost))
+      def notes(name, count:, at: nil, cost: 1, pieces: nil) = add(pieces, Original::Slot.notes(name, at: at, count: count, cost: cost))
 
       # +count+ notes of music each with its voice's settings (a voiced Original::PackNote): a
       # note's pitch number, fade, duty, vibrato, slide and shade between the speakers, which the
       # unpacking routine writes as the original's sound driver sets them, for a Score's part.
-      def voiced_notes(name, count:, at: nil, cost: 1) = add(Original::Slot.voiced_notes(name, at: at, count: count, cost: cost))
+      def voiced_notes(name, count:, at: nil, cost: 1, pieces: nil) = add(pieces, Original::Slot.voiced_notes(name, at: at, count: count, cost: cost))
 
       # +count+ cells of a background's map, each an Original::MapCell, which the unpacking routine
       # writes from the original's maps (`pack[:title_map].write_cell(at, tile:, bank:, ...)`), for a
       # background's `map:`.
-      def map_cells(name, count:, at: nil, cost: 1) = add(Original::Slot.map_cells(name, at: at, count: count, cost: cost))
+      def map_cells(name, count:, at: nil, cost: 1, pieces: nil) = add(pieces, Original::Slot.map_cells(name, at: at, count: count, cost: cost))
 
       # The game's unpacking routine: the block is game code, handed the copy's bytes (an
       # Original::CopyReader), the pack's slots to write (an Original::UnpackingSlots) and, if it
@@ -108,7 +118,19 @@ module VBlank
       # The pack is the same either way. What the parts change is the pack cache
       # (Original::PackCache): it keeps each part's slots apart, so a change to one part plays
       # that part again, and what reads from it, and takes every other part's slots from the cache.
-      def fill_from_copy(part = nil, &block)
+      #
+      # A PART IN PIECES writes slots in pieces (`slots.samples :music, count: ..., pieces: rooms`)
+      # a piece at a time, and its block is built once for each piece, handed the piece's number,
+      # a plain Integer from 0, after the release:
+      #
+      #   slots.fill_from_copy(:music, pieces: 27) do |copy, pack, release, song|
+      #     pack[:music].piece(song)[i] = sample      # i counts from the piece's first item
+      #   end
+      #
+      # The pack is the same as a part that writes every piece in turn. What the pieces change is
+      # how fast a player's machine can make it: each piece reads nothing another part writes, so a
+      # shell can unpack the pieces side by side (Original::PiecedUnpacking).
+      def fill_from_copy(part = nil, pieces: nil, &block)
         unless block
           raise ArgumentError, "`slots.fill_from_copy` needs a block: `slots.fill_from_copy do |copy, pack| ... end`."
         end
@@ -116,11 +138,19 @@ module VBlank
         refuse_part_name_not_symbol!(part)
         refuse_unnamed_part!(part)
         refuse_part_named_twice!(part)
-        @routines << Routine.new(part: part, block: block)
+        refuse_pieces_not_count!(part, pieces)
+        @routines << Routine.new(part: part, block: block, pieces: pieces)
         nil
       end
 
       private
+
+      def refuse_pieces_not_count!(part, pieces)
+        return if pieces.nil? || (pieces.is_a?(Integer) && pieces.positive?)
+
+        raise ArgumentError, "`slots.fill_from_copy#{" :#{part}" if part}` was given pieces: #{pieces.inspect}. pieces: is how " \
+                             "many pieces the part writes, 1 or more: `slots.fill_from_copy :music, pieces: 27 do ... end`."
+      end
 
       def refuse_part_name_not_symbol!(part)
         return if part.nil? || part.is_a?(Symbol)
@@ -144,12 +174,12 @@ module VBlank
         raise ArgumentError, "The data pack names the part :#{part} of its routine twice. Give each part a name of its own."
       end
 
-      def add(slot)
+      def add(pieces, slot)
         if @list.any? { |named| named.name == slot.name }
           raise ArgumentError, "The data pack names slot :#{slot.name} twice. Give each slot a name of its own."
         end
 
-        @list << slot
+        @list << (pieces.nil? ? slot : slot.in_pieces(pieces))
         nil
       end
     end
@@ -173,12 +203,15 @@ module VBlank
       # where it names none (PackSlot#as_tiles).
       # +make_unpacking_parts+ makes the Original::UnpackingParts of an all-in-one build's routine in
       # parts (nil for any other).
+      # +make_pieced_unpacking+ makes the Original::PiecedUnpacking of the routine, handed the
+      # release as +make_unpacking+ is, or nil where no part of it is in pieces.
       def initialize(rom_sha1:, build_version:, slots:, make_unpacking:, original: nil, platform: Original::DEFAULT_PLATFORM,
-                     make_unpacking_parts: nil)
+                     make_unpacking_parts: nil, make_pieced_unpacking: ->(_release) {})
         @rom_sha1 = rom_sha1
         @build_version = build_version
         @slots = slots.to_h { |slot| [slot.name, slot] }
         @make_unpacking = make_unpacking
+        @make_pieced_unpacking = make_pieced_unpacking
         @make_unpacking_parts = make_unpacking_parts
         @original = original
         @platform = platform
@@ -203,6 +236,11 @@ module VBlank
       # after it is refused (Builder::PackPoses#pack_frame_number), since the program made
       # already would not write it.
       def unpacking(release: nil) = @make_unpacking.call(release)
+
+      # The same routine split for several workers (an Original::PiecedUnpacking), for +release+ as
+      # #unpacking takes it: nil where no part of the routine is in pieces. What a shell plays on
+      # a player's machine with more than one worker, and what a test holds to #unpacking's pack.
+      def pieced_unpacking(release: nil) = @make_pieced_unpacking.call(release)
 
       # The parts of an all-in-one build's routine (an Original::UnpackingParts), which the pack
       # cache keeps apart: nil for a routine of one part, for a build that leaves the pack out, and
