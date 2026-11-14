@@ -128,6 +128,75 @@ def rg_spu_fill_wave(memory, waveforms, which)
   end
 end
 
+# --- the encoder (rg_spu.c's, PS1::ADPCM.encode), for a recording laid out as the game starts ---
+
+RG_SPU_ENCODE_WEIGHTS = [[0, 0], [60, 0], [115, -52], [98, -55], [122, -60]].freeze
+RG_SPU_LARGEST_SHIFT = 12
+RG_SPU_MOST_LOOP_SAMPLES = 0x1_0000
+
+# rg_spu.c's spu_try_block: [error, nibbles, older, newer].
+def rg_spu_try_block(samples, at, filter, shift, older, newer)
+  first, second = RG_SPU_ENCODE_WEIGHTS[filter]
+  error = 0
+  nibbles = Array.new(RG_SPU_BLOCK_SAMPLES) do |i|
+    predicted = ((older * second) >> 6) + ((newer * first) >> 6)
+    nibble = (((samples[at + i] - predicted) * (1 << shift)) / 4096.0).round.clamp(-8, 7)
+    decoded = (((nibble << 12) >> shift) + predicted).clamp(-0x8000, 0x7FFF)
+    error += (decoded - samples[at + i])**2
+    older = newer
+    newer = decoded
+    nibble
+  end
+  [error, nibbles, older, newer]
+end
+
+# rg_spu.c's spu_encode
+def rg_spu_encode(samples, loop_block, memory, halves)
+  older = newer = 0
+  blocks = samples.size / RG_SPU_BLOCK_SAMPLES
+  blocks.times do |b|
+    flags = (b == loop_block ? 4 : 0) | (b == blocks - 1 ? 3 : 0)
+    filters = b.zero? || b == loop_block ? 1 : RG_SPU_ENCODE_WEIGHTS.size
+    best = nil
+    filters.times do |filter|
+      (0..RG_SPU_LARGEST_SHIFT).each do |shift|
+        tried = rg_spu_try_block(samples, b * RG_SPU_BLOCK_SAMPLES, filter, shift, older, newer)
+        best = [tried, filter, shift] if best.nil? || tried[0] < best[0][0]
+        break if best[0][0].zero?
+      end
+      break if best[0][0].zero?
+    end
+    (_, nibbles, older, newer), filter, shift = best
+    at = halves + (b * RG_SPU_BLOCK_HALFWORDS)
+    memory[at] = shift | (filter << 4) | (flags << 8)
+    (1...RG_SPU_BLOCK_HALFWORDS).each do |half|
+      memory[at + half] = (0...4).sum { |i| (nibbles[((half - 1) * 4) + i] & 0xF) << (4 * i) }
+    end
+  end
+end
+
+# A recording whose hold is read from the start file, laid out and encoded into its loop (rg_sound.h,
+# rg_spu_fill_held_recording).
+def rg_spu_fill_held_recording(memory, recordings, recording_samples, rules)
+  number, start, length, room = rules
+  back = recordings[1 + (number * 3) + 1].clamp(1, length)
+  from = length - back
+  aligned = from.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES
+  times = RG_SPU_BLOCK_SAMPLES / back.gcd(RG_SPU_BLOCK_SAMPLES)
+  body = back * times <= RG_SPU_MOST_LOOP_SAMPLES ? back * times : back + ((-back) % RG_SPU_BLOCK_SAMPLES)
+  count = aligned + body
+  turn = (aligned - from) % back
+  laid = Array.new(count.ceildiv(RG_SPU_BLOCK_SAMPLES) * RG_SPU_BLOCK_SAMPLES, 0)
+  count.times do |i|
+    held = if i < from then i
+           elsif i < aligned then from + ((i - from) % back)
+           else from + ((((i - aligned) % back) + turn) % back)
+           end
+    laid[i] = recording_samples[start + held] << 8
+  end
+  rg_spu_encode(laid, aligned / RG_SPU_BLOCK_SAMPLES, memory, 1 + (room * 4) - @rg_game_spu_rules[9])
+end
+
 def rg_held_to_16_bits(sample)
   if sample < -32_768 then -32_768
   elsif sample > 32_767 then 32_767

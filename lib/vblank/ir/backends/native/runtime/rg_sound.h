@@ -45,6 +45,13 @@ extern const int32_t rg_game_waveforms[];
  * start file into +waveforms+) written into its loop of +memory+, the game's sound memory
  * (rg_spu.c). */
 void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which);
+/* On such a console, a recording whose hold is read from the start file laid out round its way back
+ * and encoded into the loop of +memory+ kept for it (PS1::SoundMemory.holds_read_from_file), as the
+ * build lays out and encodes a hold written in the game. +recordings+ is rg_game_spu_recordings, its
+ * way back just filled (rg_mix_fill_holds); +recording_samples+ the mixer's samples. +rules+: the
+ * recording's number, where its samples start, how many there are, and where the loop starts, in
+ * 8-byte steps. */
+void rg_spu_fill_held_recording(int32_t *memory, const int32_t *recordings, const int8_t *recording_samples, const int32_t *rules);
 extern const int32_t rg_game_beeps[];
 extern const int32_t rg_game_waves[];
 extern const int32_t rg_game_hits[];

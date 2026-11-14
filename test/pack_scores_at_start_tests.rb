@@ -149,10 +149,7 @@ module PackScoresAtStartTests
   # out of sound memory), which the sound log and the recordings' mix do not show.
   private def speakers_kept(player) = player.respond_to?(:recording_sound) ? player.recording_sound : player
 
-  # +speakers+ false leaves the speakers out, for a game whose recording's hold point is read from
-  # the file: the PlayStation's sound memory lays a held recording out as the game is built, and no
-  # runtime lays it out again from the file's hold point yet.
-  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, speakers: true, &scores)
+  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
     Dir.mktmpdir do |folder|
       by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
       left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
@@ -164,7 +161,7 @@ module PackScoresAtStartTests
         refute_empty wanted.audio.select { |entry| entry.first == :note }, "the song written by hand plays notes on #{button}"
         assert_equal wanted.audio, played.audio, "the sound log on #{button}"
         assert_equal wanted.mixed_sound, played.mixed_sound, "the mixed sound on #{button}"
-        next unless speakers && wanted.respond_to?(:recording_sound)
+        next unless wanted.respond_to?(:recording_sound)
 
         assert_equal [wanted.sound, wanted.sound_right], [played.sound, played.sound_right], "the speakers on #{button}"
       end
@@ -577,7 +574,7 @@ module PackScoresAtStartTests
       end
     end
 
-    assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, speakers: false, &scores)
+    assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, &scores)
   end
 
   # A RECORDED PART'S LOUDNESS IN 512THS, as a cartridge's sound engine mixes it: a quiet note, two

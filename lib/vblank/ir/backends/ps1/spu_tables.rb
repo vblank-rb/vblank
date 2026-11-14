@@ -64,12 +64,15 @@ module VBlank
 
           # Where each of +recordings+ (the declared samples, in the mixer's numbering) starts in +memory+,
           # three numbers each: played once through, how far back it reads when it holds, and played
-          # holding; -1 for a way the program never plays it.
+          # holding; -1 for a way the program never plays it. For a recording whose hold is read from
+          # the start file, the second and third are the runtime's to fill as the game starts
+          # (SoundMemory.holds_read_from_file): its way back, and the loop it lays the recording out in.
           def recordings(memory, recordings)
             rows = recordings.map do |sample|
               info = Assets::Sample.of(sample)
               back = info.loop_length.positive? ? info.loop_length : info.length
-              [memory.recording_start(sample.name, 0) || -1, back, memory.recording_start(sample.name, back) || -1]
+              held = memory.held_from_file_start(sample.name) || memory.recording_start(sample.name, back) || -1
+              [memory.recording_start(sample.name, 0) || -1, back, held]
             end
             [rows.size, *rows.flatten]
           end

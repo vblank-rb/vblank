@@ -231,9 +231,109 @@ void rg_spu_fill_wave(int32_t *memory, const int32_t *waveforms, int32_t which) 
   }
 }
 
-/* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */
-
 static const int32_t filter_weights[16][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
+
+/* --- the encoder (PS1::ADPCM.encode), for a recording laid out as the game starts --- */
+
+#define SPU_FILTERS 5
+#define SPU_LARGEST_SHIFT 12
+#define SPU_MOST_LOOP_SAMPLES 0x10000
+enum { SPU_LOOP_END = 1, SPU_LOOP_REPEAT = 2, SPU_LOOP_START = 4 };
+
+/* One block of 28 samples at +filter+ and +shift+, from +history+ (the two decoded before it, older
+ * first): its nibbles, the history after it, and the squared error (PS1::ADPCM.try_block). Each nibble
+ * is the nearest, its half rounded away from nought as Ruby's round does. */
+static int64_t spu_try_block(const int32_t *samples, int32_t filter, int32_t shift, const int32_t *history, int32_t *nibbles,
+                             int32_t *after) {
+  int32_t older = history[0], newer = history[1];
+  int32_t first = filter_weights[filter][0], second = filter_weights[filter][1];
+  int64_t error = 0;
+  for (int32_t i = 0; i < SPU_BLOCK_SAMPLES; i++) {
+    int32_t predicted = ((older * second) >> 6) + ((newer * first) >> 6);
+    int64_t scaled = (int64_t)(samples[i] - predicted) * ((int64_t)1 << shift);
+    int32_t nibble = (int32_t)(scaled < 0 ? -((-scaled + 2048) / 4096) : (scaled + 2048) / 4096);
+    nibble = nibble < -8 ? -8 : nibble > 7 ? 7 : nibble;
+    int32_t decoded = ((nibble * 4096) >> shift) + predicted;
+    decoded = decoded < -0x8000 ? -0x8000 : decoded > 0x7FFF ? 0x7FFF : decoded;
+    error += (int64_t)(decoded - samples[i]) * (decoded - samples[i]);
+    older = newer;
+    newer = decoded;
+    nibbles[i] = nibble;
+  }
+  after[0] = older;
+  after[1] = newer;
+  return error;
+}
+
+/* +count+ samples (a whole number of blocks) encoded into +halves+, the halfwords of sound memory
+ * from where the loop starts, going round for ever from block +loop_block+ (PS1::ADPCM.encode): each
+ * block at the filter and shift that come nearest, the first and the loop's first at filter 0. */
+static void spu_encode(const int32_t *samples, int32_t count, int32_t loop_block, int32_t *halves) {
+  int32_t history[2] = {0, 0};
+  int32_t blocks = count / SPU_BLOCK_SAMPLES;
+  for (int32_t b = 0; b < blocks; b++) {
+    const int32_t *block = samples + (b * SPU_BLOCK_SAMPLES);
+    int32_t flags = (b == loop_block ? SPU_LOOP_START : 0) | (b == blocks - 1 ? SPU_LOOP_END | SPU_LOOP_REPEAT : 0);
+    int32_t filters = b == 0 || b == loop_block ? 1 : SPU_FILTERS;
+    int64_t best_error = -1;
+    int32_t best_filter = 0, best_shift = 0, best_nibbles[SPU_BLOCK_SAMPLES], best_after[2] = {0, 0};
+    for (int32_t filter = 0; filter < filters && best_error != 0; filter++) {
+      for (int32_t shift = 0; shift <= SPU_LARGEST_SHIFT && best_error != 0; shift++) {
+        int32_t nibbles[SPU_BLOCK_SAMPLES], after[2];
+        int64_t error = spu_try_block(block, filter, shift, history, nibbles, after);
+        if (best_error < 0 || error < best_error) {
+          best_error = error;
+          best_filter = filter;
+          best_shift = shift;
+          memcpy(best_nibbles, nibbles, sizeof nibbles);
+          best_after[0] = after[0];
+          best_after[1] = after[1];
+        }
+      }
+    }
+    history[0] = best_after[0];
+    history[1] = best_after[1];
+    int32_t *at = halves + (b * SPU_BLOCK_HALFWORDS);
+    at[0] = (best_shift | (best_filter << 4)) | (flags << 8);
+    for (int32_t half = 1; half < SPU_BLOCK_HALFWORDS; half++) {
+      int32_t coded = 0;
+      for (int32_t i = 0; i < 4; i++) coded |= (best_nibbles[((half - 1) * 4) + i] & 0xF) << (4 * i);
+      at[half] = coded;
+    }
+  }
+}
+
+static int32_t spu_gcd(int32_t a, int32_t b) { return b == 0 ? a : spu_gcd(b, a % b); }
+
+void rg_spu_fill_held_recording(int32_t *memory, const int32_t *recordings, const int8_t *recording_samples, const int32_t *rules) {
+  int32_t number = rules[0], start = rules[1], length = rules[2], room = rules[3];
+  int32_t back = recordings[1 + (number * 3) + 1];
+  if (back < 1) back = 1;
+  if (back > length) back = length;
+  /* PS1::SoundMemory.recording_samples: the samples up to where the hold starts, the held part from
+   * the next block on, turned to start where those leave off, written over as many times as makes a
+   * whole number of blocks (or once, filled out to a block, past MOST_LOOP_SAMPLES). */
+  int32_t from = length - back;
+  int32_t aligned = ((from + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t times = SPU_BLOCK_SAMPLES / spu_gcd(back, SPU_BLOCK_SAMPLES);
+  int32_t body = back * times <= SPU_MOST_LOOP_SAMPLES ? back * times : back + ((SPU_BLOCK_SAMPLES - (back % SPU_BLOCK_SAMPLES)) % SPU_BLOCK_SAMPLES);
+  int32_t count = aligned + body, padded = ((count + SPU_BLOCK_SAMPLES - 1) / SPU_BLOCK_SAMPLES) * SPU_BLOCK_SAMPLES;
+  int32_t *laid = calloc((size_t)padded, sizeof *laid);
+  if (!laid) rg_fault("there is no room to lay out a recording of %d samples", (int)padded);
+  const int8_t *data = recording_samples + start;
+  int32_t turn = (aligned - from) % back;
+  for (int32_t i = 0; i < count; i++) {
+    int32_t held;
+    if (i < from) held = i;
+    else if (i < aligned) held = from + ((i - from) % back);
+    else held = from + (((i - aligned) % back + turn) % back);
+    laid[i] = data[held] * 256;
+  }
+  spu_encode(laid, padded, aligned / SPU_BLOCK_SAMPLES, memory + 1 + ((room * 4) - SPU_MEMORY_BASE));
+  free(laid);
+}
+
+/* --- the decoder (Beetle PSX, SPU_RunDecoder) --- */
 
 static int32_t held_to_16_bits(int32_t sample) { return sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample; }
 

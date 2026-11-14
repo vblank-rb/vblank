@@ -73,12 +73,47 @@ module VBlank
             # and loudness, set for each play (Runtime::Recordings' row). So recordings declared under several
             # names with the same samples, as one instrument's recording shaped several ways is, read one
             # copy, each still under its own name.
+            held_from_file = self.class.holds_read_from_file(program)
             recordings(program).each do |(name, back), (samples, loop_from)|
+              next if back.positive? && held_from_file.key?(name)
+
               kept = [:recording, samples, back]
               keep(kept, ADPCM.encode(samples, loop: back.positive?, loop_from: loop_from)) unless @loops.key?(kept)
               @kept_as[self.class.recording(name, back)] = kept
             end
+            held_from_file.each do |name, length|
+              keep(self.class.held_from_file(name), "\0".b * (self.class.most_held_samples(length).ceildiv(ADPCM::SAMPLES_A_BLOCK) * ADPCM::BLOCK_BYTES))
+            end
           end
+
+          # A RECORDING WHOSE HOLD IS READ FROM THE START FILE (a desktop, web or Ruby build's): how far
+          # back it reads is not known while building, so neither is how its held loop is laid out
+          # (.recording_samples). It is given a loop of its own, as long as the longest layout of any
+          # hold could make it, and the runtime lays it out and encodes it there as the game starts
+          # (rg_spu_fill_held_recording), the way this file does for a hold written in the game. Each
+          # such recording's name, by its length in samples. A console's own build reads no file.
+          def self.holds_read_from_file(program)
+            program.walk.select { |node| node.kind == :sample && node.settings_from_file&.holds_from }
+                   .reject { |node| node.from_file || node.settings_from_file.length || node.settings_from_file.brr }
+                   .to_h { |node| [node.name, node.bytes.bytesize] }
+          end
+
+          # The name of the loop a recording whose hold is read from the start file is laid out in.
+          def self.held_from_file(name) = [:held_from_file, name]
+
+          # The most samples .recording_samples lays a recording of +length+ out as, over every way back.
+          def self.most_held_samples(length)
+            (1..length).map do |back|
+              from = length - back
+              aligned = from.ceildiv(ADPCM::SAMPLES_A_BLOCK) * ADPCM::SAMPLES_A_BLOCK
+              times = ADPCM::SAMPLES_A_BLOCK / back.gcd(ADPCM::SAMPLES_A_BLOCK)
+              aligned + (back * times <= MOST_LOOP_SAMPLES ? back * times : back + ((-back) % ADPCM::SAMPLES_A_BLOCK))
+            end.max
+          end
+
+          # Where the loop recording +name+ is laid out in as the game starts begins, in 8-byte steps;
+          # nil for a recording whose hold is not read from the start file.
+          def held_from_file_start(name) = @loops[self.class.held_from_file(name)]&.start
 
           # The name of recording +name+ played going +back+ samples at its end (nought for once through).
           def self.recording(name, back) = [:recording, name, back]
@@ -198,7 +233,9 @@ module VBlank
                 [[sample.name, Assets::Sample.of(sample).loop_length], nil]
               end
             end
-            (plays + notes).uniq.to_h do |(name, back), _|
+            # One whose hold is read from the file can come to hold from none, and then a note plays it once through.
+            once = self.class.holds_read_from_file(program).keys.map { |name| [[name, 0], nil] }
+            (plays + notes + once).uniq.to_h do |(name, back), _|
               data = declared.fetch(name).bytes.unpack("c*").map { |sample| sample << 8 }
               [[name, back], self.class.recording_samples(data, back)]
             end
