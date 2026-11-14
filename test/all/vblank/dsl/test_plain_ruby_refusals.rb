@@ -440,16 +440,92 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_a_number_tested_alone_builds_with_every_check_on
-    rom = VBlank.build("TRUTHY", console: :gba, out: StringIO.new, err: StringIO.new) do
+  # A build that would go round for ever is a fast failure here, not a test run that never ends.
+  private def refused_within_seconds(phrase, &block)
+    error = nil
+    worker = Thread.new do
+      built(&block)
+    rescue Refused => e
+      error = e
+    end
+    unless worker.join(10)
+      worker.kill
+      flunk "the build was still going after 10 seconds"
+    end
+    refute_nil error, "the build was not refused"
+    assert_includes error.message, phrase
+    error
+  end
+
+  # In Ruby every number is true, 0 too. So a game number standing alone as a test would be decided
+  # once, while building, and the same way on every pass: a `while` never stops (the build went
+  # round for ever, writing the body out each time), an `if` always runs. Each form is refused at
+  # the author's line, telling them to compare the number.
+  def test_a_game_number_alone_as_a_loop_test_is_refused_naming_the_line
+    line = __LINE__ + 3
+    error = refused_within_seconds("`left != 0`") do
+      left = 3
+      func(:drain) { left -= 1 while left }
+      game_loop { call :drain }
+    end
+    assert_includes error.message, "test_plain_ruby_refusals.rb:#{line}"
+
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop { left += 1 until left }
+    end
+    # A `var` line's variable is an object `if` asks Ruby's question of, whether it is there
+    # (test_plain_ruby.rb, an option given), but a `while` on it could only go round for ever.
+    refused_within_seconds("`left != 0`") do
+      left = var :left, 3
+      game_loop { left.increase!(1) while left }
+    end
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop do
+        while left
+          left -= 1
+        end
+      end
+    end
+  end
+
+  def test_a_game_number_alone_as_a_branch_test_is_refused
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop { left -= 1 if left }
+    end
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop { left += 1 unless left }
+    end
+    refused_within_seconds("`left != 0`") do
+      left = 3
+      game_loop { left = left ? left - 1 : 3 }
+    end
+    refused_within_seconds("`(flags & 4) != 0`") do
       flags = 3
       game_loop do
         wait_vblank if flags & 4
         flags += 1
       end
     end
+    refused_within_seconds("`left == 0`") do
+      left = 3
+      game_loop { left = 3 if !left }
+    end
+  end
 
-    assert rom, "the game builds"
+  # A plain Ruby loop whose test never fails, `n -= 1 while n` with n a plain number, would hang
+  # the build too. Past a million rounds while building it is refused, naming the line.
+  def test_a_plain_loop_that_never_stops_while_building_is_refused
+    line = __LINE__ + 4
+    error = refused_within_seconds("a million times") do
+      n = 3
+      game_loop { wait_vblank }
+      n -= 1 while n
+    end
+    assert_includes error.message, "test_plain_ruby_refusals.rb:#{line}"
   end
 
   def test_unless_on_a_yes_or_no_builds_with_every_check_on

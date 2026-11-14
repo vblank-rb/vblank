@@ -46,20 +46,48 @@ module VBlank
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value) = value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
 
-        # A conditional's test, as an object the rewritten `if` asks which sides to run. A number
-        # worked out for it is truthy and used for nothing more, so no check counts it as dropped.
-        def branch_test(value)
+        # A conditional's test, as an object the rewritten `if` asks which sides to run. +written+
+        # is the test's source, for the words when it is a game number standing alone. It is nil
+        # for a `when` arm and for VBlank's own library code (Rewriter#test_as_written), where a
+        # number alone keeps Ruby's answer.
+        def branch_test(value, written = nil)
+          refuse_number_as_test!(value, written) if written
           return GameTest.new(as_condition(value)) if game_test?(value)
 
-          value.discard! if value.is_a?(Value)
+          value.discard! if value.is_a?(Value) # an object asked whether it is there, used for nothing more
           BuildTest.new(value)
         end
 
         # The other answer to a test, for `!` and `unless`.
-        def opposite(value)
+        def opposite(value, written = nil)
+          refuse_number_as_test!(value, written) if written
           return !value unless value.is_a?(Value) && game_test?(value)
 
           value.truth ? value.truth != Value::TRUTHY_HELD : value == 0
+        end
+
+        # A game number standing alone as a test: `if left`, `unless left`, `left ? a : b`, `!left`,
+        # `x while left`. Ruby's answer is that every number is true, 0 too, so it would be decided
+        # once, while building, and the same way on every pass: an `if` that always runs, a `while`
+        # written out for ever (the build never ends). C's answer, "is not 0", would build, but would
+        # teach a meaning Ruby does not have. So it is refused, and the words show the comparison
+        # that says what the author meant. A number that can hold nil (`target = nil`) is a test of
+        # its own (#game_test?), and so is a yes or no; neither reaches this.
+        #
+        # A game variable a `var` line or a verb handed back is an object the game holds, as a
+        # sprite is, so `if by` on an option asks Ruby's question, whether it was given, and builds
+        # as it always has. Only a loop refuses one too (+loop+), since `while` on an object that is
+        # always there could only go round for ever.
+        def refuse_number_as_test!(value, written, loop: false)
+          return unless value.is_a?(Value) && !game_test?(value)
+          return if !loop && value.handle? && !value.number_in_ruby?
+
+          number = written.nil? || written.match?(/\A[@\w.]+\z/) ? written || "n" : "(#{written})"
+          refuse_game_code!("This test is a number that the game keeps, `#{written || number}`, with no comparison. " \
+                            "In Ruby, every number is true, 0 too. So the test has the same answer on every pass, " \
+                            "and a `while` on it never stops. To fix this, compare the number. For a number that " \
+                            "is not 0, write `#{number} != 0` or `#{number} > 0`. For 0, write `#{number} == 0`. " \
+                            "To ask if a value is there at all, write `#{number}.nil?`.")
         end
 
         # `&&`. Two tests that only compare numbers join into one, both worked out as the game
@@ -267,8 +295,13 @@ module VBlank
           end
         end
 
-        def loop_while(&test) = LoopTest.new(test, stops_when: false)
-        def loop_until(&test) = LoopTest.new(test, stops_when: true)
+        def loop_while(written = nil, &test) = LoopTest.new(test, stops_when: false, written: written)
+        def loop_until(written = nil, &test) = LoopTest.new(test, stops_when: true, written: written)
+
+        # How many rounds a loop Ruby runs while building may go before it is taken as one that
+        # never stops. A loop that lays out a table or a row of sprites goes round a few thousand
+        # times at most; one whose test can never fail would hang the build with no words.
+        MOST_BUILD_ROUNDS = 1_000_000
 
         # The left of a join whose right side changes a name, asked like an `if`'s test.
         class JoinSide
@@ -426,9 +459,11 @@ module VBlank
         # is all it is. On a game test the body runs ONCE, recording itself into a loop in the
         # game, and the second asking closes that loop.
         class LoopTest
-          def initialize(test, stops_when:)
+          def initialize(test, stops_when:, written: nil)
             @test = test
             @stops_when = stops_when
+            @written = written
+            @build_rounds = 0
           end
 
           # The block runs once it is known this is a game's loop, and before the loop opens.
@@ -437,7 +472,8 @@ module VBlank
 
             mark = statement_mark
             value = @test.call
-            return @stops_when ? !value : !!value unless Steps.game_test?(value)
+            Steps.refuse_number_as_test!(value, @written, loop: true)
+            return build_round(value) unless Steps.game_test?(value)
 
             open_game_loop(value, mark, &before_loop)
           end
@@ -450,6 +486,21 @@ module VBlank
           end
 
           private
+
+          # One round of a loop Ruby runs while building: its answer, as Ruby's `while` takes it.
+          def build_round(value)
+            goes_on = @stops_when ? !value : !!value
+            refuse_endless_build_loop! if goes_on && (@build_rounds += 1) > MOST_BUILD_ROUNDS
+            goes_on
+          end
+
+          def refuse_endless_build_loop!
+            Steps.refuse_game_code!("This loop went round a million times while the game was built, and it " \
+                                    "did not stop. Ruby runs a loop on plain values while it builds the game. " \
+                                    "If the test is a number alone, the test is always true, because every " \
+                                    "number is true in Ruby, 0 too. To fix this, compare the number: write " \
+                                    "`n != 0` or `n > 0`.")
+          end
 
           # A name given a variable by the block must be read as that variable from now on, in the
           # test too, or the loop would ask about the number it held before.

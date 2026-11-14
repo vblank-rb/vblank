@@ -177,26 +177,17 @@ class TestPlainRuby < Minitest::Test
     assert_equal 1, player[:seen]
   end
 
-  # Truthiness is Ruby's: nil and false are falsy, and everything else is truthy. A number is
-  # truthy whatever it holds, here as anywhere.
-  def test_a_number_is_truthy_even_at_zero
+  # Truthiness is Ruby's: nil and false are falsy, and everything else is truthy. A plain number
+  # is truthy whatever it holds. (A number the game keeps, alone as a test, is refused instead:
+  # test_plain_ruby_refusals.rb.)
+  def test_a_plain_number_is_truthy_even_at_zero
     player = played(frames: 2) do
-      hp = 0
-      flags = 0
       plain = 0
-      seen = 0
-      worked_out = 0
       plain_seen = 0
-      game_loop do
-        seen = 1 if hp
-        worked_out = 1 if flags & 4
-        plain_seen = 1 if plain
-        hp += 0
-        flags += 0
-      end
+      game_loop { plain_seen = 1 if plain }
     end
 
-    assert_equal [1, 1, 1], [player[:seen], player[:worked_out], player[:plain_seen]]
+    assert_equal 1, player[:plain_seen]
   end
 
   def test_nil_and_false_are_falsy_and_a_string_is_truthy
@@ -2399,6 +2390,23 @@ class TestPlainRuby < Minitest::Test
 
     assert_operator player[:n], :<, 10
     assert_equal 0, player[:after]
+  end
+
+  # What the words for `left -= 1 while left` say to write instead, played: a `func` that counts
+  # a game number down to 0, and an `if` that runs only while it is not 0
+  # (test_plain_ruby_refusals.rb has the refusal).
+  def test_a_game_number_compared_with_zero_drains_and_stops
+    player = played(frames: 2) do
+      left = 3
+      after = 0
+      func(:drain) { left -= 1 while left != 0 }
+      game_loop do
+        after += 1 if left != 0
+        call :drain
+      end
+    end
+
+    assert_equal [0, 1], [player[:left], player[:after]]
   end
 
   def test_until_stops_once_the_test_holds
