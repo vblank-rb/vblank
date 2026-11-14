@@ -102,6 +102,39 @@ class TestDOSKeyboard < Minitest::Test
   # Enough turns of a small loop to take a pass past one retrace and not past three.
   SLOW_WORK = 30_000
 
+  # A FIRST PASS OF MORE THAN ONE FRAME, here from work before the loop: a button held from power-on is
+  # held on every frame of it, as the interpreter reads it.
+  def test_a_button_held_over_a_slow_first_pass_is_held_on_each_of_its_frames
+    program = program_of do
+      screen :bitmap
+      work = var :work, 0
+      slid = var :slid, 0
+      repeat(SLOW_WORK) { work += 1 }
+      game_loop { slid += 1 if held(:a) }
+    end
+    run = DOS::CheckedRun.new.hold(:a)
+    played = run.run(program, frames: 6)
+
+    assert_operator run.frames_took(1), :>, 1, "the first pass was meant to take more than a frame"
+    assert_equal 6, played[:slid]
+  end
+
+  # A PASS THAT CLEARS THE WHOLE SCREEN is heavy: its picture takes most of a frame to send to the card.
+  # A tap one frame long is still the press of the pass the interpreter gives it to, not a pass early.
+  def test_a_tap_is_pressed_on_the_interpreter_s_pass_where_each_pass_clears_the_screen
+    program = program_of do
+      screen :bitmap
+      n = var :n, 0
+      game_loop do
+        clear_screen :black
+        n += 1 if pressed(:a)
+      end
+    end
+    played = DOS::CheckedRun.new.input_each_frame { |frame| frame == 4 ? [:a] : [] }.run(program, frames: 7)
+
+    assert_equal 1, played[:n]
+  end
+
   # Any player's button is the one player's: `player: :any` builds and reads the keyboard.
   def test_any_player_s_button_is_the_keyboard_s
     program = program_of do

@@ -363,10 +363,11 @@ module VBlank
             asm.call("rt_save_flush") if saves # what the pass saved, to the disk while there is only waiting to do
             asm.call("rt_walk_work") if walks
             asm.call("rt_sleep_until_retrace")
-            asm.call("rt_walk_send") if walks
-            asm.call("rt_show_picture")
             # The buttons, taken from the keyboard's interrupt with interrupts off, so a key cannot go down
-            # between the two halves and be lost.
+            # between the two halves and be lost. THEY ARE TAKEN AS THE RETRACE BEGINS, before anything is
+            # sent to the card: a pass that changed the whole picture takes longer to send than the retrace
+            # lasts, and a key that went down after the retrace ended would be read with this pass's buttons
+            # rather than the next pass's.
             asm.cli
             asm.mov(:eax, at.call(Frame::KEY_PRESSED))
             # Where the first pass ends nothing was down before, so every button down now is a press.
@@ -378,6 +379,10 @@ module VBlank
             asm.mov(at.call(Frame::KEY_PRESSED), 0)
             asm.mov(:eax, at.call(Frame::KEY_HELD))
             asm.mov(at.call(Frame::HELD), :eax)
+            asm.sti
+            asm.call("rt_walk_send") if walks
+            asm.call("rt_show_picture")
+            asm.cli
             # The frames the pass took, into ECX: the timer's ticks since the last wait ended, rounded to
             # frames, and one at the least.
             asm.mov(:eax, at.call(Frame::TIMER_TICKS))

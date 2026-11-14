@@ -81,6 +81,7 @@ module VBlank
             write32(runtime_place(Runtime::Frame::READER_HOLDS), 1) # each pass waits to be read (Frame::READER_HOLDS)
             @core.release_gate
             set_buttons(buttons_sent(1))
+            @decided = 1
           end
 
           # A KEY PRESSED BEFORE A FRAME IS PLAYED IS READ AT THE RETRACE AFTER THAT FRAME'S. A frame ends as
@@ -138,10 +139,43 @@ module VBlank
             record_moment(:end, variables, lists, picture, sounds)
           end
 
+          # The buttons are decided from the first frame on, not from the first pass's end as on a console
+          # (CartridgeHeadlessRun#decide_buttons): the runtime counts the frames of its first pass by the
+          # timer, as it counts every pass's, so a first pass of several frames reads each frame's keys.
           def start_run(_program)
             @frames_played = 0
             @picture_before = nil
             @stopped = false
+            @deciding = true
+          end
+
+          # EVERY FRAME'S BUTTONS ARE SENT, OR THE RUN SAYS IT COULD NOT. The frame about to begin is counted
+          # from the timer (#next_screen_frame), and where the count moves on by more than one between two
+          # frames played, the frames between were played with the keys sent last still down. The interpreter
+          # is handed those keys for them, which is what the program read; a script that gives other buttons
+          # for such a frame cannot be played as it was written, and the run refuses it.
+          def decide_buttons
+            return unless @deciding
+
+            frame = next_screen_frame
+            return if frame == @decided
+
+            (@decided + 1...frame).each { |skipped| send_skipped_frame(skipped) }
+            @decided = frame
+            set_buttons(buttons_sent(frame))
+          end
+
+          # The frame +frame+, over which the keys of the frame before it stayed down.
+          def send_skipped_frame(frame)
+            down = scripted_buttons(frame - 1).map(&:to_sym).sort
+            asked = scripted_buttons(frame).map(&:to_sym).sort
+            unless asked == down
+              raise CannotAnswer, "the #{kit.title} run could not send the buttons for frame #{frame} " \
+                                  "(#{asked.join(', ')}): the program counted that frame and the one after it " \
+                                  "between two frames the run played, so the keys of frame #{frame - 1} stayed down"
+            end
+
+            buttons_sent(frame)
           end
 
           # The game's own picture as the game waits at the end of the pass: the picture the pass drew, a
