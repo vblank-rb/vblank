@@ -700,7 +700,7 @@ module VBlank
         return unless source
 
         raise ArgumentError, "An image reads a frame from slot :#{source.slot.declared.name}, which is in pieces. A frame " \
-                             "cannot read a slot in pieces. To fix this, keep the frames in a slot without pieces:."
+                             "cannot read a slot in pieces. To fix this, keep the frames in a slot that is not in pieces."
       end
 
       # THE ROUTINE SPLIT FOR SEVERAL WORKERS (Original::PiecedUnpacking), or nil where no part of
@@ -712,26 +712,32 @@ module VBlank
       def pieced_unpacking(bytes, slots, routines, reading, release:, frames:, whole_uses:)
         return nil unless routines.any?(&:pieced?)
 
-        uses = whole_uses
-        main = unpacking_program(bytes, slots, routines.reject(&:pieced?), reading, release: release, frames: frames)
         places = Original::Unpacking.places_of(slots)
-        part_programs = []
-        pieces = routines.select(&:pieced?).flat_map do |routine|
-          written = slots.select { |slot| slot.pieced? && uses.fetch(routine.part).written.include?(slot.name) }
-          # The program's Unpacking names the whole pack's slots, so its faults name them as the
-          # whole routine's do.
-          part_programs << unpacking_program(bytes, slots, [routine], reading, release: release,
-                                                                         piece: PartPieces.new(slot_names: written.map(&:name), count: routine.pieces))
+        pieced = routines.select(&:pieced?)
+        written = pieced.to_h do |routine|
+          [routine.part, slots.select { |slot| slot.pieced? && whole_uses.fetch(routine.part).written.include?(slot.name) }]
+        end
+        pieces = pieced.each_with_index.flat_map do |routine, at|
           Array.new(routine.pieces) do |number|
-            piece_places = written.map do |slot|
+            piece_places = written.fetch(routine.part).map do |slot|
               Original::PiecedUnpacking::Place.new(at: places.fetch(slot.name) + slot.piece_starts.fetch(number),
                                                    size: slot.piece_slot(number).byte_size)
             end
-            Original::PiecedUnpacking::Piece.new(part: routine.part, number: number, program: part_programs.length, places: piece_places,
-                                                 work: written.sum { |slot| slot.piece_slot(number).byte_size * slot.cost })
+            Original::PiecedUnpacking::Piece.new(part: routine.part, number: number, program: at + 1, places: piece_places,
+                                                 work: written.fetch(routine.part).sum { |slot| slot.piece_slot(number).byte_size * slot.cost })
           end
         end
-        Original::PiecedUnpacking.new(slots: slots, main: main, part_programs: part_programs, pieces: pieces)
+        # Each part's program names the whole pack's slots, so its faults name them as the whole
+        # routine's do.
+        make_programs = lambda do
+          [unpacking_program(bytes, slots, routines.reject(&:pieced?), reading, release: release, frames: frames),
+           *pieced.map do |routine|
+             unpacking_program(bytes, slots, [routine], reading, release: release,
+                                                       piece: PartPieces.new(slot_names: written.fetch(routine.part).map(&:name),
+                                                                             count: routine.pieces))
+           end]
+        end
+        Original::PiecedUnpacking.new(slots: slots, pieces: pieces, part_count: pieced.length, make_programs: make_programs)
       end
 
       # How an unpacking is built: for a computer, and for the console the game is built for. A

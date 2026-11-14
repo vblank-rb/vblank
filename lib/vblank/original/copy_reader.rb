@@ -651,6 +651,13 @@ module VBlank
                                            whole: self)
       end
 
+      # The piece writes its own slot's name: a part writes the slot it writes a piece of.
+      def record_piece_read = @uses&.record_read(@slot.name)
+      def record_piece_write = @uses&.record_write(@slot.name)
+
+      def record_read = @building.refuse_whole_pieced_slot!(@slot, "reads")
+      def record_write = @building.refuse_whole_pieced_slot!(@slot, "writes")
+
       private
 
       # The entry of +entries+ (one for each piece) for piece +number+: a number where every piece's
@@ -662,15 +669,6 @@ module VBlank
                                width: :word, signed: false)
         table[number]
       end
-
-      public
-
-      # The piece writes its own slot's name: a part writes the slot it writes a piece of.
-      def record_piece_read = @uses&.record_read(@slot.name)
-      def record_piece_write = @uses&.record_write(@slot.name)
-
-      def record_read = @building.refuse_whole_pieced_slot!(@slot, "reads")
-      def record_write = @building.refuse_whole_pieced_slot!(@slot, "writes")
     end
 
     # ONE PIECE OF A SLOT IN PIECES (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
@@ -719,8 +717,9 @@ module VBlank
       # the game value the part's block is handed.
       Entered = Data.define(:routine, :piece)
 
-      # Must keep the piece inside a record: this file is read as game code, where a game value
-      # put in an instance variable is a write of the game's own.
+      # Must keep the piece inside a record: this file is read as game code, where a game variable
+      # (a loop's index, the piece's) put in an instance variable is a write of the game's own. A
+      # value worked out from one (PieceBytes' start, a read of a table) is not.
       def enter(routine, piece = nil)
         @entered = Entered.new(routine: routine, piece: piece)
       end

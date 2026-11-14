@@ -38,16 +38,16 @@ module VBlank
     # The pack a shell makes is the same file, byte for byte, as the one an all-in-one build makes
     # from the same copy: the same slots in the same order, the same header.
     #
-    # +pieced+ is each unpacking split for several workers (a PiecedUnpacking), in the order of
+    # +splits+ is each unpacking split for several workers (a PiecedUnpacking), in the order of
     # +unpackings+, nil for one with no part in pieces. A runtime that unpacks on several workers
     # plays #worker_programs in place of the unpacking, as ShellFacts#pieces says; one that unpacks
     # on one (the desktop program's, and any told one worker) plays +unpackings+ alone.
-    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu, :original, :pieced)
+    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu, :original, :splits)
 
     class Shell
       # Every program of every split, in the order ShellFacts#pieces numbers them: each split's
-      # main program and then its pieces, the splits in the order of their unpackings.
-      def worker_programs = pieced.compact.flat_map(&:programs)
+      # main program and then each part in pieces' program, the splits in the order of their unpackings.
+      def worker_programs = splits.compact.flat_map(&:programs)
       # One program of a shell, as a backend writes it out: its +role+ (:game, :menu or :unpacking),
       # its +number+ (an unpacking's, from 0; nil for the others), the +program+, and whether its
       # window has the window's menu (+window_menu+).
@@ -120,9 +120,9 @@ module VBlank
           # The first screen is made with the copies still hidden: its block is the game's code too.
           menu = menu_program(game.title, program, releases.title, parts.first_screen)
           unpackings = unpackings_of(data_pack, releases.readable, progress)
-          pieced = releases.readable.map { |release| data_pack.pieced_unpacking(release: release) }
-          new(game: program, menu: menu, unpackings: unpackings, pieced: pieced,
-              facts: facts_of(game.title, program, data_pack, releases, pieced), window_menu: game.menu?,
+          splits = releases.readable.map { |release| data_pack.pieced_unpacking(release: release) }
+          new(game: program, menu: menu, unpackings: unpackings, splits: splits,
+              facts: facts_of(game.title, program, data_pack, releases, splits), window_menu: game.menu?,
               original: data_pack.original)
         end
       rescue NotSet => e
@@ -140,14 +140,14 @@ module VBlank
         end.tap { progress.report_count(readable.size, readable.size) }
       end
 
-      # Each of +pieced+ (a PiecedUnpacking or nil) as a runtime plays it, numbering its programs
+      # Each of +splits+ (a PiecedUnpacking or nil) as a runtime plays it, numbering its programs
       # after the splits before it (#worker_programs).
-      def self.piece_plans(pieced)
+      def self.piece_plans(splits)
         first = 0
-        pieced.map do |split|
+        splits.map do |split|
           next nil unless split
 
-          split.plan(first).tap { first += split.programs.length }
+          split.plan(first).tap { first += split.program_count }
         end
       end
 
@@ -159,7 +159,7 @@ module VBlank
       end
 
       # The ShellFacts of a shell of the game called +title+, whose game is +program+.
-      def self.facts_of(title, program, data_pack, releases, pieced)
+      def self.facts_of(title, program, data_pack, releases, splits)
         numbers = releases.readable.each_with_index.to_h { |release, number| [release.name, number] }
         sizes = data_pack.slots.to_h { |slot| [slot.name, slot.byte_size] }
         header = Pack.header_bytes(sha1: "0" * 40, build_version: data_pack.build_version, sizes: sizes)
@@ -179,7 +179,7 @@ module VBlank
           unpacking: ShellFacts::UnpackingNames.new(bytes: Unpacking::BYTES.to_s, finished: Unpacking::FINISHED.to_s,
                                                     fault_kind: Unpacking::FAULT_KIND.to_s,
                                                     bytes_done: Unpacking::BYTES_DONE.to_s),
-          words: ShellFacts.words_for(releases.title.to_s), pieces: piece_plans(pieced), bar: workers_bar
+          words: ShellFacts.words_for(releases.title.to_s), pieces: piece_plans(splits), bar: workers_bar
         )
       end
 

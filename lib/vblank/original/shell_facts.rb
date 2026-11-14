@@ -70,9 +70,8 @@ module VBlank
       # size] pairs, in the order its program holds them), how many +bytes+ of the program's list
       # are the piece's and how much +work+ they are.
       PlannedPiece = Data.define(:program, :number, :places, :bytes, :work) do
-        # The file the piece's program is handed as it starts: the copy, +copy+, then the piece's
-        # number, two bytes, low byte first.
-        def start_file(copy) = copy.b + [number].pack("v")
+        # The file the piece's program is handed as it starts (ShellFacts.piece_start_file).
+        def start_file(copy) = ShellFacts.piece_start_file(copy, number)
       end
 
       # WHERE A SHELL DRAWS THE BAR OF SEVERAL WORKERS, over the picture the main program draws
@@ -148,6 +147,15 @@ module VBlank
 
       # The release whose SHA-1 is +sha1+, or nil.
       def release_with_sha1(sha1) = releases.find { |release| release.sha1 == sha1 }
+
+      # Whether the unpacking numbered +number+ is split in pieces (a PiecePlan in #pieces), which
+      # a runtime that unpacks on workers plays in place of its whole routine.
+      def split?(number) = !pieces&.fetch(number).nil?
+
+      # THE FILE A PIECE'S PROGRAM IS HANDED AS IT STARTS: the copy, +copy+, then the piece's
+      # +number+ in Original::Unpacking::PIECE_NUMBER_BYTES, low byte first (rg_shell.js writes
+      # the same).
+      def self.piece_start_file(copy, number) = copy.b + [number].pack("v")
 
       # The pack file for a copy whose SHA-1 is +sha1+, holding +bytes+, what the unpacking wrote.
       def pack_for(sha1, bytes) = [pack_before_sha1, [sha1].pack("H*"), pack_after_sha1, bytes].join.b

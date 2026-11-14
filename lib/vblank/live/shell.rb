@@ -60,7 +60,7 @@ module VBlank
       # game's game and unpacking each take a while to write, so +progress+ (a Messages::Progress)
       # is told each as a phase; the menu is small and is written inside the first. +workers+ is
       # how many an unpacking in pieces plays on (Original::PiecedUnpacking.worker_count: one a
-      # processor where it is nil); the pieces' programs are written only for more than one.
+      # processor where it is nil).
       def self.from(shell, progress: Messages::Progress.silent, workers: nil)
         ruby = IR::Backends::Ruby.new
         workers = Original::PiecedUnpacking.worker_count(workers)
@@ -70,7 +70,7 @@ module VBlank
         progress.step("Writing unpacking as Ruby")
         # An unpacking split in pieces is played as its split however many workers there are, so
         # its whole routine is not written: each part's code is written once.
-        whole = shell.unpackings.each_with_index.map { |unpacking, number| unpacking.program unless shell.facts.pieces&.fetch(number) }
+        whole = shell.unpackings.each_with_index.map { |unpacking, number| unpacking.program unless shell.facts.split?(number) }
         programs = whole.compact + shell.worker_programs.map(&:program)
         written = programs.each_with_index.map do |program, number|
           progress.report_count(number, programs.size)

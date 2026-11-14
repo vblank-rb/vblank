@@ -138,14 +138,14 @@ module VBlank
         refuse_part_name_not_symbol!(part)
         refuse_unnamed_part!(part)
         refuse_part_named_twice!(part)
-        refuse_pieces_not_count!(part, pieces)
+        refuse_pieces_not_whole_number!(part, pieces)
         @routines << Routine.new(part: part, block: block, pieces: pieces)
         nil
       end
 
       private
 
-      def refuse_pieces_not_count!(part, pieces)
+      def refuse_pieces_not_whole_number!(part, pieces)
         return if pieces.nil? || (pieces.is_a?(Integer) && pieces.positive?)
 
         raise ArgumentError, "`slots.fill_from_copy#{" :#{part}" if part}` was given pieces: #{pieces.inspect}. pieces: is how " \

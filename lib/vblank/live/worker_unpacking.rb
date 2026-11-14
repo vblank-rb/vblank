@@ -27,6 +27,10 @@ module VBlank
       Facts = BackgroundUnpacking::Facts
       SILENCE = BackgroundUnpacking::SILENCE
 
+      # One job: the class its game is made of (LiveGame.shareable_class), and the piece's number,
+      # handed after the copy (nil for the main program).
+      Job = Data.define(:game_class, :number)
+
       # +sources+ are every worker program as Ruby, which +plan+ (a ShellFacts::PiecePlan) numbers
       # its main program and each piece's program by; +copy+ the copy's bytes; +names+ the
       # unpacking's names a shell reads (ShellFacts::UnpackingNames); +bar+ the bar's look
@@ -39,7 +43,8 @@ module VBlank
         # main job is 0, and piece i of the plan is job i + 1.
         classes = {}
         made = ->(program) { classes[program] ||= IR::Backends::Ruby::LiveGame.shareable_class(sources.fetch(program)) }
-        @jobs = [[made.call(plan.main), nil], *plan.pieces.map { |piece| [made.call(piece.program), piece.number] }]
+        @jobs = [Job.new(game_class: made.call(plan.main), number: nil),
+                 *plan.pieces.map { |piece| Job.new(game_class: made.call(piece.program), number: piece.number) }]
         @results = Ractor::Port.new
         @inbox = Thread::Queue.new
         @queue = [0, *plan.queue.map { |piece| piece + 1 }]
@@ -102,7 +107,7 @@ module VBlank
               index, game_class, number = job
               game = IR::Backends::Ruby::LiveGame.new(nil, game_class: game_class)
               # A piece's program is handed the piece's number after the copy (PlannedPiece#start_file).
-              game.hand_file(number ? bytes + [number].pack("v") : bytes)
+              game.hand_file(number ? Original::ShellFacts.piece_start_file(bytes, number) : bytes)
               if index.zero?
                 results << [:facts, Facts.new(width: game.width, height: game.height, sound_rate: game.sound_rate,
                                               frame_seconds: game.frame_seconds)]
@@ -142,7 +147,7 @@ module VBlank
       # The next job on the queue handed to +worker+, or :stop where none is left.
       def hand_next_job(worker)
         index = @queue.shift
-        worker << (index.nil? ? :stop : [index, *@jobs.fetch(index)])
+        worker << (index.nil? ? :stop : [index, @jobs.fetch(index).game_class, @jobs.fetch(index).number])
       rescue Ractor::ClosedError
         nil # the worker has ended
       end
@@ -169,7 +174,7 @@ module VBlank
           # write, and not each one it sets alone (a song's length), as the whole routine's bar
           # is whole once it has finished.
           @done[index] = index.zero? ? @plan.main_bytes : @plan.pieces.fetch(index - 1).bytes
-          @ended[index] = [finished, fault_kind, bytes]
+          @ended[index] = Outcome.new(finished: finished, fault_kind: fault_kind, bytes: bytes)
           @main_picture = last if last
           hand_next_job(worker)
         in [:failed, worker]
@@ -182,7 +187,7 @@ module VBlank
       # #collect_outcome says why).
       def raise_failure(worker)
         worker.value
-        raise ArgumentError, "an unpacking's worker stopped and gave no reason"
+        raise ArgumentError, "An unpacking's worker stopped, and it gave no reason."
       rescue Ractor::RemoteError => e
         raise e.cause, cause: nil
       end
@@ -209,9 +214,9 @@ module VBlank
       # Every job's two numbers taken together, the first fault in the order the programs are
       # declared, and the pack joined from their bytes.
       def joined_outcome
-        finished = @ended.all? { |(ended, _, _)| ended == 1 } ? 1 : 0
-        fault = @ended.map { |(_, kind, _)| kind }.find(&:nonzero?) || 0
-        bytes = @ended.map { |(_, _, made)| made }
+        finished = @ended.all? { |ended| ended.finished == 1 } ? 1 : 0
+        fault = @ended.map(&:fault_kind).find(&:nonzero?) || 0
+        bytes = @ended.map(&:bytes)
         Outcome.new(finished: finished, fault_kind: fault, bytes: @plan.join(bytes.first, bytes.drop(1)))
       end
 

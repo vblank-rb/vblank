@@ -268,7 +268,7 @@ module VBlank
 
         # Whether +part+ is an unpacking split in pieces, which the page plays as its split however
         # many workers it has (rg_shell_unpack_on_workers), so its whole routine is not written.
-        def split_unpacking?(shell, part) = part.role == :unpacking && !shell.facts.pieces[part.number].nil?
+        def split_unpacking?(shell, part) = part.role == :unpacking && shell.facts.split?(part.number)
 
         # The line that starts the page on the programs of +shell+, handed its facts as data
         # (Original::ShellFacts#to_plain), which the page's runtime reads, with the worker programs and

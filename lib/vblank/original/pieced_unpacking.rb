@@ -5,11 +5,11 @@ require "etc"
 module VBlank
   module Original
     # AN UNPACKING SPLIT FOR SEVERAL WORKERS. A port's routine can spend most of its time in one
-    # part that does the same work over and over on things that never meet: Wolfenstein renders
-    # each of its songs from the AdLib chip's writes, and one song never reads another. A player's
+    # part that does the same work over and over on things that never meet: a port that renders
+    # each of its songs from a sound chip's writes, where one song never reads another. A player's
     # machine has several cores, and the routine as one program keeps one of them busy.
     #
-    # THE DECISION, agreed with the operator and with the Wolfenstein port: THE GAME DECLARES ITS
+    # THE DECISION: THE GAME DECLARES ITS
     # PIECES, and VBlank never works out by itself what may run side by side. A slot is declared in
     # pieces (`slots.samples :music, count: rooms.sum, pieces: rooms`), and a part of the routine
     # given as many pieces writes it a piece at a time (`slots.fill_from_copy :music, pieces: 27 do
@@ -43,17 +43,18 @@ module VBlank
     # handed out from a queue, the most work first (#queue_order), so the longest is not left to
     # start last. Once all have ended the pack is #main's bytes with each piece's copied over its
     # places, in the order the pieces are declared (#join), and the fault a run stops on is the
-    # first one, #main's and then the pieces' in their order (#first_fault). A shell's bar adds up
-    # what every worker has done (#bar_width).
+    # first one, #main's and then the pieces' in their order (ShellFacts::PiecePlan): a part not in
+    # pieces declared after a part in pieces is in #main, so where both go wrong the split names
+    # #main's fault and the whole routine the piece's, and the build stops either way. A shell's
+    # bar adds up what every worker has done (ShellFacts::PiecePlan#bar_width).
     #
     # The number of workers is the player's machine's to choose, never the game's: Live::Shell and
     # the web page take it as a setting (`--unpack-workers`, #worker_count), one a processor unless
     # told otherwise.
     #
-    # +slots+ are the whole pack's, in its order. +main+ is an Unpacking, and so is each of
-    # +part_programs+, one a part in pieces; each of +pieces+ is a Piece.
-    PiecedUnpacking = Data.define(:slots, :main, :part_programs, :pieces)
-
+    # THE PROGRAMS ARE BUILT WHEN FIRST ASKED FOR (#programs). What a runtime is told of the split
+    # (#plan) follows from the slots and the pieces alone, so a shell whose runtime plays the whole
+    # routine (the desktop program's, a Ruby script's) is built with no more programs than before.
     class PiecedUnpacking
       # One piece: the +part+ that writes it, its +number+ in that part (0 first), the +program+
       # that plays it (its place in #programs), and +places+, where in the pack's list each piece of
@@ -67,13 +68,23 @@ module VBlank
         # How many bytes of the program's list are the piece's.
         def byte_size = places.sum(&:size)
 
-        # The file the piece's program is handed as it starts: the copy, +copy+, and the piece's
-        # number after it (Unpacking::PIECE_NUMBER).
-        def start_file(copy) = copy.b + [number].pack("v")
+        # The file the piece's program is handed as it starts (ShellFacts.piece_start_file).
+        def start_file(copy) = ShellFacts.piece_start_file(copy, number)
       end
 
       # +size+ bytes of the pack's list from +at+ on.
       Place = Data.define(:at, :size)
+
+      # +slots+ are the whole pack's, in its order; +pieces+ each a Piece; +part_count+ how many
+      # parts are in pieces. +make_programs+ builds #programs when they are first asked for.
+      def initialize(slots:, pieces:, part_count:, make_programs:)
+        @slots = slots
+        @pieces = pieces
+        @part_count = part_count
+        @make_programs = make_programs
+      end
+
+      attr_reader :slots, :pieces
 
       # The workers an unpacking plays on: +asked+, or one a processor of this machine where it is
       # nil, never more than it has processors, and one at least.
@@ -87,8 +98,12 @@ module VBlank
         [asked, processors].min
       end
 
-      # Every program a worker plays: #main first, then each part's in the order declared.
-      def programs = [main, *part_programs]
+      # Every program a worker plays, each an Unpacking: #main first, then each part in pieces'
+      # in the order declared, one program a part, which names the whole pack's slots.
+      def programs = @programs ||= @make_programs.call
+
+      # The parts not in pieces, as one program.
+      def main = programs.first
 
       # Piece +piece+ (a Piece) of the split, ready to play on +copy+: its part's program, handed
       # the piece's start file.
@@ -103,18 +118,8 @@ module VBlank
       # in the order the pieces are declared (ShellFacts::PiecePlan#join, which a runtime plays).
       def join(main_bytes, piece_bytes) = plan.join(main_bytes, piece_bytes)
 
-      # The fault a run of every program stops on: the first of +faults+ (one for each of #programs,
-      # in their order, each nil where nothing went wrong), #main's before the pieces'. A part not
-      # in pieces written after the part in pieces is in #main, so where it and a piece both go
-      # wrong this names #main's, where the whole routine would name the piece's: the build stops
-      # either way.
-      def first_fault(faults) = faults.compact.first
-
-      # How wide a shell's bar is, of +across+ pixels, once each of #programs has written so many
-      # bytes (+done+, a count for each, in their order, from its BYTES_DONE): each held to its
-      # program's size and weighed by its work, so a slot whose bytes cost more moves the bar
-      # further a byte (ShellFacts::PiecePlan#bar_width).
-      def bar_width(done, across) = plan.bar_width(done, across)
+      # How many #programs there are, known without building them: #main and one a part in pieces.
+      def program_count = 1 + @part_count
 
       # The split as a runtime plays it (ShellFacts::PiecePlan): what is told to every runtime of a
       # shell. +first_program+ is where #main is in the runtime's list of worker programs, each
