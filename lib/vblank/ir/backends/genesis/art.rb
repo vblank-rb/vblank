@@ -674,9 +674,13 @@ module VBlank
             found = used.find { |p| (colors - @palettes[p]).empty? }
             return found.tap { note_taker(found, taker) } if found
 
-            roomy = used.select { |p| (@palettes[p] | colors).length <= OWN_COLORS }.max_by { |p| (@palettes[p] & colors).length }
+            # Colours go on after the palette's places, which stay as they are: a list's palette
+            # (#ordered_palette) can hold one colour at several places, and `|` would fold them into one
+            # and move every place after.
+            roomy = used.select { |p| @palettes[p].length + (colors - @palettes[p]).length <= OWN_COLORS }
+                        .max_by { |p| (@palettes[p] & colors).length }
             if roomy
-              @palettes[roomy] |= colors
+              @palettes[roomy] += colors - @palettes[roomy]
               note_taker(roomy, taker)
               return roomy
             end

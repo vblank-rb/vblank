@@ -60,6 +60,30 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:white), i.screen.pixel(45, 41)
   end
 
+  # A LIST WHOSE PLACES REPEAT A COLOUR, as a logo's list does while every place is still black before
+  # it fades in. Each place is a place of its own: a pixel drawn at the second green stays green, and
+  # a background of other colours beside the sprite never takes that place over.
+  def test_a_list_that_repeats_a_color_keeps_each_place_beside_a_background
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      colors :dim, %i[transparent green green red]
+      image :mark, width: 8, height: 8, colors: :dim, places: Array.new(64) { |i| (i % 8) < 4 ? 2 : 3 }
+      image(:floor, "#" => :blue, "." => :white) { "#.#.#.#.\n" * 8 }
+      tiles :floor, { 0 => :floor }
+      background :floor, tiles: :floor, map: [[0]]
+      mark = sprite :mark, at: [40, 40]
+      mark.draw_with :dim
+      game_loop {}
+    end
+    builder.finalize_program
+    i = game_player.run(builder.program, frames: 2)
+
+    assert_equal shown(:green), i.screen.pixel(41, 41), "the second place, which repeats the first's colour"
+    assert_equal shown(:red), i.screen.pixel(45, 41), "the place after it"
+    assert_equal shown(:white), i.screen.pixel(1, 0), "the background beside it"
+  end
+
   # A picture the game paints from a list keeps its pixels as places, so another list swaps
   # its colours by place the same way. A save file's name wears its panel's colours like this.
   private def painted_program
