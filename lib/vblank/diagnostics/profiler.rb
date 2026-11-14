@@ -73,11 +73,16 @@ module VBlank
       # frames answer it; sixty would only cost sixty times as much to show the same thing.
       TEAR_FRAMES = 6
 
-      # A finished tear-free game keeps two pictures, and lost drawing shows up as a pixel the
-      # two disagree about that neither frame comes back to fix — so the reading needs both
-      # pictures at one frame boundary and both again TWO boundaries later. See {Flicker} for
-      # why two and not one.
-      FLICKER_GAP = 2
+      # A finished tear-free game keeps two pictures and shows them in turn, and lost drawing
+      # shows up as a pixel that alternates between them — so the reading needs the picture on
+      # screen after four page swaps running. See {Flicker} for why four, and why at a swap.
+      FLICKER_SWAPS = 4
+
+      # How many frames to wait for the next page swap before deciding none is coming. A
+      # swap is the end of a pass, and a pass a second long is already a game nobody plays;
+      # one whose screen stops swapping (a scene that draws straight to the screen) shows a
+      # picture that holds still, which cannot flicker.
+      FLICKER_SWAP_WAIT = 60
 
       # THE FIRST PASS AFTER POWER-ON: how many breaks between pictures it ran through, each a
       # picture later for the first picture, and how many lines before the next break it ended —
@@ -398,25 +403,56 @@ module VBlank
       #
       # The build can see that a game keeps two pictures. It cannot see whether the game puts
       # the same drawing in both, because that depends on how many frames each drawing op runs
-      # on. Reading both pictures twice, two frame boundaries apart, settles it (see {Flicker}).
+      # on. Reading the picture on screen after four page swaps running settles it (see
+      # {Flicker}).
+      #
+      # READ AT A SWAP, NEVER AT A FIXED NUMBER OF FRAMES. A game whose pass takes several frames
+      # keeps its hidden page half drawn for frames on end — cleared at the bottom, say, and not
+      # yet painted. Read then, that page disagrees with the one on screen and holds still across
+      # a two-frame gap, which is what flicker looks like to the rule. But the player never sees
+      # it: a page is shown only once its pass is done. Reading just after each swap reads only
+      # finished pages, the pictures the player really sees, however many frames a pass takes.
       def self.flicker_in(probe, program, held)
         return nil unless Flicker.measurable?(program)
 
-        before = read_both_pages(probe)
-        probe.step(FLICKER_GAP, keys: held)
-        Flicker.read(before, read_both_pages(probe))
+        shown = Array.new(FLICKER_SWAPS) do
+          # No swap coming: the picture on screen holds still, so nothing flickers.
+          return Flicker::Reading.new(pixels: 0, first: nil) unless step_to_page_swap(probe, held)
+
+          read_shown_page(probe)
+        end
+        # Two swaps apart is the same page again, so each pair names the two pages in one order.
+        Flicker.read(shown[0, 2], shown[2, 2])
       end
 
-      # Both pictures of a tear-free screen, straight out of video memory. A pixel there is one
-      # byte — a number picking a color out of the shared table — so a word carries four of
-      # them, and reading by the word is four times cheaper than reading by the pixel.
-      def self.read_both_pages(probe)
-        [IR::Backends::GBA::PAGE0, IR::Backends::GBA::PAGE1].map do |base|
-          bytes = Tearing::WIDTH * Tearing::HEIGHT
-          (0...bytes).step(4).flat_map do |at|
-            word = probe.read32(base + at)
-            [word & 0xFF, (word >> 8) & 0xFF, (word >> 16) & 0xFF, (word >> 24) & 0xFF]
-          end
+      # Steps the game a frame at a time until the screen shows the other page, and returns
+      # whether it did within FLICKER_SWAP_WAIT frames. The swap is the game's own write to the
+      # display's page bit, and from then until the next swap the game draws only into the other
+      # page, so the page on screen is a finished one at any boundary before that.
+      def self.step_to_page_swap(probe, held)
+        page = shown_page_base(probe)
+        FLICKER_SWAP_WAIT.times do
+          probe.step(1, keys: held)
+          return true if shown_page_base(probe) != page
+        end
+        false
+      end
+
+      # Where the page on screen starts, read off the display's page bit.
+      def self.shown_page_base(probe)
+        page_bit = probe.read16(Console::Hardware::REG_DISPCNT) & IR::Backends::GBA::DISPCNT_FRAME_SELECT
+        page_bit.zero? ? IR::Backends::GBA::PAGE0 : IR::Backends::GBA::PAGE1
+      end
+
+      # The page on screen, straight out of video memory. A pixel there is one byte — a number
+      # picking a color out of the shared table — so a word carries four of them, and reading
+      # by the word is four times cheaper than reading by the pixel.
+      def self.read_shown_page(probe)
+        base = shown_page_base(probe)
+        bytes = Tearing::WIDTH * Tearing::HEIGHT
+        (0...bytes).step(4).flat_map do |at|
+          word = probe.read32(base + at)
+          [word & 0xFF, (word >> 8) & 0xFF, (word >> 16) & 0xFF, (word >> 24) & 0xFF]
         end
       end
 
