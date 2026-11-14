@@ -965,13 +965,28 @@ mgba_core_maker_code(VALUE self)
 /* Reads any mapped region — IWRAM, EWRAM, VRAM, registers.  */
 /* --------------------------------------------------------- */
 
+/* A GAME BOY'S BUS IS THE PROCESSOR'S VIEW, and while the console  */
+/* copies a sprite table (OAM DMA) the processor reading work       */
+/* memory gets 0xFF: the copy has the bus. A reader is not the      */
+/* processor, and a frame that ends during a copy must still read   */
+/* what memory holds, so a Game Boy's bytes are read the way the    */
+/* emulator's own memory view reads them, in the banks the game has */
+/* in view. An Advance's bus has no such lock, and stays as it is.  */
+static uint8_t
+core_read8(struct mCore *core, uint32_t address)
+{
+    if (core->platform(core) == mPLATFORM_GB) {
+        return (uint8_t)core->rawRead8(core, address, -1);
+    }
+    return (uint8_t)core->busRead8(core, address);
+}
+
 static VALUE
 mgba_core_bus_read8(VALUE self, VALUE addr)
 {
     struct mgba_core *mc = get_mgba_core(self);
     uint32_t address = (uint32_t)NUM2UINT(addr);
-    uint8_t val = (uint8_t)mc->core->busRead8(mc->core, address);
-    return UINT2NUM(val);
+    return UINT2NUM(core_read8(mc->core, address));
 }
 
 /* Core#bus_read16(address)                                  */
@@ -984,7 +999,12 @@ mgba_core_bus_read16(VALUE self, VALUE addr)
 {
     struct mgba_core *mc = get_mgba_core(self);
     uint32_t address = (uint32_t)NUM2UINT(addr);
-    uint16_t val = (uint16_t)mc->core->busRead16(mc->core, address);
+    uint16_t val;
+    if (mc->core->platform(mc->core) == mPLATFORM_GB) {
+        val = (uint16_t)(core_read8(mc->core, address) | (core_read8(mc->core, address + 1) << 8));
+    } else {
+        val = (uint16_t)mc->core->busRead16(mc->core, address);
+    }
     return UINT2NUM(val);
 }
 
@@ -998,7 +1018,15 @@ mgba_core_bus_read32(VALUE self, VALUE addr)
 {
     struct mgba_core *mc = get_mgba_core(self);
     uint32_t address = (uint32_t)NUM2UINT(addr);
-    uint32_t val = mc->core->busRead32(mc->core, address);
+    uint32_t val = 0;
+    if (mc->core->platform(mc->core) == mPLATFORM_GB) {
+        int i;
+        for (i = 3; i >= 0; i--) {
+            val = (val << 8) | core_read8(mc->core, address + (uint32_t)i);
+        }
+    } else {
+        val = mc->core->busRead32(mc->core, address);
+    }
     return UINT2NUM(val);
 }
 
@@ -1034,7 +1062,7 @@ mgba_core_bus_read_bytes(VALUE self, VALUE addr, VALUE count)
     out = rb_str_new(NULL, wanted);
     bytes = (uint8_t *)RSTRING_PTR(out);
     for (i = 0; i < wanted; i++) {
-        bytes[i] = (uint8_t)mc->core->busRead8(mc->core, address + (uint32_t)i);
+        bytes[i] = core_read8(mc->core, address + (uint32_t)i);
     }
     return out;
 }
