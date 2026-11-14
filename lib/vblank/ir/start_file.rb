@@ -426,10 +426,19 @@ module VBlank
 
       # Whether +holds_from+, a number of +width+ (:byte, :half or :word) read from the pack, has
       # every bit set, which is no hold.
-      def self.no_hold?(holds_from, width)
+      def self.no_hold?(holds_from, width) = every_bit_set?(holds_from, width)
+
+      # Whether +loop_from+, a song's loop tick of +width+ read from the pack, has every bit set,
+      # which is no loop: the song plays once (SongLength).
+      def self.no_loop?(loop_from, width) = every_bit_set?(loop_from, width)
+
+      # Whether +number+, read from a slot of +width+, has all its bits set: 255 in a byte, 65535 in
+      # two, and -1 in a slot that goes below zero.
+      def self.every_bit_set?(number, width)
         every_bit = (1 << (8 * Build::ELEMENT_BYTES.fetch(width))) - 1
-        holds_from & every_bit == every_bit
+        number & every_bit == every_bit
       end
+      private_class_method :every_bit_set?
 
       # WHAT A RECORDING HOLDS FOR A SETTING IT READS FROM THE FILE, until the file is read:
       # numbers a build can lay a recording out with and must work nothing out from. The envelope
@@ -563,18 +572,31 @@ module VBlank
       #
       # The file is the player's, so nothing in it stops the game, where the build that holds the
       # same numbers refuses them (#frames_in).
+      #
+      # A LOOP TICK WITH EVERY BIT SET IS NONE (.no_loop?): 65535 in two bytes, as a sound driver's
+      # unpacking writes a song that ends. The song plays once, as one written with `plays_once:
+      # true`, which a port cannot know to write for each song as it is built. The all-in-one build
+      # reads it the same way (Builder::PackScores#score_with_pack_notes).
       SongLength = Data.define(:length, :loop_from, :tempo, :ticks_per_beat) do
         def timing = Audio::Score::Timing.new(self)
 
-        # [total frames, loop frame] the numbers in +bytes+ come to in a song +longest+ frames at
-        # most: a length below a frame is one frame, and one past +longest+ is +longest+; a loop
-        # tick on or past the end is the song's start. A number the game wrote is +written+'s.
+        # The SongFrames the numbers in +bytes+ come to in a song +longest+ frames at most: a length
+        # below a frame is one frame, and one past +longest+ is +longest+; a loop tick on or past the
+        # end is the song's start, and one with every bit set is none, so the song plays once. A
+        # number the game wrote is +written+'s.
         def frames_in(bytes, longest, written_total:, written_loop:)
           total = length ? timing.at([StartFile.number_in(bytes, length), 0].max).clamp(1, longest) : written_total
-          from = loop_from ? timing.at([StartFile.number_in(bytes, loop_from), 0].max) : written_loop
-          [total, from < total ? from : 0]
+          tick = StartFile.number_in(bytes, loop_from) if loop_from
+          return SongFrames.new(total: total, loop_frame: 0, plays_once: true) if tick && StartFile.no_loop?(tick, loop_from.width)
+
+          from = tick ? timing.at([tick, 0].max) : written_loop
+          SongFrames.new(total: total, loop_frame: from < total ? from : 0, plays_once: false)
         end
       end
+
+      # What a SongLength's numbers come to (SongLength#frames_in): the song's length in frames, the
+      # frame it comes round to (0, its start, for one that plays once), and whether it plays once.
+      SongFrames = Data.define(:total, :loop_frame, :plays_once)
 
       # A WAVE OF THE WAVE VOICE IN THE FILE (Audio::Music::Part#wave_from_file), given as a Score
       # part's `plays:` in place of its steps: Audio::Sound::WAVE_BYTES bytes from +at+ on, kept as
@@ -906,10 +928,11 @@ module VBlank
       # takes its wave from its Score part, so the wave is put in after.
       def self.fill_song(node, bytes)
         if (length = node.length_from_file)
-          total, from = length.frames_in(bytes, node.total_frames, written_total: node.total_frames,
-                                                                   written_loop: Tunes.loop_frame(node))
-          node.total_frames = total
-          node.loop_frame = (from if from.positive?)
+          frames = length.frames_in(bytes, node.total_frames, written_total: node.total_frames,
+                                                              written_loop: Tunes.loop_frame(node))
+          node.total_frames = frames.total
+          node.loop_frame = (frames.loop_frame if frames.loop_frame.positive?)
+          node.plays_once = true if frames.plays_once
           node.length_from_file = nil
         end
         node.voices = node.voices.map do |part|

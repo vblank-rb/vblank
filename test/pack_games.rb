@@ -1714,9 +1714,9 @@ module PackGames
           parts = mixed.each_with_index.map do |part, n|
             VBlank::Audio::Score::Part.new(plays: :looped, notes: pack[:"part_#{n}"].notes(instruments: part.instruments))
           end
-          # The song ends, so it plays once rather than coming round to the pack's NO_LOOP.
+          # The song ends, and the unpacking writes its loop as NO_LOOP, every bit set: it plays once.
           music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
-                                                          plays_once: true, longest: 600)]
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
           game_loop do
             wait_vblank
             music.play 0 if pressed(:a)
@@ -1786,8 +1786,9 @@ module PackGames
           end
           instruments = %i[looped looped looped looped looped looped looped one_shot]
           parts = [VBlank::Audio::Score::Part.new(plays: :looped, notes: pack[:bent].notes(instruments: instruments))]
+          # The song ends: its loop is NO_LOOP, every bit set, so it plays once.
           music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: pack[:timing].number(0),
-                                                          plays_once: true, longest: 600)]
+                                                          loop_from: pack[:timing].number(1), longest: 600)]
           game_loop do
             wait_vblank
             music.play 0 if pressed(:a)

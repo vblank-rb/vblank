@@ -20,6 +20,11 @@ class TestPackScores < Minitest::Test
   MOST = 8
   MELODY_AT = 0x10
   BASS_AT = MELODY_AT + (MOST * VBlank::Original::PackNote::BYTES)
+  # The song's length and the tick it comes round to, two numbers of two bytes after the notes:
+  # 96 ticks, and every bit set, which is how a sound driver's unpacking writes a song that ends
+  # (Original::Packing::M4A's NO_LOOP).
+  TIMING = [96, 0xFFFF].freeze
+  TIMING_AT = BASS_AT + (MOST * VBlank::Original::PackNote::BYTES)
 
   # A part's notes as Original::PackNote records, ended with an END_OF_PART note and zeros after it.
   private def records(notes)
@@ -31,9 +36,10 @@ class TestPackScores < Minitest::Test
   end
 
   private def original(folder)
-    copy = "\0".b * (BASS_AT + (MOST * VBlank::Original::PackNote::BYTES))
+    copy = "\0".b * (TIMING_AT + (2 * TIMING.length))
     copy[MELODY_AT, MOST * VBlank::Original::PackNote::BYTES] = records(MELODY)
     copy[BASS_AT, MOST * VBlank::Original::PackNote::BYTES] = records(BASS)
+    copy[TIMING_AT, 2 * TIMING.length] = TIMING.pack("v*")
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -44,11 +50,14 @@ class TestPackScores < Minitest::Test
   # A game playing one song of two square parts: from the pack when +from+ is given, by hand otherwise.
   # +views+ keeps both parts' records as one slot of bytes, and reads each through a view of notes
   # (DSL::PackSlot#as_notes), the second to the slot's end.
-  private def song_game(from = nil, views: false)
+  # +timed+ reads the song's length and loop from the pack (TIMING), where the game by hand writes
+  # the same length and `plays_once: true`.
+  private def song_game(from = nil, views: false, timed: false)
     b = Builder.new
     b.instance_eval do
       pack = if from
                data_pack from: from, version: "1" do |slots|
+                 slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false if timed
                  if views
                    slots.numbers :songs, at: MELODY_AT, count: 2 * MOST * VBlank::Original::PackNote::BYTES, width: :byte,
                                          signed: false
@@ -61,10 +70,12 @@ class TestPackScores < Minitest::Test
       if views
         pack = { melody: pack[:songs].as_notes(at: 0, count: MOST), bass: pack[:songs].as_notes(at: BASS_AT - MELODY_AT) }
       end
+      timing = pack[:timing] if timed && pack
       melody = pack ? pack[:melody] : MELODY.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
       bass = pack ? pack[:bass].notes : BASS.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
+      ends = timing ? { length: timing.number(0), loop_from: timing.number(1) } : { length: (TIMING[0] if timed), plays_once: true }
       music = songs :music, [Score.new(parts: [Part.new(notes: melody, volume: 12), Part.new(notes: bass, volume: 10)],
-                                       tempo: 150, plays_once: true)]
+                                       tempo: 150, **ends)]
       music.play 0
       game_loop { wait_vblank }
     end
@@ -78,6 +89,17 @@ class TestPackScores < Minitest::Test
       played = game_player.run(song_game(original(folder)), frames: 90).audio
 
       refute_empty wanted.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted, played
+    end
+  end
+
+  # A loop point with every bit set is none, as a hold with every bit set is (IR::StartFile.no_loop?):
+  # the song plays once and ends, as the same Score written with `plays_once: true`.
+  def test_a_loop_point_of_every_bit_set_from_the_pack_plays_the_song_once
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(song_game(timed: true), frames: 200).audio
+      played = game_player.run(song_game(original(folder), timed: true), frames: 200).audio
+
       assert_equal wanted, played
     end
   end

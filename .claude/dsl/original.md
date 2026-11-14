@@ -68,7 +68,11 @@ from that copy. The game's code says each piece's shape and size; it never depen
     comes round to can be numbers of the pack too**, which the driver's commands say (where its track
     ends, where it jumps back to): `Score.new(..., length: pack[:song].number(0), loop_from:
     pack[:song].number(1), longest: 2000)`, `longest:` being the most ticks the song can last, which a
-    build that reads its pack as the game starts makes room for. **A driver that runs once a frame**
+    build that reads its pack as the game starts makes room for. **A loop tick with every bit set is no
+    loop** (65535 in a slot of two bytes, 255 in one, -1 in a signed one): the song plays once and ends,
+    as one written with `plays_once: true`, so one Score line serves a song that comes round and one that
+    ends, and the unpacking decides which. Built all-in-one or with the pack left out, it plays the same
+    (`IR::StartFile.no_loop?`). **A driver that runs once a frame**
     writes its notes a tick a frame, and its Score says `tempo: 3600, ticks_per_beat: 1`, which puts
     each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
     with a driver of its own writes these in its unpacking routine and needs nothing more (worked
@@ -228,8 +232,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `copy.unpack_m4a_track at: SONG, into: pack[:title_0], track: 0` writes a track's notes as pack notes
     (`kind: 4` keeps only its notes on the noise voice, `0` on recordings, `1` to `3` the squares and the
     wave), a tick a frame as the driver's tempo lands them; `copy.unpack_m4a_length at: SONG, into:` writes
-    the song's length in frames and the frame it comes round to (65535 for a song that ends), two numbers
-    of two bytes. **A song comes round where the whole driver is as it was before**: each track jumps
+    the song's length in frames and the frame it comes round to (65535 for a song that ends, which
+    `loop_from:` takes as no loop, so the song plays once), two numbers of two bytes. **A song comes
+    round where the whole driver is as it was before**: each track jumps
     back on its own, so a short figure goes round many times to a melody's once, and a round that differs
     from the one before (a MEMACC counting rounds, a round starting a frame later in the tempo's count)
     is played as it falls. The reader writes the notes until every track comes round together, so a song
@@ -601,7 +606,9 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   writes the song's own over it at power-on (`IR::StartFile::SongLength`, `rg_music_fill_song_length`), before
   its parts' notes are made. Then every part of the Score reads its notes from the pack, since a part written in
   the game is worked out as it is built; each is refused at the line otherwise. A length past `longest:` in the
-  player's file plays as `longest:`, and a loop tick on or past the end comes round to the start. The build knows how many notes the slot holds and none of them, so the
+  player's file plays as `longest:`, a loop tick on or past the end comes round to the start, and one with every
+  bit set is no loop: the song plays once, and its parts' notes are made for a song that ends. The build
+  knows how many notes the slot holds and none of them, so the
   program holds room for the most events they can make (two for each note, a note and the rest it ends in) and
   the runtime makes the part's events from the file at power-on (`IR::StartFile::Notes`,
   the music feature's `rg_music_fill_notes`), by the rule a Score's notes become events by: in the order of their ticks, a rest

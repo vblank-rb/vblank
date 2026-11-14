@@ -1459,6 +1459,8 @@ static int32_t start_file_event_volume(int32_t volume, int32_t loudness, int32_t
 void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *rules, const int32_t *tick_frames) {
   int32_t ticks = rules[RG_NOTES_TICKS], records_at = rules[RG_NOTES_RECORDS_AT];
   int32_t total_frames = music[rules[RG_NOTES_SONG_AT]], loop_frame = music[rules[RG_NOTES_SONG_AT] + 1];
+  /* A song the file says plays once (rg_music_fill_song_length) does not come round. */
+  int32_t comes_round = rules[RG_NOTES_COMES_ROUND] && !music[rules[RG_NOTES_SONG_AT] + 2];
   int32_t instruments = rules[RG_NOTES_INSTRUMENTS], record_bytes = rules[RG_NOTES_RECORD_BYTES];
   const int32_t *same_recording = rules + RG_NOTES_HEADER_NUMBERS + RG_NOTE_VOLUMES + 1;
   const int32_t *clock_pitches = same_recording + instruments + RG_NOTE_KEYS + ((rules[RG_NOTES_RECORDED] ? instruments + 1 : 1) * RG_NOTE_KEYS);
@@ -1521,7 +1523,7 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
    * silenced there; one holding a note across it sounds that note again there every time after
    * the first, unless the song ends on the same note. */
   int32_t split = 0, silence = 0, strike = 0;
-  if (rules[RG_NOTES_COMES_ROUND]) {
+  if (comes_round) {
     while (split < made && events[split].frame < loop_frame) split++;
     if (!(split < made && events[split].frame == loop_frame)) {
       const start_file_event *held = split > 0 ? &events[split - 1] : NULL;
@@ -1550,7 +1552,7 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
   }
   for (int32_t i = split; i < made; i++, first += RG_NOTE_NUMBERS) {
     start_file_write_note(first, &events[i], rules);
-    if (rules[RG_NOTES_COMES_ROUND]) {
+    if (comes_round) {
       start_file_write_note(again, &events[i], rules);
       again += RG_NOTE_NUMBERS;
     }
@@ -1578,6 +1580,13 @@ static int32_t start_file_tick(const int32_t *where) {
   return tick < 0 ? 0 : tick > INT32_MAX ? INT32_MAX : (int32_t)tick;
 }
 
+/* Whether the number of the file at +where+ (as start_file_tick reads it) has all its bits set. */
+static bool start_file_every_bit_set(const int32_t *where) {
+  uint32_t number = rg_start_file_number(where[0], where[1], where[2]);
+  uint32_t every_bit = where[1] >= 4 ? 0xFFFFFFFFu : (1u << (8 * where[1])) - 1;
+  return number == every_bit;
+}
+
 void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32_t *tick_frames) {
   int32_t *song = music + rules[RG_LENGTH_SONG_AT];
   int32_t ticks = rules[RG_LENGTH_TICKS], longest = rules[RG_LENGTH_LONGEST];
@@ -1589,8 +1598,15 @@ void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32
     if (total > longest) total = longest;
   }
   if (rules[RG_LENGTH_LOOP]) {
-    int32_t tick = start_file_tick(rules + RG_LENGTH_LOOP + 1);
-    loop = tick < ticks ? tick_frames[tick] : longest;
+    const int32_t *where = rules + RG_LENGTH_LOOP + 1;
+    if (start_file_every_bit_set(where)) {
+      /* No loop (IR::StartFile.no_loop?): the song plays once. */
+      loop = 0;
+      song[2] = 1;
+    } else {
+      int32_t tick = start_file_tick(where);
+      loop = tick < ticks ? tick_frames[tick] : longest;
+    }
   }
   song[0] = total;
   song[1] = loop < total ? loop : 0;

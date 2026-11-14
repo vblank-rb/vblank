@@ -219,8 +219,8 @@ module PackingGBATests
         2.times { |track| copy.copy_bytes at: track * played[0].bytesize, count: played[0].bytesize, into: pack[:"track_#{track}"] }
         copy.copy_bytes at: 2 * played[0].bytesize, count: 4, into: pack[:length]
       end
-      wanted = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(driver.(plays_once: true), frames: ROUNDS_FRAMES)
-      heard = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(read.(plays_once: false), frames: ROUNDS_FRAMES)
+      wanted = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(driver, frames: ROUNDS_FRAMES)
+      heard = game_player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(read, frames: ROUNDS_FRAMES)
 
       assert wanted.audio.any?, "the song sounds"
       assert_equal wanted.audio, heard.audio
@@ -228,33 +228,30 @@ module PackingGBATests
   end
 
   # A game playing the two squares' tracks of the rounds song from a pack of +bytes+ that +fill+
-  # unpacks; called with `plays_once:`, it is the game, coming round at the pack's loop or not.
+  # unpacks, coming round at the pack's loop, or playing once where the loop has every bit set.
   private def rounds_game(folder, bytes, &fill)
     Dir.mkdir(folder)
     from = copy_of(folder, bytes)
-    lambda do |plays_once:|
-      b = VBlank::Builder.new
-      b.instance_eval do
-        screen :bitmap
-        enable_sound
-        pack = data_pack(from: from, version: "1") do |slots|
-          2.times { |track| slots.notes :"track_#{track}", count: M4A_NOTES }
-          slots.numbers :length, count: 2, width: :half, signed: false
-          slots.fill_from_copy(&fill)
-        end
-        parts = Array.new(2) { |track| VBlank::Audio::Score::Part.new(notes: pack[:"track_#{track}"].notes) }
-        timing = pack[:length]
-        score = VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: timing.number(0), longest: ROUNDS_FRAMES,
-                                         **(plays_once ? { plays_once: true } : { loop_from: timing.number(1) }))
-        music = songs :music, [score]
-        game_loop do
-          wait_vblank
-          music.play 0 if pressed(:a)
-        end
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") do |slots|
+        2.times { |track| slots.notes :"track_#{track}", count: M4A_NOTES }
+        slots.numbers :length, count: 2, width: :half, signed: false
+        slots.fill_from_copy(&fill)
       end
-      b.finalize_program
-      b.program
+      parts = Array.new(2) { |track| VBlank::Audio::Score::Part.new(notes: pack[:"track_#{track}"].notes) }
+      timing = pack[:length]
+      music = songs :music, [VBlank::Audio::Score.new(parts: parts, tempo: 3600, ticks_per_beat: 1, length: timing.number(0),
+                                                      loop_from: timing.number(1), longest: ROUNDS_FRAMES)]
+      game_loop do
+        wait_vblank
+        music.play 0 if pressed(:a)
+      end
     end
+    b.finalize_program
+    b.program
   end
 
   def test_a_music_player_2000_voices_recording_and_settings_are_its_wave_and_envelope

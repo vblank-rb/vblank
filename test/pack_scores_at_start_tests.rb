@@ -84,9 +84,11 @@ module PackScoresAtStartTests
 
   # The pack file holding +parts+ (their records by slot name), as a player's machine would make it.
   # +timing+ is what its song's length and loop hold, and with +waves+ it holds WAVES.
-  private def pack_file(parts, timing: TIMING, waves: false)
+  # +timing_packing+ is how the timing slot's numbers are written: two bytes, low byte first, unless
+  # the game names another shape for the slot (+timing_slot+ of #scored_game).
+  private def pack_file(parts, timing: TIMING, waves: false, timing_packing: "v*")
     slots = parts.transform_values { |notes| records(notes) }.merge(settings: [*SHAPE, HOLDS_FROM].pack("C*"),
-                                                                    timing: timing.pack("v*"))
+                                                                    timing: timing.pack(timing_packing))
     slots[:waves] = WAVES.flatten.pack("C*") if waves
     VBlank::Original::Pack.holding(slots, sha1: Digest::SHA1.hexdigest("made up"), build_version: "1").to_bytes
   end
@@ -96,7 +98,10 @@ module PackScoresAtStartTests
   # notes written by hand. It plays song 0 on A and sound effect 0 on B, or with +plays+ false
   # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
   # handed a way to get one of them for a part's `plays:`, the same way.
-  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, &scores)
+  # +timing_slot+ is the timing slot's shape: its width and whether it goes below zero, and its
+  # byte order where it names one.
+  private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, timing_slot: { width: :half, signed: false },
+                          &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
@@ -106,7 +111,7 @@ module PackScoresAtStartTests
       pack = from && data_pack(from: from, version: "1") do |slots|
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
-        slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
+        slots.numbers :timing, at: TIMING_AT, count: TIMING.length, **timing_slot
         slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
       end
       wave_of = ->(index) { pack ? pack[:waves].wave(index) : test.wave_steps_by_hand(index) }
@@ -276,6 +281,53 @@ module PackScoresAtStartTests
       played = game_player.hand_file(pack_file({ melody: MELODY }, timing: [500, 70])).input_each_frame(&once).run(left_out, frames: 150)
 
       assert_equal wanted.audio, played.audio
+    end
+  end
+
+  # A LOOP POINT WITH EVERY BIT SET IS NONE, as a hold with every bit set is (IR::StartFile.no_loop?):
+  # how a sound driver's unpacking writes a song that ends (Original::Packing::M4A's NO_LOOP). The
+  # song plays once and ends, as the same Score written with `plays_once: true`, and is not heard
+  # again while the game still names it.
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once
+    assert_plays_once_from_pack([84, 0xFFFF], "v*")
+  end
+
+  # Every bit set in each shape of slot: 255 in a byte, -1 in a slot that goes below zero, and
+  # 65535 in two bytes read high byte first, whose length is read in that order too.
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once_in_a_byte_slot
+    assert_plays_once_from_pack([84, 0xFF], "C*", width: :byte, signed: false)
+  end
+
+  def test_a_loop_point_of_minus_one_plays_the_song_once_in_a_signed_slot
+    assert_plays_once_from_pack([84, -1], "s<*", width: :half, signed: true)
+  end
+
+  def test_a_loop_point_of_every_bit_set_plays_the_song_once_in_a_slot_read_high_byte_first
+    assert_plays_once_from_pack([84, 0xFFFF], "n*", width: :half, signed: false, byte_order: :high_first)
+  end
+
+  # The song whose length is 84 ticks and whose loop point is +timing+'s second number, written
+  # into the pack by +packing+ in a slot of +timing_slot+'s shape, with the pack left out: heard as
+  # the same Score written with `plays_once: true`.
+  private def assert_plays_once_from_pack(timing, packing, **timing_slot)
+    parts = { lead: LEAD, low: LOW }
+    slot = timing_slot.empty? ? { width: :half, signed: false } : timing_slot
+    Dir.mktmpdir do |folder|
+      by_hand = scored_game(parts) do |notes_of|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:low), volume: 9)], tempo: 150,
+                            length: 84, plays_once: true)] }
+      end
+      left_out = scored_game(parts, folder: folder, timing_slot: slot) do |notes_of, _settings, read|
+        { songs: [Score.new(parts: [Part.new(notes: notes_of.(:lead)), Part.new(notes: notes_of.(:low), volume: 9)], tempo: 150,
+                            longest: 300, **read)] }
+      end
+      once = ->(frame) { frame == 1 ? [:a] : [] }
+      wanted = game_player.input_each_frame(&once).run(by_hand, frames: 200)
+      file = pack_file(parts, timing: timing, timing_packing: packing)
+      played = game_player.hand_file(file).input_each_frame(&once).run(left_out, frames: 200)
+
+      assert_equal wanted.audio, played.audio
+      assert_equal wanted.mixed_sound, played.mixed_sound
     end
   end
 

@@ -65,7 +65,9 @@ module VBlank
     # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
     # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
     # is then the most ticks the song can last, the one number such a build must know: it holds room
-    # for that many. Any other Score leaves it out, and one that gives it plays as without it.
+    # for that many. Any other Score leaves it out, and one that gives it plays as without it. A
+    # `loop_from:` of the pack with every bit set is no loop (IR::StartFile.no_loop?): the song
+    # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
                         :low_notes_intended, :keeps_voices, :longest)
 

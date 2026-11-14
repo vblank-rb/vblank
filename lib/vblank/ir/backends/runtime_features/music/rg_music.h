@@ -99,7 +99,9 @@ void rg_music_fill_notes(int32_t *music, int32_t *note_sounds, const int32_t *ru
  * last; then 1 where the length is in the file and the four numbers saying where (its place, its
  * bytes, 1 for the high byte first, 1 where it can be below zero), and the same five for the loop
  * tick. A tick below zero is 0; a length below a frame is a frame and one past the most is the
- * most; a loop frame on or past the end is the song's start (IR::StartFile::SongLength#frames_in). */
+ * most; a loop frame on or past the end is the song's start (IR::StartFile::SongLength#frames_in).
+ * A loop tick with every bit set is no loop: the song plays once, which this writes over the
+ * song's number for that, so its parts' notes are then made for a song that does not come round. */
 void rg_music_fill_song_length(int32_t *music, const int32_t *rules, const int32_t *tick_frames);
 
 /* A PART'S WAVE IN THE FILE (IR::StartFile::Wave): sixteen bytes from +at+ on, two steps a byte,

@@ -54,7 +54,18 @@ module VBlank
           pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part
         end
         score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil),
-                   loop_from: pack_setting_value(score.loop_from, "#{verb} reading where a song comes round", nil))
+                   **pack_loop_settings(score.loop_from, "#{verb} reading where a song comes round"))
+      end
+
+      # A Score's `loop_from:` and `plays_once:` for +loop_from+, read here where it is a number of
+      # the pack. One with every bit set is no loop (IR::StartFile.no_loop?), as a sound driver's
+      # unpacking writes a song that ends: the song plays once, as the build that reads the number
+      # as the game starts plays it (IR::StartFile::SongLength#frames_in).
+      def pack_loop_settings(loop_from, subject)
+        return { loop_from: loop_from } unless loop_from.is_a?(DSL::PackNumber)
+
+        tick = pack_setting_value(loop_from, subject, nil)
+        IR::StartFile.no_loop?(tick, loop_from.slot.layout.width) ? { loop_from: nil, plays_once: true } : { loop_from: tick }
       end
 
       def pack_notes?(notes)

@@ -1256,7 +1256,8 @@ def rg_music_fill_notes(music, note_sounds, rules, tick_frames)
     rg_start_file_keep_event(events, rest, total_frames)
   end
 
-  comes_round = rules[RG_NOTES_COMES_ROUND] != 0
+  # A song the file says plays once (rg_music_fill_song_length) does not come round.
+  comes_round = rules[RG_NOTES_COMES_ROUND] != 0 && music[rules[RG_NOTES_SONG_AT] + 2].zero?
   split = 0
   silence = false
   strike = false
@@ -1295,14 +1296,23 @@ RG_LENGTH_LENGTH = 3
 RG_LENGTH_LOOP = 8
 RG_LENGTH_NUMBER_READS = Ractor.make_shareable({ 1 => %w[C C], 2 => %w[v n], 4 => %w[V N] })
 
+# The number of the file the rules from +where+ on name (its place, its bytes, 1 for the high
+# byte first), read as one that cannot be below zero, as rg_start_file_number reads it.
+def rg_start_file_rule_number(rules, where)
+  width = rules[where + 1]
+  @rg_start_file.byteslice(rules[where], width).unpack1(RG_LENGTH_NUMBER_READS.fetch(width)[rules[where + 2]])
+end
+
 # rg_music.c's start_file_tick: the tick the four numbers of +rules+ from +where+ on name.
 def rg_start_file_tick(rules, where)
-  width = rules[where + 1]
-  number = @rg_start_file.byteslice(rules[where], width).unpack1(RG_LENGTH_NUMBER_READS.fetch(width)[rules[where + 2]])
-  top = 1 << ((width * 8) - 1)
+  number = rg_start_file_rule_number(rules, where)
+  top = 1 << ((rules[where + 1] * 8) - 1)
   tick = rules[where + 3] == 1 && number >= top ? number - (top * 2) : number
   tick.clamp(0, 0x7FFFFFFF)
 end
+
+# rg_music.c's start_file_every_bit_set: whether the number the rules from +where+ on name has all its bits set.
+def rg_start_file_every_bit_set?(rules, where) = rg_start_file_rule_number(rules, where) == (1 << (rules[where + 1] * 8)) - 1
 
 def rg_music_fill_song_length(music, rules, tick_frames)
   song = rules[RG_LENGTH_SONG_AT]
@@ -1312,7 +1322,15 @@ def rg_music_fill_song_length(music, rules, tick_frames)
   total = music[song]
   loop_frame = music[song + 1]
   total = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LENGTH + 1)).clamp(1, longest) if rules[RG_LENGTH_LENGTH] != 0
-  loop_frame = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LOOP + 1)) if rules[RG_LENGTH_LOOP] != 0
+  if rules[RG_LENGTH_LOOP] != 0
+    if rg_start_file_every_bit_set?(rules, RG_LENGTH_LOOP + 1)
+      # No loop (IR::StartFile.no_loop?): the song plays once.
+      loop_frame = 0
+      music[song + 2] = 1
+    else
+      loop_frame = frame_of.call(rg_start_file_tick(rules, RG_LENGTH_LOOP + 1))
+    end
+  end
   music[song] = total
   music[song + 1] = loop_frame < total ? loop_frame : 0
 end
