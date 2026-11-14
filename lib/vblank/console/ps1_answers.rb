@@ -90,7 +90,7 @@ module VBlank
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows. On a screen drawn from tiles every " \
                     "list of colours the graphics chip reads is worked out again, once, on a pass that changes them. " \
-                    "A painted screen that fades is drawn with a number for each colour, 128 colours at most. At the " \
+                    "A painted screen that fades is drawn with a number for each colour, 256 colours at most. At the " \
                     "end of each pass, the graphics chip copies it onto the screen through a list of those colours. " \
                     "When the fade changes, the game changes that list. How the chip fades part of the screen (`inside:`, " \
                     "`outside:`, `under:`) is decided when that is made: until then the build refuses it and says so."),

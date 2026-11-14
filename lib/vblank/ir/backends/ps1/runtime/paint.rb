@@ -209,8 +209,8 @@ module VBlank
             # pieces NUMBERS_PIECE_PIXELS pixels wide, each a texture page of its own, as two triangles (GP0 25h,
             # raw: each texel's colour from the table as it is, neither blended nor dithered). A piece reads
             # twice its width in bytes, two a halfword, so each pixel is one halfword of the page: the chip's
-            # rule for which texel a pixel shows (PS1::PolygonFill) puts pixel x of a piece at byte 2x or 2x + 1,
-            # and the number is in both (PaintedNumbers). Its texels are cached by the chip, from before the
+            # rule for which texel a pixel shows (PS1::PolygonFill) puts pixel x of a piece at byte 2x, the low
+            # byte, which holds the number (PaintedNumbers). Its texels are cached by the chip, from before the
             # page was drawn into, so the cache is emptied first.
             NUMBERS_KEPT = %i[s0 s1 s2 s3 s4].freeze
 
