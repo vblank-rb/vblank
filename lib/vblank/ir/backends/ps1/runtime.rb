@@ -77,16 +77,21 @@ module VBlank
                        samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
-            DrawList.reserve_late(memory)
+            # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
+            # after the pass's (Frame#emit_ticks_on_next_page). A screen drawn from tiles is never painted on, unless
+            # the game also hands over to a painted one.
+            ticks_paint_ahead = !frame_begins.nil? && (tiled.nil? || tiled.crosses)
+            DrawList.reserve_late(memory, held_back: ticks_paint_ahead)
             shown_by = Paint.shown_by(by_number: by_number, over_picture: over_picture)
             Boot.emit(asm, memory, main: main)
             DrawList.emit(asm, memory, faces: faces, triangles: by_number)
             Int32.emit(asm)
-            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by, ticks_paint_ahead: !frame_begins.nil?,
+            Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by, ticks_paint_ahead: ticks_paint_ahead,
                                     crosses: tiled ? tiled.crosses : false)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
-            Paint.emit(asm, memory, faces: faces, shown_by: shown_by)
+            # The wait places the sprites over a tear-free picture before the timers (Frame#emit_ticks_on_next_page).
+            Paint.emit(asm, memory, faces: faces, shown_by: shown_by, placed_before_ticks: ticks_paint_ahead)
             Tiles.emit(asm, memory, screen: tiled, faces: faces, colors: colors) if tiled
             Tiles.emit_sprite_places(asm, memory) if over_picture
             Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors

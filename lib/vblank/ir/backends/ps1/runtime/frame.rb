@@ -116,15 +116,14 @@ module VBlank
             # copied onto the page shown by that routine of Paint's, a pass that stops too.
             #
             # +ticks_paint_ahead+ for a game with timers whose screen can be a tear-free painted one, whose
-            # handlers then paint on the page after the pass's (#emit_ticks_on_next_page); +crosses+ for one
-            # that hands over between painted screens and screens drawn from tiles (Tiles::TILES_UP).
+            # handlers then paint on the page after the pass's (#emit_ticks_on_next_page), its lists held back
+            # meanwhile (DrawList::HELD_BACK); +crosses+ for one that hands over between painted screens and
+            # screens drawn from tiles (Tiles::TILES_UP).
             def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_interrupt(asm, at)
-              # A screen drawn from tiles is never painted on, unless the game also hands over to a painted one.
-              paint_ahead = ticks_paint_ahead && (crosses || !tiles)
-              emit_wait(asm, at, sound, tiles, shown_by, paint_ahead)
-              emit_ticks_on_next_page(asm, at, crosses) if paint_ahead
+              emit_wait(asm, at, sound, tiles, shown_by, ticks_paint_ahead)
+              emit_ticks_on_next_page(asm, memory, crosses, shown_by) if ticks_paint_ahead
               emit_show_pass(asm, at)
               emit_read_buttons(asm, at)
               emit_stopping(asm, at, tiles, shown_by)
@@ -241,16 +240,25 @@ module VBlank
             #
             # The handler's commands stay in the list (Runtime::DrawList) until the next pass ends: the other
             # page is the one on the screen until the blank, and drawing on it now would show for the rest of
-            # the frame. A handler that fills the list, or draws something long the list is sent for at once,
-            # sends some of it before the blank.
+            # the frame. So the list is held back while the timers run: a full one goes on into a region of its
+            # own rather than being sent, and one the list is sent for at once is left in it (DrawList::HELD_BACK).
+            # Only a handler that fills that region too sends some of its drawing before the blank.
+            #
+            # Sprites over the picture (+shown_by+ Paint's rt_paint_sprites_shown) are placed at the page trade too,
+            # from the numbers the pass finished with, before the timers run (Reference#advance_frame): what a
+            # handler moves shows a frame later. So they are placed here, and Paint's routine places none again.
             #
             # rt_painted_pages_up: v0 = 1 while a painted screen of two pages is up, and nought on one page or
             # on a screen drawn from tiles (+crosses+, Tiles::TILES_UP), which is drawn whole after the timers.
-            def emit_ticks_on_next_page(asm, at, crosses)
+            def emit_ticks_on_next_page(asm, memory, crosses, shown_by)
+              at = ->(name) { Runtime.at(memory, name) }
               asm.label("rt_wait_ticks_on_next_page")
+              asm.jal(Lowering::Picture::SPRITES_OVER_PICTURE) if shown_by == "rt_paint_sprites_shown"
               asm.jal("rt_draw_list_finish")
               emit_page_traded(asm, at)
+              DrawList.emit_held_back_open(asm, memory)
               asm.jal("rt_frame_begins_unless_last")
+              DrawList.emit_held_back_close(asm, memory)
               emit_page_traded(asm, at)
               asm.b("rt_wait_published")
 

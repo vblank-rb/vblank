@@ -92,8 +92,10 @@ module VBlank
 
             # +faces+ is whether the game fills the faces of a place, which leave the chip's drawing area
             # and texture window set for the next face (Faces#emit_chip_put_back_routine): then a fill and a
-            # blit give the chip its own back first. +shown_by+ is #shown_by's routine, or nil.
-            def emit(asm, memory, faces: false, shown_by: nil)
+            # blit give the chip its own back first. +shown_by+ is #shown_by's routine, or nil. +placed_before_ticks+
+            # for a game whose wait places the sprites over a tear-free picture itself, before its timers
+            # (Frame#emit_ticks_on_next_page), so rt_paint_sprites_shown places none.
+            def emit(asm, memory, faces: false, shown_by: nil, placed_before_ticks: false)
               at = ->(name) { Runtime.at(memory, name) }
               emit_start(asm, at)
               emit_area(asm, at)
@@ -101,7 +103,7 @@ module VBlank
               emit_blit(asm, at, faces)
               emit_pages(asm, at, !shown_by.nil?)
               emit_numbers_shown(asm, at) if shown_by == "rt_paint_numbers_shown"
-              emit_sprites_shown(asm, at) if shown_by == "rt_paint_sprites_shown"
+              emit_sprites_shown(asm, at, placed_before_ticks) if shown_by == "rt_paint_sprites_shown"
               emit_upload(asm)
               emit_patches(asm, at)
             end
@@ -125,7 +127,7 @@ module VBlank
             # drawn on.
             SPRITES_SHOWN_STACK_WORDS = 5
 
-            def emit_sprites_shown(asm, at)
+            def emit_sprites_shown(asm, at, placed_before_ticks)
               h = Console::PS1Hardware
               word = ->(index) { DrawList.word_offset_bytes(index) }
               drawn = at.call(Tiles::DRAWN)
@@ -146,11 +148,14 @@ module VBlank
               # (Lowering::Picture#sprites_over_picture_section), where a pass's page is published (a1 not nought):
               # a game that stops publishes none, and the interpreter places nothing again there. The game's code
               # changes the saved registers without keeping them, so the page drawn on waits on the stack meanwhile.
+              # A game with timers has placed them already, before the timers ran (+placed_before_ticks+).
               asm.sw(:a0, put_back.call(SPRITES_SHOWN_STACK_WORDS), :sp)
-              asm.beq(:a1, :zero, "rt_paint_sprites_shown_placed")
-              asm.lw(:t0, at.call(PAGED), :gp)
-              asm.beq(:t0, :zero, "rt_paint_sprites_shown_placed")
-              asm.jal(Lowering::Picture::SPRITES_OVER_PICTURE)
+              unless placed_before_ticks
+                asm.beq(:a1, :zero, "rt_paint_sprites_shown_placed")
+                asm.lw(:t0, at.call(PAGED), :gp)
+                asm.beq(:t0, :zero, "rt_paint_sprites_shown_placed")
+                asm.jal(Lowering::Picture::SPRITES_OVER_PICTURE)
+              end
               asm.label("rt_paint_sprites_shown_placed")
               # s2: the page shown that is not up, its top line; s3: the page drawn on.
               asm.lw(:s3, put_back.call(SPRITES_SHOWN_STACK_WORDS), :sp)

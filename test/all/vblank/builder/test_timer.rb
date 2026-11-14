@@ -320,6 +320,44 @@ class TestTimer < Minitest::Test
     assert_equal Color.resolve(:blue), game_player.run(b.program, frames: 6).screen.pixel(44, 44)
   end
 
+  # ...AND WHAT IT DRAWS WAITS FOR THE PAGE AFTER, however much it draws: a hundred and fifty squares are more
+  # than a console keeps waiting at once, and none of them shows over the blue.
+  def test_a_handler_drawing_much_on_a_tear_free_screen_draws_on_the_page_being_drawn
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        repeat(150) { |i| draw_rect_at (i % 15) * 16, (i / 15) * 16, 8, 8, :red }
+      end
+      game_loop { clear_screen :blue }
+    end
+
+    screen = game_player.run(b.program, frames: 6).screen
+    assert_equal [Color.resolve(:blue)] * 2, [screen.pixel(2, 2), screen.pixel(226, 146)]
+  end
+
+  # A SPRITE OVER A TEAR-FREE PICTURE THAT A HANDLER MOVES shows where the pass left it, on that pass's
+  # frame: the frame boundary places it before the handler runs, and the handler's move shows a frame later.
+  def test_a_handler_moving_a_sprite_over_a_tear_free_picture
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image(:dot, "R" => :red) { "RRRR\nRRRR\nRRRR\nRRRR" }
+      dot = sprite :dot, at: [20, 60], over_picture: true
+      beat = timer :beat, per_second: 60
+      beat.on_tick { dot.x += 8 }
+      game_loop { clear_screen :blue }
+    end
+    b.finalize_program
+
+    seen = []
+    run = game_player
+    run.each_vblank { (seen << (0...240).find { |x| run.screen.pixel(x, 61) == Color.resolve(:red) }) }
+       .run(b.program, frames: 6)
+    assert_equal [20, 28, 36, 44, 52, 60], seen
+  end
+
   # A HANDLER READS THE BUTTONS of the frame it ticks on: A held for three frames is three ticks
   # holding it and one press, and a tap later is one more of each.
   def test_a_handler_reads_the_buttons_of_its_frame
