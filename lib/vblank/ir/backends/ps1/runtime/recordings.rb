@@ -212,9 +212,10 @@ module VBlank
             end
 
             # rt_recordings_take (s0 = the row's address, s1 = the place's offset): the row's recording into
-            # the place from its start, at full or at nothing to climb from by its shape
-            # (Reference::Mixer#recording_fields); its voice told where the recording starts, its pitch and
-            # loudness, and started at the frame boundary. TAKEN says which place.
+            # the place from its start: at full, at nothing to climb from by its shape
+            # (Reference::Mixer#recording_fields), or, for the game's own shaped sound, one step up its
+            # shape. Its voice told where the recording starts, its pitch and loudness, and started at
+            # the frame boundary. TAKEN says which place.
             def emit_take(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_take")
@@ -239,7 +240,17 @@ module VBlank
               asm.sw(:t1, place.call(LEVEL), :t9)
               asm.b("rt_recordings_take_voice")
               asm.label("rt_recordings_take_level")
-              asm.sw(:zero, place.call(LEVEL), :t9) # a shape climbs from nothing
+              asm.sw(:zero, place.call(LEVEL), :t9) # a song's or an effect's shape climbs from nothing
+              # ...and the game's own sound takes its shape's first step as it is played
+              # (Reference::Mixer#step_shape_at_start): its attack, which reaches full only when it is 255.
+              asm.lw(:t1, place.call(OWNER), :t9)
+              asm.bne(:t1, :zero, "rt_recordings_take_voice")
+              asm.andi(:t1, :t0, 0xFF) # the attack
+              asm.sw(:t1, place.call(LEVEL), :t9)
+              asm.li(:t2, FULL)
+              asm.bne(:t1, :t2, "rt_recordings_take_voice")
+              asm.li(:t1, HOLDING)
+              asm.sw(:t1, place.call(PHASE), :t9)
               asm.label("rt_recordings_take_voice")
               emit_voice_number(asm, :a0)
               asm.sll(:t3, :a0, 4)

@@ -79,6 +79,15 @@ module VBlank
       # fraction a loudness keeps (Sound::LOUDNESS_FRACTION), both dropped.
       WHOLE_GAIN_SHIFT = SCALE + Sound::LOUDNESS_FRACTION
 
+      # The gain a shaped note at +loudness+ (out of 512) has at +level+, with Sound::GAIN_FRACTION
+      # bits of fraction under it, all of them nought. The level is a byte and the scale out of
+      # 256, so its own top bit is added back in: a full 255 counts as 256, the loudness whole.
+      # The interpreter's mix and the Advance's build both work it out here; each runtime writes it
+      # again in its own language.
+      def self.whole_gain(loudness, level)
+        ((loudness * (level + (level >> 7))) >> WHOLE_GAIN_SHIFT) << Sound::GAIN_FRACTION
+      end
+
       # AS IT WAS WITHOUT AN ENVELOPE: full at once, no fall, and it stops the instant the note
       # ends. So `envelope: {}` changes nothing, and each key you write changes one thing.
       PLAIN = { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.0 }.freeze

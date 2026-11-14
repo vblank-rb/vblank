@@ -94,6 +94,40 @@ module NoteEnvelopeVoiceTests
                  "and in the end it is over, and its voice goes back"
   end
 
+  # A NOTE THE GAME PLAYS ITSELF starts its shape as it is played, the way a key struck on an
+  # instrument sounds at once: as it is played its shape has moved on once, so the first frame it
+  # is heard in is at that level, and it moves on once a frame from there. So an attack of 255 is
+  # full in the very first frame, and a recording shorter than a frame is heard, not mixed at
+  # nothing.
+  CLIMBING_ENVELOPE = VBlank::Audio::Envelope.new(attack: 100, decay: 200, sustain: 120, release: 110)
+
+  private def struck_game
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      keys = instrument :keys, pcm: RECORDING, rate: RATE, note: :C4, envelope: CLIMBING_ENVELOPE
+      pass = 0
+      game_loop do
+        pass += 1
+        keys.play(:E4) if pass == 3
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_shaped_instrument_the_game_plays_starts_its_shape_as_it_is_played
+    program = struck_game
+    first = (1..8).find { |frames| game_player.run(program, frames: frames).active_samples.include?(:keys) }
+    refute_nil first, "the note never sounded"
+
+    levels = (first..(first + 1)).map { |frames| game_player.run(program, frames: frames).level_of(:keys) }
+
+    # An attack of 100 climbs 100 a frame: one step as it is played, then a second.
+    assert_equal [100, 200], levels, "the shape moves on once as the note is played, and once a frame after"
+  end
+
   # --- the voices a falling note holds, which every backend has to agree about ---
 
   # What the run has sounding +frames+ in, and what it could not play.

@@ -350,14 +350,25 @@ module VBlank
                 asm.sta(place.call(PLACE_SIDES))
                 asm.ldx(at.call(ROW))
               end
-              # Its shape: one with none sounds at full from its first sample; one with a shape starts at
-              # nothing and climbs (Reference::Mixer#recording_fields).
+              # Its shape: one with none sounds at full from its first sample; a song's or an effect's
+              # note with a shape starts at nothing and climbs (Reference::Mixer#recording_fields), and
+              # the game's own sound takes its shape's first step as it is played
+              # (Reference::Mixer#step_shape_at_start): its attack, which reaches full only when it is 255.
               asm.lda(row.call(SHAPED))
               asm.and_a(SHAPED_BIT) if memory.reserved?(CHIP_ENVELOPES)
               asm.beq("rt_recordings_take_plain")
               asm.lda(0)
               asm.sta(place.call(LEVEL))
               asm.lda(CLIMBING)
+              asm.sta(place.call(PHASE))
+              asm.lda(place.call(OWNER))
+              asm.bne("rt_recordings_take_shaped")
+              asm.lda(place.call(PLACE_AD))
+              asm.and_a(0xFF) # the attack
+              asm.sta(place.call(LEVEL))
+              asm.cmp(FULL)
+              asm.bne("rt_recordings_take_shaped")
+              asm.lda(HOLDING)
               asm.sta(place.call(PHASE))
               asm.bra("rt_recordings_take_shaped")
               asm.label("rt_recordings_take_plain")

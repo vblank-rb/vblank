@@ -649,7 +649,7 @@ module VBlank
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_LOOP))         # how far back at the end
               @emitter.emit(ASM.load_immediate(TMP, MIX_LEVELS.fetch(node.volume, MIX_LEVELS[:full])))
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_VOL))          # slot.volume (0..512 loudness)
-              emit_start_envelope(0, TMP, sample.envelope) if @uses_envelopes
+              emit_start_envelope(0, TMP, sample.envelope, MIX_LEVELS.fetch(node.volume, MIX_LEVELS[:full])) if @uses_envelopes
               @emitter.emit(ASM.load_immediate(TMP, voice_step(node, sample)))
               @emitter.emit(ASM.str_offset(TMP, 0, SLOT_STEP))         # slot.step (pitch + rate, 16.16)
               @emitter.emit(ASM.load_immediate(TMP, 0))
@@ -676,25 +676,34 @@ module VBlank
             held.positive? ? held : sample.length
           end
 
-          # THE FOUR NUMBERS AND WHERE THE NOTE STARTS, written onto a voice that is about to
-          # sound. A voice with no envelope writes 0 for the four, which is what tells the pass
-          # before the mix to leave it alone — its gain is its loudness, and moves only when the
-          # music volume does.
+          # THE FOUR NUMBERS AND WHERE THE SOUND STARTS, written onto a voice the game is about to
+          # sound at +loudness+ (out of 512). A voice with no envelope writes 0 for the four, which
+          # is what tells the pass before the mix to leave it alone — its gain is its loudness, and
+          # moves only when the music volume does.
+          #
+          # A SHAPED SOUND STARTS ITS SHAPE AS IT IS PLAYED (Reference::Mixer#start): the game plays
+          # in its pass, after the pass that moves the shapes and before the frame's mix, so one
+          # started at nothing would be mixed once at nothing — a strike at full silent for a frame,
+          # and a recording shorter than a frame never heard. So it starts one step up, at the level
+          # its attack gives it, and its gain there with no slide (Audio::Envelope.whole_gain). The
+          # shape and the volume are both known as the game is built, so the level, the phase and
+          # the gain are numbers the build works out, and the voice is only told them.
           # +slot+ holds the voice's address and +scratch+ is a register free to be clobbered.
-          def emit_start_envelope(slot, scratch, envelope)
+          def emit_start_envelope(slot, scratch, envelope, loudness)
             shape = envelope && !envelope.plain? ? envelope : nil
+            level, phase = shape ? shape.step(0, VBlank::Audio::Envelope::CLIMBING) : [VBlank::Audio::Envelope::FULL, nil]
             @emitter.emit(ASM.load_immediate(scratch, shape ? shape.packed : 0))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_ENV))
-            @emitter.emit(ASM.load_immediate(scratch, shape ? 0 : VBlank::Audio::Envelope::FULL))
-            @emitter.emit(ASM.str_offset(scratch, slot, SLOT_LEVEL)) # a shaped note climbs from nothing
-            @emitter.emit(ASM.load_immediate(scratch, PHASE_CLIMBING))
+            @emitter.emit(ASM.load_immediate(scratch, level))
+            @emitter.emit(ASM.str_offset(scratch, slot, SLOT_LEVEL))
+            @emitter.emit(ASM.load_immediate(scratch, phase == VBlank::Audio::Envelope::HOLDING ? PHASE_HOLDING : PHASE_CLIMBING))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_PHASE))
-            # The gain the mix reads, and no slide. A shaped note is climbed by the pass before the
-            # first mix, which is the same frame, so nothing of the note is lost by starting it at
-            # nothing.
+            # The gain the mix reads, and no slide.
             @emitter.emit(ASM.load_immediate(scratch, 0))
             @emitter.emit(ASM.str_offset(scratch, slot, SLOT_RAMP))
-            unless shape
+            if shape
+              @emitter.emit(ASM.load_immediate(scratch, VBlank::Audio::Envelope.whole_gain(loudness, level)))
+            else
               @emitter.emit(ASM.ldr_offset(scratch, slot, SLOT_VOL))
               @emitter.emit(ASM.lsl_imm(scratch, scratch, LOUDNESS_TO_GAIN))
             end

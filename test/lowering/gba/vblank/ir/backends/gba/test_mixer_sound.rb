@@ -23,7 +23,7 @@ require "zlib"
 # it. A change to the code the game loop is lowered to takes the number again too, once the game is
 # seen to make the same plays on the same frames.
 class TestMixerSound < Minitest::Test
-  PLAYED = 0x5B36A1B8
+  PLAYED = 0x3855D4F8
 
   private def rom
     VBlank.build("MIXSAME", console: :gba, out: nil, err: nil) do

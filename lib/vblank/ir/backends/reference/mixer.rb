@@ -203,6 +203,14 @@ module VBlank
           # falls silent there. It takes the first free voice, as the console does; with none
           # free, the quietest note of a song or an effect that is falling away (see
           # #start_music_note); with none of those either, the new one is dropped.
+          #
+          # A SOUND WITH A SHAPE STARTS IT AS IT IS PLAYED, the way a key struck on an instrument
+          # sounds at once: its shape moves on once here, and its gain starts at that level. The
+          # game plays in its pass, after the shapes have moved for the frame and before the frame's
+          # mix, so a sound started at nothing would be mixed once at nothing: an attack of 255,
+          # full at once, would be silent for a frame, and a recording shorter than a frame would
+          # never be heard. A song's note does the same in its own way: the tune starts it just
+          # before the shapes move, so it too has climbed once before it is first mixed.
           def start(node)
             info = sample_info(node.name)
             @log << [:sample, node.name]
@@ -210,11 +218,21 @@ module VBlank
 
             frequency = Audio::Music::NOTE_FREQUENCIES.fetch(node.pitch || info.note || :C4)
             back = node.loop ? (info.loop_length.positive? ? info.loop_length : info.length) : 0
-            @slots[free] = Voice.new(name: node.name, owner: GAME, volume: node.volume,
-                                     ticket: [node.loop ? 1 : 0, @tickets += 1],
-                                     **recording_fields(node.name, frequency, back,
-                                                        LOUDNESS.fetch(node.volume, LOUDNESS[:full]), info.envelope))
+            voice = Voice.new(name: node.name, owner: GAME, volume: node.volume,
+                              ticket: [node.loop ? 1 : 0, @tickets += 1],
+                              **recording_fields(node.name, frequency, back,
+                                                 LOUDNESS.fetch(node.volume, LOUDNESS[:full]), info.envelope))
+            step_shape_at_start(voice) if voice.envelope
+            @slots[free] = voice
             record_peak_voices
+          end
+
+          # The first step of a sound's shape, as the game plays it (see #start): the level its
+          # attack gives it, and its gain there with no slide.
+          def step_shape_at_start(voice)
+            voice.level, voice.phase = voice.envelope.step(voice.level, voice.phase)
+            voice.gain = VBlank::Audio::Envelope.whole_gain(voice.loudness, voice.level)
+            voice.ramp = 0
           end
 
           # A VOICE AT THE TOP OF RECORDING +name+, read at +frequency+, going +back+ at its end,
@@ -456,8 +474,7 @@ module VBlank
           # gain rounded to the nearest whole loudness — and a note at nothing is at nothing, not
           # a little below it.
           def slide_gain(voice, first)
-            level = voice.level
-            target = ((voice.loudness * (level + (level >> 7))) >> VBlank::Audio::Envelope::WHOLE_GAIN_SHIFT) << GAIN_FRACTION
+            target = VBlank::Audio::Envelope.whole_gain(voice.loudness, voice.level)
             voice.gain = first ? target : IR::Mixing.nearest_whole_gain(voice.gain)
             share = IR::Mixing.slide_share(@clock.samples_a_frame)
             voice.ramp = (((target - voice.gain) >> RAMP_SPLIT) * share) >> RAMP_SPLIT

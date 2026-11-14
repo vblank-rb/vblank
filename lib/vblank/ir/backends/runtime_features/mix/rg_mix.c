@@ -218,6 +218,17 @@ static void start_voice(int32_t at, int32_t recording, int32_t step, int32_t bac
                            .release = shape[4]};
 }
 
+static void step_shape(mix_voice *voice);
+static void slide_gain(mix_voice *voice, int32_t first);
+
+/* Reference::Mixer#step_shape_at_start: a sound the game plays with a shape takes its shape's first step
+ * as it is played, its gain at that level with no slide, so it has climbed before it is first
+ * mixed, as a song's note has. */
+static void step_shape_at_start(mix_voice *voice) {
+  step_shape(voice);
+  slide_gain(voice, 1);
+}
+
 static int32_t tickets; /* how many sounds the game has started */
 
 void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back, int32_t loops) {
@@ -230,6 +241,7 @@ void rg_mix_play(int32_t recording, int32_t step, int32_t loudness, int32_t back
   }
 
   start_voice(at, recording, step, back, loudness, &recording_numbers(recording)[2]);
+  if (voices[at].shaped) step_shape_at_start(&voices[at]);
   voices[at].loops = loops;
   voices[at].ticket = ++tickets;
   spu_recording_struck(at, 1);

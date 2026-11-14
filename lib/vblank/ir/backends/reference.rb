@@ -1407,7 +1407,8 @@ module VBlank
           # starts; the mix is made as the next picture starts, after the pass. So what the game
           # plays or stops in its pass is in the very next slice, and a note the tune starts has
           # climbed before it is heard (see GBA::Mixer#emit_envelope_step) — and a sound the game
-          # starts with a shape is mixed once at nothing before its shape first moves it.
+          # starts with a shape takes its shape's first step as it is played, so it has climbed
+          # before it is heard too (Mixer#start).
           took.times do
             @mixer.mix
             # A program that never called `music_volume` has no level, rather than a level of 0.

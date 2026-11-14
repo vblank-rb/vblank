@@ -175,6 +175,13 @@ def rg_mix_start_voice(voice_at, recording, step, back, loudness, shape, at)
   @rg_mix_voices[voice_at] = voice
 end
 
+# rg_mix.c's step_shape_at_start: a sound the game plays with a shape takes its shape's first step as it
+# is played, its gain at that level with no slide.
+def rg_mix_step_shape_at_start(voice)
+  rg_mix_step_shape(voice)
+  rg_mix_slide_gain(voice, true)
+end
+
 def rg_mix_play(recording, step, loudness, back, loops)
   rg_sound_log("sample #{recording}")
   at = rg_mix_free_voice
@@ -182,6 +189,7 @@ def rg_mix_play(recording, step, loudness, back, loops)
   return rg_mix_record_drop if at < 0
 
   rg_mix_start_voice(at, recording, step, back, loudness, @rg_game_recordings, rg_recording_numbers(recording) + 2)
+  rg_mix_step_shape_at_start(@rg_mix_voices[at]) if @rg_mix_voices[at].shaped != 0
   @rg_mix_voices[at].loops = loops
   @rg_mix_voices[at].ticket = (@rg_mix_tickets += 1)
   rg_spu_recording_struck(at, true)
