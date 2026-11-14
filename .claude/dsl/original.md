@@ -71,8 +71,10 @@ from that copy. The game's code says each piece's shape and size; it never depen
     build that reads its pack as the game starts makes room for. **A loop tick with every bit set is no
     loop** (65535 in a slot of two bytes, 255 in one, -1 in a signed one): the song plays once and ends,
     as one written with `plays_once: true`, so one Score line serves a song that comes round and one that
-    ends, and the unpacking decides which. Built all-in-one or with the pack left out, it plays the same
-    (`IR::StartFile.no_loop?`). **A driver that runs once a frame**
+    ends, and the unpacking decides which. A loop tick from the pack at or past the song's end comes round
+    to the start, and one below 0 is 0: the pack is the player's, so only a `loop_from:` the game writes
+    is refused. Built all-in-one or with the pack left out, both play the same (`IR::StartFile.no_loop?`,
+    `IR::StartFile::SongLength#frames_in`). **A driver that runs once a frame**
     writes its notes a tick a frame, and its Score says `tempo: 3600, ticks_per_beat: 1`, which puts
     each tick on its own frame. That is the whole of what VBlank asks of a port's sound driver: a port
     with a driver of its own writes these in its unpacking routine and needs nothing more (worked

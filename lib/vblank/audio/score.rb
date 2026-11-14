@@ -108,6 +108,15 @@ module VBlank
         song.merge(loop_frame: frames.at(loop_from))
       end
 
+      # Whether the song can come round to +tick+: one before its end, counted in ticks and in the
+      # frames they fall on, as #to_song asks of `loop_from:`. Builder::PackScores asks it of a loop
+      # point read from the pack, which it holds rather than refuses.
+      def comes_round_to?(tick)
+        frames = Timing.new(self)
+        ticks = length || last_tick
+        tick < ticks && frames.at(tick) < [frames.at(ticks), 1].max
+      end
+
       private def last_tick
         parts.flat_map(&:notes).map { |note| note.at + (note.length || ticks_per_beat) }.max || 0
       end

@@ -570,8 +570,8 @@ module VBlank
       # `longest:`), which the song holds as its length until the file is read, so every room a
       # build makes for the song is room enough.
       #
-      # The file is the player's, so nothing in it stops the game, where the build that holds the
-      # same numbers refuses them (#frames_in).
+      # The file is the player's, so nothing in it stops the game (#frames_in). The all-in-one build
+      # holds a loop tick read from its pack by the same rule (Builder::PackScores#pack_loop_settings).
       #
       # A LOOP TICK WITH EVERY BIT SET IS NONE (.no_loop?): 65535 in two bytes, as a sound driver's
       # unpacking writes a song that ends. The song plays once, as one written with `plays_once:

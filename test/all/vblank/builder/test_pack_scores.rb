@@ -35,11 +35,11 @@ class TestPackScores < Minitest::Test
     record.bytes_of(written, count: MOST)
   end
 
-  private def original(folder)
-    copy = "\0".b * (TIMING_AT + (2 * TIMING.length))
+  private def original(folder, timing: TIMING)
+    copy = "\0".b * (TIMING_AT + (2 * timing.length))
     copy[MELODY_AT, MOST * VBlank::Original::PackNote::BYTES] = records(MELODY)
     copy[BASS_AT, MOST * VBlank::Original::PackNote::BYTES] = records(BASS)
-    copy[TIMING_AT, 2 * TIMING.length] = TIMING.pack("v*")
+    copy[TIMING_AT, 2 * timing.length] = timing.pack("v*")
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
     VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :snes,
@@ -51,8 +51,9 @@ class TestPackScores < Minitest::Test
   # +views+ keeps both parts' records as one slot of bytes, and reads each through a view of notes
   # (DSL::PackSlot#as_notes), the second to the slot's end.
   # +timed+ reads the song's length and loop from the pack (TIMING), where the game by hand writes
-  # the same length and `plays_once: true`.
-  private def song_game(from = nil, views: false, timed: false)
+  # the same length and `plays_once: true`, or with +comes_round+ the same length coming round to
+  # its start.
+  private def song_game(from = nil, views: false, timed: false, comes_round: false)
     b = Builder.new
     b.instance_eval do
       pack = if from
@@ -73,7 +74,10 @@ class TestPackScores < Minitest::Test
       timing = pack[:timing] if timed && pack
       melody = pack ? pack[:melody] : MELODY.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
       bass = pack ? pack[:bass].notes : BASS.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
-      ends = timing ? { length: timing.number(0), loop_from: timing.number(1) } : { length: (TIMING[0] if timed), plays_once: true }
+      ends = if timing then { length: timing.number(0), loop_from: timing.number(1) }
+             elsif comes_round then { length: TIMING[0] }
+             else { length: (TIMING[0] if timed), plays_once: true }
+             end
       music = songs :music, [Score.new(parts: [Part.new(notes: melody, volume: 12), Part.new(notes: bass, volume: 10)],
                                        tempo: 150, **ends)]
       music.play 0
@@ -99,6 +103,19 @@ class TestPackScores < Minitest::Test
     Dir.mktmpdir do |folder|
       wanted = game_player.run(song_game(timed: true), frames: 200).audio
       played = game_player.run(song_game(original(folder), timed: true), frames: 200).audio
+
+      assert_equal wanted, played
+    end
+  end
+
+  # The pack is the player's, so a loop point past the song's end read from it is held as a build
+  # reading the pack as the game starts holds it (IR::StartFile::SongLength#frames_in): the song
+  # comes round to its start, as the same Score written with no `loop_from:`. A loop point the game
+  # writes itself past the end is still refused.
+  def test_a_loop_point_past_the_end_from_the_pack_comes_round_to_the_start
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(song_game(timed: true, comes_round: true), frames: 250).audio
+      played = game_player.run(song_game(original(folder, timing: [96, 200]), timed: true), frames: 250).audio
 
       assert_equal wanted, played
     end
