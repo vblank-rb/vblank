@@ -35,6 +35,7 @@ class TestNativeListWidths < Minitest::Test
       ring.push 4
       ring.push 5
       ring.push 6
+      words[3] = words[2]
       halt
     end
     builder.finalize_program
@@ -49,6 +50,19 @@ class TestNativeListWidths < Minitest::Test
     assert_match(/static int8_t \w*bytes\w*\[1000\];/, text)
     assert_match(/static int16_t \w*halves\w*\[1000\];/, text)
     assert_match(/static int32_t \w*words\w*\[1000\];/, text)
+  end
+
+  # The game's own reads and writes name the list's width in the C, so a list of whole numbers
+  # is read as one with no test of its width on the way: a game's lists cost what they did
+  # before narrow lists were kept narrow.
+  def test_each_read_and_write_of_a_list_names_its_width_in_the_c
+    text = c_text(lists_program)
+
+    assert_match(/rg_list_set_int8\(&\w*bytes\w*,/, text)
+    assert_match(/rg_list_set_int16\(&\w*halves\w*,/, text)
+    assert_match(/rg_list_set_int32\(&\w*words\w*,/, text)
+    assert_match(/rg_list_push_int8\(&\w*ring\w*,/, text)
+    assert_match(/rg_list_get_int32\(&\w*words\w*,/, text)
   end
 
   def test_a_run_to_its_end_holds_each_list_as_the_interpreter_does

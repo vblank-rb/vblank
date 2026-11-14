@@ -757,9 +757,9 @@ module VBlank
           def lower_list_new(node)
             [node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)]
           end
-          def lower_list_push(node) = [list_call("rg_list_push", node, value(node.value))]
+          def lower_list_push(node) = [list_call(item_access_function("rg_list_push", node.name), node, value(node.value))]
           def lower_list_drop(node) = [list_call("rg_list_drop", node, Statements::Int.new(node.from == :front ? 1 : 0))]
-          def lower_list_set(node) = [list_call("rg_list_set", node, value(node.index), value(node.value))]
+          def lower_list_set(node) = [list_call(item_access_function("rg_list_set", node.name), node, value(node.index), value(node.value))]
 
           def lower_list_fill(node)
             [list_call("rg_list_fill", node, value(node.from), value(node.count), value(node.value))]
@@ -781,6 +781,11 @@ module VBlank
           def list_call(function, node, *args)
             Statements::Eval.new(call(function, Statements::AddressOf.new(list(node.name)), *args))
           end
+
+          # The runtime function that reads or writes one item of the list +name+ (rg_list_get,
+          # rg_list_set, rg_list_push). Every runtime takes the one name; a runtime with a function
+          # for each width of item names it here (Native::Lowering).
+          def item_access_function(function, _name) = function
 
           # --- values ---
 
@@ -872,7 +877,9 @@ module VBlank
             Statements::Index.new(@names.of(:table, node.name), safe)
           end
 
-          def value_of_list_get(node) = call("rg_list_get", Statements::AddressOf.new(list(node.name)), value(node.index))
+          def value_of_list_get(node)
+            call(item_access_function("rg_list_get", node.name), Statements::AddressOf.new(list(node.name)), value(node.index))
+          end
           def value_of_list_len(node) = call("rg_list_length", Statements::AddressOf.new(list(node.name)))
 
           # One byte of a named piece of data. The index is a number written in the program, so

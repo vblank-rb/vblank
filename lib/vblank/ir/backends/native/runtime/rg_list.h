@@ -11,7 +11,14 @@
  * int8_t, a byte an item, so a port's pack of hundreds of megabytes costs its own size and not
  * four times it. rg_list_load and rg_list_store are what know the width.
  *
- * Must: read and write +items+ only through rg_list_load and rg_list_store.
+ * The game's own reads and writes of one item call a function for the list's width
+ * (rg_list_get_int32, rg_list_set_int8, rg_list_push_int16), which the lowering picks from the
+ * list's declaration (Native::Lowering#item_access_function). So a list of whole numbers is read
+ * with no test of its width: a test on every read made a loop over lists of whole numbers
+ * measurably slower than before narrow lists were kept narrow.
+ *
+ * Must: read and write +items+ only through rg_list_load and rg_list_store, or a typed function
+ * whose type is the list's width.
  *
  * What the interpreter refuses — pushing onto a full list, dropping from an empty one,
  * reading past the last item — stops the program here with the same plain message, through
@@ -103,6 +110,29 @@ static inline void rg_list_set(rg_list *list, int32_t index, int32_t value) {
   rg_list_check_index(list, index);
   rg_list_store(list, rg_list_slot(list, index), value);
 }
+
+/* rg_list_get, rg_list_set and rg_list_push for a list whose items are +type+_t, each number
+ * kept through +fit+ (nothing for a whole number). Each checks and faults as the one above. */
+#define RG_LIST_TYPED_ACCESS(type, fit)                                                                  \
+  static inline int32_t rg_list_get_##type(const rg_list *list, int32_t index) {                         \
+    rg_list_check_index(list, index);                                                                    \
+    return ((const type##_t *)list->items)[rg_list_slot(list, index)];                                   \
+  }                                                                                                      \
+  static inline void rg_list_set_##type(rg_list *list, int32_t index, int32_t value) {                   \
+    rg_list_check_index(list, index);                                                                    \
+    ((type##_t *)list->items)[rg_list_slot(list, index)] = (type##_t)fit(value);                         \
+  }                                                                                                      \
+  static inline void rg_list_push_##type(rg_list *list, int32_t value) {                                 \
+    if (list->length >= list->capacity)                                                                  \
+      rg_fault("list :%s is full (capacity %d): drop an item first, or give it a larger capacity",       \
+               list->name, (int)list->capacity);                                                         \
+    ((type##_t *)list->items)[rg_list_slot(list, list->length)] = (type##_t)fit(value);                  \
+    list->length++;                                                                                      \
+  }
+
+RG_LIST_TYPED_ACCESS(int8, rg_to_byte)
+RG_LIST_TYPED_ACCESS(int16, rg_to_half)
+RG_LIST_TYPED_ACCESS(int32, )
 
 /* Every item from +from+ for +count+ items set to +value+; both ends are checked before
  * anything is written, as the interpreter checks them. */
