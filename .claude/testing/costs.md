@@ -30,6 +30,14 @@ Prefer `idle_share` to `samples_per_frame` for "is this faster": a pass too slow
 spills into the next, so a slower build runs fewer instructions per frame. A program that never
 sleeps idles at 0.0 either way; compare `fps` for those.
 
+**The tightest frame**, on the Super Nintendo, the Genesis and the PlayStation, where the mean hides
+the frame that matters (two things passing, a move in the sort): `fewest_lines_spare` is whole
+lines, rounded down, for a person; `fewest_lines_spare_unrounded` keeps the part of a line. A test
+that subtracts two readings ("what the order costs the tightest frame") subtracts the unrounded
+ones: each rounded reading is up to a line under, so the difference moves a line when the game
+without the feature gets a little faster, and a bound with less than a line of room flips with no
+code slower (`DrawOrderCostGames.lines_off_tightest_frame`). A bound on one reading may use either.
+
 **Tearing.** Whether a game can tear is a fact of its screen, and `BuildReport` says it. Whether
 it does is a race a profile reads (`VBlank::Diagnostics::Tearing`), except on a screen with no
 framebuffer, where it says nothing rather than "no tear".

@@ -122,23 +122,27 @@ class TestSNESPooledWalkersCost < Minitest::Test
     end
   end
 
-  private def lines_spare(game)
+  private def profile(game)
     rom = game.build_rom(console: :snes, out: StringIO.new, err: StringIO.new, profile: false)
-    rom.profile(out: StringIO.new, settle: 10, frames: 20).fewest_lines_spare
+    rom.profile(out: StringIO.new, settle: 10, frames: 20)
   end
+
+  # The lines the tightest frame of +game+ has to spare, with the part of a line kept: two of them
+  # are subtracted, and readings rounded down to whole lines would each be up to a line under.
+  private def lines_spare_unrounded(game) = profile(game).fewest_lines_spare_unrounded
 
   # Of the frame's 262 lines, the walkers and the cells leave over half. A field read in the pool's
   # own walk tests no index, and a sprite's numbers go to the routine placing it without the stack.
   def test_three_pooled_walkers_beside_tile_work_leave_room
-    assert_operator lines_spare(self.class.game(walkers: true)), :>=, 136
+    assert_operator profile(self.class.game(walkers: true)).fewest_lines_spare, :>=, 136
   end
 
   # The walkers cost the frame about a fifth of it, over the same game without them. A byte field's
   # sum is worked out in its low half (Lowering#slot_value); the rest of what they cost is the
   # sums of their places, which are whole numbers.
   def test_three_pooled_walkers_cost_about_a_fifth_of_the_frame
-    without = lines_spare(self.class.game(walkers: false))
-    with = lines_spare(self.class.game(walkers: true))
+    without = lines_spare_unrounded(self.class.game(walkers: false))
+    with = lines_spare_unrounded(self.class.game(walkers: true))
 
     assert_operator without - with, :<, 55
   end
@@ -152,8 +156,8 @@ class TestSNESPooledWalkersCost < Minitest::Test
   # The console's sprite table has 128 rows. Putting them all away every pass, for one sprite
   # shown, would cost the frame a fifteenth of itself.
   def test_one_sprite_costs_a_frame_what_it_shows
-    without = lines_spare(self.class.still(sprites: false))
-    with = lines_spare(self.class.still(sprites: true))
+    without = lines_spare_unrounded(self.class.still(sprites: false))
+    with = lines_spare_unrounded(self.class.still(sprites: true))
 
     assert_operator without - with, :<, 8
   end

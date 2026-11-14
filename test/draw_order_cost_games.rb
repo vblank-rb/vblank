@@ -41,4 +41,14 @@ module DrawOrderCostGames
   def self.share_of_frame(console, sprites: 4)
     profile(console, ordered: false, sprites: sprites).idle_share - profile(console, ordered: true, sprites: sprites).idle_share
   end
+
+  # How many lines of the picture the order costs the tightest frame on +console+, one where two
+  # things pass each other, so a move is in the cost: the lines that frame has to spare without the
+  # order, less those with it, each with the part of a line kept. Two readings rounded down to whole
+  # lines would each be up to a line under, and their difference move a line when the game without
+  # the order got a little faster.
+  def self.lines_off_tightest_frame(console, sprites: 4)
+    spare = ->(ordered) { profile(console, ordered: ordered, sprites: sprites).fewest_lines_spare_unrounded }
+    spare.call(false) - spare.call(true)
+  end
 end

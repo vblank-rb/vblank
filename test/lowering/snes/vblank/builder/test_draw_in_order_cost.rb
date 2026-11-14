@@ -11,6 +11,12 @@ class TestSNESDrawInOrderCost < Minitest::Test
   BOUND_SEVEN = 3
   BOUND_THIRTY = 28
 
+  # The order of seven on its tightest frame, where two things pass each other and the sort moves
+  # one, costs more than the frame's mean: a third of a line over BOUND_SEVEN. Three has not been
+  # shown to hold there, and nothing has yet measured what the console's own games spend on that
+  # frame, so this bound holds the order where it stands and BOUND_SEVEN holds the mean.
+  BOUND_SEVEN_TIGHTEST = 4
+
   # The lines of the picture in one frame.
   LINES_A_FRAME = 262
 
@@ -21,25 +27,21 @@ class TestSNESDrawInOrderCost < Minitest::Test
     DrawOrderCostGames.share_of_frame(:snes, sprites: sprites) * LINES_A_FRAME
   end
 
-  # The lines the order costs the tightest frame, one where two things pass each other, so a move
-  # is in the cost: the whole lines that frame has to spare without the order, less those with it.
-  # Each of the two is rounded down to a line, so this reads a line over or under what the order
-  # costs, and the same order can read a line more when the game without it gets faster. Only a
-  # bound with more than a line of room is held to it.
-  private def lines_order_costs_tightest_frame(sprites)
-    spare = ->(ordered) { DrawOrderCostGames.profile(:snes, ordered: ordered, sprites: sprites).fewest_lines_spare }
-    spare.call(false) - spare.call(true)
-  end
-
   def test_an_order_of_seven_costs_a_few_lines
     cost = lines_order_costs_each_frame(4)
 
     assert_operator cost, :<=, BOUND_SEVEN, "an order of seven costs #{cost.round(2)} lines"
   end
 
-  def test_an_order_of_thirty_costs_under_a_ninth_of_the_frame
-    cost = lines_order_costs_tightest_frame(27)
+  def test_an_order_of_seven_costs_its_tightest_frame_a_few_lines
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:snes, sprites: 4)
 
-    assert_operator cost, :<, BOUND_THIRTY, "an order of thirty costs #{cost} lines"
+    assert_operator cost, :<=, BOUND_SEVEN_TIGHTEST, "an order of seven costs its tightest frame #{cost.round(2)} lines"
+  end
+
+  def test_an_order_of_thirty_costs_under_a_ninth_of_the_frame
+    cost = DrawOrderCostGames.lines_off_tightest_frame(:snes, sprites: 27)
+
+    assert_operator cost, :<, BOUND_THIRTY, "an order of thirty costs #{cost.round(2)} lines"
   end
 end

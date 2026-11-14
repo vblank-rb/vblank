@@ -154,15 +154,31 @@ module VBlank
 
       # THE FRAMES A PASS OF THE GAME LOOP RAN OVER, counted from 1 at power-on as a tape counts
       # them, so a slow pass a profile names can be read frame by frame with a tape. +took+ is the
-      # frames each measured pass took, by pass, in order, and +first+ the first frame the time was
-      # read over (a profile's +measured_frames+).
-      #
-      # A profile settles by counting passes ended, and reads the time from the frame after the
-      # count passes its settling. The first pass of +took+ is the one whose end did that, so it
-      # ended on the frame before +first+, and each later pass ends its own frames after the last.
-      def self.frames_of_pass(took, pass, first)
-        ended_on = first - 1 + took.sum { |each, frames| each > took.keys.first && each <= pass ? frames : 0 }
+      # frames each measured pass took, by pass, in order, and +settled_on+ the frame the first of
+      # them ended on (.wait_ended_on); each later pass ends its own frames after the last.
+      def self.frames_of_pass(took, pass, settled_on)
+        ended_on = settled_on + took.sum { |each, frames| each > took.keys.first && each <= pass ? frames : 0 }
         (ended_on - took.fetch(pass) + 1)..ended_on
+      end
+
+      # THE FRAME PASS +pass+ ENDED ON, as the frames a pass took are counted: where its wait ended.
+      # A profile settles by counting passes ended (Frame::PASSES), and that count rises the moment
+      # the pass's own work is done. The runtime then readies the pass's picture and waits for the
+      # blank, and a pass whose work ends in the last few lines of a frame can run that past the
+      # blank: its wait ends a frame after its count rose, and the frame between belongs to it.
+      # Frame::SHOWN takes the pass's number in the blank its wait ends at, which an emulated frame
+      # starts with, so the wait ended on the frame before the first one after which SHOWN reads
+      # +pass+ or more.
+      #
+      # +shown+ is SHOWN as read after each frame from +first+ on; while it is short of +pass+, the
+      # core plays on a frame at a time, the block reading SHOWN after each, as far as +most_frames+.
+      # If SHOWN never gets there, the answer is the frame the count rose on, the one before +first+.
+      def self.wait_ended_on(core, pass:, first:, shown:, most_frames:)
+        until shown.any? { |each| each >= pass } || shown.size >= most_frames
+          core.run_frame
+          shown << yield
+        end
+        first - 1 + (shown.index { |each| each >= pass } || 0)
       end
 
       # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1, with

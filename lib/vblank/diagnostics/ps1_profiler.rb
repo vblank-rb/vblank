@@ -51,7 +51,7 @@ module VBlank
 
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is, the
       # frames the slowest took and which pass of the game it was, and how many passes took each number
-      # of frames; TimeByRoutine::Report's four; +gpu_share+, the graphics chip's time drawing out of all
+      # of frames; TimeByRoutine::Report's five; +gpu_share+, the graphics chip's time drawing out of all
       # the time measured, 0 to 1; and +measured_frames+, the frames the time was read over, counted
       # from 1 at power-on as a tape counts them.
       #
@@ -64,8 +64,8 @@ module VBlank
       # +slowest_pass_frames+ is the frames from power-on the slowest pass ran over, counted as a tape
       # counts them, so a tape reads them one by one.
       Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :slowest_pass_frames, :passes_by_frames,
-                           :late_passes, :lines_past_blank, :idle_share, :fewest_lines_spare, :game, :runtime,
-                           :gpu_share, :measured_frames) do
+                           :late_passes, :lines_past_blank, :idle_share, :fewest_lines_spare,
+                           :fewest_lines_spare_unrounded, :game, :runtime, :gpu_share, :measured_frames) do
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
                                measured_frames: [measured_frames.begin, measured_frames.end],
                                slowest_pass_frames: [slowest_pass_frames.begin, slowest_pass_frames.end])
@@ -118,23 +118,28 @@ module VBlank
         def pad_buttons(buttons) = buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] }
       end
 
-      # The time of the +frames+ after +settle+ passes, the graphics chip's share of it, and which frames
-      # those were.
+      # The time of the +frames+ after +settle+ passes, the graphics chip's share of it, which frames
+      # those were, and the frame the pass that ended the settling ended on (TapeProfile.wait_ended_on).
       def self.time_of(rom, frames:, settle:, keys:)
         places = rom.built
+        shown_at = places.runtime.fetch(IR::Backends::PS1::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
           core.set_buttons(keys.filter_map { |button| PAD_BUTTONS[button.to_sym] })
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.ram_read32(places.waits_counted_at) <= settle
           first = core.frames + 1
           core.take_processor_time # the first ask starts the count
           drawn_before = core.gpu_busy_cycles
+          shown = []
           by_frame = Array.new(frames) do
             core.run_frame
+            shown << core.ram_read32(shown_at)
             core.take_processor_time
           end
           total = by_frame.sum { |spent| spent.values.sum }
           gpu_share = total.zero? ? 0.0 : (core.gpu_busy_cycles - drawn_before).fdiv(total)
-          [time_by_routine(places).report(by_frame), gpu_share, first..(first + frames - 1)]
+          settled_on = TapeProfile.wait_ended_on(core, pass: settle + 1, first: first, shown: shown,
+                                                       most_frames: MOST_FRAMES_TO_SETTLE) { core.ram_read32(shown_at) }
+          [time_by_routine(places).report(by_frame), gpu_share, first..(first + frames - 1), settled_on]
         end
       end
 
@@ -147,15 +152,16 @@ module VBlank
       end
 
       # What the frames each pass took (+took+, by pass), the lines each pass of more than a frame ran past
-      # the blank (+past+, by pass), the +time+ and the +gpu_share+ come to, over +measured_frames+.
-      def self.result_of(took, past, time, gpu_share, measured_frames)
+      # the blank (+past+, by pass), the +time+ and the +gpu_share+ come to, over +measured_frames+;
+      # +settled_on+ is the frame the first pass of +took+ ended on.
+      def self.result_of(took, past, time, gpu_share, measured_frames, settled_on)
         frames = took.values.sum
         counted, slowest_frames = took.max_by { |pass, count| [count, -pass] }
         by_frames = past.group_by { |pass, _| took.fetch(pass) }.sort.to_h
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
                    slowest_frames: slowest_frames, slowest_pass: counted - 1,
-                   slowest_pass_frames: TapeProfile.frames_of_pass(took, counted, measured_frames.begin),
+                   slowest_pass_frames: TapeProfile.frames_of_pass(took, counted, settled_on),
                    passes_by_frames: took.values.tally.sort.to_h,
                    late_passes: past.values.select { |lines| lines <= BLANK_LINES },
                    lines_past_blank: by_frames.transform_values { |passes| passes.map(&:last) },

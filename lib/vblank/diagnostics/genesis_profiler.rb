@@ -34,12 +34,13 @@ module VBlank
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is,
       # the frames the slowest took, which pass of the game it was and which frames from power-on it
       # ran over (+slowest_pass_frames+, counted as a tape counts them, so a tape reads them one by
-      # one), and how many passes took each number of frames; TimeByRoutine::Report's four; and
+      # one), and how many passes took each number of frames; TimeByRoutine::Report's five; and
       # +measured_frames+, the frames the time was read over, counted the same way; and
       # +video_tiles+, how many tiles the build put in video memory
       # (IR::Backends::Genesis::VideoTiles), nil for a game that draws from none.
       Result = Data.define(:passes, :frames, :fps, :slowest_frames, :slowest_pass, :slowest_pass_frames, :passes_by_frames,
-                           :idle_share, :fewest_lines_spare, :game, :runtime, :measured_frames, :video_tiles) do
+                           :idle_share, :fewest_lines_spare, :fewest_lines_spare_unrounded, :game, :runtime,
+                           :measured_frames, :video_tiles) do
         def to_h = super.merge(game: game.map(&:to_h), runtime: runtime.map(&:to_h),
                                measured_frames: [measured_frames.begin, measured_frames.end],
                                slowest_pass_frames: [slowest_pass_frames.begin, slowest_pass_frames.end],
@@ -68,19 +69,25 @@ module VBlank
                              passes_at: places.waits_counted_at, routines: routines)
       end
 
-      # The time of the +frames+ after +settle+ passes, and which frames those were.
+      # The time of the +frames+ after +settle+ passes, which frames those were, and the frame the
+      # pass that ended the settling ended on (TapeProfile.wait_ended_on).
       def self.time_of(rom, frames:, settle:, keys:)
         places = rom.built
+        shown_at = places.runtime.fetch(IR::Backends::Genesis::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
           core.set_buttons(keys)
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.wram_read32(places.waits_counted_at) <= settle
           first = core.frames + 1
           core.take_processor_time # the first ask starts the count
+          shown = []
           by_frame = Array.new(frames) do
             core.run_frame
+            shown << core.wram_read32(shown_at)
             core.take_processor_time
           end
-          [time_by_routine(places).report(by_frame), first..(first + frames - 1)]
+          settled_on = TapeProfile.wait_ended_on(core, pass: settle + 1, first: first, shown: shown,
+                                                       most_frames: MOST_FRAMES_TO_SETTLE) { core.wram_read32(shown_at) }
+          [time_by_routine(places).report(by_frame), first..(first + frames - 1), settled_on]
         end
       end
 
@@ -88,14 +95,15 @@ module VBlank
         TimeByRoutine.new(code: places.code, waits: WAITS, line: LINE_CYCLES, game_labels: GAME_LABELS)
       end
 
-      # What the frames each pass took (+took+, by pass) and the +time+ come to, over +measured_frames+.
-      def self.result_of(took, time, measured_frames, video_tiles)
+      # What the frames each pass took (+took+, by pass) and the +time+ come to, over +measured_frames+;
+      # +settled_on+ is the frame the first pass of +took+ ended on.
+      def self.result_of(took, time, measured_frames, settled_on, video_tiles)
         frames = took.values.sum
         counted, slowest_frames = took.max_by { |pass, count| [count, -pass] }
         # The runtime counts the wait before the game's first pass as a pass of its own.
         Result.new(passes: took.size, frames: frames, fps: FRAME_RATE * took.size / frames,
                    slowest_frames: slowest_frames, slowest_pass: counted - 1,
-                   slowest_pass_frames: TapeProfile.frames_of_pass(took, counted, measured_frames.begin),
+                   slowest_pass_frames: TapeProfile.frames_of_pass(took, counted, settled_on),
                    passes_by_frames: took.values.tally.sort.to_h,
                    measured_frames: measured_frames, video_tiles: video_tiles, **time.to_h)
       end
