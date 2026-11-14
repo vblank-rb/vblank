@@ -280,6 +280,10 @@ module VBlank
       # and blue. The emulator keeps eight, and what it holds below the five is its own
       # working, which differs with how it reached a colour; so two screens that are
       # different bytes can still be one picture.
+      #
+      # This is the Advance's emulator's, for the Advance's and the Color's pictures. A console that
+      # plays in another emulator asks the same questions in Ruby (ScreenQuestions), and never
+      # loads this one to ask them (Console::Kit#screen_questions).
       def screen_questions
         load!
         RubyGBAEmulator::Screen

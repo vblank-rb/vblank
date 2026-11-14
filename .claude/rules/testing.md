@@ -104,6 +104,7 @@ to, sample for sample against the native one's), `midpoint_circle.rb` (the answe
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
 `sprite_box_fields.rb` (a sea with a moving hollow box sprite and a cell of rock, built for any console, for each console's test of a comparison's `ignoring_sprites:`),
+`compared_without_advance_emulator.rb` (two cartridges of a console that does not play in the Advance's emulator, compared in a child process where that emulator cannot load, for the Genesis's and the Super Nintendo's tests),
 `slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
 `made_up_original.rb` (the made-up Game Boy Advance original and a game reading it through a data pack, for the data pack, copy reader, packing and shell tests),
 `folder_original.rb` (a made-up computer original that is a folder of files, `test/fixtures/folder_original/`, and a port reading it, for the copy, copy reader and shell tests),

@@ -128,6 +128,14 @@ module VBlank
       # cartridge file, and what that file is called.
       def open_probe(path, save_dir:) = Diagnostics::Emulator.probe(path, save_dir: save_dir)
 
+      # THE EMULATOR ITS CARTRIDGES PLAY IN, LOADED, and what answers questions about a whole screen
+      # of its picture. The Advance and the Color play in libmgba, the Advance's emulator, whose C
+      # extension answers those questions (Diagnostics::Emulator.screen_questions). Every other console
+      # loads its own emulator alone and asks them in Ruby (Diagnostics::ScreenQuestions): a game for
+      # it can have no Advance's emulator built at all.
+      def load_emulator! = Diagnostics::Emulator.load!
+      def screen_questions = Diagnostics::Emulator.screen_questions
+
       # Whether `vblank build --format ir` can write its games (IR::Dump builds the Advance's
       # cartridge, so only the Advance's).
       def dumps_ir? = false
@@ -279,6 +287,8 @@ module VBlank
       def reading = Diagnostics::SNESReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_snes(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::SNESProbe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_snes!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def save_file_of(cartridge) = reading.save_file_of(cartridge.buffer)
       def compared_side_by_side? = true
@@ -331,6 +341,8 @@ module VBlank
       def reading = Diagnostics::GenesisReading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_genesis(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::GenesisProbe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_genesis!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
       def compared_side_by_side? = true
       def original_formats = GenesisHardware::ORIGINAL_FORMATS
@@ -350,6 +362,8 @@ module VBlank
       def reading = Diagnostics::PS1Reading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
       def open_probe(path, save_dir:) = Diagnostics::PS1Probe.new(path, save_dir: save_dir)
+      def load_emulator! = Diagnostics::Emulator.load_ps1!
+      def screen_questions = Diagnostics::ScreenQuestions
       def save_file_extension = ".srm"
     end
 

@@ -130,13 +130,17 @@ module VBlank
         @count_passes = count_passes
         # What only this cartridge's console answers, read its own way (see "what each console's
         # cartridge is asked its own way" below).
-        @reading = Console.for(rom.console).reading
+        kit = Console.for(rom.console)
+        @reading = kit.reading
         extend @reading
         @rendered = false
         @played = 0
         @pixels = nil
         @sound = sound
-        Emulator.load! # fail fast if the emulator backend isn't built
+        # Fail fast if this console's emulator isn't built. Only its own: a Genesis cartridge has no
+        # use for the Advance's emulator, and a game for the Genesis may not have it.
+        kit.load_emulator!
+        @screen_questions = kit.screen_questions
       end
 
       # RUN ON, so a test can watch something HAPPEN rather than only see where it ended up.
@@ -217,7 +221,7 @@ module VBlank
       # The values line up with the reference interpreter's own framebuffer dump, so
       # the two backends' pictures can be compared directly.
       # @return [Array<Integer>] screen_width * screen_height colors in BGR555
-      def frame_gba = Emulator.screen_questions.color_list(picture)
+      def frame_gba = @screen_questions.color_list(picture)
 
       # How wide and tall the console's picture is, in pixels: the size the emulator draws for
       # the cartridge it was handed, which is 240 by 160 for an Advance cartridge.
@@ -237,7 +241,9 @@ module VBlank
       # {Emulator.screen_questions}). Going through the pixels in Ruby is a number made and
       # thrown away for every one of them, which is far more work than running the frame
       # was, so a test that asks something of the whole screen on every frame of a long run
-      # was spending nearly all of its time asking.
+      # was spending nearly all of its time asking. That is the Advance's emulator, for the
+      # Advance's and the Color's cartridges; every other console's are asked in Ruby
+      # (ScreenQuestions, see Console::Kit#screen_questions), since their games may not have it.
       #
       # THEY ARE ANSWERED AT THE PRECISION A CONSOLE SHOWS, the same fifteen bits
       # {#pixel_gba} reads: five each of red, green and blue. The emulator keeps eight, and
@@ -254,20 +260,20 @@ module VBlank
       # It is not a {#picture}: {#same_picture_as?} does not take one.
       #
       # @return [String]
-      def frame_colors = Emulator.screen_questions.colors(picture)
+      def frame_colors = @screen_questions.colors(picture)
 
       # The one colour every pixel is, as a 15-bit number, or nil when the screen holds more
       # than one: `only_color == Color.resolve(:white)` is a flash at its brightest.
       #
       # @return [Integer, nil]
-      def only_color = Emulator.screen_questions.only_color(picture)
+      def only_color = @screen_questions.only_color(picture)
 
       # How bright the screen is: every pixel's red, green and blue added up, each as the
       # level a console shows, 0 to 31. One number that rises and falls with a fade, which
       # is what watching one frame by frame wants.
       #
       # @return [Integer]
-      def brightness = Emulator.screen_questions.brightness(picture)
+      def brightness = @screen_questions.brightness(picture)
 
       # Whether this reader is showing THE SAME PICTURE as +other+: every pixel the same
       # colour. +other+ is another running cartridge, or a {#picture} kept from earlier.
@@ -279,7 +285,7 @@ module VBlank
       # It is the colours and nothing else. The same picture built by a different part of
       # the display — a background where the other has a sprite — is the same picture, and
       # so is one the emulator holds as different numbers below the five bits.
-      def same_picture_as?(other) = Emulator.screen_questions.same?(picture, picture_of(other))
+      def same_picture_as?(other) = @screen_questions.same?(picture, picture_of(other))
 
       # HOW this reader's picture differs from +other+'s — another running cartridge, or a
       # {#picture} kept from earlier — or nil when the two are one picture:
@@ -295,7 +301,7 @@ module VBlank
       #
       # @return [Hash, nil]
       def difference_from(other, looked_at: nil)
-        Emulator.screen_questions.difference(picture, picture_of(other), @width, looked_at)
+        @screen_questions.difference(picture, picture_of(other), @width, looked_at)
       end
 
       # THE PICTURE ON SCREEN AS THE EMULATOR HOLDS IT — the frame the run stopped on — to
@@ -337,7 +343,7 @@ module VBlank
       private def shown_picture(frame)
         return frame.freeze unless @backdrop_left_out
 
-        Emulator.screen_questions.without_commonest_color(frame)
+        @screen_questions.without_commonest_color(frame)
       end
 
       # THE PICTURE ON SCREEN WRITTEN AS A PNG at +path+, which is handed back: the frame the run
@@ -412,7 +418,7 @@ module VBlank
       # finer than the rest: a pixel the display has darkened to almost nothing is black to
       # {#black?} and to {#only_color}, and is not black to this. It is left that way so that
       # the frame a fade is called over on does not move for anybody already asking.
-      def all_black? = Emulator.screen_questions.only_color(picture, 8) == 0
+      def all_black? = @screen_questions.only_color(picture, 8) == 0
 
       # Check if every pixel in a rectangle matches a color.
       # @return [Boolean]
