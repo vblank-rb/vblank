@@ -585,18 +585,31 @@ module VBlank
                            sides: memory.reserved?(Recordings::SIDES))
             end
 
-            # What is sent across, in the cartridge, for rt_sound_start to send; and in a game that
+            # What is sent across, in the cartridge, for rt_sound_start to send, in pieces of
+            # START_PIECE_BYTES or fewer, each a section; and in a game that
             # loads each scene's recordings (+scenes+), each scene's: its own recordings in pieces of
             # PIECE_BYTES or fewer, each a section, and its table (the scene's SceneLoad#label): how
             # many pieces, then a row for each, where it is (three bytes and a nought) and how many
             # turns of three it takes.
             def sections(memory, waves, recordings: [], scenes: nil)
               made = image_for(memory, waves, recordings: recordings, scenes: scenes)
-              asm = W65816.new("sound driver")
-              asm.label("sound driver")
-              asm.data_bytes(made.bytes)
-              [asm.section] + Array(scenes).zip(made.scene_bytes).flat_map { |scene, bytes| scene_load_sections(scene, bytes) }
+              start = made.bytes.each_slice(START_PIECE_BYTES).each_with_index.map do |piece, number|
+                asm = W65816.new(start_piece_label(number))
+                asm.label(start_piece_label(number))
+                asm.data_bytes(piece)
+                asm.section
+              end
+              start + Array(scenes).zip(made.scene_bytes).flat_map { |scene, bytes| scene_load_sections(scene, bytes) }
             end
+
+            # The most bytes of what goes across at power-on one section of the cartridge holds. Up to
+            # the sound unit's whole memory goes then, and a bank of the cartridge holds half of that,
+            # so it is cut into pieces, each a section of its own. A whole number of pages, so that
+            # the number of a byte in its piece has the same low eight bits as its number in all that
+            # is sent, which is what mailbox 0 carries (#emit_start).
+            START_PIECE_BYTES = 0x4000
+
+            def start_piece_label(number) = "sound driver piece #{number}"
 
             def scene_load_sections(scene, bytes)
               name = scene_name(scene.scene)
@@ -793,18 +806,10 @@ module VBlank
               asm.cmp(READY)
               asm.bne("rt_sound_await_ready")
               emit_command(asm, command: 1, kick: FIRST_KICK, echo: "rt_sound_kicked")
-              asm.ldx(0)
               asm.sep(0x20)
-              asm.label("rt_sound_next_byte")
-              asm.lda(asm.long_x("sound driver"))
-              asm.sta(asm.abs(h::APUIO1))
-              asm.txa
-              asm.sta(asm.abs(h::APUIO0))
-              emit_await_echo(asm, "rt_sound_byte_taken")
-              Frame.emit_blank_counted_by_hand(asm, memory, "rt_sound_byte_blank_counted") if counted
-              asm.inx
-              asm.cpx(length)
-              asm.bne("rt_sound_next_byte")
+              made.bytes.each_slice(START_PIECE_BYTES).each_with_index do |piece, number|
+                emit_start_piece(asm, memory, number, piece.size, counted: counted)
+              end
               asm.rep(0x20)
               emit_command(asm, command: 0, kick: kick, echo: "rt_sound_started")
               if counted
@@ -828,6 +833,25 @@ module VBlank
               end
               asm.plp
               asm.rtl
+            end
+
+            # The +size+ bytes of piece +number+ (#sections) sent a byte at a time, with A 8 bits wide
+            # and X 16. The byte's number in mailbox 0 is X's low eight bits, which the pieces' size
+            # keeps the same as the byte's number in all that is sent, so the built-in program sees
+            # one unbroken run of bytes.
+            def emit_start_piece(asm, memory, number, size, counted: false)
+              h = Console::SNESHardware
+              asm.ldx(0)
+              asm.label("rt_sound_next_byte_#{number}")
+              asm.lda(asm.long_x(start_piece_label(number)))
+              asm.sta(asm.abs(h::APUIO1))
+              asm.txa
+              asm.sta(asm.abs(h::APUIO0))
+              emit_await_echo(asm, "rt_sound_byte_taken_#{number}")
+              Frame.emit_blank_counted_by_hand(asm, memory, "rt_sound_byte_blank_counted_#{number}") if counted
+              asm.inx
+              asm.cpx(size)
+              asm.bne("rt_sound_next_byte_#{number}")
             end
 
             # One of the built-in program's commands, with A 16 bits wide before and after: where
