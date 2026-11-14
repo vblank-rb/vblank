@@ -182,6 +182,8 @@ module VBlank
 
             def emit_chip_run(name)
               faults = @chip_code.faults?(name)
+              # The chip paints what nothing writes down: a clear deferred is made first (RepeatLog).
+              call_routine("rt_paint_at_once") if @chip_code.paints?(name)
               if faults
                 @asm.lda(0)
                 @asm.sta(@asm.long(chip_ram_address(@chip_code.fault_list_place)))

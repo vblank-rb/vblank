@@ -56,7 +56,8 @@ module VBlank
           # are written down as it asks for them, and as it ends only the tiles that come out
           # different from what the copy holds are painted and sent, and only the cells of the map
           # that changed. A pass that draws what the last one drew sends nothing. A pass that has
-          # not cleared paints at once, as here.
+          # not cleared paints at once, as here. On a Super FX cartridge, whose chip paints, only a
+          # pass the same as the last is passed over (RepeatLog); any other paints at once.
           #
           # THE COPY TO VIDEO RAM IS SPREAD OVER BLANKS, WITH THE SCREEN ON (Blank says how): the
           # runs go one at a time, each when the blank has room and time for it. The map, the clear
@@ -242,7 +243,7 @@ module VBlank
               memory.reserve(IN_PLACE_START, 2)
               memory.reserve(SHOWN_GENERATION, 2)
               memory.reserve(CAMERA, CAMERA_BYTES)
-              PaintLog.reserve(memory, turns: turns) unless chip
+              chip ? RepeatLog.reserve(memory) : PaintLog.reserve(memory, turns: turns)
               TextLayer.reserve(memory) if text_layer && !chip
             end
 
@@ -267,6 +268,7 @@ module VBlank
               emit_camera(asm, memory, s)
               emit_helpers(asm, memory, s, bank, logged)
               PaintLog.emit(asm, memory, s, bank) if logged
+              RepeatLog.emit(asm, memory) if RepeatLog.kept?(memory)
               emit_clear(asm, memory, s, logged)
               chip ? ChipFill.emit_console(asm, memory, s) : emit_fill(asm, memory, s, bank, logged)
               emit_column(asm, memory) if columns
@@ -368,6 +370,7 @@ module VBlank
               asm.cpx(ROWS * 4)
               asm.bne("rt_paint_start_row")
               PaintLog.emit_start(asm, memory) if logged
+              RepeatLog.emit_start(asm, memory) if RepeatLog.kept?(memory)
               Letterbox.emit_start(asm, memory) if Letterbox.kept?(memory)
               asm.rtl
             end
@@ -784,8 +787,10 @@ module VBlank
               # its planes, kept for making tiles ready, and its 64 bytes, for the blank to send.
               asm.label("rt_paint_clear_whole")
               asm.inc(asm.abs(memory[CLEARS]))
-              Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory)
+              repeats = RepeatLog.kept?(memory)
+              Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory) && !repeats
               PaintLog.emit_clear_deferred(asm, memory) if logged
+              RepeatLog.emit_clear_deferred(asm, memory) if repeats
               asm.jsr(asm.abs("rt_paint_layer_clear_all")) if TextLayer.kept?(memory)
               asm.lda(asm.direct(R.call(0)))
               asm.cmp(asm.abs(memory[CLEAR_PLACE]))
@@ -806,6 +811,14 @@ module VBlank
                 asm.jsr(asm.abs("rt_paint_next_generation"))
                 PaintLog.emit_clear(asm, memory)
               else
+                if repeats
+                  # rt_paint_clear_made (JSR): the clear made, here or once deferred (RepeatLog).
+                  asm.jsr(asm.abs("rt_paint_clear_made"))
+                  asm.rtl
+                  asm.label("rt_paint_clear_made")
+                  Letterbox.emit_cleared(asm, memory) if Letterbox.follows_rows?(memory)
+                  RepeatLog.emit_cleared(asm, memory)
+                end
                 emit_next_generation(asm, memory, logged)
                 # Every cell shows the clear tile, and nothing painted before is to be sent.
                 Picture.emit_fill_work_ram(asm, memory[MAP_COPY], MAP_BYTES, "rt_paint_clear_cell")
@@ -824,7 +837,7 @@ module VBlank
               emit_dirty_rows_until(asm, memory, logged, "rt_paint_clear_rows")
               asm.label("rt_paint_clear_rows_done")
               PaintLog.emit_no_rows(asm, memory, DIRTY) if logged
-              asm.rtl
+              repeats ? asm.rts : asm.rtl
               return unless logged
 
               # rt_paint_next_generation (JSR): the clear made, as a clear or once deferred
@@ -1220,6 +1233,7 @@ module VBlank
               # A picture's number and its place: the place is held near the screen (below), where
               # its low word holds it all, and the low word is all that is hashed.
               emit_op_begin(asm, memory, PaintLog::KIND_BLIT, 12, "rt_paint_blit_now") if logged
+              RepeatLog.emit_check(asm, memory, RepeatLog::KIND_BLIT, 12) if RepeatLog.kept?(memory)
               # Near enough the screen to paint anything at all.
               [[R.call(1), WIDTH], [R.call(2), HEIGHT]].each do |at, edge|
                 asm.clc
@@ -1551,6 +1565,7 @@ module VBlank
             # inside the area, its own pixels alone — nothing if none was kept.
             def emit_patches(asm, memory, s, bank, logged)
               asm.label("rt_paint_save")
+              asm.jsr(asm.abs("rt_repeat_at_once")) if RepeatLog.kept?(memory) # it reads the screen
               asm.jsr(asm.abs("rt_paint_patch_start"))
               asm.branch_long(:bcc, "rt_paint_save_some")
               asm.rtl
@@ -1649,6 +1664,7 @@ module VBlank
               asm.rtl
 
               asm.label("rt_paint_restore")
+              asm.jsr(asm.abs("rt_repeat_at_once")) if RepeatLog.kept?(memory) # it paints unwritten
               asm.jsr(asm.abs("rt_paint_patch_start"))
               asm.branch_long(:bcc, "rt_paint_restore_kept")
               asm.label("rt_paint_restore_none")
@@ -1902,6 +1918,7 @@ module VBlank
                 asm.rtl
                 asm.label("rt_paint_prepare_cleared")
               end
+              RepeatLog.emit_pass_end(asm, memory) if RepeatLog.kept?(memory)
               asm.jsr(asm.abs("rt_letterbox_rows")) if Letterbox.follows_rows?(memory) # before the rows are marked unchanged
               asm.stz(asm.abs(memory[RUNS_END]))
               asm.lda(MOST_RUNS * 4)
