@@ -3,7 +3,8 @@
 The whole story of `data_pack`, listed on `tables.md`. The map of every page is `.claude/rules/dsl-reference.md`.
 
 A port of a retail game may not ship that game's data. It names the original (`VBlank::Original::Game`,
-which finds the player's copy and checks its SHA-1) and reads what it needs from a **data pack** made
+which finds the player's copy and checks its SHA-1; given `probe:` as well as `releases:`, a copy it refuses
+is named by what the probe reads from it, "the EU release, but changed or damaged") and reads what it needs from a **data pack** made
 from that copy. The game's code says each piece's shape and size; it never depends on the bytes.
 
 - `data_pack from: ORIGINAL, version: "1.0" do |slots| … end` → a `DSL::DataPack`. `from:` is an

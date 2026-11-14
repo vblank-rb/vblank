@@ -211,4 +211,89 @@ class TestOriginalGame < Minitest::Test
   def test_a_game_names_releases_or_a_probe
     assert_raises(ArgumentError) { game(Dir.tmpdir, releases: nil) }
   end
+
+  # A GAME THAT ACCEPTS BY SHA-1 AND NAMES BY ITS HEADER: two releases of made-up bytes, each
+  # starting with a region of its own, and a probe that reads the region as a game reads its
+  # cartridge's header. The digest decides what is accepted; the probe only names what is refused.
+  US_DUMP = "US:the release this game reads"
+  EU_DUMP = "EU:the european release, longer"
+
+  private def headed_releases(eu_size: EU_DUMP.bytesize)
+    { "US" => { "sha1" => Digest::SHA1.hexdigest(US_DUMP), "size" => US_DUMP.bytesize },
+      "EU" => { "sha1" => Digest::SHA1.hexdigest(EU_DUMP), "size" => eu_size } }
+  end
+
+  private def header_probe(asked = [])
+    lambda do |path|
+      asked << path
+      { "US:" => "US", "EU:" => "EU" }[File.binread(path, 3)]
+    end
+  end
+
+  def test_a_copy_accepted_by_sha1_is_not_probed
+    Dir.mktmpdir do |folder|
+      asked = []
+      path = write(folder, "us.gba", US_DUMP)
+
+      copy = game(folder, env: named(path), releases: headed_releases, probe: header_probe(asked)).copy
+
+      assert_equal "US", copy.release
+      assert_empty asked
+    end
+  end
+
+  def test_a_damaged_dump_of_another_release_is_refused_naming_that_release
+    Dir.mktmpdir do |folder|
+      path = write(folder, "eu.gba", EU_DUMP.tr("l", "L"))
+
+      error = assert_raises(VBlank::Original::WrongCopy) do
+        game(folder, env: named(path), releases: headed_releases, probe: header_probe).copy
+      end
+      assert_match "the EU release", error.message
+      assert_match "damaged", error.message
+      assert_match Digest::SHA1.hexdigest(EU_DUMP), error.message
+    end
+  end
+
+  def test_a_short_dump_named_by_the_probe_is_refused_with_its_length_and_its_release
+    Dir.mktmpdir do |folder|
+      path = write(folder, "eu.gba", EU_DUMP[0, 10])
+
+      error = assert_raises(VBlank::Original::WrongCopy) do
+        game(folder, env: named(path), releases: headed_releases, probe: header_probe).copy
+      end
+      assert_match "the EU release", error.message
+      assert_match "10 bytes", error.message
+      assert_match "#{EU_DUMP.bytesize} bytes", error.message
+    end
+  end
+
+  def test_a_short_dump_is_told_its_length_when_another_release_has_no_size
+    Dir.mktmpdir do |folder|
+      path = write(folder, "us.gba", US_DUMP[0, 10])
+      unsized = headed_releases(eu_size: nil)
+
+      error = assert_raises(VBlank::Original::WrongCopy) { game(folder, env: named(path), releases: unsized).copy }
+      assert_match "10 bytes", error.message
+      assert_match "#{US_DUMP.bytesize} bytes", error.message
+
+      probed = assert_raises(VBlank::Original::WrongCopy) do
+        game(folder, env: named(path), releases: unsized, probe: header_probe).copy
+      end
+      assert_match "the US release", probed.message
+      assert_match "10 bytes", probed.message
+    end
+  end
+
+  def test_a_dump_of_a_release_with_no_size_is_named_damaged_whatever_its_length
+    Dir.mktmpdir do |folder|
+      path = write(folder, "eu.gba", EU_DUMP[0, 10])
+
+      error = assert_raises(VBlank::Original::WrongCopy) do
+        game(folder, env: named(path), releases: headed_releases(eu_size: nil), probe: header_probe).copy
+      end
+      assert_match "the EU release", error.message
+      assert_match "damaged", error.message
+    end
+  end
 end
