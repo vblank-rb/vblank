@@ -34,10 +34,13 @@ module VBlank
       class Finished < StandardError; end
 
       # +speaker+ marks that somebody is listening, so a way that makes its sound as a file hands it over
-      # a frame at a time (#last_frame_samples).
-      def initialize(program, way, speaker: false)
+      # a frame at a time (#last_frame_samples). +match+ is the match a tape replays (a Tape::Match),
+      # which the interpreter plays the game as (Reference#play_as_match); the other ways have no
+      # match, and a tape of one is refused before it gets here (Tape#play).
+      def initialize(program, way, speaker: false, match: nil)
         @console = program.described_console
         @run = RUNS.fetch(way).call.new
+        @run.play_as_match(seed: match.seed, players: match.players) if match
         @run.forgetting_moments if @run.respond_to?(:forgetting_moments)
         @speaker = speaker && @run.respond_to?(:sounding_as_played)
         @run.sounding_as_played if @speaker

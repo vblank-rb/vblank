@@ -1100,7 +1100,7 @@ module VBlank
       begin
         live_session(game, program, network).play(device)
       rescue *MATCH_FAILURES => e
-        raise Thor::Error, e.message
+        raise Thor::Error, match_failure_message(e)
       end
       say_match_summary(network, events_said: true)
     end
@@ -1487,7 +1487,7 @@ module VBlank
            VBlank::Live::SaveFile::NotThisGamesSave => e
       raise Thor::Error, e.message
     rescue *MATCH_FAILURES => e
-      raise Thor::Error, e.message
+      raise Thor::Error, match_failure_message(e)
     ensure
       window&.close
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
@@ -1497,6 +1497,16 @@ module VBlank
     MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
                       VBlank::Network::ConnectionFailed, VBlank::Network::VersionMismatch, VBlank::Network::RoomRefused,
                       VBlank::Network::BadMessage].freeze
+
+    # The words for what stopped a match. A machine whose game went another way than another machine's
+    # first writes the tape of the match and the report into a new folder, which nothing removes, and
+    # the words say where: the tape replays this machine's game on the interpreter, pass for pass.
+    def match_failure_message(error)
+      return error.message unless error.is_a?(VBlank::Network::Desync)
+
+      require "tmpdir"
+      error.report.written_message(error.report.write_in(Dir.mktmpdir("vblank-match-")))
+    end
 
     # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
     # said where it can be found, or the joining computer has connected. Nil when it is not a match.
@@ -1610,7 +1620,7 @@ module VBlank
       device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words })
       session.play(device).tap { say_match_summary(network, events_said: true) }
     rescue *MATCH_FAILURES => e
-      raise Thor::Error, e.message
+      raise Thor::Error, match_failure_message(e)
     end
 
     # +events_said+ is true where the events were said as they came, and need no telling again.

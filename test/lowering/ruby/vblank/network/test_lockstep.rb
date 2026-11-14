@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
 require "zlib"
 require "vblank/live"
 require VBlank.root.join("examples/wanderers").to_s
@@ -277,18 +278,67 @@ class TestLockstep < Minitest::Test
     assert_equal PASSES, copies.first.device.pictures.size
   end
 
-  # The tape holds the presses and not the match's seed, so this match uses seed 0, which adds nothing
-  # to the game's own, and the interpreter, which knows no match, draws the same colours.
+  # The tape holds the presses and the match's seed, and the interpreter mixes that seed into the
+  # game's random numbers where every machine of the match did, so it draws the same colours.
   def test_the_match_is_kept_as_a_tape_the_interpreter_plays_to_the_same_picture
-    net, copies = match_of(2, seed: 0)
+    net, copies = match_of(2, seed: 7)
     play(net, copies)
 
     tape = copies.first.lockstep.tape
     assert_equal tape.to_s, copies.last.lockstep.tape.to_s
     assert_equal true, tape.in_passes
+    assert_equal VBlank::Playthroughs::Tape::Match.new(players: 2, seed: 7), tape.match
     played = tape.play(unbuilt(program), on: "interpreter")
 
     assert_equal picture_checks(copies.first).last, picture_check(played.game.frame_gba)
+  end
+
+  # TWO COPIES GO OUT OF STEP ON PURPOSE under a seed that is not nought. The report's tape is written to
+  # a file, read back, and played on the interpreter, which shows the picture of the machine that stayed
+  # right on every pass the tape holds.
+  def test_a_match_out_of_step_writes_a_tape_the_interpreter_replays_as_the_machine_that_stayed_right
+    net, copies = match_of(2, seed: 1_234_567, checkpoint_every: 4)
+    corrupt_buttons_from_pass(copies.last, 10)
+    report = play(net, copies).first.error.report
+
+    Dir.mktmpdir do |folder|
+      written = report.write_in(folder)
+      assert_match(/pass #{report.pass}/, File.read(written.report))
+      assert_match(/--tape #{Regexp.escape(written.tape)} --on interpreter/, report.written_message(written))
+      tape = VBlank::Playthroughs::Tape.read(written.tape)
+      assert_equal 1_234_567, tape.match.seed
+
+      replayed = pictures_each_pass(tape)
+      right = picture_checks(copies.first)
+      assert_operator replayed.size, :>=, report.pass - 1, "the tape reaches the pass the machines disagreed at"
+      replayed.each_with_index { |check, at| assert_equal right[at + 1], check, "pass #{at + 2} differs from player 1's" }
+    end
+  end
+
+  # The picture after each pass the tape holds, played on the interpreter.
+  private def pictures_each_pass(tape)
+    taping = VBlank::Playthroughs::Tape::Taping.new
+    tape.steps.each do |step|
+      step.frames.times do
+        taping.hold(step.buttons, 1)
+        taping.moment(:"pass_#{taping.frames}")
+      end
+    end
+    each_pass = tape.with(steps: taping.steps)
+    checks = []
+    each_pass.play(unbuilt(program), on: "interpreter") { |_moment, game| checks << picture_check(game.frame_gba) }
+    checks
+  end
+
+  # A tape of a match carries its seed, which only the interpreter mixes into the game, so another way
+  # of running the game is refused rather than playing another match.
+  def test_a_tape_of_a_match_is_refused_on_a_way_that_does_not_mix_its_seed
+    net, copies = match_of(2, seed: 7)
+    play(net, copies)
+
+    error = assert_raises(ArgumentError) { copies.first.lockstep.tape.play(unbuilt(program), on: "ruby") }
+
+    assert_match(/interpreter/, error.message)
   end
 
   # A MACHINE IN THE ROOM THAT IS NOT IN THE MATCH (refused, or never asked) can send any message, and none of

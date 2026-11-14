@@ -315,6 +315,7 @@ module VBlank
           @setting_up_uncounted = @frames_setting_up # counted at the first frame (#store_frame_counters)
           @placing_at_pass_end = false # while a boundary write placed at the end of a pass runs (#exec_loop)
           @loops_running = [] # the game loops running, innermost last (#place_pass_end_before_halt)
+          @match_joined = false # whether a match's players and seed are in the game yet (#join_match_at_first_wait)
           @rumble_left = 0 # frames the motor has still to run for (#exec_rumble)
           @rumble_bits = 0 # ...and its pattern, the next frame's bit at the top
           @motor_on = false
@@ -534,6 +535,25 @@ module VBlank
         # looks at it. Returns self.
         def hand_file(bytes)
           @handed_file = bytes
+          self
+        end
+
+        # PLAY THE GAME AS ONE MACHINE OF A MATCH (Network::Lockstep) of +players+ players and the seed
+        # +seed+, so a tape of the match replays it. Two things make a match's game another game than
+        # the same presses played alone, and both happen at the end of the first pass, the one the game
+        # sets itself up in (the computer builds' first wait):
+        #
+        # - every machine adds the match's seed to the game's random numbers, once (rg_game_mix_seed),
+        #   so a game that chose `seed 7` keeps its own choice and every machine draws the same numbers.
+        #   A game that draws no random numbers has nothing to add it to.
+        # - every machine is handed a number for each player of the match from the first buttons it
+        #   reads, so `players_connected` counts them all from then, whoever has pressed a button. Alone,
+        #   a player counts from the first press (#count_connected_players).
+        #
+        # The interpreter does both at that moment (#join_match_at_first_wait). Returns self.
+        def play_as_match(seed:, players:)
+          @match_seed = seed
+          @match_players = players
           self
         end
 
@@ -1300,10 +1320,26 @@ module VBlank
                              full_depth: IR::Mixing.full_depth?(program))
         end
 
+        # The match's players and seed into the game, at the first wait of the run and never again
+        # (#play_as_match). Only a game that keeps random numbers has them to add the seed to, as only
+        # such a game's computer build has the routine that adds it (Computer::Lowering#mix_seed).
+        def join_match_at_first_wait
+          return if @match_players.nil? || @match_joined
+
+          @match_joined = true
+          @connected = [@connected, @match_players].max
+          stream = Builder::Randomness::RNG_STATE
+          return unless @read_program && Reach.variables(@read_program).include?(stream)
+
+          @vars[stream] = Int32.add(@vars[stream], @match_seed)
+        end
+
         # One vblank: snapshot the current buttons as "previous" (so an edge can
         # be spotted), advance the frame counter, and pull the next frame's input
         # if a script is driving it.
         def advance_frame
+          join_match_at_first_wait
+
           # A console that sends the frame's scroll from a copy as the wait ends has placed it
           # already, so the bends go out beside it (#work_out_bends).
           work_out_bends if @console.sprites_placed_before_wait
