@@ -263,12 +263,17 @@ class TestPlainRubyRefusals < Minitest::Test
   end
 
   def test_a_warning_names_the_authors_own_line
-    line = __LINE__ + 4
+    line = __LINE__ + 8
     said = warnings_of do
-      n = 0
+      turns = 0
+      spins = 0
       game_loop do
-        while n >= 0
-          n += 1
+        turns += 1 # a game value, so the loop below is game code, not Ruby run while the game is built
+        n = turns
+        if pressed(:select) # no run presses it, so none spins in the loop below
+          while n >= 0 # nothing in it changes n, so it never waits and never ends
+            spins += 1
+          end
         end
       end
     end

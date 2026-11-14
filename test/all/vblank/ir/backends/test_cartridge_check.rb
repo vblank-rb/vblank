@@ -21,6 +21,7 @@ class TestCartridgeCheck < Minitest::Test
     def hold(*buttons) = tap { @held = buttons }
     def build(_program) = nil
     def frames_took(_pass) = 1
+    def passes_missed = [] # every pass is read
     def [](name) = @run[name]
 
     # The run the moments are read from, with :n one bigger from the pass +self.class.wrong_from+ on.
