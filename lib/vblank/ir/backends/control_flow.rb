@@ -117,8 +117,12 @@ module VBlank
         # The block, which makes the routine +name+ and the parts cut off it, with each of the numbers
         # it keeps for one call of it recorded (#record_call_number) when a frame boundary can call it
         # again while a call of it is going (LoweringPlan#routines_reentered_at_frame_boundary).
-        def with_call_numbers_recorded_for(name)
-          @recording_call_numbers = @plan.routines_reentered_at_frame_boundary.include?(name)
+        def with_call_numbers_recorded_for(name, &) = with_call_numbers_recorded_if(@plan.routines_reentered_at_frame_boundary.include?(name), &)
+
+        # The block, with the numbers it keeps recorded when +recording+: the body of a tick handler that can
+        # wait (LoweringPlan#tick_handlers_waiting), which runs again inside its own wait.
+        def with_call_numbers_recorded_if(recording)
+          @recording_call_numbers = recording
           yield
         ensure
           @recording_call_numbers = false

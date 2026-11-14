@@ -942,8 +942,12 @@ module VBlank
           # on from its own loop's turn, as the interpreter's does, whatever the handler's call left there. A bend's
           # steps run at the boundary too, but the PlayStation build does not make bends yet (NOT_LOWERED_YET), so the
           # timers are all that run there.
+          #
+          # A handler that waits (LoweringPlan#tick_handlers_waiting) runs again inside its own wait: its own
+          # numbers are among them, and so are the ticks its timer still has to answer this frame.
           def with_call_numbers_kept
             kept = call_numbers
+            kept += [@timer_crossed] if @plan.tick_handlers_waiting.any?
             return yield if kept.empty?
 
             @asm.addiu(:sp, :sp, -4 * kept.length)
@@ -982,7 +986,9 @@ module VBlank
                 done = fresh_label("ticks_done")
                 @asm.label(top)
                 jump_unless(Build.binop(:>, Build.var_ref(@timer_crossed), Build.int(0)), done)
-                handler.children.each { |child| statement(child) }
+                with_call_numbers_recorded_if(@plan.tick_handlers_waiting.key?(name)) do
+                  handler.children.each { |child| statement(child) }
+                end
                 emit_sum(@timer_crossed, :-, Build.int(1))
                 @asm.b(top)
                 @asm.label(done)

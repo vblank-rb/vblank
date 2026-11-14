@@ -191,7 +191,19 @@ module VBlank
         end
 
         # Which shape each `repeat` of the program can take (LoopForm).
-        def loop_form = @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) })
+        def loop_form
+          @loop_form ||= LoopForm.new(@program, apart_in: routines_reentered_at_frame_boundary.map { |name| @funcs.fetch(name) } +
+                                                          tick_handlers_waiting.values)
+        end
+
+        # THE TICK HANDLERS THAT CAN WAIT, by their timer's name. A handler runs at the frame boundary, so one
+        # that waits, itself or in a routine it calls, runs again inside its own wait, and the interpreter
+        # keeps each run's loop counts and ticks still to answer to itself (Reference#accrue_timer). A cartridge
+        # keeps them at fixed places, so it keeps them apart and puts them back as it does a routine's
+        # (#routines_reentered_at_frame_boundary).
+        def tick_handlers_waiting
+          @tick_handlers_waiting ||= @tick_handlers.select { |_, handler| statements_wait?(Reach.statements_under(handler)) }
+        end
 
         # THE ROUTINES A FRAME BOUNDARY CAN CALL WHILE A CALL OF THEM IS STILL GOING, by name. What a timer
         # does as it ticks, and a bend's steps, run at the frame boundary, which can be inside a routine's
@@ -228,10 +240,14 @@ module VBlank
         def waits?(name)
           (@waits ||= {}).fetch(name) do
             @waits[name] = false
-            statements = Reach.statements_under(@funcs.fetch(name))
-            @waits[name] = statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
-                           Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
+            @waits[name] = statements_wait?(Reach.statements_under(@funcs.fetch(name)))
           end
+        end
+
+        # Whether +statements+ reach a frame boundary of the game's own, among them or in a routine they call.
+        def statements_wait?(statements)
+          statements.any? { |node| FRAME_ENDING_KINDS.include?(node.kind) } ||
+            Reach.routines_named(statements).uniq.any? { |called| @funcs.key?(called) && waits?(called) }
         end
 
         # Every game loop of the program.

@@ -1,0 +1,130 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "tmpdir"
+
+# Tick handlers on the PlayStation, where the checked run cannot hold them to the interpreter.
+#
+# A HANDLER THAT WAITS ends a pass inside the frame boundary it runs at, so the boundary's own pass is never
+# found waiting, and the pass the handler's wait ends is found waiting twice: once as the wait ends and once
+# as the boundary does. The interpreter reports the same moments (Reference#advance_frame calls each_vblank
+# after the timers, for the frame the handler's wait reached), but the checked run reads a pass once and
+# refuses a pass it never read (CartridgeCheck#refuse_passes_missed!). So these games are played on the
+# headless run, and each pass it reads is held to the interpreter's first moment of that frame.
+#
+# A HANDLER ON A TEAR-FREE SCREEN draws on the page still on the screen until the blank
+# (Runtime::Frame#emit_ticks_on_next_page); the checked run reads only the page each pass drew, so the page on
+# the screen is read here, from the emulator, after every frame.
+class TestPS1TickHandlers < Minitest::Test
+  PS1 = VBlank::IR::Backends::PS1
+  RED = VBlank::Graphics::Color.resolve(:red)
+
+  # A HANDLER THAT WAITS INSIDE ITS OWN LOOP KEEPS ITS PLACE IN IT. Its wait is a frame boundary too, so the
+  # handler runs again inside it, to its end without waiting, and the first run then goes on from the turn it
+  # had reached: a run that waits takes three frames, and the runs inside it walk three turns each.
+  def test_a_handler_waiting_inside_a_repeat_keeps_its_turn
+    program = program_of do
+      screen :bitmap
+      depth = var :depth, 0
+      outer = var :outer, 0
+      inner = var :inner, 0
+      finished = var :finished, 0
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        depth += 1
+        repeat(3) do
+          if depth == 1
+            outer += 1
+            wait_vblank
+          else
+            inner += 1
+          end
+        end
+        finished += 1 if depth == 1
+        depth -= 1
+      end
+      game_loop { wait_vblank }
+    end
+
+    reads = %i[outer inner finished depth]
+    assert_equal moments_on(Reference.new, program, reads), moments_on(PS1::HeadlessRun.new, program, reads)
+  end
+
+  # A HANDLER THAT WAITS ON A TEAR-FREE SCREEN shows what it drew before its wait on the frame its wait ends,
+  # over the page the game drew the pass before: a white bar as long as the passes the game had ended then.
+  def test_a_handler_waiting_on_a_tear_free_screen_shows_its_drawing_where_the_interpreter_does
+    program = program_of do
+      screen :bitmap, tear_free: true
+      waiting = var :waiting, 0
+      passes = var :passes, 0
+      beat = timer :beat, per_second: 20
+      beat.on_tick do
+        if waiting.zero?
+          waiting = 1
+          draw_rect_at 40, 40, 16, 16, :red
+          wait_vblank
+          waiting = 0
+        end
+      end
+      game_loop do
+        passes += 1
+        clear_screen :blue
+        draw_rect_at 0, 0, passes, 4, :white
+      end
+    end
+
+    reads = %i[passes waiting]
+    on_screen = ->(run) { [(0...40).count { |x| run.screen.pixel(x, 1) == VBlank::Graphics::Color.resolve(:white) }, run.screen.pixel(44, 44)] }
+    interpreted = moments_on(Reference.new, program, reads, &on_screen)
+    assert_includes interpreted.map { |_, read| read.last(2) }, [1, RED], "the handler's square over the first pass's bar"
+    assert_equal interpreted, moments_on(PS1::HeadlessRun.new, program, reads, &on_screen)
+  end
+
+  # A HANDLER DRAWING MORE THAN A LIST HOLDS ON A TEAR-FREE SCREEN leaves the page on the screen alone: what it
+  # draws goes on the page the next pass draws, whose clear covers it. Sent as the list filled, its squares
+  # showed on the screen until the blank of every frame.
+  def test_a_handler_drawing_much_on_a_tear_free_screen_leaves_the_page_on_screen_alone
+    program = program_of do
+      screen :bitmap, tear_free: true
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        repeat(150) { |i| draw_rect_at (i % 15) * 16, (i / 15) * 16, 8, 8, :red }
+      end
+      game_loop { clear_screen :blue }
+    end
+
+    assert_equal [0] * 12, red_on_screen_each_frame(program, 12)
+  end
+
+  private
+
+  def program_of(&game)
+    builder = Builder.new
+    builder.instance_eval(&game)
+    builder.finalize_program
+    builder.program.copy.tap { |program| program.console = :ps1 }
+  end
+
+  # Each moment +run+ reports in 9 frames, the first of each frame alone: its frame, the variables +reads+,
+  # and what the block reads off the screen.
+  def moments_on(run, program, reads, &screen)
+    seen = {}
+    run.each_vblank { |frame| seen[frame] ||= [*reads.map { |name| run[name] }, *screen&.call(run)] }
+    run.run(program, frames: 9)
+    seen.to_a
+  end
+
+  # How many red pixels the page on the screen holds after each of +frames+ frames of the console.
+  def red_on_screen_each_frame(program, frames)
+    path = File.join(Dir.mktmpdir("ps1-ticks"), "ticks.exe")
+    PS1.new.build(program, title: "TICKS").write(path)
+    core = VBlank::Diagnostics::Emulator.open_ps1(path)
+    Array.new(frames) do
+      core.run_frame
+      state = core.gpu_state
+      core.colors_at(state.fetch(:display_x), state.fetch(:display_y), core.width, core.height).count(RED)
+    end
+  ensure
+    core&.destroy
+  end
+end
