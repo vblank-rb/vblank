@@ -97,6 +97,51 @@ module VBlank
           # boot code has to set it.
           def stack_moved? = stack_starts_at != END_OF_QUICK - CONSOLE_BYTES
 
+          # What each piece held back takes, in bytes: the console's own with the interrupt
+          # stack's room, the divide routines, and the routine that fills a face.
+          def console_bytes = END_OF_QUICK - stack_starts_at
+          def divide_bytes = below_stack - divide_bottom
+          def fill_face_bytes = divide_bottom - ceiling
+
+          # THE QUICK MEMORY IS FULL: the variables, +variables+ bytes, ran +over+ bytes into the
+          # far end, which holds +kept+ bytes of lists, tables and buffers. The author is told
+          # what takes the room, piece by piece, and what to change.
+          def overrun_message(over:, variables:, kept:)
+            pieces = [["the variables", variables], ["the lists and tables in it", kept],
+                      ["the routine that fills the faces of a place", fill_face_bytes],
+                      ["the routines that divide", divide_bytes], ["the stack", stack_bytes],
+                      ["the part that the console keeps", console_bytes]].reject { |_, bytes| bytes.zero? }
+            listed = pieces.map { |name, bytes| "#{name} (#{size_words(bytes)})" }
+            quick = Messages::PlainWords::QUICK_MEMORY
+            "The game does not fit in the #{quick}. It needs #{size_words(over)} more than the " \
+              "#{size_words(IWRAM_SIZE)} that the #{quick} has. The #{quick} holds these parts of the game: " \
+              "#{listed[0...-1].join(', ')}, and #{listed.last}. To make the game fit, use fewer variables. " \
+              "Or keep the same numbers in a list. The build can move a list to the roomier memory." \
+              "#{fill_face_advice}"
+          end
+
+          private
+
+          def below_stack = stack_starts_at - stack_bytes
+          def divide_bottom = divide_at || divide_fix_at || below_stack
+
+          # A game that fills faces can make that routine smaller (Faces.routine_bytes).
+          def fill_face_advice
+            return "" if fill_face_bytes.zero?
+
+            " Or draw the places with fewer `perspective:` settings. Each setting makes the routine that " \
+              "fills the faces larger. A see-through picture drawn in perspective makes it larger again."
+          end
+
+          # Bytes as a short size: whole KB where it is exact, one decimal otherwise, and plain
+          # bytes under 1KB, as the build's other sizes are written (Guardrails::IwramBudget).
+          def size_words(bytes)
+            return "#{bytes}B" if bytes < 1024
+
+            kb = bytes / 1024.0
+            kb == kb.round ? "#{kb.round}KB" : "#{format('%.1f', kb)}KB"
+          end
+
           # THE STACK THE DEEPEST CHAIN OF CALLS NEEDS, from the game loop's body: the longest run of
           # routines each calling the next. What the console runs on an interrupt is not counted
           # here, since it runs on the console's own stack (see .interrupt_room_needed).

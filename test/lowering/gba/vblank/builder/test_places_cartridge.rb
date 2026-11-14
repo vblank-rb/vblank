@@ -112,6 +112,43 @@ class TestPlacesCartridge < Minitest::Test
     assert_backends_agree(program, frames: 3, console_frames: 30, name: "LITBOTH")
   end
 
+  # ...and beside two thousand variables it does not fit. The build says what takes the quick
+  # memory, the routine that fills the faces among it, and what to change.
+  def test_a_game_too_big_for_the_quick_memory_beside_the_fill_routine_is_told_what_takes_it
+    error = assert_raises(GBA::QuickMemoryOverrun) { GBA.new.lower(lit_grate_beside_variables(2000)) }
+
+    assert_match(/does not fit in the quick memory/, error.message)
+    assert_match(/the variables \(\d/, error.message)
+    assert_match(/the routine that fills the faces of a place \(\d/, error.message)
+    assert_match(/use fewer variables/, error.message)
+    assert_match(/fewer `perspective:` settings/, error.message)
+    refute_match(/internal memory/, error.message)
+  end
+
+  # The lit see-through face drawn every 8 and every 16 pixels, and +count+ variables each counted
+  # up every pass.
+  private def lit_grate_beside_variables(count)
+    clear = PlaceGames::SEE_THROUGH
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap, tear_free: true
+      image :white, width: 8, height: 8, data: Array.new(64) { |at| (at % 3).zero? ? clear : 0x7FFF }, transparent: clear
+      shading :fade, colors: PlaceGames::SHADES, levels: PlaceGames::SHADE_LEVELS
+      place :wall, shading: :fade do
+        face point(-1.0, 1.0, 2.0), point(1.0, 1.0, 3.0), point(1.0, -1.0, 3.0), point(-1.0, -1.0, 2.0),
+             picture: :white, on_picture: [[0, 0], [8, 0], [8, 8], [0, 8]], light: [0.1, 0.9, 0.9, 0.1]
+      end
+      numbers = (0...count).map { |k| var(:"n#{k}", k) }
+      eye = viewer :eye, at: [0.0, 0.0, 0.0]
+      game_loop do
+        numbers.each { |number| number += 1 }
+        %i[every_8_pixels every_16_pixels].each { |each| draw_place :wall, seen_by: eye, perspective: each }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # A see-through face held to windows that cut its rows short at either end, so a run of whole
   # stretches hands a row's last stretch back to be drawn a stretch at a time, a pixel kept back.
   def test_a_see_through_face_through_windows_agrees

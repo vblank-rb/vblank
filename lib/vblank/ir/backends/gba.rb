@@ -1079,7 +1079,7 @@ module VBlank
             @drawing.emit_default_screen(program) # a game with no `screen` line is on a bitmap one
             emit_top_level(program)
           end
-          refuse_variables_overlapping_divide!
+          refuse_variables_past_quick_memory!
           emit_functions
           emit_hot_functions # the routines worth running from the quick memory, as one block
           emit_mix_routine # the mixer's inner loop, placed in ROM and copied to IWRAM at boot
@@ -1229,10 +1229,23 @@ module VBlank
         def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
         def emit_and_const(rd, rn, imm, scratch) = @primitives.emit_and_const(rd, rn, imm, scratch)
 
+        # THE VARIABLES GROW UP FROM THE BASE and the lists and buffers grow down from the
+        # routines held at the top (TopOfQuickMemory), so a program with a great many of either
+        # has to be told rather than quietly overwriting the other. Asked once the game's own code
+        # is written and before the routines kept in the quick memory are, where only a game
+        # with a divide routine was ever asked it; the measuring pass moves lists out to make
+        # room (Placement#measure_routines) before a game is told.
+        def refuse_variables_past_quick_memory!
+          over = @memory.overrun
+          return unless @top.divide_at && over.positive?
+
+          message = @top.overrun_message(over: over, variables: @memory.near_bytes, kept: @memory.far_bytes)
+          raise QuickMemoryOverrun.new(message, bytes: over)
+        end
+
         # Forwards to @divide (see {Divide}).
         def needs_divide_routine?(program) = @divide.needs_divide_routine?(program)
         def needs_divide_fix_routine?(program) = @divide.needs_divide_fix_routine?(program)
-        def refuse_variables_overlapping_divide! = @divide.refuse_variables_overlapping_divide!
         def emit_copy_divide_routines_to_iwram = @divide.emit_copy_divide_routines_to_iwram
         def emit_divide_routine = @divide.emit_divide_routine
         def emit_divide_fix_routine = @divide.emit_divide_fix_routine

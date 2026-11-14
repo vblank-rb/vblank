@@ -211,16 +211,6 @@ module VBlank
             end.to_h
           end
 
-          # The variables grow up from the base and the lists and buffers grow down from
-          # the routines, so a program with a great many of either has to be told rather
-          # than quietly overwriting the other.
-          def refuse_variables_overlapping_divide!
-            return unless @divide_routine_iwram && @memory.overrun.positive?
-
-            raise QuickMemoryOverrun.new("this program uses more internal memory for its variables than there is " \
-                                         "room for alongside the divide routine", bytes: @memory.overrun)
-          end
-
           # Copy the routine from ROM into fast internal memory once, at boot. Internal
           # memory has no wait states and this chip has no instruction cache to flush, so
           # the copied code simply runs faster. Copies whole words from the routine's
