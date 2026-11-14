@@ -147,26 +147,30 @@ class TestBuildReport < Minitest::Test
   # A value held in a Ruby variable is ONE node written into every statement that uses it,
   # so asking it which statement holds it answers with the last one — here a line of another
   # routine, which is not in the routine the note is about at all.
+  #
+  # The local stays one shared node only while nothing can change `x` before it is read
+  # (LocalNames#copy_kept): both routines are called by name, and neither writes `x`. A call
+  # through a variable (`call mode`) can change anything, so the local would keep its number
+  # in a hidden variable, each statement would read that, and nothing would be shared.
   def test_a_value_shared_by_many_statements_is_charged_to_each_of_them
     rom = VBlank.build("BRSHARE", console: :gba, maker: "01", out: StringIO.new, err: StringIO.new) do
       screen :tiled
       image(:dot, "#" => :red) { "########\n" * 8 }
       x = var :x, 3
       heavy = (x * 37) + (x / 7) + (x * x)
-      scene(:play) do
+      func(:play) do
         sprite :dot, at: [0, 0]
         1200.times { |n| slot = var(:"y#{n % 8}", 0); slot = heavy }
       end
       func(:elsewhere) { z = var(:z, 0); z = heavy }
-      mode = var :mode, :play
       game_loop do
-        call mode
+        call :play
         call :elsewhere
       end
     end
-    note = report_for(rom)[/did not fit.*?\)/m]
+    note = report_for(rom)[/func :play did not fit.*?\)/m]
 
-    assert_match(/test_build_report\.rb:#{__LINE__ - 11}/o, note, "the line in the scene, not the other routine's")
+    assert_match(/test_build_report\.rb:#{__LINE__ - 10}/o, note, "its own line, not the other routine's")
   end
 
   def test_it_says_whether_the_list_was_chosen_by_measuring_or_from_the_shape
