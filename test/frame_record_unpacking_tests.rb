@@ -68,8 +68,9 @@ module FrameRecordUnpackingTests
 
   # The builder of a game with a pose for each way of keeping a frame, its program made. Where
   # +by_routine+, the slot of low-byte-first frames has no place in the copy and the game's
-  # unpacking routine fills it; every other slot is copied as it is.
-  private def frames_builder(folder, options: VBlank::Cartridge::Options.new, by_routine: false)
+  # unpacking routine fills it; every other slot is copied as it is. Where +every_pose+, each pose
+  # is a sprite of its own, all seven at one place.
+  private def frames_builder(folder, options: VBlank::Cartridge::Options.new, by_routine: false, every_pose: false)
     from = frames_original(folder)
     b = Builder.new(options: options)
     b.instance_eval do
@@ -98,8 +99,12 @@ module FrameRecordUnpackingTests
       end
       # Two of the poses are shown, one above the other: a Game Boy Color draws ten pieces of
       # sprites on a line, and one of these pictures is eight across.
-      sprite :counted, at: [0, 0]
-      sprite :across_rows, at: [72, 72]
+      if every_pose
+        frames.each_key { |name| sprite name, at: [0, 0] }
+      else
+        sprite :counted, at: [0, 0]
+        sprite :across_rows, at: [72, 72]
+      end
       game_loop { wait_vblank }
     end
     b.finalize_program
@@ -173,6 +178,21 @@ module FrameRecordUnpackingTests
 
     def builder(folder, options) = poses_read_by_the_game_builder(original(folder), options: options)
     def copy(folder) = File.binread(File.join(folder, "made_up_blocks.bin"))
+  end
+
+  # SEVEN POSES OF 64x64 AT ONE PLACE, read from the pack as the game starts: more pieces than the
+  # Game Boy Color's sprite table holds, so the pieces furthest back are left out. The game as C,
+  # JavaScript and Ruby each leave out the ones the interpreter does (each run's player checks
+  # every frame against it), and the interpreter draws the same picture from the pack it is
+  # handed as from the pack it holds.
+  def test_seven_poses_at_one_place_play_alike_with_the_pack_left_out
+    Dir.mktmpdir do |folder|
+      whole = frames_builder(folder, every_pose: true)
+      left_out = frames_builder(folder, options: LEFT_OUT, every_pose: true)
+      shown = game_player.run(whole.program, frames: 3).screen.to_a
+
+      assert_equal shown, game_player.hand_file(whole.made_data_pack_file).run(left_out.program, frames: 3).screen.to_a
+    end
   end
 
   # AN UNPACKING ASKED FOR BEFORE THE GAME NAMES ALL ITS FRAMES writes no record of the frames
