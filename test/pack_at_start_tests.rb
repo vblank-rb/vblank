@@ -445,7 +445,7 @@ module PackAtStartTests
   end
 
   # THE BAR A SHELL SHOWS AS IT UNPACKS, measured off the screen: a pack of a slot copied as it is
-  # (the whole made-up copy, 512 bytes) and a slot the routine fills, 1024 bytes, counted 256 at a
+  # (the made-up copy's first 512 bytes) and a slot the routine fills, 1024 bytes, counted 256 at a
   # time. +cost+ is how many times the work of a plain copy each byte of the second costs, or nil to
   # name none. Gives back the bar's width on each frame it moved, in order.
   private def bar_widths(folder, cost:)
@@ -453,7 +453,7 @@ module PackAtStartTests
     cost_option = cost ? { cost: cost } : {}
     # Built for the run's console, so the bar is laid out for the screen #bar_width measures.
     unpacking = VBlank::Builder.new(options: PACK_AT_START.with(console: game_console)).data_pack(from: from, version: "1") do |slots|
-      slots.numbers :plain, at: 0, count: COPY_SIZE, width: :byte, signed: false
+      slots.numbers :plain, at: 0, count: 512, width: :byte, signed: false
       slots.numbers :rendered, count: 1024, width: :byte, signed: false, **cost_option
       slots.fill_from_copy do |copy, pack|
         4.times do |quarter|

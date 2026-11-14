@@ -78,6 +78,7 @@ class TestShell < Minitest::Test
       assert_empty played.refusals
       assert_equal GAME_PASSES, played.game_pictures.size
       assert_equal all_in_one_pictures, played.game_pictures
+      assert pose_shown_in?(played.game_pictures.last, 240), "the pose read from the pack's frame record is not shown"
     end
   end
 

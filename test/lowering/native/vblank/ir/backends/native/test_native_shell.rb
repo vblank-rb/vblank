@@ -40,9 +40,14 @@ class TestNativeShell < Minitest::Test
   BMP_ROW_BYTES = 720 * 3
   BMP_ROWS = 480
   MARKER_ROWS = (120...135)
+  # The rows the port's pose stands on (screen rows 100 to 107), drawn from the record of its
+  # frame that the unpacking writes.
+  POSE_ROWS = ((ShellTests::POSE_TOP * 3)...((ShellTests::POSE_TOP + ShellTests::POSE_SIZE[1]) * 3))
 
-  private def marker_rows_of(bmp)
-    MARKER_ROWS.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
+  private def marker_rows_of(bmp) = window_rows_of(bmp, MARKER_ROWS) + window_rows_of(bmp, POSE_ROWS)
+
+  private def window_rows_of(bmp, rows)
+    rows.map { |from_top| bmp.byteslice(BMP_HEADER_BYTES + ((BMP_ROWS - 1 - from_top) * BMP_ROW_BYTES), BMP_ROW_BYTES) }
   end
 
   # What one run of the program printed (its variables at the end of the script), the window as it
@@ -58,6 +63,7 @@ class TestNativeShell < Minitest::Test
       answer = play(all_in_one, dir, "answer")
 
       assert_includes marker_rows_of(answer.picture).join, "\xFF\xFF\xFF".b, "the marker is on the picture"
+      refute_empty window_rows_of(answer.picture, POSE_ROWS).join.delete("\0"), "the pose is on the picture"
 
       assert_equal %w[made-up-shell parts], Dir.children(shell).sort
       assert_holds_none_of original_pieces, folder_bytes(shell), "the desktop shell's folder"

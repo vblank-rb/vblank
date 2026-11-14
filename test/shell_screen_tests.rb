@@ -72,6 +72,7 @@ module ShellScreenTests
         slots.colors :palette, at: PALETTE_AT, count: 16
         slots.tiles :walls, count: 2
         slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.numbers :frames, at: FRAMES_AT, count: FRAME_BYTES.length, width: :byte, signed: false
         slots.fill_from_copy do |copy, into|
           copy.unpack_lz77 at: LZ77_AT, into: into[:walls]
           copy.unpack_rle at: RLE_AT, into: into[:heights]
@@ -93,6 +94,9 @@ module ShellScreenTests
       image :wall_b, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(1)
       tiles :walls, 0 => :wall_a, 1 => :wall_b
       background :room, tiles: :walls, map: [[0, 1, 0, 1], [1, 0, 1, 0]]
+      image :hero, tiles: pack[:walls], frame: pack[:frames].frame(0, layout: FRAME), origin: [8, 8], colors: pack[:palette],
+                   size: [16, 8]
+      sprite :hero, at: [120, 100]
       heights = table :heights, pack[:heights]
       step = var :step, 0
       game_loop do
