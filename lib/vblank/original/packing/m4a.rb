@@ -1006,7 +1006,7 @@ module VBlank
                 names = var(:glide_names)
                 shade = var(:glide_shade)
                 key = var(:moved_key)
-                emit_sides_of(t, sounding_list(:velocity)[s], sounding_list(:rhythm_pan)[s], right, left)
+                emit_sides_for_note(t, sounding_list(:velocity)[s], sounding_list(:rhythm_pan)[s], right, left)
                 [hz, names, shade].each { |each| each.store!(0) }
                 emit_shade(right, left, shade, names)
                 if sounding_list(:fixed)[s] == 1
@@ -1015,8 +1015,9 @@ module VBlank
                   emit_pitch_hz(t, sounding_list(:pitch_key)[s], hz, names)
                   key.store!(MOST_KEY) if key > MOST_KEY
                 end
-                change = SoundingChange.new(key: key, loudness: var(:glide_loudness), shade: shade, hz: hz, names: names)
-                change.loudness.store!(right + left)
+                loudness = var(:glide_loudness)
+                loudness.store!(right + left)
+                change = SoundingChange.new(key: key, loudness: loudness, shade: shade, hz: hz, names: names)
                 glide = sounding_list(:glide_record)[s]
                 if glide >= 0 && sounding_list(:glide_start)[s] == var(:frame)
                   emit_rewritten_record(glide, change, PackNote::NAMES.fetch(:glides))
@@ -1106,10 +1107,10 @@ module VBlank
 
           # Each side's loudness, 0 to 255, as TrkVolPitSet and ChnVolSetAsm work them out from VOL,
           # PAN, the note's velocity and a drum's own pan.
-          def emit_sides(t, right, left) = emit_sides_of(t, track_list(:velocity)[t], var(:rhythm_pan), right, left)
+          def emit_sides(t, right, left) = emit_sides_for_note(t, track_list(:velocity)[t], var(:rhythm_pan), right, left)
 
           # ...for a note of +velocity+ and a drum's own pan +side_pan+, on track +t+ as it is now.
-          def emit_sides_of(t, velocity, side_pan, right, left)
+          def emit_sides_for_note(t, velocity, side_pan, right, left)
             x = var(:volume_x)
             y = var(:pan_y)
             x.store!((track_list(:volume)[t] * STARTING_VOLUME_X) >> 5)

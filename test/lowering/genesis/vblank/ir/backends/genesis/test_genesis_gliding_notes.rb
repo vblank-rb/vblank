@@ -7,7 +7,7 @@ require "tmpdir"
 # holds the 68000's count of where the recording has got to against the interpreter's; this hears that
 # the sound processor took the new step too (Runtime::Recordings, GLIDE_ENTRY). A recording that lasts
 # 40 frames at its own pitch is struck, and either goes on as it is or, 18 frames in, glides an octave
-# up, reading the rest twice as fast: the glided one falls silent some ten frames sooner. A sound
+# up, reading the rest twice as fast: the glided one falls silent sooner, by half what was left. A sound
 # processor that let the glide go by would play it to its end at the old pitch.
 class TestGenesisGlidingNotes < Minitest::Test
   Score = VBlank::Audio::Score

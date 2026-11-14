@@ -18,12 +18,11 @@ class TestGlidesRefused < Minitest::Test
     end
   end
 
+  # The Color plays no recorded part at all, so it is the one console that refuses a glide.
   def test_a_console_that_cannot_do_it_refuses_in_plain_words
-    %i[gbc].each do |console|
-      said = StringIO.new
-      assert_raises(VBlank::BuildError, console.to_s) { gliding_game(console, err: said) }
+    said = StringIO.new
+    assert_raises(VBlank::BuildError) { gliding_game(:gbc, err: said) }
 
-      assert_match(/glides/, said.string)
-    end
+    assert_match(/glides/, said.string)
   end
 end

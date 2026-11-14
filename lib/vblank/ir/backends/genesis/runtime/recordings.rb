@@ -874,8 +874,9 @@ module VBlank
             # A GLIDE, in a game whose notes glide: an entry of the queue that is GLIDE_ENTRY gives the play
             # the mailbox's step from here, where it has got to, and is taken at once with nothing playing.
             # The two places that send an entry onward to a new play send it here first (#driver's
-            # :wait_play and :loop_play, reached by the jumps to :wait_entry and :loop_entry instead), and
-            # it is written after everything else, so every other label is where it is in a game with none.
+            # :wait_play and :loop_play, reached by the jumps to :wait_entry and :loop_entry instead).
+            # Must be written after everything else in the program: every other label then sits where it
+            # does in a game with no glide, which builds the same bytes and whose labels Sound reads.
             def emit_glide_entries(z, mail, emit_entry_taken)
               z.label(:loop_entry) # in the second set, A the entry's first byte
               z.bytes(0xFE, GLIDE_ENTRY) # CP glide

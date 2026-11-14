@@ -180,6 +180,12 @@ module VBlank
       # and every time after (a song coming round puts every part as it was then). The interpreter
       # reads the voice sounding instead (Reference::Mixer#glide_music_note), which is the same. The
       # part's own for a glide with no note struck before it, which then has nothing to carry on.
+      #
+      # The one place the two can part: a glide on the very frame a song comes round to, after a song
+      # whose last note plays another recording than the note before that frame. Coming round, the
+      # note sounding is the song's last, and a build's one row for the glide reads the other. Music
+      # read off a cartridge comes round where its driver is as it was, the same note sounding, so it
+      # never has such a glide.
       def struck_instrument(part, event)
         at = part.events.rindex { |each| each.equal?(event) } || 0
         struck = part.events.first(at).reverse.find { |each| each[1].positive? && !glides?(each) }

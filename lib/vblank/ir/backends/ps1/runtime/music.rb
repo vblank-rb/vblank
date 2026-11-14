@@ -880,14 +880,14 @@ module VBlank
               asm.addiu(:v0, :t0, m::RECORD_BYTES)
               asm.jr(:ra) { asm.sw(:v0, at.call(ENTRY), :gp) }
 
-              emit_recorded_note(asm, at, level_at) if recorded?(memory)
+              emit_recorded_note(asm, at, level_at, glides: memory.reserved?(Recordings::GLIDES)) if recorded?(memory)
             end
 
             # rt_music_recorded_note: the note at NOTE of a song's part that plays a recording: a note takes a
             # place for the part (rt_recordings_note), and logs itself if it found one; a rest gives the part's
             # place back and logs itself whether the part had one or not (Reference::Player#play_song_frame).
             # The part's own number among the song's recorded parts, one up, is whose the place is.
-            def emit_recorded_note(asm, at, level_at)
+            def emit_recorded_note(asm, at, level_at, glides: false)
               m = PS1::Music
               asm.label("rt_music_recorded_note")
               enter(asm, %i[s0])
@@ -908,7 +908,7 @@ module VBlank
               asm.beq(:v0, :zero, "rt_music_recorded_note_done") # no place: not heard
               asm.label("rt_music_recorded_note_log")
               emit_group_at(asm, at, NOTE, m::NOTE_HEAD)
-              emit_recorded_note_level(asm, at) if level_at
+              emit_recorded_note_level(asm, at, glides: glides) if level_at
               asm.label("rt_music_recorded_note_done")
               leave(asm, %i[s0])
             end
@@ -930,8 +930,9 @@ module VBlank
             # The recorded note at NOTE under the music volume (Reference::Player#record_note_volume): the part's
             # level record held for a new level to reach (nought for a rest), the part in HELD_ORDER, its
             # loudness at the level logged, and the place the note struck or glided on given that loudness
-            # (Reference::Mixer#glide_music_note plays a glide at its own loudness, as a strike).
-            def emit_recorded_note_level(asm, at)
+            # (Reference::Mixer#glide_music_note plays a glide at its own loudness, as a strike). A game with
+            # no glide (+glides+ false) never reaches a gliding row, and keeps the branch past one it had.
+            def emit_recorded_note_level(asm, at, glides: false)
               m = PS1::Music
               emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
               asm.beq(:t3, :zero, "rt_music_recorded_level_held")
@@ -944,6 +945,12 @@ module VBlank
               emit_part_listed(asm, at, "rt_music_recorded_level_listed")
               emit_field(asm, at, :a0, NOTE, m::NOTE_WOBBLE)
               emit_field(asm, at, :t3, NOTE, m::NOTE_RECORDING)
+              unless glides
+                asm.andi(:t2, :t3, m::GLIDES)
+                asm.beq(:t2, :zero, "rt_music_recorded_level_strikes")
+                asm.move(:t3, :zero)
+                asm.label("rt_music_recorded_level_strikes")
+              end
               asm.jal("rt_music_recorded_loudness")
             end
 

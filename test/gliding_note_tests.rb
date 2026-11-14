@@ -89,7 +89,7 @@ module GlidingNoteTests
 
   # A glide with a volume and a side of its own plays on, struck once: the checked runs hold its voice's
   # loudness to the interpreter's on every pass where the console's build keeps one (the PlayStation's).
-  def test_a_glide_with_its_own_volume_and_side_reads_on
+  def test_a_glide_with_its_own_volume_and_side_is_not_struck_again
     quiet = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(glides: true, volume: 4, pan: -0.5))
     struck = song_of(Score::Note.new(at: 0, hz: ROOT, volume: 15), second_note(volume: 4, pan: -0.5))
 

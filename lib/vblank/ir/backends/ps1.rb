@@ -122,6 +122,7 @@ module VBlank
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, recorded_pans: samples && IR::Tunes.recorded_pans?(program),
+                                  glides: samples && Music.glides?(program),
                                   tiles: Lowering::Picture.tiled?(program),
                                   colors: colors, by_number: by_number, over_picture: over_picture)
           lowering = Lowering.new(program, memory: memory, cache: cache)

@@ -342,14 +342,7 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
-              if memory.reserved?(SIDES) # the row's word of "recording_sides", a word for each row's ROW_BYTES
-                asm.txa
-                (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
-                asm.tax
-                asm.lda(asm.long_x("recording_sides", 0))
-                asm.sta(place.call(PLACE_SIDES))
-                asm.ldx(at.call(ROW))
-              end
+              emit_row_sides_copied(asm, at, place) if memory.reserved?(SIDES)
               # Its shape: one with none sounds at full from its first sample; a song's or an effect's
               # note with a shape starts at nothing and climbs (Reference::Mixer#recording_fields), and
               # the game's own sound takes its shape's first step as it is played
@@ -656,6 +649,17 @@ module VBlank
               asm.jmp(asm.abs("rt_recordings_take"))
             end
 
+            # The row at ROW's word of "recording_sides" (a word for each row's ROW_BYTES, X the row) into the
+            # place's PLACE_SIDES, X the row again after.
+            def emit_row_sides_copied(asm, at, place)
+              asm.txa
+              (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
+              asm.tax
+              asm.lda(asm.long_x("recording_sides", 0))
+              asm.sta(place.call(PLACE_SIDES))
+              asm.ldx(at.call(ROW))
+            end
+
             # rt_recordings_glide(row, owner): the note +owner+'s part sounds, if it has one, reads on at
             # the row's pitch and loudness, from the sides the row names (Reference::Mixer#glide_music_note):
             # how far a frame takes it, its voice's pitch registers and its volumes, with no key-on, so its
@@ -681,13 +685,7 @@ module VBlank
                 asm.lda(row.call(from))
                 asm.sta(place.call(to))
               end
-              if memory.reserved?(SIDES) # the glide's sides, as a note's are taken (rt_recordings_take)
-                asm.txa
-                (ROW_BYTES / 2).bit_length.pred.times { asm.lsr }
-                asm.tax
-                asm.lda(asm.long_x("recording_sides", 0))
-                asm.sta(place.call(PLACE_SIDES))
-              end
+              emit_row_sides_copied(asm, at, place) if memory.reserved?(SIDES) # the glide's sides, as a note's
               asm.lda(at.call(PLACE))
               asm.cmp(heard)
               asm.bcs("rt_recordings_glide_done")

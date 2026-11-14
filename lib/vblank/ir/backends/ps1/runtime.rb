@@ -48,8 +48,8 @@ module VBlank
           # it (+over_picture+), each shown from pages of its own; and Frame's count of the frames setting up
           # took for one that reads how many frames it has shown since power-on (+counted+).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
-                      samples: false, recorded_pans: false, tiles: false, colors: false, by_number: false, over_picture: false,
-                      counted: false)
+                      samples: false, recorded_pans: false, glides: false, tiles: false, colors: false, by_number: false,
+                      over_picture: false, counted: false)
             Faces.reserve(memory) if faces
             Frame.reserve(memory, counted: counted)
             Paint.reserve(memory, shown_apart: by_number || over_picture)
@@ -57,7 +57,7 @@ module VBlank
             Tiles.reserve_sprites(memory) if over_picture
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
-            Recordings.reserve(memory, sides: recorded_pans) if samples
+            Recordings.reserve(memory, sides: recorded_pans, glides: glides) if samples
             Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
           end
 
