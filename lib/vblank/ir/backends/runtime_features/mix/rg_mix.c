@@ -450,7 +450,8 @@ static void rg_mix_sound_frame_ended(void) {
 static inline void rg_mix_recordings_told(void) {
   for (int32_t i = 0; i < VOICES; i++) {
     const mix_voice *voice = &voices[i];
-    spu_tell_recording(i, voice->sounding, voice->recording, voice->back, voice->step, voice->loudness, voice->level);
+    spu_tell_recording(i, voice->sounding, voice->recording, voice->back, voice->step, voice->loudness, voice->level,
+                       voice->shaped);
   }
 }
 

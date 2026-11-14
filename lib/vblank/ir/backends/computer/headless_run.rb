@@ -336,6 +336,9 @@ module VBlank
             level
           end
 
+          # How loud each sounding voice plays, out of 512, in the same order (Reference#loudness_by_voice).
+          def loudness_by_voice = @mixing.map { |_, loudness, *| loudness }
+
           def sound_drops
             dropped, held = @mix_drops
             Diagnostics::SoundDrops::Reading.new(dropped: dropped, music_held: held, voices: @console.recordings_at_once)

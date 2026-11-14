@@ -104,7 +104,7 @@ The run ends with its skips counted by reason, and fails if any is not a missing
   the sound, for songs (square, wave, noise and recordings; named or from a list; played once;
   the music volume), effects over the song, beeps, `wave`, `stop_wave`, `noise`, and recordings.
   The mixer's output is compared slice for slice (`mixed_sound`, `active_samples`,
-  `sound_owners`, `peak_voices`, `volume_of`, `level_of`, `sound_drops` answer). A test may clear
+  `sound_owners`, `peak_voices`, `volume_of`, `level_of`, `loudness_by_voice`, `sound_drops` answer). A test may clear
   `audio` as it watches; the run compares every entry the C logged regardless.
 - **`assert_backends_agree` and `backend_pictures` do not skip.** They play the program as C
   with the same buttons and compare with the interpreter on every frame; `backend_pictures`

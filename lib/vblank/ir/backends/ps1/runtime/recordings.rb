@@ -64,7 +64,8 @@ module VBlank
             # nought for the game's own, which ranks below every one); its TICKET (LOOPS set for one of the
             # game's own that loops, and how many the game had started before it), which orders who gives way
             # first; its shape, its level (out of Audio::Envelope::FULL) and which part of the shape it is in;
-            # and the loudness its voice has at full.
+            # and its LOUDNESS, out of the mix's full (IR::Tunes::MIX_FULL), as the interpreter's mix keeps a
+            # voice's (Reference::Mixer#loudness_by_voice).
             PLACES_STATE = "rt recordings places"
             HELD = 0
             POSITION = 4
@@ -93,10 +94,19 @@ module VBlank
             FULL = Audio::Envelope::FULL
 
             # ...and, for each of the last Frame::STEPS_KEPT passes, by the pass's number less its multiples of
-            # STEPS_KEPT, each place's recording as its wait ended, a byte a place; and its level beside, in a
-            # table of its own.
+            # STEPS_KEPT, each place's recording as its wait ended, a byte a place; its level beside, in a
+            # table of its own; and its loudness, a halfword a place, in a third.
             KEPT_BY_PASS = "rt recordings kept by pass"
             LEVELS_BY_PASS = "rt recordings levels by pass"
+            LOUDNESS_BY_PASS = "rt recordings loudness by pass"
+
+            # HOW FAR A LOUDNESS IS SHIFTED UP TO BE A VOICE'S VOLUME REGISTER. The interpreter's mix
+            # multiplies a sample by a gain in 256ths of full, and the register's full is
+            # SPUWrites::LOUDEST, so a 256th is a step of LOUDEST >> 8 in it: GAIN_TO_VOLUME_SHIFT. A note with
+            # no shape is mixed at its loudness itself, which keeps half a 256th (Audio::Sound::
+            # LOUDNESS_FRACTION), so it is shifted that much less.
+            GAIN_TO_VOLUME_SHIFT = (SPUWrites::LOUDEST >> Audio::Envelope::SCALE).bit_length - 1
+            LOUDNESS_TO_VOLUME_SHIFT = GAIN_TO_VOLUME_SHIFT - Audio::Sound::LOUDNESS_FRACTION
             # WHAT COULD NOT BE PLAYED (Reference::Mixer#drops): how many plays and notes found every place
             # busy, and the most places songs and effects held at one of those moments.
             DROPS = "rt recordings drops"
@@ -125,6 +135,7 @@ module VBlank
               memory.reserve(PLACES_STATE, PLACES * PLACE_BYTES)
               memory.reserve(KEPT_BY_PASS, Frame::STEPS_KEPT * PLACES)
               memory.reserve(LEVELS_BY_PASS, Frame::STEPS_KEPT * PLACES)
+              memory.reserve(LOUDNESS_BY_PASS, Frame::STEPS_KEPT * PLACES * 2)
             end
 
             def emit(asm, memory)
@@ -523,11 +534,16 @@ module VBlank
               Music.leave(asm, %i[s1])
             end
 
-            # rt_recordings_volume (s1 = a place's offset): its voice's volume registers at its loudness, scaled
-            # by its level the way the interpreter's mix scales a note's (Reference::Mixer#slide_gain: the
-            # level's own top bit added back, so full is the whole loudness).
-            # rt_recordings_loud(a0 = a voice's loudness at full): the place a note last took (TAKEN) sounding
-            # at it, as the music volume sets (Reference::Player#song_loudness).
+            # rt_recordings_volume (s1 = a place's offset): its voice's volume registers at the gain the
+            # interpreter's mix gives the note for the frame (#GAIN_TO_VOLUME_SHIFT says the scale). A note
+            # with no shape is mixed at its loudness (Reference::Mixer#recording_fields); a shaped one at its
+            # loudness scaled by its level, a whole number of 256ths with the rest dropped
+            # (Audio::Envelope.whole_gain, Reference::Mixer#slide_gain: the level's own top bit added back,
+            # so full is the whole loudness). Within the frame the mix slides a shaped note there a sample at
+            # a time; the chip's voice is set once a frame, to where the slide ends.
+            # rt_recordings_loud(a0 = a loudness, out of the mix's full): the place a note last took (TAKEN)
+            # sounding at it, as the music volume sets (Reference::Player#song_loudness,
+            # Reference::Mixer#rescale_music).
             def emit_loudness(asm, at, place, sides: false)
               h = Console::PS1Hardware
               asm.label("rt_recordings_loud")
@@ -541,13 +557,19 @@ module VBlank
               asm.label("rt_recordings_volume")
               Music.enter(asm, %i[s2])
               emit_place_at(asm, :s1)
+              asm.lw(:s2, place.call(LOUD), :t9)
+              asm.lw(:t0, place.call(PLACE_ENVELOPE), :t9)
+              asm.bne(:t0, :zero, "rt_recordings_volume_shaped")
+              asm.b("rt_recordings_volume_sides") { asm.sll(:s2, :s2, LOUDNESS_TO_VOLUME_SHIFT) }
+              asm.label("rt_recordings_volume_shaped")
               asm.lw(:t0, place.call(LEVEL), :t9)
               asm.srl(:t1, :t0, 7)
               asm.addu(:t0, :t0, :t1)
-              asm.lw(:t1, place.call(LOUD), :t9)
-              asm.multu(:t0, :t1)
+              asm.multu(:t0, :s2)
               asm.mflo(:s2)
-              asm.srl(:s2, :s2, Audio::Envelope::SCALE)
+              asm.srl(:s2, :s2, Audio::Envelope::WHOLE_GAIN_SHIFT)
+              asm.sll(:s2, :s2, GAIN_TO_VOLUME_SHIFT)
+              asm.label("rt_recordings_volume_sides")
               [h::SPU_VOLUME_LEFT, h::SPU_VOLUME_RIGHT].each_with_index do |register, side|
                 emit_voice_number(asm, :t3)
                 asm.sll(:t3, :t3, 4)
@@ -595,9 +617,9 @@ module VBlank
               asm.srl(:a1, :a1, Audio::Pan::SHARE_SHIFT)
             end
 
-            # rt_recordings_kept_for_pass: which recording each place holds (the low byte of its HELD) and its
-            # level copied for the pass whose wait is ending, for a reader of the run to hold to the
-            # interpreter's mix at that pass's frame boundary (Sound's rt_sound_frame).
+            # rt_recordings_kept_for_pass: which recording each place holds (the low byte of its HELD), its
+            # level and its loudness copied for the pass whose wait is ending, for a reader of the run to hold
+            # to the interpreter's mix at that pass's frame boundary (Sound's rt_sound_frame).
             def emit_kept_for_pass(asm, at)
               asm.label("rt_recordings_kept_for_pass")
               asm.lw(:t0, at.call(Frame::PASSES), :gp)
@@ -605,12 +627,16 @@ module VBlank
               asm.li(:t1, PLACES)
               asm.multu(:t0, :t1)
               asm.mflo(:t0)
+              asm.sll(:t2, :t0, 1) # the halfwords' place
+              asm.addu(:t2, :t2, :gp)
               asm.addu(:t0, :t0, :gp)
               PLACES.times do |place|
                 asm.lw(:t1, at.call(PLACES_STATE) + (place * PLACE_BYTES) + HELD, :gp)
                 asm.sb(:t1, at.call(KEPT_BY_PASS) + place, :t0)
                 asm.lw(:t1, at.call(PLACES_STATE) + (place * PLACE_BYTES) + LEVEL, :gp)
                 asm.sb(:t1, at.call(LEVELS_BY_PASS) + place, :t0)
+                asm.lw(:t1, at.call(PLACES_STATE) + (place * PLACE_BYTES) + LOUD, :gp)
+                asm.sh(:t1, at.call(LOUDNESS_BY_PASS) + (place * 2), :t2)
               end
               asm.jr(:ra)
             end

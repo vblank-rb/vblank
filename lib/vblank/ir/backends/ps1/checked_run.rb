@@ -38,8 +38,9 @@ module VBlank
 
           def prepare_interpreter(interpreter) = interpreter.fill_faces_with(@faces)
 
-          # The recordings sounding at a moment, each with its level, as both sides keep them.
-          def sounding_levels(run) = run.active_samples.map { |name| [name, run.level_of(name)] }
+          # The recordings sounding at a moment, each with its level and its loudness, as both sides keep
+          # them (HeadlessRun.sounding_voices).
+          def sounding_levels(run) = HeadlessRun.sounding_voices(run)
 
           # THE SOUND LOG AND THE SOUND CHIP ITSELF, past the moments: every entry of the log, and the first
           # time the game was found waiting with a register of the chip holding something other than what

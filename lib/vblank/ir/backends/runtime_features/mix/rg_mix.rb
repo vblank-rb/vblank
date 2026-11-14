@@ -286,7 +286,7 @@ end
 # Each voice told to the sound chip that plays recordings on voices of its own (rg_mix.c says when).
 def rg_mix_recordings_told
   @rg_mix_voices.first(rg_mix_voice_count).each_with_index do |voice, i|
-    rg_spu_tell_recording(i, voice.sounding, voice.recording, voice.back, voice.step, voice.loudness, voice.level)
+    rg_spu_tell_recording(i, voice.sounding, voice.recording, voice.back, voice.step, voice.loudness, voice.level, voice.shaped)
   end
 end
 

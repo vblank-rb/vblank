@@ -126,6 +126,11 @@ module VBlank
         # reads to watch a note fall away rather than stop.
         def level_of(name) = @mixer.level_of(name)
 
+        # How loud each sounding voice plays, out of 512 — see {Mixer#loudness_by_voice}. Asked by the
+        # checked run of a console that plays each recording on a voice of its own sound chip
+        # (PS1::CheckedRun), which holds its voices' loudness to these after every pass.
+        def loudness_by_voice = @mixer.loudness_by_voice
+
         # THE SPRITES THIS RUN IS DRAWING, each knowing which one the game declared it for.
         #
         # One Hash per sprite on screen as the last frame left it — +:name+, +:x+, +:y+ and

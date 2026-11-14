@@ -70,6 +70,17 @@ module VBlank
           # level, as the program keeps it (Reference#level_of); nil when it is not sounding.
           def level_of(name) = (@sounding || []).find { |held| held.name == name }&.level
 
+          # How loud each recording sounding plays, out of the mix's full, place by place as the program keeps
+          # them (Reference#loudness_by_voice).
+          def loudness_by_voice = (@sounding || []).map(&:loudness)
+
+          # THE RECORDINGS SOUNDING in +run+ (this run, or the interpreter it is checked against), a voice
+          # each in the order of the voices: its name, its shape's level and its loudness. A pass's moment
+          # holds them, so a recorded note at the wrong loudness is a moment the two disagree on.
+          def self.sounding_voices(run)
+            run.active_samples.zip(run.loudness_by_voice).map { |name, loudness| [name, run.level_of(name), loudness] }
+          end
+
           # Whose each recording sounding is as the run ended (Reference#sound_owners): :game for the game's
           # own, [:song, part] for a song's recorded part, [effect, part] for a sound effect's.
           def sound_owners
@@ -91,8 +102,18 @@ module VBlank
             Diagnostics::SoundDrops::Reading.new(dropped: dropped, music_held: music_held, voices: places)
           end
 
+          # The Advance's mix, a stream of sound its processor makes from every recording (Reference#mixed_sound):
+          # a PlayStation plays each recording on a voice of its own sound chip (Runtime::Recordings), and
+          # makes no such stream. What its chip makes of them is what Beetle PSX hands over (#sound_made); the
+          # desktop builds' model of it (runtime/rg_spu.c) is held to that within each voice's tolerance, not
+          # to the interpreter's mix, so no number here stands for the mix.
+          def mixed_sound
+            refuse_question!("a PlayStation plays each recording on a voice of its own sound chip, so it has no " \
+                             "mixed sound to read.")
+          end
+
           # The rest of what the interpreter answers, each refused by name.
-          refuses :clock_at, :mixed_sound
+          refuses :clock_at
 
           # HOW MANY LINES THE SCREEN HAD DRAWN since the last blank began when +pass+ went to sleep, by
           # the pass's number as #frames_took has it, read off the console's line timer
@@ -128,21 +149,23 @@ module VBlank
             held = if frame == :end
                      Array.new(r::PLACES) do |place|
                        at = runtime_place(r::PLACES_STATE) + (place * r::PLACE_BYTES)
-                       [read32(at + r::HELD), read32(at + r::LEVEL), read32(at + r::OWNER)]
+                       [read32(at + r::HELD), read32(at + r::LEVEL), read32(at + r::LOUD), read32(at + r::OWNER)]
                      end
                    else
                      kept = (frame % Runtime::Frame::STEPS_KEPT) * r::PLACES
                      Array.new(r::PLACES) do |place|
-                       [byte(runtime_place(r::KEPT_BY_PASS) + kept + place), byte(runtime_place(r::LEVELS_BY_PASS) + kept + place), nil]
+                       [byte(runtime_place(r::KEPT_BY_PASS) + kept + place), byte(runtime_place(r::LEVELS_BY_PASS) + kept + place),
+                        half(runtime_place(r::LOUDNESS_BY_PASS) + ((kept + place) * 2)), nil]
                      end
                    end
-            held.reject { |number, *| number.zero? }.map do |number, level, owner|
-              HeldRecording.new(name: @places.recording_names.fetch(number - 1), level: level, owner: owner)
+            held.reject { |number, *| number.zero? }.map do |number, level, loudness, owner|
+              HeldRecording.new(name: @places.recording_names.fetch(number - 1), level: level, loudness: loudness, owner: owner)
             end
           end
 
-          # A place's recording as a run reads it: its name, its level, and whose it is (nil where not read).
-          HeldRecording = Data.define(:name, :level, :owner)
+          # A place's recording as a run reads it: its name, its level, its loudness, and whose it is (nil
+          # where not read).
+          HeldRecording = Data.define(:name, :level, :loudness, :owner)
 
           def power_on = set_buttons(@held)
 
@@ -271,7 +294,7 @@ module VBlank
             end
             @moments << Moment.new(frame: frame, variables: variables, picture: picture_check_of(picture.shown),
                                    sounds: @sounds, sprites: @sprites, collections: game_state.except(:vars),
-                                   sounding: active_samples.map { |name| [name, level_of(name)] })
+                                   sounding: HeadlessRun.sounding_voices(self))
             @on_vblank&.call(frame) unless frame == :end
           end
 

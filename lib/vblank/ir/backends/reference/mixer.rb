@@ -487,6 +487,11 @@ module VBlank
             @slots.compact.find { |v| v.name == name }&.level
           end
 
+          # HOW LOUD EACH SOUNDING VOICE PLAYS, out of 512, in the order of #sounding: the loudness its play
+          # or note asked for, as the music volume has moved it since (#rescale_music). Its shape's level
+          # (#level_of) scales it further, frame by frame.
+          def loudness_by_voice = @slots.compact.map(&:loudness)
+
           # Note how much polyphony is in use. Called wherever a voice is taken, by the game or
           # by a song, so the peak is the true one.
           def record_peak_voices = @peak = [@peak, @slots.count(&:itself)].max

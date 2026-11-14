@@ -51,8 +51,9 @@
  * rg_game_spu_rules: the chip's samples a second; the two halfwords of the envelope; a voice's volume
  * at its loudest; the main volume; the pitch that reads 44100 samples a second, and the highest the
  * chip reads at; the samples one wave of a square holds, and one wave of a waveform; where in sound
- * memory the game's loops start, in halfwords; a recording's loudness at full and the shift a shape's
- * level scales it by; and the 512 numbers of the Gaussian table.
+ * memory the game's loops start, in halfwords; the shift that makes a recording's loudness times its
+ * shape's level a whole number of 256ths, and the shift that makes a 256th a step of the volume
+ * register; and the 512 numbers of the Gaussian table.
  *
  * rg_game_spu_loops: where each loop starts, in the 8-byte steps the chip's start register counts:
  * the squares high for 1, 2, 4 and 6 eighths, the hiss and the rattle (nought for a game that makes
@@ -156,7 +157,7 @@ static inline void spu_recording_struck(int32_t place, int32_t by_game) {
 static inline void spu_recording_stopped_by_game(int32_t place) { spu_stopped_by_game |= 1 << (SPU_GAME_VOICES + place); }
 
 static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level);
+                                      int32_t loudness, int32_t level, int32_t shaped);
 
 #if RG_VOICES_READ_SOUND_MEMORY
 extern const int32_t rg_game_spu_rules[];
@@ -175,8 +176,8 @@ extern const int32_t rg_game_spu_recordings[];
 #define SPU_SQUARE_SAMPLES (rg_game_spu_rules[7])
 #define SPU_WAVE_SAMPLES (rg_game_spu_rules[8])
 #define SPU_MEMORY_BASE (rg_game_spu_rules[9])
-#define SPU_MIX_FULL (rg_game_spu_rules[10])
-#define SPU_SHAPE_SCALE (rg_game_spu_rules[11])
+#define SPU_WHOLE_GAIN_SHIFT (rg_game_spu_rules[10])
+#define SPU_GAIN_TO_VOLUME_SHIFT (rg_game_spu_rules[11])
 #define SPU_GAUSS (&rg_game_spu_rules[12])
 
 /* Where things are in rg_game_spu_loops. */
@@ -572,13 +573,15 @@ static void spu_tell(int32_t n, int32_t sounding, int32_t loop, int32_t pitch, i
 
 /* WHAT THE MIXER'S VOICE +place+ PLAYS, told to the chip's voice for it once a frame: +sounding+, and
  * if so +recording+ (the mixer's number) read +step+ of its samples for each of the mix's, going +back+
- * at its end, at +loudness+ out of the mix's full and its shape at +level+. The voice reads the
- * recording's loop for that way back out of sound memory at a sixteenth of the step (the mix runs at
- * the chip's own 44100 a second, so a step of 65536 is a pitch of 1000h), at a loudness scaled by the
- * level as Runtime::Recordings#emit_loudness scales it: the level's top bit added back, so full is
- * the whole loudness. A way the game never plays it (nowhere in sound memory) is silent. */
+ * at its end, at +loudness+ out of the mix's full and, when it is +shaped+, its shape at +level+. The
+ * voice reads the recording's loop for that way back out of sound memory at a sixteenth of the step
+ * (the mix runs at the chip's own 44100 a second, so a step of 65536 is a pitch of 1000h), at the gain
+ * the mix gives it, as Runtime::Recordings#emit_loudness sets it: a shaped note's loudness scaled by
+ * the level (its top bit added back, so full is the whole loudness) to a whole number of 256ths; a
+ * note with no shape, held at full, its loudness with its half a 256th kept. A way the game never
+ * plays it (nowhere in sound memory) is silent. */
 static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level) {
+                                      int32_t loudness, int32_t level, int32_t shaped) {
   if (!sounding && ((spu_stopped_by_game >> (SPU_GAME_VOICES + place)) & 1)) return; /* let go a frame later */
   int32_t loop = -1;
   if (sounding && recording >= 0 && recording < rg_game_spu_recordings[0]) {
@@ -586,7 +589,9 @@ static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t r
     loop = back == 0 ? ways[0] : back == ways[1] ? ways[2] : -1;
   }
   int32_t pitch = (step + 8) >> 4;
-  int32_t value = ((level + (level >> 7)) * ((loudness * SPU_LOUDEST) / SPU_MIX_FULL)) >> SPU_SHAPE_SCALE;
+  int32_t scaled = loudness * (level + (level >> 7));
+  int32_t value = shaped ? (scaled >> SPU_WHOLE_GAIN_SHIFT) << SPU_GAIN_TO_VOLUME_SHIFT
+                         : (scaled << SPU_GAIN_TO_VOLUME_SHIFT) >> SPU_WHOLE_GAIN_SHIFT;
   spu_tell(SPU_GAME_VOICES + place, loop >= 0, loop, pitch < 1 ? 1 : pitch > SPU_PITCH_TOP ? SPU_PITCH_TOP : pitch, value, 0);
 }
 
@@ -661,8 +666,8 @@ static int32_t spu_render_frame(int16_t *left, int16_t *right) {
 }
 #else
 static inline void spu_tell_recording(int32_t place, int32_t sounding, int32_t recording, int32_t back, int32_t step,
-                                      int32_t loudness, int32_t level) {
-  (void)place, (void)sounding, (void)recording, (void)back, (void)step, (void)loudness, (void)level;
+                                      int32_t loudness, int32_t level, int32_t shaped) {
+  (void)place, (void)sounding, (void)recording, (void)back, (void)step, (void)loudness, (void)level, (void)shaped;
 }
 #endif
 

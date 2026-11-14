@@ -17,7 +17,7 @@ RG_ENVELOPE_SUSTAIN = 3
 RG_SPU_HISS_AT = 4 # Where the hiss's loop is in @rg_game_spu_loops
 RG_SPU_RATTLE_AT = 5 # ...the rattle's
 RG_SPU_WAVEFORMS_AT = 6 # ...and how many waveforms there are
-RG_SPU_GAUSS_AT = 12 # Where the Gaussian table starts in @rg_game_spu_rules, after a recording's full and a shape's shift
+RG_SPU_GAUSS_AT = 12 # Where the Gaussian table starts in @rg_game_spu_rules, after the two shifts a recording's volume takes
 RG_SPU_SLIDE_FRAMES_MOST = 1 << 20
 RG_BLOCK_LOOP_END = 1
 RG_BLOCK_LOOP_REPEAT = 2
@@ -515,7 +515,7 @@ def rg_spu_render_frame
 end
 
 # What the mixer's voice +place+ plays, told to the chip's voice for it (rg_spu.c's spu_tell_recording).
-def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, level)
+def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, level, shaped)
   sounding = sounding && sounding != 0
   return if !sounding && @rg_spu_stopped_by_game[RG_SPU_GAME_VOICES + place] == 1
 
@@ -530,7 +530,8 @@ def rg_spu_tell_recording(place, sounding, recording, back, step, loudness, leve
   end
   rules = @rg_game_spu_rules
   pitch = ((step + 8) >> 4).clamp(1, rules[6])
-  value = ((level + (level >> 7)) * (loudness * rules[3] / rules[10])) >> rules[11]
+  scaled = loudness * (level + (level >> 7))
+  value = shaped.zero? ? (scaled << rules[11]) >> rules[10] : (scaled >> rules[10]) << rules[11]
   rg_spu_tell(RG_SPU_GAME_VOICES + place, loop >= 0, loop, pitch, value, 0)
 end
 

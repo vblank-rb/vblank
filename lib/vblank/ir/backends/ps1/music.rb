@@ -45,9 +45,9 @@ module VBlank
           def not_made_yet_error = Lowering::NotMadeYet
           def console_title = "PlayStation"
 
-          # A recorded note's loudness at a music volume, out of the mix's full, as its voice's volume
-          # register (SPUWrites::LOUDEST at full).
-          def recording_volume(value) = (value * SPUWrites::LOUDEST) / IR::Tunes::MIX_FULL
+          # A recorded note's loudness at a music volume, out of the mix's full, as the interpreter's mix
+          # keeps it: Runtime::Recordings works its voice's volume register out of it.
+          def recording_volume(value) = value
 
           # Every place in the table is a halfword, so all of it is within 64K.
           def refuse_table_too_long!(table)

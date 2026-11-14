@@ -53,13 +53,15 @@ module VBlank
 
           module_function
 
-          # The chip's numbers, then the Gaussian table. A recording's loudness is out of the mix's full
-          # (IR::Tunes::MIX_FULL) and its shape's level out of 1 << Audio::Envelope::SCALE, as
-          # Runtime::Recordings#emit_loudness scales a voice by them.
+          # The chip's numbers, then the Gaussian table. A recording's loudness times its shape's level
+          # (with the level's top bit added back) is shifted down Audio::Envelope::WHOLE_GAIN_SHIFT to be a
+          # whole number of 256ths, and a 256th is Runtime::Recordings::GAIN_TO_VOLUME_SHIFT up in the
+          # volume register, as Runtime::Recordings#emit_loudness sets a voice from them.
           def rules
             [SPUWrites::SAMPLE_RATE, Runtime::Sound::ADSR_LOW, Runtime::Sound::ADSR_HIGH, SPUWrites::LOUDEST,
              H::SPU_MAIN_LOUDEST, SPUWrites::PITCH_44100, SPUWrites::PITCH_TOP, SoundMemory::SQUARE_SAMPLES,
-             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, IR::Tunes::MIX_FULL, Audio::Envelope::SCALE, *GAUSS]
+             Audio::Sound::WAVE_SAMPLES, H::SPU_FIRST_FREE / 2, Audio::Envelope::WHOLE_GAIN_SHIFT,
+             Runtime::Recordings::GAIN_TO_VOLUME_SHIFT, *GAUSS]
           end
 
           # Where each of +recordings+ (the declared samples, in the mixer's numbering) starts in +memory+,

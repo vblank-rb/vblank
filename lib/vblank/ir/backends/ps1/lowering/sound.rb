@@ -147,7 +147,8 @@ module VBlank
 
             # The row of a play of +name+ at +frequency+, going +back+ at its end, at +loudness+ out of the mix's
             # full, shaped by +envelope+ (nil or plain for none), logging +logged+ as it comes round: where its
-            # recording is in sound memory, the voice's pitch and loudness at full, and the count the
+            # recording is in sound memory, the voice's pitch, the loudness (Runtime::Recordings works the
+            # voice's volume out of it, as the interpreter's mix does), and the count the
             # interpreter's mix keeps. Its number in "recording_plays", the same one for a play alike and heard
             # where +pan+ puts it alike.
             def play_row(name, frequency, back, loudness, envelope, logged, pan: nil)
@@ -158,8 +159,7 @@ module VBlank
               refuse_unreadable_play!(name, step, back)
               advance = step * clock.samples_a_frame
               shape = envelope unless envelope.nil? || envelope.plain?
-              row = [@sound_memory.start_of(SoundMemory.recording(name, back)), recording_pitch(step),
-                     (loudness * SPUWrites::LOUDEST) / IR::Tunes::MIX_FULL, info.length, back,
+              row = [@sound_memory.start_of(SoundMemory.recording(name, back)), recording_pitch(step), loudness, info.length, back,
                      advance >> VBlank::Audio::Sound::STEP_SHIFT, advance & ((1 << VBlank::Audio::Sound::STEP_SHIFT) - 1),
                      logged, @samples.keys.index(name), shape ? shape.packed : 0]
               play = [row, VBlank::Audio::Pan.shares_word(pan)]
