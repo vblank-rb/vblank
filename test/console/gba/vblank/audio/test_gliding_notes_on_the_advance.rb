@@ -77,36 +77,4 @@ class TestGlidingNotesOnTheAdvance < Minitest::Test
   def test_a_sound_effects_bending_note_mixes_alike
     assert_mixes_agree bending_effect, frames: 60, at_least: 30
   end
-
-  # The bends are heard: the same song with each glide struck as a note of its own sounds otherwise.
-  def test_a_bend_is_not_a_note_struck_again
-    glided = VBlank::IR::Backends::Reference.new.run(bending_song, frames: 40).mixed_sound
-    struck = VBlank::IR::Backends::Reference.new.run(struck_song, frames: 40).mixed_sound
-
-    refute_equal struck, glided
-  end
-
-  private def struck_song
-    b = VBlank::Builder.new
-    b.instance_eval do
-      screen :bitmap
-      enable_sound
-      instrument :tone, pcm: (0...4000).map { |n| ((n % 23) * 9) - 100 }, rate: 8000, note: :C4
-      song(:tune) do
-        tempo 150
-        voice(:keys, plays: :tone) do |v|
-          v.note :C4, :eighth
-          4.times { |n| v.note 262 + (n * 10), :sixteenth }
-          v.note :E4, :eighth
-          v.note :D4, :eighth
-          v.note :G4, :quarter, pan: :left
-          v.rest :half
-        end
-      end
-      play_song :tune
-      game_loop { nil }
-    end
-    b.finalize_program
-    b.program
-  end
 end

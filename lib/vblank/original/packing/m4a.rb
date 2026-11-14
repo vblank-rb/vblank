@@ -118,10 +118,9 @@ module VBlank
       # WHAT IS NOT KEPT, since the song model has no place for it: a VOL or PAN while a note sounds
       # (each note keeps the loudness and the side it was struck with; a glide carries on the
       # note's own), and a pitch command while a note sounds on a console voice or in a plain
-      # record; LFOS, LFODL, MOD and MODT (vibrato);
-      # PRIO and which notes the driver's channels drop when too many sound; XCMD's changes to the
-      # track's voice; PORT's sound register writes; a console voice's length byte, which cuts its
-      # notes short. A console voice's own settings are read by unpack_m4a_voiced_track into a slot of
+      # record; LFOS, LFODL, MOD and MODT (vibrato); PRIO and which notes the driver's channels drop
+      # when too many sound; XCMD's changes to the track's voice; PORT's sound register writes; a
+      # console voice's length byte, which cuts its notes short. A console voice's own settings are read by unpack_m4a_voiced_track into a slot of
       # `voiced_notes`, each note with its voice's duty, slide and fade (Walk#emit_voice_settings
       # says how the driver's envelope is matched), and the wave voice's pattern by unpack_m4a_voice;
       # unpack_m4a_track leaves them to the part. A track sounds one note at a time as a
@@ -334,7 +333,7 @@ module VBlank
             if @voiced
               key_hz = list(:key_hz, KEY_HZ.length)
               KEY_HZ.each_with_index { |hz, at| key_hz[at] = hz }
-              var(:latest).store!(-1)
+              var(:newest_sounding).store!(-1)
             end
             area = list(:memacc, MEMACC_BYTES)
             @block.repeat(MEMACC_BYTES) { |at| area[at] = 0 }
@@ -577,16 +576,17 @@ module VBlank
             emit_bend_sounding(t) if @voiced && pitch_command_test(command, t)
           end
 
-          # The test the routine makes of whether +command+ is one of DROPPED_ONE_BYTE.
-          def dropped_command_test(command)
-            DROPPED_ONE_BYTE.map { |code| command == code }.reduce { |either, test| either | test }
+          # The test the routine makes of whether +command+ is one of +codes+.
+          def command_in_test(command, codes)
+            codes.map { |code| command == code }.reduce { |either, test| either | test }
           end
 
-          # The test of whether +command+ moves the pitch of track +t+'s notes (TrkVolPitSet's keyM
-          # and pitM: KEYSH, BEND, BENDR, TUNE), on the walked track.
-          def pitch_command_test(command, t)
-            PITCH_COMMANDS.map { |code| command == code }.reduce { |either, test| either | test } & (t == @track)
-          end
+          # ...of whether it is one of DROPPED_ONE_BYTE.
+          def dropped_command_test(command) = command_in_test(command, DROPPED_ONE_BYTE)
+
+          # ...and of whether it moves the pitch of track +t+'s notes (TrkVolPitSet's keyM and pitM:
+          # KEYSH, BEND, BENDR, TUNE), on the walked track.
+          def pitch_command_test(command, t) = command_in_test(command, PITCH_COMMANDS) & (t == @track)
 
           # FINE (ply_fine): the track stops, and lets go of its notes.
           def emit_fine(t)
@@ -847,7 +847,7 @@ module VBlank
             @block.write(0)
             emit_voice_settings(t, channel, at) if @voiced
             emit_sounding(t, at)
-            emit_keep_pitch(channel) if @voiced
+            emit_bendable_note(channel) if @voiced
           end
 
           # A VOICED RECORD'S SETTINGS (Original::PackNote's bytes 12 on), from the voice's twelve
@@ -904,8 +904,6 @@ module VBlank
           RECORD_KEY = 4
           RECORD_NAMES = 20
           RECORD_HZ = 22
-          # A shade's 64ths, the right alone (Original::PackNote::MOST_SHADE).
-          SHADE_WHOLE = PackNote::MOST_SHADE
 
           # A RECORDED NOTE'S SPEAKERS AND PITCH, into +shade+, +hz+ and +names+:
           #
@@ -921,10 +919,12 @@ module VBlank
             right = var(:right)
             left = var(:left)
             near = var(:near_side)
+            far = var(:far_side)
             near.store!(right)
             near.store!(left) if left > right
+            far.store!(right + left - near)
             if near > 0
-              shade.store!((((near - right - left + near) * SHADE_WHOLE) + (near >> 1)) / near)
+              shade.store!((((near - far) * PackNote::MOST_SHADE) + (near >> 1)) / near)
               shade.store!(0 - shade) if left > right
               names.store!(PackNote::NAMES.fetch(:shade)) if shade != 0
             end
@@ -963,9 +963,9 @@ module VBlank
 
           # The note just struck kept for bending, in the place #emit_sounding found it (var(:free)):
           # it is the part's newest, which a pitch command bends (#emit_bend_sounding).
-          def emit_keep_pitch(channel)
+          def emit_bendable_note(channel)
             free = var(:free)
-            var(:latest).store!(free)
+            var(:newest_sounding).store!(free)
             if free >= 0
               sounding_list(:pitch_key)[free] = var(:pitch_key)
               bends = sounding_list(:bends)
@@ -987,7 +987,7 @@ module VBlank
           # note on a console voice, have no pitch a glide can move (the song model glides only a
           # recording), and are left as they were struck.
           def emit_bend_sounding(t)
-            s = var(:latest)
+            s = var(:newest_sounding)
             if s >= 0
               if sounding_list(:bends)[s] == 1
                 hz = var(:glide_hz)
@@ -1162,14 +1162,18 @@ module VBlank
           # Sounding note +s+ let go on this frame: its record given the frames since it started, one
           # at least.
           def emit_release(s)
+            emit_record_length(sounding_list(:record)[s], sounding_list(:start)[s])
+            sounding_list(:used)[s] = 0
+            emit_release_glide(s) if @voiced
+          end
+
+          # The record at +record+, which started on frame +start+, given the frames since, one at least.
+          def emit_record_length(record, start)
             length = var(:length)
-            record = sounding_list(:record)[s]
-            length.store!(var(:frame) - sounding_list(:start)[s])
+            length.store!(var(:frame) - start)
             length.store!(1) if length < 1
             @block.rewrite(record + 2, length)
             @block.rewrite(record + 3, length >> 8)
-            sounding_list(:used)[s] = 0
-            emit_release_glide(s) if @voiced
           end
 
           # ...and in a voiced walk, its newest glide given the frames since it started, and the
@@ -1177,14 +1181,10 @@ module VBlank
           def emit_release_glide(s)
             glide = sounding_list(:glide_record)[s]
             if glide >= 0
-              length = var(:length)
-              length.store!(var(:frame) - sounding_list(:glide_start)[s])
-              length.store!(1) if length < 1
-              @block.rewrite(glide + 2, length)
-              @block.rewrite(glide + 3, length >> 8)
+              emit_record_length(glide, sounding_list(:glide_start)[s])
               sounding_list(:glide_record)[s] = -1
             end
-            var(:latest).store!(-1) if var(:latest) == s
+            var(:newest_sounding).store!(-1) if var(:newest_sounding) == s
           end
 
           def emit_release_all
