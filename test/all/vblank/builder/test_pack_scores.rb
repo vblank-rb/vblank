@@ -42,15 +42,25 @@ class TestPackScores < Minitest::Test
   end
 
   # A game playing one song of two square parts: from the pack when +from+ is given, by hand otherwise.
-  private def song_game(from = nil)
+  # +views+ keeps both parts' records as one slot of bytes, and reads each through a view of notes
+  # (DSL::PackSlot#as_notes), the second to the slot's end.
+  private def song_game(from = nil, views: false)
     b = Builder.new
     b.instance_eval do
       pack = if from
                data_pack from: from, version: "1" do |slots|
-                 slots.notes :melody, at: MELODY_AT, count: MOST
-                 slots.notes :bass, at: BASS_AT, count: MOST
+                 if views
+                   slots.numbers :songs, at: MELODY_AT, count: 2 * MOST * VBlank::Original::PackNote::BYTES, width: :byte,
+                                         signed: false
+                 else
+                   slots.notes :melody, at: MELODY_AT, count: MOST
+                   slots.notes :bass, at: BASS_AT, count: MOST
+                 end
                end
              end
+      if views
+        pack = { melody: pack[:songs].as_notes(at: 0, count: MOST), bass: pack[:songs].as_notes(at: BASS_AT - MELODY_AT) }
+      end
       melody = pack ? pack[:melody] : MELODY.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
       bass = pack ? pack[:bass].notes : BASS.map { |at, length, key, volume| Note.new(at: at, length: length, key: key, volume: volume) }
       music = songs :music, [Score.new(parts: [Part.new(notes: melody, volume: 12), Part.new(notes: bass, volume: 10)],
@@ -68,6 +78,15 @@ class TestPackScores < Minitest::Test
       played = game_player.run(song_game(original(folder)), frames: 90).audio
 
       refute_empty wanted.select { |entry| entry.first == :note }, "the song written by hand plays notes"
+      assert_equal wanted, played
+    end
+  end
+
+  def test_a_song_through_views_of_one_slot_plays_as_the_same_song_written_by_hand
+    Dir.mktmpdir do |folder|
+      wanted = game_player.run(song_game, frames: 90).audio
+      played = game_player.run(song_game(original(folder), views: true), frames: 90).audio
+
       assert_equal wanted, played
     end
   end

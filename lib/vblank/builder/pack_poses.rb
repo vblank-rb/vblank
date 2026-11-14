@@ -298,6 +298,11 @@ module VBlank
       # words, so they are held to the slot's size here, whichever way the game is built. A frame
       # that says its own count is in the player's copy: the build that holds the pack refuses one
       # that runs past its slot (#frame_pieces), and a build that does not draws the pieces that fit.
+      #
+      # A FRAME READ THROUGH A VIEW (DSL::PackSlot#as_numbers) is told of as the frame at the same
+      # bytes of the slot the view reads: the unpacking finds a frame's bytes by a slot the pack
+      # names. Its start is held to the view; a frame that says its own count may run on past the
+      # view's end into the rest of that slot, as it would in the original.
       def frame_source(name, frame)
         layout = frame.piece_layout
         slot_bytes = frame.slot.layout.count
@@ -308,8 +313,9 @@ module VBlank
           refuse_frame_count!(name, frame, frame.count)
           refuse_frame_past_slot!(name, frame) if first + (frame.count * layout.piece_bytes) > slot_bytes
         end
-        Original::FrameRecord::Source.new(slot: frame.slot.layout, at: frame.at, count: (frame.count unless layout.counted),
-                                          layout: layout, pose: frame.pose)
+        read = frame.slot.layout
+        Original::FrameRecord::Source.new(slot: read.declared, at: read.start_in_declared + frame.at,
+                                          count: (frame.count unless layout.counted), layout: layout, pose: frame.pose)
       end
 
       # THE FRAMES THE GAME HAS NAMED SO FAR, each once, in the order it named them: the frames

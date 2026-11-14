@@ -66,20 +66,34 @@ module PackPoseGames
     [b.program, b.made_data_pack_file]
   end
 
-  # The same game's builder, its program made, for a test of its pack's unpacking.
+  # The same game's builder, its program made, for a test of its pack's unpacking. +views+ keeps
+  # the frames and the colours after them as one slot of colours, and reads each part through a
+  # view of it (DSL::PackSlot#as_numbers, #as_colors), as a port keeps one stretch of the copy.
+  # +pose_colors+ is handed the slot of colours, or its view.
   private def pose_game_builder(from, origin: [8, 8], frame_at: 1, layout: FRAME, count: nil, frames_count: FRAME_BYTES.length,
-                                options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, **pose_options, &more)
+                                options: VBlank::Cartridge::Options.new, pose_colors: nil, turned: nil, views: false,
+                                **pose_options, &more)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       colors :hero, [:transparent, *COLORS.drop(1)]
       pack = data_pack from: from, version: "1" do |slots|
         slots.tiles :sprites, at: TILES_AT, count: 32, colors: 16
-        slots.numbers :frames, at: FRAMES_AT, count: frames_count, width: :byte, signed: false
-        slots.colors :palette, at: COLORS_AT, count: 16
+        if views
+          slots.colors :stretch, at: FRAMES_AT, count: (COLORS_AT + 32 - FRAMES_AT) / 2
+        else
+          slots.numbers :frames, at: FRAMES_AT, count: frames_count, width: :byte, signed: false
+          slots.colors :palette, at: COLORS_AT, count: 16
+        end
       end
-      image :pose, tiles: pack[:sprites], frame: pack[:frames].frame(frame_at, layout: layout, count: count),
-                   origin: origin, colors: pose_colors ? pose_colors.call(pack) : :hero, **pose_options
+      frames, palette = if views
+                          [pack[:stretch].as_numbers(at: 0, count: frames_count, width: :byte, signed: false),
+                           pack[:stretch].as_colors(at: COLORS_AT - FRAMES_AT, count: 16)]
+                        else
+                          [pack[:frames], pack[:palette]]
+                        end
+      image :pose, tiles: pack[:sprites], frame: frames.frame(frame_at, layout: layout, count: count),
+                   origin: origin, colors: pose_colors ? pose_colors.call(palette) : :hero, **pose_options
       shown = { mirror: -> { mirror(:pose) }, upside_down: -> { upside_down(:pose) } }.fetch(turned, -> { :pose }).call
       hero = sprite :hero, image: shown, at: [40, 40]
       instance_exec(hero, &more) if more
@@ -124,6 +138,33 @@ class TestPackPoses < Minitest::Test
           assert_equal want, screen.pixel(40 + x, 40 + y), "the pose's pixel at (#{x}, #{y})"
         end
       end
+    end
+  end
+
+  # A frame read through a view of a slot of another shape (DSL::PackSlot#as_numbers) shows as the
+  # same frame read from a slot of its own, counted or of a given count, in colours read through a
+  # view as well.
+  def test_a_frame_through_a_view_shows_as_from_a_slot_of_its_own
+    uncounted = { frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length }
+    bank = ->(palette) { palette.bank(1, size: 4) }
+    Dir.mktmpdir do |folder|
+      from = original(folder)
+      [{}, uncounted, { pose_colors: bank }].each do |shape|
+        own = game_player.run(pose_game(from, **shape), frames: 4).screen.to_a
+        viewed = game_player.run(pose_game(from, views: true, **shape), frames: 4).screen.to_a
+
+        assert_operator own.flatten.uniq.length, :>, 2, "#{shape}: the pose shows"
+        assert_equal own, viewed, "#{shape}: the frame through a view shows as from a slot of its own"
+      end
+    end
+  end
+
+  # A frame through a view starts at a byte of the view, and one that starts past its end is refused.
+  def test_a_frame_past_the_end_of_its_view_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { pose_game(original(folder), views: true, frame_at: FRAME_BYTES.length) }
+
+      assert_includes error.message, "byte #{FRAME_BYTES.length}"
     end
   end
 

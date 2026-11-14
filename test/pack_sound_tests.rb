@@ -580,15 +580,32 @@ module PackSoundTests
 
   # Two recordings of one length from two stretches of the slot. With the pack left out the build
   # holds the same zeros for both, and they are still two: each is filled from its own place.
-  private def two_stretches_game(folder, options: VBlank::Cartridge::Options.new)
+  # +views+ keeps the sound as a slot of numbers and reads each stretch through a view of samples
+  # (DSL::PackSlot#as_samples), the late one through a view of a view of pixels.
+  private def two_stretches_game(...) = two_stretches_builder(...).program
+
+  # The same game's builder, its program made, with its data pack.
+  private def two_stretches_builder(folder, options: VBlank::Cartridge::Options.new, views: false)
     from = options.pack_at_start ? original_nowhere(folder) : original(folder)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
       screen :bitmap
       enable_sound
-      pack = data_pack(from: from, version: "1") { |slots| slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT }
-      early = sample :early, pcm: pack[:bang].samples(0, 16), rate: SOUND_RATE
-      late = sample :late, pcm: pack[:bang].samples(16, 16), rate: SOUND_RATE
+      pack = data_pack(from: from, version: "1") do |slots|
+        if views
+          slots.numbers :sound, at: SOUND_AT, count: SOUND_COUNT, width: :byte, signed: true
+        else
+          slots.samples :bang, at: SOUND_AT, count: SOUND_COUNT
+        end
+      end
+      early_samples, late_samples = if views
+                                      [pack[:sound].as_samples(at: 0, count: 16),
+                                       pack[:sound].as_pixels(at: 8).as_samples(at: 8, count: 16)]
+                                    else
+                                      [pack[:bang].samples(0, 16), pack[:bang].samples(16, 16)]
+                                    end
+      early = sample :early, pcm: early_samples, rate: SOUND_RATE
+      late = sample :late, pcm: late_samples, rate: SOUND_RATE
       game_loop do
         wait_vblank
         early.play if pressed(:a)
@@ -596,7 +613,20 @@ module PackSoundTests
       end
     end
     b.finalize_program
-    b.program
+    b
+  end
+
+  # The answer key is the same two stretches of a slot of samples.
+  def test_recordings_through_views_sound_as_stretches_of_a_slot_of_samples
+    Dir.mktmpdir do |folder|
+      %i[a b].each do |button|
+        wanted = game_player.hold(button).run(two_stretches_game(folder), frames: 10).mixed_sound
+        heard = game_player.hold(button).run(two_stretches_game(folder, views: true), frames: 10).mixed_sound
+
+        assert wanted.flatten.any? { |level| level != 0 }, "#{button}: the stretch sounds"
+        assert_equal wanted, heard, "#{button}: the view sounds as the stretch"
+      end
+    end
   end
 
   def test_the_game_without_its_pack_holds_none_of_the_recordings_bytes

@@ -1187,7 +1187,14 @@ module PackGames
       game(:pose_turned_round, passes: 3) { |folder, options| pose(folder, options, size: [32, 24], turned: :mirror) },
       game(:pose_turned_upside_down, passes: 3) { |folder, options| pose(folder, options, size: [16, 40], turned: :upside_down) },
       game(:pose_in_a_bank_of_pack_colors, passes: 3) do |folder, options|
-        pose(folder, options, pose_colors: ->(pack) { pack[:palette].bank(1, size: 4) })
+        pose(folder, options, pose_colors: ->(palette) { palette.bank(1, size: 4) })
+      end,
+      # The frame and the colours read through views of one slot of colours.
+      game(:pose_of_a_frame_through_a_view, passes: 3) do |folder, options|
+        pose(folder, options, views: true, pose_colors: ->(palette) { palette.bank(1, size: 4) })
+      end,
+      game(:pose_of_a_frame_of_a_given_count_through_a_view, passes: 3) do |folder, options|
+        pose(folder, options, views: true, frame_at: 2, layout: FRAME.with(counted: false), count: PIECES.length)
       end,
       # A pose's size is worked out from its frame's pieces, which a build that leaves its pack
       # out does not hold.
@@ -1344,6 +1351,10 @@ module PackGames
       game(:two_recordings_of_one_length_from_one_slot, passes: 10, presses: { 1 => [:a], 5 => [:b] }) do |folder, options|
         built(two_stretches_game(folder, options: options), sound_pack_file)
       end,
+      # The same stretches through views of samples, one of them a view of a view.
+      game(:two_recordings_through_views_of_one_slot, passes: 10, presses: { 1 => [:a], 5 => [:b] }) do |folder, options|
+        built_by(two_stretches_builder(folder, options: options, views: true))
+      end,
       game(:instrument_hold_and_envelope_from_the_pack, passes: 80,
                                                         presses: { 1 => [:a], 8 => [:b], 20 => [:up], 50 => [:down] }) do |folder, options|
         built(settings_at_start_game(folder, from_pack: %i[holds_from envelope], options: options), settings_pack_file)
@@ -1469,22 +1480,31 @@ module PackGames
     # slot name and the instrument settings of the pack. It plays song 0 on A and effect 0 on B.
     # With +waves+ the pack has a slot of the copy's waves, and the block is handed a way to get
     # one for a part's `plays:` too.
-    private def scores_game(folder, options, parts, instruments: {}, waves: false, &scores)
+    # With +views+ the parts' records are one slot of bytes, each part's read through a view of
+    # notes (DSL::PackSlot#as_notes).
+    private def scores_game(folder, options, parts, instruments: {}, waves: false, views: false, &scores)
       from = score_original(folder, parts)
       b = VBlank::Builder.new(options: options)
       b.instance_eval do
         screen :bitmap
         enable_sound
         pack = data_pack(from: from, version: "1") do |slots|
-          parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
+          if views
+            slots.numbers :records, at: 0, count: parts.length * MOST * PackNote::BYTES, width: :byte, signed: false
+          else
+            parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
+          end
           slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
           slots.numbers :timing, at: TIMING_AT, count: TIMING.length, width: :half, signed: false
           slots.numbers :waves, at: WAVES_AT, count: WAVES.flatten.length, width: :byte, signed: false if waves
         end
+        slot_of = lambda do |name|
+          views ? pack[:records].as_notes(at: parts.keys.index(name) * MOST * PackNote::BYTES, count: MOST) : pack[name]
+        end
         # A part takes the slot's handle itself too, where its notes name no instrument.
         # A word for the notes written by hand (`recorded:`) means nothing to the pack's.
         notes_of = lambda do |name, whole_slot: false, **|
-          whole_slot ? pack[name] : pack[name].notes(instruments: instruments.fetch(name, []))
+          whole_slot ? slot_of.(name) : slot_of.(name).notes(instruments: instruments.fetch(name, []))
         end
         settings = { envelope: pack[:settings].envelope(0), holds_from: pack[:settings].number(SHAPE.length) }
         timing = { length: pack[:timing].number(0), loop_from: pack[:timing].number(1) }
@@ -1506,6 +1526,14 @@ module PackGames
     GAMES = [
       game(:song_of_pack_notes, passes: 90, presses: { 1 => [:a] }) do |folder, options|
         scores_game(folder, options, { melody: MELODY, bass: BASS }) do |notes_of|
+          { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody), volume: 12),
+                                      Part.new(notes: notes_of.(:bass, whole_slot: true), volume: 10)],
+                              tempo: 150, length: 96, plays_once: true)] }
+        end
+      end,
+      # The same song, its two parts' records kept in one slot and read through views of notes.
+      game(:song_of_pack_notes_through_views, passes: 90, presses: { 1 => [:a] }) do |folder, options|
+        scores_game(folder, options, { melody: MELODY, bass: BASS }, views: true) do |notes_of|
           { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody), volume: 12),
                                       Part.new(notes: notes_of.(:bass, whole_slot: true), volume: 10)],
                               tempo: 150, length: 96, plays_once: true)] }

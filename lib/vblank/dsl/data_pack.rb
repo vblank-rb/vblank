@@ -327,6 +327,15 @@ module VBlank
       # A view as samples of recorded sound, one byte each.
       def as_samples(at:, count: nil) = view("as_samples", at, count) { |name, held| Original::Slot.samples(name, count: held) }
 
+      # A view as notes, each an Original::PackNote record, or with their voice's settings where
+      # +voiced+ (`slots.voiced_notes`): the records of several parts kept in one slot, each part's
+      # read through a view of its own.
+      def as_notes(at:, count: nil, voiced: false)
+        view("as_notes", at, count) do |name, held|
+          voiced ? Original::Slot.voiced_notes(name, count: held) : Original::Slot.notes(name, count: held)
+        end
+      end
+
       # Whether the handle is on a whole slot or a whole view: no tiles, bank or run picked from it.
       def whole? = tile_index.nil? && first_color.nil? && pixel_count.nil?
 
@@ -449,13 +458,15 @@ module VBlank
       # +layout+ (an Original::FrameLayout) says, for an image's `frame:`. +count+ is how many pieces
       # it has, for a layout whose frames do not say. +with+ is the values the pose gives the
       # layout's own reader by name (`with: { block: 5 }`), checked here against those it reads.
+      # On a view of numbers (#as_numbers), +at+ counts from the view's first byte, and the pack's
+      # unpacking finds the frame in the slot the view reads (Builder::PackPoses#frame_source).
       def frame(at, layout:, count: nil, with: {})
         # +layout+ here is the frame's; the slot's own is self.layout.
         refuse_run_counted_from_slot_start!("frame")
-        refuse_frame_of_view!
         unless shape == :numbers && self.layout.width == :byte
           raise ArgumentError, "Slot :#{self.layout.name} holds #{shape}. `frame` reads a frame from a slot of numbers one " \
-                               "byte wide. To fix this, call it on a slot like `slots.numbers :frames, width: :byte, ...`."
+                               "byte wide. To fix this, call it on a slot like `slots.numbers :frames, width: :byte, ...`, " \
+                               "or on a view like `pack[:#{self.layout.declared.name}].as_numbers(at: ..., width: :byte, ...)`."
         end
 
         unless layout.is_a?(Original::FrameLayout)
@@ -507,16 +518,6 @@ module VBlank
         raise ArgumentError, "`#{verb}` was called on some of the numbers of slot :#{layout.name}, made with " \
                              "`numbers(first, count)`. `#{verb}` counts from the first number of the slot. To fix " \
                              "this, call it on the slot itself: `pack[:#{layout.name}].#{verb}(...)`."
-      end
-
-      # A frame is written again by the pack's unpacking, which finds it by the slot the pack
-      # names (Original::FrameRewrite), so it is read from such a slot.
-      def refuse_frame_of_view!
-        return unless layout.view?
-
-        raise ArgumentError, "`frame` was called on a view of slot :#{layout.declared.name}. A frame is read from a " \
-                             "slot that the data pack names. To fix this, name the bytes of the frames as a slot of " \
-                             "numbers one byte wide in `data_pack`."
       end
 
       # A handle on +count+ of the +kind+ (:pixels, :samples or :numbers) of a slot of that kind,

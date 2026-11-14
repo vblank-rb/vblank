@@ -258,6 +258,9 @@ module VBlank
       # The slot of the pack the bytes are in: this one, or the one a view reads.
       def declared = view? ? name.slot : self
 
+      # Where this slot's bytes start in #declared's: 0, or the byte a view starts at.
+      def start_in_declared = view? ? name.at : 0
+
       # A VIEW OF THIS SLOT'S BYTES from byte +at+ on, in the shape the block makes: the block is
       # handed a name and a count and gives back a Slot of them (`Slot.tiles(name, count: count,
       # colors: 256)`). +count+ is how many items the view holds, or nil for as many as reach the

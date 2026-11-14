@@ -393,26 +393,32 @@ from that copy. The game's code says each piece's shape and size; it never depen
   - `pack[:video].as_tiles(at: 0x8000, count: 256, colors: 256)`
   - `pack[:video].as_numbers(at: 0xC000, count: 1024, width: :byte, signed: false)`
   - `pack[:video].as_colors(at: 0x40, count: 16)`, `.as_pixels(at:, count:)`, `.as_samples(at:, count:)`
+  - `pack[:music].as_notes(at: 0x200, count: 40)`, `voiced: true` for records of `slots.voiced_notes`
 
   `at:` is a byte of the slot, 0 first, whatever the slot's own shape, and `count:` how many tiles,
-  numbers, colours, pixels or samples the view holds; **`count:` left out reads to the slot's end**. Each
+  numbers, colours, pixels, samples or notes the view holds; **`count:` left out reads to the slot's end**. Each
   takes what the `slots.` line of its shape takes (`colors:`, `width:` and `signed:`, `layout:`,
   `byte_order:`) and is read in the original's layout unless it names one. What comes back is a handle
   like any other: every verb takes it as it takes a slot of that shape, all-in-one and with the pack
   left out, and it narrows as one does (`.tile(4)`, `.tiles(...)`, `.numbers(first, count)`, `.bank(n)`,
-  `.pixels(...)`, `.number(i)`, `.envelope(i)`). A view of a view counts its `at:` from the first view's
-  start. The pack holds the slot and nothing for a view, and nothing in a runtime knows of one: to a
-  build that reads its pack as the game starts a view is a place in the file, as a slot is. The banks of
-  a view of colours are the lists `:<slot>_at_<byte>_<bank>` (`:video_at_64_0`).
+  `.pixels(...)`, `.number(i)`, `.envelope(i)`, `.notes(instruments:)`). A view of a view counts its
+  `at:` from the first view's start. The pack holds the slot and nothing for a view, and nothing in a
+  runtime knows of one: to a build that reads its pack as the game starts a view is a place in the file,
+  as a slot is. The banks of a view of colours are the lists `:<slot>_at_<byte>_<bank>` (`:video_at_64_0`).
+  **`.frame` on a view of bytes** (`as_numbers(..., width: :byte)`) reads a frame from a byte of the
+  view, and the unpacking writes its record from the same bytes of the slot the view reads. A frame that
+  gives its own count may read on past the view's end into the rest of that slot, as in the original.
   **Friendly errors at the line**: a view that ends after its slot ends; an `at:` that is no byte of the
   slot; bytes to the slot's end that are no whole number of items when `count:` is left out; a view
-  asked of tiles, a bank or a run of a slot (ask the slot itself); `.frame` on a view (a frame is read
-  from a slot the pack names); and a view given to a verb that reads another shape, as for a slot.
-  Not offered: a view as notes, which are records the unpacking writes into a slot of their own.
+  asked of tiles, a bank or a run of a slot (ask the slot itself); a frame that starts past its view's
+  end; and a view given to a verb that reads another shape, as for a slot.
   Worked examples: `test/pack_slot_view_games.rb` (one slot of video read by a background as
   sixteen-colour tiles and by a turning one as a byte map over tiles of 256 colours),
   `test/console/gba/vblank/builder/test_pack_slot_views_on_the_advance.rb`,
-  `test/all/vblank/dsl/test_pack_slot_views.rb`.
+  `test/all/vblank/dsl/test_pack_slot_views.rb`; a frame and its colours through views of one slot of
+  colours (`test/all/vblank/builder/test_pack_poses.rb`), a song's parts through views of one slot of
+  bytes (`test_pack_scores.rb`), and recordings through views of samples, one a view of a view
+  (`test/pack_sound_tests.rb`).
 - **`number`, `envelope`, `snes_envelope` and `frame` count from the slot's first number**, so each is
   refused on a run (`pack[:bytes].numbers(8, 16).number(0)`): ask the slot itself, or a view of it.
 
