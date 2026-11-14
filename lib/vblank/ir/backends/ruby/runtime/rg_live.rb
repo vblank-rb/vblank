@@ -129,7 +129,21 @@ def rg_driver_dump_variable(name, value)
   @rg_state_snapshot.vars[name.to_s] = value if @rg_state_snapshot
 end
 
+# Every variable the game keeps, by name, as they stand now, and none of its lists: what a shell's
+# worker reads its count of bytes done from as it unpacks, many times a second, where the lists are
+# a pack of tens of megabytes.
+def rg_live_vars
+  @rg_state_snapshot = RgLiveState.new(vars: {}, lists: {})
+  @rg_vars_alone = true
+  rg_game_dump_state
+  @rg_state_snapshot.vars
+ensure
+  @rg_state_snapshot = nil
+  @rg_vars_alone = false
+end
+
 def rg_driver_dump_list(list)
+  return if @rg_vars_alone
   return unless @rg_state_text || @rg_state_snapshot
 
   @rg_state_text << "list #{list.name}\t#{list.items_in_order.join(' ')}\n" if @rg_state_text

@@ -90,6 +90,10 @@ module VBlank
           # +byte_lists_packed+, a list of bytes (`width: :byte`) is a binary String, a byte an item,
           # not an Array of numbers: a data pack's build reads hundreds of megabytes that way.
           def state(byte_lists_packed: false) = @game.rg_live_state(byte_lists_packed)
+
+          # Every variable of the game by name (`{ "x" => 3 }`), as they stand now, and none of its
+          # lists: #state's +vars+, cheaply enough to ask each frame of a game whose lists are large.
+          def vars = @game.rg_live_vars
         end
       end
     end

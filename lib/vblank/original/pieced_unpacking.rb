@@ -84,19 +84,8 @@ module VBlank
 
       # The pack's list of bytes: +main_bytes+ (what #main wrote, a binary String) with each piece's
       # bytes (+piece_bytes+, a String for each of #pieces in their order) copied over its places,
-      # in the order the pieces are declared.
-      def join(main_bytes, piece_bytes)
-        joined = main_bytes.b
-        pieces.each_with_index do |piece, index|
-          bytes = piece_bytes.fetch(index).b
-          from = 0
-          piece.places.each do |place|
-            joined.bytesplice(place.at, place.size, bytes.byteslice(from, place.size))
-            from += place.size
-          end
-        end
-        joined
-      end
+      # in the order the pieces are declared (ShellFacts::PiecePlan#join, which a runtime plays).
+      def join(main_bytes, piece_bytes) = plan.join(main_bytes, piece_bytes)
 
       # The fault a run of every program stops on: the first of +faults+ (one for each of #programs,
       # in their order, each nil where nothing went wrong), #main's before the pieces'. A part not
@@ -105,46 +94,25 @@ module VBlank
       # either way.
       def first_fault(faults) = faults.compact.first
 
-      # How much work #main is, and the whole pack: what a shell's bar is measured against.
-      def main_work = work_of(main_slots)
-      def whole_work = main_work + pieces.sum(&:work)
+      # How wide a shell's bar is, of +across+ pixels, once each of #programs has written so many
+      # bytes (+done+, a count for each, in their order, from its BYTES_DONE): each held to its
+      # program's size and weighed by its work, so a slot whose bytes cost more moves the bar
+      # further a byte (ShellFacts::PiecePlan#bar_width).
+      def bar_width(done, across) = plan.bar_width(done, across)
 
-      # How many bytes #main holds of slots it writes, against which its count of bytes done is
-      # taken: every slot not in pieces.
-      def main_byte_size = main_slots.sum(&:byte_size)
-
-      # How wide a shell's bar is, of +across+ pixels, once each program has written so many bytes
-      # (+done+, a count for each of #programs in their order, from its BYTES_DONE). Each program's
-      # count is held to its size and weighed by its work, so a slot whose bytes cost more moves
-      # the bar further a byte.
-      def bar_width(done, across)
-        sizes = [main_byte_size, *pieces.map(&:byte_size)]
-        works = [main_work, *pieces.map(&:work)]
-        shown = done.each_with_index.sum do |count, index|
-          size = sizes.fetch(index)
-          size.zero? ? 0 : Rational(count.clamp(0, size) * works.fetch(index), size)
+      # The split as a runtime plays it (ShellFacts::PiecePlan): what is told to every runtime of a
+      # shell. +first_program+ is where #main is in the runtime's list of worker programs, each
+      # piece's program after it in order.
+      def plan(first_program = 0)
+        main_slots = slots.reject(&:pieced?)
+        main_work = main_slots.sum { |slot| slot.byte_size * slot.cost }
+        planned = pieces.each_with_index.map do |piece, index|
+          ShellFacts::PlannedPiece.new(program: first_program + 1 + index, places: piece.places.map { |place| [place.at, place.size] },
+                                       bytes: piece.byte_size, work: piece.work)
         end
-        whole_work.zero? ? across : (across * shown / whole_work).floor.clamp(0, across)
+        ShellFacts::PiecePlan.new(main: first_program, main_bytes: main_slots.sum(&:byte_size), main_work: main_work,
+                                  whole_work: main_work + pieces.sum(&:work), queue: queue_order, pieces: planned)
       end
-
-      # The plan as plain data for a runtime that plays it (ShellFacts#pieces): for each piece, its
-      # places as [at, size] pairs, its size and its work, and the queue's order; #main's size and
-      # work, and the whole work. +program_numbers+ is where #main and each piece are in the
-      # runtime's list of programs, in the order of #programs.
-      def to_plain(program_numbers)
-        { "main" => program_numbers.first, "main_bytes" => main_byte_size, "main_work" => main_work, "whole_work" => whole_work,
-          "queue" => queue_order,
-          "pieces" => pieces.each_with_index.map do |piece, index|
-            { "program" => program_numbers.fetch(index + 1), "places" => piece.places.map { |place| [place.at, place.size] },
-              "bytes" => piece.byte_size, "work" => piece.work }
-          end }
-      end
-
-      private
-
-      def main_slots = slots.reject(&:pieced?)
-
-      def work_of(listed) = listed.sum { |slot| slot.byte_size * slot.cost }
     end
   end
 end

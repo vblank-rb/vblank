@@ -19,6 +19,9 @@ module VBlank
       # Where the bar is, in pixels from the screen's edges, and how tall it is.
       SIDE = 16
       HEIGHT = 8
+      # The colours of the bar's done part and of the rest.
+      FILLED = :white
+      EMPTY = :gray
 
       # +maker+ is the unpacking's builder. The width the bar was last painted at is a variable of
       # the building blocks' (Unpacking::PAINTED_WIDTH), -1 before the first paint.
@@ -37,8 +40,8 @@ module VBlank
           if shown != @painted_width
             @maker.clear_screen :black
             @maker.draw_text "UNPACKING", :center, top - 16, :white
-            @maker.fill_rect SIDE, top, across, HEIGHT, :gray
-            @maker.draw_rect_at SIDE, top, shown, HEIGHT, :white
+            @maker.fill_rect SIDE, top, across, HEIGHT, EMPTY
+            @maker.draw_rect_at SIDE, top, shown, HEIGHT, FILLED
             @painted_width.store!(shown)
           end
         end

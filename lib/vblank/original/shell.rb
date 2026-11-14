@@ -37,9 +37,17 @@ module VBlank
     #
     # The pack a shell makes is the same file, byte for byte, as the one an all-in-one build makes
     # from the same copy: the same slots in the same order, the same header.
-    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu, :original)
+    #
+    # +pieced+ is each unpacking split for several workers (a PiecedUnpacking), in the order of
+    # +unpackings+, nil for one with no part in pieces. A runtime that unpacks on several workers
+    # plays #worker_programs in place of the unpacking, as ShellFacts#pieces says; one that unpacks
+    # on one (the desktop program's, and any told one worker) plays +unpackings+ alone.
+    Shell = Data.define(:game, :menu, :unpackings, :facts, :window_menu, :original, :pieced)
 
     class Shell
+      # Every program of every split, in the order ShellFacts#pieces numbers them: each split's
+      # main program and then its pieces, the splits in the order of their unpackings.
+      def worker_programs = pieced.compact.flat_map(&:programs)
       # One program of a shell, as a backend writes it out: its +role+ (:game, :menu or :unpacking),
       # its +number+ (an unpacking's, from 0; nil for the others), the +program+, and whether its
       # window has the window's menu (+window_menu+).
@@ -111,8 +119,10 @@ module VBlank
           releases = refuse_unusable_releases!(data_pack.original)
           # The first screen is made with the copies still hidden: its block is the game's code too.
           menu = menu_program(game.title, program, releases.title, parts.first_screen)
-          new(game: program, menu: menu, unpackings: unpackings_of(data_pack, releases.readable, progress),
-              facts: facts_of(game.title, program, data_pack, releases), window_menu: game.menu?,
+          unpackings = unpackings_of(data_pack, releases.readable, progress)
+          pieced = releases.readable.map { |release| data_pack.pieced_unpacking(release: release) }
+          new(game: program, menu: menu, unpackings: unpackings, pieced: pieced,
+              facts: facts_of(game.title, program, data_pack, releases, pieced), window_menu: game.menu?,
               original: data_pack.original)
         end
       rescue NotSet => e
@@ -130,8 +140,26 @@ module VBlank
         end.tap { progress.report_count(readable.size, readable.size) }
       end
 
+      # Each of +pieced+ (a PiecedUnpacking or nil) as a runtime plays it, numbering its programs
+      # after the splits before it (#worker_programs).
+      def self.piece_plans(pieced)
+        first = 0
+        pieced.map do |split|
+          next nil unless split
+
+          split.plan(first).tap { first += split.programs.length }
+        end
+      end
+
+      # The bar a shell of several workers draws, in UnpackingProgress's look.
+      def self.workers_bar
+        ShellFacts::Bar.new(side: UnpackingProgress::SIDE, height: UnpackingProgress::HEIGHT,
+                            filled: Graphics::Color.resolve(UnpackingProgress::FILLED),
+                            empty: Graphics::Color.resolve(UnpackingProgress::EMPTY))
+      end
+
       # The ShellFacts of a shell of the game called +title+, whose game is +program+.
-      def self.facts_of(title, program, data_pack, releases)
+      def self.facts_of(title, program, data_pack, releases, pieced)
         numbers = releases.readable.each_with_index.to_h { |release, number| [release.name, number] }
         sizes = data_pack.slots.to_h { |slot| [slot.name, slot.byte_size] }
         header = Pack.header_bytes(sha1: "0" * 40, build_version: data_pack.build_version, sizes: sizes)
@@ -149,8 +177,9 @@ module VBlank
           menu: ShellFacts::Menu.new(choice_variable: MENU_CHOICE.to_s, load_rom: LOAD_ROM, settings: SETTINGS,
                                      line_variable: MENU_LINE.to_s),
           unpacking: ShellFacts::UnpackingNames.new(bytes: Unpacking::BYTES.to_s, finished: Unpacking::FINISHED.to_s,
-                                                    fault_kind: Unpacking::FAULT_KIND.to_s),
-          words: ShellFacts.words_for(releases.title.to_s)
+                                                    fault_kind: Unpacking::FAULT_KIND.to_s,
+                                                    bytes_done: Unpacking::BYTES_DONE.to_s),
+          words: ShellFacts.words_for(releases.title.to_s), pieces: piece_plans(pieced), bar: workers_bar
         )
       end
 
@@ -379,7 +408,7 @@ module VBlank
           "shell holds none of the original's data, so the game's code must not depend on it. Read the data " \
           "through data_pack, which a shell fills on the player's machine. #{error.message}"
       end
-      private_class_method :facts_of, :unpackings_of, :refuse_without_data_pack!, :refuse_unusable_releases!, :needs_copy_message
+      private_class_method :facts_of, :piece_plans, :workers_bar, :unpackings_of, :refuse_without_data_pack!, :refuse_unusable_releases!, :needs_copy_message
     end
   end
 end

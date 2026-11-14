@@ -78,4 +78,26 @@ module PiecedOriginal
 
   # The made-up original with its release, for a build in +folder+.
   private def pieced_original(folder) = original(folder)
+
+  # The made-up original on a machine where no copy of it is set: what a shell is built from.
+  private def pieced_original_nowhere(folder)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: {}, settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => SHA1, "size" => COPY_SIZE } })
+  end
+
+  # A port of it whose music is in a piece a song: a wall drawn from the pack, and a marker placed
+  # by the length of the longest song, for a shell to be built from.
+  private def pieced_port(from)
+    VBlank.game("PIECED", consoles: %i[gba]) do
+      screen :bitmap
+      clear_screen :black
+      pack = data_pack(from: from, version: "1") { |slots| PiecedOriginal.declare(slots, pieces: :songs) }
+      image :wall, width: 8, height: 8, colors: pack[:palette], places: pack[:walls].tile(0)
+      lengths = table :lengths, pack[:music_length]
+      game_loop do
+        blit :wall, 8, 8
+        draw_rect_at lengths[2] / 10, 40, 4, 4, :white
+      end
+    end
+  end
 end

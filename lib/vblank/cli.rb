@@ -881,6 +881,10 @@ module VBlank
         --pack-folder DIR        With --shell, keep the data pack in DIR.
                                  Default: the folder your computer keeps for
                                  the game.
+        --unpack-workers N       With --shell, make the data pack on N cores
+                                 where the game cuts its unpacking in pieces.
+                                 Default: every core of this computer. N is
+                                 never more than that.
         --pictures N             Stop after the window has shown N pictures.
         --uncapped               Do not wait for the end of each frame. The game
                                  then runs as fast as this computer can play it.
@@ -990,6 +994,7 @@ module VBlank
     option :set, type: :array, banner: "NAME=VALUE", default: []
     option :shell, type: :boolean, default: false
     option :pack_folder, banner: "DIR"
+    option :unpack_workers, type: :numeric, banner: "N"
     def run_game(game_file)
       refuse_mismatched_play_options!
       refuse_mismatched_match_options!
@@ -999,6 +1004,7 @@ module VBlank
       refuse_cartridge_file!(game_file)
       refuse_unless_whole_and_positive!("--scale", options[:scale]) if options[:scale]
       refuse_unless_whole_and_positive!("--pictures", options[:pictures]) if options[:pictures]
+      refuse_unless_whole_and_positive!("--unpack-workers", options[:unpack_workers]) if options[:unpack_workers]
       way = way_to_run
       # YJIT compiles the Ruby that runs most often to machine code as the game plays, which plays
       # a game several times faster. A Ruby built without it plays the game slower, and so does
@@ -1254,7 +1260,7 @@ module VBlank
       built = VBlank::Original::Shell.build(game, console: console_to_play(game), settings: given_settings,
                                                   progress: build_progress)
       require_relative "live"
-      shell = VBlank::Live::Shell.from(built, progress: build_progress)
+      shell = VBlank::Live::Shell.from(built, progress: build_progress, workers: options[:unpack_workers])
       width, height = built.game.described_console.framed_screen_size
       build_progress.step("Opening window")
       window = VBlank::Live::SDL.new(title: game.title, scale: options[:scale], width: width,
@@ -1298,6 +1304,9 @@ module VBlank
     def refuse_mismatched_shell_options!
       if !options[:shell] && options[:pack_folder]
         raise Thor::Error, "--pack-folder is where a shell keeps its data pack. Add --shell, or take it out."
+      end
+      if !options[:shell] && !options[:browser] && options[:unpack_workers]
+        raise Thor::Error, "--unpack-workers is how many cores a shell makes its data pack on. Add --shell, or take it out."
       end
       return unless options[:shell]
 
