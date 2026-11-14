@@ -104,11 +104,12 @@ module VBlank
             def place_chip_lists
               @chip_lists = {}
               @chip_numbers_end = ChipCode::NUMBERS_END
+              kept = chip_numbers_kept
               chip_list_names.each do |name|
                 node = @declared_lists.fetch(name) { next }
                 width = LoweringPlan::SLOT_BYTES.fetch(node.width)
                 at = (@chip_numbers_end - Runtime::Lists::HEADER - (node.capacity * width)) & ~3
-                refuse_chip_lists_too_big!(name) if at < ChipCode::FIRST_NUMBER + CHIP_NUMBERS_KEPT
+                refuse_chip_lists_too_big!(name) if at < ChipCode::FIRST_NUMBER + kept
                 @chip_numbers_end = at
                 @chip_lists[name] = ChipCode::ListPlace.new(at: at, width: width, ring: front_dropped_lists.include?(name))
               end
@@ -117,7 +118,16 @@ module VBlank
             # Room the lists leave for the numbers a run copies in and keeps for itself.
             CHIP_NUMBERS_KEPT = 0x400
 
+            # Room the lists leave: the numbers', and what drawing columns keeps there when a chip
+            # routine draws them (ChipCode#paint_places).
+            def chip_numbers_kept = CHIP_NUMBERS_KEPT + (chip_column_pictures.empty? ? 0 : ChipCode::PAINT_BYTES)
+
             def refuse_chip_lists_too_big!(name)
+              unless chip_column_pictures.empty?
+                raise LoweringError, "The list #{name.inspect} is used on the Super FX chip. " \
+                                     "#{ChipCode.no_room_to_paint_message}"
+              end
+
               room = ChipCode::NUMBERS_END - ChipCode::FIRST_NUMBER - CHIP_NUMBERS_KEPT
               raise LoweringError, "The list #{name.inspect} is used on the Super FX chip, and the lists the chip " \
                                    "uses do not fit in its RAM. Those lists and the chip's numbers share " \

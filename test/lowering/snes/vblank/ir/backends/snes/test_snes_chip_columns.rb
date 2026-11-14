@@ -218,6 +218,61 @@ class TestSNESChipColumns < Minitest::Test
     assert_includes built.call(false), "rt_paint_column"
   end
 
+  # A list on the chip big enough to leave room for its numbers but not for the drawing's own
+  # words: the game is told that drawing columns takes room in the chip's RAM, and how much.
+  def test_a_list_that_leaves_no_room_for_drawing_on_the_chip_is_refused_naming_drawing
+    error = assert_raises(SNES::LoweringError) { chip_list_beside_walls(capacity: 1000).build_rom(**SUPERFX_BUILD) }
+
+    assert_match(/draw_column_at/, error.message)
+    assert_match(/bytes/, error.message)
+  end
+
+  # The same list with no drawing on the chip fits, so the refusal above is the drawing's.
+  def test_the_same_list_without_drawing_fits_on_the_chip
+    chip_list_beside_walls(capacity: 1000, draws: false).build_rom(**SUPERFX_BUILD)
+  end
+
+  # The screen counts its clears in a number that turns over after 255 of them, and a tile the chip
+  # draws keeps the count it was drawn in. Past the turn, with a fill by the console after the
+  # chip's walls in the same pass and an area partly off the screen, every pass stays in step.
+  def test_walls_drawn_on_the_chip_past_256_clears_look_as_on_the_interpreter
+    game = VBlank.game("CHIP CLEARS", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
+      func :walls, on_chip: true do
+        repeat(6) { |col| draw_column_at :wall, slice: col + step, x: (col * 9) + (step % 5), top: 70, height: 40 }
+      end
+      game_loop do
+        clear_screen :black
+        step += 1
+        inside(-10, 60, 50, 60) { call :walls }
+        fill_rect 20, 90, 8, 8, :white
+      end
+    end
+    run = game_player.run(superfx_program(game), frames: 290)
+
+    assert_operator run[:step], :>=, 260, "the clears turned over"
+  end
+
+  SUPERFX_BUILD = { console: :snes, variant: :superfx, profile: false, out: nil, err: nil }.freeze
+
+  private def chip_list_beside_walls(capacity:, draws: true)
+    VBlank.game("CHIP FULL", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      cells = list :cells, capacity: capacity, full_of: 0
+      func :walls, on_chip: true do
+        cells[3] = cells[2] + 1
+        repeat(8) { |col| draw_column_at :wall, slice: col, x: col, top: 80, height: 64 } if draws
+      end
+      game_loop do
+        clear_screen :black
+        call :walls
+      end
+    end
+  end
+
   # +columns+ columns of the striped wall, each +tall+ high, drawn from a routine on the chip.
   # +moves+ for a wall whose stripes move across every pass.
   private def square_of_walls(columns:, tall:, moves: false)
