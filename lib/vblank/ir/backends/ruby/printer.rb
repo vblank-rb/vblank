@@ -143,6 +143,7 @@ module VBlank
           def print_file(items)
             @lists = items.grep(Statements::ListStorage).to_set { |list| list.name.text }
             @always_full = always_full_lists(items)
+            @routine_names = items.grep(Statements::Function).to_set { |function| function.name.text }
             routines = +""
             @out = routines
             items.each { |item| print_top(item) }
@@ -219,6 +220,7 @@ module VBlank
           def print_function(item)
             @locals = Set.new
             @temporaries = 0
+            @ranges = {}
             @routine = item.name.text
             @in_parts = list_branches(item.body) > MOST_BRANCHES_A_METHOD
             @locals_in_instance_variables = @in_parts || whole_method_local_count(item.body) > MOST_LOCALS_A_METHOD
@@ -518,7 +520,7 @@ module VBlank
             when Statements::While then print_while(depth, item)
             when Statements::Break then @loops_open.positive? ? line(depth, "break") : leave(depth, :break, "break")
             when Statements::Return then leave(depth, :return, "return")
-            when Statements::Block then statements(depth, item.body) # a Ruby method's locals are its own already
+            when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)
             when Statements::Steps then print_steps(depth, item)
             when Statements::Goto then line(depth, "#{expression(item.counter)} = #{integer(item.step)}")
@@ -531,6 +533,20 @@ module VBlank
             when Statements::RunToEnd then print_run_to_end(depth, item)
             else raise LoweringError, "the printer has no statement form for #{item.class}"
             end
+          end
+
+          # A block's statements, as they are: a Ruby method's locals are its own already. A counted
+          # loop's (#counted_loop_ranges) are printed knowing its index and variable stay below its
+          # count, which #range_of reads.
+          def print_block(depth, item)
+            known = counted_loop_ranges(item.body)
+            return statements(depth, item.body) unless known
+
+            outside = @ranges
+            @ranges = @ranges.merge(known)
+            statements(depth, item.body)
+          ensure
+            @ranges = outside if known
           end
 
           # A resumable routine run from its start for an answer (Statements::RunToEnd): the counters and locals
@@ -722,6 +738,9 @@ module VBlank
               "(#{left} #{bits} #{right})"
             elsif function == "rg_shr"
               "(#{left} >> #{right})"
+            elsif range_of(item)
+              # Known to stay inside 32 bits (#range_of), so it needs no check for coming round.
+              "(#{left} #{WRAPPED_OPERATORS[function] || SHIFTS.fetch(function)} #{right})"
             else
               @called << "rg_i32"
               kept = temporary
@@ -729,6 +748,96 @@ module VBlank
               "((#{kept} = #{left} #{operator} #{right}) > #{Int32::MAX} || " \
                 "#{kept} < #{Int32::MIN} ? rg_i32(#{kept}) : #{kept})"
             end
+          end
+
+          # THE SMALLEST AND LARGEST +item+ CAN BE, as [low, high], or nil where that is not known
+          # while printing. A number written in the program is itself; a counted loop's count and
+          # variable are known through its body (#counted_loop_ranges); a sum, difference, product
+          # or shift of known numbers is worked out from theirs, and is known only when the whole of
+          # it stays inside 32 bits, so it never comes round; a number masked by one written in the
+          # program, nought or more, is at most that. So a port's `c * 2` for channel c of a loop of
+          # nine is printed as Ruby's own `*`, with no check, however often it is worked out.
+          def range_of(item)
+            case item
+            when Statements::Int then [item.value, item.value]
+            when Statements::Name then @ranges[item.text]
+            when Statements::Call
+              return unless item.args.size == 2
+
+              left, right = item.args
+              if item.function.text == "rg_and"
+                mask = [left, right].find { |arg| arg.is_a?(Statements::Int) && arg.value >= 0 }
+                return mask && [0, mask.value]
+              end
+              return unless (a = range_of(left)) && (b = range_of(right))
+
+              ends = case item.function.text
+                     when "rg_add" then [a[0] + b[0], a[1] + b[1]]
+                     when "rg_sub" then [a[0] - b[1], a[1] - b[0]]
+                     when "rg_mul" then [a[0] * b[0], a[0] * b[1], a[1] * b[0], a[1] * b[1]]
+                     when "rg_shl" then written_shift_count?(right) ? [a[0] << right.value, a[1] << right.value] : nil
+                     when "rg_shr" then written_shift_count?(right) ? [a[0] >> right.value, a[1] >> right.value] : nil
+                     end
+              ends && ends.min >= Int32::MIN && ends.max <= Int32::MAX ? [ends.min, ends.max] : nil
+            end
+          end
+
+          # A COUNTED LOOP, as Computer::Lowering#lower_repeat writes one, and what is known of its
+          # numbers through its body: +body+ is a block's statements, its count set to a number
+          # written in the program, its index to nought, then a loop while the index is below the
+          # count, which hands the index to the game's variable first and adds one to it last. Inside,
+          # the index and the variable are 0 to one less than the count, so long as nothing else in
+          # the body sets the count, the index or the variable, and the body calls none of the game's
+          # routines, which could. Nil for any other block.
+          def counted_loop_ranges(body)
+            return unless body.size == 3
+
+            count, start, loop = body
+            count_name, count_value = number_set(count)
+            index_name, start_value = number_set(start)
+            return unless loop.is_a?(Statements::While) && count_value&.positive? && start_value&.zero?
+
+            index = Statements::Name.new(text: index_name)
+            return unless loop.condition == Statements::Call.new(function: Statements::Name.new(text: "rg_lt"),
+                                                                 args: [index, Statements::Name.new(text: count_name)])
+            return unless loop.body.last == Statements::Assign.new(target: index,
+                                                                   value: Statements::Call.new(function: Statements::Name.new(text: "rg_add"),
+                                                                                               args: [index, Statements::Int.new(value: 1)]))
+
+            first = loop.body.first
+            variable = first.target.text if first.is_a?(Statements::Assign) && first.value == index && first.target.is_a?(Statements::Name)
+            known = [count_name, index_name, variable].compact
+            rest = loop.body[(variable ? 1 : 0)...-1]
+            return if rest.empty? && variable.nil?
+            return if body_sets_or_calls?(rest, known)
+
+            [index_name, variable].compact.to_h { |name| [name, [0, count_value - 1]] }
+          end
+
+          # The name a statement sets and the number written in the program it sets it to, or nil.
+          def number_set(statement)
+            case statement
+            when Statements::Local then [statement.name.text, statement.value.value] if statement.value.is_a?(Statements::Int)
+            when Statements::Assign
+              [statement.target.text, statement.value.value] if statement.target.is_a?(Statements::Name) && statement.value.is_a?(Statements::Int)
+            end
+          end
+
+          # Whether +list+ sets any of +names+, or calls a routine of the game, by name or picked from
+          # an array, which can set any variable.
+          def body_sets_or_calls?(list, names)
+            found = false
+            each_statement(list) do |statement|
+              case statement
+              when Statements::Assign then found ||= statement.target.is_a?(Statements::Name) && names.include?(statement.target.text)
+              when Statements::Local then found ||= names.include?(statement.name.text)
+              when Statements::Eval
+                function = statement.call.function.text
+                found ||= @routine_names.include?(function) || function == "rg_call_routine"
+              when Statements::Steps, Statements::Resume, Statements::RunToEnd then found = true
+              end
+            end
+            found
           end
 
           # Where a global lives, for a runtime function that reads it later. A list is an object,
