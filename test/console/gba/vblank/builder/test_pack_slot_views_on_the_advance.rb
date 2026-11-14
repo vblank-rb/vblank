@@ -17,9 +17,10 @@ class TestPackSlotViewsOnTheAdvance < Minitest::Test
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
   FRAMES = [2, 4, 7].freeze
 
-  # What each game does with the layer, as a block run in the game. Made anew for each game, and
-  # not kept in a constant: test_helper.rb makes a test class's constants shareable between
-  # Ractors, and the turning block kept so did not turn the layer.
+  # What each game does with the layer, as a block run in the game. Made by a method, not kept in
+  # a constant: test_helper.rb makes a test class's constants shareable between Ractors, and a
+  # shareable block cannot be read as normal Ruby, so its `spin += 11` is refused
+  # (DSL::PlainRuby.refuse_shareable_block_with_game_code!).
   private def still = ->(_layer) { game_loop { wait_vblank } }
 
   private def turning

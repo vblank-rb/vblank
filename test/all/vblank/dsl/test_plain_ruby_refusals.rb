@@ -18,6 +18,14 @@ class TestPlainRubyRefusals < Minitest::Test
     game_loop { hp -= 1 if hp > OWN_NUMBER - 7 }
   end
 
+  # Blocks kept in constants of a test class, which test_helper.rb makes shareable between
+  # Ractors: one with game code in it, and one of verbs alone.
+  COUNTING_KEPT = lambda do
+    count = var :count, 0
+    game_loop { count += 11 }
+  end
+  VERBS_KEPT = -> { game_loop { wait_vblank } }
+
   private def built(allow: [], &block)
     builder = Builder.new
     builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block, allow: allow))
@@ -337,6 +345,26 @@ class TestPlainRubyRefusals < Minitest::Test
 
     assert_predicate game, :frozen?
     refute_empty game.program.children
+  end
+
+  # A block made shareable cannot be read again, so its `+=` would run as plain Ruby and change
+  # nothing in the game.
+  def test_game_code_in_a_block_made_shareable_is_refused_naming_the_fix
+    assert Ractor.shareable?(COUNTING_KEPT), "a test class's constant is shareable"
+    [-> { Builder.new.instance_exec(&COUNTING_KEPT) }, -> { Builder.new.instance_eval(&COUNTING_KEPT) },
+     -> { VBlank::DSL::PlainRuby.game_block(COUNTING_KEPT) }].each do |handing|
+      error = assert_raises(Refused, &handing)
+
+      assert_includes error.message, "return the block from a method"
+    end
+  end
+
+  def test_verbs_alone_in_a_block_made_shareable_build
+    builder = Builder.new
+    builder.instance_exec(&VERBS_KEPT)
+    builder.finalize_program
+
+    refute_empty builder.program.children
   end
 
   private def warnings_of(&block)

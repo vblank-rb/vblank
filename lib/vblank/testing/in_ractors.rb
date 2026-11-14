@@ -51,7 +51,11 @@ module VBlank
       # A block that reaches for a variable around it can never be shared, and is left as it was:
       # the Ractor run names the test that reads it. Freezing a block hands back a new one rather
       # than changing the old, so that case has to put the constant back, which re-enters here and
-      # finds it shared already. A String is interned as well (InRactors.shareable says why).
+      # finds it shared already. A block that can be shared is, and is then cut loose from where it
+      # was written, so it cannot be read as normal Ruby: one holding game code (`x += 1`, an `if`
+      # on a game number) is refused when a test hands it to a game (DSL::PlainRuby.
+      # refuse_shareable_block_with_game_code!). A String is interned as well (InRactors.shareable
+      # says why).
       module FrozenConstants
         def const_added(name)
           super

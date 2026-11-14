@@ -60,7 +60,34 @@ module VBlank
       # made from a method, or one this module made already.
       def game_block(block, allow: [])
         refuse_block_with_no_file!(block)
+        refuse_shareable_block_with_game_code!(block)
         rewritable?(block) ? rewrite(block, allow: allow, checked: game_blocks_checked?) : block
+      end
+
+      # A BLOCK MADE SHAREABLE BETWEEN RACTORS (`Ractor.make_shareable`) IS CUT LOOSE FROM THE
+      # SCOPE IT WAS WRITTEN IN, and Ruby then gives out no binding for it, so it cannot be
+      # rewritten: run as it stands, `x += 1` changes a Ruby local and nothing in the game, and an
+      # `if` on a game number is decided once, while building. A test class's constants are made
+      # shareable (Testing::InRactors), so a block kept in one did exactly that, with no error.
+      # A block whose source reads the same rewritten has nothing to lose, and runs as it is.
+      def refuse_shareable_block_with_game_code!(block)
+        return unless Ractor.shareable?(block) && file_block?(block)
+
+        source, node = source_and_block_of(block)
+        return if Rewriter.new(source, node, follows_instance_variables: !library_file?(block.source_location.first))
+                          .rewritten_block == node.slice
+
+        file, line = block.source_location
+        raise Refused, "The block at #{File.basename(file)}:#{line} is shareable between Ractors, so VBlank cannot " \
+                       "read it as normal Ruby. Its game code, such as `+=` or `if` on a game number, will do " \
+                       "nothing in the game. In a test, a constant makes the block it keeps shareable. To fix this, " \
+                       "return the block from a method, not from a constant."
+      end
+
+      # Whether +block+ was written in a file, not made by `eval` or by this module.
+      def file_block?(block)
+        iseq = RubyVM::InstructionSequence.of(block)
+        !iseq&.absolute_path.nil? && File.file?(iseq.absolute_path)
       end
 
       def game_blocks_checked? = true
@@ -94,8 +121,7 @@ module VBlank
       # Can +block+ be rewritten? It takes a file to read and a scope to run in, and a proc this
       # module made already has no file of its own, which is how it is not rewritten twice.
       def rewritable?(block)
-        iseq = RubyVM::InstructionSequence.of(block)
-        return false unless iseq&.absolute_path && File.file?(iseq.absolute_path)
+        return false unless file_block?(block)
 
         block.binding
         true
