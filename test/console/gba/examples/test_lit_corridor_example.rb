@@ -38,5 +38,25 @@ class TestLitCorridorExample < Minitest::Test
     assert_equal 1, near.drop(2).uniq.length
   end
 
+  # The stone's blocks, as the picture has it.
+  BLOCK = VBlank::Testing.shown(20 | (20 << 5) | (22 << 10))
+
+  # Built with `lit: false` the corridor is drawn as its pictures are: the wall far from the lamp is
+  # the stone's own colours, as bright as the wall under it, and the flicker changes nothing.
+  def test_built_unlit_the_far_wall_is_its_own_colour_and_nothing_flickers
+    under = []
+    near = []
+    player = game_player
+    player.each_vblank do
+      under << player.screen.pixel(*UNDER_LAMP)
+      near << player.screen.pixel(*NEAR_WALL)
+    end
+    player.run(LitCorridor::GAME.program(settings: { lit: false }), frames: 40)
+
+    assert_includes [MORTAR, BLOCK], near.last, "the far wall is drawn in the stone's own colours"
+    assert_equal [MORTAR], under.drop(2).uniq, "the wall under the lamp does not flicker"
+    assert_equal 1, near.drop(2).uniq.length
+  end
+
   private def brightness(color) = (color & 31) + ((color >> 5) & 31) + ((color >> 10) & 31)
 end
