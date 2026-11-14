@@ -180,6 +180,59 @@ class TestGBCPowerOn < Minitest::Test
     assert_equal slow_frame - 1, slow, "and the frames spent setting up are counted"
   end
 
+  # WHEREVER IN A FRAME SETTING UP ENDS, the count is the frames shown. The first frame's copy of
+  # everything set up (rt_upload_whole) runs with the screen still off, a whole screen's grid of
+  # cells taking a good part of a frame, so a frame that ends during it is one of the frames spent
+  # setting up. Setting up that ends a little sooner or later, by a tenth of a frame at a time over
+  # two frames, finds each place the copy can be in a frame. A game with a song waits for its first
+  # frame its own way (Frame#emit_wait_with_songs), so it is played both ways.
+  private def counting_game_with_a_grid(setting_up, song:)
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      map = TestGBCPowerOn.declare_pale_tiles(self, TILES)
+      background :field, tiles: :pale_set, map: map
+      if song
+        enable_sound
+        song(:tune) { voice(:lead) { |v| v.note :C5, :whole } }
+        play_song :tune
+      end
+      count = 0
+      passes = 0
+      first = -1
+      repeat(setting_up) { count += 1 }
+      game_loop do
+        first = frames_since_power_on if passes == 0
+        passes += 1
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Each number of turns setting up that the first pass misreads, saying what it read.
+  private def misread_first_passes(song:)
+    (0..20).map { |step| 3_000 + (step * 100) }.filter_map do |setting_up|
+      rom = VBlank::Console.for(:gbc).builder.cartridge_for(counting_game_with_a_grid(setting_up, song: song), title: "POWERON")
+      v = VBlank::Diagnostics::Verifier.new(rom, frames: 1, vars: rom.built.variables)
+      frame = 1
+      until v.var(:passes).positive?
+        flunk "no pass ran in 200 frames" if frame == 200
+        v.step
+        frame += 1
+      end
+      "#{setting_up} turns: first seen on #{frame}, read #{v.var(:first)}" unless v.var(:first) == frame - 1
+    end
+  end
+
+  def test_the_frames_spent_setting_up_are_counted_wherever_setting_up_ends
+    assert_empty misread_first_passes(song: false), "the first pass reads one less than the frame it is first seen on"
+  end
+
+  def test_the_frames_spent_setting_up_are_counted_wherever_setting_up_ends_in_a_game_with_a_song
+    assert_empty misread_first_passes(song: true), "the first pass reads one less than the frame it is first seen on"
+  end
+
   # A GAME THAT PLAYS A RECORDING COUNTS THEM TOO: the timer that counts the frames the screen is
   # off for plays the recording's samples once the screen is on, and a recording started while the
   # game sets up starts with its first frame, as the interpreter's mix does.

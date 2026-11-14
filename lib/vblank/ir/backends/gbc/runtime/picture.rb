@@ -798,7 +798,14 @@ module VBlank
               # The console's own copy into picture memory (general-purpose DMA): C + 1 blocks of 16
               # bytes from HL to DE, the processor stopped while it runs. It is eight times quicker
               # than the processor copying, which is what lets a blank hold a grid's rows.
+              #
+              # In a game that counts the frames its screen is off for, the timer's ticks count them
+              # (Frame#emit_dark_tick), and the processor stopped answers none: a tick that comes
+              # while one waits is lost. So a copy that would stop it for longer than a tick is made
+              # GDMA_MOST_BLOCKS at a time, a waiting tick answered between.
               asm.label("rt_gdma")
+              emit_gdma_in_parts(asm) if Frame.dark?(memory)
+              asm.label("rt_gdma_whole")
               asm.load(:a, :h)
               asm.load_high(h::HDMA1, :a)
               asm.load(:a, :l)
@@ -831,6 +838,44 @@ module VBlank
               end
               asm.xor_a(:a)
               asm.load([memory[PALETTES_CHANGED]], :a)
+              asm.ret
+            end
+
+            # The most blocks of 16 bytes one general-purpose copy moves in a game that counts the
+            # frames its screen is off for (#emit_gdma_in_parts). The processor stops for 32 of the
+            # screen's cycles a block, and the timer ticks every Frame::DARK_COUNTS of its counts, 8
+            # of those cycles each: 32 blocks stop it for well under one tick.
+            GDMA_MOST_BLOCKS = 32
+
+            # rt_gdma's start in a game that counts the frames its screen is off for: more than
+            # GDMA_MOST_BLOCKS blocks (C, one less) as copies of that many by rt_gdma_whole, each
+            # moving HL and DE on, then the rest; fewer go straight to rt_gdma_whole. HL, DE and BC
+            # are kept, as rt_gdma keeps them.
+            def emit_gdma_in_parts(asm)
+              asm.load(:a, :c)
+              asm.cp_a(GDMA_MOST_BLOCKS)
+              asm.jump_relative(:c, "rt_gdma_whole")
+              %i[bc de hl].each { |pair| asm.push(pair) }
+              asm.label("rt_gdma_part")
+              asm.push(:bc)
+              asm.load(:c, GDMA_MOST_BLOCKS - 1)
+              asm.call("rt_gdma_whole")
+              asm.pop(:bc)
+              [%i[l h], %i[e d]].each do |low, high|
+                asm.load(:a, low)
+                asm.add_a((GDMA_MOST_BLOCKS * 16) & 0xFF)
+                asm.load(low, :a)
+                asm.load(:a, high)
+                asm.adc_a((GDMA_MOST_BLOCKS * 16) >> 8)
+                asm.load(high, :a)
+              end
+              asm.load(:a, :c)
+              asm.sub_a(GDMA_MOST_BLOCKS)
+              asm.load(:c, :a)
+              asm.cp_a(GDMA_MOST_BLOCKS)
+              asm.jump_relative(:nc, "rt_gdma_part")
+              asm.call("rt_gdma_whole")
+              %i[hl de bc].each { |pair| asm.pop(pair) }
               asm.ret
             end
 

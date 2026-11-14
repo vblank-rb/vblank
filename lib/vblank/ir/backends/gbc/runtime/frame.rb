@@ -266,9 +266,9 @@ module VBlank
                 asm.jump_relative(:nz, "rt_wait_vblank_sleep")
                 # The screen is still off: this is the first frame. Everything set up so far is
                 # copied while nothing is being drawn, and the screen comes on showing it.
-                emit_dark_end(asm, memory) if dark?(memory)
                 asm.call("rt_upload_whole")
                 asm.call("rt_shown_is_passes")
+                emit_dark_end(asm, memory) if dark?(memory)
                 asm.call("rt_display_on")
                 asm.call("rt_sleep_until_vblank")
                 emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
@@ -367,9 +367,9 @@ module VBlank
               asm.jump_relative(:nz, "rt_wait_vblank_sleep")
               # The screen is still off: this is the first frame. Everything set up so far is
               # copied while nothing is being drawn, and the screen comes on showing it.
-              emit_dark_end(asm, memory) if dark?(memory)
               asm.call("rt_upload_whole")
               asm.call("rt_shown_is_passes")
+              emit_dark_end(asm, memory) if dark?(memory)
               asm.call("rt_display_on")
               asm.call("rt_sleep_until_vblank")
               emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
@@ -497,6 +497,10 @@ module VBlank
             # is the screen's interrupt's to count. In a game that plays a recording the timer is the
             # recording's from here, its interrupt left on, and a clip the game played while it set up
             # starts now (Runtime::Clips, rt_clip_start), as the interpreter's mix starts it.
+            #
+            # IT ENDS JUST BEFORE THE SCREEN COMES ON, after the first frame's copy of everything set
+            # up (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
+            # runs is one of the frames spent setting up.
             def emit_dark_end(asm, memory)
               h = Console::GBCHardware
               clips = Clips.any?(memory)
