@@ -104,9 +104,11 @@ module VBlank
                                             frame_seconds: game.frame_seconds)]
             last = game.play(PictureSender.new(pictures, game.frame_seconds))
             unless last.nil?
-              state = game.state
+              # A list of bytes is read back as its String: as numbers, a pack of tens of
+              # megabytes took seconds to read and pack again, and many times its size.
+              state = game.state(byte_lists_packed: true)
               Outcome.new(finished: state.vars.fetch(names.finished), fault_kind: state.vars.fetch(names.fault_kind),
-                          bytes: state.lists.fetch(names.bytes).map { |item| item & 0xFF }.pack("C*"))
+                          bytes: state.lists.fetch(names.bytes).b)
             end
           ensure
             begin
