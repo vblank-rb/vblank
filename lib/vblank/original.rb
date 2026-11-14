@@ -10,7 +10,14 @@
 #
 # A game's tests ask for it with Testing#original_copy, which stops a test on a machine that has
 # none, saying what to set. What the port measured from it is kept in commented YAML files (Facts).
-require_relative "original/releases"       # The releases a game knows, and the words for a copy that is none
+
+# Must load before anything here runs in a Ractor: `require "digest"` only autoloads each digest on
+# first use, and a Ractor cannot load it then ("Digest::Base cannot be directly inherited").
+require "digest/md5"
+require "digest/sha1"
+require "digest/sha2"
+
+require_relative "original/releases"      # The releases a game knows, and the words for a copy that is none
 require_relative "original/game"           # Where the player's copy is, and whether it is the right one
 require_relative "original/facts_file"     # A facts file as text: values rewritten, comments kept
 require_relative "original/facts"          # What the port measured from the original

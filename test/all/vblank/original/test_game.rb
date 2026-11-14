@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "digest"
+require "digest/sha1"
 require "tmpdir"
 
 # A game made from an original names its copy once (Original::Game) and asks for it: found by a
