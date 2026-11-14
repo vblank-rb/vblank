@@ -137,11 +137,14 @@ module VBlank
   # +consoles+ is every console the game is for, which `built_for?` may ask about; left out, it is
   # +console+ alone. A Game hands its `consoles:` here.
   # +pack_at_start+ leaves the game's data pack out of a build for a computer; see {Cartridge::Options}.
+  # +on_read+, when given, is called with the game as read (a Cartridge::EvaluatedGame), before it is
+  # checked: for a caller that needs more of what the game declared than the program, such as a
+  # shell's data pack, without reading a big game a second time.
   def self.build(title, code: nil, maker: nil, validate: true, frame_sync: :auto, fast_cartridge: nil,
                  fast_code: nil, out: $stdout, err: $stderr, progress: Messages::Progress.silent,
                  profile: false, settings: {}, save_memory: nil, stack_room: nil, console: nil, variant: nil,
                  sprite_piece_size: {}, cartridge: true, for_computer: false, players: nil, consoles: nil,
-                 pack_at_start: false, &block)
+                 pack_at_start: false, on_read: nil, &block)
     block = DSL::PlainRuby.game_block(block) if block
     # The settings that say how the game is built travel as one value from here on (see
     # {Cartridge::Options}), checked now so a setting that cannot be right stops the build first.
@@ -172,6 +175,7 @@ module VBlank
 
     progress.step("Reading game")
     evaluated = Cartridge::EvaluatedGame.new(block, options: options, progress: progress, settings: settings)
+    on_read&.call(evaluated)
     program = evaluated.program
 
     # The checks every build and every test player runs, in one place (IR::ProgramChecks, which

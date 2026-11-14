@@ -23,7 +23,8 @@ class TestOriginalShell < Minitest::Test
   end
 
   # Each part of building a shell after the checks is a phase the build names, so a big port's
-  # build has no long stretch with nothing said.
+  # build has no long stretch with nothing said. The game is read once: its data pack comes from
+  # the reading the checks were made on.
   def test_building_a_shell_names_each_phase_after_the_checks
     Dir.mktmpdir do |folder|
       said = StringIO.new
@@ -32,7 +33,7 @@ class TestOriginalShell < Minitest::Test
       progress.done
       phases = said.string.lines.map { |line| line.strip.split(/\s{2,}/).first }
 
-      assert_equal ["Checking for mistakes", "Reading game again", "Building unpacking"], phases.last(3), said.string
+      assert_equal ["Reading game", "Checking program", "Checking for mistakes", "Building unpacking"], phases, said.string
       assert_match(%r{^  Building unpacking +[\d.]+s +1/1$}, said.string)
     end
   end
