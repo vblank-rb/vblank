@@ -43,6 +43,28 @@ module VBlank
     # worked out as the record is written, so a reader multiplies and adds and asks nothing.
     #
     # WHERE THE RECORDS ARE IN THE PACK: after its last slot (Pack), as a Section.
+    #
+    # THE PACK KEEPS EACH FRAME TWICE, its slot's raw bytes and its record, and that is chosen.
+    # A slot that only frames read could be left out of the pack's file, but nothing knows which
+    # slot that is until the whole game is declared, and a slot's place in the file is fixed
+    # before that: `data_pack` lays the file out (Pack.layout) before the game names a verb, and a
+    # build that leaves its pack out writes each place into the program as each verb is declared.
+    # Leaving such a slot out would need the game to say so as it names the slot, and the
+    # unpacking to keep the slot in its list of bytes (its frames are read from there) while the
+    # pack file, its header, the C run that writes the list straight to the file (Unpacking
+    # #write_pack_as_c) and the shell's check of the header all leave it out. The pack is a file on
+    # a computer, read into its memory, never a cartridge's: a record keeps a piece in PIECE_BYTES,
+    # where an original keeps one in four to eight, so the raw slot is the smaller part of what its
+    # frames cost in the file, and leaving it out is not worth a second layout of the pack.
+    #
+    # THE RECORDS ARE ASSEMBLED TWICE, here in Ruby (Source#record, Section#bytes) and as game code
+    # (FrameRewrite), and that is chosen too. The build that holds the pack needs a frame's pieces
+    # the moment `image` names it, before the game has named the frames after it, so Source#record
+    # is needed whatever the pack's file is made with; Section#bytes only lays those records out.
+    # Playing the rewrite instead, once the game is declared, would build and play a program a
+    # second time to make bytes the build has already. And the two check each other: the tests of
+    # frame_record_unpacking_tests.rb and a port's shell check (Live::ShellCheck) hold the
+    # unpacking's records to these byte for byte.
     module FrameRecord
       ENTRY_BYTES = 4
       HEADER_BYTES = 4

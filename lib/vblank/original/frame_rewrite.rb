@@ -13,7 +13,8 @@ module VBlank
     # it and none of them is taught a layout: the layout is asked for each part of a piece as
     # sums of the piece's bytes (FrameLayout#piece_from), and those sums are the routine. The
     # build that holds the pack asks the layout the same question with numbers
-    # (FrameRecord::Section#bytes), and the two must write the same bytes.
+    # (FrameRecord::Section#bytes), and the two must write the same bytes. Why there are two, and
+    # why the pack keeps a frame's slot beside its record, is told atop FrameRecord.
     #
     # The frames of one slot kept one way are a table of where each starts, and one loop over it.
     # This file is read as game code, so each `if` on a test the routine makes is a branch in it.
