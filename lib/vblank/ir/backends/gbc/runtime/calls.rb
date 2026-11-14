@@ -13,9 +13,11 @@ module VBlank
           # there; the game takes them off the stack again afterwards. Number +i+ of +n+ is at
           # args + 4 × (n - 1 - i), lowest byte first (see Calls.arg).
           #
-          # A routine of the game's may be in any bank of the cartridge, so it is called through
-          # rt_far_call, which is in bank 0 and so always in view: it puts the routine's bank in
-          # view, calls it, and puts the caller's bank back. The bank in view is kept in quick
+          # A routine of the game's may be in any bank of the cartridge, so one in another bank than
+          # its caller's is called through rt_far_call, which is in bank 0 and so always in view: it
+          # puts the routine's bank in view, calls it, and puts the caller's bank back. One in the
+          # caller's own bank is called with a plain CALL, which the linker writes over the far call
+          # once it knows both banks (SM83#call_banked). The bank in view is kept in quick
           # memory (Memory::CURRENT_BANK), since the controller that switches banks cannot be read.
           module Calls
             module_function

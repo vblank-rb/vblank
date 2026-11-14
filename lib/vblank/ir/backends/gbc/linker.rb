@@ -12,7 +12,9 @@ module VBlank
         # asked the cartridge's memory bank controller for. So a section is either FIXED — in bank
         # 0, which is where the runtime goes, since everything has to be able to call it — or
         # BANKED, in one of the others, and a jump from one bank to another is not a jump at all
-        # but a call through bank 0 that switches the bank in view first (see Runtime#far_call).
+        # but a call through bank 0 that switches the bank in view first (Runtime::Calls). Which bank
+        # a routine lands in is known only here, so a call written to go through bank 0 is made a
+        # plain CALL here where the routine turns out to be in view from it (SM83#call_banked).
         #
         # A section's +home+ names which: :fixed, :banked, :aligned16 (banked, starting at an address
         # that is a multiple of 16, which the console's copy into picture memory reads from), a
@@ -108,28 +110,62 @@ module VBlank
 
           # First fit, in the order the sections came (Sections::Banks), from bank 1: each goes in
           # the first bank with room for it, a section kept with another's label going in that one's
-          # bank.
+          # bank. A routine that calls, or is called by, routines already placed tries their banks
+          # first, the bank with the most calls between them first (#call_banks), so that as many
+          # calls as fit are plain CALLs (SM83#call_banked) rather than calls through bank 0.
           def place_banked(placed, banked)
             banks = Sections::Banks.new(first: 1, room: ->(_) { BANK_SIZE })
             label_bank = {}
             placed.each { |p| p.section.labels.each_key { |l| label_bank[l] = p.bank } }
+            callers = callers_by_label(banked)
+            section_bank = {}
             banked.each do |section|
               size = section.size
               refuse_bigger_than_bank!(section) if size > BANK_SIZE
 
               align = section.home == :aligned16 ? 16 : 1
-              bank = if section.home.is_a?(String)
-                       label_bank.fetch(section.home) { raise Error, "section #{section.name} keeps with #{section.home}, which is not placed yet" }
-                     else
-                       banks.first_fit(size, align: align)
-                     end
+              used = nil
+              if section.home.is_a?(String)
+                bank = label_bank.fetch(section.home) { raise Error, "section #{section.name} keeps with #{section.home}, which is not placed yet" }
+              else
+                bank = call_banks(section, callers, label_bank, section_bank).find { |near| used = banks.take(near, size, align: align) }
+                bank ||= banks.first_fit(size, align: align)
+              end
               refuse_too_many_banks!(banked) if bank >= @most_banks
-              used = banks.take(bank, size, align: align)
+              used ||= banks.take(bank, size, align: align)
               raise Error, "section #{section.name} does not fit in bank #{bank} beside what is there" unless used
 
               placed << Placed.new(section: section, bank: bank, address: BANKED_START + used)
+              section_bank[section.name] = bank
               section.labels.each_key { |l| label_bank[l] = bank }
             end
+          end
+
+          # For each label a call names (SM83#call_banked), the sections that call it and how many
+          # times each.
+          def callers_by_label(sections)
+            callers = Hash.new { |hash, label| hash[label] = Hash.new(0) }
+            sections.each do |section|
+              section.fixups.each { |fixup| callers[fixup.label][section.name] += 1 if fixup.kind == :call_in_view }
+            end
+            callers
+          end
+
+          # The banks already holding routines +section+ calls or is called by, the most calls first:
+          # where it would make the most plain calls, if it fits there.
+          def call_banks(section, callers, label_bank, section_bank)
+            calls = Hash.new(0)
+            section.fixups.each do |fixup|
+              bank = label_bank[fixup.label] if fixup.kind == :call_in_view
+              calls[bank] += 1 if bank&.positive?
+            end
+            section.labels.each_key do |label|
+              callers.fetch(label, {}).each do |caller, count|
+                bank = section_bank[caller]
+                calls[bank] += count if bank
+              end
+            end
+            calls.sort_by { |bank, count| [-count, bank] }.map(&:first)
           end
 
           # HOW MANY BANKS A CARTRIDGE HAS AT MOST, as this one is driven. The cartridge's memory bank
@@ -231,7 +267,24 @@ module VBlank
               bytes.setbyte(fixup.offset, distance & 0xFF)
             when :bank
               bytes.setbyte(fixup.offset, target.bank)
+            when :call_in_view
+              patch_call_in_view(bytes, fixup, placed, target)
             end
+          end
+
+          # SM83#call_banked's far call, already filled in by the fixups before this one, written
+          # over as a plain CALL and three NOPs where the routine is in view from the call: in bank
+          # 0, or in the bank the call is in. A routine in another bank keeps the far call.
+          CALL = 0xCD
+          NOP = 0x00
+
+          def patch_call_in_view(bytes, fixup, placed, target)
+            return unless target.bank.zero? || target.bank == placed.bank
+
+            bytes.setbyte(fixup.offset, CALL)
+            bytes.setbyte(fixup.offset + 1, target.address & 0xFF)
+            bytes.setbyte(fixup.offset + 2, target.address >> 8)
+            3.times { |i| bytes.setbyte(fixup.offset + 3 + i, NOP) }
           end
 
           # A jump or call reaches what is in view: bank 0, and the bank it is in itself.

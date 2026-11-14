@@ -64,8 +64,9 @@ module VBlank
           # A place named in an instruction, filled in once everything is placed (Sections::Fixup).
           # Its +kind+ here is :word (its 16-bit address), :near (the same, for a jump or a call,
           # which can only reach the bank in view and the part always in view), :relative (a jump's
-          # distance from the next instruction, one signed byte), or :bank (which bank of the
-          # cartridge it is in).
+          # distance from the next instruction, one signed byte), :bank (which bank of the
+          # cartridge it is in), or :call_in_view (a far call made a plain one where the routine is
+          # in view from it, #call_banked).
           Fixup = Sections::Fixup
 
           # A named run of bytes (Sections::Section). Its +home+ here is :fixed for the part of the
@@ -283,7 +284,25 @@ module VBlank
             address_word(target, :near)
           end
 
-          def ret(condition = nil) = emit(condition ? 0xC0 | (CONDITIONS.fetch(condition) << 3) : 0xC9)
+          # A CALL OF A ROUTINE IN ANY BANK, whose bank is known only once the linker has placed it:
+          # written as the far call through the runtime (`call rt_far_call / db bank / dw routine`,
+          # Runtime::Calls), which puts the routine's bank in view and the caller's back after. Where
+          # the routine turns out to be in view from the call — in bank 0, or in the caller's own bank
+          # — the linker writes a plain CALL over the first three bytes and three NOPs over the rest
+          # (a :call_in_view fixup, Linker#patch), so the call takes a CALL's time and the code
+          # around it does not move.
+          def call_banked(label)
+            at = here
+            call(FAR_CALL)
+            data_bank_of(label)
+            data_words(label)
+            @fixups << Fixup.new(offset: at, kind: :call_in_view, label: label.to_s, plus: 0)
+          end
+
+          # The runtime's far call (Runtime::Calls) that #call_banked writes.
+          FAR_CALL = "rt_far_call"
+
+          def ret(condition = nil) =emit(condition ? 0xC0 | (CONDITIONS.fetch(condition) << 3) : 0xC9)
 
           # RST: a one-byte call to one of eight fixed addresses at the bottom of memory.
           def rst(address)

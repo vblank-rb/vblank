@@ -2319,12 +2319,9 @@ module VBlank
             end
           end
 
-          # A routine of the game's, called through bank 0, which puts its bank in view.
-          def call_routine(label)
-            @asm.call("rt_far_call")
-            @asm.data_bank_of(label)
-            @asm.data_words(label)
-          end
+          # A routine of the game's: a plain CALL where the linker places it in this routine's bank,
+          # else through bank 0, which puts its bank in view (SM83#call_banked).
+          def call_routine(label) = @asm.call_banked(label)
         end
       end
     end

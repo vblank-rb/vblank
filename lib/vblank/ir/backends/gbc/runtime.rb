@@ -171,9 +171,7 @@ module VBlank
           # The game's main routine, in whichever bank it went to.
           def emit_main(asm, main)
             asm.label("rt_main")
-            asm.call("rt_far_call")
-            asm.data_bank_of(main)
-            asm.data_words(main)
+            asm.call_banked(main)
             asm.ret
           end
 
@@ -182,11 +180,7 @@ module VBlank
           # or nothing for a game with none. The music moves on from the frame's interrupt instead.
           def emit_frame_begins(asm, routine)
             asm.label("rt_frame_begins")
-            if routine
-              asm.call("rt_far_call")
-              asm.data_bank_of(routine)
-              asm.data_words(routine)
-            end
+            asm.call_banked(routine) if routine
             asm.ret
           end
         end
