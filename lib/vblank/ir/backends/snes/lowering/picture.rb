@@ -1264,11 +1264,18 @@ module VBlank
             def emit_background(node)
               return if @handover.on_arrival?(node)
 
-              emit_put_up(node)
+              # Put up again, it keeps the cells its layer holds (SceneryWrites#emit_put_up_keeping_cells).
+              emit_put_up_keeping_cells(node, layer_of(node)) { |kept| emit_put_up(node, keeps_cells: kept) }
             end
 
-            def emit_put_up(bg)
-              runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
+            # +keeps_cells+ puts it up keeping the cells its layer holds: nothing is copied, and the view goes
+            # back to the corner as rt_background_put_up puts it there. Otherwise its declared map is copied.
+            def emit_put_up(bg, keeps_cells: false)
+              if keeps_cells
+                runtime_call("rt_background_scroll", [Build.int(layer_of(bg)), Build.int(0), Build.int(0)])
+              else
+                runtime_call("rt_background_put_up", [Build.int(layer_of(bg)), Build.int(grid_of(bg, 0).number), Build.int(1)])
+              end
               # A status bar put up shows from the top it was declared with (Reference#bar_top_shown), and
               # covers sprites as that bar was last set to (IR::SceneHandover#bar_covers_on_put_up).
               if bg.bar?
