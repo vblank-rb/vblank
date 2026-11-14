@@ -921,12 +921,42 @@ module VBlank
             # A SPRITE WHOSE POSES FOLLOW THE LISTS THEY ARE DRAWN FROM (Object#follows_each, Reference#object_color_list):
             # each pose drawn from a list the game changes shows what the list holds now, so its picture is read
             # through the list's colour table (#sprite_picture_following), and every other pose as it is drawn.
-            # For each pose, the list it follows, or nil.
+            # For each pose, the list it follows, a BackgroundTable it is read through, or nil.
             def followed_lists(obj)
               obj.poses.map do |pose|
-                list = obj.follows_each && obj.list_followed_by_pose(@cache.image(picture_named(pose)).colors_name)
-                list if list && changing_list?(list)
+                image = @cache.image(picture_named(pose))
+                list = obj.follows_each && obj.list_followed_by_pose(image.colors_name)
+                next list if list && changing_list?(list)
+
+                background_table_holding(image) if obj.follows_unchanging&.include?(image.colors_name)
               end
+            end
+
+            # A BACKGROUND'S COLOUR TABLE THAT A SPRITE'S POSE IS READ THROUGH: +table+, and the place in it of each
+            # colour the pose draws (+places+, colour => place).
+            BackgroundTable = Data.define(:table, :places)
+
+            # A POSE A SPRITE FOLLOWS TO A LIST THE GAME NEVER CHANGES (Object#follows_unchanging) shows the colours
+            # it was drawn in, for good. A background drawing that list keeps those colours in its own table, in
+            # entries showing the same colour in every set it can be drawn with (PlaneColors), so only a fade or a
+            # tint changes what they show, and those walk every table alike (#color_sections). The
+            # graphics chip reads a sprite's texture through any table its drawing names, so the pose is read
+            # through the background's, and needs no table of its own. Only a table of 16 is shared: one of 256
+            # would keep the pose's texture at 8 bits a texel, twice the video RAM its few colours need at 4.
+            # The first background whose table holds every colour the pose draws, unchanged, or nil for none.
+            def background_table_holding(image)
+              return nil if @painted_numbers || !@plane_colors
+
+              colors = (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map { |at| image.color_at(at) & 0x7FFF }.uniq
+              @plane_colors.each do |bg, plane_colors|
+                table = @plane_tables[bg]
+                next unless table && table.capacity == TextureMemory::TABLE_COLORS.fetch(4)
+
+                # An entry showing one colour in every set its source names is written again with that colour alone.
+                places = colors.to_h { |color| [color, plane_colors.entries.index { |entry| entry.colors.uniq == [color] }] }
+                return BackgroundTable.new(table: table, places: places.transform_values { |at| at + 1 }) if places.values.all?
+              end
+              nil
             end
 
             # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, Reference#object_color_list): its pictures
@@ -1021,6 +1051,7 @@ module VBlank
             def sprite_picture(name, colors)
               return register_image_picture(name) unless colors
               return sprite_picture_following(name, colors) if colors.is_a?(Symbol)
+              return sprite_picture_through(name, colors) if colors.is_a?(BackgroundTable)
 
               LabelAddress.new(painted_art.register_picture([:image, name, colors]) do
                 image = @cache.image(picture_named(name))
@@ -1048,6 +1079,19 @@ module VBlank
 
                   colors = sets.map { |recolor| recolor.color_for(at, image.raw_at(at)) & 0x7FFF }
                   drawn[[at % image.width, at / image.width]] = sprite_list_place(list, table, colors)
+                end
+                drawn
+              end)
+            end
+
+            # The picture +name+ in its own colours, read through a background's table (#background_table_holding):
+            # each pixel the place there of the colour it draws.
+            def sprite_picture_through(name, shared)
+              LabelAddress.new(painted_art.register_picture([:image, name, :through, shared.table.field], table: shared.table) do
+                image = @cache.image(picture_named(name))
+                drawn = {}
+                (image.width * image.height).times do |at|
+                  drawn[[at % image.width, at / image.width]] = shared.places.fetch(image.color_at(at) & 0x7FFF) if image.drawn_at?(at)
                 end
                 drawn
               end)
