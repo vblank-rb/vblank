@@ -398,6 +398,11 @@ module VBlank
             raise RunComparison::AsksTheInterpreter, "for the person at this machine to be player #{player} (`local_player=`)"
           end
 
+          # To play the game as one machine of a match (Reference#play_as_match). The windowless program is
+          # handed no match's seed or players, so it plays the presses alone; a tape of a match plays on
+          # the interpreter only (Playthroughs::Tape).
+          def play_as_match(**) = refuse_unanswered!(:play_as_match)
+
           # Which compiler the program's own language turns its code into machine code with, as the
           # program reports itself before its first frame: :yjit or :none from the Ruby lowering's, and
           # nil from a program that does not report one (C needs none, and node's is always on).
