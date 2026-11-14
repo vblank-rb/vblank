@@ -96,7 +96,7 @@ module VBlank
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # means its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there. +indexes_in_banks+ means the tables of where its pictures, its
-          # screens' tiles and colours and its maps are kept are in a bank (GBC#build_in_view).
+          # screens' tiles and colours and its maps are kept are in a bank (GBC#roomier_view).
           # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
           # +save_list_moves+ means it moves a whole list to or from save memory (Lists#emit_save_moves).
           # +clamps_outside+ means it holds a number between ends of up to two bytes

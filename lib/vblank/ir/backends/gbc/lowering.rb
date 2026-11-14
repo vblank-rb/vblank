@@ -236,7 +236,7 @@ module VBlank
           # +banked_table_bytes+ is how big one of the game's tables has to be to go to a bank (#banked_tables).
           # +effects_in_banks+ keeps its sound effects there too (GBC::Music#effects_in_banks?), and
           # +indexes_in_banks+ the tables that give where each song, picture, screen and routine is
-          # (GBC#build_in_view).
+          # (GBC#roomier_view).
           # +cache+ holds what is worked out from +program+ alone, kept from one try at a build to
           # the next (BuildCache): nothing in it depends on how this one is built.
           # +scene_pictures+ marks that each scene brings its own sprite pictures in (Art::TooManySpriteTiles),
@@ -573,7 +573,7 @@ module VBlank
           end
 
           # DATA KEPT BESIDE THE CODE THAT READS IT, in a game whose indexes are in banks
-          # (GBC#build_in_view): a list of routines a call picks from, a scene's record
+          # (GBC#roomier_view): a list of routines a call picks from, a scene's record
           # of its own sprite lists. The routine's code runs in its own bank, which is in view while
           # it runs and while the runtime routines it calls read what it hands them, so data in the
           # same section is read with no bank put in view, and takes nothing of the part always in

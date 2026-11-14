@@ -132,7 +132,7 @@ module VBlank
         ArtSettings = Data.define(:lends, :tile_rooms, :room_colors)
 
         # What one try at a build keeps in the cartridge's banks rather than the part always in view
-        # (#build_in_view): its songs' notes, its sprites' tables of poses, its backgrounds' tables of
+        # (#roomier_view): its songs' notes, its sprites' tables of poses, its backgrounds' tables of
         # colours, every table of its own at least +banked_table_bytes+ long, its sound effects, and
         # the indexes that record where each thing is. Each is Lowering's setting of the same name.
         ViewSettings = Data.define(:banked_songs, :bank_pose_tables, :bank_background_colors, :banked_table_bytes,
@@ -145,11 +145,22 @@ module VBlank
         # and every section of the cartridge.
         Lowered = Data.define(:lowering, :memory, :sections)
 
+        # The settings of one try (#build, BuildTries): how it keeps the art, whether each scene
+        # brings its own sprite pictures in, and what it keeps out of the part always in view.
+        Tried = Data.define(:art, :scene_pictures, :view) do
+          def self.first = new(art: ArtSettings.new(lends: false, tile_rooms: false, room_colors: false),
+                               scene_pictures: false, view: ViewSettings.first)
+
+          # These settings with the art kept as +art+ and each scene's pictures as +scene_pictures+,
+          # the part in view searched again from the first step: what fits in view depends on the art.
+          def with_art(art: self.art, scene_pictures: self.scene_pictures) = with(art: art, scene_pictures: scene_pictures, view: ViewSettings.first)
+        end
+
         # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
         #
-        # A BUILD IS A SERIES OF TRIES, each a whole lowering, until one fits. The first keeps
-        # everything the simple way. A try stops at the first thing that does not fit, which decides
-        # what the next try changes:
+        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering, until one fits. The first
+        # keeps everything the simple way. A try stops at the first thing that does not fit, which
+        # decides what the next try changes (#settings_after):
         #
         # - sprites that wear more lists of colours than the console holds: the lists borrow them as
         #   it runs (Art::TooManySpriteLists), and with more than a byte numbers, each scene numbers
@@ -160,7 +171,7 @@ module VBlank
         # - sprite pictures that between them need more tiles than the console holds: each scene
         #   brings its own pictures in (Art::TooManySpriteTiles);
         # - a part of the cartridge always in view too full: more of the game kept in the banks
-        #   (#build_in_view).
+        #   (#roomier_view).
         #
         # Each of those is a fact about the game, not about the try that found it: lending the
         # sprites' lists does not change how many tiles the backgrounds need, nor the other way
@@ -168,54 +179,59 @@ module VBlank
         # again. Lists of colours and sprite tiles are refused the moment their count passes what the
         # console holds, part way through a lowering (Art#added_palette_number,
         # Art#refuse_sprite_tiles_past_most!), so a try that cannot fit stops early. The part in view
-        # is only known once everything is made, which is why #build_in_view skips the tries it can
-        # tell will not fit.
+        # is only known once everything is made, which is why #roomier_view skips the tries it can
+        # tell will not fit. A change to the art searches the part in view again from its first
+        # step (Tried#with_art), since a game whose art is kept another way can fit with less moved.
         #
         # What a lowering works out from the program alone, and not from how this try is built, is
         # kept from one try to the next in +cache+ (BuildCache), made for this build and handed to each try.
         def build(program, title: "RUBYGBA", cache: BuildCache.for(GBC, program))
-          @scene_pictures = false
-          @tries = 0
-          art = ArtSettings.new(lends: false, tile_rooms: false, room_colors: false)
-          loop do
-            return build_in_view(program, title, art, cache)
-          rescue Lowering::VariableHandedOver
-            # A try asked for the place of a variable kept narrow: it is whole from the next try
-            # on, and the program has only so many variables, so the tries end (Lowering#place_of).
-            next
-          rescue Art::TooManySpriteTiles
-            raise if @scene_pictures
-
-            @scene_pictures = true
-          rescue Art::TooManyBackgroundTiles
-            raise if art.tile_rooms
-
-            art = art.with(tile_rooms: true)
-          rescue Art::TooManyBackgroundLists
-            raise if art.room_colors
-
-            art = art.with(tile_rooms: true, room_colors: true)
-          rescue Art::TooManySpriteLists
-            raise if art.lends
-
-            art = art.with(lends: true)
-          rescue Art::TooManyLentLists
-            raise if art.lends == :by_scene
-
-            art = art.with(lends: :by_scene)
+          @build_tries = BuildTries.new(Lowering::CONSOLE.title, Tried.first)
+          @build_tries.run(next_settings: ->(error, try) { settings_after(error, try) }) do |try|
+            settings = try.settings
+            lowered = try.made = lower(program, settings.art, settings.scene_pictures, settings.view, cache)
+            linked = Linker.new(lowered.sections, fixed_from: Console::GBCHardware::HEADER_END,
+                                                  clock: lowered.lowering.clock?).link
+            cartridge(program, title, lowered, linked)
           end
         end
 
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
-        attr_reader :tries
+        def tries = @build_tries&.count || 0
 
         # What the build found to say about what it decided (Cartridge::LoweredBuild): nothing yet.
         def findings = []
 
         private
 
+        # The settings of the try after +try+, which +error+ stopped (BuildTries), or nil where
+        # nothing left to change would help.
+        def settings_after(error, try)
+          settings = try.settings
+          art = settings.art
+          case error
+          when Lowering::VariableHandedOver
+            # A try asked for the place of a variable kept narrow: it is whole from the next try
+            # on, and the program has only so many variables, so the tries end (Lowering#place_of).
+            settings.with_art
+          when Art::TooManySpriteTiles then settings.with_art(scene_pictures: true) unless settings.scene_pictures
+          when Art::TooManyBackgroundTiles then settings.with_art(art: art.with(tile_rooms: true)) unless art.tile_rooms
+          when Art::TooManyBackgroundLists
+            settings.with_art(art: art.with(tile_rooms: true, room_colors: true)) unless art.room_colors
+          when Art::TooManySpriteLists then settings.with_art(art: art.with(lends: true)) unless art.lends
+          when Art::TooManyLentLists then settings.with_art(art: art.with(lends: :by_scene)) unless art.lends == :by_scene
+          when Linker::FrameworkFillsView
+            # Nothing else here shrinks the framework's own code, so go straight to what does.
+            music = try.made.lowering.music
+            settings.with(view: ViewSettings.first.with(effects_in_banks: true)) unless settings.view.effects_in_banks || music.effects.empty?
+          when Linker::TooBigForView
+            view = roomier_view(settings.view, try.made, error.needed)
+            settings.with(view: view) if view
+          end
+        end
+
         # THE PART OF THE CARTRIDGE ALWAYS IN VIEW is 16384 bytes, and a game that does not fit there
-        # is built again keeping more of itself in the banks, in this order (#roomier_view): its
+        # is built again keeping more of itself in the banks, in this order (#next_view): its
         # songs' notes (GBC::Music#sections); its sprites' tables of poses in each list
         # (Lowering::Picture); the tables of what its backgrounds' palettes show at each step of a
         # fade; and its own tables, the smaller ones last, since those are the ones a game reads
@@ -223,48 +239,27 @@ module VBlank
         # make the most room and play a little slower, and a game that fits without them keeps its
         # bytes. And that failing too, with everything in the banks at once and the indexes besides.
         # A game whose framework code alone fills the part, which only its sound effects can grow,
-        # goes straight to keeping them in the banks.
+        # goes straight to keeping them in the banks (#settings_after).
         #
         # Each step costs the game a little speed, so the build takes the first that fits. But a try
         # is a whole lowering, and only once all of it is made is the part in view known; a game
         # past it by a long way would make every try in turn to find the last. So the try that did
         # not fit is measured: its part in view, and how much of it each later step would move to
-        # the banks (#bytes_moved_by). A step that would move too little to fit is skipped untried.
-        def build_in_view(program, title, art, cache)
-          view = ViewSettings.first
-          loop do
-            lowered = lower(program, art, view, cache)
-            begin
-              linked = Linker.new(lowered.sections, fixed_from: Console::GBCHardware::HEADER_END,
-                                                    clock: lowered.lowering.clock?).link
-            rescue Linker::FrameworkFillsView
-              music = lowered.lowering.music
-              raise if view.effects_in_banks || music.effects.empty?
-
-              # Nothing else here shrinks the framework's own code, so go straight to what does.
-              view = ViewSettings.first.with(effects_in_banks: true)
-              next
-            rescue Linker::TooBigForView => e
-              view = roomier_view(view, lowered, e.needed) || raise
-              next
-            end
-            return cartridge(program, title, lowered, linked)
-          end
-        end
-
-        # The next try that can fit after +view+ did not: the next step (#next_view), past every step
-        # that +lowered+'s part in view, +needed+ bytes, shows cannot fit. Nil for none left.
+        # the banks (#bytes_moved_by). A step that would move too little to fit is skipped untried
+        # (BuildTries.first_step_not_ruled_out).
+        #
+        # The next try that can fit after +view+ did not: the next step, past every step that
+        # +lowered+'s part in view, +needed+ bytes, shows cannot fit. Nil for none left.
         def roomier_view(view, lowered, needed)
           music = lowered.lowering.music
           spans = in_view_spans(lowered.sections)
-          following = next_view(view, songs: music.any?, effects: music.effects.any?)
-          while following && needed - bytes_moved_by(view, following, spans, lowered.lowering) > Linker::BANK_SIZE
-            following = next_view(following, songs: music.any?, effects: music.effects.any?)
+          following = ->(step) { next_view(step, songs: music.any?, effects: music.effects.any?) }
+          BuildTries.first_step_not_ruled_out(following.call(view), following: following) do |step|
+            needed - bytes_moved_by(view, step, spans, lowered.lowering) > Linker::BANK_SIZE
           end
-          following
         end
 
-        # The step after +view+ (#build_in_view), nil after the last: for a game with +songs+ and
+        # The step after +view+ (#roomier_view), nil after the last: for a game with +songs+ and
         # sound +effects+.
         #
         # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
@@ -360,16 +355,15 @@ module VBlank
           InViewSpans.new(bytes_by_label: spans)
         end
 
-        # One try lowered with +art+ and +view+, every section of the cartridge made, reading what the
-        # build worked out once from +cache+.
-        def lower(program, art, view, cache)
-          @tries += 1
+        # One try lowered with +art+, +scene_pictures+ and +view+, every section of the cartridge
+        # made, reading what the build worked out once from +cache+.
+        def lower(program, art, scene_pictures, view, cache)
           memory = Memory.new
-          # The last step of #build_in_view keeps each scene's record of its lists with its code in a
+          # The last step of #roomier_view keeps each scene's record of its lists with its code in a
           # bank, so the lists the sprites borrow are numbered by scene.
           lends = view.indexes_in_banks && art.lends == true ? :by_scene : art.lends
           lowering = Lowering.new(program, memory: memory, lends_sprite_colors: lends, tile_rooms: art.tile_rooms,
-                                           scene_pictures: @scene_pictures, room_colors: art.room_colors,
+                                           scene_pictures: scene_pictures, room_colors: art.room_colors,
                                            banked_songs: view.banked_songs, bank_pose_tables: view.bank_pose_tables,
                                            bank_background_colors: view.bank_background_colors,
                                            banked_table_bytes: view.banked_table_bytes,

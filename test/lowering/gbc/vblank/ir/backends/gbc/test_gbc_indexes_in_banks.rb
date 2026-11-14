@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOR GAME THAT KEEPS ADDING SCREENS AND SONGS (GBC#build_in_view, indexes_in_banks). The part
+# A COLOR GAME THAT KEEPS ADDING SCREENS AND SONGS (GBC#roomier_view, indexes_in_banks). The part
 # of a Color cartridge always in view holds 16384 bytes, the framework's own code among them. A game
 # that fits there no other way keeps in the banks, too, the small tables that say where each thing
 # is: each song's entry, where each sprite picture's pieces and outline are, each screen's tiles and

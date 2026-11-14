@@ -50,7 +50,7 @@ module VBlank
           # ...the part always in view too full, which a game can mend by keeping its songs' notes in
           # the banks, and then its sprites' tables of poses in each list (GBC#build).
           # +needed+ is how many bytes the part came to, for the build to tell which of its next tries
-          # cannot fit either (GBC#build_in_view).
+          # cannot fit either (GBC#roomier_view).
           class TooBigForView < TooBig
             attr_reader :needed
 
@@ -61,7 +61,7 @@ module VBlank
           end
 
           # ...and too full with the framework's own code alone, which a game can mend only where
-          # that code grows with the game: its sound effects (GBC#build_in_view).
+          # that code grows with the game: its sound effects (GBC#roomier_view).
           class FrameworkFillsView < Error; end
 
           # Where each section went: its bank and the address of its first byte.

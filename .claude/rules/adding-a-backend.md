@@ -120,6 +120,12 @@ writing an instruction is shared, because two copies of a decision drift apart:
   `Backends::LoopForm` says which shape a `repeat` can take (its count kept in the game's own
   variable), and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::BuildTries` — a build as a series of tries, each a whole lowering with one set of
+  settings (a Data), until one fits: each try timed and logged, what a try found kept for the
+  tries after it, attempts the build can go back from, a better try kept only if it fits, and
+  steps a measured overflow rules out skipped (`first_step_not_ruled_out`). The console gives its
+  settings, its step (`next_settings`, given the error and the try) and its measurements; its
+  lowering raises the moment a count passes what the console holds.
 - `Backends::BuildCache` — what a build works out from the program alone, once for all its tries:
   the plan, the handover, the stacking, each picture's pixels, and the lowering's own memos (its
   `BuildFacts`). A console's build makes one per build (`BuildCache.for`) and hands it to each try.
