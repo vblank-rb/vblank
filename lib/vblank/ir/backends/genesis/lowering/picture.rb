@@ -587,6 +587,24 @@ module VBlank
               one_dispatch? && @objects.values.flat_map(&:poses).any? { |name| scene_owning_picture(name) }
             end
 
+            # THE +scene_tiles+ TO BUILD WITH after a build with +tried+ ran out of tiles (Genesis#build),
+            # or nil when nothing is left to try: :backgrounds, then :sprites.
+            public def scene_tiles_after(tried)
+              case tried
+              when false then :backgrounds if art_of_one_scene?
+              when :backgrounds then :sprites if sprites_of_one_scene?
+              end
+            end
+
+            # A TRY SURE TO RUN OUT OF TILES STOPS before its code is made. Every picture's tiles are
+            # in video memory's list by then but those a `set_tile` names in a game whose scenes share
+            # their tiles, made as its code is, and those only add to the count. So a count past the
+            # room now is past it at the end. Only where a later try can help: a game nothing can help
+            # is refused at the end (Art#refuse_too_many_tiles!), where its count is whole.
+            def refuse_tiles_past_room_early!
+              @art.refuse_too_many_tiles! if places_sprites? && scene_tiles_after(@scene_tiles)
+            end
+
             def one_dispatch? = tiled? && @program.walk.count { |node| node.kind == :case } == 1
 
             # THE COLOURS A SPRITE CAN BE DRAWN WITH (`draw_with`): every list it names, a palette each whose

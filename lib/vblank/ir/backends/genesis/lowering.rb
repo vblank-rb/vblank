@@ -283,6 +283,7 @@ module VBlank
             end
             reserve_patches
             keep_tile_runs
+            refuse_tiles_past_room_early!
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_scene_held_sets
             keep_timer_numbers

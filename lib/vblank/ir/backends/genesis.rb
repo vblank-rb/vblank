@@ -105,9 +105,49 @@ module VBlank
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #
+        # Each of those is a try of the build (BuildTries), and a later try keeps what every earlier
+        # one found it needs (#settings_after). A try sure to run out of tiles stops before its code
+        # is made (Lowering::Picture#refuse_tiles_past_room_early!).
+        #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.
-        def build(program, title: "VBLANK", scene_tiles: false, scene_colors: false, cache: BuildCache.for(Genesis, program))
+        def build(program, title: "VBLANK", cache: BuildCache.for(Genesis, program))
+          @build_tries = BuildTries.new(Lowering::CONSOLE.title, Tried.first)
+          @build_tries.run(next_settings: ->(error, try) { settings_after(error, try) }) do |try|
+            build_try(program, title, try, cache)
+          end
+        end
+
+        # How many times the last #build lowered the game: one for a game that fits as it first tries.
+        def tries = @build_tries&.count || 0
+
+        # The settings of one try (#build, BuildTries): +scene_tiles+ and +scene_colors+, each the
+        # Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors) do
+          def self.first = new(scene_tiles: false, scene_colors: false)
+        end
+
+        private
+
+        # The settings of the try after +try+, which +error+ stopped (BuildTries), or nil where
+        # nothing left to try would help.
+        def settings_after(error, try)
+          settings = try.settings
+          case error
+          when Art::TooManyTiles
+            later = try.made.scene_tiles_after(settings.scene_tiles)
+            settings.with(scene_tiles: later) if later
+          when Art::TooManyColors
+            later = try.made.scene_colors_after(settings.scene_colors)
+            settings.with(scene_colors: later) if later
+          end
+        end
+
+        # One try of #build (BuildTries::Try): the cartridge where it fits. Its lowering is the
+        # try's +made+, which #settings_after reads.
+        def build_try(program, title, try, cache)
+          scene_tiles = try.settings.scene_tiles
+          scene_colors = try.settings.scene_colors
           memory = Memory.new
           picture = Lowering.picture_of(program)
           colors = scene_colors ? true : Lowering.changing_colors?(program)
@@ -123,20 +163,9 @@ module VBlank
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles)
-          lowering = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors, cache: cache)
-          begin
-            game = lowering.sections
-          rescue Art::TooManyTiles
-            later = scene_tiles_after(scene_tiles, lowering)
-            raise unless later
-
-            return build(program, title: title, scene_tiles: later, scene_colors: scene_colors, cache: cache)
-          rescue Art::TooManyColors
-            later = lowering.scene_colors_after(scene_colors)
-            raise unless later
-
-            return build(program, title: title, scene_tiles: scene_tiles, scene_colors: later, cache: cache)
-          end
+          lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
+                                                      cache: cache)
+          game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
                                              columns: lowering.plane_size.first, collision: lowering.collides?, fractions: lowering.fractions?,
@@ -157,17 +186,6 @@ module VBlank
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
                              video_tiles: lowering.video_tiles)
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
-        end
-
-        private
-
-        # The +scene_tiles+ to build with after a build with +tried+ ran out of tiles (#build), or nil
-        # when nothing is left to try.
-        def scene_tiles_after(tried, lowering)
-          case tried
-          when false then :backgrounds if lowering.art_of_one_scene?
-          when :backgrounds then :sprites if lowering.sprites_of_one_scene?
-          end
         end
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the
