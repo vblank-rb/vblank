@@ -150,8 +150,7 @@ module VBlank
         number = @facts.release_with_sha1(sha1).unpacking
         plan = @facts.pieces&.fetch(number)
         unpacking = if plan && @workers > 1 && !@worker_programs.empty?
-                      sources = [plan.main, *plan.pieces.map(&:program)].map { |program| @worker_programs.fetch(program) }
-                      WorkerUnpacking.new(sources, bytes, @facts.unpacking, plan: plan, bar: @facts.bar, workers: @workers)
+                      WorkerUnpacking.new(@worker_programs, bytes, @facts.unpacking, plan: plan, bar: @facts.bar, workers: @workers)
                     else
                       BackgroundUnpacking.new(@unpackings.fetch(number), bytes, @facts.unpacking)
                     end

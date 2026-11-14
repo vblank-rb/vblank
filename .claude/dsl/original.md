@@ -373,14 +373,16 @@ from that copy. The game's code says each piece's shape and size; it never depen
   pieces that reads a slot, other than its own piece; a part without pieces that reads a slot in pieces;
   a slot in pieces written by two parts; a part whose `pieces:` is not the piece count of a slot it
   writes; a frame of a sprite from a slot in pieces. A piece must set every variable before it reads it:
-  each piece is a program of its own on several workers, so a number one piece leaves for the next is
-  not there. One worker plays the whole routine as one program, as it was before pieces: every build
-  here, and every test. Several workers play the parts without pieces as one program and each piece as
-  its own, the pieces of most work first, and join them in the order declared. How many workers is the
-  player's machine's choice, not the game's: one a processor, never more, or `--unpack-workers N` on
-  `vblank run --shell`, `vblank build` and `vblank preview` (a web page's default; its player can change
-  it in the page's settings). `pack.pieced_unpacking` gives the split to a game's own test, which holds
-  it to `pack.unpacking`'s pack (`test/all/vblank/builder/test_data_pack_pieces.rb`).
+  on several workers each piece plays on its own, so a number one piece leaves for the next is not
+  there. One worker plays the whole routine as one program, as it was before pieces: every build here,
+  every test, and the desktop program's shell. Several workers play the parts without pieces as one
+  program and each piece on its own (one program a part in pieces, handed the piece's number after the
+  copy), the pieces of most work first, and join them in the order declared. How many workers is the
+  player's machine's choice, not the game's: one a processor, never more; `vblank run --shell
+  --unpack-workers N`; `vblank build --shell --format web --unpack-workers N`, the page's own number;
+  and a page's address, `page.html?unpack-workers=N`. `pack.pieced_unpacking` gives the split to a
+  game's own test, which holds it to `pack.unpacking`'s pack
+  (`test/all/vblank/builder/test_data_pack_pieces.rb`).
 
   **A format of the port's own** is a module that does `extend VBlank::Original::Packing::Format`,
   `unpacks :name` (with any settings and their defaults: `unpacks :enigma, base: 0`), and defines

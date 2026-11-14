@@ -383,6 +383,12 @@ module VBlank
                                  makes the data pack from it, and keeps the
                                  pack. After that, the game starts at once.
                                  With native, the output is a folder.
+        --unpack-workers N       With --shell and --format web: the page makes
+                                 the data pack on N cores where the game cuts
+                                 its unpacking in pieces. Default: every core
+                                 of the player's computer. The page's address
+                                 can ask for another number:
+                                 page.html?unpack-workers=2.
         #{SET}
 
       Measuring (see vblank profile --help):
@@ -452,8 +458,10 @@ module VBlank
     option :data, default: "inline", enum: %w[inline separate]
     option :pack_at_start, type: :boolean, default: false
     option :shell, type: :boolean, default: false
+    option :unpack_workers, type: :numeric, banner: "N"
     def build(game_file)
       refuse_web_options_out_of_place!
+      refuse_unpack_workers_out_of_place!
       refuse_data_pack_options_on_cartridge!
       case options[:format]
       when "game" then build_cartridges(game_file)
@@ -1305,7 +1313,7 @@ module VBlank
       if !options[:shell] && options[:pack_folder]
         raise Thor::Error, "--pack-folder is where a shell keeps its data pack. Add --shell, or take it out."
       end
-      if !options[:shell] && !options[:browser] && options[:unpack_workers]
+      if !options[:shell] && options[:unpack_workers]
         raise Thor::Error, "--unpack-workers is how many cores a shell makes its data pack on. Add --shell, or take it out."
       end
       return unless options[:shell]
@@ -1718,6 +1726,17 @@ module VBlank
       "no JIT"
     end
 
+    # --unpack-workers on a build is the web page's: a shell's page is the build that unpacks.
+    def refuse_unpack_workers_out_of_place!
+      return unless options[:unpack_workers]
+
+      refuse_unless_whole_and_positive!("--unpack-workers", options[:unpack_workers])
+      return if options[:shell] && options[:format] == "web"
+
+      raise Thor::Error, "--unpack-workers is how many cores a shell's web page makes its data pack on. It needs --shell " \
+                         "and --format web. To play a shell with more cores, use vblank run --shell --unpack-workers N."
+    end
+
     def refuse_unless_whole_and_positive!(switch, value)
       return if value.is_a?(Integer) && value.positive?
 
@@ -1981,7 +2000,8 @@ module VBlank
       progress = build_progress
       if options[:shell]
         template = options[:template] ? File.expand_path(options[:template]) : VBlank::IR::Backends::JS::Page::DEFAULT
-        web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress)
+        web.build_shell_page(game, path, console: console, settings: given_settings, template: template, progress: progress,
+                                         unpack_workers: options[:unpack_workers])
         say "Built #{path}"
         return
       end

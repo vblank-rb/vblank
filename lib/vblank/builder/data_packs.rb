@@ -543,17 +543,17 @@ module VBlank
       # written last as a record of VBlank's own, after the pack's slots (Original::FrameRewrite).
       #
       # A PART IN PIECES (Original::PiecedUnpacking) has its block built once for each piece, in
-      # order, handed the piece's number. +piece+ (a OnePiece) builds the program of that one piece
-      # alone instead: no slot copied as it is, no frames and no bar, and its list of bytes holds
-      # the piece of each slot the part writes and nothing else.
+      # order, handed the piece's number. +piece+ (a PartPieces) builds the program of one part's
+      # pieces instead, which plays the one piece its start file names after the copy
+      # (Unpacking::PIECE_NUMBER): no slot copied as it is, no frames and no bar, and its list of
+      # bytes holds that piece of each slot the part writes and nothing else.
       def unpacking_program(bytes, slots, routines, reading, release:, frames: Original::FrameRecord::Section.new(sources: []),
                             slot_uses: {}, built_names: Original::BuiltNames.new, piece: nil)
         Builder.keeping_builder_in_use do
           maker = Builder.new(options: unpacking_options)
           copy_size = bytes ? bytes.bytesize : release.size
-          copy_table = declare_copy_table_from_start_file(maker, slots, copy_size)
-          held = piece ? piece.held_slots(slots) : slots
-          slots_size = held.sum(&:byte_size)
+          copy_table = declare_copy_table_from_start_file(maker, slots, copy_size, piece_number: !piece.nil?)
+          slots_size = piece ? piece.most_bytes(slots) : slots.sum(&:byte_size)
           list = maker.list(Original::Unpacking::BYTES, capacity: slots_size + frames.size, width: :byte, full_of: 0)
           finished = maker.var(Original::Unpacking::FINISHED, 0)
           faults = Original::UnpackingFaults.new(maker)
@@ -567,7 +567,7 @@ module VBlank
             Original::UnpackingProgress.new(maker).define(done, finished)
           end
           building = Original::UnpackingPartBuilding.new
-          pack = Original::UnpackingSlots.new(unpacking_writers(maker, list, slots, held, faults, building, piece))
+          pack = Original::UnpackingSlots.new(unpacking_writers(maker, list, slots, faults, building, piece))
           unless piece
             slots.reject(&:filled_by_routine?).each do |slot|
               reader.copy_bytes(at: slot.at, count: slot.byte_size, into: pack[slot.name])
@@ -579,8 +579,14 @@ module VBlank
             pack.record_uses_in(uses)
             made_before = maker.variables
             if piece
-              building.enter(routine, piece.number)
-              maker.instance_exec(reader, pack, release.name, piece.number, &routine.block)
+              chosen = maker.table(Original::Unpacking::PIECE_NUMBER, DSL::StartFileEntries.new(at: copy_size, count: 1),
+                                   width: :half, signed: false)
+              routine.pieces.times do |number|
+                (chosen[0] == number).record_branch do
+                  building.enter(routine, number)
+                  maker.instance_exec(reader, pack, release.name, number, &routine.block)
+                end
+              end
             elsif routine.pieced?
               routine.pieces.times do |number|
                 building.enter(routine, number)
@@ -619,22 +625,25 @@ module VBlank
         end
       end
 
-      # ONE PIECE'S PROGRAM, to build (#unpacking_program's +piece+): the piece +number+ of the
-      # part in pieces, which writes the slots in pieces named +slot_names+.
-      OnePiece = Data.define(:number, :slot_names) do
-        # The slots the piece's program holds, of +slots+ (the pack's): the piece of each it writes,
-        # in the pack's order.
-        def held_slots(slots) = slots.select { |slot| slot_names.include?(slot.name) }.map { |slot| slot.piece_slot(number) }
+      # A PART'S PIECES' PROGRAM, to build (#unpacking_program's +piece+): the +count+ pieces of the
+      # part, which writes the slots in pieces named +slot_names+.
+      PartPieces = Data.define(:slot_names, :count) do
+        # The slots the program holds playing piece +number+, of +slots+ (the pack's): that piece of
+        # each the part writes, in the pack's order.
+        def held_slots(slots, number) = slots.select { |slot| slot_names.include?(slot.name) }.map { |slot| slot.piece_slot(number) }
+
+        # The most bytes any one piece holds: the size of the program's list.
+        def most_bytes(slots) = Array.new(count) { |number| held_slots(slots, number).sum(&:byte_size) }.max
       end
 
       # The writer of each of +slots+ (the pack's), by name, writing into +list+: a SlotBytes, or a
       # PiecedSlotBytes for a slot in pieces. The whole routine's writers find each slot where the
-      # pack's list keeps it. A piece's program (+piece+) holds only the slots of +held+, its
-      # pieces, one after another; any other slot's writer is there so a part that reaches it is
-      # refused in words of its own, and it has no bytes to write.
-      def unpacking_writers(maker, list, slots, held, faults, building, piece)
+      # pack's list keeps it. A part's pieces' program (+piece+) holds only the piece it plays of
+      # each slot the part writes, one after another from the list's first byte; any other slot's
+      # writer is there so a part that reaches it is refused in words of its own, and it has no
+      # bytes to write.
+      def unpacking_writers(maker, list, slots, faults, building, piece)
         places = Original::Unpacking.places_of(slots)
-        held_places = Original::Unpacking.places_of(held)
         slots.each_with_index.to_h do |slot, number|
           writer = if !slot.pieced?
                      Original::SlotBytes.new(maker, list, slot, piece ? 0 : places.fetch(slot.name), number: number, faults: faults,
@@ -642,7 +651,9 @@ module VBlank
                    else
                      piece_places = if !piece then slot.piece_starts.each_with_index.to_h { |start, at| [at, places.fetch(slot.name) + start] }
                                     elsif piece.slot_names.include?(slot.name)
-                                      { piece.number => held_places.fetch(slot.piece_slot(piece.number).name) }
+                                      Array.new(piece.count) do |at|
+                                        [at, Original::Unpacking.places_of(piece.held_slots(slots, at)).fetch(slot.piece_slot(at).name)]
+                                      end.to_h
                                     else {}
                                     end
                      Original::PiecedSlotBytes.new(maker, list, slot, piece_places, number: number, faults: faults, building: building)
@@ -681,33 +692,34 @@ module VBlank
       end
 
       # THE ROUTINE SPLIT FOR SEVERAL WORKERS (Original::PiecedUnpacking), or nil where no part of
-      # +routines+ is in pieces: the parts not in pieces as one program, with the frames, and each
-      # piece of each part in pieces as a program of its own. Built as #unpacking_program builds
-      # the whole routine, from the same +bytes+ or +release+; +whole_uses+ are each part's
-      # SlotUses from the whole routine's build, which say the slots each part in pieces writes.
+      # +routines+ is in pieces: the parts not in pieces as one program, with the frames, and the
+      # pieces of each part in pieces as a program that plays any one of them. Built as
+      # #unpacking_program builds the whole routine, from the same +bytes+ or +release+; the
+      # whole routine is built once more to learn the slots each part in pieces writes.
       def pieced_unpacking(bytes, slots, routines, reading, release:, frames:)
         return nil unless routines.any?(&:pieced?)
 
         uses = routines.to_h { |routine| [routine.part, Original::SlotUses.new] }
         unpacking_program(bytes, slots, routines, reading, release: release, slot_uses: uses)
         main = unpacking_program(bytes, slots, routines.reject(&:pieced?), reading, release: release, frames: frames)
+        places = Original::Unpacking.places_of(slots)
+        part_programs = []
         pieces = routines.select(&:pieced?).flat_map do |routine|
           written = slots.select { |slot| slot.pieced? && uses.fetch(routine.part).written.include?(slot.name) }
-          places = Original::Unpacking.places_of(slots)
+          # The program's Unpacking names the whole pack's slots, so its faults name them as the
+          # whole routine's do.
+          part_programs << unpacking_program(bytes, slots, [routine], reading, release: release,
+                                                                         piece: PartPieces.new(slot_names: written.map(&:name), count: routine.pieces))
           Array.new(routine.pieces) do |number|
-            one = OnePiece.new(number: number, slot_names: written.map(&:name))
-            # The program's Unpacking names the whole pack's slots, so its faults name them as the
-            # whole routine's do.
-            unpacking = unpacking_program(bytes, slots, [routine], reading, release: release, piece: one)
             piece_places = written.map do |slot|
               Original::PiecedUnpacking::Place.new(at: places.fetch(slot.name) + slot.piece_starts.fetch(number),
                                                    size: slot.piece_slot(number).byte_size)
             end
-            Original::PiecedUnpacking::Piece.new(part: routine.part, number: number, unpacking: unpacking, places: piece_places,
+            Original::PiecedUnpacking::Piece.new(part: routine.part, number: number, program: part_programs.length, places: piece_places,
                                                  work: written.sum { |slot| slot.piece_slot(number).byte_size * slot.cost })
           end
         end
-        Original::PiecedUnpacking.new(slots: slots, main: main, pieces: pieces)
+        Original::PiecedUnpacking.new(slots: slots, main: main, part_programs: part_programs, pieces: pieces)
       end
 
       # How an unpacking is built: for a computer, and for the console the game is built for. A
@@ -758,9 +770,10 @@ module VBlank
       # The unpacking's copy, declared on +maker+ as a table read from the file the unpacking is
       # handed as it starts, and handed back: a copy of +copy_size+ bytes, which every slot copied
       # as it is must lie inside, as it must inside a copy that is there.
-      def declare_copy_table_from_start_file(maker, slots, copy_size)
+      def declare_copy_table_from_start_file(maker, slots, copy_size, piece_number: false)
         slots.reject(&:filled_by_routine?).each { |slot| slot.refuse_past_end!(copy_size) }
-        maker.program.start_file = IR::StartFile.new(called: COPY_FILE_TITLE, size: copy_size, checks: [])
+        size = copy_size + (piece_number ? Original::Unpacking::PIECE_NUMBER_BYTES : 0)
+        maker.program.start_file = IR::StartFile.new(called: COPY_FILE_TITLE, size: size, checks: [])
         maker.table(Original::Unpacking::COPY, DSL::StartFileEntries.new(at: 0, count: copy_size), width: :byte, signed: false)
       end
 

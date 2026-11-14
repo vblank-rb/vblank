@@ -25,14 +25,17 @@ module VBlank
     #
     # What the checks cannot see is what a piece's Ruby shares with another piece's as the game is
     # built, or a variable one piece leaves for the next: a piece must set each variable before it
-    # reads it. Each piece is a program of its own here, so a piece that leans on the last one's
+    # reads it. Each piece is played on its own here, so a piece that leans on the last one's
     # numbers makes a different pack. The test of a port's own pack (one worker against several)
     # finds that.
     #
     # HOW IT RUNS. One worker plays the whole routine as one program, exactly as before pieces
     # (Builder::DataPacks#unpacking_program): every build that makes the pack here, and every test,
     # plays that. Several workers play #main, the parts not in pieces as one program, and each
-    # piece as a program of its own (#pieces), which holds its piece's bytes alone. The pieces are
+    # piece on its own (#pieces): a program for each part in pieces (#part_programs) plays the one
+    # piece its start file names after the copy (Piece#start_file), and holds that piece's bytes
+    # alone. One program a part, not one a piece, so a runtime writes and starts the part's code
+    # once however many pieces it has (a port's songs number dozens). The pieces are
     # handed out from a queue, the most work first (#queue_order), so the longest is not left to
     # start last. Once all have ended the pack is #main's bytes with each piece's copied over its
     # places, in the order the pieces are declared (#join), and the fault a run stops on is the
@@ -43,21 +46,26 @@ module VBlank
     # the web page take it as a setting (`--unpack-workers`, #worker_count), one a processor unless
     # told otherwise.
     #
-    # +slots+ are the whole pack's, in its order. +main+ is an Unpacking; each of +pieces+ a Piece.
-    PiecedUnpacking = Data.define(:slots, :main, :pieces)
+    # +slots+ are the whole pack's, in its order. +main+ is an Unpacking, and so is each of
+    # +part_programs+, one a part in pieces; each of +pieces+ is a Piece.
+    PiecedUnpacking = Data.define(:slots, :main, :part_programs, :pieces)
 
     class PiecedUnpacking
-      # One piece's program: the +part+ that writes it, its +number+ in that part (0 first), its
-      # Unpacking, whose list of bytes holds the piece of each slot it writes, one after another,
-      # and +places+, where in the pack's list each of those is copied (each a Place, in the order
-      # the program holds them). +work+ is what its bytes cost to make (Slot#cost), its share of a
+      # One piece: the +part+ that writes it, its +number+ in that part (0 first), the +program+
+      # that plays it (its place in #programs), and +places+, where in the pack's list each piece of
+      # a slot the program writes is copied (each a Place, in the order the program's list holds
+      # them, from its first byte). +work+ is what its bytes cost to make (Slot#cost), its share of a
       # shell's bar.
       #
-      # The piece's Unpacking names the whole pack's slots, so a fault it meets names the slot by its
+      # A part's program names the whole pack's slots, so a fault it meets names the slot by its
       # number in the pack, as the whole routine's does.
-      Piece = Data.define(:part, :number, :unpacking, :places, :work) do
-        # How many bytes the piece's program holds.
+      Piece = Data.define(:part, :number, :program, :places, :work) do
+        # How many bytes of the program's list are the piece's.
         def byte_size = places.sum(&:size)
+
+        # The file the piece's program is handed as it starts: the copy, +copy+, and the piece's
+        # number after it (Unpacking::PIECE_NUMBER).
+        def start_file(copy) = copy.b + [number].pack("v")
       end
 
       # +size+ bytes of the pack's list from +at+ on.
@@ -75,8 +83,12 @@ module VBlank
         [asked, processors].min
       end
 
-      # Every program a worker plays: #main first, then each piece in the order declared.
-      def programs = [main, *pieces.map(&:unpacking)]
+      # Every program a worker plays: #main first, then each part's in the order declared.
+      def programs = [main, *part_programs]
+
+      # Piece +piece+ (a Piece) of the split, ready to play on +copy+: its part's program, handed
+      # the piece's start file.
+      def piece_unpacking(piece, copy) = programs.fetch(piece.program).with(copy_bytes: piece.start_file(copy))
 
       # The pieces' numbers in #pieces in the order a queue hands them out: the most work first,
       # and pieces of equal work in the order declared.
@@ -102,13 +114,14 @@ module VBlank
 
       # The split as a runtime plays it (ShellFacts::PiecePlan): what is told to every runtime of a
       # shell. +first_program+ is where #main is in the runtime's list of worker programs, each
-      # piece's program after it in order.
+      # part's program after it in order (#programs).
       def plan(first_program = 0)
         main_slots = slots.reject(&:pieced?)
         main_work = main_slots.sum { |slot| slot.byte_size * slot.cost }
-        planned = pieces.each_with_index.map do |piece, index|
-          ShellFacts::PlannedPiece.new(program: first_program + 1 + index, places: piece.places.map { |place| [place.at, place.size] },
-                                       bytes: piece.byte_size, work: piece.work)
+        planned = pieces.map do |piece|
+          ShellFacts::PlannedPiece.new(program: first_program + piece.program, number: piece.number,
+                                       places: piece.places.map { |place| [place.at, place.size] }, bytes: piece.byte_size,
+                                       work: piece.work)
         end
         ShellFacts::PiecePlan.new(main: first_program, main_bytes: main_slots.sum(&:byte_size), main_work: main_work,
                                   whole_work: main_work + pieces.sum(&:work), queue: queue_order, pieces: planned)

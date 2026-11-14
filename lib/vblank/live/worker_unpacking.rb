@@ -11,7 +11,7 @@ module VBlank
     # as its Ruby text (Backends::Ruby#live_source). They are jobs on a queue, the main one first
     # and then the pieces as the plan orders them (ShellFacts::PiecePlan#queue, the most work
     # first), and a worker that ends one is handed the next. Each worker makes a LiveGame of its
-    # job's text afresh, so nothing one piece's game holds is another's.
+    # job's program afresh (LiveGame#again), so nothing one piece's game holds is another's.
     #
     # WHAT CROSSES. A worker sends, at most once a frame's time, how many bytes its job has done
     # (its BYTES_DONE, read with LiveGame#vars, which reads no list), and the main job its picture
@@ -26,25 +26,30 @@ module VBlank
       Facts = BackgroundUnpacking::Facts
       SILENCE = BackgroundUnpacking::SILENCE
 
-      # +sources+ are the split's programs as Ruby, the main one first, then each piece's in the
-      # order of +plan+'s pieces (a ShellFacts::PiecePlan); +copy+ the copy's bytes; +names+ the
+      # +sources+ are every worker program as Ruby, which +plan+ (a ShellFacts::PiecePlan) numbers
+      # its main program and each piece's program by; +copy+ the copy's bytes; +names+ the
       # unpacking's names a shell reads (ShellFacts::UnpackingNames); +bar+ the bar's look
       # (ShellFacts::Bar); +workers+ how many Ractors play the jobs, at most one a job. The workers
       # start here, and this waits for the main job's game to be made.
       def initialize(sources, copy, names, plan:, bar:, workers:)
         @plan = plan
         @bar = bar
-        @sources = sources.map { |source| Ractor.make_shareable(source.frozen? ? source : source.dup.freeze) }
+        # Each job: its program's text, and the piece's number (nil for the main program). The
+        # main job is 0, and piece i of the plan is job i + 1.
+        texts = {}
+        shared = ->(program) { texts[program] ||= Ractor.make_shareable(sources.fetch(program).dup.freeze) }
+        @jobs = [[plan.main, shared.call(plan.main), nil],
+                 *plan.pieces.map { |piece| [piece.program, shared.call(piece.program), piece.number] }]
         @results = Ractor::Port.new
         @inbox = Thread::Queue.new
         @queue = [0, *plan.queue.map { |piece| piece + 1 }]
-        @done = Array.new(@sources.length, 0)
-        @ended = Array.new(@sources.length)
+        @done = Array.new(@jobs.length, 0)
+        @ended = Array.new(@jobs.length)
         @main_picture = nil
         @facts = nil
         shared_copy = Ractor.make_shareable(copy.frozen? ? copy : copy.dup.freeze)
         shared_names = Ractor.make_shareable(names)
-        @workers = Array.new([workers, @sources.length].min) { start_worker(shared_copy, shared_names) }
+        @workers = Array.new([workers, @jobs.length].min) { start_worker(shared_copy, shared_names) }
         @receiver = Thread.new { receive_results }
         @workers.each { |worker| hand_next_job(worker) }
         take_message(nil) until @facts
@@ -90,12 +95,18 @@ module VBlank
         results = @results
         quiet_experimental_warning do
           Ractor.new(copy, names, results) do |bytes, names, results|
+            # A game of each program played here, by its number: the next job of that program is
+            # made from it (LiveGame#again), so the worker reads the program's Ruby once and YJIT
+            # compiles it once, however many pieces of a part it plays.
+            played = {}
             loop do
               job = Ractor.receive
               break if job == :stop
 
-              index, text = job
-              game = IR::Backends::Ruby::LiveGame.new(text).hand_file(bytes)
+              index, program, text, number = job
+              game = played[program] = played[program]&.again || IR::Backends::Ruby::LiveGame.new(text)
+              # A piece's program is handed the piece's number after the copy (PlannedPiece#start_file).
+              game.hand_file(number ? bytes + [number].pack("v") : bytes)
               if index.zero?
                 results << [:facts, Facts.new(width: game.width, height: game.height, sound_rate: game.sound_rate,
                                               frame_seconds: game.frame_seconds)]
@@ -135,7 +146,7 @@ module VBlank
       # The next job on the queue handed to +worker+, or :stop where none is left.
       def hand_next_job(worker)
         index = @queue.shift
-        worker << (index.nil? ? :stop : [index, @sources.fetch(index)])
+        worker << (index.nil? ? :stop : [index, *@jobs.fetch(index)])
       rescue Ractor::ClosedError
         nil # the worker has ended
       end

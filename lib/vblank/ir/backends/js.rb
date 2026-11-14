@@ -191,8 +191,12 @@ module VBlank
         # of the original's data. It plays the game's pack kept in the browser (IndexedDB), or else the
         # menu, a file picker and the release's unpacking, and keeps the pack it makes (runtime/rg_shell.js).
         # Each program is a createGame of its own, with a runtime of its own, so none shares state.
+        #
+        # An unpacking in pieces has the programs of its split too (Original::Shell#worker_programs),
+        # which the page plays on several Web Workers; +unpack_workers+ is how many the page plays
+        # them on unless its address says (rg_shell_worker_count), nil for one a processor.
         def build_shell_page(game, path, console: nil, settings: {}, scale: 3, template: Page::DEFAULT, err: $stderr,
-                             progress: Messages::Progress.silent)
+                             progress: Messages::Progress.silent, unpack_workers: nil)
           unless File.file?(template)
             raise LoweringError, "There is no page template at #{template}. Name an .html.erb file that exists."
           end
@@ -205,8 +209,13 @@ module VBlank
             factory_and_data_file(part.program, title: game.title, data: :inline, menu: part.window_menu, name: shell_factory_name(part),
                                   code: game.identifying_code, states: part.keeps_states?).first
           end
+          functions += shell.worker_programs.each_with_index.map do |unpacking, number|
+            refuse_console_only_steps!(unpacking.program, err)
+            factory_and_data_file(unpacking.program, title: game.title, data: :inline, menu: false, name: "createWorker#{number}",
+                                  code: game.identifying_code, states: false).first
+          end
           script = WRITTEN_BY + in_own_function(*functions, *runtime_text(%w[rg_refusal.js rg_shell.js rg_mount.js]),
-                                                shell_start_text(shell))
+                                                shell_start_text(shell, unpack_workers))
           File.write(path, Page.html(title: game.title, script: script, scale: scale, template: template,
                                      screen: shell.game.described_console.framed_screen_size,
                                      pixel_size: shell.game.described_console.pixel_size,
@@ -258,11 +267,14 @@ module VBlank
         def shell_factory_name(part) = { game: "createGame", menu: "createMenu", unpacking: "createUnpacking#{part.number}" }.fetch(part.role)
 
         # The line that starts the page on the programs of +shell+, handed its facts as data
-        # (Original::ShellFacts#to_plain), which the page's runtime reads.
-        def shell_start_text(shell)
+        # (Original::ShellFacts#to_plain), which the page's runtime reads, with the worker programs and
+        # +unpack_workers+, the workers the build asked for.
+        def shell_start_text(shell, unpack_workers)
           unpackings = shell.parts.select { |part| part.role == :unpacking }.map { |part| shell_factory_name(part) }
+          workers = Array.new(shell.worker_programs.length) { |number| "createWorker#{number}" }
           "rg_mount_page(rg_shell_game(#{JSON.generate(shell.facts.to_plain)}, " \
-            "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}] }));\n"
+            "{ game: createGame, menu: createMenu, unpackings: [#{unpackings.join(', ')}], workers: [#{workers.join(', ')}], " \
+            "unpackWorkers: #{JSON.generate(unpack_workers)} }));\n"
         end
 
         # The runtime files of +names+, their text in that order.

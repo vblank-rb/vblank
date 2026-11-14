@@ -64,10 +64,16 @@ module VBlank
         end
       end
 
-      # One piece of a PiecePlan: its +program+'s number in the list of worker programs, its
-      # +places+ in the pack's list ([at, size] pairs, in the order its program holds them), how many
-      # +bytes+ its program holds and how much +work+ they are.
-      PlannedPiece = Data.define(:program, :places, :bytes, :work)
+      # One piece of a PiecePlan: its +program+'s number in the list of worker programs (the program
+      # of its part, which plays any of the part's pieces), the piece's +number+ in its part, which
+      # the program is handed after the copy (#start_file), its +places+ in the pack's list ([at,
+      # size] pairs, in the order its program holds them), how many +bytes+ of the program's list
+      # are the piece's and how much +work+ they are.
+      PlannedPiece = Data.define(:program, :number, :places, :bytes, :work) do
+        # The file the piece's program is handed as it starts: the copy, +copy+, then the piece's
+        # number, two bytes, low byte first.
+        def start_file(copy) = copy.b + [number].pack("v")
+      end
 
       # WHERE A SHELL DRAWS THE BAR OF SEVERAL WORKERS, over the picture the main program draws
       # (Original::UnpackingProgress, whose look this is): +side+ pixels in from the picture's left

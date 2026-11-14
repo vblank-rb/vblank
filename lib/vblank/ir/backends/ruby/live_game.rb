@@ -22,10 +22,18 @@ module VBlank
           # (Program#fraction_vars); nil for a game made from its Ruby alone.
           attr_reader :program
 
-          def initialize(source, program: nil)
-            @game = Class.new { class_eval(source, "(the game, as Ruby)") }.new
+          # +game_class+ is the class an earlier game of the same Ruby was made from (#again), or nil
+          # to make one from +source+.
+          def initialize(source, program: nil, game_class: nil)
+            @game = (game_class || Class.new { class_eval(source, "(the game, as Ruby)") }).new
             @program = program
           end
+
+          # A game of the same program made afresh: every part of its state new, as the runtime sets
+          # it up for each game it makes, and its class this one's, so the Ruby is not read again
+          # and what YJIT compiled as this one played is used again. A shell's worker plays each
+          # piece of a part this way (Live::WorkerUnpacking).
+          def again = LiveGame.new(nil, program: @program, game_class: @game.class)
 
           # The size of the picture it shows: the whole screen, with the border round a game's screen
           # shown in one (rg_screen_framed).

@@ -243,6 +243,10 @@ module VBlank
       FAULT_KIND = Messages::MadeNames.make(:unpacking_part, part: :fault_kind)
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
+      # Which piece a program of a part's pieces plays (PiecedUnpacking): a number of
+      # PIECE_NUMBER_BYTES, low byte first, in its start file after the copy.
+      PIECE_NUMBER = Messages::MadeNames.make(:unpacking_part, part: :piece_number)
+      PIECE_NUMBER_BYTES = 2
 
       # WHAT WENT WRONG AS THE ROUTINE RAN, the first time anything did. +kind+ is one of the five
       # below. For the first four, +at+ is a place in the copy for the first two, a byte outside the

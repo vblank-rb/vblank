@@ -34,8 +34,9 @@ class TestDataPackPieces < Minitest::Test
     assert_equal HEIGHTS.pack("C*"), pack.bytes_of(:heights)
   end
 
-  # Each program of the split played on its own, as a worker plays it, and the pieces copied over
-  # the parts' bytes: the whole routine's pack, byte for byte.
+  # The main program and each piece played on their own, as a worker plays them, and the pieces
+  # copied over the main program's bytes: the whole routine's pack, byte for byte. The pieces of
+  # the music are one program, which plays the piece it is handed the number of.
   def test_the_routine_split_for_workers_joins_into_the_whole_routines_pack
     Dir.mktmpdir do |folder|
       builder = Builder.new
@@ -43,9 +44,10 @@ class TestDataPackPieces < Minitest::Test
       whole = pack.unpacking
       split = pack.pieced_unpacking
       whole_bytes = whole.run_as_ruby(frames: whole.most_frames).list_bytes(VBlank::Original::Unpacking::BYTES)
-      runs = split.programs.map { |unpacking| unpacking.run_as_ruby(frames: unpacking.most_frames) }
+      played = [split.main, *split.pieces.map { |piece| split.piece_unpacking(piece, COPY) }]
+      runs = played.map { |unpacking| unpacking.run_as_ruby(frames: unpacking.most_frames) }
 
-      assert_equal ROOMS.length, split.pieces.length
+      assert_equal [ROOMS.length, 2], [split.pieces.length, split.programs.length]
       assert(runs.all? { |run| run[VBlank::Original::Unpacking::FINISHED] == 1 })
       bytes = runs.map { |run| run.list_bytes(VBlank::Original::Unpacking::BYTES) }
       assert_equal whole_bytes.b, split.join(bytes.first, bytes.drop(1))
