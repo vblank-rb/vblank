@@ -110,6 +110,10 @@ module VBlank
             declared = item.grows ? "let" : "const"
             if values.empty?
               line(0, "#{declared} #{item.name.text} = new #{type}(1);")
+            elsif values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
+              # Zeros alone, until the start file fills them (ConstArray#all_zeros?): a typed array
+              # starts as zeros, so it is made at its size, with no bytes written or read.
+              line(0, "#{declared} #{item.name.text} = new #{type}(#{values.size});")
             elsif values.size > MOST_WRITTEN_AS_NUMBERS && @data == :separate
               print_table_in_data_file(item.name.text, type, values)
             elsif values.size > MOST_WRITTEN_AS_NUMBERS

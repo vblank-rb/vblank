@@ -114,22 +114,24 @@ module VBlank
       # sample or a packed asset was built with. Appending `.b` (the codebase's own
       # shorthand for that, e.g. in test/conformance_fixture.rb) restores it, so a
       # dumped `data`/`sample` round-trips byte-for-byte AND tag-for-tag.
+      #
+      # A GAME WHOSE DATA PACK IS LEFT OUT holds its pictures and recordings as zeros until the
+      # pack fills them, tens of millions of bytes, and a build's fingerprint (Network::Fingerprint)
+      # is a digest of this dump. So a binary String of zeros alone is written as its size, `("\x00"
+      # * 27904).b`, which builds the same String: the dump is a few lines where it was hundreds of
+      # megabytes, and still changes when the size does.
       def string_source(value)
-        value.encoding == Encoding::ASCII_8BIT ? "#{binary_inspect(value)}.b" : value.inspect
+        return value.inspect unless value.encoding == Encoding::ASCII_8BIT
+        return "(#{'"\\x00"'} * #{value.bytesize}).b" if zeros_alone?(value)
+
+        "#{value.inspect}.b"
       end
 
-      # What #inspect gives for a binary +value+. A game whose data pack is left out holds its
-      # pictures and recordings as zeros until the pack fills them, tens of millions of bytes, and
-      # inspecting those one byte at a time took seconds; a String of zeros alone is written out
-      # whole, as the same text.
-      def binary_inspect(value)
-        return value.inspect unless value.bytesize > ZEROS_WRITTEN_WHOLE && value.count("\x00") == value.bytesize
+      # Whether +value+ is longer than ZEROS_WRITTEN_AS_SIZE and every byte of it is 0.
+      def zeros_alone?(value) = value.bytesize > ZEROS_WRITTEN_AS_SIZE && value.count("\x00") == value.bytesize
 
-        "\"#{'\\x00' * value.bytesize}\""
-      end
-
-      # The size past which a String of zeros is written out whole, rather than inspected.
-      ZEROS_WRITTEN_WHOLE = 256
+      # The size past which a String of zeros is written as its size, rather than inspected.
+      ZEROS_WRITTEN_AS_SIZE = 256
 
       # A complete, standalone Ruby file: +program+ (a :program-kind node) wrapped in
       # a class named +class_name+ that can rebuild the tree and lower it to machine

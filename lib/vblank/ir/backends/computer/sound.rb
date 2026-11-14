@@ -431,8 +431,16 @@ module VBlank
 
           # The two arrays of #recordings_tables: every kept recording's samples, or their high bytes
           # in a game that mixes at sixteen bits, and their low bytes in such a game (none in any other).
+          #
+          # A recording read from the start file holds zeros until then, millions of them in a big
+          # game, so its zeros are made at their length rather than read one byte at a time.
           def recording_sample_bytes
-            return [kept_recordings.flat_map { |sample| sample.bytes.unpack("c*") }, []] unless full_depth?
+            unless full_depth?
+              return [kept_recordings.flat_map do |sample|
+                bytes = sample.bytes
+                bytes.count("\x00") == bytes.bytesize ? Array.new(bytes.bytesize, 0) : bytes.unpack("c*")
+              end, []]
+            end
 
             levels = kept_recordings.flat_map { |sample| Mixing.full_depth_samples(sample) }
             shift = Mixing::FULL_DEPTH_SHIFT

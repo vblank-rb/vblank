@@ -220,6 +220,10 @@ module VBlank
             frozen = item.writable ? "" : ".freeze"
             if !item.writable && KEPT_AS_BYTES.include?(item.name.text)
               print_table_of_bytes(item)
+            elsif item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
+              # Zeros until the start file fills them (ConstArray#all_zeros?): made at that size as
+              # the game starts, not read from base64 of millions of zeros.
+              add_starting_value("#{name} = Array.new(#{integer(item.values.size)}, 0)#{frozen}")
             elsif item.values.size > MOST_WRITTEN_AS_NUMBERS
               refuse_numbers_past_32_bits!(item.values)
               packing = PACKING.fetch(item.type) { raise LoweringError, "the printer has no packing for C's #{item.type}" }
@@ -235,9 +239,16 @@ module VBlank
           end
 
           # A table of KEPT_AS_BYTES: its bytes in base64, held as the runtime's class for its type.
-          # An empty one holds one entry, nought, as an empty table written as numbers does.
+          # An empty one holds one entry, nought, as an empty table written as numbers does. One of
+          # zeros alone is its size in bytes of zeros, made as the game starts.
           def print_table_of_bytes(item)
             kept_as = BYTES_CLASS.fetch(item.type) { raise LoweringError, "the printer cannot keep C's #{item.type} as bytes" }
+            packing = PACKING.fetch(item.type)
+            if item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
+              bytes = item.values.size * [0].pack(packing).bytesize
+              return add_starting_value("@#{item.name.text} = #{kept_as}.of(\"\\0\".b * #{integer(bytes)}).freeze")
+            end
+
             refuse_numbers_past_32_bits!(item.values)
             values = item.values.empty? ? [0] : item.values
             bytes = [values.pack(PACKING.fetch(item.type))].pack("m0")

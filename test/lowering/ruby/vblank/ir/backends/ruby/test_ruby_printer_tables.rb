@@ -36,6 +36,25 @@ class TestRubyPrinterTables < Minitest::Test
     assert_equal values, read_back(written(values, type: "int32_t"))
   end
 
+  # A big table of zeros alone, as one the start file fills is until then, is made at its size as
+  # the game starts, not read from base64.
+  def test_a_big_table_of_zeros_is_made_at_its_size
+    values = Array.new(Printer::MOST_WRITTEN_AS_NUMBERS * 4, 0)
+    text = written(values, type: "int8_t")
+
+    assert_includes text, "@t_big = Array.new(#{values.size}, 0)"
+    assert_equal values, read_back(text)
+  end
+
+  def test_a_big_table_of_zeros_kept_as_bytes_is_its_size_in_bytes
+    values = Array.new(Printer::MOST_WRITTEN_AS_NUMBERS * 4, 0)
+    table = Statements::ConstArray.new(name: Statements::Name.new("rg_game_image_pixels"), type: "uint16_t", values: values)
+    text = Printer.new.print_file([table])
+
+    assert_includes text, "RgHalves.of(\"\\0\".b * #{values.size * 2}).freeze"
+    refute_includes text, "unpack1"
+  end
+
   def test_a_big_table_with_a_number_past_32_bits_is_refused
     values = [0] * Printer::MOST_WRITTEN_AS_NUMBERS + [2**31]
 
