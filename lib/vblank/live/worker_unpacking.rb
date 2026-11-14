@@ -10,8 +10,9 @@ module VBlank
     # The programs are the split's: the main one (the parts not in pieces) and each piece's, each
     # as its Ruby text (Backends::Ruby#live_source). They are jobs on a queue, the main one first
     # and then the pieces as the plan orders them (ShellFacts::PiecePlan#queue, the most work
-    # first), and a worker that ends one is handed the next. Each worker makes a LiveGame of its
-    # job's program afresh (LiveGame#again), so nothing one piece's game holds is another's.
+    # first), and a worker that ends one is handed the next. Each worker makes a LiveGame for
+    # each job afresh, so nothing one piece's game holds is another's; its class is made once
+    # here for every worker (LiveGame.shareable_class says why).
     #
     # WHAT CROSSES. A worker sends, at most once a frame's time, how many bytes its job has done
     # (its BYTES_DONE, read with LiveGame#vars, which reads no list), and the main job its picture
@@ -34,12 +35,11 @@ module VBlank
       def initialize(sources, copy, names, plan:, bar:, workers:)
         @plan = plan
         @bar = bar
-        # Each job: its program's text, and the piece's number (nil for the main program). The
+        # Each job: its program's class, and the piece's number (nil for the main program). The
         # main job is 0, and piece i of the plan is job i + 1.
-        texts = {}
-        shared = ->(program) { texts[program] ||= Ractor.make_shareable(sources.fetch(program).dup.freeze) }
-        @jobs = [[plan.main, shared.call(plan.main), nil],
-                 *plan.pieces.map { |piece| [piece.program, shared.call(piece.program), piece.number] }]
+        classes = {}
+        made = ->(program) { classes[program] ||= IR::Backends::Ruby::LiveGame.shareable_class(sources.fetch(program)) }
+        @jobs = [[made.call(plan.main), nil], *plan.pieces.map { |piece| [made.call(piece.program), piece.number] }]
         @results = Ractor::Port.new
         @inbox = Thread::Queue.new
         @queue = [0, *plan.queue.map { |piece| piece + 1 }]
@@ -95,16 +95,12 @@ module VBlank
         results = @results
         quiet_experimental_warning do
           Ractor.new(copy, names, results) do |bytes, names, results|
-            # A game of each program played here, by its number: the next job of that program is
-            # made from it (LiveGame#again), so the worker reads the program's Ruby once and YJIT
-            # compiles it once, however many pieces of a part it plays.
-            played = {}
             loop do
               job = Ractor.receive
               break if job == :stop
 
-              index, program, text, number = job
-              game = played[program] = played[program]&.again || IR::Backends::Ruby::LiveGame.new(text)
+              index, game_class, number = job
+              game = IR::Backends::Ruby::LiveGame.new(nil, game_class: game_class)
               # A piece's program is handed the piece's number after the copy (PlannedPiece#start_file).
               game.hand_file(number ? bytes + [number].pack("v") : bytes)
               if index.zero?

@@ -22,18 +22,28 @@ module VBlank
           # (Program#fraction_vars); nil for a game made from its Ruby alone.
           attr_reader :program
 
-          # +game_class+ is the class an earlier game of the same Ruby was made from (#again), or nil
-          # to make one from +source+.
+          # +game_class+ is a class of the game's Ruby made already (LiveGame.shareable_class), or nil
+          # to make one from +source+. Every part of a game's state is its own, set up as the
+          # runtime makes each game, so games of one class share nothing but their methods.
           def initialize(source, program: nil, game_class: nil)
             @game = (game_class || Class.new { class_eval(source, "(the game, as Ruby)") }).new
             @program = program
           end
 
-          # A game of the same program made afresh: every part of its state new, as the runtime sets
-          # it up for each game it makes, and its class this one's, so the Ruby is not read again
-          # and what YJIT compiled as this one played is used again. A shell's worker plays each
-          # piece of a part this way (Live::WorkerUnpacking).
-          def again = LiveGame.new(nil, program: @program, game_class: @game.class)
+          # A CLASS OF THE GAME'S RUBY THAT GAMES IN SEVERAL RACTORS ARE EACH MADE FROM (#initialize's
+          # +game_class+): made once, its constants made shareable, so a Ractor can read them.
+          #
+          # Why one class and not one in each Ractor: what YJIT compiles is kept for the class's
+          # methods, and its room for compiled code is one for the whole process. A class made in
+          # each of a dozen Ractors compiled the same big program a dozen times over, filled that
+          # room, and YJIT then threw code away and compiled it again, stopping every Ractor each
+          # time: a dozen workers played slower together than one alone. Made once, the methods are
+          # compiled once for every Ractor that plays them (Live::WorkerUnpacking).
+          def self.shareable_class(source)
+            game_class = Class.new { class_eval(source, "(the game, as Ruby)") }
+            game_class.constants.each { |name| Ractor.make_shareable(game_class.const_get(name)) }
+            game_class
+          end
 
           # The size of the picture it shows: the whole screen, with the border round a game's screen
           # shown in one (rg_screen_framed).
