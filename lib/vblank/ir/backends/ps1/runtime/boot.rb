@@ -29,7 +29,13 @@ module VBlank
             module_function
 
             # rt_boot: the console made ready, then the game's main routine, +main+, for good.
-            def emit(asm, memory, main:)
+            #
+            # +counted+ for a game that reads how many frames it has shown since power-on. Setting up can take
+            # frames (reading the pad, copying pictures into video RAM and sounds into sound memory), and those
+            # are shown frames like any other, so such a game counts them from as soon as its handler is in
+            # place (#emit_counting_on), and hands the count to the interrupt as setting up ends
+            # (#emit_counting_handed_over).
+            def emit(asm, memory, main:, counted: false)
               h = Console::PS1Hardware
               asm.label("rt_boot")
               asm.mtc0(:zero, R3000::COP0_STATUS) # every interrupt off
@@ -42,6 +48,7 @@ module VBlank
               emit_port_word(asm, h::TIMER1_MODE, h::TIMER1_COUNTS_LINES) # for Frame::END_LINES
               emit_handler_installed(asm, h)
               emit_instruction_cache_emptied(asm, h)
+              emit_counting_on(asm, h) if counted
               asm.jal("rt_pads_start")
               asm.jal("rt_buttons_now")
               asm.move(:s0, :v0)
@@ -54,7 +61,8 @@ module VBlank
               asm.jal("rt_draw_list_start")
               emit_drawing_settings(asm, h)
               asm.jal("rt_start")
-              emit_interrupts_on(asm, h)
+              emit_counting_handed_over(asm, memory) if counted
+              emit_interrupts_on(asm, h, counted: counted)
               # The game starts as a frame starts, so its first pass ends in a frame after the one the
               # program was loaded in, where a reader of the run finds it waiting.
               asm.jal("rt_sleep_until_vblank")
@@ -247,11 +255,43 @@ module VBlank
               end
             end
 
+            # THE FRAMES SETTING UP TAKES, COUNTED IN k1. The region the interrupt keeps FRAMES in is not
+            # cleared yet, and is cleared later, so while setting up the count is kept in k1, a register that
+            # is the interrupt's alone (R3000::REGISTERS): nought means the interrupt does all its work, and
+            # anything else that it only counts blanks, k1 being one more than the blanks counted
+            # (Frame#emit_interrupt_counting). Only the blank's interrupt is let through, and a blank that
+            # began since the boot quietened the interrupts is still waiting, so it is counted at once.
+            def emit_counting_on(asm, h)
+              asm.li(:k1, 1)
+              asm.li(:t0, h::IRQ_VBLANK)
+              asm.sw(:t0, h::I_MASK & 0xFFFF, :s1)
+              asm.li(:t0, h::SR_INTERRUPTS_ON)
+              asm.mtc0(:t0, R3000::COP0_STATUS)
+            end
+
+            # The blanks counted in k1 become FRAMES, and k1 nought hands the interrupt its whole work, with
+            # every interrupt held off meanwhile; #emit_interrupts_on lets them in again, a blank that began
+            # meanwhile still waiting.
+            def emit_counting_handed_over(asm, memory)
+              asm.mtc0(:zero, R3000::COP0_STATUS)
+              asm.addiu(:t0, :k1, -1)
+              asm.sw(:t0, Runtime.at(memory, Frame::FRAMES), :gp)
+              asm.move(:k1, :zero)
+            end
+
             # The vertical blank's interrupt and the pad's (Pads) let through to the processor, and the
-            # processor told to take them.
-            def emit_interrupts_on(asm, h)
+            # processor told to take them. +counted+ keeps a blank that began while setting up handed its
+            # count over waiting (#emit_counting_handed_over), so the interrupt counts it as soon as it is on,
+            # and clears only the pad's, which the pad's reading while setting up left behind with no
+            # conversation of the interrupt's under way.
+            def emit_interrupts_on(asm, h, counted: false)
               asm.lui(:t1, h::IO >> 16)
-              asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
+              if counted
+                asm.li(:t0, ~h::IRQ_PAD & 0xFFFF_FFFF)
+                asm.sw(:t0, h::I_STAT & 0xFFFF, :t1)
+              else
+                asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
+              end
               asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD)
               asm.sw(:t0, h::I_MASK & 0xFFFF, :t1)
               asm.li(:t0, h::SR_INTERRUPTS_ON)

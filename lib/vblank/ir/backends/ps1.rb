@@ -115,7 +115,8 @@ module VBlank
           by_number = Lowering::Paint.by_number?(program)
           over_picture = Lowering::Picture.over_picture?(program)
           colors = by_number || Lowering::Picture.changes_colors?(program)
-          Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound,
+          counted = IR::Frames.counts_from_power_on?(program)
+          Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound, counted: counted,
                                   songs: songs, follows_level: follows_level, effects: effects,
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
@@ -129,7 +130,8 @@ module VBlank
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
-                                             collides: lowering.collides?, by_number: by_number, over_picture: over_picture)
+                                             collides: lowering.collides?, by_number: by_number, over_picture: over_picture,
+                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           late = Runtime.late_sections(memory, faces: lowering.fills_faces?)
           linked = Linker.new(runtime + game + late, origin: memory.program_at, room: memory.program_room, kept: memory.used).link

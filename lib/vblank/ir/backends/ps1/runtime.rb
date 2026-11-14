@@ -45,11 +45,13 @@ module VBlank
           # recorded note off the middle of the speakers (+recorded_pans+); and Tiles' for one whose screen is
           # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
           # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers) or with sprites over
-          # it (+over_picture+), each shown from pages of its own.
+          # it (+over_picture+), each shown from pages of its own; and Frame's count of the frames setting up
+          # took for one that reads how many frames it has shown since power-on (+counted+).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
-                      samples: false, recorded_pans: false, tiles: false, colors: false, by_number: false, over_picture: false)
+                      samples: false, recorded_pans: false, tiles: false, colors: false, by_number: false, over_picture: false,
+                      counted: false)
             Faces.reserve(memory) if faces
-            Frame.reserve(memory)
+            Frame.reserve(memory, counted: counted)
             Paint.reserve(memory, shown_apart: by_number || over_picture)
             Tiles.reserve(memory) if tiles
             Tiles.reserve_sprites(memory) if over_picture
@@ -74,9 +76,12 @@ module VBlank
           # +collides+ whether it asks whether two sprites' pixels touch, so carries Collide; +by_number+ whether its
           # painted screen is drawn by number (PS1::PaintedNumbers), so is copied onto the screen as each pass ends;
           # +over_picture+ whether it shows sprites over its painted screen, so is copied onto the screen as each
-          # pass ends and has the pass's sprites drawn over the copy.
+          # pass ends and has the pass's sprites drawn over the copy. +count_at+ is where a game that reads how
+          # many frames it has shown since power-on keeps that count, which then counts setting up too
+          # (Boot#emit), and nil for any other.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
-                       samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false)
+                       samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false,
+                       count_at: nil)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
@@ -85,11 +90,11 @@ module VBlank
             ticks_paint_ahead = !frame_begins.nil? && (tiled.nil? || tiled.crosses)
             DrawList.reserve_late(memory, held_back: ticks_paint_ahead)
             shown_by = Paint.shown_by(by_number: by_number, over_picture: over_picture)
-            Boot.emit(asm, memory, main: main)
+            Boot.emit(asm, memory, main: main, counted: !count_at.nil?)
             DrawList.emit(asm, memory, faces: faces, triangles: by_number)
             Int32.emit(asm)
             Frame.emit(asm, memory, sound: sound, tiles: !tiled.nil?, shown_by: shown_by, ticks_paint_ahead: ticks_paint_ahead,
-                                    crosses: tiled ? tiled.crosses : false)
+                                    crosses: tiled ? tiled.crosses : false, count_at: count_at)
             Pads.emit(asm, memory)
             Lists.emit(asm, memory)
             # The wait places the sprites over a tear-free picture before the timers (Frame#emit_ticks_on_next_page).

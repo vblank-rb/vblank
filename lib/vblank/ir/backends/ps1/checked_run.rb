@@ -36,7 +36,11 @@ module VBlank
 
           private
 
-          def prepare_interpreter(interpreter) = interpreter.fill_faces_with(@faces)
+          # The faces filled the chip's way, besides the frames setting up took (CartridgeCheck).
+          def prepare_interpreter(interpreter)
+            super
+            interpreter.fill_faces_with(@faces)
+          end
 
           # The recordings sounding at a moment, each with its level and its loudness, as both sides keep
           # them (HeadlessRun.sounding_voices).

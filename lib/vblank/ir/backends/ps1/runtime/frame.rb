@@ -90,6 +90,12 @@ module VBlank
             # handlers paint ahead (#emit_show_owed). Asked for late, beside the draw list's state.
             SHOW_OWED = "rt show owed"
 
+            # THE FRAMES SPENT SETTING UP, in a game that reads how many frames it has shown since power-on:
+            # from the interrupt being switched on (Boot#emit) to the frame the first pass is shown in, kept
+            # one more, for a reader of the run, so nought means not counted yet. They move nothing on but
+            # that count, as the interpreter is told (Reference#frames_setting_up).
+            SETTING_UP = "rt frames setting up"
+
             # What SHOWN holds once a stopped game's last picture is on the screen.
             END_SHOWN = 0xFFFF_FFFF
 
@@ -103,8 +109,10 @@ module VBlank
 
             module_function
 
-            def reserve(memory)
+            # +counted+ for a game that reads how many frames it has shown since power-on (SETTING_UP).
+            def reserve(memory, counted: false)
               WORDS.each { |name| memory.reserve(name, 4) }
+              memory.reserve(SETTING_UP, 4) if counted
               memory.reserve(FAULT, FAULT_BYTES)
               memory.reserve(STEPS, STEPS_KEPT)
               memory.reserve(END_LINES, STEPS_KEPT * 2)
@@ -121,17 +129,18 @@ module VBlank
             # +ticks_paint_ahead+ for a game with timers whose screen can be a tear-free painted one, whose
             # handlers then paint on the page after the pass's (#emit_ticks_on_next_page), its lists held back
             # meanwhile (DrawList::HELD_BACK); +crosses+ for one that hands over between painted screens and
-            # screens drawn from tiles (Tiles::TILES_UP).
-            def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false)
+            # screens drawn from tiles (Tiles::TILES_UP). +count_at+ is where a game that reads how many frames
+            # it has shown since power-on keeps that count (#emit_setting_up_counted), nil for any other.
+            def emit(asm, memory, sound: false, tiles: false, shown_by: nil, ticks_paint_ahead: false, crosses: false, count_at: nil)
               at = ->(name) { Runtime.at(memory, name) }
-              emit_interrupt(asm, at)
+              emit_interrupt(asm, at, counting: !count_at.nil?)
               memory.reserve(SHOW_OWED, 4) if ticks_paint_ahead
               emit_wait(asm, memory, sound, tiles, shown_by, ticks_paint_ahead)
               if ticks_paint_ahead
                 emit_ticks_on_next_page(asm, memory, crosses, shown_by)
                 emit_show_owed(asm, memory, sound, shown_by)
               end
-              emit_show_pass(asm, at)
+              emit_show_pass(asm, at, count_at && count_place(count_at))
               emit_read_buttons(asm, at)
               emit_stopping(asm, at, tiles, shown_by)
             end
@@ -141,10 +150,14 @@ module VBlank
             # its answer. Only a vertical blank is let through (I_MASK), and it is acknowledged by writing
             # a nought to its bit of I_STAT. Then back where the processor was stopped (EPC), with RFE in
             # the jump's delay slot, which puts back the interrupts-on state the exception saved.
-            def emit_interrupt(asm, at)
+            #
+            # +counting+ for a game that counts the frames setting up takes, in k1 while it does
+            # (Boot#emit_counting_on): the handler only counts until k1 is nought.
+            def emit_interrupt(asm, at, counting: false)
               h = Console::PS1Hardware
               saved = at.call(SAVED)
               asm.label("rt_interrupt")
+              asm.bne(:k1, :zero, "rt_interrupt_counting") if counting
               KEPT_REGISTERS.each_with_index { |name, i| asm.sw(name, saved + (i * 4), :gp) }
               asm.mfhi(:t0)
               asm.mflo(:t1)
@@ -177,6 +190,24 @@ module VBlank
               asm.mthi(:t0)
               asm.mtlo(:t1)
               KEPT_REGISTERS.each_with_index { |name, i| asm.lw(name, saved + (i * 4), :gp) }
+              asm.mfc0(:k0, R3000::COP0_EPC)
+              asm.jr(:k0) { asm.rfe }
+              emit_interrupt_counting(asm, h) if counting
+            end
+
+            # rt_interrupt_counting: the blank acknowledged and counted in k1, and nothing else, while setting up
+            # runs (Boot#emit_counting_on). The only interrupt let through then is the blank's. t0 is kept just
+            # below the stack, where nothing is kept, since k0 and k1 are the only registers the handler has.
+            # The full handler does not look at what caused the exception either: the runtime makes none
+            # but the interrupt, so this takes every one for the blank, as it does.
+            def emit_interrupt_counting(asm, h)
+              asm.label("rt_interrupt_counting")
+              asm.sw(:t0, -4, :sp)
+              asm.lui(:k0, h::IO >> 16)
+              asm.li(:t0, ~h::IRQ_VBLANK & 0xFFFF_FFFF)
+              asm.sw(:t0, h::I_STAT & 0xFFFF, :k0)
+              asm.lw(:t0, -4, :sp)
+              asm.addiu(:k1, :k1, 1)
               asm.mfc0(:k0, R3000::COP0_EPC)
               asm.jr(:k0) { asm.rfe }
             end
@@ -380,8 +411,9 @@ module VBlank
             # THE FRAMES ARE COUNTED FROM THE PICTURE COMING ON. Setting up takes frames of the console's
             # time with nothing to see, and the interpreter's first pass takes one: the count starts again
             # as the picture first shows, with that frame as the first, so a game counting frames counts
-            # the same ones.
-            def emit_show_pass(asm, at)
+            # the same ones. +count+ is where a game that reads how many frames it has shown since power-on
+            # keeps that count, as #count_place gives it (#emit_setting_up_counted).
+            def emit_show_pass(asm, at, count)
               h = Console::PS1Hardware
               asm.label("rt_show_pass")
               asm.addiu(:sp, :sp, -4)
@@ -392,6 +424,7 @@ module VBlank
               asm.lui(:t1, h::IO >> 16)
               asm.li(:t0, h::GP1_DISPLAY_ON)
               asm.sw(:t0, h::GP1 & 0xFFFF, :t1)
+              emit_setting_up_counted(asm, at, count) if count
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(FRAMES), :gp)
               asm.sw(:t0, at.call(FRAMES_MARK), :gp)
@@ -416,6 +449,41 @@ module VBlank
               asm.lw(:t0, at.call(VBLANK), :gp)
               asm.beq(:t0, :zero, "rt_sleep_until_vblank_wait")
               asm.jr(:ra)
+            end
+
+            # THE FRAMES SETTING UP TOOK, COUNTED ALL THE SAME, in a game that reads how many frames it has
+            # shown since power-on. Such a game counts blanks from near the top of setting up (Boot#emit), so
+            # FRAMES holds every blank since, and two of them are not setting up's: the one the boot waits for
+            # so the game starts as a frame starts, which ends the frame the program was loaded in, and the one
+            # just waited for, which ends the first pass's. (A game that sets up inside the frame it was loaded
+            # in reads one on its first pass, seen on emulator frame 2, as an Advance cartridge reads one fewer
+            # than the frame its first pass is seen on.) The rest go into the game's count at +count+ now, which
+            # the first pass reads only once its wait is over, the frames of the pass itself added after
+            # (Lowering#emit_wait_vblank): where the interpreter adds them (Reference#store_frame_counters).
+            # SETTING_UP keeps them one more, for a reader of the run. No interrupt comes between: one has
+            # just come.
+            #
+            # The frames before the program's first instruction are not counted, and cannot be: the loader
+            # (the BIOS on a console, Beetle's own in the emulator) copies the program in first, and a longer
+            # program takes longer to copy.
+            def emit_setting_up_counted(asm, at, count)
+              asm.lw(:t0, at.call(FRAMES), :gp)
+              asm.lw(:t2, *count)
+              asm.addiu(:t0, :t0, -1)
+              asm.sw(:t0, at.call(SETTING_UP), :gp)
+              asm.addiu(:t0, :t0, -1)
+              asm.addu(:t2, :t2, :t0)
+              asm.sw(:t2, *count)
+            end
+
+            # [distance, register] naming the game's place at +address+ in a load or a store: from fp in the
+            # scratchpad, where the game keeps its quickest numbers, or from gp.
+            def count_place(address)
+              fast = Memory.distance_from_scratchpad(address)
+              return [fast, :fp] if fast
+
+              distance = Memory.distance_from_base(address) or raise(LoweringError, "the frames since power-on are out of gp's reach")
+              [distance, :gp]
             end
 
             # Where a pass's wait ends: the buttons for the pass about to start, from every frame the last

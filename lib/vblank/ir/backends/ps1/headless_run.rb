@@ -187,7 +187,14 @@ module VBlank
                                                               camera_x: 0, camera_y: 0), sounds)
           end
 
+          # The count is written as the picture comes on for the first pass, which may be after the game was
+          # found waiting at that pass's end, so it is read again at every moment.
+          def read_setting_up
+            @setting_up = read32(runtime_place(Runtime::Frame::SETTING_UP)) if @places.runtime.key?(Runtime::Frame::SETTING_UP)
+          end
+
           def start_run(_program)
+            @setting_up = nil
             @frames_played = 0
             @lines_after_blank = {}
             @logged_entries = []
@@ -288,6 +295,7 @@ module VBlank
           # as the music of the frame boundary will be played there. The moment the run ended on has no
           # boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_setting_up
             @vars = variables
             @lists = lists
             @screen = picture
