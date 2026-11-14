@@ -120,15 +120,16 @@ class TestPlacesOnThePlayStation < Minitest::Test
     assert((105...135).any? { |x| played.screen.pixel(x, 80) != BLACK }, "the face is drawn")
   end
 
-  # The face reaches from x -60 to 300, eight texels across. It is cut at the screen's left side and
-  # held to the view by the chip's drawing area, never cut there, so at x 239 the chip reads the texel
-  # the whole face puts there: 299 pixels in is past six and a half texels of 45 pixels, and the chip
-  # reads half a texel on, so texel 7.
+  # The face reaches from x -60 to 300, eight texels across, and is drawn up to the view's last column
+  # and no further. Which texel shows in that column is each run's answer key's: the chip reads a
+  # pixel half a texel on and the interpreter its middle, so the PlayStation's own run shows texel 7
+  # there (test/lowering/ps1/vblank/ir/backends/ps1/test_ps1_polygon_fill.rb) and the runs that play the
+  # interpreter's picture texel 6, each held to its key on every pixel by its checked player.
   def test_a_face_wider_than_the_view_is_cut_at_its_edges
     screen = game_player.run(PlaceGames.square(x_scale: 3.0), frames: 2).screen
 
     assert_equal tile(1, 3), screen.pixel(0, 72)
-    assert_equal tile(7, 3), screen.pixel(239, 72)
+    refute_equal BLACK, screen.pixel(239, 72), "the view's last column"
     assert_equal BLACK, screen.pixel(240, 72), "past the view the game was laid out for"
   end
 

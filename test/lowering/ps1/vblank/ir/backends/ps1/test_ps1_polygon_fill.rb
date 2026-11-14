@@ -39,6 +39,17 @@ class TestPS1PolygonFill < Minitest::Test
     assert_equal VBlank::Testing.shown(:black), screen.pixel(120, 80)
   end
 
+  # The face reaches from x -60 to 300, eight texels across. It is cut at the screen's left side and
+  # held to the view by the chip's drawing area, never cut there, so at x 239 the chip reads the texel
+  # the whole face puts there: 299 pixels in is past six and a half texels of 45 pixels, and the chip
+  # reads half a texel on, so texel 7. The interpreter reads the pixel's middle and shows texel 6; the
+  # runs that play its picture are held to that by their checked players.
+  def test_a_face_wider_than_the_view_shows_at_its_last_column_the_texel_the_whole_face_puts_there
+    screen = PS1::CheckedRun.new.run(PlaceGames.square(x_scale: 3.0), frames: 2).screen
+
+    assert_equal shown(PlaceGames.tile(7, 3)), screen.pixel(239, 72)
+  end
+
   # The chip starts the place on the picture half a texel on (gpu_uv_seed). Without that, about half
   # the pixels of a picture stretched 15 times read the texel before.
   def test_a_model_without_the_half_texel_start_disagrees_with_the_chip
