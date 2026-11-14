@@ -177,17 +177,53 @@ class TestPlainRuby < Minitest::Test
     assert_equal 1, player[:seen]
   end
 
-  # Truthiness is Ruby's: nil and false are falsy, and everything else is truthy. A plain number
-  # is truthy whatever it holds. (A number the game keeps, alone as a test, is refused instead:
-  # test_plain_ruby_refusals.rb.)
-  def test_a_plain_number_is_truthy_even_at_zero
+  # Truthiness is Ruby's: nil and false are falsy, and everything else is truthy. A number is
+  # truthy whatever it holds, in an `if`, an `unless`, a `!` and a ternary, as anywhere. (Only a
+  # loop on a game number alone is refused, since it could never end: test_plain_ruby_refusals.rb.)
+  def test_a_number_is_truthy_even_at_zero
     player = played(frames: 2) do
+      hp = 0
+      flags = 0
       plain = 0
+      seen = 0
+      worked_out = 0
       plain_seen = 0
-      game_loop { plain_seen = 1 if plain }
+      skipped = 0
+      picked = 0
+      game_loop do
+        seen = 1 if hp
+        worked_out = 1 if flags & 4
+        plain_seen = 1 if plain
+        skipped = 1 unless hp
+        skipped = 2 if !hp
+        picked = hp ? 7 : 9
+        hp += 0
+        flags += 0
+      end
     end
 
-    assert_equal 1, player[:plain_seen]
+    assert_equal [1, 1, 1], [player[:seen], player[:worked_out], player[:plain_seen]]
+    assert_equal [0, 7], [player[:skipped], player[:picked]]
+  end
+
+  # `if secret` on an option that may be nil is Ruby's presence check: given a number the game
+  # keeps, even one holding 0, the yes side runs; left out, it does not.
+  def test_a_game_number_handed_as_an_option_is_there_when_given
+    player = played(frames: 2) do
+      def count_if_given(tally, key, secret: nil)
+        tally[key] += 1 if secret
+      end
+      found = 0
+      tally = { given: var(:given, 0), left_out: var(:left_out, 0) }
+      game_loop do
+        count_if_given(tally, :given, secret: found)
+        count_if_given(tally, :left_out)
+        found += 0
+      end
+    end
+
+    assert_operator player[:given], :>=, 1
+    assert_equal 0, player[:left_out]
   end
 
   def test_nil_and_false_are_falsy_and_a_string_is_truthy

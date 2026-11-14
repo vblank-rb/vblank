@@ -160,14 +160,9 @@ instance variables.
 - `if`, `elsif`, `else`, `unless`, the trailing forms and the ternary work as in Ruby.
 - **Truthiness is Ruby's**: only `nil` and `false` are false. Keep a yes or no as `true`/`false`, and
   compare a number: `if hp > 0`, never `if hp`.
-- **A number the game keeps, alone as a test, is refused** at its line: `if left`, `unless left`,
-  `left ? a : b`, `!left`, `x while left`, `x until left`, `while left … end`, `if flags & 4`. In Ruby
-  every number is true, 0 too, so the test would have one answer on every pass (a `while` would never
-  stop, and the build would never end). The words show the comparison: `left != 0`, `left > 0`,
-  `left == 0`, or `left.nil?` to ask whether it is there. C's meaning, "is not 0", is not given to it:
-  that is not Ruby's. A plain Ruby number keeps Ruby's answer (`if plain`), and so does a variable
-  a `var` line or a verb hands back in an `if`, which is an object: `if by` on an option asks whether
-  it was given.
+- **A number alone in an `if`, `unless`, `!` or ternary keeps Ruby's answer**, a game number too:
+  true, 0 included, decided while building. That is a presence check (`if floor` on an option that
+  is nil when left out), and it builds. To test the number's value, compare it: `left != 0`.
 - `&&`, `||`, `!`, `and`, `or` and `not` join tests, and the right side is skipped as in Ruby. `&`,
   `|` and `^` between tests evaluate both sides.
 - `== != < <= > >=`, and `zero?`, `positive?` and `negative?`, ask about a number. Either side can be
@@ -181,6 +176,11 @@ instance variables.
   `target || 7`. Read as a number, nil is 0.
 
 ## Loops
+
+- **A loop on a game number alone is refused** at its line: `x while left`, `x until left`, `while
+  left … end`. In Ruby every number is true, 0 too, so a `while` would never stop (the build would
+  never end) and an `until` would never run. The words show the comparison: `left != 0`, `left > 0`,
+  `left == 0`. C's meaning, "is not 0", is not given to it: that is not Ruby's.
 
 - **`while` and `until` on a game test are loops in the game.** The build warns about one that never
   waits for a frame and whose test reads nothing the loop changes (a button, or a number nothing in
@@ -241,7 +241,7 @@ Each is a friendly error naming the line.
 | a named Hash or Array of numbers at a key the game works out | a key known while building, or a game's own list |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |
 | a number name given `nil` later | start it with `n = nil` |
-| a game number alone as a test (`if left`, `x while left`, `if flags & 4`, `!left`) | a comparison: `left != 0`, `(flags & 4) != 0`; `left.nil?` |
+| a loop on a game number alone (`x while left`, `until left`) | a comparison: `left != 0`, `(flags & 4) != 0` |
 | a loop Ruby runs while building that goes round a million times | a test that can fail: `n != 0` |
 | `x = if …` with no `else`; a pick of something other than a number or `true`/`false` (a symbol picks only into a variable that already holds names) | an `else`; a number to pick with |
 | `case` asking about a game test, or `when String` of a number | `if` |
@@ -258,8 +258,8 @@ Each is a friendly error naming the line.
 
 ## What builds without a word and means something else
 
-- `if hp` on a plain Ruby number, or on a variable a `var` line handed back: always true, since 0 is
-  truthy. Compare: `!= 0`. (On a number the game keeps, it is refused.)
+- `if hp` or `seen += 1 if flags & 4`: always true, since 0 is truthy. Compare: `!= 0`. (A loop on
+  a game number alone is refused instead.)
 - `x = 0` inside `game_loop`, a `func` or a method the game loop calls: set again every pass. State
   that lasts goes above the loop.
 - `3.times { … }` in a game block: written out three times, run every pass.

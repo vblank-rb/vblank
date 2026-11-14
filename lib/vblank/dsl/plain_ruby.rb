@@ -417,7 +417,7 @@ module VBlank
 
         def call_text(node)
           note_tail_of_answering_block(node)
-          return "#{STEPS}.opposite(#{argument(node.receiver)}, #{test_as_written(node.receiver)})" if node.name == :! && node.receiver
+          return "#{STEPS}.opposite(#{argument(node.receiver)})" if node.name == :! && node.receiver
           return index_write_text(node) if node.name == :[]= && node.receiver
           return attribute_write_text(node) if node.attribute_write? && node.receiver
           return "#{STEPS}.nil_test(#{argument(node.receiver)})" if node.name == :nil? && node.receiver
@@ -1096,8 +1096,7 @@ module VBlank
           sides = under_open_test(answer) do
             "#{yes_side_text(node, answer, shut_at, kept)}#{no_side_text(node, answer, shut_at, kept)}"
           end
-          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}, #{test_as_written(node.predicate)}); " \
-            "#{promotions}#{sides}#{answer}.#{value_step(kept)})"
+          "(#{answer} = #{STEPS}.branch_test(#{test_text(node)}); #{promotions}#{sides}#{answer}.#{value_step(kept)})"
         end
 
         def value_step(kept)
@@ -1232,7 +1231,7 @@ module VBlank
           body = under_open_tests(answers) { side_body_text(node, shut_at) }
           tests.zip(answers, promotions).reverse.reduce(body) do |inner, (test, answer, promoted)|
             before = test.equal?(tests.first) ? "" : line_ends_before_test(tests, test)
-            "(#{before}#{answer} = #{STEPS}.branch_test(#{argument(test)}, #{test_as_written(test)}); #{promoted}" \
+            "(#{before}#{answer} = #{STEPS}.branch_test(#{argument(test)}); #{promoted}" \
               "if #{answer}.open_yes_side; #{answer}.close_side((#{inner})); end; #{answer}.answer)"
           end
         end
@@ -1259,18 +1258,12 @@ module VBlank
         end
 
         def test_text(node)
-          return argument(node.predicate) unless node.is_a?(Prism::UnlessNode)
-
-          "#{STEPS}.opposite(#{argument(node.predicate)}, #{test_as_written(node.predicate)})"
+          node.is_a?(Prism::UnlessNode) ? "#{STEPS}.opposite(#{argument(node.predicate)})" : argument(node.predicate)
         end
 
-        # A test as the author wrote it, as a String literal on one line, for the words a step
-        # says when the test is a game number standing alone (Steps.refuse_number_as_test!).
+        # A loop's test as the author wrote it, as a String literal on one line, for the words a
+        # step says when the test is a game number standing alone (Steps.refuse_number_as_loop_test!).
         def as_written(node) = node.slice.inspect
-
-        # ...and for an `if`, `unless` or `!`, nil in VBlank's own library code, whose `return label
-        # if showing` asks Ruby's question on purpose: was an option given? A loop is refused there too.
-        def test_as_written(node) = @follows_instance_variables ? as_written(node) : "nil"
 
         def other_side(node) = node.is_a?(Prism::UnlessNode) ? node.else_clause : node.subsequent
 

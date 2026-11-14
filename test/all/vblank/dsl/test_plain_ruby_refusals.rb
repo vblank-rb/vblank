@@ -457,10 +457,10 @@ class TestPlainRubyRefusals < Minitest::Test
     error
   end
 
-  # In Ruby every number is true, 0 too. So a game number standing alone as a test would be decided
-  # once, while building, and the same way on every pass: a `while` never stops (the build went
-  # round for ever, writing the body out each time), an `if` always runs. Each form is refused at
-  # the author's line, telling them to compare the number.
+  # In Ruby every number is true, 0 too. So a game number standing alone as a loop's test makes a
+  # plain Ruby loop, run while building: a `while` never stops (the build went round for ever,
+  # writing the body out each time), and an `until` never runs. Each form is refused at the
+  # author's line, telling them to compare the number.
   def test_a_game_number_alone_as_a_loop_test_is_refused_naming_the_line
     line = __LINE__ + 3
     error = refused_within_seconds("`left != 0`") do
@@ -475,7 +475,7 @@ class TestPlainRubyRefusals < Minitest::Test
       game_loop { left += 1 until left }
     end
     # A `var` line's variable is an object `if` asks Ruby's question of, whether it is there
-    # (test_plain_ruby.rb, an option given), but a `while` on it could only go round for ever.
+    # (test_plain_ruby.rb, an option given), and a `while` on it could only go round for ever.
     refused_within_seconds("`left != 0`") do
       left = var :left, 3
       game_loop { left.increase!(1) while left }
@@ -490,30 +490,17 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_a_game_number_alone_as_a_branch_test_is_refused
-    refused_within_seconds("`left != 0`") do
-      left = 3
-      game_loop { left -= 1 if left }
-    end
-    refused_within_seconds("`left != 0`") do
-      left = 3
-      game_loop { left += 1 unless left }
-    end
-    refused_within_seconds("`left != 0`") do
-      left = 3
-      game_loop { left = left ? left - 1 : 3 }
-    end
-    refused_within_seconds("`(flags & 4) != 0`") do
+  # An `if` on the same numbers is Ruby's presence check, and builds (test_plain_ruby.rb plays it).
+  def test_a_number_tested_alone_builds_with_every_check_on
+    rom = VBlank.build("TRUTHY", console: :gba, out: StringIO.new, err: StringIO.new) do
       flags = 3
       game_loop do
         wait_vblank if flags & 4
         flags += 1
       end
     end
-    refused_within_seconds("`left == 0`") do
-      left = 3
-      game_loop { left = 3 if !left }
-    end
+
+    assert rom, "the game builds"
   end
 
   # A plain Ruby loop whose test never fails, `n -= 1 while n` with n a plain number, would hang

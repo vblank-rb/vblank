@@ -46,48 +46,41 @@ module VBlank
         # `x.nil?`. A name that keeps what it holds is asked as the game plays.
         def nil_test(value) = value.is_a?(Value) && value.truth ? value.truth == Value::NIL_HELD : value.nil?
 
-        # A conditional's test, as an object the rewritten `if` asks which sides to run. +written+
-        # is the test's source, for the words when it is a game number standing alone. It is nil
-        # for a `when` arm and for VBlank's own library code (Rewriter#test_as_written), where a
-        # number alone keeps Ruby's answer.
-        def branch_test(value, written = nil)
-          refuse_number_as_test!(value, written) if written
+        # A conditional's test, as an object the rewritten `if` asks which sides to run. A game
+        # number alone (`if floor`, `secret ? a : b`) is truthy, as any object is in Ruby: that is a
+        # presence check on a value that may be nil (an option given or not), decided while
+        # building, and it is what the author meant. It is used for nothing more, so no check
+        # counts it as dropped.
+        def branch_test(value)
           return GameTest.new(as_condition(value)) if game_test?(value)
 
-          value.discard! if value.is_a?(Value) # an object asked whether it is there, used for nothing more
+          value.discard! if value.is_a?(Value)
           BuildTest.new(value)
         end
 
         # The other answer to a test, for `!` and `unless`.
-        def opposite(value, written = nil)
-          refuse_number_as_test!(value, written) if written
+        def opposite(value)
           return !value unless value.is_a?(Value) && game_test?(value)
 
           value.truth ? value.truth != Value::TRUTHY_HELD : value == 0
         end
 
-        # A game number standing alone as a test: `if left`, `unless left`, `left ? a : b`, `!left`,
-        # `x while left`. Ruby's answer is that every number is true, 0 too, so it would be decided
-        # once, while building, and the same way on every pass: an `if` that always runs, a `while`
-        # written out for ever (the build never ends). C's answer, "is not 0", would build, but would
-        # teach a meaning Ruby does not have. So it is refused, and the words show the comparison
-        # that says what the author meant. A number that can hold nil (`target = nil`) is a test of
-        # its own (#game_test?), and so is a yes or no; neither reaches this.
-        #
-        # A game variable a `var` line or a verb handed back is an object the game holds, as a
-        # sprite is, so `if by` on an option asks Ruby's question, whether it was given, and builds
-        # as it always has. Only a loop refuses one too (+loop+), since `while` on an object that is
-        # always there could only go round for ever.
-        def refuse_number_as_test!(value, written, loop: false)
+        # A game number standing alone as a loop's test: `x while left`, `x until left`, `while left
+        # ... end`. Ruby's answer is that every number is true, 0 too, so the loop is plain Ruby,
+        # run while building: a `while` is written out for ever and the build never ends, and an
+        # `until` never runs its body. An `if` on the same number keeps Ruby's answer (#branch_test),
+        # since a presence check there means something; a loop on an object that is always there
+        # can only go round for ever. C's answer, "is not 0", is not given to it, since that is not
+        # Ruby's: the words show the comparison instead. A number that can hold nil (`target =
+        # nil`) is a test of its own (#game_test?), and so is a yes or no; neither reaches this.
+        def refuse_number_as_loop_test!(value, written)
           return unless value.is_a?(Value) && !game_test?(value)
-          return if !loop && value.handle? && !value.number_in_ruby?
 
           number = written.nil? || written.match?(/\A[@\w.]+\z/) ? written || "n" : "(#{written})"
-          refuse_game_code!("This test is a number that the game keeps, `#{written || number}`, with no comparison. " \
-                            "In Ruby, every number is true, 0 too. So the test has the same answer on every pass, " \
-                            "and a `while` on it never stops. To fix this, compare the number. For a number that " \
-                            "is not 0, write `#{number} != 0` or `#{number} > 0`. For 0, write `#{number} == 0`. " \
-                            "To ask if a value is there at all, write `#{number}.nil?`.")
+          refuse_game_code!("This loop's test is a number that the game keeps, `#{written || number}`, with no " \
+                            "comparison. In Ruby, every number is true, 0 too. So a `while` on it never stops, " \
+                            "and an `until` on it never runs. To fix this, compare the number. For a number " \
+                            "that is not 0, write `#{number} != 0` or `#{number} > 0`. For 0, write `#{number} == 0`.")
         end
 
         # `&&`. Two tests that only compare numbers join into one, both worked out as the game
@@ -472,7 +465,7 @@ module VBlank
 
             mark = statement_mark
             value = @test.call
-            Steps.refuse_number_as_test!(value, @written, loop: true)
+            Steps.refuse_number_as_loop_test!(value, @written)
             return build_round(value) unless Steps.game_test?(value)
 
             open_game_loop(value, mark, &before_loop)
