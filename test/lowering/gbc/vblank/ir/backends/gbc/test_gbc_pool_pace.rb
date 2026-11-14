@@ -28,6 +28,7 @@ class TestGBCPoolPace < Minitest::Test
   # Thirty-two pieces, all of which the table holds: the picture the interpreter shows.
   SMALL_MOVING = crowd_game(moving: true, size: 8)
   BIG_STILL = crowd_game(moving: false, size: 16)
+  BIG_MOVING = crowd_game(moving: true, size: 16)
 
   def test_a_moving_crowd_shows_what_the_interpreter_shows
     game_player.run(SMALL_MOVING.program(console: :gbc), frames: 12)
@@ -37,6 +38,15 @@ class TestGBCPoolPace < Minitest::Test
   def test_a_big_crowd_standing_still_keeps_a_pass_a_frame
     result = BIG_STILL.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
                       .profile(out: StringIO.new, frames: FRAMES)
+
+    assert_equal result.frames, result.passes, "every pass fits in one frame"
+  end
+
+  # The pool's own variables (where its walk is, its links, how many it has copied in order) are
+  # kept in a byte each (GBC::ByteVariables). Measured: a pass took about 1.4 frames before.
+  def test_a_big_crowd_moving_every_pass_keeps_a_pass_a_frame
+    result = BIG_MOVING.build_rom(console: :gbc, out: StringIO.new, err: StringIO.new, profile: false)
+                       .profile(out: StringIO.new, frames: FRAMES)
 
     assert_equal result.frames, result.passes, "every pass fits in one frame"
   end

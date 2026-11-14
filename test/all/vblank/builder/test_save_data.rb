@@ -105,8 +105,11 @@ module SaveDataGames
     end
   end
 
-  # Presses one frame apart, so each is its own press.
-  private def presses(*buttons) = buttons.each_with_index.to_h { |button, i| [(i * 2) + 2, button] }
+  # Presses one frame apart, so each is its own press. A pass that saves or resets can take
+  # several frames on a console that writes its save memory a piece at a time (the Color), and
+  # two presses made while one pass runs are both seen by the next: +apart+ frames keep them in
+  # passes of their own there.
+  private def presses(*buttons, apart: 2) = buttons.each_with_index.to_h { |button, i| [(i * apart) + 2, button] }
 
   private def files_after(store, *buttons)
     play(three_files, store, pressing: presses(*buttons), frames: (buttons.length * 2) + 4)
@@ -200,7 +203,7 @@ module SaveDataGames
   end
 
   private def guards_after(*buttons, keeping: :pool)
-    play(guards_saved(keeping: keeping), VBlank::IR::SaveImage.new, pressing: presses(*buttons), frames: (buttons.length * 2) + 6)
+    play(guards_saved(keeping: keeping), VBlank::IR::SaveImage.new, pressing: presses(*buttons, apart: 4), frames: (buttons.length * 4) + 6)
   end
 
   # A pool whose instances face and flap keeps which way each one faces: A faces the guard

@@ -2153,8 +2153,11 @@ module VBlank
               return nil if on.nil? || lists.any?(Symbol) || obj.poses.length > 0xFF || lists.length > 0xFF
               return nil if (folded(on) && folded(on) != 1) ||
                             [obj.pose, obj.x, obj.y, *(obj.recolor unless lists.empty?)].any? { |number| folded(number) }
-              # The runtime reads each of these as a whole number where it is kept.
-              return nil if [on, obj.pose, obj.x, obj.y, obj.recolor].compact.any? { |number| kept_variable_named(value_node(number)) }
+              # The runtime reads each number the block names as a whole number where it is kept:
+              # one list, so the test and the block cannot name different numbers.
+              read_whole = [(on unless folded(on)), (Build.var_ref(scene.first) if scene), obj.pose, obj.x, obj.y,
+                            (obj.recolor unless lists.empty?)].compact.map { |number| value_node(number) }
+              return nil if read_whole.any? { |number| kept_variable_named(number) }
 
               pieces = single_pieces(obj)
               rows = pose_rows(obj, sprite_level(obj)).each_slice(obj.poses.length).flat_map do |list_rows|
@@ -2164,12 +2167,12 @@ module VBlank
                    @art.lends? ? row.palette : 0, *(pieces ? @art.piece_entry(pieces[pose]) : [0, 0])]
                 end
               end
-              place = ->(number) { little_endian(place_of(variable_named(value_node(number))), 2) }
-              head = [pieces ? 1 : 0, *(pieces ? [pieces.first.dx, pieces.first.dy] : [0, 0]),
-                      *(folded(on) ? [0, 0] : place.call(on)),
-                      *(scene ? [*place.call(scene.first), scene.last] : [0, 0, 0]), *place.call(obj.pose),
-                      obj.poses.length, *place.call(obj.x), *place.call(obj.y),
-                      *(lists.empty? ? [0, 0] : place.call(obj.recolor)), lists.length]
+              places = read_whole.map { |number| little_endian(place_of(variable_named(number)), 2) }
+              on_place = folded(on) ? [0, 0] : places.shift
+              scene_place = scene ? [*places.shift, scene.last] : [0, 0, 0]
+              pose_place, x_place, y_place = places.shift(3)
+              head = [pieces ? 1 : 0, *(pieces ? [pieces.first.dx, pieces.first.dy] : [0, 0]), *on_place, *scene_place,
+                      *pose_place, obj.poses.length, *x_place, *y_place, *(lists.empty? ? [0, 0] : places.shift), lists.length]
               drawing_table("posed_sprite", 1, head + rows, banked: @bank_pose_tables)
             end
 

@@ -21,9 +21,30 @@ module VBlank
 
             # How many bytes variable +name+ is kept in, or nil for the whole four.
             def kept_bytes(name)
-              width = @program.kept_width_of(name)
+              width = kept_width(name)
               KeptWidths::BYTES.fetch(width) if width
             end
+
+            # The width variable +name+ is kept at: the one the game declared, or :byte for one
+            # only ever holding a byte (GBC::ByteVariables), or nil for the whole number. One whose
+            # place the lowering hands over is whole (Lowering#place_of): a declared one still
+            # holds only its width's numbers, since the wrap after each write is in the program.
+            def kept_width(name)
+              return nil if @cache.facts.handed_over.include?(name)
+
+              @program.kept_width_of(name) || (:byte if byte_variables.include?(name))
+            end
+
+            # Whether the program keeps a variable named +name+.
+            def keeps_variable?(name) = @variables.key?(name)
+
+            # Where variable +name+ is kept, for code reading or writing only the bytes it is kept
+            # in (#kept_bytes), or all four of a whole one. Anything else asks Lowering#place_of.
+            def kept_place_of(name)
+              @variables.fetch(name) { @locals.fetch(name) { raise LoweringError, "#{name.inspect} is not a variable the program keeps" } }
+            end
+
+            def byte_variables = @byte_variables ||= @cache.facts.byte_variables.to_set
 
             def kept_variable_named(node)
               name = any_variable_named(node)
@@ -38,7 +59,7 @@ module VBlank
 
             # BCDE = the number, its sign copied up from its top byte.
             def load_kept_variable(name)
-              place = place_of(name)
+              place = kept_place_of(name)
               if kept_bytes(name) == 1
                 @asm.load(:a, [place])
                 @asm.load(:e, :a)
@@ -60,7 +81,7 @@ module VBlank
 
             # E (and D) into the variable's bytes.
             def store_kept_bytes(name)
-              place = place_of(name)
+              place = kept_place_of(name)
               @asm.load(:a, :e)
               @asm.load([place], :a)
               if kept_bytes(name) == 2
@@ -74,7 +95,7 @@ module VBlank
             def emit_set_kept(node)
               name = node.var
               bytes = kept_bytes(name)
-              return if KeptWidths.wrap?(node, @program.kept_width_of(name))
+              return if KeptWidths.wrap?(node, kept_width(name))
 
               number = folded(node.value)
               return emit_written_number_kept(name, number) if number
@@ -82,12 +103,12 @@ module VBlank
               return low_value(node.value, bytes).then { store(name) } if bytes == 2
 
               emit_low_byte_in_a(node.value)
-              @asm.load([place_of(name)], :a)
+              @asm.load([kept_place_of(name)], :a)
               emit_sprites_changed(name) unless sprites_placed_from(name).empty?
             end
 
             def emit_written_number_kept(name, number)
-              place = place_of(name)
+              place = kept_place_of(name)
               @asm.load(:a, number & 0xFF)
               @asm.load([place], :a)
               if kept_bytes(name) == 2
@@ -99,7 +120,7 @@ module VBlank
 
             # Whether +number+ is one variable +name+ can hold.
             def fits_kept?(name, number)
-              width = @program.kept_width_of(name)
+              width = kept_width(name)
               number.between?(KeptWidths.lowest(width), KeptWidths.highest(width))
             end
 
@@ -122,7 +143,7 @@ module VBlank
 
             # The zero flag set when the variable's bytes are +number+'s.
             def compare_kept_with_number(name, number)
-              place = place_of(name)
+              place = kept_place_of(name)
               @asm.load(:a, [place])
               @asm.cp_a(number & 0xFF)
               return if kept_bytes(name) == 1
@@ -137,7 +158,7 @@ module VBlank
             # The carry set when the variable is below +number+, with their signs: the top byte's
             # sign bit turned over on both, so the negative numbers come below the rest.
             def emit_carry_when_kept_below(name, number)
-              place = place_of(name)
+              place = kept_place_of(name)
               number &= 0xFFFF
               if kept_bytes(name) == 1
                 @asm.load(:a, [place])
@@ -166,7 +187,7 @@ module VBlank
             # The zero flag set when the two variables' bytes are the same, leaving at the first
             # that differs.
             def compare_two_kept(one, other)
-              first, second = place_of(one), place_of(other)
+              first, second = kept_place_of(one), kept_place_of(other)
               done = fresh("compared")
               kept_bytes(one).times do |i|
                 @asm.jump_relative(:nz, done) unless i.zero?
@@ -181,7 +202,7 @@ module VBlank
             # `negate!` on a variable kept narrow: nought take its bytes away, where they are. Only
             # the low bytes of a number decide the low bytes of its negative.
             def emit_negate_kept(name)
-              @asm.load(:hl, place_of(name))
+              @asm.load(:hl, kept_place_of(name))
               @asm.xor_a(:a)
               @asm.sub_a([:hl])
               @asm.load([:hl], :a)
@@ -219,6 +240,8 @@ module VBlank
             # can be (Lowering#fixed_length_lists), so the index is held to its capacity.
             def emit_list_slot_of_index(index, place, capacity, width, out_of_range, fixed: false)
               length = (capacity if fixed)
+              name = kept_variable_named(index)
+              return emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: length) if name && kept_bytes(name) == 1 && capacity <= BYTE_INDEXED_CAPACITY
               if kept_list_index?(index, capacity)
                 low_value(index, 2)
                 return emit_list_slot_of_de(place, width, out_of_range, length: length)
@@ -226,6 +249,57 @@ module VBlank
 
               value(index)
               emit_list_slot_address(place, width, out_of_range, length: length)
+            end
+
+            # Whether +operand+ is an item of a list kept with its first item in its first slot, so
+            # its lowest byte can be read where it is (#emit_item_low_byte_in_a).
+            def list_item_in_place?(operand)
+              operand.is_a?(Node) && operand.kind == :list_get && !front_dropped_lists.include?(operand.name)
+            end
+
+            # A = the lowest byte of the item +item+ reads, from its slot, lowest byte first, with no
+            # whole number made of it: a pool's link read into a variable kept in a byte. An index
+            # out of range stops the game, as reading the item would.
+            def emit_item_low_byte_in_a(item)
+              slot = fixed_slot(item)
+              return @asm.load(:a, [slot]) if slot
+
+              place, capacity, width = list_placed(item)
+              out_of_range = fresh("list_index_out_of_range")
+              read = fresh("list_item_read")
+              emit_list_slot_of_index(item.index, place, capacity, width, out_of_range, fixed: fixed_length_lists.include?(item.name))
+              @asm.load(:a, [:hl])
+              @asm.jump(read)
+              @asm.label(out_of_range)
+              value(item.index) if kept_list_index?(item.index, capacity)
+              list_get_through_routine(place)
+              @asm.load(:a, :e)
+              @asm.label(read)
+            end
+
+            # A list this long or shorter is indexed by a variable kept in a byte with one compare.
+            BYTE_INDEXED_CAPACITY = 0x80
+
+            # HL = the slot variable +name+, kept in one byte, names; a jump to +out_of_range+ when it
+            # is outside the list. The byte read as a number from 0 to 255 is the index itself when
+            # it is at or above nought, and 128 or more when it is below: past the end of a list no
+            # longer than BYTE_INDEXED_CAPACITY either way, so one compare with the length (whose
+            # high byte is nought) checks both ends. Where the jump lands the index is worked out
+            # again, as for any kept index (#kept_list_index?).
+            def emit_list_slot_of_byte(name, place, capacity, width, out_of_range, length: nil)
+              @asm.load(:a, [kept_place_of(name)])
+              if length
+                @asm.cp_a(length)
+              else
+                @asm.load(:hl, place + Runtime::Lists::LENGTH)
+                @asm.cp_a([:hl])
+              end
+              @asm.jump(:nc, out_of_range)
+              @asm.load(:l, :a)
+              @asm.load(:h, 0)
+              (width / 2).times { @asm.add_hl(:hl) } # × the slot's width: 1, 2 or 4
+              @asm.load(:de, place + Runtime::Lists::HEADER)
+              @asm.add_hl(:de)
             end
 
             # An ordering of two variables kept at the same width: [the one, the other, and
@@ -246,7 +320,7 @@ module VBlank
 
             # The carry set when variable +one+ is below variable +other+, with their signs.
             def emit_carry_when_kept_below_kept(one, other)
-              first, second = place_of(one), place_of(other)
+              first, second = kept_place_of(one), kept_place_of(other)
               if kept_bytes(one) == 2
                 @asm.load(:a, [second + 1])
                 @asm.xor_a(0x80)
