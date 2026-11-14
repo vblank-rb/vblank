@@ -108,7 +108,7 @@ class TestCopyEngine < Minitest::Test
 
   def test_a_number_waiting_in_the_address_register_is_refused
     error = assert_raises(ArgumentError) do
-      emitted { |p| p.emit_start_copy_engine(from: InRegister.new(TMP), to: 0, control: 0) }
+      emitted { |p| p.emit_start_copy_engine(from: InRegister.new(TMP), to: 0, control: 1) }
     end
     assert_includes error.message, "r#{TMP}"
   end
@@ -122,7 +122,7 @@ class TestCopyEngine < Minitest::Test
   def test_working_a_number_out_must_leave_the_address_register_alone
     assert_raises(ArgumentError) do
       emitted do |p, emitter|
-        p.emit_start_copy_engine(from: -> { emitter.emit(A.load_immediate(TMP, 4)) }, to: 0, control: 0)
+        p.emit_start_copy_engine(from: -> { emitter.emit(A.load_immediate(TMP, 4)) }, to: 0, control: 1)
       end
     end
   end
@@ -136,13 +136,38 @@ class TestCopyEngine < Minitest::Test
     assert_includes error.message, "r7"
   end
 
+  # The engine reads a count of nought as its biggest count, so a copy of nothing settled while
+  # building would write over all of video memory. The refusal names the method that asked.
+  private def start_copy_of_nothing(primitives) = primitives.emit_start_copy_engine(from: 0x03000010, to: 0x06000000,
+                                                                                     control: DMA_ENABLE | DMA_32BIT)
+
+  def test_a_count_of_nought_settled_while_building_is_refused_naming_who_asked
+    error = assert_raises(ArgumentError) { emitted { |p| start_copy_of_nothing(p) } }
+
+    assert_includes error.message, "start_copy_of_nothing"
+    assert_includes error.message, "count of nought"
+  end
+
+  def test_a_count_worked_out_as_the_game_runs_is_the_callers_to_test
+    words = emitted { |p| p.emit_start_copy_engine(from: 0x03000010, to: 0x06000000, control: InRegister.new(4)) }
+
+    refute_empty words
+  end
+
+  def test_a_control_word_written_by_hand_asks_the_same_question
+    error = assert_raises(ArgumentError) { Primitives.refuse_copy_of_nothing!(0x10000 | DMA_ENABLE) }
+
+    assert_includes error.message, "count of nought"
+    assert_nil Primitives.refuse_copy_of_nothing!(1 | DMA_ENABLE)
+  end
+
   # A call is a placeholder until the second pass, and the routine it reaches uses the
   # registers for its own work — so nothing read out of the block's instructions could say
   # what it left behind.
   def test_working_a_number_out_cannot_call_or_jump
     assert_raises(ArgumentError) do
       emitted do |p, emitter|
-        p.emit_start_copy_engine(from: -> { emitter.emit_branch(:bl, "elsewhere") }, to: 0, control: 0)
+        p.emit_start_copy_engine(from: -> { emitter.emit_branch(:bl, "elsewhere") }, to: 0, control: 1)
       end
     end
   end

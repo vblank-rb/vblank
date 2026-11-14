@@ -742,6 +742,7 @@ module VBlank
           # is told what to move, so an interrupt that copies something of its own cannot land
           # between two of those writes. Spends r0, r1, r2 and r3.
           def emit_copy(from:, to:, count:)
+            Primitives.refuse_copy_of_nothing!(count)
             ends = { bits: @area + BITS_AT, chip: EEPROM_AT }
             @emitter.emit(ASM.load_immediate(1, REG_IME))
             @emitter.emit(ASM.load_halfword(2, 1))                     # r2 = whether interrupts were on

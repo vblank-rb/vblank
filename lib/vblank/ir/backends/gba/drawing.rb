@@ -137,10 +137,15 @@ module VBlank
           # be painted: a row-at-a-time block fill over exactly those edges. It does not go
           # through the rectangle verb because that one holds authors to an even width, and an
           # area's width is whatever the author set.
+          #
+          # An area of no width fills nothing, and must copy nothing: the copy engine reads a count
+          # of nought as its biggest count, and would fill all of video memory.
           def emit_fill_area(color)
+            width = @framebuffer.clip_right - @framebuffer.clip_left
+            return unless width.positive?
+
             scratch = @framebuffer.emit_color_fill_word(color)
-            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left,
-                                                            @framebuffer.clip_right - @framebuffer.clip_left)
+            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left, width)
             (@framebuffer.clip_top...@framebuffer.clip_bottom).each do |row|
               @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + @framebuffer.clip_left) * 2,
                                          control)
