@@ -145,24 +145,33 @@ module VBlank
           # THE STACK THE DEEPEST CHAIN OF CALLS NEEDS, from the game loop's body: the longest run of
           # routines each calling the next. What the console runs on an interrupt is not counted
           # here, since it runs on the console's own stack (see .interrupt_room_needed).
+          #
+          # A TIMER'S HANDLER THAT WAITS runs on the game's stack, from any wait, and again inside its
+          # own wait (FrameBoundaryCalls): calls going round in a circle, which get the room for those.
           def self.stack_needed(program)
             depth = deepest_call_depth(program, program.walk.select { |node| node.kind == :loop })
             return UNBOUNDED_STACK_BYTES if depth == Float::INFINITY
+            return UNBOUNDED_STACK_BYTES if boundary_plan(program).waiting.any?
 
             STACK_FLOOR_BYTES + (depth * STACK_BYTES_PER_CALL)
           end
 
           # THE ROOM BELOW THE CONSOLE'S 256 BYTES THAT THE INTERRUPT STACK NEEDS, past the 100 the
           # console leaves it: the deepest chain of calls from a timer's handler, or from a bend
-          # worked out a line at a time, each call held at its dearest. The console's 100 stay for
+          # worked out a line at a time, each call held at its dearest, and the most any handler
+          # saves around itself (FrameBoundaryCalls::SavedState#bytes). The console's 100 stay for
           # what a handler does itself. A handler that calls nothing needs none, which is every
           # game that does not write one that does, so the game's stack stays where it always was.
           def self.interrupt_room_needed(program)
             depth = deepest_call_depth(program, interrupt_bodies(program))
             return UNBOUNDED_INTERRUPT_BYTES if depth == Float::INFINITY
 
-            depth * STACK_BYTES_PER_CALL
+            saved = boundary_plan(program).for_handler.values.map(&:bytes).max || 0
+            (depth * STACK_BYTES_PER_CALL) + saved
           end
+
+          def self.boundary_plan(program) = FrameBoundaryCalls.plan(program)
+          private_class_method :boundary_plan
 
           # A handler whose calls go round in a circle has no deepest chain to count either, so it
           # gets room for a deep one.
@@ -174,10 +183,12 @@ module VBlank
           #
           # A bend in a paced program is not among them: its block runs in the frame like
           # ordinary code, into a table, and what the announcement then does is read one
-          # number out of it (see {BendForm}).
+          # number out of it (see {BendForm}). Nor is a timer's handler that waits, which runs on the
+          # game's stack (FrameBoundaryCalls).
           def self.interrupt_bodies(program)
             kinds = BendForm.rows_per_scanline?(program) ? %i[scroll_rows on_timer] : %i[on_timer]
-            program.walk.select { |node| kinds.include?(node.kind) }
+            waiting = boundary_plan(program).waiting.values
+            program.walk.select { |node| kinds.include?(node.kind) && waiting.none? { |handler| handler.equal?(node) } }
           end
 
           # How many calls deep the deepest of +roots+ goes.

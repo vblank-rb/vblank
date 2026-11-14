@@ -76,6 +76,9 @@ module VBlank
           # counts up, which is right for any of them.
           attr_writer :unread_indexes, :scene_entry
 
+          # Where a loop counting up in the quick memory keeps how many passes it makes, by its index.
+          def self.limit_var(index) = DerivedNames.join(index, "__limit")
+
           def emit_set(node)
             @lowering.value(node.value)
             @primitives.store_var(ACC, node.var)
@@ -234,7 +237,7 @@ module VBlank
             return emit_countdown_in_memory(node) if counts_down?(node)
 
             index = node.index
-            limit = DerivedNames.join(index, "__limit")
+            limit = Statements.limit_var(index)
             top = @emitter.gensym
             done = @emitter.gensym
 

@@ -58,7 +58,8 @@ module VBlank
           # +bookkeeping+ is a checked build's count of the passes (PassBookkeeping), nil for a
           # cartridge for a player.
           def initialize(emitter:, primitives:, lowering:, mixer:, memory:, sounds:, songs:, frames:, expressions:,
-                          raster:, drawing:, uses_pressed:, any_buffered:, end_of_pass:, bookkeeping: nil)
+                          raster:, drawing:, uses_pressed:, any_buffered:, end_of_pass:, boundary_calls:,
+                          bookkeeping: nil)
             @bookkeeping = bookkeeping
             @emitter = emitter
             @primitives = primitives
@@ -71,6 +72,7 @@ module VBlank
             @frames = frames
             @expressions = expressions
             @raster = raster
+            @boundary_calls = boundary_calls # Handlers and bends run as the game wakes (FrameBoundaryCalls)
             @drawing = drawing
             @uses_pressed = uses_pressed
             @any_buffered = any_buffered
@@ -1580,7 +1582,10 @@ module VBlank
 
             # How many frames the pass that just ended really took. First thing after the wait,
             # because everything below is entitled to ask — and it is the difference between two
-            # marks, so it has to be taken before anything else moves either of them.
+            # marks, so it has to be taken before anything else moves either of them. A timer's
+            # handler that waits reads the last pass's marks and presses, so those are pushed first
+            # (see FrameBoundaryCalls#emit_push_last_pass_reads).
+            @boundary_calls.emit_push_last_pass_reads
             @frames.emit_frame_step
 
             # The next slice of mixed sound, and the tune's next frame, were both done by the
@@ -1613,7 +1618,12 @@ module VBlank
             # they stand — the same ones the sprites are about to be placed from, so the
             # bend and everything standing on it show the same frame. (Nothing here when no
             # background bends, or when a program with no frame runs its block per line.)
-            @raster.emit_fill_row_bend_tables if @raster.row_bend_tables?
+            #
+            # A timer's handler that waits runs first, as the interpreter runs the timers' handlers
+            # before it works the bends out (Reference#advance_frame). Each saves the state of the
+            # routines it can call while the game is inside them (see FrameBoundaryCalls).
+            @boundary_calls.emit_waiting_handlers
+            @boundary_calls.with_bend_state_saved { @raster.emit_fill_row_bend_tables } if @raster.row_bend_tables?
 
             # The cartridge's clock is to be read again by the pass to come, if it asks (see ClockChip).
             @drawing.emit_mark_clock_copy_old

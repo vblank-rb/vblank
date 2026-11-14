@@ -47,6 +47,7 @@ require_relative "gba/expressions"
 require_relative "gba/primitives"
 require_relative "gba/collision"
 require_relative "gba/timers"
+require_relative "gba/frame_boundary_calls" # A bend or tick calling a routine the game is inside
 require_relative "gba/frames" # how many frames a pass of the game loop really took
 require_relative "gba/pass_bookkeeping" # how the run stands, in a cartridge built to be checked
 require_relative "gba/clock_chip" # the cartridge's clock chip, read once a pass
@@ -450,11 +451,13 @@ module VBlank
                                          divide: @divide)
           @raster = Raster.new(emitter: @emit, primitives: @primitives, memory: @memory,
                                lowering: @lowering, framebuffer: @framebuffer)
+          @boundary_calls = FrameBoundaryCalls.new(emitter: @emit, primitives: @primitives, lowering: @lowering,
+                                                   functions: @functions)
           @mixer = Mixer.new(emitter: @emit, memory: @memory, timers: @timers, primitives: @primitives)
           @audio = Audio.new(emitter: @emit, primitives: @primitives, lowering: @lowering, mixer: @mixer,
                              memory: @memory, sounds: @defined_sounds, songs: @songs,
                              frames: @frames, expressions: @expressions, raster: @raster, drawing: self,
-                             bookkeeping: @bookkeeping,
+                             bookkeeping: @bookkeeping, boundary_calls: @boundary_calls,
                              uses_pressed: -> { @uses_pressed }, any_buffered: -> { @modes.any_buffered? },
                              # an EEPROM's last block of the pass is written back before the console sleeps
                              end_of_pass: -> { @save.emit_chip_end_of_pass if @uses_save })
@@ -901,6 +904,7 @@ module VBlank
           @audio.register_audio_blobs # every tune as one score — after the mixer's rate, which sets each note's step
           refuse_samples_without_vblank!
           register_timers(program) # assign each named timer its hardware timer index(es)
+          @boundary_calls.prepare(program) # Which handlers wait, and what bends and ticks save
           prepare_pixel_masks(program) # solid-pixel tables for any per-pixel collision test
           resolve_modes(program)
           # `screen :rotozoom` is tile hardware too — a different pair of layers (BG2/BG3,
@@ -1471,7 +1475,13 @@ module VBlank
               # way, because a copy is a copy. Whoever reads it adds the routine's own runtime
               # base (see #routine_addresses).
               @timer_handlers[name] = { hz: info[:hz], at: pos - start }
-              info[:handler].children.each { |child| @lowering.statement(child) }
+              # A handler that waits runs as the game wakes, and here its tick is only counted
+              # (see FrameBoundaryCalls).
+              next @boundary_calls.emit_tick_seen(name) if @boundary_calls.answered_at_wait?(name)
+
+              @boundary_calls.with_handler_state_saved(name) do
+                info[:handler].children.each { |child| @lowering.statement(child) }
+              end
             end
           end
           emit(ASM.pop(*IRQ_SAVED_REGS))

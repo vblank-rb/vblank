@@ -167,6 +167,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `place_games.rb` (small games of places made of flat faces, played by each console that draws a place),
 `pack_place_games.rb` (a made-up computer original keeping a lit room as data, a game drawing it as a place, shading and viewer start from its data pack, and the same room written in Ruby, its answer key; for the registry and the interpreter's test),
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),
+`interrupted_walks.rb` (small games where a timer's handler or a bend calls a routine the game is part way through, and the check that the Advance cartridge finishes them as the interpreter does, for the timer's and the bend's cartridge tests),
 `palette_walk_tests.rb` (a fade or tint walked and repeated, played by each console that walks its colours itself),
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
