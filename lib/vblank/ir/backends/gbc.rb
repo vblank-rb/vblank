@@ -390,7 +390,8 @@ module VBlank
                                              save_list_moves: lowering.moves_lists_to_save?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
                                              indexes_in_banks: view.indexes_in_banks,
-                                             byte_divides: lowering.divides_by_written_bytes?)
+                                             byte_divides: lowering.divides_by_written_bytes?,
+                                             clamps_outside: lowering.clamps_outside?)
           data = [*lowering.art.sections, *(lowering.music.any? ? lowering.music.sections : []), *clips&.sections]
           Lowered.new(lowering: lowering, memory: memory, sections: runtime + game + data)
         end

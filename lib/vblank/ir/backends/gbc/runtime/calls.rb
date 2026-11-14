@@ -23,7 +23,9 @@ module VBlank
             # Where number +i+ of +n+ handed to a runtime routine is, once rt_take_args has run.
             def arg(memory, i, n) = memory.args + (4 * (n - 1 - i))
 
-            def emit(asm, memory)
+            # +clamps_outside+ for a game that holds a number between two ends of up to two bytes
+            # (Lowering#clamps_outside?), which then carries rt_clamp16_outside.
+            def emit(asm, memory, clamps_outside: false)
               # Copy B bytes from (HL) into the arguments' place in quick memory: a number, four
               # bytes, to a turn of the loop.
               asm.label("rt_take_args")
@@ -100,6 +102,7 @@ module VBlank
 
               emit_table_readers(asm)
               emit_clamp(asm)
+              emit_clamp_outside(asm) if clamps_outside
             end
 
             # How many bytes of a big table each of its parts holds. A bank holds sixteen kilobytes, so
@@ -215,6 +218,31 @@ module VBlank
               asm.cp_a(2)
               asm.ret(:nz)
               asm.jump("rt_read_int32") # above the ceiling: the ceiling
+            end
+
+            # BCDE, already found OUTSIDE the floor (HL) and the ceiling (HL+4), both from nought to
+            # 0xFFFF, made the end it is nearer (Lowering#value_of_clamped): the floor for a number
+            # below nought, the ceiling for one past two bytes, and for the rest, which side of the
+            # floor its low two bytes are. Every answer is rt_clamp32's, without its two 32-bit
+            # compares.
+            def emit_clamp_outside(asm)
+              asm.label("rt_clamp16_outside")
+              asm.bit(7, :b)
+              asm.jump_relative(:nz, "rt_clamp16_outside_end") # below nought: the floor
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_clamp16_outside_ceiling") # past two bytes: the ceiling
+              asm.load(:a, :e)
+              asm.sub_a([:hl])
+              asm.inc(:hl)
+              asm.load(:a, :d)
+              asm.sbc_a([:hl])
+              asm.dec(:hl)
+              asm.jump_relative(:c, "rt_clamp16_outside_end") # below the floor: the floor
+              asm.label("rt_clamp16_outside_ceiling")
+              4.times { asm.inc(:hl) }
+              asm.label("rt_clamp16_outside_end")
+              asm.jump("rt_read_int32")
             end
           end
         end

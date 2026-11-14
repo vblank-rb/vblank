@@ -345,6 +345,10 @@ module VBlank
           # runtime carries the routines that do that. Asked once the game's routines are made.
           def divides_by_written_bytes? = @divides_by_written_bytes || false
 
+          # Whether the game holds a number between ends of up to two bytes (#value_of_clamped), so
+          # its runtime carries rt_clamp16_outside. Asked once the game's routines are made.
+          def clamps_outside? = @clamps_outside || false
+
           # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
           # quick way to do it, and a game that does neither builds without it.
           def fills_byte_lists?
@@ -2073,17 +2077,35 @@ module VBlank
           def value_of_bit_not(node) = sum_of_one(node.operand, "rt_not32")
           def value_of_absolute(node) = sum_of_one(node.operand, "rt_abs32")
           # A number held between two ends written in the program, which a table read by a number the
-          # game works out always is (IR::Build#table_read): almost always it is a byte already
+          # game works out always is (LoweringPlan.index_kept_in_range): almost always it is already
           # between them, so that is asked first, of the bytes where it is — a handful of
-          # instructions — and only a number outside them is held by rt_clamp32, with the ends kept
-          # beside each other as the routine reads them.
+          # instructions, on the one byte that can hold it when both ends are a byte, on the low two
+          # when they are two (a table longer than 256 entries) — and only a number outside them is
+          # held, by rt_clamp16_outside, which knows it is outside and so needs no 32-bit compare,
+          # with the ends kept beside each other as the routine reads them. Ends that are not
+          # written in the program, or not from nought to two bytes, go to rt_clamp32.
           def value_of_clamped(node)
             low, high = folded(node.min), folded(node.max)
-            return sum_of_three(node.operand, node.min, node.max, "rt_clamp32") unless byte_range?(low, high)
+            return sum_of_three(node.operand, node.min, node.max, "rt_clamp32") unless range_within?(low, high, 0xFFFF)
 
             held = fresh("held")
             within = fresh("within")
             value(node.operand)
+            if range_within?(low, high, 0xFF)
+              emit_byte_within(low, high, held, within)
+            else
+              emit_half_within(low, high, held, within)
+            end
+            @asm.label(held)
+            @asm.load(:hl, constant_label([low, high]))
+            @asm.call("rt_clamp16_outside")
+            @clamps_outside = true
+            @asm.label(within)
+          end
+
+          # Off to +within+ when BCDE is a byte from +low+ to +high+, both a byte; on to +held+
+          # otherwise.
+          def emit_byte_within(low, high, held, within)
             emit_upper_bytes_or
             @asm.jump_relative(:nz, held)
             @asm.load(:a, :e)
@@ -2097,14 +2119,35 @@ module VBlank
               @asm.cp_a(high + 1)
               @asm.jump_relative(:c, within)
             end
-            @asm.label(held)
-            @asm.load(:hl, constant_label([low, high]))
-            @asm.call("rt_clamp32")
-            @asm.label(within)
           end
 
-          # Two ends written in the program, a byte each, the floor at or below the ceiling.
-          def byte_range?(low, high) = low && high && low.between?(0, 0xFF) && high.between?(low, 0xFF)
+          # Off to +within+ when BCDE is from +low+ to +high+, both two bytes: its top two bytes
+          # nought, and DE compared with each end by a subtraction whose borrow says which side.
+          def emit_half_within(low, high, held, within)
+            @asm.load(:a, :b)
+            @asm.or_a(:c)
+            @asm.jump_relative(:nz, held)
+            unless low.zero?
+              emit_de_minus(low)
+              @asm.jump_relative(:c, held)
+            end
+            return @asm.jump_relative(within) if high == 0xFFFF
+
+            emit_de_minus(high + 1)
+            @asm.jump_relative(:c, within)
+          end
+
+          # The borrow of DE less +number+, two bytes, into the carry; DE is left as it was.
+          def emit_de_minus(number)
+            @asm.load(:a, :e)
+            @asm.sub_a(number & 0xFF)
+            @asm.load(:a, :d)
+            @asm.sbc_a(number >> 8)
+          end
+
+          # Two ends written in the program, each from nought to +most+, the floor at or below the
+          # ceiling.
+          def range_within?(low, high, most) = low && high && low.between?(0, most) && high.between?(low, most)
           def value_of_mul_fix(node) = sum_of_three(node.lhs, node.rhs, fraction_bits(node), "rt_mul_fix")
           def value_of_div_fix(node) = sum_of_three(node.lhs, node.rhs, fraction_bits(node), "rt_div_fix")
           def value_of_shift_right(node)
