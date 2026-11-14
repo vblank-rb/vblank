@@ -52,6 +52,20 @@ class TestIRDump < Minitest::Test
     assert_same_shape node, rebuilt
   end
 
+  # A game whose data pack is left out holds its pictures and recordings as zeros, which Dump
+  # writes out whole rather than inspecting byte by byte. What it writes is what #inspect would:
+  # every binary String in the pacman port's tree, its pack left out, is written so.
+  def test_a_tree_with_its_pack_left_out_writes_its_binary_strings_as_inspect_does
+    require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s
+    program = PacmanPort.game(PacmanPort.original(env: {})).checked_program(err: nil, pack_at_start: true)
+    binary = program.walk.flat_map { |node| node.attrs.values }.grep(String).select { |text| text.encoding == Encoding::ASCII_8BIT }
+    zeros = binary.select { |text| text.bytesize > Dump::ZEROS_WRITTEN_WHOLE && text.count("\x00") == text.bytesize }
+
+    refute_empty zeros, "the port's pack left out leaves zeros big enough to be written whole"
+    binary.each { |text| assert_equal "#{text.inspect}.b", Dump.string_source(text) }
+    assert_equal zeros.first, eval(Dump.string_source(zeros.first)) # rubocop:disable Security/Eval
+  end
+
   # class_source's whole file, evaluated in a scratch module (so the class it defines
   # lands there and not in the real, global VBlank namespace) and run for real —
   # the strongest available proof that what a user gets back is exactly what the

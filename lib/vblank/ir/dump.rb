@@ -115,8 +115,21 @@ module VBlank
       # shorthand for that, e.g. in test/conformance_fixture.rb) restores it, so a
       # dumped `data`/`sample` round-trips byte-for-byte AND tag-for-tag.
       def string_source(value)
-        value.encoding == Encoding::ASCII_8BIT ? "#{value.inspect}.b" : value.inspect
+        value.encoding == Encoding::ASCII_8BIT ? "#{binary_inspect(value)}.b" : value.inspect
       end
+
+      # What #inspect gives for a binary +value+. A game whose data pack is left out holds its
+      # pictures and recordings as zeros until the pack fills them, tens of millions of bytes, and
+      # inspecting those one byte at a time took seconds; a String of zeros alone is written out
+      # whole, as the same text.
+      def binary_inspect(value)
+        return value.inspect unless value.bytesize > ZEROS_WRITTEN_WHOLE && value.count("\x00") == value.bytesize
+
+        "\"#{'\\x00' * value.bytesize}\""
+      end
+
+      # The size past which a String of zeros is written out whole, rather than inspected.
+      ZEROS_WRITTEN_WHOLE = 256
 
       # A complete, standalone Ruby file: +program+ (a :program-kind node) wrapped in
       # a class named +class_name+ that can rebuild the tree and lower it to machine

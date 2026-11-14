@@ -50,6 +50,9 @@ module VBlank
         #   rather than Ruby.
         class Printer
           Statements = Computer::Statements
+          # What the printer raises for something it cannot write: the computer builds' error, a
+          # BuildError. Named here, since nothing around the printer names it.
+          LoweringError = Computer::LoweringError
           INDENT = "  "
 
           # The most numbers a table is written out as; a bigger one is written as base64.
@@ -208,19 +211,24 @@ module VBlank
 
           # A small table is its numbers, sixteen a line. A big one is its bytes in base64, read
           # back when the game starts, which keeps a picture of thousands of pixels to a few lines.
+          #
+          # Every number is checked to be a 32-bit one (#integer), and a table of bytes is checked
+          # as it is packed (#print_table_of_bytes) rather than here: a game's recordings can be tens
+          # of millions of numbers, and turning each into a String first took seconds.
           def print_const_array(item)
-            values = item.values.map { |value| integer(value) }
             name = "@#{item.name.text}"
             frozen = item.writable ? "" : ".freeze"
             if !item.writable && KEPT_AS_BYTES.include?(item.name.text)
               print_table_of_bytes(item)
-            elsif values.size > MOST_WRITTEN_AS_NUMBERS
+            elsif item.values.size > MOST_WRITTEN_AS_NUMBERS
+              refuse_numbers_past_32_bits!(item.values)
               packing = PACKING.fetch(item.type) { raise LoweringError, "the printer has no packing for C's #{item.type}" }
               bytes = [item.values.pack(packing)].pack("m0")
               add_starting_value("#{name} = #{string(bytes)}.unpack1(\"m\").unpack(#{string(packing)})#{frozen}")
-            elsif values.empty?
+            elsif item.values.empty?
               add_starting_value("#{name} = [0]#{frozen}")
             else
+              values = item.values.map { |value| integer(value) }
               rows = values.each_slice(16).map { |row| "#{INDENT * 2}#{row.join(', ')},\n" }.join
               @setup << "#{INDENT}#{name} = [\n#{rows}#{INDENT}]#{frozen}\n"
             end
@@ -230,6 +238,7 @@ module VBlank
           # An empty one holds one entry, nought, as an empty table written as numbers does.
           def print_table_of_bytes(item)
             kept_as = BYTES_CLASS.fetch(item.type) { raise LoweringError, "the printer cannot keep C's #{item.type} as bytes" }
+            refuse_numbers_past_32_bits!(item.values)
             values = item.values.empty? ? [0] : item.values
             bytes = [values.pack(PACKING.fetch(item.type))].pack("m0")
             add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\")).freeze")
@@ -571,6 +580,18 @@ module VBlank
             end
 
             value.to_s
+          end
+
+          # #integer's check, for a table packed as bytes, whose numbers are never written one by
+          # one: the first that is not a whole number, or else the smallest or the largest when it
+          # does not fit 32 bits, is refused. Asked of the whole Array at once (all?, min and max run
+          # inside Ruby itself), since a block for each of millions of numbers took seconds.
+          def refuse_numbers_past_32_bits!(values)
+            return integer(values.find { |value| !value.is_a?(Integer) }) unless values.all?(Integer)
+            return if values.empty?
+
+            integer(values.min)
+            integer(values.max)
           end
 
           # A Ruby string, every character outside plain ASCII escaped and nothing in it read as
