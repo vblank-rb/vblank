@@ -118,6 +118,25 @@ module PackingGBATests
     end
   end
 
+  # A RECORDING'S NOTE, VOICED: where it sits between the speakers, a pitch between keys, and each
+  # bend while it sounds a record that glides, as the driver moves the pitch of a sounding note.
+  def test_each_recorded_note_voiced_keeps_its_side_and_its_bends
+    song = M4AAnswers::BENDING_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_voiced_track at: song, into: pack[:"voiced_#{track}"], track: track }
+      end
+
+      2.times do |track|
+        assert_equal M4AAnswers.voiced_track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"voiced_#{track}"), "track #{track}"
+      end
+      notes = VBlank::Original::PackNote.list_in(slots.fetch(:voiced_0), voiced: true)
+      assert(notes.any?(&:glides), "a bend while a note sounds glides")
+      assert(notes.any? { |note| note.hz && !note.glides }, "a note struck between keys names its hz")
+      assert(notes.any? { |note| note.shade&.negative? }, "a note on the left names its shade")
+    end
+  end
+
   # Tracks that switch between voices of the group, a drum kit and a key split. By default each
   # number the voice-and-kit track's records name is one voice the driver played; with the kit's and
   # the split's numbers set as a port sets them (M4AAnswers::MIXED_PARTS), each note's number picks,

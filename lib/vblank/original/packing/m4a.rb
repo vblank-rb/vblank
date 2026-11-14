@@ -68,14 +68,14 @@ module VBlank
       # kit's voice of the note's key, and for a key split the split's voice its table names for the
       # key; a split or kit inside one plays nothing. Its key is the note's key (a drum kit's: its
       # voice's own) moved by KEYSH, and by TUNE and BEND times BENDR in whole keys as TrkVolPitSet
-      # works them out (what is left of a key, and a bend while the note sounds, are not kept). Its
+      # works them out (what is left of a key is kept only in a voiced record, below). Its
       # loudness is the note's velocity and the track's VOL and PAN, as ChnVolSetAsm works out its
       # two sides:
       #
       # - On a recording (DirectSound): the instrument byte is a number for the voice (THE
       #   INSTRUMENT BYTE, below); a voice whose recording is played at a fixed rate is key 60; the
-      #   loudness is the two sides added, in 512ths, as the mixer adds them. A recording plays from
-      #   both speakers, so PAN moves nothing here (the song model has no pan on a recorded part).
+      #   loudness is the two sides added, in 512ths, as the mixer adds them. A plain record has no
+      #   place for where it sits between the speakers; a voiced one names it (below).
       # - On the console's voices: the volume is the two sides added over 16, at most 15 (CgbModVol),
       #   and the speaker is the side that is twice the other or more, else both (CgbPan). A square or
       #   wave note under key 36 is key 36 (MidiKeyToCgbFreq); a noise note's clock is the driver's
@@ -101,8 +101,24 @@ module VBlank
       # unpack_m4a_recording and unpack_m4a_voice read it where the kit's or split's voices are (the
       # second word of its entry in the group) plus 12 a key, or 12 an entry.
       #
-      # WHAT IS NOT KEPT, since the song model has no place for it: a VOL, PAN, BEND or TUNE while a
-      # note sounds (each note keeps what it was struck with); LFOS, LFODL, MOD and MODT (vibrato);
+      # A RECORDING'S NOTE, VOICED (unpack_m4a_voiced_track), keeps three things more:
+      #
+      # - where it sits between the speakers, from its two sides (PAN, and a drum kit voice's own
+      #   pan): Original::PackNote's shade, which the Super Nintendo and the PlayStation play where
+      #   it sits and the Advance's one mix from both (Walk#emit_recorded_settings);
+      # - a pitch between keys, where TUNE and BEND leave part of a key, as the record's hz, read as
+      #   MidiKeyToFreq reads it, on a straight line between the two keys (Walk#emit_pitch_hz);
+      # - A BEND WHILE IT SOUNDS: a KEYSH, BEND, BENDR or TUNE while the part's newest note sounds
+      #   moves its pitch, as the driver moves every sounding note of the track, so the reader writes
+      #   a record that glides (`glides: true`) at the new pitch on that frame, one a frame at most
+      #   (Walk#emit_bend_sounding). A bend that sweeps is a glide a frame, so a port sizes a voiced
+      #   slot for the glides as well as the notes. A note on a console voice is bent by the driver
+      #   too, which the song model does not glide, so that is not kept.
+      #
+      # WHAT IS NOT KEPT, since the song model has no place for it: a VOL or PAN while a note sounds
+      # (each note keeps the loudness and the side it was struck with; a glide carries on the
+      # note's own), and a pitch command while a note sounds on a console voice or in a plain
+      # record; LFOS, LFODL, MOD and MODT (vibrato);
       # PRIO and which notes the driver's channels drop when too many sound; XCMD's changes to the
       # track's voice; PORT's sound register writes; a console voice's length byte, which cuts its
       # notes short. A console voice's own settings are read by unpack_m4a_voiced_track into a slot of
@@ -170,6 +186,8 @@ module VBlank
         TIE = 0xCF
         # The commands that read one byte and keep nothing the records hold.
         DROPPED_ONE_BYTE = [PRIO, LFOS, LFODL, MOD, MODT].freeze
+        # The commands that move the pitch of a track's notes, those sounding too (TrkVolPitSet).
+        PITCH_COMMANDS = [KEYSH, BEND, BENDR, TUNE].freeze
         # A byte below this repeats the command before it, from VOICE on (the running status).
         RUNNING_STATUS_FROM = VOICE
         # The middle of PAN, BEND and TUNE, and BENDR at a track's start.
@@ -198,6 +216,18 @@ module VBlank
         # gClockTable: the ticks of each wait and each note length.
         CLOCKS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 28, 30, 32, 36, 40,
                   42, 44, 48, 52, 54, 56, 60, 64, 66, 68, 72, 76, 78, 80, 84, 88, 90, 92, 96].freeze
+
+        # The highest key MidiKeyToFreq reads its tables at; past it the key is this, a 256th short of
+        # the next.
+        MOST_DRIVER_KEY = 178
+        # Each key's pitch to MOST_DRIVER_KEY and one past, in 16ths of a hertz, tuned from A above
+        # middle C (key 69) at 440 Hz as a Score::Note's key is: what a voiced record's hz names
+        # (Original::PackNote, bytes 22-24). MidiKeyToFreq reads a key between two of these on a
+        # straight line from the one below to the one above, by 256ths of a key, and so does the
+        # reader (Walk#emit_pitch_hz). A recording's own note, key 60, is the instrument's.
+        KEY_HZ = (0..(MOST_DRIVER_KEY + 1)).map { |key| (440 * (2**((key - 69) / 12r)) * PackNote::HZ_SIXTEENTHS).round }.freeze
+        # The 256ths of a key, the most a fine pitch can be.
+        FINE_BITS = 0xFF
 
         # gNoiseTable: the noise register's setting for each key from LOWEST_NOISE_KEY, four dividers,
         # 7 down to 4, for each number of halvings from 13 down to 1, then every divider with none.
@@ -301,6 +331,11 @@ module VBlank
             CLOCKS.each_with_index { |ticks, at| clocks[at] = ticks }
             noise = list(:noise, NOISE_TABLE.length)
             NOISE_TABLE.each_with_index { |setting, at| noise[at] = setting }
+            if @voiced
+              key_hz = list(:key_hz, KEY_HZ.length)
+              KEY_HZ.each_with_index { |hz, at| key_hz[at] = hz }
+              var(:latest).store!(-1)
+            end
             area = list(:memacc, MEMACC_BYTES)
             @block.repeat(MEMACC_BYTES) { |at| area[at] = 0 }
             @block.repeat(MOST_TRACKS) do |t|
@@ -324,6 +359,8 @@ module VBlank
             TRACK_LISTS.each { |name| track_list(name) }
             track_list(:looped)
             SOUNDING_LISTS.each { |name| sounding_list(name) }
+            VOICED_SOUNDING_LISTS.each { |name| sounding_list(name) } if @voiced
+            list(:key_hz, KEY_HZ.length) if @voiced
             list(:stack, MOST_TRACKS * MOST_PATTERN_LEVELS)
             list(:rounds, (MOST_ROUNDS_KEPT + 1) * STATE_SIZE)
             list(:round_frames, MOST_ROUNDS_KEPT)
@@ -334,6 +371,11 @@ module VBlank
           TRACK_LISTS = %i[place wait status active level repeats key velocity shift voice voice_number volume pan bend
                            bend_range tune].freeze
           SOUNDING_LISTS = %i[used gate key record start sequence].freeze
+          # ...and in a voiced walk, what bends a sounding recorded note (#emit_bend_sounding): the
+          # key its voice was struck at before the track moved it, 1 where its pitch can move (a
+          # recording not played at a fixed rate), where its newest glide record is (-1 for none)
+          # and the frame that record starts, and the names its strike record gave (all but HZ).
+          VOICED_SOUNDING_LISTS = %i[pitch_key bends glide_record glide_start strike_names].freeze
 
           # THE DRIVER AS KEPT, at the start of a frame: the tempo's count and the tempo, then each of
           # TRACK_LISTS for every track, the patterns' places, the driver's memory. The +rounds+ list
@@ -532,11 +574,18 @@ module VBlank
             else
               emit_fine(t)
             end
+            emit_bend_sounding(t) if @voiced && pitch_command_test(command, t)
           end
 
           # The test the routine makes of whether +command+ is one of DROPPED_ONE_BYTE.
           def dropped_command_test(command)
             DROPPED_ONE_BYTE.map { |code| command == code }.reduce { |either, test| either | test }
+          end
+
+          # The test of whether +command+ moves the pitch of track +t+'s notes (TrkVolPitSet's keyM
+          # and pitM: KEYSH, BEND, BENDR, TUNE), on the walked track.
+          def pitch_command_test(command, t)
+            PITCH_COMMANDS.map { |code| command == code }.reduce { |either, test| either | test } & (t == @track)
           end
 
           # FINE (ply_fine): the track stops, and lets go of its notes.
@@ -780,6 +829,7 @@ module VBlank
             key = var(:sounding_key)
             right = var(:right)
             left = var(:left)
+            var(:pitch_key).store!(key) if @voiced # before the track moves it, for #emit_bend_sounding
             emit_key_moved(t, key)
             emit_sides(t, right, left)
             at = var(:record_at)
@@ -795,8 +845,9 @@ module VBlank
               emit_console_fields(channel, key, right, left)
             end
             @block.write(0)
-            emit_voice_settings(channel, at) if @voiced
+            emit_voice_settings(t, channel, at) if @voiced
             emit_sounding(t, at)
+            emit_keep_pitch(channel) if @voiced
           end
 
           # A VOICED RECORD'S SETTINGS (Original::PackNote's bytes 12 on), from the voice's twelve
@@ -817,14 +868,18 @@ module VBlank
           #   so its note only holds at the sustain level.
           #
           # A recording's note names none of them (the wave's pattern is its voice's,
-          # unpack_m4a_voice).
-          def emit_voice_settings(channel, at)
+          # unpack_m4a_voice). It names instead where it sits between the speakers and a pitch
+          # between keys (#emit_recorded_settings).
+          def emit_voice_settings(t, channel, at)
             voice = var(:sounding_voice)
             names = var(:voiced_names)
             duty = var(:voiced_duty)
             slide = var(:voiced_slide)
             fade = var(:voiced_fade)
-            [names, duty, slide, fade].each { |each| each.store!(0) }
+            shade = var(:voiced_shade)
+            hz = var(:voiced_hz)
+            [names, duty, slide, fade, shade, hz].each { |each| each.store!(0) }
+            emit_recorded_settings(t, shade, hz, names) if channel == KIND_RECORDING
             if channel == KIND_FIRST_SQUARE || channel == KIND_SECOND_SQUARE
               duty.store!((@block.byte(voice + 4) & 3) * DUTY_EVERY_FRAME)
               names.store!(PackNote::NAMES.fetch(:duty))
@@ -838,9 +893,143 @@ module VBlank
               end
             end
             emit_voice_envelope(channel, at, fade, names) if channel != KIND_RECORDING
-            # The pitch number, the fade, the duty, the vibrato, the slide, the shade, the names.
-            [0, 0, fade, duty, 0, 0, slide, 0, names, names >> 8].each { |byte| @block.write(byte) }
-            @block.repeat(PackNote::VOICED_BYTES - PackNote::BYTES - 10) { @block.write(0) }
+            # The pitch number, the fade, the duty, the vibrato, the slide, the shade, the names, the hz.
+            [0, 0, fade, duty, 0, 0, slide, shade, names, names >> 8, hz, hz >> 8, hz >> 16].each { |byte| @block.write(byte) }
+            @block.repeat(PackNote::VOICED_BYTES - PackNote::BYTES - VOICED_WRITTEN) { @block.write(0) }
+          end
+
+          # The bytes of a voiced record's settings #emit_voice_settings writes, up to the hz's last.
+          VOICED_WRITTEN = 13
+          # Where in a voiced record its key, names and hz are (Original::PackNote).
+          RECORD_KEY = 4
+          RECORD_NAMES = 20
+          RECORD_HZ = 22
+          # A shade's 64ths, the right alone (Original::PackNote::MOST_SHADE).
+          SHADE_WHOLE = PackNote::MOST_SHADE
+
+          # A RECORDED NOTE'S SPEAKERS AND PITCH, into +shade+, +hz+ and +names+:
+          #
+          # - where it sits between the speakers, from the two sides ChnVolSetAsm works out
+          #   (#emit_sides): Audio::Pan keeps the near side whole and turns the far side down by
+          #   how far off the middle it sits, so the shade is the share of the near side the far
+          #   side lacks, in 64ths, rounded, to the left below 0. A note in the middle names none.
+          #   Its loudness stays the two sides added, as the Advance's one mix plays it;
+          # - a pitch between keys (#emit_pitch_hz) where TUNE and BEND leave one, or a key past
+          #   127, which the key byte cannot name. A recording played at a fixed rate has no pitch
+          #   to move.
+          def emit_recorded_settings(t, shade, hz, names)
+            right = var(:right)
+            left = var(:left)
+            near = var(:near_side)
+            near.store!(right)
+            near.store!(left) if left > right
+            if near > 0
+              shade.store!((((near - right - left + near) * SHADE_WHOLE) + (near >> 1)) / near)
+              shade.store!(0 - shade) if left > right
+              names.store!(PackNote::NAMES.fetch(:shade)) if shade != 0
+            end
+            emit_pitch_hz(t, var(:pitch_key), hz, names) if (var(:voice_kind) & FIXED_RATE) == 0
+            var(:strike_names).store!(names)
+          end
+
+          # THE PITCH A NOTE OF TRACK +t+ STRUCK AT +raw+ PLAYS AT NOW, into +hz+, in 16ths of a hertz,
+          # with HZ set in +names+, where it is not a whole key the record's key byte can name:
+          # TrkVolPitSet's keyM and pitM (#emit_key_moved) added to the key, read as MidiKeyToFreq
+          # reads it, on a straight line between two keys by 256ths. A key past MOST_DRIVER_KEY is
+          # that key and 255 256ths. Leaves +hz+ and +names+ alone for a whole key up to 127.
+          # The key it comes to is in var(:moved_key).
+          def emit_pitch_hz(t, raw, hz, names)
+            moved = var(:moved)
+            key = var(:moved_key)
+            fine = var(:fine_pitch)
+            key_hz = list(:key_hz, KEY_HZ.length)
+            moved.store!(((track_list(:tune)[t] + (track_list(:bend)[t] * track_list(:bend_range)[t])) * 4) +
+                         (track_list(:shift)[t] * 256))
+            key.store!(raw + (moved >> 8))
+            fine.store!(moved & FINE_BITS)
+            if key < 0
+              key.store!(0)
+              fine.store!(0)
+            end
+            if key > MOST_DRIVER_KEY
+              key.store!(MOST_DRIVER_KEY)
+              fine.store!(FINE_BITS)
+            end
+            if fine != 0 || key > MOST_KEY
+              hz.store!(key_hz[key] + (((key_hz[key + 1] - key_hz[key]) * fine) >> 8))
+              names.store!(names | PackNote::NAMES.fetch(:hz))
+            end
+          end
+
+          # The note just struck kept for bending, in the place #emit_sounding found it (var(:free)):
+          # it is the part's newest, which a pitch command bends (#emit_bend_sounding).
+          def emit_keep_pitch(channel)
+            free = var(:free)
+            var(:latest).store!(free)
+            if free >= 0
+              sounding_list(:pitch_key)[free] = var(:pitch_key)
+              bends = sounding_list(:bends)
+              bends[free] = 0
+              bends[free] = 1 if channel == KIND_RECORDING && (var(:voice_kind) & FIXED_RATE) == 0
+              sounding_list(:glide_record)[free] = -1
+              sounding_list(:strike_names)[free] = var(:strike_names) & ~PackNote::NAMES.fetch(:hz)
+            end
+          end
+
+          # A PITCH COMMAND WHILE THE PART'S NOTE SOUNDS (KEYSH, BEND, BENDR, TUNE): the driver moves
+          # the pitch of the track's sounding notes too (MPlayMain calls MidiKeyToFreq for each of
+          # them after TrkVolPitSet), and a part sounds its newest, so that one is bent, with a
+          # gliding record (Original::PackNote's GLIDES: `glides: true`) at its new pitch: the key,
+          # and the hz where it is between keys; its instrument, volume and loudness are the part's
+          # own, as a glide carries on the note sounding. A glide already on this frame, or the note
+          # struck on it, is written again at the new pitch, so a part has one event a frame. Its
+          # length is given as the note is let go (#emit_release). A recording at a fixed rate, and a
+          # note on a console voice, have no pitch a glide can move (the song model glides only a
+          # recording), and are left as they were struck.
+          def emit_bend_sounding(t)
+            s = var(:latest)
+            if s >= 0
+              if sounding_list(:bends)[s] == 1
+                hz = var(:glide_hz)
+                names = var(:glide_names)
+                hz.store!(0)
+                names.store!(0)
+                emit_pitch_hz(t, sounding_list(:pitch_key)[s], hz, names)
+                key = var(:moved_key)
+                key.store!(MOST_KEY) if key > MOST_KEY
+                glide = sounding_list(:glide_record)[s]
+                if glide >= 0 && sounding_list(:glide_start)[s] == var(:frame)
+                  emit_repitch_record(glide, key, hz, names | PackNote::NAMES.fetch(:glides))
+                elsif glide < 0 && sounding_list(:start)[s] == var(:frame)
+                  emit_repitch_record(sounding_list(:record)[s], key, hz, names | sounding_list(:strike_names)[s])
+                else
+                  emit_glide_record(s, key, hz, names | PackNote::NAMES.fetch(:glides))
+                end
+              end
+            end
+          end
+
+          # The record at +at+ written again at +key+, with +names+ and +hz+.
+          def emit_repitch_record(at, key, hz, names)
+            @block.rewrite(at + RECORD_KEY, key)
+            @block.rewrite(at + RECORD_NAMES, names)
+            @block.rewrite(at + RECORD_NAMES + 1, names >> 8)
+            @block.rewrite(at + RECORD_HZ, hz)
+            @block.rewrite(at + RECORD_HZ + 1, hz >> 8)
+            @block.rewrite(at + RECORD_HZ + 2, hz >> 16)
+          end
+
+          # A gliding record for sounding note +s+ on this frame, at +key+ with +names+ and +hz+.
+          def emit_glide_record(s, key, hz, names)
+            at = var(:record_at)
+            frame = var(:frame)
+            at.store!(@block.written)
+            [frame, frame >> 8, 0, 0, key, PackNote::PART_OWN, PackNote::PART_OWN, PackNote::PART_OWN,
+             PackNote::NO_LOUDNESS, PackNote::NO_LOUDNESS >> 8, PackNote::PART_OWN, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, names, names >> 8, hz, hz >> 8, hz >> 16].each { |byte| @block.write(byte) }
+            @block.repeat(PackNote::VOICED_BYTES - RECORD_HZ - 3) { @block.write(0) }
+            sounding_list(:glide_record)[s] = at
+            sounding_list(:glide_start)[s] = frame
           end
 
           # The envelope of a note on +channel+ into +fade+ (emit_voice_settings), and its volume
@@ -980,6 +1169,22 @@ module VBlank
             @block.rewrite(record + 2, length)
             @block.rewrite(record + 3, length >> 8)
             sounding_list(:used)[s] = 0
+            emit_release_glide(s) if @voiced
+          end
+
+          # ...and in a voiced walk, its newest glide given the frames since it started, and the
+          # part's newest note gone where this was it.
+          def emit_release_glide(s)
+            glide = sounding_list(:glide_record)[s]
+            if glide >= 0
+              length = var(:length)
+              length.store!(var(:frame) - sounding_list(:glide_start)[s])
+              length.store!(1) if length < 1
+              @block.rewrite(glide + 2, length)
+              @block.rewrite(glide + 3, length >> 8)
+              sounding_list(:glide_record)[s] = -1
+            end
+            var(:latest).store!(-1) if var(:latest) == s
           end
 
           def emit_release_all
@@ -1000,7 +1205,9 @@ module VBlank
         end
 
         # One track's notes as voiced Original::PackNote records, for a slot of `voiced_notes`: as
-        # Track writes them, each with its console voice's duty, slide and fade (Walk#emit_voice_settings).
+        # Track writes them, each with its console voice's duty, slide and fade (Walk#emit_voice_settings),
+        # or a recording's side and pitch, and a gliding record for each bend while it sounds (M4A, A
+        # RECORDING'S NOTE, VOICED).
         module VoicedTrack
           extend Format
           unpacks :m4a_voiced_track, track: 0, kind: ANY_KIND, kit_from: KIT_AND_SPLIT_NUMBERS_FROM,

@@ -247,7 +247,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
     `voiced_notes`, each note with its voice's duty (the squares), sweep (the first square, as a slide) and
     envelope (the squares and the noise: an attack swells from silence, a decay fades from the note's
     volume past the driver's sustain level, and with neither the note holds at the sustain level),
-    as the driver sets the voice up for the note. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
+    as the driver sets the voice up for the note; and each recording's note with where it sits between
+    the speakers (its shade, from PAN and a drum kit voice's own pan), a pitch between keys where TUNE
+    and BEND leave one (its hz), and **a bend while it sounds** — a KEYSH, BEND, BENDR or TUNE while the
+    part's newest note sounds — as a record that glides (`glides: true`) to the new pitch on that frame,
+    one a frame at most, so a slot of voiced notes is sized for the glides as well as the notes. A VOL or
+    PAN while a note sounds, and a bend of a note on a console voice, are not kept. SONG is where a song's header is in the copy and VOICE a voice's twelve bytes (a
     drum kit's voice for key k is 12 × k past where its voices are, the second word of the kit's entry
     in the group, and a key split's entry e is 12 × e past its own). **A recorded part's instrument numbers** are the voices' numbers in the song's
     voice group (0 to 127); a drum kit's voice for key k is `kit_from:` + k, and a key split's entry e is
