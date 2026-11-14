@@ -244,6 +244,17 @@ class TestGBCPowerOn < Minitest::Test
     end
   end
 
+  # THE FRAMES SET UP ARE READ ONCE THEIR COUNT IS DONE. A frame that ends while the first frame's
+  # copy runs finds the first pass waiting, and the count goes on until the screen comes on: read
+  # there, it could be a frame short of what the cartridge counted, and the interpreter told it
+  # read the first pass's frames_since_power_on one less. The turns here, found by playing every
+  # second one, put a frame's end in that copy just before the count's next whole frame.
+  def test_the_frames_set_up_the_interpreter_is_told_are_the_cartridge_s
+    (4_450..4_470).step(2).each do |setting_up|
+      VBlank::IR::Backends::GBC::CheckedRun.new.run(counting_game_with_a_grid(setting_up, song: true), frames: 3)
+    end
+  end
+
   # A GAME THAT PLAYS A RECORDING COUNTS THEM TOO: the timer that counts the frames the screen is
   # off for plays the recording's samples once the screen is on, and a recording started while the
   # game sets up starts with its first frame, as the interpreter's mix does.

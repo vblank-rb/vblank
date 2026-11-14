@@ -109,11 +109,18 @@ module VBlank
             @core.use_counting_clock((said.to_r * 1000).to_i, counters.pack("C*"), !@clock_counters.nil?)
           end
 
-          # Read once the first pass has ended, by when the screen is on and the count is done.
+          # Once the first pass has ended. The frames the screen was off for are read here, and again
+          # as the first pass's moment is (#record_moment): the count goes on until the screen comes
+          # on, after the first frame's copy, and a frame can end while that copy runs, the pass
+          # already waiting.
           def first_pass_ended
+            read_dark_frames
+            hold_back_cells_shown_now
+          end
+
+          def read_dark_frames
             dark = @places.runtime[Runtime::Frame::DARK_FRAMES]
             @dark_frames = dark ? half(dark) : 0
-            hold_back_cells_shown_now
           end
 
           # A PASS'S PICTURE IS READ FROM THE FRAME DRAWN AFTER IT, while the next pass runs, and the
@@ -144,6 +151,7 @@ module VBlank
           # of the run has no boundary after it, so its moment counts the log as the game was found
           # waiting.
           def record_moment(frame, variables, lists, picture, sounds)
+            read_dark_frames if frame == 1 # shown, so the count is done (Runtime::Frame)
             sounds = sounds_after_pass(frame) unless frame == :end
             @vars = variables
             @lists = lists

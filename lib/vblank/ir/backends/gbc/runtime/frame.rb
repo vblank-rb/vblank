@@ -267,8 +267,8 @@ module VBlank
                 # The screen is still off: this is the first frame. Everything set up so far is
                 # copied while nothing is being drawn, and the screen comes on showing it.
                 asm.call("rt_upload_whole")
-                asm.call("rt_shown_is_passes")
                 emit_dark_end(asm, memory) if dark?(memory)
+                asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
                 asm.call("rt_display_on")
                 asm.call("rt_sleep_until_vblank")
                 emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
@@ -368,8 +368,8 @@ module VBlank
               # The screen is still off: this is the first frame. Everything set up so far is
               # copied while nothing is being drawn, and the screen comes on showing it.
               asm.call("rt_upload_whole")
-              asm.call("rt_shown_is_passes")
               emit_dark_end(asm, memory) if dark?(memory)
+              asm.call("rt_shown_is_passes") # after the count is done, which a reader reads once it is shown
               asm.call("rt_display_on")
               asm.call("rt_sleep_until_vblank")
               emit_add_dark_frames(asm, memory, count_at) if dark?(memory)
