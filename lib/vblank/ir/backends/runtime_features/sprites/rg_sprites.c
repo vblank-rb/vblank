@@ -116,7 +116,7 @@ typedef struct { int32_t line, piece, from; } left_out_piece;
 static left_out_piece left_out[MAX_LEFT_OUT];
 static int32_t left_out_count;
 
-static const int32_t *pieces_of_image(int32_t image) { return rg_game_image_pieces + rg_game_image_pieces[2 + image]; }
+static const int32_t *pieces_of_image(int32_t image) { return rg_screen_image_pieces(image); }
 
 /* One piece kept on a line, as the line's limit works it out (SpriteLines.limit_line): its sprite's
  * place in the table's order, the piece, its left edge on the screen, its width, and the first of its

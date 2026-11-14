@@ -210,7 +210,7 @@ module VBlank
                 next
               end
               info.push(pixels.length, image.width, image.height)
-              record_start_file_fill(:image, pixels.length, from_start_file, colors) if from_start_file
+              record_start_file_fill(:image, pixels.length, from_start_file, colors, image: (info.length / 3) - 1) if from_start_file
               drawn = if colors == SHADING_PLACES
                         bitmap = @data.fetch(name)
                         bitmap.places_in_shading(bitmap.shading)
@@ -228,7 +228,7 @@ module VBlank
             @image_pixels_held = pixels.length
             room_at = read_at_start.reduce(pixels.length) do |at, (info_at, node, colors)|
               info[info_at] = at
-              record_start_file_fill(:image, at, node, colors)
+              record_start_file_fill(:image, at, node, colors, image: info_at / 3)
               at + (node.width * node.height)
             end
             @image_pixel_count = room_at # what the runtime copies them by, to fill an image read from the start file
@@ -282,13 +282,19 @@ module VBlank
           # a line or on the screen: how many images, how far past the screen's edge a piece still
           # takes an entry of the table (SpriteLines.entry_reach, 0 for its own width or height),
           # then where each image's pieces start, then each image's pieces (see rg_screen.h for the
-          # layout). Only two 0s where the console draws them all.
+          # layout). Only two 0s where the console draws them all. A pose read from the start file
+          # lists none here: the runtime lists its frame's pieces as the game starts
+          # (StartFileFills#pose_piece_rules).
           def image_pieces_array
             console = @program.described_console
             return runtime_array("image_pieces", "int32_t", [0, 0]) unless console.sprite_pieces_drawn_a_line || console.sprite_pieces_drawn_a_screen
 
             tall = (@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last
-            lists = @images.each_key.map { |name, _| sprite_piece_places(name, tall, console.sprite_piece_shape) }
+            lists = @images.each_key.map do |name, _|
+              next [] if picture_from_start_file(name)&.from_file.is_a?(IR::StartFile::Pose)
+
+              sprite_piece_places(name, tall, console.sprite_piece_shape)
+            end
             values = [lists.length, SpriteLines.entry_reach(@program, piece_height: tall) || 0]
             start = 2 + lists.length
             lists.each do |places|

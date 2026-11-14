@@ -73,6 +73,23 @@ module VBlank
 
         # The tile the piece shows at +column+ and +row+ of itself (0 first), before it is turned.
         def tile_at(column, row) = tile + (column * column_step) + (row * row_step)
+
+        # THE BLOCKS A PICTURE OF PIECES IS MADE OF, which a pose cuts this piece into once it is
+        # turned: a picture's pieces are 8x8 or 16x16, so blocks of two tiles a side where two are
+        # left each way and of one along an odd edge. Each is [column, row, tiles a side], counted
+        # in tiles from the turned piece's top left; a piece of 4 by 4 tiles is four blocks. The
+        # build that holds the pack (Builder::PackPoses), the interpreter (IR::StartFile.fill_pose)
+        # and each runtime's rg_start_file_fill_pose cut it the same way and in this order.
+        def blocks
+          (0...rows).step(2).flat_map do |row|
+            (0...columns).step(2).flat_map do |column|
+              next [[column, row, 2]] if column + 2 <= columns && row + 2 <= rows
+
+              [row, row + 1].select { |r| r < rows }.product([column, column + 1].select { |c| c < columns })
+                            .map { |r, c| [c, r, 1] }
+            end
+          end
+        end
       end
 
       # A FRAME AS READ BACK: how many pieces the original's frame names, and the pieces held.

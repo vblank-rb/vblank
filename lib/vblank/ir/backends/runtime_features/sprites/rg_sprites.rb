@@ -94,8 +94,8 @@ end
 # --- how many sprites a line of the screen shows (rg_screen.c's, Backends::SpriteLines) ---
 #
 # @rg_game_image_pieces: how many images are listed, the game's entry reach (#rg_piece_takes_entry?),
-# then where each image's pieces start, and there
-# how many, then each one's across, down, width and height. RG_SPRITE_PIECES_A_LINE is 0 where every
+# then where each image's pieces start, and there (or in the list the start file gives,
+# #rg_screen_image_pieces) how many, then each one's across, down, width and height. RG_SPRITE_PIECES_A_LINE is 0 where every
 # piece is drawn, RG_SPRITE_SLIVERS_A_LINE and RG_SPRITE_PIXELS_A_LINE 0 where those are not counted,
 # and RG_SPRITE_PIECES_A_SCREEN 0 where the table holds every piece.
 RG_SLIVER = 8
@@ -151,11 +151,10 @@ def rg_mark_slices_left_out(placed)
   placed.each { |sprite| sprite.cuts = nil }
   return if (RG_SPRITE_PIECES_A_LINE == 0 && RG_SPRITE_PIECES_A_SCREEN == 0) || placed.empty?
 
-  pieces = @rg_game_image_pieces
   taking = []
   placed.each_index.sort_by { |at| [placed[at].level, at] }.reverse_each do |at|
     sprite = placed[at]
-    start = pieces[2 + sprite.image]
+    pieces, start = rg_screen_image_pieces(sprite.image)
     pieces[start].times do |piece|
       listed = start + 1 + (RG_PIECE_NUMBERS * piece)
       entry = [sprite, piece, sprite.x + pieces[listed], sprite.y + pieces[listed + 1], pieces[listed + 2], pieces[listed + 3]]
@@ -190,8 +189,7 @@ end
 # SpriteLines.left_out_at?: left out where a piece covering it is left out of the line from that
 # column, and no piece drawn there covers it.
 def rg_left_out_at?(placed, col, row, line)
-  pieces = @rg_game_image_pieces
-  start = pieces[2 + placed.image]
+  pieces, start = rg_screen_image_pieces(placed.image)
   covered = false
   pieces[start].times do |piece|
     listed = start + 1 + (RG_PIECE_NUMBERS * piece)

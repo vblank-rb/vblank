@@ -214,6 +214,13 @@ extern const int32_t rg_game_sprite_boxes[];
  * the picture, the one in front first. Only the first two numbers, 0, for a console that draws
  * every piece. */
 extern const int32_t rg_game_image_pieces[];
+/* The pieces of image +image+, how many and then four numbers each as above: those the file the
+ * game is handed lists for it (rg_screen_read_image_pieces), or else the game's own. */
+const int32_t *rg_screen_image_pieces(int32_t image);
+/* +pieces+, laid out as rg_screen_image_pieces hands them back, are image +image+'s from now on: a
+ * pose whose frame is read from the file as the game starts (rg_start_file_fill_pose). The game
+ * holds a stand-in for it of no pieces of its own. +pieces+ must last as long as the game. */
+void rg_screen_read_image_pieces(int32_t image, const int32_t *pieces);
 
 /* Each layer the game can be seen through is RG_ST_FIELDS numbers in rg_game_see_through: 1 when
  * both its amounts are numbers written in the program, 1 when it was given one amount (how much

@@ -46,10 +46,11 @@ module VBlank
           # The numbers before the tile layout in a pose's rules (StartFileFills#start_file_pose_rules):
           # what is filled, the totals, how many copies of it there are, the turn, the colours, where
           # the frame's entry is in the file and where the frames' records start, the origin, where
-          # the tiles are, and the bank a piece must name to be painted (-1 for every piece). How the
+          # the tiles are, the bank a piece must name to be painted (-1 for every piece), and how
+          # the console's sprite table holds a piece (StartFileFills#pose_piece_rules). How the
           # original keeps a frame is not among them: the file holds a record of VBlank's own for
           # each (Original::FrameRecord), which each runtime reads by that record's fixed layout.
-          POSE_HEADER_NUMBERS = 15
+          POSE_HEADER_NUMBERS = 17
 
           # The numbers before the colour layout in the rules of colours of a list the file chooses
           # (StartFileFills#chosen_color_rules): where the frame's entry is and where the frames'

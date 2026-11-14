@@ -1219,16 +1219,14 @@ module PackGames
   # each piece's size read through the console's table, as game code with the pack left out.
   #
   # On the Color it is more pieces than the console's sprite table holds, so the pieces furthest
-  # back are not drawn (Backends::SpriteLines). All-in-one the pose keeps its frame's pieces, in the
-  # frame's order; read as the game starts it is painted into a picture of no pieces
-  # (IR::StartFile.fill_pose), cut into squares row by row, so other pieces are the ones left out.
+  # back are not drawn (Backends::SpriteLines). Read as the game starts, the pose keeps its frame's
+  # pieces in the frame's order as all-in-one (IR::StartFile.fill_pose and each runtime's), so the
+  # same pieces are left out.
   class PosesOfShapes < Kit
     include PackPoseOfShapesGames
 
     GAMES = [
-      game(:pose_of_every_advance_shape_and_size, passes: 3,
-                                                  differs: Difference.new(what: "the pieces a full sprite table leaves out",
-                                                                          consoles: %i[gbc])) do |folder, options|
+      game(:pose_of_every_advance_shape_and_size, passes: 3) do |folder, options|
         built_by(pose_of_shapes_builder(original(folder), options: options))
       end
     ].freeze

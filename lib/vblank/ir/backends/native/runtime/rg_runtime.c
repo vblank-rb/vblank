@@ -738,10 +738,185 @@ int32_t rg_start_file_frame_bank(int32_t entry_at, int32_t records_at) {
              : 0;
 }
 
+/* A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM (rg_start_file_pose_pieces), worked out
+ * from the frame's pieces as IR::StartFile.fill_pose and Backends::SpriteLines.picture_places do it.
+ * Each piece of the frame is cut into blocks of 16x16 and of 8x8 along an odd edge
+ * (Original::FrameRecord::Piece#blocks); a block knows where it is in the picture, how big it is,
+ * which piece of the frame it is from, and which of its 8x8 squares draw nothing, left top, right
+ * top, left bottom, right bottom. */
+enum { RG_PIECES_SMALL = 1, RG_PIECES_SQUARES = 2, RG_PIECES_RECTANGLES = 3, RG_MOST_RECTANGLE_TILES = 4 };
+typedef struct { int32_t left, top, side, group, blank[4]; } pose_block;
+typedef struct { int32_t left, top, blank; } pose_square;
+
+/* Whether tile +tile+ of the file draws nothing: every place 0, or a tile past the file's. */
+static int start_file_tile_blank(int32_t tile, int32_t tiles_at, int32_t tile_count, const int32_t *tile_format) {
+  if (tile >= tile_count) return 1;
+  for (int32_t row = 0; row < RG_FILL_TILE_SIDE; row++)
+    for (int32_t column = 0; column < RG_FILL_TILE_SIDE; column++)
+      if (start_file_place(tiles_at + (tile * tile_format[RG_TILE_BYTES_AT]), tile_format, 1, row, column) != 0) return 0;
+  return 1;
+}
+
+/* One entry of +list+ (how many, then four numbers each): +left+, +top+, +width+, +height+. */
+static void pose_piece_entry(int32_t *list, int32_t left, int32_t top, int32_t width, int32_t height) {
+  int32_t *entry = list + 1 + (4 * list[0]++);
+  entry[0] = left;
+  entry[1] = top;
+  entry[2] = width;
+  entry[3] = height;
+}
+
+/* SpriteLines.picture_places of a pose of +blocks+, as a console whose entries are +shape+ holds
+ * them, +tall+ pixels a piece where they are small. +columns+ and +rows+ are each frame piece's
+ * size in tiles, by its number. Hands back how many pieces, then four numbers each, the one in
+ * front first. */
+static int32_t *pose_listed_pieces(const pose_block *blocks, int32_t block_count, const int32_t *columns, const int32_t *rows,
+                                   int32_t shape, int32_t tall) {
+  int32_t squares_most = 0;
+  for (int32_t b = 0; b < block_count; b++) squares_most += blocks[b].side == 16 ? 4 : 1;
+  int32_t *list = malloc((size_t)(1 + (4 * squares_most)) * sizeof *list);
+  if (!list) rg_fault("there is no room to list a pose's %d pieces", (int)squares_most);
+  list[0] = 0;
+  if (shape == RG_PIECES_SQUARES || shape == RG_PIECES_RECTANGLES) {
+    /* SpriteLines.square_picture_places and SpritePieces.group_rectangles: a block that draws
+     * something, or a frame piece of up to four tiles each way as one rectangle. */
+    for (int32_t b = 0; b < block_count; b++) {
+      const pose_block *block = &blocks[b];
+      int32_t group = block->group;
+      int whole = shape == RG_PIECES_RECTANGLES && columns[group] <= RG_MOST_RECTANGLE_TILES && rows[group] <= RG_MOST_RECTANGLE_TILES;
+      if (whole) {
+        if (b > 0 && blocks[b - 1].group == group) continue;
+        int32_t left = block->left, top = block->top, blank = 1;
+        for (int32_t in = b; in < block_count && blocks[in].group == group; in++) {
+          if (blocks[in].left < left) left = blocks[in].left;
+          if (blocks[in].top < top) top = blocks[in].top;
+          for (int32_t q = 0; q < (blocks[in].side == 16 ? 4 : 1); q++) blank &= blocks[in].blank[q];
+        }
+        if (!blank) pose_piece_entry(list, left, top, columns[group] * RG_FILL_TILE_SIDE, rows[group] * RG_FILL_TILE_SIDE);
+        continue;
+      }
+      int blank = 1;
+      for (int32_t q = 0; q < (block->side == 16 ? 4 : 1); q++) blank &= block->blank[q];
+      if (!blank) pose_piece_entry(list, block->left, block->top, block->side, block->side);
+    }
+    return list;
+  }
+  /* SpriteLines.small_picture_places: every 8x8 square, a block of 16x16 less those of its four
+   * that draw nothing, then put together two by two where a piece is 8x16 (SpritePieces.stacked). */
+  pose_square *squares = malloc((size_t)(squares_most > 0 ? squares_most : 1) * sizeof *squares);
+  if (!squares) rg_fault("there is no room to list a pose's %d pieces", (int)squares_most);
+  int32_t square_count = 0;
+  for (int32_t b = 0; b < block_count; b++) {
+    const pose_block *block = &blocks[b];
+    if (block->side == 8) {
+      squares[square_count++] = (pose_square){block->left, block->top, block->blank[0]};
+      continue;
+    }
+    for (int32_t q = 0; q < 4; q++)
+      if (!block->blank[q])
+        squares[square_count++] = (pose_square){block->left + ((q % 2) * 8), block->top + ((q / 2) * 8), 0};
+  }
+  for (int32_t s = 0; s < square_count; s++) {
+    pose_square square = squares[s];
+    if (square.blank == -1) continue; /* taken already, as the half of another */
+    int32_t top = square.top, blank = square.blank;
+    if (tall == 16) {
+      int32_t under = -1, over = -1;
+      for (int32_t o = s + 1; o < square_count && under < 0; o++)
+        if (squares[o].blank != -1 && squares[o].left == square.left && squares[o].top == square.top + 8) under = o;
+      for (int32_t o = s + 1; o < square_count && under < 0 && over < 0; o++)
+        if (squares[o].blank != -1 && squares[o].left == square.left && squares[o].top == square.top - 8) over = o;
+      int32_t partner = under >= 0 ? under : over;
+      if (partner >= 0) {
+        blank &= squares[partner].blank;
+        squares[partner].blank = -1;
+        if (over >= 0) top -= 8;
+      }
+    }
+    if (!blank) pose_piece_entry(list, square.left, top, 8, tall);
+  }
+  free(squares);
+  return list;
+}
+
+/* The pieces of a pose's frame, from +first+ in the file, +count+ of them (those of +only_bank+
+ * where it is not -1), as rg_screen_read_image_pieces takes them: see pose_listed_pieces. The pose
+ * is +width+ by +height+ and turned +turn+ once painted, as its pixels are. */
+static int32_t *start_file_pose_pieces(int32_t first, int32_t count, int32_t only_bank, const int32_t *tile_format,
+                                       int32_t origin_x, int32_t origin_y, int32_t tiles_at, int32_t tile_count,
+                                       int32_t width, int32_t height, int32_t turn, int32_t shape, int32_t tall) {
+  int32_t most = 0;
+  for (int32_t piece = 0; piece < count; piece++) {
+    int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
+    most += start_file[at + RG_PIECE_COLUMNS_AT] * start_file[at + RG_PIECE_ROWS_AT];
+  }
+  pose_block *blocks = malloc((size_t)(most > 0 ? most : 1) * sizeof *blocks);
+  int32_t *columns = malloc((size_t)(count > 0 ? count : 1) * sizeof *columns);
+  int32_t *rows = malloc((size_t)(count > 0 ? count : 1) * sizeof *rows);
+  if (!blocks || !columns || !rows) rg_fault("there is no room to list the pieces of a frame of %d", (int)count);
+  int32_t block_count = 0;
+  for (int32_t piece = 0; piece < count; piece++) {
+    int32_t at = first + (piece * RG_FRAME_PIECE_BYTES);
+    columns[piece] = rows[piece] = 0;
+    if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
+    int32_t x = origin_x + (int16_t)start_file_number(at + RG_PIECE_X_AT, 2, 0);
+    int32_t y = origin_y + (int16_t)start_file_number(at + RG_PIECE_Y_AT, 2, 0);
+    int32_t first_tile = (int32_t)start_file_number(at + RG_PIECE_TILE_AT, 2, 0);
+    int32_t column_step = (int32_t)start_file_number(at + RG_PIECE_COLUMN_STEP_AT, 2, 0);
+    int32_t row_step = (int32_t)start_file_number(at + RG_PIECE_ROW_STEP_AT, 2, 0);
+    int32_t wide = start_file[at + RG_PIECE_COLUMNS_AT], high = start_file[at + RG_PIECE_ROWS_AT];
+    int32_t mirrored = start_file[at + RG_PIECE_TURNS_AT] & RG_PIECE_MIRRORED;
+    int32_t upside_down = start_file[at + RG_PIECE_TURNS_AT] & RG_PIECE_UPSIDE_DOWN;
+    columns[piece] = wide;
+    rows[piece] = high;
+    for (int32_t row = 0; row < high; row += 2) {
+      for (int32_t column = 0; column < wide; column += 2) {
+        int big = column + 2 <= wide && row + 2 <= high;
+        for (int32_t r = row; r < row + 2 && r < high; r++) {
+          for (int32_t c = column; c < column + 2 && c < wide; c++) {
+            int32_t tile = first_tile + ((mirrored ? wide - 1 - c : c) * column_step) + ((upside_down ? high - 1 - r : r) * row_step);
+            int blank = start_file_tile_blank(tile, tiles_at, tile_count, tile_format);
+            if (big) {
+              if (r == row && c == column)
+                blocks[block_count++] = (pose_block){x + (column * 8), y + (row * 8), 16, piece, {0, 0, 0, 0}};
+              blocks[block_count - 1].blank[((r - row) * 2) + (c - column)] = blank;
+            } else {
+              blocks[block_count++] = (pose_block){x + (c * 8), y + (r * 8), 8, piece, {blank, 0, 0, 0}};
+            }
+          }
+        }
+      }
+    }
+  }
+  for (int32_t b = 0; b < block_count; b++) {
+    pose_block *block = &blocks[b];
+    if (turn & RG_TURN_MIRRORED) {
+      block->left = width - block->left - block->side;
+      int32_t swap = block->blank[0];
+      block->blank[0] = block->blank[1], block->blank[1] = swap;
+      swap = block->blank[2];
+      block->blank[2] = block->blank[3], block->blank[3] = swap;
+    }
+    if (turn & RG_TURN_UPSIDE_DOWN) {
+      block->top = height - block->top - block->side;
+      int32_t swap = block->blank[0];
+      block->blank[0] = block->blank[2], block->blank[2] = swap;
+      swap = block->blank[1];
+      block->blank[1] = block->blank[3], block->blank[3] = swap;
+    }
+  }
+  int32_t *list = pose_listed_pieces(blocks, block_count, columns, rows, shape, tall);
+  free(blocks);
+  free(columns);
+  free(rows);
+  return list;
+}
+
 void rg_start_file_fill_pose(const int32_t *rules) {
   int32_t kind = rules[0], total = rules[1], copies = rules[2], width = rules[3], height = rules[4], turn = rules[5];
   int32_t colors_at = rules[6], colors_count = rules[7], entry_at = rules[8], records_at = rules[9];
   int32_t origin_x = rules[10], origin_y = rules[11], tiles_at = rules[12], tile_count = rules[13], only_bank = rules[14];
+  int32_t piece_shape = rules[15], piece_tall = rules[16];
   const int32_t *tile_format = rules + RG_FILL_POSE_HEADER_NUMBERS;
   const int32_t *color_format = tile_format + RG_TILE_FORMAT_NUMBERS;
   const int32_t *held_colors = color_format + RG_COLOR_FORMAT_NUMBERS;
@@ -754,11 +929,17 @@ void rg_start_file_fill_pose(const int32_t *rules) {
     if (only_bank >= 0 && (int32_t)start_file_number(at + RG_PIECE_BANK_AT, 2, 0) != only_bank) continue;
     start_file_paint_piece(places, width, height, at, tile_format, origin_x, origin_y, tiles_at, tile_count);
   }
+  /* Listed once and kept for the game's life, shared by every copy. */
+  const int32_t *pieces = kind == RG_FILL_TILE || piece_shape == 0
+                              ? NULL
+                              : start_file_pose_pieces(first, count, only_bank, tile_format, origin_x, origin_y, tiles_at,
+                                                       tile_count, width, height, turn, piece_shape, piece_tall);
   uint16_t *tile_pixels = kind == RG_FILL_TILE ? rg_screen_tile_pixels_to_fill(total) : NULL;
   int16_t *image_pixels = kind == RG_FILL_TILE ? NULL : rg_screen_image_pixels_to_fill(total);
   for (int32_t each = 0; each < copies; each++) {
-    int32_t start = copy[0], swapped_count = copy[1];
-    const int32_t *swapped = copy + 2;
+    int32_t start = copy[0], image = copy[1], swapped_count = copy[2];
+    const int32_t *swapped = copy + 3;
+    if (pieces && image >= 0) rg_screen_read_image_pieces(image, pieces);
     for (int32_t row = 0; row < height; row++) {
       for (int32_t column = 0; column < width; column++) {
         int32_t from_row = (turn & RG_TURN_UPSIDE_DOWN) ? height - 1 - row : row;

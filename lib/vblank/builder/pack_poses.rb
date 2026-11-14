@@ -360,21 +360,8 @@ module VBlank
           end
         end
         rows = turned_rows(rows, mirrored: piece.mirrored, upside_down: piece.upside_down)
-        block_places(piece.columns, piece.rows).map do |column, row, tiles|
+        piece.blocks.map do |column, row, tiles|
           [column * side, row * side, rows[row * side, tiles * side].flat_map { |line| line[column * side, tiles * side] }]
-        end
-      end
-
-      # Where each block of a piece +columns+ by +rows+ tiles starts, in tiles, and how many tiles
-      # a side it is (1 or 2): each [column, row, tiles].
-      def block_places(columns, rows)
-        (0...rows).step(2).flat_map do |row|
-          (0...columns).step(2).flat_map do |column|
-            next [[column, row, 2]] if column + 2 <= columns && row + 2 <= rows
-
-            [row, row + 1].select { |r| r < rows }.product([column, column + 1].select { |c| c < columns })
-                          .map { |r, c| [c, r, 1] }
-          end
         end
       end
 

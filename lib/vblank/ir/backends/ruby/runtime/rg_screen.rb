@@ -103,6 +103,19 @@ end
 # settings (the same Hash kept), for an answer kept from it (rg_colors_through), nil for a table never emptied.
 RgShownFilter = Struct.new(:table, :everywhere, :rows, :remix, :changes)
 
+# Where image +image+'s pieces are: [the array, where they start in it] (rg_screen.h,
+# rg_screen_image_pieces): those the start file lists for it, or else the game's own.
+def rg_screen_image_pieces(image)
+  read = @rg_image_pieces_read[image]
+  read ? [read, 0] : [@rg_game_image_pieces, @rg_game_image_pieces[2 + image]]
+end
+
+# +pieces+, how many and then four numbers each, are image +image+'s from now on (rg_screen.h,
+# rg_screen_read_image_pieces).
+def rg_screen_read_image_pieces(image, pieces)
+  @rg_image_pieces_read[image] = pieces
+end
+
 def rg_screen_setup
   # TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
   # one while the game draws into the other, and they trade places between frames, so nobody ever
@@ -131,6 +144,8 @@ def rg_screen_setup
   # rebuilt every frame.
   @rg_scenery = Array.new(RG_SCREEN_CELLS, 0)
   @rg_scenery_kept = false
+  # The pieces of each image the start file lists, by the image's number (#rg_screen_read_image_pieces).
+  @rg_image_pieces_read = {}
   @rg_screen_held = 0 # switched off until the first frame (Framebuffer#held=)
   @rg_frames_begun = false # a frame boundary has been reached (Reference @uses_frames)
   # Made the first time each is needed; named here so the game's shape never changes in play.

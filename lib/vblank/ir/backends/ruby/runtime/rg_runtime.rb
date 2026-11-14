@@ -689,11 +689,130 @@ def rg_start_file_fill_tile_pose(pieces, rules)
   (kept...room).each { |left| pieces[3 * left, 3] = [0, 0, -1] }
 end
 
+# A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM (rg_runtime.c's start_file_pose_pieces
+# and pose_listed_pieces, which say how).
+RG_PIECES_SQUARES = 2
+RG_PIECES_RECTANGLES = 3
+RG_MOST_RECTANGLE_TILES = 4
+
+# One block of a frame's piece: where it is in the picture, how big, which piece it is from, and
+# which of its 8x8 squares draw nothing, left top, right top, left bottom, right bottom.
+RgPoseBlock = Struct.new(:left, :top, :side, :group, :blank)
+
+# rg_runtime.c's start_file_tile_blank
+def rg_start_file_tile_blank?(tile, rules, tile_format, tiles_at, tile_count)
+  return true if tile >= tile_count
+
+  at = tiles_at + (tile * rules[tile_format + RG_TILE_BYTES_AT])
+  (0...8).all? { |row| (0...8).all? { |column| rg_start_file_place(at, rules, tile_format, 1, row, column).zero? } }
+end
+
+# rg_runtime.c's pose_listed_pieces
+def rg_pose_listed_pieces(blocks, columns, rows, shape, tall)
+  list = [0]
+  entry = lambda do |left, top, width, height|
+    list.push(left, top, width, height)
+    list[0] += 1
+  end
+  all_blank = ->(block) { block.blank.first(block.side == 16 ? 4 : 1).all? }
+  if [RG_PIECES_SQUARES, RG_PIECES_RECTANGLES].include?(shape)
+    blocks.each_with_index do |block, b|
+      group = block.group
+      whole = shape == RG_PIECES_RECTANGLES && columns[group] <= RG_MOST_RECTANGLE_TILES && rows[group] <= RG_MOST_RECTANGLE_TILES
+      unless whole
+        entry.call(block.left, block.top, block.side, block.side) unless all_blank.call(block)
+        next
+      end
+      next if b.positive? && blocks[b - 1].group == group
+
+      inside = blocks.select { |other| other.group == group }
+      next if inside.all?(&all_blank)
+
+      entry.call(inside.map(&:left).min, inside.map(&:top).min, columns[group] * 8, rows[group] * 8)
+    end
+    return list.freeze
+  end
+  squares = blocks.flat_map do |block|
+    next [[block.left, block.top, block.blank[0]]] if block.side == 8
+
+    (0...4).reject { |q| block.blank[q] }.map { |q| [block.left + ((q % 2) * 8), block.top + ((q / 2) * 8), false] }
+  end
+  taken = Array.new(squares.length, false)
+  squares.each_with_index do |(left, top, blank), s|
+    next if taken[s]
+
+    if tall == 16
+      later = ((s + 1)...squares.length).select { |o| !taken[o] && squares[o][0] == left }
+      under = later.find { |o| squares[o][1] == top + 8 }
+      over = later.find { |o| squares[o][1] == top - 8 } unless under
+      partner = under || over
+      if partner
+        blank &&= squares[partner][2]
+        taken[partner] = true
+        top -= 8 if over
+      end
+    end
+    entry.call(left, top, 8, tall) unless blank
+  end
+  list.freeze
+end
+
+# rg_runtime.c's start_file_pose_pieces
+def rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+                              width, height, turn, shape, tall)
+  blocks = []
+  columns = Array.new(count, 0)
+  rows = Array.new(count, 0)
+  count.times do |piece|
+    at = first + (piece * RG_FRAME_PIECE_BYTES)
+    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+
+    x = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
+    y = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
+    first_tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
+    column_step = rg_start_file_half(at + RG_PIECE_COLUMN_STEP_AT)
+    row_step = rg_start_file_half(at + RG_PIECE_ROW_STEP_AT)
+    wide = columns[piece] = @rg_start_file.getbyte(at + RG_PIECE_COLUMNS_AT)
+    high = rows[piece] = @rg_start_file.getbyte(at + RG_PIECE_ROWS_AT)
+    turns = @rg_start_file.getbyte(at + RG_PIECE_TURNS_AT)
+    mirrored = turns.anybits?(RG_PIECE_MIRRORED)
+    upside_down = turns.anybits?(RG_PIECE_UPSIDE_DOWN)
+    (0...high).step(2) do |row|
+      (0...wide).step(2) do |column|
+        big = column + 2 <= wide && row + 2 <= high
+        (row...[row + 2, high].min).each do |r|
+          (column...[column + 2, wide].min).each do |c|
+            tile = first_tile + ((mirrored ? wide - 1 - c : c) * column_step) + ((upside_down ? high - 1 - r : r) * row_step)
+            blank = rg_start_file_tile_blank?(tile, rules, tile_format, tiles_at, tile_count)
+            if big
+              blocks << RgPoseBlock.new(x + (column * 8), y + (row * 8), 16, piece, Array.new(4, false)) if r == row && c == column
+              blocks.last.blank[((r - row) * 2) + (c - column)] = blank
+            else
+              blocks << RgPoseBlock.new(x + (c * 8), y + (r * 8), 8, piece, [blank, false, false, false])
+            end
+          end
+        end
+      end
+    end
+  end
+  blocks.each do |block|
+    if turn.anybits?(RG_TURN_MIRRORED)
+      block.left = width - block.left - block.side
+      block.blank = block.blank.values_at(1, 0, 3, 2)
+    end
+    if turn.anybits?(RG_TURN_UPSIDE_DOWN)
+      block.top = height - block.top - block.side
+      block.blank = block.blank.values_at(2, 3, 0, 1)
+    end
+  end
+  rg_pose_listed_pieces(blocks, columns, rows, shape, tall)
+end
+
 # The pixels of a pose whose pieces are in the file (rg_runtime.h, rg_start_file_fill_pose). The
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
   kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
-    tiles_at, tile_count, only_bank = rules
+    tiles_at, tile_count, only_bank, piece_shape, piece_tall = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -706,6 +825,10 @@ def rg_start_file_fill_pose(rules)
 
     rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
   end
+  unless kind == RG_FILL_TILE || piece_shape.zero?
+    pieces = rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+                                       width, height, turn, piece_shape, piece_tall)
+  end
   if kind == RG_FILL_TILE
     @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
     pixels = @rg_game_tile_pixels
@@ -716,8 +839,10 @@ def rg_start_file_fill_pose(rules)
   # The frame painted once, written into each copy of the picture in that copy's colours.
   copies.times do
     start = rules[copy]
-    swapped_count = rules[copy + 1]
-    swapped = copy + 2
+    image = rules[copy + 1]
+    swapped_count = rules[copy + 2]
+    swapped = copy + 3
+    rg_screen_read_image_pieces(image, pieces) if pieces && !image.negative?
     height.times do |row|
       width.times do |column|
         from_row = (turn & RG_TURN_UPSIDE_DOWN).zero? ? row : height - 1 - row

@@ -114,6 +114,23 @@ void rg_screen_image_pixels_room(int32_t total, int32_t held) {
   image_pixels_drawn = image_pixels_filled;
 }
 
+/* The pieces of each image the start file lists (rg_screen_read_image_pieces), by the image's
+ * number, NULL for one it does not; none until the first is listed. */
+static const int32_t **image_pieces_read;
+
+const int32_t *rg_screen_image_pieces(int32_t image) {
+  if (image_pieces_read && image_pieces_read[image]) return image_pieces_read[image];
+  return rg_game_image_pieces + rg_game_image_pieces[2 + image];
+}
+
+void rg_screen_read_image_pieces(int32_t image, const int32_t *pieces) {
+  if (!image_pieces_read) {
+    image_pieces_read = calloc((size_t)(rg_game_image_pieces[0] > 0 ? rg_game_image_pieces[0] : 1), sizeof *image_pieces_read);
+    if (!image_pieces_read) rg_fault("there is no room to list the pieces of %d pictures", (int)rg_game_image_pieces[0]);
+  }
+  image_pieces_read[image] = pieces;
+}
+
 static int32_t held;            /* switched off until the first frame (Framebuffer#held=) */
 static int32_t frames_begun;    /* a frame boundary has been reached (Reference @uses_frames) */
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */

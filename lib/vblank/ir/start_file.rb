@@ -1013,22 +1013,28 @@ module VBlank
       end
 
       # +node+ as a picture of +places+ in +colors+, turned as its place in the file says, with
-      # nothing left to read.
-      def self.hold_read_picture(node, places, colors, see_through:)
+      # nothing left to read. A pose hands its +pieces+ and +piece_groups+ too, turned with it.
+      def self.hold_read_picture(node, places, colors, see_through:, pieces: nil, piece_groups: nil)
         pixels, transparent = Assets.placed_pixels(places, colors, see_through: see_through)
         picture = Assets::Image.new(width: node.width, height: node.height, transparent: transparent, pixels: pixels,
-                                    colors: colors, places: places.pack("C*"))
+                                    colors: colors, places: places.pack("C*"), pieces: pieces, piece_groups: piece_groups)
         picture = node.from_file.turns.reduce(picture) { |turned, way| turned.turned(way) }
         node.pixels = picture.pixels
         node.transparent = picture.transparent
         node.colors = colors
         node.places = picture.places
+        if pieces
+          node.pieces = picture.pieces
+          node.piece_groups = piece_groups
+        end
         node.from_file = nil
       end
 
       # A POSE'S PIECES, read from the frame it names and painted into a picture of the size the
       # game gave, as the build paints them when it holds the frame (Builder::PackPoses). The
-      # picture stays one of that size and of no pieces, since the build laid it out so.
+      # picture keeps the frame's pieces as that build's does, each cut into the blocks a picture of
+      # pieces is made of (Original::FrameRecord::Piece#blocks), in the frame's order: a console
+      # whose sprite table fills up then leaves out the same pieces either way (Backends::SpriteLines).
       def self.fill_pose(node, bytes)
         where = node.from_file
         colors = if where.colors_at
@@ -1037,46 +1043,73 @@ module VBlank
                    node.colors
                  end
         node.colors_name = where.bank_lists[frame_bank_in(bytes, where.frame_bank)] || node.colors_name if where.bank_lists
-        hold_read_picture(node, pose_places(where, node.width, node.height, bytes), colors, see_through: 0)
+        tiles = {}
+        pieces = pose_frame_pieces(where, bytes)
+        places = pose_places(where, node.width, node.height, pieces, bytes, tiles)
+        groups = pieces.map { |piece| pose_piece_blocks(piece, where, bytes, tiles) }.reject(&:empty?)
+        hold_read_picture(node, places, colors, see_through: 0, pieces: (groups.flatten(1) unless groups.empty?),
+                                                                piece_groups: groups.map(&:length))
       end
 
-      # The places of a picture +width+ by +height+ with the pieces of the frame at +where+ (a
-      # Pose) painted into it, row by row: every piece, or those of its bank where it names one.
-      # What the file asks for past what the build holds is left out (Pose says what).
-      def self.pose_places(where, width, height, bytes)
-        places = Array.new(width * height, 0)
-        tiles = {}
+      # The pieces of the frame at +where+ (a Pose): every piece, or those of its bank where it
+      # names one.
+      def self.pose_frame_pieces(where, bytes)
         frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
-        pieces = where.bank ? frame.pieces.select { |piece| piece.bank == where.bank } : frame.pieces
+        where.bank ? frame.pieces.select { |piece| piece.bank == where.bank } : frame.pieces
+      end
+
+      # The places of a picture +width+ by +height+ with +pieces+ painted into it, row by row. What
+      # the file asks for past what the build holds is left out (Pose says what). +tiles+ keeps
+      # each tile read, by its number.
+      def self.pose_places(where, width, height, pieces, bytes, tiles)
+        places = Array.new(width * height, 0)
         pieces.each { |piece| paint_pose_piece(places, width, height, piece, where, bytes, tiles) }
         places
       end
 
       # One piece (an Original::FrameRecord::Piece) painted into +places+, behind what is there
-      # already: each of its pixels from the tile it names there, the whole piece turned as it
-      # says. +tiles+ keeps each tile read, by its number.
+      # already.
       def self.paint_pose_piece(places, width, height, piece, where, bytes, tiles)
         side = FormatReading::TILE_SIDE
-        across = piece.columns * side
-        tall = piece.rows * side
-        tile_bytes = where.tile_format.tile_bytes
-        tall.times do |y|
+        (piece.rows * side).times do |y|
           down = where.origin_y + piece.y + y
           next unless down.between?(0, height - 1)
 
-          across.times do |x|
+          (piece.columns * side).times do |x|
             along = where.origin_x + piece.x + x
             next unless along.between?(0, width - 1) && places[(down * width) + along].zero?
 
-            from_x = piece.mirrored ? across - 1 - x : x
-            from_y = piece.upside_down ? tall - 1 - y : y
-            tile = piece.tile_at(from_x / side, from_y / side)
-            next unless tile < where.tile_count
-
-            tiles[tile] ||= FormatReading.tiles(bytes.byteslice(where.tiles_at + (tile * tile_bytes), tile_bytes), where.tile_format).first
-            places[(down * width) + along] = tiles[tile][((from_y % side) * side) + (from_x % side)]
+            places[(down * width) + along] = pose_piece_place(piece, x, y, where, bytes, tiles)
           end
         end
+      end
+
+      # +piece+ as the blocks a picture of pieces is made of, [left, top, places] each, left and
+      # top in the picture: the blocks a part of it off the picture is in too, as a console's table
+      # holds the whole piece.
+      def self.pose_piece_blocks(piece, where, bytes, tiles)
+        side = FormatReading::TILE_SIDE
+        piece.blocks.map do |column, row, count|
+          size = count * side
+          own = Array.new(size * size) do |at|
+            pose_piece_place(piece, (column * side) + (at % size), (row * side) + (at / size), where, bytes, tiles)
+          end
+          [where.origin_x + piece.x + (column * side), where.origin_y + piece.y + (row * side), own.pack("C*")]
+        end
+      end
+
+      # The place +piece+ shows at +x+, +y+ of itself once turned: from the tile it names there,
+      # the whole piece turned as it says; 0 for a tile past the file's.
+      def self.pose_piece_place(piece, x, y, where, bytes, tiles)
+        side = FormatReading::TILE_SIDE
+        from_x = piece.mirrored ? (piece.columns * side) - 1 - x : x
+        from_y = piece.upside_down ? (piece.rows * side) - 1 - y : y
+        tile = piece.tile_at(from_x / side, from_y / side)
+        return 0 unless tile < where.tile_count
+
+        tile_bytes = where.tile_format.tile_bytes
+        tiles[tile] ||= FormatReading.tiles(bytes.byteslice(where.tiles_at + (tile * tile_bytes), tile_bytes), where.tile_format).first
+        tiles[tile][((from_y % side) * side) + (from_x % side)]
       end
 
       # A picture's places row by row: one byte a pixel, or the tiles they are kept in, read from the
@@ -1179,7 +1212,7 @@ module VBlank
       end
       private_class_method :fill_node, :fill_recording, :hold_in, :fill_song, :fill_table, :fill_shading, :fill_picture, :picture_places, :fill_background, :fill_backdrop,
                            :bank_lists, :colors_held, :hold_marked_colors, :declare_background_tile, :hold_read_picture, :fill_pose, :pose_places,
-                           :paint_pose_piece, :fill_tile_pose
+                           :paint_pose_piece, :fill_tile_pose, :pose_frame_pieces, :pose_piece_blocks, :pose_piece_place
     end
   end
 end

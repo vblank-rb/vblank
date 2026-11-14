@@ -241,10 +241,15 @@ static inline void rg_call_routine(void (*routine)(void)) { routine(); }
  * bytes saying where its record starts, and where the records start, which that is counted from
  * (0 for a frame with no record); where
  * the object's place is in the picture, across and down; where the tiles are in the file and
- * how many; and the bank a piece must name to be painted (-1 for every piece). Then the two
+ * how many; the bank a piece must name to be painted (-1 for every piece); and how the console's
+ * sprite table holds a piece, 0 where it draws every piece (else 1 for small pieces, 2 for squares,
+ * 3 for rectangles), and how tall a small piece is. Then the two
  * layouts and the game's own colours where the file has none, as rg_start_file_fill_picture has
- * them. Then for each copy: where its pixels start, how many colours of another list it is drawn
- * with, and that list. Place 0 is see-through. The file is the player's, and the game plays on whatever it
+ * them. Then for each copy: where its pixels start, the number of its image (-1 for tile pixels),
+ * how many colours of another list it is drawn with, and that list. Place 0 is see-through. Where
+ * the console's table holds only so many pieces, the frame's pieces are listed for each copy's image
+ * as that table holds them (rg_screen_read_image_pieces), in the frame's order, so the same pieces
+ * are left out as where the game holds the frame. The file is the player's, and the game plays on whatever it
  * holds: pieces are read while they end inside the file, a piece or the part of one outside the
  * picture is not painted, and a tile past the file's paints nothing.
  *
